@@ -92,13 +92,13 @@ async fn convert_deal(
         dev_script: None,
         cleanup_script: None,
         copy_files: None,
-        organization_id: payload.organization_id,
-        client_id: payload.client_id,
+        organization_id: payload.organization_id.map(|u| u.to_string()),
+        client_id: payload.client_id.map(|u| u.to_string()),
         folder_id: None,
         parent_project_id: None,
     };
 
-    let project = Project::create(pool, &create_project, project_id)
+    let project = Project::create(pool, &create_project, &project_id.to_string())
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to create project: {}", e)))?;
 
@@ -127,7 +127,7 @@ async fn convert_deal(
         let board = ProjectBoard::create(
             pool,
             &CreateProjectBoard {
-                project_id: project.id,
+                project_id: project.id.clone(),
                 name: phase.name.clone(),
                 slug,
                 board_type: ProjectBoardType::Custom,
@@ -173,9 +173,9 @@ async fn convert_deal(
             };
 
             let create_task = CreateTask {
-                project_id: project.id,
+                project_id: project_id.to_string(),
                 pod_id: None,
-                board_id: Some(board.id),
+                board_id: Some(board.id.clone()),
                 title: task_tmpl.title.clone(),
                 description: Some(task_tmpl.description.clone()),
                 parent_task_attempt: None,
@@ -195,9 +195,12 @@ async fn convert_deal(
                 scheduled_start: None,
                 scheduled_end: None,
                 screenshot: None,
+                completion_criteria: None,
+                output_format: None,
+                collaborators: None,
             };
 
-            Task::create(pool, &create_task, task_id)
+            Task::create(pool, &create_task, &task_id.to_string())
                 .await
                 .map_err(|e| {
                     ApiError::InternalError(format!("Failed to create task: {}", e))
@@ -221,7 +224,7 @@ async fn convert_deal(
                     TaskDependency::create(
                         pool,
                         &CreateTaskDependency {
-                            project_id: project.id,
+                            project_id: project_id,
                             source_task_id: source_id,
                             target_task_id: target_id,
                             dependency_type: DependencyType::Blocks,
@@ -245,7 +248,7 @@ async fn convert_deal(
                     TaskDependency::create(
                         pool,
                         &CreateTaskDependency {
-                            project_id: project.id,
+                            project_id: project_id,
                             source_task_id: prev_review_id,
                             target_task_id: first_task_id,
                             dependency_type: DependencyType::Blocks,
@@ -277,7 +280,7 @@ async fn convert_deal(
     for domain in &knowledge_domains {
         let _ = ProjectKnowledgeSource::upsert_source(
             pool,
-            project.id,
+            project_id,
             &KnowledgeSourceType::Entity,
             &format!("workflow_{}", domain),
             &format!(
@@ -293,7 +296,7 @@ async fn convert_deal(
     // 6. Seed knowledge from deal context (η: F_crm → F_knowledge)
     //    Carry deal metadata, contact profile, and activity history into the
     //    new project's knowledge sheaf so agents start with full context.
-    seed_deal_knowledge(pool, project.id, &deal, deal_id).await;
+    seed_deal_knowledge(pool, project_id, &deal, deal_id).await;
 
     // 7. Update the deal's custom_fields to link to the new project
     let existing_custom_fields: serde_json::Value = deal

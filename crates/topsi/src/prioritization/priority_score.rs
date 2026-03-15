@@ -221,7 +221,7 @@ impl PriorityCalculator {
 
 /// Quick priority check for a task
 pub fn quick_priority(
-    task_name: &str,
+    _task_name: &str,
     deadline_days: Option<i64>,
     data_completeness: f64,
     downstream_count: usize,

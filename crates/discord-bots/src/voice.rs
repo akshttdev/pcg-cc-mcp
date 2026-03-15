@@ -413,9 +413,9 @@ impl VoiceManager {
         );
 
         let response_text = if self.agent_name == "Nora" {
-            self.backend.chat_nora(&text, &session_id).await.ok().map(|r| r.message)
+            self.backend.chat_nora(&text, &session_id).await.ok().map(|r| r.content)
         } else {
-            self.backend.chat_topsi(&text, &session_id).await.ok().map(|r| r.message)
+            self.backend.chat_topsi(&text, &session_id).await.ok().map(|r| r.content)
         };
 
         if let Some(response_text) = response_text {

@@ -129,7 +129,7 @@ pub fn public_routes() -> Router<DeploymentImpl> {
 #[axum::debug_handler]
 pub async fn agent_chat(
     State(state): State<DeploymentImpl>,
-    Path(agent_id): Path<Uuid>,
+    Path(agent_id): Path<String>,
     axum::Extension(access_ctx): axum::Extension<AccessContext>,
     Json(request): Json<AgentChatRequest>,
 ) -> Result<Json<AgentChatResponse>, ApiError> {
@@ -146,15 +146,19 @@ pub async fn agent_chat(
     let pool = &state.db().pool;
 
     // Load agent from database
-    let agent = Agent::find_by_id(pool, agent_id)
+    let agent = Agent::find_by_id(pool, &agent_id)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to load agent: {}", e)))?
         .ok_or_else(|| ApiError::NotFound(format!("Agent {} not found", agent_id)))?;
 
+    // Parse agent_id as Uuid for conversation model (still uses Uuid type)
+    let agent_uuid = Uuid::parse_str(&agent_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid agent UUID: {e}")))?;
+
     // Get or create conversation
     let conversation = AgentConversation::get_or_create(
         pool,
-        agent_id,
+        agent_uuid,
         &request.session_id,
         request.project_id,
     )
@@ -228,22 +232,24 @@ pub async fn agent_chat(
         &request.context,
         request.project_id,
         project_context.as_deref(),
-        agent_id,
+        &agent_id,
         pool,
     ).await;
 
     // VIBE Balance Check — deposit ledger (if project is specified)
     let vibe_pricing = VibePricingService::new(pool.clone());
-    if let Some(project_id) = request.project_id {
-        let total_deposited = VibeDeposit::total_deposited(pool, project_id).await.unwrap_or(0);
-        let total_withdrawn = VibeWithdrawal::total_withdrawn(pool, project_id).await.unwrap_or(0);
-        let total_spent = VibeTransaction::sum_by_source(pool, VibeSourceType::Project, project_id, None)
-            .await.map(|s| s.total_vibe).unwrap_or(0);
-        let balance = total_deposited - total_withdrawn - total_spent;
-        if balance <= 0 {
-            return Err(ApiError::PaymentRequired(
-                "Insufficient VIBE balance. Deposit VIBE tokens to your project to continue.".into(),
-            ));
+    if !crate::helpers::vibe_check::is_vibe_bypass_active(pool).await {
+        if let Some(project_id) = request.project_id {
+            let total_deposited = VibeDeposit::total_deposited(pool, project_id).await.unwrap_or(0);
+            let total_withdrawn = VibeWithdrawal::total_withdrawn(pool, project_id).await.unwrap_or(0);
+            let total_spent = VibeTransaction::sum_by_source(pool, VibeSourceType::Project, project_id, None)
+                .await.map(|s| s.total_vibe).unwrap_or(0);
+            let balance = total_deposited - total_withdrawn - total_spent;
+            if balance <= 0 {
+                return Err(ApiError::PaymentRequired(
+                    "Insufficient VIBE balance. Deposit VIBE tokens to your project to continue.".into(),
+                ));
+            }
         }
     }
 
@@ -400,7 +406,7 @@ pub async fn agent_chat(
                         tx.amount_vibe, project_id, tx.id
                     );
                     // Update project spent amount
-                    if let Err(e) = Project::adjust_vibe_spent(pool, project_id, tx.amount_vibe).await {
+                    if let Err(e) = Project::adjust_vibe_spent(pool, &project_id.to_string(), tx.amount_vibe).await {
                         tracing::error!("[VIBE] Failed to update project spent amount: {}", e);
                     }
                 }
@@ -492,7 +498,7 @@ pub async fn agent_chat(
 #[axum::debug_handler]
 pub async fn agent_chat_stream(
     State(state): State<DeploymentImpl>,
-    Path(agent_id): Path<Uuid>,
+    Path(agent_id): Path<String>,
     Json(request): Json<AgentChatRequest>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, ApiError> {
     use futures::stream::StreamExt;
@@ -507,15 +513,19 @@ pub async fn agent_chat_stream(
     let pool = state.db().pool.clone();
 
     // Load agent from database
-    let agent = Agent::find_by_id(&pool, agent_id)
+    let agent = Agent::find_by_id(&pool, &agent_id)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to load agent: {}", e)))?
         .ok_or_else(|| ApiError::NotFound(format!("Agent {} not found", agent_id)))?;
 
+    // Parse agent_id as Uuid for conversation model (still uses Uuid type)
+    let agent_uuid = Uuid::parse_str(&agent_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid agent UUID: {e}")))?;
+
     // Get or create conversation
     let conversation = AgentConversation::get_or_create(
         &pool,
-        agent_id,
+        agent_uuid,
         &request.session_id,
         request.project_id,
     )
@@ -549,7 +559,7 @@ pub async fn agent_chat_stream(
         &request.context,
         request.project_id,
         project_context.as_deref(),
-        agent_id,
+        &agent_id,
         &pool,
     ).await;
 
@@ -627,18 +637,20 @@ pub async fn agent_chat_stream(
 /// List conversations for an agent
 pub async fn list_conversations(
     State(state): State<DeploymentImpl>,
-    Path(agent_id): Path<Uuid>,
+    Path(agent_id): Path<String>,
     Query(query): Query<ListConversationsQuery>,
 ) -> Result<Json<Vec<ConversationSummary>>, ApiError> {
     let pool = &state.db().pool;
 
     let limit = query.limit.unwrap_or(50);
+    let agent_uuid = Uuid::parse_str(&agent_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid agent UUID: {e}")))?;
 
     let conversations = if let Some(project_id) = query.project_id {
         // Filter by project
         AgentConversation::find_by_project(pool, project_id, limit).await
     } else {
-        AgentConversation::find_by_agent(pool, agent_id, limit).await
+        AgentConversation::find_by_agent(pool, agent_uuid, limit).await
     }
     .map_err(|e| ApiError::InternalError(format!("Failed to load conversations: {}", e)))?;
 
@@ -660,17 +672,22 @@ pub async fn list_conversations(
 /// Get a specific conversation
 pub async fn get_conversation(
     State(state): State<DeploymentImpl>,
-    Path((agent_id, conversation_id)): Path<(Uuid, Uuid)>,
+    Path((agent_id, conversation_id)): Path<(String, String)>,
 ) -> Result<Json<AgentConversation>, ApiError> {
     let pool = &state.db().pool;
 
-    let conversation = AgentConversation::find_by_id(pool, conversation_id)
+    let conversation_uuid = Uuid::parse_str(&conversation_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid conversation UUID: {e}")))?;
+    let agent_uuid = Uuid::parse_str(&agent_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid agent UUID: {e}")))?;
+
+    let conversation = AgentConversation::find_by_id(pool, conversation_uuid)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to load conversation: {}", e)))?
         .ok_or_else(|| ApiError::NotFound("Conversation not found".to_string()))?;
 
     // Verify conversation belongs to this agent
-    if conversation.agent_id != agent_id {
+    if conversation.agent_id != agent_uuid {
         return Err(ApiError::NotFound("Conversation not found".to_string()));
     }
 
@@ -687,12 +704,14 @@ pub struct ConversationWithMessages {
 
 pub async fn get_conversation_by_session(
     State(state): State<DeploymentImpl>,
-    Path((agent_id, session_id)): Path<(Uuid, String)>,
+    Path((agent_id, session_id)): Path<(String, String)>,
 ) -> Result<Json<Option<ConversationWithMessages>>, ApiError> {
     let pool = &state.db().pool;
 
     // Find conversation by agent and session
-    let conversation = AgentConversation::find_by_agent_session(pool, agent_id, &session_id)
+    let agent_uuid = Uuid::parse_str(&agent_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid agent UUID: {e}")))?;
+    let conversation = AgentConversation::find_by_agent_session(pool, agent_uuid, &session_id)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to load conversation: {}", e)))?;
 
@@ -715,67 +734,73 @@ pub async fn get_conversation_by_session(
 /// Get messages for a conversation
 pub async fn get_conversation_messages(
     State(state): State<DeploymentImpl>,
-    Path((agent_id, conversation_id)): Path<(Uuid, Uuid)>,
+    Path((agent_id, conversation_id)): Path<(String, String)>,
 ) -> Result<Json<Vec<AgentConversationMessage>>, ApiError> {
     let pool = &state.db().pool;
 
     // Verify conversation exists and belongs to agent
-    let conversation = AgentConversation::find_by_id(pool, conversation_id)
+    let conversation_uuid = Uuid::parse_str(&conversation_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid conversation UUID: {e}")))?;
+    let agent_uuid = Uuid::parse_str(&agent_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid agent UUID: {e}")))?;
+
+    let conversation = AgentConversation::find_by_id(pool, conversation_uuid)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to load conversation: {}", e)))?
         .ok_or_else(|| ApiError::NotFound("Conversation not found".to_string()))?;
 
-    if conversation.agent_id != agent_id {
+    if conversation.agent_id != agent_uuid {
         return Err(ApiError::NotFound("Conversation not found".to_string()));
     }
 
-    let messages = AgentConversationMessage::find_by_conversation(pool, conversation_id, None)
+    let messages = AgentConversationMessage::find_by_conversation(pool, conversation_uuid, None)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to load messages: {}", e)))?;
 
     Ok(Json(messages))
 }
 
-/// Build context string from request context and project ID
-fn build_context_string(
-    context: &Option<serde_json::Value>,
-    project_id: Option<Uuid>,
-    project_context: Option<&str>,
-) -> String {
-    let mut parts = Vec::new();
-
-    // Include rich project context if available
-    if let Some(proj_ctx) = project_context {
-        parts.push(proj_ctx.to_string());
-    } else if let Some(project_id) = project_id {
-        // Fallback to just the project ID
-        parts.push(format!("Project ID: {}", project_id));
-    }
-
-    // Include any additional context from the request
-    if let Some(ctx) = context {
-        if let Some(obj) = ctx.as_object() {
-            for (key, value) in obj {
-                parts.push(format!("{}: {}", key, value));
-            }
-        } else {
-            parts.push(ctx.to_string());
-        }
-    }
-
-    if parts.is_empty() {
-        "No additional context provided.".to_string()
-    } else {
-        parts.join("\n")
-    }
-}
+// TODO: unused — comment out to suppress warning
+// /// Build context string from request context and project ID
+// fn build_context_string(
+//     context: &Option<serde_json::Value>,
+//     project_id: Option<Uuid>,
+//     project_context: Option<&str>,
+// ) -> String {
+//     let mut parts = Vec::new();
+//
+//     // Include rich project context if available
+//     if let Some(proj_ctx) = project_context {
+//         parts.push(proj_ctx.to_string());
+//     } else if let Some(project_id) = project_id {
+//         // Fallback to just the project ID
+//         parts.push(format!("Project ID: {}", project_id));
+//     }
+//
+//     // Include any additional context from the request
+//     if let Some(ctx) = context {
+//         if let Some(obj) = ctx.as_object() {
+//             for (key, value) in obj {
+//                 parts.push(format!("{}: {}", key, value));
+//             }
+//         } else {
+//             parts.push(ctx.to_string());
+//         }
+//     }
+//
+//     if parts.is_empty() {
+//         "No additional context provided.".to_string()
+//     } else {
+//         parts.join("\n")
+//     }
+// }
 
 /// Build context string from request context, project ID, and workflow results
 async fn build_context_string_with_workflows(
     context: &Option<serde_json::Value>,
     project_id: Option<Uuid>,
     project_context: Option<&str>,
-    agent_id: Uuid,
+    agent_id: &str,
     pool: &sqlx::SqlitePool,
 ) -> String {
     let mut parts = Vec::new();
@@ -814,7 +839,7 @@ async fn build_context_string_with_workflows(
 
 /// Fetch recent workflow execution results for an agent to provide conversational context
 async fn fetch_recent_workflow_results(
-    agent_id: Uuid,
+    agent_id: &str,
     pool: &sqlx::SqlitePool,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     // First, get the agent's short_name to match in event_data

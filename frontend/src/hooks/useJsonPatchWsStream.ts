@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { resolveWsUrl } from '@/lib/api';
+import { isRealtimeDisabled } from '@/hooks/useExecutionEvents';
 import { applyPatch } from 'rfc6902';
 import type { Operation } from 'rfc6902';
 
@@ -42,9 +43,12 @@ export const useJsonPatchWsStream = <T>(
   const retryAttemptsRef = useRef<number>(0);
   const [retryNonce, setRetryNonce] = useState(0);
 
+  const MAX_RETRY_ATTEMPTS = 3;
+
   function scheduleReconnect() {
     if (retryTimerRef.current) return; // already scheduled
-    // Exponential backoff with cap: 1s, 2s, 4s, 8s (max), then stay at 8s
+    if (retryAttemptsRef.current >= MAX_RETRY_ATTEMPTS) return; // stop retrying
+    // Exponential backoff with cap: 1s, 2s, 4s, 8s (max)
     const attempt = retryAttemptsRef.current;
     const delay = Math.min(8000, 1000 * Math.pow(2, attempt));
     retryTimerRef.current = window.setTimeout(() => {
@@ -54,7 +58,7 @@ export const useJsonPatchWsStream = <T>(
   }
 
   useEffect(() => {
-    if (!enabled || !endpoint) {
+    if (!enabled || !endpoint || isRealtimeDisabled()) {
       // Close connection and reset state
       if (wsRef.current) {
         wsRef.current.close();

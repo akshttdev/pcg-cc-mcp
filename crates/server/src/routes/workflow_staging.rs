@@ -6,7 +6,7 @@
 use axum::{
     Router,
     extract::{Path, Query, State},
-    routing::{get, post, patch},
+    routing::{get, post},
     Json,
 };
 use deployment::Deployment;
@@ -349,6 +349,26 @@ async fn batch_commit(
         }
     }
 
+    // Auto-start execution for agent-assigned tasks
+    for (result, record) in results.iter().zip(approved.iter()) {
+        if result.target_type == "task" && result.error.is_none() {
+            if let Some(task_id) = result.created_id {
+                let data: Value = match serde_json::from_str(&record.record_data) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                if data["agent_id"].as_str().is_some() {
+                    let pool = pool.clone();
+                    let dep = deployment.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = auto_start_agent_execution(&pool, &dep, task_id).await {
+                            tracing::warn!("Auto-execute for task {task_id} failed: {e}");
+                        }
+                    });
+                }
+            }
+        }
+    }
 
     Ok(Json(ApiResponse::success(BatchCommitResult {
         committed,
@@ -359,7 +379,9 @@ async fn batch_commit(
 
 // ── Commit logic ────────────────────────────────────────────────────────────
 
-async fn commit_record(pool: &SqlitePool, record: &WorkflowStagingRecord) -> CommitResult {
+/// Public commit function for use by auto-approve trigger flow.
+/// Commits a single approved staging record and marks it committed/error in DB.
+pub async fn commit_record_internal(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Result<Uuid, String> {
     let result = match record.target_type.as_str() {
         "crm_contact" => commit_contact(pool, record).await,
         "company" => commit_company(pool, record).await,
@@ -368,25 +390,28 @@ async fn commit_record(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Com
         _ => Err(format!("Unknown target type: {}", record.target_type)),
     };
 
-    match result {
-        Ok(created_id) => {
-            let _ = WorkflowStagingRecord::mark_committed(pool, record.id).await;
-            CommitResult {
-                id: record.id,
-                target_type: record.target_type.clone(),
-                created_id: Some(created_id),
-                error: None,
-            }
-        }
-        Err(err) => {
-            let _ = WorkflowStagingRecord::mark_error(pool, record.id, &err).await;
-            CommitResult {
-                id: record.id,
-                target_type: record.target_type.clone(),
-                created_id: None,
-                error: Some(err),
-            }
-        }
+    match &result {
+        Ok(_) => { let _ = WorkflowStagingRecord::mark_committed(pool, record.id).await; }
+        Err(err) => { let _ = WorkflowStagingRecord::mark_error(pool, record.id, err).await; }
+    }
+
+    result
+}
+
+async fn commit_record(pool: &SqlitePool, record: &WorkflowStagingRecord) -> CommitResult {
+    match commit_record_internal(pool, record).await {
+        Ok(created_id) => CommitResult {
+            id: record.id,
+            target_type: record.target_type.clone(),
+            created_id: Some(created_id),
+            error: None,
+        },
+        Err(err) => CommitResult {
+            id: record.id,
+            target_type: record.target_type.clone(),
+            created_id: None,
+            error: Some(err),
+        },
     }
 }
 
@@ -769,21 +794,33 @@ async fn commit_task(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
         Some(Value::Object(props))
     };
 
+    // Extract optional agent/assignee fields from workflow output data
+    let assignee_id = data["assignee_id"].as_str().map(|s| s.to_string());
+    let assignee_type = data["assignee_type"].as_str().map(|s| s.to_string());
+    let assigned_agent = data["assigned_agent"].as_str().map(|s| s.to_string());
+    let agent_id = data["agent_id"]
+        .as_str()
+        .map(|s| s.to_string());
+    let board_id = data["board_id"]
+        .as_str()
+        .map(|s| s.to_string());
+    let completion_criteria = data["completion_criteria"].as_str().map(|s| s.to_string());
+    let output_format = data["output_format"].as_str().map(|s| s.to_string());
+
     let task_id = Uuid::new_v4();
     let create = CreateTask {
-        project_id,
+        project_id: project_id.to_string(),
         pod_id: None,
-        board_id: None,
+        board_id,
         title,
         description: data["description"].as_str().map(|s| s.to_string()),
         parent_task_attempt: None,
         image_ids: None,
         priority,
-        assignee_id: None,
-        assignee_type: None,
-
-        assigned_agent: None,
-        agent_id: None,
+        assignee_id,
+        assignee_type,
+        assigned_agent,
+        agent_id,
         assigned_mcps: None,
         created_by: "workflow".to_string(),
         requires_approval: None,
@@ -794,10 +831,154 @@ async fn commit_task(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
         scheduled_start: None,
         scheduled_end: None,
         screenshot: None,
+        completion_criteria,
+        output_format,
+        collaborators: None,
     };
 
-    let task = Task::create(pool, &create, task_id).await.map_err(|e| e.to_string())?;
-    Ok(task.id)
+    let task = Task::create(pool, &create, &task_id.to_string()).await.map_err(|e| e.to_string())?;
+    Ok(Uuid::parse_str(&task.id).map_err(|e| e.to_string())?)
+}
+
+// ── Auto-execute for agent-assigned tasks ────────────────────────────────
+
+/// When a workflow creates a task with an `agent_id`, automatically start
+/// execution: look up the agent's execution config for the executor profile,
+/// create a TaskAttempt, and start the container.
+pub async fn auto_start_agent_execution(
+    pool: &SqlitePool,
+    deployment: &DeploymentImpl,
+    task_id: Uuid,
+) -> Result<(), String> {
+    use db::models::agent_execution_config::AgentExecutionConfig;
+    use db::models::task::Task;
+    use db::models::task_attempt::{CreateTaskAttempt, TaskAttempt};
+    use executors::executors::BaseCodingAgent;
+    use executors::profile::ExecutorProfileId;
+    use services::services::container::ContainerService;
+    use std::str::FromStr;
+
+    let task = Task::find_by_id(pool, &task_id.to_string())
+        .await
+        .map_err(|e| format!("Failed to find task: {e}"))?
+        .ok_or("Task not found")?;
+
+    // Fix 4: Guard against duplicate TaskAttempts — skip if one already exists
+    let existing_attempts = TaskAttempt::find_by_task_id_with_project(pool, task_id)
+        .await
+        .unwrap_or_default();
+    if !existing_attempts.is_empty() {
+        tracing::info!(
+            "Task {} already has {} attempt(s) — skipping auto-execute",
+            task_id,
+            existing_attempts.len()
+        );
+        return Ok(());
+    }
+
+    let agent_id = task
+        .agent_id
+        .as_ref()
+        .ok_or("No agent_id on task")?;
+
+    // Look up execution config for the agent
+    let config = AgentExecutionConfig::find_by_agent_id(pool, agent_id)
+        .await
+        .map_err(|e| format!("Failed to find agent execution config: {e}"))?;
+
+    // Auto-register agent watchers (e.g., QA agent watches tasks assigned to Dev agent)
+    if let Some(ref cfg) = config {
+        for watcher_id in cfg.get_auto_watch_agent_ids() {
+            if let Err(e) =
+                Task::add_agent_watcher(pool, &task_id.to_string(), &watcher_id).await
+            {
+                tracing::warn!(
+                    "Failed to add agent watcher {} to task {}: {e}",
+                    watcher_id,
+                    task_id
+                );
+            } else {
+                tracing::info!(
+                    "Auto-registered agent watcher {} on task {}",
+                    watcher_id,
+                    task_id
+                );
+            }
+        }
+    }
+
+    // Parse executor profile from config, default to CLAUDE_CODE
+    let profile_str = config.and_then(|c| c.execution_profile_id);
+    let executor_profile_id = if let Some(ref profile_str) = profile_str {
+        // Format: "CLAUDE_CODE" or "CLAUDE_CODE:PLAN"
+        let parts: Vec<&str> = profile_str.splitn(2, ':').collect();
+        let executor = BaseCodingAgent::from_str(parts[0])
+            .map_err(|_| format!("Unknown executor: {}", parts[0]))?;
+        let variant = parts.get(1).map(|s| s.to_string());
+        ExecutorProfileId { executor, variant }
+    } else {
+        ExecutorProfileId::new(BaseCodingAgent::ClaudeCode)
+    };
+
+    // Resolve base branch from git repo (default to "main")
+    let base_branch = {
+        use db::models::project::Project;
+        let project = Project::find_by_id(pool, &task.project_id)
+            .await
+            .ok()
+            .flatten();
+        if let Some(ref proj) = project {
+            // Try to read default branch from git config
+            let repo_path = &proj.git_repo_path;
+            std::process::Command::new("git")
+                .args(["symbolic-ref", "refs/remotes/origin/HEAD", "--short"])
+                .current_dir(repo_path)
+                .output()
+                .ok()
+                .and_then(|o| {
+                    if o.status.success() {
+                        String::from_utf8(o.stdout).ok().map(|s| {
+                            s.trim()
+                                .strip_prefix("origin/")
+                                .unwrap_or(s.trim())
+                                .to_string()
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(|| "main".to_string())
+        } else {
+            "main".to_string()
+        }
+    };
+
+    // Create TaskAttempt
+    let task_attempt = TaskAttempt::create(
+        pool,
+        &CreateTaskAttempt {
+            executor: executor_profile_id.executor.clone(),
+            base_branch,
+        },
+        task_id,
+    )
+    .await
+    .map_err(|e| format!("Failed to create task attempt: {e}"))?;
+
+    // Start execution
+    let _process = deployment
+        .container()
+        .start_attempt(&task_attempt, executor_profile_id)
+        .await
+        .map_err(|e| format!("Failed to start execution: {e}"))?;
+
+    tracing::info!(
+        "Auto-started execution for workflow task {} (attempt {})",
+        task_id,
+        task_attempt.id
+    );
+
+    Ok(())
 }
 
 // ── Helper functions ──────────────────────────────────────────────────────
@@ -859,7 +1040,7 @@ async fn auto_link_company(
 
 /// Persist a company_id inside the contact's custom_fields JSON.
 /// Merges with any existing custom_fields rather than overwriting them.
-async fn store_company_id_in_custom_fields(
+pub async fn store_company_id_in_custom_fields(
     pool: &SqlitePool,
     contact_id: Uuid,
     company_id: Uuid,

@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   Sparkles,
   Clock,
+  Eye,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AgentFlowEvent, TaskCollaborator } from 'shared/types';
@@ -336,16 +337,19 @@ export function CollaborationTimeline({
 
     // Sort by timestamp (newest first for display)
     return items.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-  }, [events]);
+  }, [events, chatMessages]);
 
   // Get unique collaborators for summary
   const collaboratorSummary = useMemo(() => {
     const agents = new Set<string>();
+    const agentWatchers = new Set<string>();
     const humans = new Set<string>();
 
     if (collaborators) {
       for (const c of collaborators) {
-        if (c.actor_type === 'agent') {
+        if (c.actor_type === 'agent_watcher') {
+          agentWatchers.add(c.actor_id);
+        } else if (c.actor_type === 'agent') {
           agents.add(c.actor_id);
         } else {
           humans.add(c.actor_id);
@@ -361,7 +365,7 @@ export function CollaborationTimeline({
       }
     }
 
-    return { agents: Array.from(agents), humans: Array.from(humans) };
+    return { agents: Array.from(agents), agentWatchers: Array.from(agentWatchers), humans: Array.from(humans) };
   }, [events, collaborators]);
 
   if (timelineEvents.length === 0) {
@@ -389,6 +393,12 @@ export function CollaborationTimeline({
             <Badge variant="outline" className="gap-1">
               <Bot className="h-3 w-3 text-blue-500" />
               {collaboratorSummary.agents.length}
+            </Badge>
+          )}
+          {collaboratorSummary.agentWatchers.length > 0 && (
+            <Badge variant="outline" className="gap-1">
+              <Eye className="h-3 w-3 text-purple-500" />
+              {collaboratorSummary.agentWatchers.length}
             </Badge>
           )}
           {collaboratorSummary.humans.length > 0 && (

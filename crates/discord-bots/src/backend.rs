@@ -25,7 +25,9 @@ pub struct ChatRequest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NoraChatResponse {
-    pub message: String,
+    // API returns "content" field; "message" is a fallback alias
+    #[serde(alias = "message")]
+    pub content: String,
     #[serde(default)]
     pub tool_calls: Vec<serde_json::Value>,
     pub input_tokens: Option<i64>,
@@ -35,7 +37,8 @@ pub struct NoraChatResponse {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TopsiChatResponse {
-    pub message: String,
+    #[serde(alias = "message")]
+    pub content: String,
     #[serde(default)]
     pub tool_calls: Vec<serde_json::Value>,
     #[serde(default)]

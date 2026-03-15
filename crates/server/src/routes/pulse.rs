@@ -96,7 +96,7 @@ async fn list_sources(
     Path(project_id): Path<Uuid>,
 ) -> Result<ResponseJson<ApiResponse<Vec<PulseSource>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let sources = PulseSource::find_by_project(pool, project_id).await.map_err(|e| {
+    let sources = PulseSource::find_by_project(pool, &project_id.to_string()).await.map_err(|e| {
         ApiError::InternalError(format!("Failed to fetch sources: {}", e))
     })?;
     Ok(ResponseJson(ApiResponse::success(sources)))
@@ -107,7 +107,7 @@ async fn create_source(
     Path(project_id): Path<Uuid>,
     ResponseJson(mut data): ResponseJson<CreatePulseSource>,
 ) -> Result<ResponseJson<ApiResponse<PulseSource>>, ApiError> {
-    data.project_id = project_id;
+    data.project_id = project_id.to_string();
     let pool = &deployment.db().pool;
     let source = PulseSource::create(pool, &data).await.map_err(|e| {
         ApiError::InternalError(format!("Failed to create source: {}", e))
@@ -421,9 +421,22 @@ async fn dashboard_stats(
         .await
         .unwrap_or(0);
 
-    let sources = PulseSource::find_by_project(pool, project_id)
+    // Try project-scoped sources first; if empty, fall back to organization-scoped
+    let mut sources = PulseSource::find_by_project(pool, &project_id.to_string())
         .await
         .unwrap_or_default();
+
+    if sources.is_empty() {
+        // Look up the project's organization_id and query org-scoped sources
+        if let Ok(Some(project)) = db::models::project::Project::find_by_id(pool, &project_id.to_string()).await {
+            if let Some(ref org_id) = project.organization_id {
+                sources = PulseSource::find_by_organization(pool, org_id)
+                    .await
+                    .unwrap_or_default();
+            }
+        }
+    }
+
     let total_sources = sources.len();
     let active_sources = sources.iter().filter(|s| s.status == "active" && s.enabled).count();
 

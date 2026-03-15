@@ -4,9 +4,12 @@
 
 use axum::{Router, extract::State, response::Json as ResponseJson, routing::post};
 use db::constants::{BUGREPORTS_BOARD_ID, BUGREPORTS_PROJECT_ID};
+use db::models::agent::Agent;
+use db::models::data_source::{CreateDataSource, DataSource};
 use db::models::task::{CreateTask, Priority, Task};
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
@@ -85,12 +88,13 @@ pub async fn submit_feedback(
     ];
 
     let task_id = Uuid::new_v4();
+    let task_id_str = task_id.to_string();
     let create_task = CreateTask {
-        project_id: BUGREPORTS_PROJECT_ID,
+        project_id: BUGREPORTS_PROJECT_ID.to_string(),
         pod_id: None,
-        board_id: Some(BUGREPORTS_BOARD_ID),
-        title: full_title,
-        description: Some(full_description),
+        board_id: Some(BUGREPORTS_BOARD_ID.to_string()),
+        title: full_title.clone(),
+        description: Some(full_description.clone()),
         parent_task_attempt: None,
         image_ids: None,
         priority: Some(priority),
@@ -108,11 +112,74 @@ pub async fn submit_feedback(
         scheduled_start: None,
         scheduled_end: None,
         screenshot: req.screenshot.clone(),
+        completion_criteria: None,
+        output_format: None,
+        collaborators: None,
     };
 
-    Task::create(pool, &create_task, task_id)
+    Task::create(pool, &create_task, &task_id_str)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to create feedback task: {}", e)))?;
+
+    // Assign a default dev agent to the task
+    match Agent::find_default_assignee(pool).await {
+        Ok(Some(agent)) => {
+            if let Err(e) = Task::assign_agent(pool, &task_id_str, &agent.id).await {
+                tracing::warn!("Failed to assign dev agent to feedback task: {e}");
+            } else {
+                tracing::info!("Assigned dev agent '{}' to feedback task {}", agent.short_name, task_id_str);
+            }
+        }
+        Ok(None) => {
+            tracing::warn!("No active agents found for feedback task assignment");
+        }
+        Err(e) => {
+            tracing::warn!("Failed to look up dev agents for feedback task: {e}");
+        }
+    }
+
+    // Also create a DataSource so workflow triggers (Bug Triage Pipeline) fire automatically
+    let ds_metadata = json!({
+        "feedback_type": req.feedback_type,
+        "severity": req.severity,
+        "email": req.email,
+        "task_id": task_id_str,
+    });
+    // Look up project's organization_id for the trigger filter
+    let project_id_str = BUGREPORTS_PROJECT_ID.to_string();
+    let org_id_for_trigger = {
+        use db::models::project::Project;
+        Project::find_by_id(pool, &project_id_str)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|p| p.organization_id)
+    };
+    let create_ds = CreateDataSource {
+        organization_id: org_id_for_trigger,
+        project_id: Some(BUGREPORTS_PROJECT_ID.to_string()),
+        created_by: req.email.clone(),
+        title: format!("{} {}", type_prefix, req.title),
+        description: Some(req.description.clone()),
+        data_type: "report".to_string(),
+        source_type: Some("integration".to_string()),
+        file_type: None,
+        content: Some(full_description),
+        file_name: None,
+        file_path: None,
+        file_size_bytes: None,
+        file_hash: None,
+        metadata: Some(ds_metadata.to_string()),
+        folder: Some("Feedback".to_string()),
+    };
+    if let Ok(ds) = DataSource::create(pool, create_ds).await {
+        let trigger_pool = pool.clone();
+        let ds_id = ds.id.clone();
+        let trigger_dep = deployment.clone();
+        tokio::spawn(async move {
+            super::data_source_workflows::fire_triggers_for_data_source(trigger_pool, ds_id, trigger_dep).await;
+        });
+    }
 
     Ok(ResponseJson(ApiResponse::success(SubmitFeedbackResponse {
         task_id,

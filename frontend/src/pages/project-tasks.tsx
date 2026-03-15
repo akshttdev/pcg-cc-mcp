@@ -5,11 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { AlertTriangle, Archive, Plus, Sparkles } from 'lucide-react';
 import { Loader } from '@/components/ui/loader';
-import { projectsApi, tasksApi, attemptsApi, agentsApi, usersApi, resolveApiUrl } from '@/lib/api';
+import { projectsApi, tasksApi, agentsApi, usersApi, resolveApiUrl } from '@/lib/api';
 import type { UserListItem } from '@/lib/api';
 import type { AgentChatRequest } from 'shared/types';
 import { openTaskForm } from '@/lib/openTaskForm';
 import { ViewSwitcher } from '@/components/views/ViewSwitcher';
+import { AskTopsiButton } from '@/components/topsi/AskTopsiButton';
 import { TableView } from '@/components/views/TableView';
 import { GalleryView } from '@/components/views/GalleryView';
 import { TimelineView } from '@/components/views/TimelineView';
@@ -51,10 +52,11 @@ import {
 
 import TaskKanbanBoard from '@/components/tasks/TaskKanbanBoard';
 import { SortMenu } from '@/components/tasks/SortMenu';
-import { TaskDetailsPanel } from '@/components/tasks/TaskDetailsPanel';
 import { EnhancedTaskDetailsPanel } from '@/components/tasks';
+import { ResizableDrawer } from '@/components/ui/resizable-drawer';
 import { ProjectOverview } from '@/components/projects/ProjectOverview';
-import type { TaskWithAttemptStatus, Project, TaskAttempt } from 'shared/types';
+import type { Project } from 'shared/types';
+import type { TaskWithArchive } from '@/lib/api';
 import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
 import { useProjectTasks } from '@/hooks/useProjectTasks';
 import { useProjectAccess } from '@/hooks/useProjectAccess';
@@ -64,11 +66,11 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import NiceModal from '@ebay/nice-modal-react';
 import { useHotkeysContext } from 'react-hotkeys-hook';
 
-type Task = TaskWithAttemptStatus;
+type Task = TaskWithArchive;
 
 export function ProjectTasks() {
   const { t } = useTranslation(['tasks', 'common']);
-  const { projectId, taskId, attemptId } = useParams<{
+  const { projectId, taskId } = useParams<{
     projectId: string;
     taskId?: string;
     attemptId?: string;
@@ -138,38 +140,6 @@ export function ProjectTasks() {
   // Fullscreen state using custom hook
   const { isFullscreen, navigateToTask, navigateToAttempt, toggleFullscreen } =
     useTaskViewManager();
-
-  // Attempts fetching (only when task is selected)
-  const { data: attempts = [] } = useQuery({
-    queryKey: ['taskAttempts', selectedTask?.id],
-    queryFn: () => attemptsApi.getAll(selectedTask!.id),
-    enabled: !!selectedTask?.id,
-    refetchInterval: 5000,
-  });
-
-  // Selected attempt logic
-  const selectedAttempt = useMemo(() => {
-    if (!attempts.length) return null;
-    if (attemptId) {
-      const found = attempts.find((a) => a.id === attemptId);
-      if (found) return found;
-    }
-    return attempts[0] || null; // Most recent fallback
-  }, [attempts, attemptId]);
-
-  // Navigation callback for attempt selection
-  const setSelectedAttempt = useCallback(
-    (attempt: TaskAttempt | null) => {
-      if (!selectedTask) return;
-
-      if (attempt) {
-        navigateToAttempt(projectId!, selectedTask.id, attempt.id);
-      } else {
-        navigateToTask(projectId!, selectedTask.id);
-      }
-    },
-    [navigateToTask, navigateToAttempt, projectId, selectedTask]
-  );
 
   const { user } = useAuth();
 
@@ -738,7 +708,7 @@ export function ProjectTasks() {
       )}
 
       {/* Kanban + Panel Container - uses side-by-side layout on xl+ */}
-      <div className="flex-1 min-h-0 xl:flex">
+      <div className="flex-1 min-h-0 xl:flex relative">
         {/* Left Column - Kanban Section */}
         <div className={getKanbanSectionClasses(isPanelOpen, isFullscreen)}>
           {/* Bulk Selection Toolbar */}
@@ -813,10 +783,17 @@ export function ProjectTasks() {
                   title={useEnhancedCards ? 'Switch to classic cards' : 'Switch to enhanced cards'}
                 >
                   <Sparkles className="h-4 w-4" />
-                  {useEnhancedCards ? 'Enhanced' : 'Classic'}
+                  {useEnhancedCards ? 'Enhanced Cards' : 'Classic Cards'}
                 </Button>
                 <TagManager projectId={projectId} />
                 <ViewSwitcher />
+                {project && (
+                  <AskTopsiButton
+                    entityType="project"
+                    entityId={projectId}
+                    entityName={project.name}
+                  />
+                )}
               </div>
             </div>
           )}
@@ -945,8 +922,8 @@ export function ProjectTasks() {
           )}
         </div>
 
-        {/* Right Column - Task Details Panel (always Enhanced for PCG workflow tasks) */}
-        {isPanelOpen && selectedTask ? (
+        {/* Task Details Drawer / Fullscreen Panel */}
+        {isPanelOpen && selectedTask && isFullscreen && (
           <EnhancedTaskDetailsPanel
             task={selectedTask}
             projectId={projectId!}
@@ -956,9 +933,30 @@ export function ProjectTasks() {
             onDuplicate={() => handleDuplicateTaskCallback(selectedTask)}
             onToggleFullscreen={() => toggleFullscreen(!isFullscreen)}
             isFullscreen={isFullscreen}
-            className={isFullscreen ? 'fixed inset-0 z-50' : 'w-[600px] xl:w-[700px] shrink-0'}
+            className="fixed inset-0 z-50"
           />
-        ) : null}
+        )}
+        <ResizableDrawer
+          open={isPanelOpen && !!selectedTask && !isFullscreen}
+          onClose={handleClosePanel}
+        >
+          {({ isExpanded, toggleExpand }) =>
+            selectedTask && (
+              <EnhancedTaskDetailsPanel
+                task={selectedTask}
+                projectId={projectId!}
+                onClose={handleClosePanel}
+                onEdit={() => handleEditTaskCallback(selectedTask)}
+                onDelete={() => handleDeleteTask(selectedTask.id)}
+                onDuplicate={() => handleDuplicateTaskCallback(selectedTask)}
+                onToggleExpand={toggleExpand}
+                isExpanded={isExpanded}
+                isFullscreen={false}
+                className="h-full"
+              />
+            )
+          }
+        </ResizableDrawer>
       </div>
     </div>
   );

@@ -63,7 +63,7 @@ export function UserCombobox({
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
@@ -71,6 +71,7 @@ export function UserCombobox({
           aria-expanded={open}
           className="w-full justify-between font-normal"
           disabled={disabled}
+          type="button"
         >
           {value ? (
             <span className="flex items-center gap-2 truncate">
@@ -91,7 +92,7 @@ export function UserCombobox({
           </div>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[300px] p-0" align="start">
+      <PopoverContent className="w-[300px] p-0" align="start" onOpenAutoFocus={(e) => e.preventDefault()}>
         <Command shouldFilter={false}>
           <CommandInput
             placeholder="Search users..."
@@ -189,7 +190,7 @@ export function AgentCombobox({
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
@@ -197,6 +198,7 @@ export function AgentCombobox({
           aria-expanded={open}
           className="w-full justify-between font-normal"
           disabled={disabled}
+          type="button"
         >
           {value ? (
             <span className="flex items-center gap-2 truncate">
@@ -217,7 +219,7 @@ export function AgentCombobox({
           </div>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[300px] p-0" align="start">
+      <PopoverContent className="w-[300px] p-0" align="start" onOpenAutoFocus={(e) => e.preventDefault()}>
         <Command shouldFilter={false}>
           <CommandInput
             placeholder="Search agents..."

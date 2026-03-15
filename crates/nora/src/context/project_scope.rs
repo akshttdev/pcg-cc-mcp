@@ -43,7 +43,7 @@ pub struct ProjectContextSummary {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskSummary {
-    pub id: Uuid,
+    pub id: String,
     pub title: String,
     pub status: TaskStatus,
     pub priority: Priority,
@@ -119,12 +119,13 @@ impl ProjectScopedContext {
     /// Build structured context summary
     pub async fn build_context_summary(&self) -> Result<ProjectContextSummary, ProjectScopeError> {
         // Load project
-        let project = Project::find_by_id(&self.pool, self.project_id)
+        let project_id_str = self.project_id.to_string();
+        let project = Project::find_by_id(&self.pool, &project_id_str)
             .await?
             .ok_or(ProjectScopeError::ProjectNotFound(self.project_id))?;
 
         // Load tasks with status
-        let all_tasks = Task::find_by_project_id_with_attempt_status(&self.pool, self.project_id)
+        let all_tasks = Task::find_by_project_id_with_attempt_status(&self.pool, &project_id_str)
             .await?;
 
         // Split into active and recent completed
@@ -136,7 +137,7 @@ impl ProjectScopedContext {
             .into_iter()
             .take(10) // Limit to 10 active tasks
             .map(|t| TaskSummary {
-                id: t.id,
+                id: t.id.clone(),
                 title: t.title.clone(),
                 status: t.status.clone(),
                 priority: t.priority.clone(),
@@ -147,7 +148,7 @@ impl ProjectScopedContext {
             .into_iter()
             .take(5) // Last 5 completed tasks
             .map(|t| TaskSummary {
-                id: t.id,
+                id: t.id.clone(),
                 title: t.title.clone(),
                 status: t.status.clone(),
                 priority: t.priority.clone(),
@@ -182,7 +183,7 @@ impl ProjectScopedContext {
               AND DATE(created_at) = DATE(?2)
             "#
         )
-        .bind(self.project_id)
+        .bind(self.project_id.to_string())
         .bind(&today)
         .fetch_optional(&self.pool)
         .await?;
@@ -276,7 +277,7 @@ impl ProjectScopeBuilder {
         let project = Project::find_by_name_case_insensitive(&self.pool, name)
             .await?
             .ok_or_else(|| ProjectScopeError::ProjectNotFound(Uuid::nil()))?;
-        self.project_id = Some(project.id);
+        self.project_id = Some(Uuid::parse_str(&project.id).map_err(|_| ProjectScopeError::ProjectNotFound(Uuid::nil()))?);
         Ok(self)
     }
 

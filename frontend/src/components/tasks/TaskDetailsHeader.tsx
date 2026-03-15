@@ -64,11 +64,7 @@ function TaskDetailsHeader({
                   variant="ghost"
                   size="icon"
                   onClick={() => toggleFullscreen(!isFullScreen)}
-                  aria-label={
-                    isFullScreen
-                      ? 'Collapse to sidebar'
-                      : 'Expand to fullscreen'
-                  }
+                  aria-label={isFullScreen ? 'Exit fullscreen' : 'Expand to fullscreen'}
                 >
                   {isFullScreen ? (
                     <Minimize2 className="h-4 w-4" />
@@ -80,8 +76,8 @@ function TaskDetailsHeader({
               <TooltipContent>
                 <p>
                   {isFullScreen
-                    ? 'Collapse to sidebar'
-                    : 'Expand to fullscreen'}
+                    ? 'Exit fullscreen (f)'
+                    : 'Fullscreen (f)'}
                 </p>
               </TooltipContent>
             </Tooltip>
@@ -127,7 +123,7 @@ function TaskDetailsHeader({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Close panel</p>
+                  <p>Close (Esc)</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

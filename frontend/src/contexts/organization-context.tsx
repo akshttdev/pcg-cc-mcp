@@ -3,9 +3,13 @@ import { useLocation, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { organizationsApi } from '@/lib/api';
 import type { OrganizationData } from '@/lib/api';
+import { useAuth } from './AuthContext';
 
 interface OrganizationContextValue {
+  /** orgId extracted from the current URL (undefined if not on an org route) */
   orgId: string | undefined;
+  /** The effective org: URL orgId → user home org → first org. Mirrors sidebar logic. */
+  effectiveOrgId: string | undefined;
   organization: OrganizationData | undefined;
   organizations: OrganizationData[];
   isLoading: boolean;
@@ -20,6 +24,7 @@ interface OrganizationProviderProps {
 export function OrganizationProvider({ children }: OrganizationProviderProps) {
   const { orgId: routeOrgId } = useParams<{ orgId?: string }>();
   const location = useLocation();
+  const { user } = useAuth();
 
   // Extract orgId from URL if on an org route
   const orgId = useMemo(() => {
@@ -27,6 +32,12 @@ export function OrganizationProvider({ children }: OrganizationProviderProps) {
     const match = location.pathname.match(/^\/organizations\/([^/]+)/);
     return match ? match[1] : undefined;
   }, [routeOrgId, location.pathname]);
+
+  // Effective org mirrors sidebar logic: URL org → home org → first org
+  const effectiveOrgId = useMemo(() => {
+    if (orgId) return orgId;
+    return (user as any)?.home_organization_id ?? (user as any)?.organizations?.[0]?.id;
+  }, [orgId, user]);
 
   const { data: organizations = [], isLoading: isOrgsLoading } = useQuery({
     queryKey: ['organizations'],
@@ -44,11 +55,12 @@ export function OrganizationProvider({ children }: OrganizationProviderProps) {
   const value = useMemo(
     () => ({
       orgId,
+      effectiveOrgId,
       organization,
       organizations,
       isLoading: isOrgsLoading || isOrgLoading,
     }),
-    [orgId, organization, organizations, isOrgsLoading, isOrgLoading]
+    [orgId, effectiveOrgId, organization, organizations, isOrgsLoading, isOrgLoading]
   );
 
   return (

@@ -15,6 +15,8 @@ import {
   TrendingUp,
   Cpu,
   CircleDollarSign,
+  Minimize2,
+  Maximize2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type {
@@ -26,8 +28,10 @@ import type {
 } from 'shared/types';
 import type { TaskCardMode } from '../EnhancedTaskCard';
 import { EnhancedTaskHeader } from './EnhancedTaskHeader';
+import { BreadcrumbNav } from '@/components/breadcrumb/BreadcrumbNav';
 import { ArtifactGallery } from './ArtifactGallery';
 import { CollaborationTimeline } from './CollaborationTimeline';
+import { AgentWatcherPanel } from '../AgentWatcherPanel';
 import { EnhancedWorkflowView } from './EnhancedWorkflowView';
 import { ActivityTimeline } from '../ActivityTimeline';
 import { agentFlowsApi, taskArtifactsApi, agentsApi, artifactContentApi } from '@/lib/api';
@@ -43,6 +47,8 @@ interface EnhancedTaskDetailsPanelProps {
   onDuplicate?: () => void;
   onToggleFullscreen?: () => void;
   isFullscreen?: boolean;
+  onToggleExpand?: () => void;
+  isExpanded?: boolean;
   hideClose?: boolean;
   className?: string;
 }
@@ -132,10 +138,15 @@ export function EnhancedTaskDetailsPanel({
   onDuplicate,
   onToggleFullscreen,
   isFullscreen,
+  onToggleExpand,
+  isExpanded,
   hideClose,
   className,
 }: EnhancedTaskDetailsPanelProps) {
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
+  const [compactMode, setCompactMode] = useState<boolean>(() => {
+    try { return localStorage.getItem('orcha:task-detail-compact') === 'true'; } catch { return false; }
+  });
   const [artifacts, setArtifacts] = useState<ExecutionArtifact[]>([]);
   const [artifactsLoading, setArtifactsLoading] = useState(false);
   const [artifactsError, setArtifactsError] = useState<string | null>(null);
@@ -176,7 +187,8 @@ export function EnhancedTaskDetailsPanel({
       .then((agent) => {
         setExecutingAgentId(agent.id);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error(`Failed to look up agent "${agentName}":`, err);
       });
   }, [task.assigned_agent, executingAgentId]);
 
@@ -191,7 +203,8 @@ export function EnhancedTaskDetailsPanel({
           setChatMessages(result.messages);
         }
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error('Failed to fetch conversation history:', err);
       });
   }, [executingAgentId, task.id]);
 
@@ -479,7 +492,7 @@ export function EnhancedTaskDetailsPanel({
         throw error;
       }
     },
-    [task, projectId, executingAgentName]
+    [task, projectId, executingAgentName, executingAgentId]
   );
 
   // Generate initial prompt for assigned agent
@@ -566,6 +579,12 @@ export function EnhancedTaskDetailsPanel({
     document.body.removeChild(a);
   }, []);
 
+  // Stable callback wrapper for BreadcrumbNav (expects (fs: boolean) => void)
+  const handleToggleFullscreen = useMemo(
+    () => onToggleFullscreen ? (_fs: boolean) => onToggleFullscreen() : undefined,
+    [onToggleFullscreen]
+  );
+
   // Tab counts
   const artifactCount = artifacts.length;
   const eventCount = workflowEvents.length;
@@ -574,10 +593,14 @@ export function EnhancedTaskDetailsPanel({
     <div
       className={cn(
         'flex flex-col h-full bg-background border-l',
-        isFullscreen && 'fixed inset-0 z-50',
         className
       )}
     >
+      {/* Breadcrumb nav in fullscreen mode (panel covers AppShell) */}
+      {isFullscreen && (
+        <BreadcrumbNav onToggleFullscreen={handleToggleFullscreen} isFullscreen={isFullscreen} />
+      )}
+
       {/* Header */}
       <EnhancedTaskHeader
         task={task}
@@ -586,8 +609,8 @@ export function EnhancedTaskDetailsPanel({
         onDelete={onDelete}
         onDuplicate={onDuplicate}
         onClose={onClose}
-        onToggleFullscreen={onToggleFullscreen}
-        isFullscreen={isFullscreen}
+        onToggleExpand={onToggleExpand}
+        isExpanded={isExpanded}
         hideClose={hideClose}
       />
 
@@ -606,54 +629,78 @@ export function EnhancedTaskDetailsPanel({
               <LayoutGrid className="h-4 w-4 mr-2" />
               Overview
             </TabsTrigger>
-            <TabsTrigger
-              value="artifacts"
-              className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4"
-            >
-              <FileText className="h-4 w-4 mr-2" />
-              Artifacts
-              {artifactCount > 0 && (
-                <Badge variant="secondary" className="ml-2 h-5">
-                  {artifactCount}
-                </Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger
-              value="workflow"
-              className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4"
-            >
-              <Zap className="h-4 w-4 mr-2" />
-              Workflow
-            </TabsTrigger>
-            <TabsTrigger
-              value="activity"
-              className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4"
-            >
-              <Clock className="h-4 w-4 mr-2" />
-              Logs
-              {eventCount > 0 && (
-                <Badge variant="secondary" className="ml-2 h-5">
-                  {eventCount}
-                </Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger
-              value="vibe"
-              className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4"
-            >
-              <Coins className="h-4 w-4 mr-2" />
-              Vibe
-              {task.vibe_cost && Number(task.vibe_cost) > 0 && (
-                <Badge variant="secondary" className="ml-2 h-5">
-                  {Number(task.vibe_cost).toLocaleString()}
-                </Badge>
-              )}
-            </TabsTrigger>
+            {!compactMode && (
+              <TabsTrigger
+                value="artifacts"
+                className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4"
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Artifacts
+                {artifactCount > 0 && (
+                  <Badge variant="secondary" className="ml-2 h-5">
+                    {artifactCount}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            )}
+            {!compactMode && (
+              <TabsTrigger
+                value="workflow"
+                className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4"
+              >
+                <Zap className="h-4 w-4 mr-2" />
+                Workflow
+              </TabsTrigger>
+            )}
+            {!compactMode && (
+              <TabsTrigger
+                value="activity"
+                className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4"
+              >
+                <Clock className="h-4 w-4 mr-2" />
+                Logs
+                {eventCount > 0 && (
+                  <Badge variant="secondary" className="ml-2 h-5">
+                    {eventCount}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            )}
+            {!compactMode && (
+              <TabsTrigger
+                value="vibe"
+                className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4"
+              >
+                <Coins className="h-4 w-4 mr-2" />
+                Vibe
+                {task.vibe_cost && Number(task.vibe_cost) > 0 ? (
+                  <Badge variant="secondary" className="ml-2 h-5">
+                    {Number(task.vibe_cost).toLocaleString()}
+                  </Badge>
+                ) : null}
+              </TabsTrigger>
+            )}
           </TabsList>
 
-          <Button variant="ghost" size="icon" onClick={handleRefresh} className="h-8 w-8">
-            <RefreshCw className={cn('h-4 w-4', (artifactsLoading || workflowLoading) && 'animate-spin')} />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                const next = !compactMode;
+                setCompactMode(next);
+                localStorage.setItem('orcha:task-detail-compact', String(next));
+                if (next && activeTab !== 'overview') setActiveTab('overview');
+              }}
+              className="h-8 w-8"
+              title={compactMode ? 'Show all tabs' : 'Compact view'}
+            >
+              {compactMode ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
+            </Button>
+            <Button variant="ghost" size="icon" onClick={handleRefresh} className="h-8 w-8">
+              <RefreshCw className={cn('h-4 w-4', (artifactsLoading || workflowLoading) && 'animate-spin')} />
+            </Button>
+          </div>
         </div>
 
         {/* Overview Tab */}
@@ -679,6 +726,26 @@ export function EnhancedTaskDetailsPanel({
                   <h3 className="text-sm font-medium mb-2">Description</h3>
                   <p className="text-sm text-muted-foreground whitespace-pre-wrap">
                     {task.description}
+                  </p>
+                </div>
+              )}
+
+              {/* Completion Criteria */}
+              {task.completion_criteria && (
+                <div>
+                  <h3 className="text-sm font-medium mb-2">Completion Criteria</h3>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap bg-muted/50 rounded-md p-3 border">
+                    {task.completion_criteria}
+                  </p>
+                </div>
+              )}
+
+              {/* Output Format */}
+              {task.output_format && (
+                <div>
+                  <h3 className="text-sm font-medium mb-2">Output Format</h3>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap bg-muted/50 rounded-md p-3 border">
+                    {task.output_format}
                   </p>
                 </div>
               )}
@@ -749,6 +816,11 @@ export function EnhancedTaskDetailsPanel({
                     className="h-64 border rounded-lg overflow-hidden"
                   />
                 )}
+              </div>
+
+              {/* Agent Watchers */}
+              <div>
+                <AgentWatcherPanel taskId={task.id} />
               </div>
 
               {/* Recent Activity */}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO edit_sessions (\n                id, batch_id, deliverable_type, aspect_ratios, reference_style,\n                include_captions, imovie_project, status, timelines, metadata,\n                created_at, updated_at\n            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?)\n            ON CONFLICT(id) DO UPDATE SET\n                deliverable_type=excluded.deliverable_type,\n                aspect_ratios=excluded.aspect_ratios,\n                reference_style=excluded.reference_style,\n                include_captions=excluded.include_captions,\n                imovie_project=excluded.imovie_project,\n                status=excluded.status,\n                timelines=excluded.timelines,\n                metadata=excluded.metadata,\n                updated_at=excluded.updated_at\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 11
+    },
+    "nullable": []
+  },
+  "hash": "f1395cf0d6597f7713840695dce91f6945a81148acd39e143cbe2c63febfe59f"
+}

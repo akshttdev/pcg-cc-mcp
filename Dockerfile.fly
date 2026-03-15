@@ -1,0 +1,108 @@
+# Build stage
+FROM node:24-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache \
+    curl \
+    build-base \
+    perl \
+    python3 \
+    py3-pip
+
+# Install Rust with the project's nightly toolchain
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Set working directory
+WORKDIR /app
+
+# Use the project's pinned nightly toolchain
+COPY rust-toolchain.toml ./
+RUN rustup toolchain install nightly-2025-05-18 --profile default && \
+    rustup default nightly-2025-05-18
+
+# Copy package files for dependency caching
+COPY package*.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY frontend/package*.json ./frontend/
+COPY npx-cli/package*.json ./npx-cli/
+
+# Install pnpm and dependencies
+RUN npm install -g pnpm && pnpm install
+
+# Copy source code
+COPY . .
+
+# Build application
+ENV SQLX_OFFLINE=true
+
+# Types file is already committed; skip generate-types (avoids building Rust twice)
+RUN cd frontend && npm install --ignore-scripts && npx vite build --mode production
+
+# Limit parallelism to 1 job to reduce memory usage on constrained builders
+# Also reduce codegen units and disable debuginfo to save RAM during linking
+RUN CARGO_BUILD_JOBS=1 CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 \
+    CARGO_PROFILE_RELEASE_DEBUG=0 \
+    cargo build --release --bin server
+
+# Runtime stage — lightweight, no GPU/Ollama/TTS
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    tini \
+    wget \
+    sqlite3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app user
+RUN groupadd -g 1001 appgroup && \
+    useradd -u 1001 -g appgroup -m -s /bin/bash appuser
+
+# Copy binary and frontend assets from builder
+COPY --from=builder /app/target/release/server /usr/local/bin/server
+COPY --from=builder /app/frontend/dist /app/frontend/dist
+
+# Copy seed database
+COPY --from=builder /app/dev_assets_seed /app/dev_assets_seed
+
+# Create necessary directories
+RUN mkdir -p /app/dev_assets /app/backups \
+    && chown -R appuser:appgroup /app
+
+# Copy entrypoint (simplified)
+COPY <<'EOF' /usr/local/bin/docker-entrypoint.sh
+#!/bin/sh
+set -e
+
+DB_PATH="/app/dev_assets/db.sqlite"
+SEED_PATH="/app/dev_assets_seed/db.sqlite"
+
+mkdir -p /app/dev_assets
+
+if [ ! -f "$DB_PATH" ]; then
+    if [ -f "$SEED_PATH" ]; then
+        echo "Copying seed database..."
+        cp "$SEED_PATH" "$DB_PATH"
+    fi
+fi
+
+echo "Starting server..."
+exec "$@"
+EOF
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+USER appuser
+WORKDIR /app
+
+ENV HOST=0.0.0.0
+ENV BACKEND_PORT=8080
+ENV FRONTEND_PORT=8080
+ENV DATABASE_URL=sqlite:///app/dev_assets/db.sqlite
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD wget --quiet --tries=1 --spider "http://127.0.0.1:8080/api/health" || exit 1
+
+ENTRYPOINT ["/usr/bin/tini", "--", "docker-entrypoint.sh"]
+CMD ["server"]

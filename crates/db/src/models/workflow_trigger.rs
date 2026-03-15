@@ -202,6 +202,57 @@ impl WorkflowTrigger {
         Ok(())
     }
 
+    /// Find enabled schedule triggers that are due to run.
+    /// A schedule trigger is due if:
+    /// - trigger_type = 'schedule'
+    /// - enabled = true
+    /// - last_triggered_at is null OR older than the schedule interval
+    pub async fn find_due_schedules(pool: &SqlitePool) -> Result<Vec<Self>, sqlx::Error> {
+        // We support cron-like intervals stored in filter_tags as JSON: {"interval": "hourly|daily|weekly"}
+        // For simplicity, check if last_triggered_at is older than the interval threshold
+        let enabled = Self::find_enabled(pool).await?;
+        let now = chrono::Utc::now();
+
+        let due: Vec<Self> = enabled.into_iter().filter(|trigger| {
+            if trigger.trigger_type != "schedule" {
+                return false;
+            }
+
+            // Parse interval from filter_tags (reused field for schedule config)
+            let interval_minutes = trigger.filter_tags.as_deref()
+                .and_then(|tags| serde_json::from_str::<serde_json::Value>(tags).ok())
+                .and_then(|v| v.get("interval").and_then(|i| i.as_str()).map(|s| s.to_string()))
+                .map(|interval| match interval.as_str() {
+                    "hourly" => 60,
+                    "daily" => 1440,
+                    "weekly" => 10080,
+                    "every_5m" => 5,
+                    "every_15m" => 15,
+                    "every_30m" => 30,
+                    _ => interval.parse::<i64>().unwrap_or(60), // default hourly
+                })
+                .unwrap_or(60);
+
+            // Check if enough time has passed since last trigger
+            match &trigger.last_triggered_at {
+                Some(last) => {
+                    if let Ok(last_time) = chrono::NaiveDateTime::parse_from_str(last, "%Y-%m-%d %H:%M:%S")
+                        .or_else(|_| chrono::NaiveDateTime::parse_from_str(last, "%Y-%m-%dT%H:%M:%S%.f"))
+                    {
+                        let last_utc = last_time.and_utc();
+                        let elapsed = now.signed_duration_since(last_utc).num_minutes();
+                        elapsed >= interval_minutes
+                    } else {
+                        true // Can't parse, consider it due
+                    }
+                }
+                None => true, // Never triggered, is due
+            }
+        }).collect();
+
+        Ok(due)
+    }
+
     /// Find enabled triggers whose filters match the given data source attributes.
     pub async fn find_matching_triggers(
         pool: &SqlitePool,

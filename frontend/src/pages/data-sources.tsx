@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useCallback } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,15 +8,28 @@ import {
   Search, List, FileText, Table2, Music, Image,
   Film, Layers, Folder, MessageSquare, File, Database,
   Upload, ChevronRight, ChevronDown, Palette,
-  Download, Trash2, X, Info, RefreshCw,
+  Download, Trash2, X, Info, RefreshCw, Play, Plus,
   SortAsc, SortDesc, FolderOpen, LayoutGrid,
   MonitorSmartphone, HardDrive, Cloud, CloudOff,
   AlertTriangle, CheckCircle2, Clock, Plus,
   FolderSync, Laptop, Server,
   ArrowDownToLine, ArrowUpFromLine, Shield,
 } from 'lucide-react';
-import { dataSourcesApi, syncApi, type DataSourceRecord, type SyncDevice } from '@/lib/api';
+import { dataSourcesApi, syncApi, workflowsApi, type DataSourceRecord, type SyncDevice } from '@/lib/api';
 import { toast } from 'sonner';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -159,10 +172,11 @@ function FolderTreeNode({
 
 // ─── Preview panel ────────────────────────────────────────────────────────────
 
-function PreviewPanel({ source, onClose, onDelete }: {
+function PreviewPanel({ source, onClose, onDelete, onRunWorkflow }: {
   source: DataSourceRecord;
   onClose: () => void;
   onDelete: (id: string) => void;
+  onRunWorkflow?: (source: DataSourceRecord) => void;
 }) {
   const meta = parseMetadata(source.metadata);
   const ext = (source.file_type || '').toLowerCase();
@@ -270,6 +284,12 @@ function PreviewPanel({ source, onClose, onDelete }: {
 
       {/* Actions */}
       <div className="p-4 border-t flex flex-col gap-2">
+        {source.status === 'ready' && onRunWorkflow && (
+          <Button size="sm" variant="outline" className="w-full" onClick={() => onRunWorkflow(source)}>
+            <Play className="h-3.5 w-3.5 mr-2" />
+            Run Workflow
+          </Button>
+        )}
         {downloadable ? (
           <Button size="sm" className="w-full" onClick={handleDownload}>
             <Download className="h-3.5 w-3.5 mr-2" />
@@ -913,6 +933,7 @@ export default function DataSourcesPage() {
   const [showUploadZone, setShowUploadZone] = useState(false);
   const [showTextModal, setShowTextModal] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [runWorkflowSource, setRunWorkflowSource] = useState<DataSourceRecord | null>(null);
 
   // Determine the org from URL
   const effectiveOrgId = orgId;
@@ -1252,6 +1273,15 @@ export default function DataSourcesPage() {
                             <button title="Info" className="p-1 rounded hover:bg-muted" onClick={e => { e.stopPropagation(); setSelectedSource(isSelected ? null : source); }}>
                               <Info className="h-3.5 w-3.5 text-muted-foreground" />
                             </button>
+                            {source.status === 'ready' && (
+                              <button
+                                title="Run Workflow"
+                                className="p-1 rounded hover:bg-primary/10"
+                                onClick={e => { e.stopPropagation(); setRunWorkflowSource(source); }}
+                              >
+                                <Play className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1326,6 +1356,7 @@ export default function DataSourcesPage() {
             source={selectedSource}
             onClose={() => setSelectedSource(null)}
             onDelete={(id) => deleteMutation.mutate(id)}
+            onRunWorkflow={(s) => setRunWorkflowSource(s)}
           />
         )}
       </div>}
@@ -1339,6 +1370,126 @@ export default function DataSourcesPage() {
           onAdded={invalidate}
         />
       )}
+
+      {/* Run Workflow dialog */}
+      <RunWorkflowFromSourceDialog
+        source={runWorkflowSource}
+        onClose={() => setRunWorkflowSource(null)}
+      />
     </div>
+  );
+}
+
+// ─── Run Workflow from Data Source ─────────────────────────────────────────────
+
+function RunWorkflowFromSourceDialog({ source, onClose }: {
+  source: DataSourceRecord | null;
+  onClose: () => void;
+}) {
+  const navigate = useNavigate();
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState('');
+
+  const { data: allWorkflows = [] } = useQuery({
+    queryKey: ['workflowDefinitions'],
+    queryFn: () => workflowsApi.listDefinitions(),
+    enabled: !!source,
+  });
+
+  // Show workflows that have a data_source node (purpose-built for processing sources),
+  // plus any workflow as a fallback (all workflows can accept data source content)
+  const workflows = useMemo(() => {
+    const dataSourceWorkflows = allWorkflows.filter(wf =>
+      wf.nodes?.some(n => n.type === 'data_source')
+    );
+    const otherWorkflows = allWorkflows.filter(wf =>
+      !wf.nodes?.some(n => n.type === 'data_source')
+    );
+    return [...dataSourceWorkflows, ...otherWorkflows];
+  }, [allWorkflows]);
+
+  const runMutation = useMutation({
+    mutationFn: () => dataSourcesApi.runWorkflow(source!.id, selectedWorkflowId),
+    onSuccess: (data) => {
+      if (data.workflow_run_id && data.staged_records > 0) {
+        toast.success(`Workflow complete — ${data.staged_records} records staged`);
+        handleClose();
+        navigate('/workflows?tab=staging&run=' + data.workflow_run_id);
+      } else {
+        toast.info('Workflow completed with no new records');
+        handleClose();
+      }
+    },
+    onError: () => toast.error('Failed to run workflow'),
+  });
+
+  const handleClose = () => {
+    setSelectedWorkflowId('');
+    runMutation.reset();
+    onClose();
+  };
+
+  return (
+    <Dialog open={!!source} onOpenChange={(open) => { if (!open) handleClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Play className="h-4 w-4" />
+            Run Workflow
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div>
+            <p className="text-sm text-muted-foreground mb-1">Data Source</p>
+            <div className="flex items-center gap-2 p-2 rounded-md bg-muted/50 text-sm">
+              <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span className="truncate font-medium">{source?.title}</span>
+            </div>
+          </div>
+
+          <div>
+            <p className="text-sm text-muted-foreground mb-1">Workflow</p>
+            {workflows.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-4 px-2 text-center border rounded-md bg-muted/30">
+                <p className="text-sm text-muted-foreground">No workflows available yet.</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => { handleClose(); navigate('/workflows'); }}
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1.5" />
+                  Create a Workflow
+                </Button>
+              </div>
+            ) : (
+              <Select value={selectedWorkflowId} onValueChange={setSelectedWorkflowId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a workflow..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {workflows.map((wf) => (
+                    <SelectItem key={wf.id} value={wf.id}>
+                      <span>{wf.name}</span>
+                      {wf.is_system && <span className="ml-2 text-muted-foreground text-xs">(System)</span>}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          <div className="flex gap-2 justify-end">
+            <Button variant="ghost" onClick={handleClose}>Cancel</Button>
+            <Button
+              onClick={() => runMutation.mutate()}
+              disabled={!selectedWorkflowId || runMutation.isPending}
+            >
+              <Play className="h-3.5 w-3.5 mr-2" />
+              {runMutation.isPending ? 'Running...' : 'Run Workflow'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

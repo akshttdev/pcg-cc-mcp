@@ -337,6 +337,10 @@ pub enum NoraExecutiveTool {
         url: String,
         extract_text: bool,
     },
+    RenderPage {
+        url: String,
+        include_html: bool,
+    },
     SummarizeContent {
         content: String,
         max_length: u32,
@@ -1791,6 +1795,27 @@ impl ExecutiveTools {
                     }
                 }
             }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "render_page",
+                    "description": "Render a JavaScript-heavy web page using a real browser (Playwright/Chromium). Use this when fetch_web_page returns empty or incomplete content because the page requires JavaScript to render (e.g. SPAs, React/Vue/Angular apps, dashboards, dynamic content).",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "url": {
+                                "type": "string",
+                                "description": "The URL to render with a headless browser"
+                            },
+                            "include_html": {
+                                "type": "boolean",
+                                "description": "Whether to include the full rendered HTML in the response (default: false — text only)"
+                            }
+                        },
+                        "required": ["url"]
+                    }
+                }
+            }),
         ]
     }
 
@@ -2097,6 +2122,16 @@ impl ExecutiveTools {
                     "success": true,
                     "message": format!("Fetching '{}' - web fetch integration pending", url),
                     "content": ""
+                })
+            }
+            "render_page" => {
+                let url = arguments.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                let include_html = arguments.get("include_html").and_then(|v| v.as_bool()).unwrap_or(false);
+                serde_json::json!({
+                    "success": true,
+                    "message": format!("Rendering '{}' - use execute_tool for full browser rendering", url),
+                    "include_html": include_html,
+                    "text": ""
                 })
             }
             _ => {
@@ -2557,6 +2592,34 @@ impl ExecutiveTools {
                     attendees,
                     location,
                 })
+            }
+            "render_page" => {
+                let url = arguments.get("url")?.as_str()?.to_string();
+                let include_html = arguments
+                    .get("include_html")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                Some(NoraExecutiveTool::RenderPage { url, include_html })
+            }
+            "search_web" => {
+                let query = arguments.get("query")?.as_str()?.to_string();
+                let max_results = arguments
+                    .get("max_results")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(5) as u32;
+                Some(NoraExecutiveTool::SearchWeb {
+                    query,
+                    max_results,
+                    search_type: SearchType::General,
+                })
+            }
+            "fetch_web_page" => {
+                let url = arguments.get("url")?.as_str()?.to_string();
+                let extract_text = arguments
+                    .get("extract_text")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                Some(NoraExecutiveTool::FetchWebPage { url, extract_text })
             }
             _ => None,
         }
@@ -3356,7 +3419,7 @@ impl ExecutiveTools {
                             });
 
                     match executor
-                        .create_board(project_uuid, name.clone(), description, board_type_enum)
+                        .create_board(&project_uuid.to_string(), name.clone(), description, board_type_enum)
                         .await
                     {
                         Ok(board) => Ok(serde_json::json!({
@@ -3484,7 +3547,7 @@ impl ExecutiveTools {
                     // First find project by name, then get details
                     match executor.find_project_by_name(&project_name).await {
                         Ok(project_id) => {
-                            match executor.get_project_details(project_id).await {
+                            match executor.get_project_details(&project_id).await {
                                 Ok(details) => Ok(serde_json::json!({
                                     "success": true,
                                     "project": {
@@ -3636,7 +3699,7 @@ impl ExecutiveTools {
                     };
 
                     // Delegate and execute
-                    match executor.delegate_and_execute_task(task_uuid, &assignee, executor_type).await {
+                    match executor.delegate_and_execute_task(task_uuid.to_string(), &assignee, executor_type).await {
                         Ok(result) => Ok(serde_json::json!({
                             "success": true,
                             "message": format!("Task delegated to {} and execution started", result.agent_name),
@@ -4001,7 +4064,7 @@ impl ExecutiveTools {
 
                                     let _ = crate::editron_tracking::create_and_link_artifact(
                                         pool,
-                                        resolved_task_id,
+                                        &resolved_task_id,
                                         db::models::execution_artifact::ArtifactType::MediaIngestManifest,
                                         &format!("Ingest: {}", batch.id),
                                         Some(serde_json::json!({
@@ -4018,7 +4081,7 @@ impl ExecutiveTools {
 
                                     let _ = crate::editron_tracking::log_editron_activity(
                                         pool,
-                                        resolved_task_id,
+                                        &resolved_task_id,
                                         "editron_ingest_completed",
                                         &format!("Ingested {} files from {}", batch.files.len() as u32, source_url),
                                         vibe_cost,
@@ -4028,8 +4091,8 @@ impl ExecutiveTools {
 
                                     let _ = crate::editron_tracking::record_editron_vibe(
                                         pool,
-                                        resolved_project_id,
-                                        resolved_task_id,
+                                        &resolved_project_id,
+                                        &resolved_task_id,
                                         vibe_cost,
                                         &format!("Editron ingest: {} files", batch.files.len() as u32),
                                         "ingest",
@@ -4120,7 +4183,7 @@ impl ExecutiveTools {
 
                                     let _ = crate::editron_tracking::create_and_link_artifact(
                                         pool,
-                                        resolved_task_id,
+                                        &resolved_task_id,
                                         db::models::execution_artifact::ArtifactType::MediaAnalysisReport,
                                         &format!("Analysis: {} hero moments", analysis.hero_moments.len()),
                                         Some(serde_json::json!({
@@ -4138,7 +4201,7 @@ impl ExecutiveTools {
 
                                     let _ = crate::editron_tracking::log_editron_activity(
                                         pool,
-                                        resolved_task_id,
+                                        &resolved_task_id,
                                         "editron_analyze_completed",
                                         &format!(
                                             "Batch analyzed: {} hero moments, {} passes",
@@ -4152,8 +4215,8 @@ impl ExecutiveTools {
 
                                     let _ = crate::editron_tracking::record_editron_vibe(
                                         pool,
-                                        resolved_project_id,
-                                        resolved_task_id,
+                                        &resolved_project_id,
+                                        &resolved_task_id,
                                         vibe_cost,
                                         &format!("Editron analyze: {} passes", passes),
                                         "analyze",
@@ -4249,7 +4312,7 @@ impl ExecutiveTools {
 
                                     let _ = crate::editron_tracking::create_and_link_artifact(
                                         pool,
-                                        resolved_task_id,
+                                        &resolved_task_id,
                                         db::models::execution_artifact::ArtifactType::VideoEditSession,
                                         &format!("Edit Session: {}", deliverable_type),
                                         Some(serde_json::json!({
@@ -4266,7 +4329,7 @@ impl ExecutiveTools {
 
                                     let _ = crate::editron_tracking::log_editron_activity(
                                         pool,
-                                        resolved_task_id,
+                                        &resolved_task_id,
                                         "editron_edits_generated",
                                         &format!(
                                             "Video edits generated: {} with {} ratios",
@@ -4280,8 +4343,8 @@ impl ExecutiveTools {
 
                                     let _ = crate::editron_tracking::record_editron_vibe(
                                         pool,
-                                        resolved_project_id,
-                                        resolved_task_id,
+                                        &resolved_project_id,
+                                        &resolved_task_id,
                                         vibe_cost,
                                         &format!("Editron edit: {} ratios", aspect_ratios.len()),
                                         "edit",
@@ -4384,7 +4447,7 @@ impl ExecutiveTools {
 
                                     let _ = crate::editron_tracking::create_and_link_artifact(
                                         pool,
-                                        resolved_task_id,
+                                        &resolved_task_id,
                                         db::models::execution_artifact::ArtifactType::RenderDeliverable,
                                         &format!("Render Job: {} formats", formats.len()),
                                         Some(serde_json::json!({
@@ -4402,7 +4465,7 @@ impl ExecutiveTools {
 
                                     let _ = crate::editron_tracking::log_editron_activity(
                                         pool,
-                                        resolved_task_id,
+                                        &resolved_task_id,
                                         "editron_render_started",
                                         &format!(
                                             "Render job queued: {} formats, {:?} priority",
@@ -4416,8 +4479,8 @@ impl ExecutiveTools {
 
                                     let _ = crate::editron_tracking::record_editron_vibe(
                                         pool,
-                                        resolved_project_id,
-                                        resolved_task_id,
+                                        &resolved_project_id,
+                                        &resolved_task_id,
                                         vibe_cost,
                                         &format!("Editron render: {} formats", formats.len()),
                                         "render",
@@ -4505,7 +4568,7 @@ impl ExecutiveTools {
                         &ffmpeg_path,
                         &work_dir,
                     );
-                    let (system_prompt, user_prompt_template) =
+                    let (_system_prompt, _user_prompt_template) =
                         services::services::visual_qc::VisualQcEngine::build_vision_prompt(
                             target_aspect_ratio.as_deref(),
                         );
@@ -4538,7 +4601,7 @@ impl ExecutiveTools {
                                 break;
                             }
 
-                            let base64_data = match services::services::visual_qc::VisualQcEngine::frame_to_base64(frame_path).await {
+                            let _base64_data = match services::services::visual_qc::VisualQcEngine::frame_to_base64(frame_path).await {
                                 Ok(d) => d,
                                 Err(_) => continue,
                             };
@@ -5717,7 +5780,7 @@ impl ExecutiveTools {
                         }
                     };
 
-                    match executor.add_task_to_board(task_uuid, board_uuid).await {
+                    match executor.add_task_to_board(&task_uuid.to_string(), &board_uuid.to_string()).await {
                         Ok(()) => Ok(serde_json::json!({
                             "success": true,
                             "message": "Task assigned to board successfully",
@@ -5776,6 +5839,9 @@ impl ExecutiveTools {
             }
             NoraExecutiveTool::FetchWebPage { url, extract_text } => {
                 self.execute_fetch_webpage(&url, extract_text).await
+            }
+            NoraExecutiveTool::RenderPage { url, include_html } => {
+                self.execute_render_page(&url, include_html).await
             }
             NoraExecutiveTool::SummarizeContent {
                 content,
@@ -6079,21 +6145,60 @@ impl ExecutiveTools {
         max_results: u32,
         _search_type: &SearchType,
     ) -> crate::Result<serde_json::Value> {
-        // Note: This would integrate with actual search APIs (DuckDuckGo, Google, etc.)
-        // For now, return structured placeholder
+        let api_key = match std::env::var("EXA_API_KEY") {
+            Ok(k) if !k.is_empty() => k,
+            _ => {
+                return Ok(serde_json::json!({
+                    "success": false,
+                    "error": "EXA_API_KEY not configured — web search unavailable"
+                }));
+            }
+        };
+
+        let client = reqwest::Client::new();
+        let resp = client
+            .post("https://api.exa.ai/search")
+            .header("x-api-key", &api_key)
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({
+                "query": query,
+                "num_results": max_results,
+                "use_autoprompt": true,
+                "text": true
+            }))
+            .send()
+            .await
+            .map_err(|e| crate::NoraError::ToolExecutionError(format!("Exa search request failed: {}", e)))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Ok(serde_json::json!({
+                "success": false,
+                "error": format!("Exa search returned {}: {}", status, body)
+            }));
+        }
+
+        let data: serde_json::Value = resp.json().await
+            .map_err(|e| crate::NoraError::ToolExecutionError(format!("Failed to parse Exa response: {}", e)))?;
+
+        let results = data.get("results")
+            .and_then(|r| r.as_array())
+            .map(|arr| {
+                arr.iter().map(|r| serde_json::json!({
+                    "title": r.get("title").and_then(|t| t.as_str()).unwrap_or(""),
+                    "url": r.get("url").and_then(|u| u.as_str()).unwrap_or(""),
+                    "snippet": r.get("text").and_then(|t| t.as_str()).unwrap_or(""),
+                    "score": r.get("score")
+                })).collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
         Ok(serde_json::json!({
             "success": true,
             "query": query,
-            "results": [
-                {
-                    "title": format!("Search result for: {}", query),
-                    "url": "https://example.com/result1",
-                    "snippet": format!("This is a mock search result for '{}'", query)
-                }
-            ],
-            "result_count": 1,
-            "max_results": max_results,
-            "note": "Real search API integration pending"
+            "results": results,
+            "result_count": results.len()
         }))
     }
 
@@ -6127,6 +6232,119 @@ impl ExecutiveTools {
             "content_length": result_content.len(),
             "text_extracted": extract_text
         }))
+    }
+
+    async fn execute_render_page(
+        &self,
+        url: &str,
+        include_html: bool,
+    ) -> crate::Result<serde_json::Value> {
+        use std::process::Command;
+
+        // Find the render-page.js script
+        let script_path = {
+            let candidates = [
+                "/home/pythia/pcg-cc-mcp/scripts/render-page.js",
+                "scripts/render-page.js",
+                "./scripts/render-page.js",
+            ];
+            candidates
+                .iter()
+                .find(|p| std::path::Path::new(*p).exists())
+                .map(|p| p.to_string())
+        };
+
+        let script_path = match script_path {
+            Some(p) => p,
+            None => {
+                return Ok(serde_json::json!({
+                    "success": false,
+                    "error": "render-page.js script not found. Ensure scripts/render-page.js exists in the project root."
+                }));
+            }
+        };
+
+        // Check Playwright is installed
+        let playwright_check = tokio::task::spawn_blocking(|| {
+            Command::new("node")
+                .args(["-e", "require('playwright')"])
+                .output()
+        })
+        .await
+        .ok()
+        .and_then(|r| r.ok())
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+        if !playwright_check {
+            return Ok(serde_json::json!({
+                "success": false,
+                "error": "Playwright not installed. Run: cd /home/pythia/pcg-cc-mcp && npm install playwright && npx playwright install chromium"
+            }));
+        }
+
+        tracing::info!("[NORA TOOLS] Rendering JavaScript page via Playwright: {}", url);
+
+        let url_owned = url.to_string();
+        let output = tokio::task::spawn_blocking(move || {
+            Command::new("node")
+                .args([&script_path, &url_owned, "30000"])
+                .output()
+        })
+        .await
+        .map_err(|e| crate::NoraError::ToolExecutionError(format!("Failed to spawn render task: {}", e)))?
+        .map_err(|e| crate::NoraError::ToolExecutionError(format!("Failed to execute render script: {}", e)))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            // Try parsing JSON error from stdout first
+            if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&output.stdout) {
+                if let Some(err) = val.get("error").and_then(|e| e.as_str()) {
+                    return Ok(serde_json::json!({"success": false, "url": url, "error": err}));
+                }
+            }
+            return Ok(serde_json::json!({
+                "success": false,
+                "url": url,
+                "error": format!("Render script failed: {}", stderr.trim())
+            }));
+        }
+
+        let parsed: serde_json::Value = serde_json::from_slice(&output.stdout)
+            .map_err(|e| crate::NoraError::ToolExecutionError(format!("Failed to parse render output: {}", e)))?;
+
+        // Convert HTML to plain text (basic stripping)
+        let html = parsed.get("html").and_then(|h| h.as_str()).unwrap_or("");
+        let title = parsed.get("title").and_then(|t| t.as_str());
+        // Strip tags for text: replace tags with spaces, collapse whitespace
+        let text: String = {
+            let mut in_tag = false;
+            let mut s = String::with_capacity(html.len());
+            for c in html.chars() {
+                match c {
+                    '<' => { in_tag = true; s.push(' '); }
+                    '>' => { in_tag = false; }
+                    _ if !in_tag => s.push(c),
+                    _ => {}
+                }
+            }
+            // Collapse whitespace
+            s.split_whitespace().collect::<Vec<_>>().join(" ")
+        };
+
+        let mut result = serde_json::json!({
+            "success": true,
+            "url": parsed.get("url").and_then(|u| u.as_str()).unwrap_or(url),
+            "title": title,
+            "text": text,
+            "text_length": text.len(),
+        });
+
+        if include_html {
+            result["html"] = serde_json::Value::String(html.to_string());
+        }
+
+        Ok(result)
     }
 
     async fn execute_summarize_content(
@@ -6557,7 +6775,7 @@ impl ExecutiveTools {
                 return Ok(id);
             }
             if let Ok(Some(project)) = executor.find_project_record_by_name(hint).await {
-                return Ok(project.id);
+                return Uuid::parse_str(&project.id).map_err(|e| NoraError::ConfigError(format!("Invalid project id: {}", e)));
             }
         }
 
@@ -6588,8 +6806,9 @@ impl ExecutiveTools {
         };
 
         let project_id = self.resolve_project_id(project_hint).await?;
+        let project_id_str = project_id.to_string();
         let board_id = executor
-            .get_default_board_for_tasks(project_id)
+            .get_default_board_for_tasks(&project_id_str)
             .await?
             .map(|board| board.id);
 
@@ -6603,17 +6822,17 @@ impl ExecutiveTools {
             pod_id: None,
         };
 
-        let task = executor.create_task(project_id, definition).await?;
+        let task = executor.create_task(project_id_str, definition).await?;
         executor
-            .update_task_status(task.id, TaskStatus::InProgress)
+            .update_task_status(&task.id, TaskStatus::InProgress)
             .await?;
 
-        Ok(Some(task.id))
+        Ok(Some(Uuid::parse_str(&task.id).unwrap_or(project_id)))
     }
 
     async fn complete_pipeline_task(&self, task_id: Uuid, status: TaskStatus) {
         if let Some(executor) = &self.task_executor {
-            if let Err(err) = executor.update_task_status(task_id, status).await {
+            if let Err(err) = executor.update_task_status(&task_id.to_string(), status).await {
                 tracing::warn!("Failed to update pipeline task {}: {}", task_id, err);
             }
         }

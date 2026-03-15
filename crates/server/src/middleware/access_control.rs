@@ -119,6 +119,36 @@ impl AccessContext {
         Ok(())
     }
 
+    /// Require at least Viewer access to a project.
+    pub async fn require_viewer(
+        &self,
+        pool: &sqlx::SqlitePool,
+        project_id: &str,
+    ) -> Result<ProjectRole, ApiError> {
+        self.check_project_access_hierarchical(pool, project_id, ProjectRole::Viewer)
+            .await
+    }
+
+    /// Require at least Editor access to a project (for mutations).
+    pub async fn require_editor(
+        &self,
+        pool: &sqlx::SqlitePool,
+        project_id: &str,
+    ) -> Result<ProjectRole, ApiError> {
+        self.check_project_access_hierarchical(pool, project_id, ProjectRole::Editor)
+            .await
+    }
+
+    /// Require at least Admin access to a project (for member management).
+    pub async fn require_project_admin(
+        &self,
+        pool: &sqlx::SqlitePool,
+        project_id: &str,
+    ) -> Result<ProjectRole, ApiError> {
+        self.check_project_access_hierarchical(pool, project_id, ProjectRole::Admin)
+            .await
+    }
+
     /// Check if user has access to a specific project.
     /// Delegates to the hierarchical check (project_members → org → client).
     pub async fn check_project_access(
@@ -437,12 +467,9 @@ impl AccessContext {
             return Ok(Some(ProjectRole::Owner));
         }
 
-        let board_uuid = Uuid::parse_str(board_id)
-            .map_err(|e| ApiError::InternalError(format!("Invalid board UUID: {}", e)))?;
-
         let permission = db::models::board_share::BoardShare::check_user_share_access(
             pool,
-            board_uuid,
+            board_id,
             self.user_id,
         )
         .await

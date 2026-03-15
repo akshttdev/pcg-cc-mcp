@@ -6,13 +6,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use alpha_protocol_core::{
-    node::{AlphaNodeBuilder, NodeConfig, NodeEvent},
+    node::{AlphaNodeBuilder, NodeEvent},
     DEFAULT_NATS_RELAY,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use sysinfo::System;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 use tokio::sync::{mpsc, RwLock};
 
 /// Node state managed by Tauri

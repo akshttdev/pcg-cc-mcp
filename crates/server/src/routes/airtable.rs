@@ -536,11 +536,11 @@ async fn import_records_from_table(
             .map(|s| s.to_string());
 
         // Create PCG task from Airtable record
-        let task_id = Uuid::new_v4();
+        let task_id = Uuid::new_v4().to_string();
         let create_task = CreateTask {
-            project_id: payload.project_id,
+            project_id: payload.project_id.to_string(),
             pod_id: None,
-            board_id: payload.board_id,
+            board_id: payload.board_id.map(|u| u.to_string()),
             title,
             description,
             parent_task_attempt: None,
@@ -560,9 +560,12 @@ async fn import_records_from_table(
             scheduled_start: None,
             scheduled_end: None,
             screenshot: None,
+            completion_criteria: None,
+            output_format: None,
+            collaborators: None,
         };
 
-        let task = match Task::create(pool, &create_task, task_id).await {
+        let task = match Task::create(pool, &create_task, &task_id).await {
             Ok(t) => t,
             Err(e) => {
                 error!("Failed to create task for record {}: {}", record.id, e);
@@ -578,10 +581,11 @@ async fn import_records_from_table(
         );
 
         // Create the link
+        let task_uuid = Uuid::parse_str(&task.id).unwrap();
         let link = match AirtableRecordLink::create(
             pool,
             CreateAirtableRecordLink {
-                task_id: task.id,
+                task_id: task_uuid,
                 airtable_record_id: record.id.clone(),
                 airtable_base_id: connection.airtable_base_id.clone(),
                 airtable_table_id: Some(payload.table_id.clone()),
@@ -595,7 +599,7 @@ async fn import_records_from_table(
             Err(e) => {
                 error!("Failed to create task link for record {}: {}", record.id, e);
                 // Delete the task we just created since we couldn't link it
-                let _ = Task::delete(pool, task.id).await;
+                let _ = Task::delete(pool, &task.id).await;
                 continue;
             }
         };
@@ -665,7 +669,7 @@ async fn push_task_to_airtable(
     }
 
     // Get the PCG task
-    let task = match Task::find_by_id(pool, task_id).await {
+    let task = match Task::find_by_id(pool, &task_id.to_string()).await {
         Ok(Some(t)) => t,
         Ok(None) => return Ok(Json(ApiResponse::error("Task not found"))),
         Err(e) => {
@@ -714,10 +718,11 @@ async fn push_task_to_airtable(
     let record_url = build_record_url(&payload.base_id, &payload.table_id, &record.id);
 
     // Create the link
+    let task_uuid = Uuid::parse_str(&task.id).unwrap();
     let link = match AirtableRecordLink::create(
         pool,
         CreateAirtableRecordLink {
-            task_id: task.id,
+            task_id: task_uuid,
             airtable_record_id: record.id,
             airtable_base_id: payload.base_id,
             airtable_table_id: Some(payload.table_id),
@@ -774,7 +779,7 @@ async fn sync_deliverables_to_airtable(
     }
 
     // Get the task for status info
-    let task = match Task::find_by_id(pool, task_id).await {
+    let task = match Task::find_by_id(pool, &task_id.to_string()).await {
         Ok(Some(t)) => t,
         Ok(None) => return Ok(Json(ApiResponse::error("Task not found"))),
         Err(e) => {

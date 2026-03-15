@@ -210,7 +210,7 @@ pub(crate) async fn create_test_project(pool: &SqlitePool) -> Uuid {
         parent_project_id: None,
     };
 
-    Project::create(pool, &data, project_id)
+    Project::create(pool, &data, &project_id.to_string())
         .await
         .expect("failed to create test project");
 

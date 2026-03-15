@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { resolveApiUrl } from '@/lib/api';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { makeRequest } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -20,6 +20,8 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { MeetingMode } from './MeetingMode';
+import { useAgentChatStore } from '@/stores/useAgentChatStore';
+import { useActivityStore } from '@/stores/useActivityStore';
 
 interface ChatMessage {
   id: string;
@@ -33,12 +35,18 @@ interface TopsiWidgetProps {
   className?: string;
 }
 
-type WidgetState = 'collapsed' | 'chat' | 'call' | 'meeting';
-
 export function TopsiWidget({ className }: TopsiWidgetProps) {
-  // Widget state
-  const [widgetState, setWidgetState] = useState<WidgetState>('collapsed');
+  // Widget state — driven by global store
+  const widgetState = useAgentChatStore((s) => s.widgetState);
+  const setWidgetState = useAgentChatStore((s) => s.setWidgetState);
+  const pendingMessage = useAgentChatStore((s) => s.pendingMessage);
+  const pendingContext = useAgentChatStore((s) => s.pendingContext);
+  const clearPending = useAgentChatStore((s) => s.clearPending);
+  const collapseChat = useAgentChatStore((s) => s.collapse);
+  const logActivity = useActivityStore((s) => s.logActivity);
+
   const [isInitialized, setIsInitialized] = useState(false);
+  const isInitializedRef = useRef(false);
   const [isInitializing, setIsInitializing] = useState(false);
 
   // Chat state
@@ -71,6 +79,10 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
   const isInCallRef = useRef(false);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasSpokenRef = useRef(false);
+  // Workflow polling
+  const workflowPollsRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
+  // Ref to hold latest sendMessageDirect so effects never capture stale closures
+  const sendMessageDirectRef = useRef<(message: string, context?: typeof pendingContext) => Promise<void>>();
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -82,22 +94,36 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
     checkTopsiStatus();
   }, []);
 
-  // Cleanup on unmount
+
+  // Handle pending message from store (e.g. from AskTopsiButton)
   useEffect(() => {
-    return () => {
-      stopRecording();
-      if (currentAudioRef.current) {
-        currentAudioRef.current.pause();
+    if (!pendingMessage || widgetState !== 'chat') return;
+
+    // Capture context before clearing (C1 fix: don't rely on closure)
+    const msg = pendingMessage;
+    const ctx = pendingContext;
+    clearPending();
+
+    const sendPending = async () => {
+      // Wait for initialization if needed (C2 fix — use ref to avoid stale closure)
+      if (!isInitializedRef.current) {
+        await initializeTopsi();
       }
+      setInputMessage('');
+      // Use ref to get latest sendMessageDirect (C3 fix: no stale closure)
+      sendMessageDirectRef.current?.(msg, ctx);
     };
-  }, []);
+
+    sendPending();
+  }, [pendingMessage, widgetState]);
 
   const checkTopsiStatus = async () => {
     try {
-      const res = await fetch(resolveApiUrl('/api/topsi/status'));
+      const res = await makeRequest('/api/topsi/status');
       if (res.ok) {
         const data = await res.json();
         setIsInitialized(data.isActive);
+        isInitializedRef.current = data.isActive;
       }
     } catch (error) {
       console.error('Failed to check Topsi status:', error);
@@ -107,13 +133,13 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
   const initializeTopsi = async () => {
     setIsInitializing(true);
     try {
-      const res = await fetch(resolveApiUrl('/api/topsi/initialize'), {
+      const res = await makeRequest('/api/topsi/initialize', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ activateImmediately: true }),
       });
       if (res.ok) {
         setIsInitialized(true);
+        isInitializedRef.current = true;
         addMessage('assistant', "Hello! I'm Topsi, your platform orchestrator. How can I help you today?");
       } else {
         toast.error('Failed to initialize Topsi');
@@ -128,7 +154,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
 
   const addMessage = (role: 'user' | 'assistant', content: string, hasAudio?: boolean) => {
     const message: ChatMessage = {
-      id: `${role}-${Date.now()}`,
+      id: crypto.randomUUID(),
       role,
       content,
       timestamp: new Date(),
@@ -137,30 +163,20 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
     setMessages(prev => [...prev, message]);
   };
 
-  // Text chat
-  const sendTextMessage = async () => {
-    if (!inputMessage.trim() || isSending) return;
+  // Core message send logic — context param avoids stale closure issues
+  const sendMessageDirect = async (message: string, context?: typeof pendingContext) => {
+    if (!message.trim() || isSending) return;
 
-    const userMessage = inputMessage.trim();
-    setInputMessage('');
-    addMessage('user', userMessage);
+    addMessage('user', message);
     setIsSending(true);
 
     try {
-      // Get session token from localStorage (fallback for when cookies don't work)
-      const sessionToken = localStorage.getItem('session_id') || sessionStorage.getItem('session_id');
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (sessionToken) {
-        headers['Authorization'] = `Bearer ${sessionToken}`;
-      }
-
-      const res = await fetch(resolveApiUrl('/api/topsi/chat'), {
+      const res = await makeRequest('/api/topsi/chat', {
         method: 'POST',
-        headers,
-        credentials: 'include', // Send auth cookies
         body: JSON.stringify({
-          message: userMessage,
+          message,
           sessionId,
+          ...(context ? { context } : {}),
         }),
       });
 
@@ -171,12 +187,37 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
 
         addMessage('assistant', responseText);
 
+        // Log tool calls to activity store
+        const entityId = context?.entityId || 'agent-global';
+        if (responseData.tool_calls && Array.isArray(responseData.tool_calls)) {
+          for (const tc of responseData.tool_calls) {
+            const toolName = tc.name || tc.tool || 'unknown';
+            logActivity(
+              entityId,
+              'agent_tool_call',
+              `Topsi: ${toolName}`,
+              {
+                agent: 'topsi',
+                tool: toolName,
+                success: tc.success !== false,
+                args: JSON.stringify(tc.args || tc.input || {}).slice(0, 200),
+              }
+            );
+
+            // Start workflow polling if a workflow was triggered
+            if ((toolName === 'trigger_workflow' || toolName === 'build_workflow') && tc.result?.workflow_run_id) {
+              startWorkflowPolling(tc.result.workflow_run_id, entityId);
+            }
+          }
+        }
+
         // Emit event to notify other components to refresh
-        // This triggers refresh of projects, tasks, etc. when Topsi makes changes
         window.dispatchEvent(new CustomEvent('topsi-action-complete', {
           detail: { responseText, timestamp: new Date() }
         }));
       } else {
+        const errorBody = await res.text().catch(() => '');
+        console.error('Topsi message failed:', res.status, errorBody);
         addMessage('assistant', 'Sorry, I encountered an error processing your request.');
       }
     } catch (error) {
@@ -185,6 +226,68 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
     } finally {
       setIsSending(false);
     }
+  };
+
+  // Keep ref updated for effects that need the latest version
+  useEffect(() => {
+    sendMessageDirectRef.current = sendMessageDirect;
+  }, [sendMessageDirect]);
+
+  // Text chat — reads from inputMessage state
+  const sendTextMessage = async () => {
+    if (!inputMessage.trim() || isSending) return;
+    const msg = inputMessage.trim();
+    setInputMessage('');
+    await sendMessageDirect(msg);
+  };
+
+  // Workflow polling
+  const startWorkflowPolling = (runId: string, entityId: string = 'agent-global') => {
+    const taskId = entityId;
+
+    logActivity(taskId, 'agent_workflow_triggered', `Workflow run ${runId} started`, {
+      agent: 'topsi',
+      workflow_run_id: runId,
+    });
+
+    addMessage('assistant', `Workflow running... (${runId})`);
+
+    let pollCount = 0;
+    const maxPolls = 60; // 5 minutes at 5s intervals
+
+    const interval = setInterval(async () => {
+      pollCount++;
+      try {
+        const res = await makeRequest(`/api/workflows/runs/${runId}`);
+        if (!res.ok) return;
+        const run = await res.json();
+        const status = run.status || run.data?.status;
+
+        if (status === 'completed' || status === 'failed' || status === 'cancelled') {
+          clearInterval(interval);
+          workflowPollsRef.current.delete(runId);
+
+          const summary = status === 'completed'
+            ? `Workflow completed (${run.records_staged ?? run.data?.records_staged ?? '?'} records staged)`
+            : `Workflow ${status}`;
+          addMessage('assistant', summary);
+
+          logActivity(taskId, 'agent_workflow_completed', summary, {
+            agent: 'topsi',
+            workflow_run_id: runId,
+            status,
+          });
+        } else if (pollCount >= maxPolls) {
+          clearInterval(interval);
+          workflowPollsRef.current.delete(runId);
+          addMessage('assistant', `Workflow polling timed out after 5 minutes (${runId}). Check status manually.`);
+        }
+      } catch {
+        // Silently retry on next interval
+      }
+    }, 5000);
+
+    workflowPollsRef.current.set(runId, interval);
   };
 
   // Voice recording
@@ -222,7 +325,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
     }
   };
 
-  const stopRecording = () => {
+  const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
@@ -243,7 +346,20 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
       cancelAnimationFrame(animationRef.current);
       animationRef.current = null;
     }
-  };
+  }, [isRecording]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopRecording();
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+      }
+      // Cleanup workflow polls
+      workflowPollsRef.current.forEach((interval) => clearInterval(interval));
+      workflowPollsRef.current.clear();
+    };
+  }, [stopRecording]);
 
   // Start (or restart) the MediaRecorder on the existing call stream.
   // Does NOT call getUserMedia — the stream stays open for the whole call.
@@ -322,17 +438,8 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
     try {
       const base64Audio = await blobToBase64(audioBlob);
 
-      // Get session token from localStorage (fallback for when cookies don't work)
-      const sessionToken = localStorage.getItem('session_id') || sessionStorage.getItem('session_id');
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (sessionToken) {
-        headers['Authorization'] = `Bearer ${sessionToken}`;
-      }
-
-      const res = await fetch(resolveApiUrl('/api/topsi/voice/interaction'), {
+      const res = await makeRequest('/api/topsi/voice/interaction', {
         method: 'POST',
-        headers,
-        credentials: 'include', // Send auth cookies
         body: JSON.stringify({
           sessionId,
           audioInput: base64Audio,
@@ -546,7 +653,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
     if (!isInitialized) {
       initializeTopsi();
     }
-    setWidgetState('chat');
+    useAgentChatStore.getState().openChat();
   };
 
   // Collapsed state - just the floating button
@@ -618,7 +725,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
             variant="ghost"
             size="icon"
             className="h-8 w-8 text-white hover:bg-cyan-700"
-            onClick={() => setWidgetState('collapsed')}
+            onClick={collapseChat}
           >
             <X className="h-4 w-4" />
           </Button>

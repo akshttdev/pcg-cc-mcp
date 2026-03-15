@@ -15,7 +15,7 @@ use ts_rs::TS;
 use uuid::Uuid;
 
 use crate::config::TopsiConfig;
-use crate::meeting::{MeetingManager, MeetingTranscriptEntry, MeetingNotes, ActionItem, WakeWordResult};
+use crate::meeting::{MeetingManager, MeetingTranscriptEntry, MeetingNotes};
 use crate::topology::graph::TopologyGraph;
 use crate::topology::voice::VoiceTopology;
 use crate::tools::get_tool_schemas;
@@ -24,7 +24,7 @@ use crate::{DetectedIssue, Result, TopsiError, TopsiResponse, TopologySummary, T
 // Import Nora conversation types for agentic loop
 use nora::brain::{ConversationMessage, ToolResult as NoraToolResult};
 
-// Database models for querying real data
+// Database models for querying real data (topology/agent tools still use these directly)
 use db::models::project::Project;
 use db::models::agent::Agent;
 use db::models::task::Task;
@@ -105,6 +105,28 @@ For complex requests like "build a website", break into phases:
 - `start_task_execution` - Spawn an agent to execute a task
 - `get_task_status` - Check task execution status and logs
 
+### Web access tools
+- `search_web` - Search the internet in real-time (powered by Exa). Use when asked to find or research anything online.
+- `fetch_web_page` - Fetch and read any URL. Use when asked to open or read a specific web page or link.
+You HAVE full internet access. NEVER say you can't browse URLs or search the web — call the tools.
+
+### CRM & Data tools
+- `get_project_detail` - Get project details with task counts and metadata. Requires project_id.
+- `list_crm_contacts` - List CRM contacts for an organization. Requires organization_id, supports search_query and lifecycle_stage filters.
+- `list_crm_deals` - List CRM deals. Requires one of: organization_id, pipeline_id, or stage_id.
+- `list_crm_pipelines` - List CRM pipelines and stages. Requires organization_id, optional pipeline_type filter.
+- `list_workflow_definitions` - List saved workflow definitions. System workflows visible to all; org-owned filtered by access.
+- `get_workflow_definition` - Get full workflow definition with steps. Requires workflow_id.
+- `search_entities` - Cross-entity keyword search across projects, contacts, deals, and tasks. Requires query; organization_id needed for CRM entity results. Supports entity_types filter.
+- `list_workflow_runs` - List recent workflow execution runs. Optional workflow_id or organization_id filter.
+- `get_workflow_run_status` - Get detailed status of a workflow run including staged record counts. Requires run_id.
+- `review_staged_data` - Show staged CRM/task records pending review. Requires run_id or organization_id.
+- `approve_staged_records` - Approve valid staged records and reject duplicates for a workflow run. Requires run_id.
+- `create_crm_contact` - Create a CRM contact. Requires organization_id. Optional: first_name, last_name, email, phone, company_name, job_title, linkedin_url, lifecycle_stage.
+- `create_crm_deal` - Create a CRM deal. Requires organization_id and name. Optional: amount, currency, pipeline_id, stage_id, contact_id, description, expected_close_date.
+- `update_crm_deal` - Update a CRM deal. Requires deal_id. Optional: name, amount, currency, stage_id, description, expected_close_date, lost_reason, win_reason.
+- `build_workflow` - Delegate to the Workflow Builder specialist to create or modify a workflow. Provide user_request (what they want) and context (data you've gathered about their org, schemas, existing workflows). The specialist handles node graph generation.
+
 ### Communication
 - `respond_to_user` - IMPORTANT: Use this to deliver your response. Write your complete answer in the message parameter.
 
@@ -120,6 +142,15 @@ For complex requests like "build a website", break into phases:
 - "How are my tasks going?" → list_tasks → respond_to_user
 - "What projects do I have?" → list_projects → respond_to_user
 - "Any issues?" → detect_issues → respond_to_user
+- "Show my contacts" → list_crm_contacts → respond_to_user
+- "What deals are in the pipeline?" → list_crm_deals → respond_to_user
+- "What workflows do we have?" → list_workflow_definitions → respond_to_user
+- "Find anything about Acme" → search_entities → respond_to_user
+- "Show recent workflow runs" → list_workflow_runs → respond_to_user
+- "How did that last run go?" → get_workflow_run_status → respond_to_user
+- "What records are pending?" → review_staged_data → respond_to_user
+- "Approve the staged records" → approve_staged_records → respond_to_user
+- "Create a workflow that extracts contacts from emails" → (gather context with list_workflow_definitions) → build_workflow → respond_to_user
 - Action requests → execute → respond_to_user
 
 **Golden rule:** If you already have enough to give a good answer, call respond_to_user NOW. Don't keep calling tools hoping for better data — one or two tool calls is almost always enough.
@@ -235,6 +266,49 @@ pub struct TopsiAgent {
     session_history: Arc<RwLock<HashMap<String, Vec<ConversationMessage>>>>,
     /// Meeting manager for active meeting sessions
     pub meeting_manager: Arc<MeetingManager>,
+    /// Platform data service — owns all CRUD operations for platform entities
+    platform_data: Option<crate::platform_data::PlatformDataService>,
+}
+
+/// Generate a human-readable description of what a tool call will do.
+fn describe_tool_action(tool_name: &str, args: &serde_json::Value) -> String {
+    match tool_name {
+        "delete_task" => {
+            let id = args.get("task_id").and_then(|v| v.as_str()).unwrap_or("unknown");
+            format!("Delete task {}", id)
+        }
+        "bulk_update_tasks" => {
+            let count = args.get("task_ids").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+            let fields: Vec<&str> = ["status", "priority", "assigned_agent"]
+                .iter()
+                .filter(|f| args.get(**f).is_some())
+                .copied()
+                .collect();
+            format!("Bulk update {} tasks (changing: {})", count, fields.join(", "))
+        }
+        "create_task" => {
+            let title = args.get("title").and_then(|v| v.as_str()).unwrap_or("untitled");
+            format!("Create task '{}'", title)
+        }
+        "create_project" => {
+            let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
+            format!("Create project '{}'", name)
+        }
+        "create_crm_contact" => {
+            let name = args.get("first_name").and_then(|v| v.as_str()).unwrap_or("");
+            let last = args.get("last_name").and_then(|v| v.as_str()).unwrap_or("");
+            format!("Create CRM contact '{} {}'", name, last)
+        }
+        "create_crm_deal" => {
+            let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
+            format!("Create CRM deal '{}'", name)
+        }
+        "approve_staged_records" => {
+            let run_id = args.get("run_id").and_then(|v| v.as_str()).unwrap_or("unknown");
+            format!("Approve staged records for workflow run {}", run_id)
+        }
+        _ => format!("Execute {} with args: {}", tool_name, args),
+    }
 }
 
 impl TopsiAgent {
@@ -298,6 +372,7 @@ impl TopsiAgent {
             execution_bridge: None,
             session_history: Arc::new(RwLock::new(HashMap::new())),
             meeting_manager: Arc::new(MeetingManager::new()),
+            platform_data: None,
         })
     }
 
@@ -309,6 +384,8 @@ impl TopsiAgent {
         }
         // Wire agent communication channels (Topsi's own agent-scoped email)
         self.channel_service = Some(Arc::new(AgentChannelService::new(pool.clone())));
+        // Initialize platform data service
+        self.platform_data = Some(crate::platform_data::PlatformDataService::new(pool.clone(), None));
         self.db = Some(pool);
         self
     }
@@ -320,6 +397,13 @@ impl TopsiAgent {
 
     /// Attach a task execution bridge for triggering agent execution
     pub fn with_execution_bridge(mut self, bridge: Arc<dyn TaskExecutionBridge>) -> Self {
+        // Rebuild platform_data with the bridge if DB is already set
+        if let Some(pool) = &self.db {
+            self.platform_data = Some(crate::platform_data::PlatformDataService::new(
+                pool.clone(),
+                Some(bridge.clone()),
+            ));
+        }
         self.execution_bridge = Some(bridge);
         self
     }
@@ -469,10 +553,13 @@ impl TopsiAgent {
         let mut total_output_tokens: i64 = 0;
         let mut final_message: Option<String> = None;
 
+        // Load effective system prompt (custom from DB or default)
+        let system_prompt = self.get_effective_system_prompt().await;
+
         // Initial LLM call with conversation history
         let mut response = llm
             .generate_with_tools_and_history(
-                TOPSI_SYSTEM_PROMPT,
+                &system_prompt,
                 message,
                 &context,
                 &tools,
@@ -599,7 +686,7 @@ impl TopsiAgent {
                     // Feed results back to LLM for next reasoning step
                     response = llm
                         .continue_with_tool_results_and_history(
-                            TOPSI_SYSTEM_PROMPT,
+                            &system_prompt,
                             message,
                             &context,
                             &calls,
@@ -637,7 +724,7 @@ impl TopsiAgent {
                 "You gathered this information:\n{}\n\nNow give a direct, conversational answer.",
                 gathered
             );
-            match llm.generate(TOPSI_SYSTEM_PROMPT, message, &synthesis_context).await {
+            match llm.generate(&system_prompt, message, &synthesis_context).await {
                 Ok(content) => content,
                 Err(_) => "Something went sideways — try asking again with a bit more context.".to_string(),
             }
@@ -758,7 +845,7 @@ impl TopsiAgent {
                     // Get details for accessible projects
                     context_parts.push("\n## Accessible Projects".to_string());
                     for project_id in ids.iter().take(10) {
-                        if let Ok(Some(project)) = Project::find_by_id(pool, *project_id).await {
+                        if let Ok(Some(project)) = Project::find_by_id(pool, &project_id.to_string()).await {
                             context_parts.push(format!(
                                 "- {} (ID: {}): {}",
                                 project.name,
@@ -770,7 +857,7 @@ impl TopsiAgent {
                 }
                 AccessScope::SingleProject(id) => {
                     context_parts.push(format!("Access Level: Single project access"));
-                    if let Ok(Some(project)) = Project::find_by_id(pool, *id).await {
+                    if let Ok(Some(project)) = Project::find_by_id(pool, &id.to_string()).await {
                         context_parts.push(format!(
                             "\n## Current Project: {} (ID: {})",
                             project.name, project.id
@@ -799,6 +886,18 @@ impl TopsiAgent {
         user_context: &UserContext,
         scope: &AccessScope,
     ) -> Vec<serde_json::Value> {
+        use db::models::topsi_user_settings::{TopsiUserSettings, ConfirmationMode, classify_tool_risk, ToolRisk};
+
+        // Load user confirmation settings once per batch
+        let user_settings = if let Some(pool) = &self.db {
+            Some(TopsiUserSettings::get_or_default(pool, &user_context.user_id).await)
+        } else {
+            None
+        };
+
+        // Instance-wide autonomy floor constrains user settings
+        let instance_floor = self.config.autonomy_level.max_confirmation_mode();
+
         let mut results = Vec::new();
 
         for call in calls {
@@ -808,11 +907,30 @@ impl TopsiAgent {
                 call.arguments
             );
 
+            // ── Confirmation gate ────────────────────────────────────────
+            if let Some(ref settings) = user_settings {
+                let risk = classify_tool_risk(&call.name);
+                let user_mode = settings.confirmation_mode_for_tool(&call.name);
+                let effective = ConfirmationMode::most_restrictive(&user_mode, &instance_floor);
+                if risk != ToolRisk::Green && matches!(effective, ConfirmationMode::AlwaysConfirm) {
+                    let action_desc = describe_tool_action(&call.name, &call.arguments);
+                    results.push(serde_json::json!({
+                        "pending_confirmation": true,
+                        "tool_name": call.name,
+                        "arguments": call.arguments,
+                        "risk_level": format!("{:?}", risk),
+                        "action": action_desc,
+                        "message": format!(
+                            "This action requires confirmation: {}. Please confirm to proceed.",
+                            action_desc
+                        )
+                    }));
+                    continue;
+                }
+            }
+
             let result = match call.name.as_str() {
-                "list_projects" => self.tool_list_projects(&call.arguments, scope).await,
-                "create_project" => self.tool_create_project(&call.arguments, user_context).await,
-                "update_project" => self.tool_update_project(&call.arguments, user_context).await,
-                "list_organizations" => self.tool_list_organizations().await,
+                // ── Topology tools (stay in agent) ──────────────────────────
                 "list_nodes" => self.tool_list_nodes(&call.arguments, scope).await,
                 "list_edges" => self.tool_list_edges(&call.arguments, scope).await,
                 "find_path" => self.tool_find_path(&call.arguments, scope).await,
@@ -820,13 +938,61 @@ impl TopsiAgent {
                 "get_topology_summary" => self.tool_get_topology_summary(&call.arguments, scope).await,
                 "create_cluster" => self.tool_create_cluster(&call.arguments, user_context, scope).await,
                 "verify_access" => self.tool_verify_access(&call.arguments, scope).await,
-                "create_task" => self.tool_create_task(&call.arguments, user_context, scope).await,
+
+                // ── Agent & utility tools (stay in agent) ───────────────────
                 "list_agents" => self.tool_list_agents(&call.arguments).await,
-                "start_task_execution" => self.tool_start_task_execution(&call.arguments, user_context, scope).await,
-                "get_task_status" => self.tool_get_task_status(&call.arguments, scope).await,
-                "update_task" => self.tool_update_task(&call.arguments, user_context, scope).await,
-                "list_tasks" => self.tool_list_tasks(&call.arguments, user_context, scope).await,
                 "respond_to_user" => self.tool_respond_to_user(&call.arguments).await,
+                "search_web" => self.tool_search_web(&call.arguments).await,
+                "fetch_web_page" => self.tool_fetch_web_page(&call.arguments).await,
+
+                // ── Specialist delegation (stay in agent) ───────────────────
+                "build_workflow" => self.tool_build_workflow(&call.arguments, user_context).await,
+
+                // ── Platform data tools (delegated to PlatformDataService) ──
+                "list_projects" | "create_project" | "update_project" | "list_organizations"
+                | "get_project_detail" | "create_task" | "start_task_execution"
+                | "get_task_status" | "update_task" | "list_tasks"
+                | "delete_task" | "bulk_update_tasks"
+                | "list_crm_contacts" | "list_crm_deals" | "list_crm_pipelines"
+                | "create_crm_contact" | "create_crm_deal" | "update_crm_deal"
+                | "list_workflow_definitions" | "get_workflow_definition"
+                | "list_workflow_runs" | "get_workflow_run_status"
+                | "review_staged_data" | "approve_staged_records"
+                | "search_entities" => {
+                    if let Some(pds) = &self.platform_data {
+                        match call.name.as_str() {
+                            "list_projects" => pds.list_projects(&call.arguments, scope).await,
+                            "create_project" => pds.create_project(&call.arguments, user_context).await,
+                            "update_project" => pds.update_project(&call.arguments, user_context).await,
+                            "list_organizations" => pds.list_organizations().await,
+                            "get_project_detail" => pds.get_project_detail(&call.arguments, scope).await,
+                            "create_task" => pds.create_task(&call.arguments, user_context, scope).await,
+                            "start_task_execution" => pds.start_task_execution(&call.arguments, user_context, scope).await,
+                            "get_task_status" => pds.get_task_status(&call.arguments, scope).await,
+                            "update_task" => pds.update_task(&call.arguments, user_context, scope).await,
+                            "list_tasks" => pds.list_tasks(&call.arguments, user_context, scope).await,
+                            "delete_task" => pds.delete_task(&call.arguments, user_context, scope).await,
+                            "bulk_update_tasks" => pds.bulk_update_tasks(&call.arguments, user_context, scope).await,
+                            "list_crm_contacts" => pds.list_crm_contacts(&call.arguments, user_context, scope).await,
+                            "list_crm_deals" => pds.list_crm_deals(&call.arguments, user_context, scope).await,
+                            "list_crm_pipelines" => pds.list_crm_pipelines(&call.arguments, user_context, scope).await,
+                            "create_crm_contact" => pds.create_crm_contact(&call.arguments, user_context).await,
+                            "create_crm_deal" => pds.create_crm_deal(&call.arguments, user_context).await,
+                            "update_crm_deal" => pds.update_crm_deal(&call.arguments, user_context).await,
+                            "list_workflow_definitions" => pds.list_workflow_definitions(&call.arguments, scope).await,
+                            "get_workflow_definition" => pds.get_workflow_definition(&call.arguments, scope).await,
+                            "list_workflow_runs" => pds.list_workflow_runs(&call.arguments, user_context, scope).await,
+                            "get_workflow_run_status" => pds.get_workflow_run_status(&call.arguments, scope).await,
+                            "review_staged_data" => pds.review_staged_data(&call.arguments, user_context, scope).await,
+                            "approve_staged_records" => pds.approve_staged_records(&call.arguments, user_context, scope).await,
+                            "search_entities" => pds.search_entities(&call.arguments, user_context, scope).await,
+                            _ => unreachable!(),
+                        }
+                    } else {
+                        Err(TopsiError::ToolError("Platform data service not initialized (no database)".to_string()))
+                    }
+                }
+
                 _ => Err(TopsiError::ToolError(format!(
                     "Unknown tool: {}",
                     call.name
@@ -842,65 +1008,38 @@ impl TopsiAgent {
         results
     }
 
-    // ==================== Tool Implementations ====================
-
-    /// List all accessible projects
-    async fn tool_list_projects(
-        &self,
-        _args: &serde_json::Value,
-        scope: &AccessScope,
-    ) -> Result<serde_json::Value> {
+    /// Resolve the effective system prompt. Checks system_settings for a custom prompt
+    /// (key: "topsi_system_prompt"), falling back to the compiled-in default.
+    /// Also checks "topsi_prompt_mode" for "sudolang" vs "standard" (default).
+    async fn get_effective_system_prompt(&self) -> String {
         let Some(pool) = &self.db else {
-            return Ok(serde_json::json!({
-                "error": "Database not connected",
-                "projects": []
-            }));
+            return TOPSI_SYSTEM_PROMPT.to_string();
         };
 
-        let projects = match scope {
-            AccessScope::Admin => {
-                // Admin sees all projects
-                Project::find_all(pool).await.map_err(|e| TopsiError::DatabaseError(e))?
-            }
-            AccessScope::Projects(ids) => {
-                // User sees only their projects
-                let mut projects = Vec::new();
-                for id in ids {
-                    if let Ok(Some(p)) = Project::find_by_id(pool, *id).await {
-                        projects.push(p);
-                    }
-                }
-                projects
-            }
-            AccessScope::SingleProject(id) => {
-                if let Ok(Some(p)) = Project::find_by_id(pool, *id).await {
-                    vec![p]
-                } else {
-                    vec![]
-                }
-            }
-            AccessScope::None => vec![],
+        // Check if there's a custom prompt stored
+        let mode = db::models::system_settings::SystemSetting::get(pool, "topsi_prompt_mode")
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "standard".to_string());
+
+        let setting_key = if mode == "sudolang" {
+            "topsi_system_prompt_sudolang"
+        } else {
+            "topsi_system_prompt"
         };
 
-        let project_list: Vec<serde_json::Value> = projects
-            .iter()
-            .map(|p| {
-                serde_json::json!({
-                    "id": p.id.to_string(),
-                    "name": p.name,
-                    "path": p.git_repo_path.display().to_string(),
-                    "vibe_spent": p.vibe_spent_amount,
-                    "vibe_budget": p.vibe_budget_limit,
-                    "created_at": p.created_at.to_rfc3339()
-                })
-            })
-            .collect();
-
-        Ok(serde_json::json!({
-            "projects": project_list,
-            "total": projects.len()
-        }))
+        db::models::system_settings::SystemSetting::get(pool, setting_key)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| TOPSI_SYSTEM_PROMPT.to_string())
     }
+
+    // ==================== Tool Implementations ====================
+    // Platform data tools (projects, tasks, CRM, workflows) are delegated to
+    // PlatformDataService — see platform_data.rs. Only topology, agent, utility,
+    // and specialist delegation tools remain here.
 
     /// List nodes (projects, agents, tasks) based on type filter
     async fn tool_list_nodes(
@@ -929,7 +1068,7 @@ impl TopsiAgent {
                     AccessScope::Projects(ids) => {
                         let mut ps = Vec::new();
                         for id in ids {
-                            if let Ok(Some(p)) = Project::find_by_id(pool, *id).await {
+                            if let Ok(Some(p)) = Project::find_by_id(pool, &id.to_string()).await {
                                 ps.push(p);
                             }
                         }
@@ -974,7 +1113,7 @@ impl TopsiAgent {
                 // Get tasks based on accessible projects
                 let project_ids: Vec<Uuid> = match scope {
                     AccessScope::Admin => {
-                        Project::find_all(pool).await.unwrap_or_default().iter().map(|p| p.id).collect()
+                        Project::find_all(pool).await.unwrap_or_default().iter().filter_map(|p| Uuid::parse_str(&p.id).ok()).collect()
                     }
                     AccessScope::Projects(ids) => ids.iter().copied().collect(),
                     AccessScope::SingleProject(id) => vec![*id],
@@ -1219,496 +1358,6 @@ impl TopsiAgent {
         }))
     }
 
-    /// Generate a conversational response to the user
-    /// Create a new project for the user
-    async fn tool_create_project(
-        &self,
-        args: &serde_json::Value,
-        user_context: &UserContext,
-    ) -> Result<serde_json::Value> {
-        let Some(pool) = &self.db else {
-            return Err(TopsiError::ToolError("Database not connected".to_string()));
-        };
-
-        // Extract arguments
-        let name = args.get("name")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| TopsiError::ToolError("Missing project name".to_string()))?;
-
-        let mut path = args.get("path")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| {
-                // Default path: ~/projects/<sanitized-name>
-                let sanitized = name.to_lowercase().replace(" ", "-");
-                format!("~/projects/{}", sanitized)
-            });
-
-        // Create the project using the Project model
-        use db::models::project::{Project, CreateProject};
-
-        // Check if path already exists and make it unique if needed
-        let base_path = path.clone();
-        let mut attempt = 0;
-        while let Ok(Some(_)) = Project::find_by_git_repo_path(pool, &path).await {
-            attempt += 1;
-            // Append a suffix to make it unique
-            let sanitized_name = name.to_lowercase().replace(" ", "-");
-            path = format!("~/projects/{}-{}", sanitized_name, attempt);
-            if attempt > 10 {
-                return Err(TopsiError::ToolError(
-                    format!("Could not find unique path after {} attempts", attempt)
-                ));
-            }
-        }
-
-        if path != base_path {
-            tracing::info!("Original path {} was taken, using {} instead", base_path, path);
-        }
-
-        let project_id = uuid::Uuid::new_v4();
-        let create_project = CreateProject {
-            name: name.to_string(),
-            git_repo_path: path.clone(),
-            setup_script: None,
-            dev_script: None,
-            cleanup_script: None,
-            copy_files: None,
-            use_existing_repo: false,
-            organization_id: None,
-            client_id: None,
-            folder_id: None,
-            parent_project_id: None,
-        };
-
-        let project = Project::create(pool, &create_project, project_id)
-            .await
-            .map_err(|e| TopsiError::ToolError(format!("Failed to create project: {}", e)))?;
-
-        // Ensure default board exists so tasks have somewhere to land
-        use db::models::project_board::ProjectBoard;
-        if let Err(e) = ProjectBoard::ensure_default_board(pool, project.id).await {
-            tracing::error!("Failed to create default board for project {}: {}", project.id, e);
-        }
-
-        // Add the creator as project owner in project_members
-        // Parse user_id string to UUID to get proper 16-byte blob encoding
-        let user_uuid = uuid::Uuid::parse_str(&user_context.user_id)
-            .map_err(|e| TopsiError::ToolError(format!("Invalid user ID '{}': {}", user_context.user_id, e)))?;
-        let member_id = uuid::Uuid::new_v4();
-        sqlx::query(
-            r#"INSERT INTO project_members (id, project_id, user_id, role, granted_by)
-               VALUES (?, ?, ?, ?, ?)"#
-        )
-        .bind(member_id.as_bytes().to_vec())
-        .bind(project.id.as_bytes().to_vec())
-        .bind(user_uuid.as_bytes().to_vec())
-        .bind("owner")
-        .bind(user_uuid.as_bytes().to_vec()) // granted_by is the user themselves
-        .execute(pool)
-        .await
-        .map_err(|e| TopsiError::ToolError(format!("Failed to add project member: {}", e)))?;
-
-        tracing::info!("Created project '{}' (ID: {}) for user {}",
-            project.name, project.id, user_context.user_id);
-
-        Ok(serde_json::json!({
-            "success": true,
-            "project_id": project.id.to_string(),
-            "name": project.name,
-            "path": project.git_repo_path.display().to_string(),
-            "message": format!("Project '{}' created successfully at {}",
-                project.name,
-                project.git_repo_path.display()
-            )
-        }))
-    }
-
-    /// List all organizations
-    async fn tool_list_organizations(&self) -> std::result::Result<serde_json::Value, TopsiError> {
-        let pool = self.db.as_ref().ok_or_else(|| TopsiError::ToolError("DB not available".into()))?;
-        let rows = sqlx::query!(
-            r#"SELECT hex(id) as id, name, slug, description FROM organizations WHERE deleted_at IS NULL ORDER BY name"#
-        )
-        .fetch_all(pool)
-        .await
-        .map_err(|e| TopsiError::ToolError(format!("Failed to list organizations: {}", e)))?;
-
-        let orgs: Vec<serde_json::Value> = rows.iter().map(|r| serde_json::json!({
-            "id": r.id,
-            "name": r.name,
-            "slug": r.slug,
-            "description": r.description
-        })).collect();
-
-        Ok(serde_json::json!({ "organizations": orgs, "count": orgs.len() }))
-    }
-
-    /// Update project metadata (name, organization assignment)
-    async fn tool_update_project(
-        &self,
-        args: &serde_json::Value,
-        user_context: &UserContext,
-    ) -> std::result::Result<serde_json::Value, TopsiError> {
-        let pool = self.db.as_ref().ok_or_else(|| TopsiError::ToolError("DB not available".into()))?;
-
-        let project_id_str = args["project_id"].as_str()
-            .ok_or_else(|| TopsiError::ToolError("project_id required".into()))?;
-        let project_uuid = uuid::Uuid::parse_str(project_id_str)
-            .map_err(|e| TopsiError::ToolError(format!("Invalid project_id: {}", e)))?;
-
-        // Verify user has access to this project
-        let member_check = sqlx::query!(
-            r#"SELECT role FROM project_members WHERE project_id = ? AND user_id = ?"#,
-            project_uuid,
-            user_context.user_id
-        )
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| TopsiError::ToolError(format!("Access check failed: {}", e)))?;
-
-        if member_check.is_none() && !user_context.is_admin {
-            return Err(TopsiError::ToolError("Access denied: not a member of this project".into()));
-        }
-
-        // Build update dynamically based on provided fields
-        let new_name = args["name"].as_str();
-        let new_org_id = args["organization_id"].as_str();
-
-        if new_name.is_none() && new_org_id.is_none() {
-            return Err(TopsiError::ToolError("Provide at least one field to update: name or organization_id".into()));
-        }
-
-        // Parse org_id from hex string (Topsi returns hex from list_organizations)
-        let org_uuid: Option<uuid::Uuid> = if let Some(org_str) = new_org_id {
-            // Accept UUID format (with dashes) or raw hex string (32 chars, no dashes)
-            if let Ok(u) = uuid::Uuid::parse_str(org_str) {
-                Some(u)
-            } else if org_str.len() == 32 {
-                // Raw hex without dashes — insert dashes and parse
-                let with_dashes = format!("{}-{}-{}-{}-{}",
-                    &org_str[0..8], &org_str[8..12], &org_str[12..16],
-                    &org_str[16..20], &org_str[20..32]);
-                Some(uuid::Uuid::parse_str(&with_dashes)
-                    .map_err(|_| TopsiError::ToolError(format!("Invalid organization_id: {}", org_str)))?)
-            } else {
-                return Err(TopsiError::ToolError(format!("organization_id must be a UUID or 32-char hex string, got: {}", org_str)));
-            }
-        } else {
-            None
-        };
-
-        sqlx::query(r#"
-            UPDATE projects
-            SET name = COALESCE(?, name),
-                organization_id = CASE WHEN ? = 1 THEN ? ELSE organization_id END,
-                updated_at = datetime('now', 'subsec')
-            WHERE id = ?
-        "#)
-        .bind(new_name)
-        .bind(org_uuid.is_some() as i32)
-        .bind(org_uuid.map(|u| u.as_bytes().to_vec()))
-        .bind(project_uuid.as_bytes().to_vec())
-        .execute(pool)
-        .await
-        .map_err(|e| TopsiError::ToolError(format!("Failed to update project: {}", e)))?;
-
-        tracing::info!("Updated project {} — name={:?}, org={:?}", project_id_str, new_name, new_org_id);
-
-        Ok(serde_json::json!({
-            "success": true,
-            "project_id": project_id_str,
-            "updated_name": new_name,
-            "updated_organization_id": new_org_id,
-            "message": "Project updated successfully"
-        }))
-    }
-
-    /// Create a task in a project
-    async fn tool_create_task(
-        &self,
-        args: &serde_json::Value,
-        user_context: &UserContext,
-        scope: &AccessScope,
-    ) -> Result<serde_json::Value> {
-        let Some(pool) = &self.db else {
-            return Err(TopsiError::ToolError("Database not connected".to_string()));
-        };
-
-        // Extract or infer project_id
-        let project_id = if let Some(pid_str) = args.get("project_id").and_then(|v| v.as_str()) {
-            // Check if it's a placeholder string (LLMs sometimes use these)
-            if pid_str.contains("<") || pid_str.contains(">") || pid_str == "null" || pid_str.is_empty() {
-                // Treat as missing, will infer below
-                None
-            } else {
-                // Try to parse as UUID
-                uuid::Uuid::parse_str(pid_str).ok()
-            }
-        } else {
-            None
-        };
-
-        let project_id = if let Some(pid) = project_id {
-            pid
-        } else {
-            // No project_id provided - try to infer from user's accessible projects
-            // IMPORTANT: Re-fetch from database to get freshly created projects
-            use db::models::project::Project;
-
-            let projects = if user_context.is_admin {
-                // Admins can see all projects
-                Project::find_all(pool).await.unwrap_or_default()
-            } else {
-                // Regular users - fetch their projects from project_members table
-                // Parse user_id string to UUID for proper 16-byte blob encoding
-                let user_uuid = uuid::Uuid::parse_str(&user_context.user_id).unwrap_or_default();
-                let user_id_bytes = user_uuid.as_bytes().to_vec();
-                let project_ids: Vec<String> = sqlx::query_scalar(
-                    r#"SELECT DISTINCT project_id FROM project_members WHERE user_id = ?"#
-                )
-                .bind(&user_id_bytes)
-                .fetch_all(pool)
-                .await
-                .unwrap_or_default();
-
-                let mut projects = Vec::new();
-                for pid_str in project_ids {
-                    if let Ok(pid) = uuid::Uuid::parse_str(&pid_str) {
-                        if let Ok(Some(p)) = Project::find_by_id(pool, pid).await {
-                            projects.push(p);
-                        }
-                    }
-                }
-                projects
-            };
-
-            if projects.is_empty() {
-                // No projects exist - auto-create one based on the task
-                // Infer project name from task title
-                let task_title = args.get("title").and_then(|v| v.as_str()).unwrap_or("Untitled Task");
-                let project_name = if task_title.len() > 30 {
-                    format!("{} Project", &task_title[..30])
-                } else {
-                    format!("{} Project", task_title)
-                };
-
-                use db::models::project::{Project, CreateProject};
-
-                // Generate unique path for auto-created project
-                let sanitized = project_name.to_lowercase().replace(" ", "-");
-                let mut path = format!("~/projects/{}", sanitized);
-                let mut attempt = 0;
-                while let Ok(Some(_)) = Project::find_by_git_repo_path(pool, &path).await {
-                    attempt += 1;
-                    path = format!("~/projects/{}-{}", sanitized, attempt);
-                    if attempt > 10 {
-                        return Err(TopsiError::ToolError(
-                            "Could not find unique path for auto-created project".to_string()
-                        ));
-                    }
-                }
-
-                let create_project = CreateProject {
-                    name: project_name.clone(),
-                    git_repo_path: path.clone(),
-                    setup_script: None,
-                    dev_script: None,
-                    cleanup_script: None,
-                    copy_files: None,
-                    use_existing_repo: false,
-                    organization_id: None,
-                    client_id: None,
-                    folder_id: None,
-                    parent_project_id: None,
-                };
-
-                let new_project_id = uuid::Uuid::new_v4();
-                match Project::create(pool, &create_project, new_project_id).await {
-                    Ok(project) => {
-                        // Add the creator as project owner in project_members
-                        // Parse user_id string to UUID for proper 16-byte blob encoding
-                        let auto_user_uuid = uuid::Uuid::parse_str(&user_context.user_id)
-                            .map_err(|e| TopsiError::ToolError(format!("Invalid user ID: {}", e)))?;
-                        let member_id = uuid::Uuid::new_v4();
-                        if let Err(e) = sqlx::query(
-                            r#"INSERT INTO project_members (id, project_id, user_id, role, granted_by)
-                               VALUES (?, ?, ?, ?, ?)"#
-                        )
-                        .bind(member_id.as_bytes().to_vec())
-                        .bind(project.id.as_bytes().to_vec())
-                        .bind(auto_user_uuid.as_bytes().to_vec())
-                        .bind("owner")
-                        .bind(auto_user_uuid.as_bytes().to_vec())
-                        .execute(pool)
-                        .await {
-                            tracing::error!("Failed to add project member for auto-created project: {}", e);
-                            return Err(TopsiError::ToolError(
-                                format!("Project created but failed to grant access: {}", e)
-                            ));
-                        }
-
-                        tracing::info!("Auto-created project '{}' (ID: {}) for task '{}' by user {}",
-                            project.name, project.id, task_title, user_context.user_id);
-                        project.id
-                    }
-                    Err(e) => {
-                        return Err(TopsiError::ToolError(
-                            format!("No projects found and failed to auto-create project '{}': {}", project_name, e)
-                        ));
-                    }
-                }
-            } else if projects.len() == 1 {
-                // Only one project - use it automatically
-                projects[0].id
-            } else {
-                // Multiple projects - return helpful context for Topsi to decide
-                let project_list: Vec<String> = projects.iter()
-                    .map(|p| format!("  - {} (ID: {})", p.name, p.id))
-                    .collect();
-
-                return Err(TopsiError::ToolError(
-                    format!(
-                        "Multiple projects available. Please analyze which project this task belongs to and call create_task again with project_id, or create a new project if this is a new idea:\n\nAvailable projects:\n{}",
-                        project_list.join("\n")
-                    )
-                ));
-            }
-        };
-
-        let title = args.get("title")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| TopsiError::ToolError("Missing title".to_string()))?;
-
-        let description = args.get("description")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| TopsiError::ToolError("Missing description".to_string()))?;
-
-        let agent_name = args.get("agent_name").and_then(|v| v.as_str());
-
-        // Verify access to project
-        match scope {
-            AccessScope::Admin => {}, // Admin can create in any project
-            AccessScope::Projects(ids) => {
-                if !ids.contains(&project_id) {
-                    return Err(TopsiError::ToolError(
-                        "You don't have access to this project".to_string()
-                    ));
-                }
-            },
-            AccessScope::SingleProject(id) => {
-                if *id != project_id {
-                    return Err(TopsiError::ToolError(
-                        "You don't have access to this project".to_string()
-                    ));
-                }
-            },
-            AccessScope::None => {
-                return Err(TopsiError::ToolError(
-                    "You don't have permission to create tasks".to_string()
-                ));
-            }
-        }
-
-        // Create the task using the Task model
-        use db::models::task::{Task, CreateTask};
-        use db::models::project_board::ProjectBoard;
-
-        // Look up the default board so the task appears on a board in the UI
-        let default_board_id = ProjectBoard::ensure_default_board(pool, project_id)
-            .await
-            .ok()
-            .map(|b| b.id);
-
-        let create_task = CreateTask {
-            project_id,
-            pod_id: None,
-            board_id: default_board_id,
-            title: title.to_string(),
-            description: Some(description.to_string()),
-            parent_task_attempt: None,
-            image_ids: None,
-            priority: None,
-            assignee_id: None,
-            assignee_type: None,
-            assigned_agent: agent_name.map(|s| s.to_string()),
-            agent_id: None,
-            assigned_mcps: None,
-            created_by: user_context.user_id.clone(),
-            requires_approval: None,
-            parent_task_id: None,
-            tags: None,
-            due_date: None,
-            custom_properties: None,
-            scheduled_start: None,
-            scheduled_end: None,
-            screenshot: None,
-        };
-
-        let task_id = uuid::Uuid::new_v4();
-        let task = Task::create(pool, &create_task, task_id)
-            .await
-            .map_err(|e| TopsiError::ToolError(format!("Failed to create task: {}", e)))?;
-
-        // Auto-execute: if an agent was assigned, automatically start task execution
-        let auto_execute = args.get("auto_execute")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true); // Default to true when agent_name is present
-
-        let execution_result = if agent_name.is_some() && auto_execute {
-            if let Some(bridge) = &self.execution_bridge {
-                let agent_lower = agent_name.unwrap().to_lowercase();
-                let executor_name = match agent_lower.as_str() {
-                    "claude" | "claude_code" => "CLAUDE_CODE",
-                    "gemini" => "GEMINI",
-                    "amp" => "AMP",
-                    "codex" | "openai" => "CODEX",
-                    _ => agent_name.unwrap(),
-                };
-                let base_branch = "main".to_string();
-
-                tracing::info!(
-                    "[TOPSI] Auto-executing task {} with agent {} (executor: {})",
-                    task.id, agent_name.unwrap(), executor_name
-                );
-
-                match bridge.start_task_attempt(task.id, executor_name, &base_branch).await {
-                    Ok(result) => {
-                        tracing::info!("[TOPSI] Auto-execution started for task {}", task.id);
-                        Some(result)
-                    }
-                    Err(e) => {
-                        tracing::error!("[TOPSI] Auto-execution failed for task {}: {}", task.id, e);
-                        Some(serde_json::json!({ "error": format!("Task created but execution failed: {}", e) }))
-                    }
-                }
-            } else {
-                Some(serde_json::json!({ "note": "Task created but execution bridge not available" }))
-            }
-        } else {
-            None
-        };
-
-        let mut response = serde_json::json!({
-            "success": true,
-            "task_id": task.id.to_string(),
-            "title": task.title,
-            "status": format!("{:?}", task.status),
-            "assigned_agent": task.assigned_agent,
-            "project_id": task.project_id.to_string(),
-            "message": format!("Task '{}' created successfully{}",
-                task.title,
-                agent_name.map(|a| format!(" and assigned to {}", a)).unwrap_or_default()
-            )
-        });
-
-        if let Some(exec) = execution_result {
-            response.as_object_mut().unwrap().insert("execution".to_string(), exec);
-        }
-
-        Ok(response)
-    }
-
     /// List all available agents
     async fn tool_list_agents(
         &self,
@@ -1748,448 +1397,6 @@ impl TopsiAgent {
         }))
     }
 
-    /// Start executing a task by spawning a coding agent
-    async fn tool_start_task_execution(
-        &self,
-        args: &serde_json::Value,
-        user_context: &UserContext,
-        scope: &AccessScope,
-    ) -> Result<serde_json::Value> {
-        let Some(pool) = &self.db else {
-            return Err(TopsiError::ToolError("Database not connected".to_string()));
-        };
-
-        let Some(bridge) = &self.execution_bridge else {
-            return Err(TopsiError::ToolError(
-                "Task execution not available — execution bridge not configured".to_string(),
-            ));
-        };
-
-        let task_id_str = args
-            .get("task_id")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| TopsiError::ToolError("Missing task_id".to_string()))?;
-
-        let task_id = Uuid::parse_str(task_id_str)
-            .map_err(|e| TopsiError::ToolError(format!("Invalid task_id '{}': {}", task_id_str, e)))?;
-
-        let agent_name = args
-            .get("agent_name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("claude");
-
-        let _additional_prompt = args
-            .get("additional_prompt")
-            .and_then(|v| v.as_str());
-
-        // Verify the task exists and user has access
-        let task: Option<Task> = sqlx::query_as("SELECT * FROM tasks WHERE id = ?")
-            .bind(task_id)
-            .fetch_optional(pool)
-            .await
-            .map_err(|e| TopsiError::DatabaseError(e))?;
-
-        let task = task.ok_or_else(|| {
-            TopsiError::ToolError(format!("Task {} not found", task_id))
-        })?;
-
-        // Verify project access
-        match scope {
-            AccessScope::Admin => {}
-            AccessScope::Projects(ids) => {
-                if !ids.contains(&task.project_id) {
-                    return Err(TopsiError::ToolError(
-                        "You don't have access to this task's project".to_string(),
-                    ));
-                }
-            }
-            AccessScope::SingleProject(id) => {
-                if *id != task.project_id {
-                    return Err(TopsiError::ToolError(
-                        "You don't have access to this task's project".to_string(),
-                    ));
-                }
-            }
-            AccessScope::None => {
-                return Err(TopsiError::ToolError(
-                    "You don't have permission to execute tasks".to_string(),
-                ));
-            }
-        }
-
-        // Get the project to determine base branch
-        let project = Project::find_by_id(pool, task.project_id)
-            .await
-            .map_err(|e| TopsiError::DatabaseError(e))?
-            .ok_or_else(|| {
-                TopsiError::ToolError(format!("Project {} not found", task.project_id))
-            })?;
-
-        // Use "main" as default base branch
-        let base_branch = "main".to_string();
-
-        // Map agent names to executor names
-        let agent_lower = agent_name.to_lowercase();
-        let executor_name = match agent_lower.as_str() {
-            "claude" | "claude_code" => "CLAUDE_CODE",
-            "gemini" => "GEMINI",
-            "amp" => "AMP",
-            "codex" | "openai" => "CODEX",
-            _ => agent_name,
-        };
-
-        tracing::info!(
-            "[TOPSI] Starting task execution: task={}, agent={}, executor={}",
-            task_id,
-            agent_name,
-            executor_name
-        );
-
-        // Delegate to the execution bridge
-        match bridge.start_task_attempt(task_id, executor_name, &base_branch).await {
-            Ok(result) => {
-                tracing::info!("[TOPSI] Task execution started successfully for task {}", task_id);
-                Ok(result)
-            }
-            Err(e) => {
-                tracing::error!("[TOPSI] Failed to start task execution: {}", e);
-                Err(TopsiError::ToolError(format!(
-                    "Failed to start task execution: {}",
-                    e
-                )))
-            }
-        }
-    }
-
-    /// Get the current status of a task including execution info and logs
-    async fn tool_get_task_status(
-        &self,
-        args: &serde_json::Value,
-        scope: &AccessScope,
-    ) -> Result<serde_json::Value> {
-        let Some(pool) = &self.db else {
-            return Err(TopsiError::ToolError("Database not connected".to_string()));
-        };
-
-        let task_id_str = args
-            .get("task_id")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| TopsiError::ToolError("Missing task_id".to_string()))?;
-
-        let task_id = Uuid::parse_str(task_id_str)
-            .map_err(|e| TopsiError::ToolError(format!("Invalid task_id: {}", e)))?;
-
-        let include_logs = args
-            .get("include_logs")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);
-
-        let log_lines = args
-            .get("log_lines")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(20) as i32;
-
-        // Fetch the task
-        let task: Option<Task> = sqlx::query_as("SELECT * FROM tasks WHERE id = ?")
-            .bind(task_id)
-            .fetch_optional(pool)
-            .await
-            .map_err(|e| TopsiError::DatabaseError(e))?;
-
-        let task = task.ok_or_else(|| {
-            TopsiError::ToolError(format!("Task {} not found", task_id))
-        })?;
-
-        // Build task info
-        let mut result = serde_json::json!({
-            "task_id": task.id.to_string(),
-            "title": task.title,
-            "description": task.description,
-            "status": format!("{:?}", task.status).to_lowercase(),
-            "priority": format!("{:?}", task.priority).to_lowercase(),
-            "assigned_agent": task.assigned_agent,
-            "created_at": task.created_at.to_rfc3339(),
-            "updated_at": task.updated_at.to_rfc3339(),
-        });
-
-        // Fetch latest task attempt
-        let latest_attempt: Option<(String, String, String, String, String)> = sqlx::query_as(
-            "SELECT id, executor, base_branch, created_at, updated_at FROM task_attempts WHERE task_id = ? ORDER BY created_at DESC LIMIT 1"
-        )
-        .bind(task_id)
-        .fetch_optional(pool)
-        .await
-        .unwrap_or(None);
-
-        if let Some((attempt_id, executor, base_branch, attempt_created, attempt_updated)) =
-            latest_attempt
-        {
-            result["latest_attempt"] = serde_json::json!({
-                "attempt_id": attempt_id,
-                "executor": executor,
-                "base_branch": base_branch,
-                "created_at": attempt_created,
-                "updated_at": attempt_updated,
-            });
-
-            // Fetch latest execution process for this attempt
-            let latest_process: Option<(String, String, Option<i32>, String, String)> = sqlx::query_as(
-                "SELECT id, status, exit_code, created_at, updated_at FROM execution_processes WHERE task_attempt_id = ? ORDER BY created_at DESC LIMIT 1"
-            )
-            .bind(&attempt_id)
-            .fetch_optional(pool)
-            .await
-            .unwrap_or(None);
-
-            if let Some((proc_id, proc_status, exit_code, proc_created, proc_updated)) =
-                latest_process
-            {
-                result["latest_process"] = serde_json::json!({
-                    "process_id": proc_id,
-                    "status": proc_status,
-                    "exit_code": exit_code,
-                    "created_at": proc_created,
-                    "updated_at": proc_updated,
-                });
-
-                // Fetch recent logs if requested
-                if include_logs {
-                    let logs: Vec<(String,)> = sqlx::query_as(
-                        "SELECT logs FROM execution_process_logs WHERE execution_id = ? ORDER BY inserted_at DESC LIMIT ?"
-                    )
-                    .bind(&proc_id)
-                    .bind(log_lines)
-                    .fetch_all(pool)
-                    .await
-                    .unwrap_or_default();
-
-                    if !logs.is_empty() {
-                        let log_text: Vec<&str> = logs.iter().map(|(l,)| l.as_str()).collect();
-                        result["recent_logs"] = serde_json::json!(log_text);
-                    }
-                }
-            }
-        } else {
-            result["latest_attempt"] = serde_json::json!(null);
-            result["note"] = serde_json::json!("No execution attempts yet");
-        }
-
-        Ok(result)
-    }
-
-    /// Update a task's properties
-    async fn tool_update_task(
-        &self,
-        args: &serde_json::Value,
-        user_context: &UserContext,
-        scope: &AccessScope,
-    ) -> Result<serde_json::Value> {
-        let Some(pool) = &self.db else {
-            return Err(TopsiError::ToolError("Database not connected".to_string()));
-        };
-
-        let task_id_str = args
-            .get("task_id")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| TopsiError::ToolError("Missing task_id".to_string()))?;
-
-        let task_id = Uuid::parse_str(task_id_str)
-            .map_err(|e| TopsiError::ToolError(format!("Invalid task_id: {}", e)))?;
-
-        // Fetch the task to verify it exists and check access
-        let task: Option<Task> = sqlx::query_as("SELECT * FROM tasks WHERE id = ?")
-            .bind(task_id)
-            .fetch_optional(pool)
-            .await
-            .map_err(|e| TopsiError::DatabaseError(e))?;
-
-        let task = task.ok_or_else(|| {
-            TopsiError::ToolError(format!("Task {} not found", task_id))
-        })?;
-
-        // Verify project access
-        match scope {
-            AccessScope::Admin => {}
-            AccessScope::Projects(ids) => {
-                if !ids.contains(&task.project_id) {
-                    return Err(TopsiError::ToolError(
-                        "You don't have access to this task's project".to_string(),
-                    ));
-                }
-            }
-            AccessScope::SingleProject(id) => {
-                if *id != task.project_id {
-                    return Err(TopsiError::ToolError(
-                        "You don't have access to this task's project".to_string(),
-                    ));
-                }
-            }
-            AccessScope::None => {
-                return Err(TopsiError::ToolError(
-                    "You don't have permission to update tasks".to_string(),
-                ));
-            }
-        }
-
-        // Build dynamic UPDATE query
-        let mut updates = vec![];
-        let mut values: Vec<String> = vec![];
-
-        if let Some(status) = args.get("status").and_then(|v| v.as_str()) {
-            updates.push("status = ?");
-            values.push(status.to_string());
-        }
-        if let Some(title) = args.get("title").and_then(|v| v.as_str()) {
-            updates.push("title = ?");
-            values.push(title.to_string());
-        }
-        if let Some(description) = args.get("description").and_then(|v| v.as_str()) {
-            updates.push("description = ?");
-            values.push(description.to_string());
-        }
-        if let Some(priority) = args.get("priority").and_then(|v| v.as_str()) {
-            updates.push("priority = ?");
-            values.push(priority.to_string());
-        }
-        if let Some(agent) = args.get("assigned_agent").and_then(|v| v.as_str()) {
-            updates.push("assigned_agent = ?");
-            values.push(agent.to_string());
-        }
-
-        if updates.is_empty() {
-            return Ok(serde_json::json!({
-                "success": false,
-                "message": "No fields to update. Provide at least one of: status, title, description, priority, assigned_agent"
-            }));
-        }
-
-        updates.push("updated_at = datetime('now')");
-
-        let query = format!(
-            "UPDATE tasks SET {} WHERE id = ?",
-            updates.join(", ")
-        );
-
-        let mut q = sqlx::query(&query);
-        for val in &values {
-            q = q.bind(val);
-        }
-        q = q.bind(task_id);
-
-        q.execute(pool)
-            .await
-            .map_err(|e| TopsiError::ToolError(format!("Failed to update task: {}", e)))?;
-
-        tracing::info!("[TOPSI] Updated task {} with {} field changes", task_id, values.len());
-
-        Ok(serde_json::json!({
-            "success": true,
-            "task_id": task_id.to_string(),
-            "updated_fields": values.len(),
-            "message": format!("Task '{}' updated successfully", task.title)
-        }))
-    }
-
-    /// List tasks with filtering by status, agent, and project
-    async fn tool_list_tasks(
-        &self,
-        args: &serde_json::Value,
-        user_context: &UserContext,
-        scope: &AccessScope,
-    ) -> Result<serde_json::Value> {
-        let Some(pool) = &self.db else {
-            return Err(TopsiError::ToolError("Database not connected".to_string()));
-        };
-
-        let status_filter = args.get("status").and_then(|v| v.as_str());
-        let agent_filter = args.get("assigned_agent").and_then(|v| v.as_str());
-        let limit = args
-            .get("limit")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(20) as i32;
-
-        // Determine which project IDs to query
-        let project_id_filter = args.get("project_id").and_then(|v| v.as_str());
-
-        let project_ids: Vec<Uuid> = if let Some(pid_str) = project_id_filter {
-            if let Ok(pid) = Uuid::parse_str(pid_str) {
-                vec![pid]
-            } else {
-                return Err(TopsiError::ToolError(format!("Invalid project_id: {}", pid_str)));
-            }
-        } else {
-            // Infer from scope
-            match scope {
-                AccessScope::Admin => {
-                    Project::find_all(pool)
-                        .await
-                        .unwrap_or_default()
-                        .iter()
-                        .map(|p| p.id)
-                        .collect()
-                }
-                AccessScope::Projects(ids) => ids.iter().copied().collect(),
-                AccessScope::SingleProject(id) => vec![*id],
-                AccessScope::None => vec![],
-            }
-        };
-
-        let mut all_tasks: Vec<serde_json::Value> = vec![];
-
-        for pid in &project_ids {
-            // Build query with filters
-            let mut query = String::from(
-                "SELECT id, title, status, priority, assigned_agent, created_at, updated_at FROM tasks WHERE project_id = ?"
-            );
-            let mut bind_values: Vec<String> = vec![pid.to_string()];
-
-            if let Some(status) = status_filter {
-                query.push_str(" AND status = ?");
-                bind_values.push(status.to_string());
-            }
-            if let Some(agent) = agent_filter {
-                query.push_str(" AND assigned_agent = ?");
-                bind_values.push(agent.to_string());
-            }
-
-            query.push_str(" ORDER BY created_at DESC LIMIT ?");
-
-            let mut q = sqlx::query_as::<_, (String, String, String, String, Option<String>, String, String)>(&query);
-            for val in &bind_values {
-                q = q.bind(val);
-            }
-            q = q.bind(limit);
-
-            let tasks: Vec<(String, String, String, String, Option<String>, String, String)> = q
-                .fetch_all(pool)
-                .await
-                .unwrap_or_default();
-
-            for (id, title, status, priority, agent, created, updated) in tasks {
-                all_tasks.push(serde_json::json!({
-                    "id": id,
-                    "title": title,
-                    "status": status,
-                    "priority": priority,
-                    "assigned_agent": agent,
-                    "project_id": pid.to_string(),
-                    "created_at": created,
-                    "updated_at": updated,
-                }));
-            }
-        }
-
-        Ok(serde_json::json!({
-            "tasks": all_tasks,
-            "total": all_tasks.len(),
-            "filters": {
-                "status": status_filter,
-                "assigned_agent": agent_filter,
-                "limit": limit,
-            }
-        }))
-    }
-
     async fn tool_respond_to_user(
         &self,
         args: &serde_json::Value,
@@ -2202,6 +1409,64 @@ impl TopsiAgent {
             "response": message,
             "spoken": true
         }))
+    }
+
+    async fn tool_search_web(&self, args: &serde_json::Value) -> Result<serde_json::Value> {
+        let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+        let max_results = args.get("max_results").and_then(|v| v.as_u64()).unwrap_or(5) as u32;
+
+        let api_key = std::env::var("EXA_API_KEY").unwrap_or_default();
+        if api_key.is_empty() {
+            return Ok(serde_json::json!({"success": false, "error": "EXA_API_KEY not configured"}));
+        }
+
+        let client = reqwest::Client::new();
+        let resp = client
+            .post("https://api.exa.ai/search")
+            .header("x-api-key", &api_key)
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({"query": query, "num_results": max_results, "use_autoprompt": true, "text": true}))
+            .send()
+            .await
+            .map_err(|e| TopsiError::ToolError(format!("Search failed: {}", e)))?;
+
+        let data: serde_json::Value = resp.json().await
+            .map_err(|e| TopsiError::ToolError(format!("Search parse failed: {}", e)))?;
+
+        let results = data.get("results").and_then(|r| r.as_array())
+            .map(|arr| arr.iter().map(|r| serde_json::json!({
+                "title": r.get("title").and_then(|t| t.as_str()).unwrap_or(""),
+                "url": r.get("url").and_then(|u| u.as_str()).unwrap_or(""),
+                "snippet": r.get("text").and_then(|t| t.as_str()).unwrap_or(""),
+            })).collect::<Vec<_>>())
+            .unwrap_or_default();
+
+        Ok(serde_json::json!({"success": true, "query": query, "results": results}))
+    }
+
+    async fn tool_fetch_web_page(&self, args: &serde_json::Value) -> Result<serde_json::Value> {
+        let url = args.get("url").and_then(|v| v.as_str()).unwrap_or("");
+
+        let client = reqwest::Client::new();
+        let response = client.get(url).send().await
+            .map_err(|e| TopsiError::ToolError(format!("Fetch failed: {}", e)))?;
+        let content = response.text().await
+            .map_err(|e| TopsiError::ToolError(format!("Read failed: {}", e)))?;
+
+        // Basic tag strip
+        let mut in_tag = false;
+        let mut text = String::with_capacity(content.len());
+        for c in content.chars() {
+            match c {
+                '<' => { in_tag = true; text.push(' '); }
+                '>' => { in_tag = false; }
+                _ if !in_tag => text.push(c),
+                _ => {}
+            }
+        }
+        let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+
+        Ok(serde_json::json!({"success": true, "url": url, "content": text, "content_length": text.len()}))
     }
 
     async fn tool_verify_access(
@@ -2250,6 +1515,40 @@ impl TopsiAgent {
             "allowed": allowed,
             "scope": format!("{:?}", scope)
         }))
+    }
+
+    // ── Workflow builder delegation ─────────────────────────────────────────
+
+    /// Delegate workflow creation/modification to the Workflow Builder specialist.
+    /// Topsi passes the user's request and scoping info; the builder queries the DB
+    /// directly for anything else it needs.
+    async fn tool_build_workflow(
+        &self,
+        args: &serde_json::Value,
+        _user_context: &UserContext,
+    ) -> Result<serde_json::Value> {
+        let Some(pool) = &self.db else {
+            return Ok(serde_json::json!({"error": "Database not connected"}));
+        };
+        let Some(llm) = &self.llm else {
+            return Ok(serde_json::json!({"error": "LLM not configured — cannot generate workflows"}));
+        };
+
+        let action = args.get("action").and_then(|v| v.as_str()).unwrap_or("create");
+        let user_request = match args.get("user_request").and_then(|v| v.as_str()) {
+            Some(r) => r,
+            None => return Ok(serde_json::json!({"error": "user_request is required"})),
+        };
+        let context = args.get("context").and_then(|v| v.as_str()).unwrap_or("");
+        let workflow_id = args.get("workflow_id").and_then(|v| v.as_str());
+        let owner_id = args.get("owner_id").and_then(|v| v.as_str());
+
+        match crate::workflow_builder::build_workflow(
+            llm, pool, action, user_request, context, workflow_id, owner_id,
+        ).await {
+            Ok(result) => Ok(result),
+            Err(e) => Ok(serde_json::json!({"error": e})),
+        }
     }
 
     /// Handle topology requests
@@ -2315,7 +1614,7 @@ impl TopsiAgent {
     /// Handle listing projects
     async fn handle_list_projects(
         &self,
-        user_context: &UserContext,
+        _user_context: &UserContext,
         scope: &AccessScope,
     ) -> Result<TopsiResponse> {
         let project_count = match scope {
@@ -2351,7 +1650,7 @@ impl TopsiAgent {
     async fn handle_command(
         &self,
         command: &str,
-        user_context: &UserContext,
+        _user_context: &UserContext,
         scope: &AccessScope,
     ) -> Result<TopsiResponse> {
         // Parse and execute command
@@ -2415,8 +1714,8 @@ impl TopsiAgent {
     /// Get topology summary for accessible projects
     async fn get_topology_summary(
         &self,
-        project_id: Option<Uuid>,
-        scope: &AccessScope,
+        _project_id: Option<Uuid>,
+        _scope: &AccessScope,
     ) -> Result<TopologySummary> {
         // Return a basic summary for now
         // TODO: Integrate with actual topology data from database
@@ -2435,8 +1734,8 @@ impl TopsiAgent {
     /// Detect issues in the topology
     async fn detect_issues(
         &self,
-        project_id: Option<Uuid>,
-        scope: &AccessScope,
+        _project_id: Option<Uuid>,
+        _scope: &AccessScope,
     ) -> Result<Vec<DetectedIssue>> {
         // Return empty for now
         // TODO: Implement actual issue detection
@@ -2483,7 +1782,7 @@ impl TopsiAgent {
                         .await
                         .unwrap_or_default()
                         .iter()
-                        .map(|p| p.id)
+                        .filter_map(|p| Uuid::parse_str(&p.id).ok())
                         .collect()
                 }
                 AccessScope::Projects(ids) => ids.iter().copied().collect(),

@@ -22,6 +22,7 @@ pub struct TaskDistributor {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct PendingDistribution {
     request: TaskDistributionRequest,
     bids: Vec<TaskBid>,

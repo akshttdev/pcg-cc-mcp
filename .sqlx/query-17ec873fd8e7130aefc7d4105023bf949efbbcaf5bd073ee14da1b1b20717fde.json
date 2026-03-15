@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO reward_batches (\n                id, batch_number, total_rewards, total_amount, from_wallet\n            )\n            VALUES ($1, $2, $3, $4, $5)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "17ec873fd8e7130aefc7d4105023bf949efbbcaf5bd073ee14da1b1b20717fde"
+}

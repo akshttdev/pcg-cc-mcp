@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
   FolderOpen,
@@ -9,14 +9,50 @@ import {
   Menu,
 } from 'lucide-react';
 import { SearchBar } from '@/components/search-bar';
-import { ProfileSection } from '@/components/layout/profile-section';
 import { useSearch } from '@/contexts/search-context';
 import { openTaskForm } from '@/lib/openTaskForm';
 import { useProject } from '@/contexts/project-context';
+import { useOrganization } from '@/contexts/organization-context';
 import { showProjectForm } from '@/lib/modals';
 import { useOpenProjectInEditor } from '@/hooks/useOpenProjectInEditor';
 import { useCommandStore } from '@/stores/useCommandStore';
 import { NotificationCenter } from '@/components/notifications/NotificationCenter';
+import { NavbarUserButton } from '@/components/layout/NavbarUserButton';
+
+const ADMIN_ROUTES = ['/site-directory', '/nora', '/mission-control', '/admin'];
+
+function ScopeIndicator() {
+  const location = useLocation();
+  const { organization, orgId } = useOrganization();
+  const { project, projectId } = useProject();
+
+  // Project scope takes priority (more specific)
+  if (projectId && project) {
+    return (
+      <Link to={`/projects/${projectId}`} className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 truncate max-w-[180px] hover:bg-emerald-500/25 transition-colors">
+        Project: {project.name}
+      </Link>
+    );
+  }
+
+  if (orgId && organization) {
+    return (
+      <Link to={`/organizations/${orgId}`} className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/20 truncate max-w-[180px] hover:bg-blue-500/25 transition-colors">
+        Org: {organization.name}
+      </Link>
+    );
+  }
+
+  if (ADMIN_ROUTES.some((r) => location.pathname.startsWith(r))) {
+    return (
+      <Link to="/site-directory" className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-500/15 text-orange-600 dark:text-orange-400 border border-orange-500/20 hover:bg-orange-500/25 transition-colors">
+        Admin
+      </Link>
+    );
+  }
+
+  return null;
+}
 
 interface NavbarProps {
   onToggleSidebar?: () => void;
@@ -77,6 +113,10 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
               className="h-8 sm:h-9 w-auto"
             />
             <span className="ml-2 text-sm sm:text-base font-semibold hidden sm:inline tracking-widest uppercase dark:text-white" style={{ fontFamily: "'Cinzel', serif", color: '#b8952a' }}>Powerclub Global</span>
+          </div>
+
+          <div className="hidden sm:flex items-center shrink-0">
+            <ScopeIndicator />
           </div>
 
           <div className="flex-1 min-w-0">
@@ -153,7 +193,9 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
             )}
 
             <NotificationCenter />
-            <ProfileSection />
+
+            {/* Mobile user avatar — quick access without opening sidebar */}
+            <NavbarUserButton />
           </div>
         </div>
       </div>

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM dropbox_sources WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "1fe402a3ca5b94e6ebbd4c99db620b4b3e45622d583055535b344fa1f948464a"
+}

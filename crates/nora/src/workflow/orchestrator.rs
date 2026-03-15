@@ -438,7 +438,7 @@ impl WorkflowOrchestrator {
         workflow: &crate::profiles::AgentWorkflow,
         context: &WorkflowContext,
         executor: &TaskExecutor,
-    ) -> Vec<Uuid> {
+    ) -> Vec<String> {
         use crate::executor::TaskDefinition;
         use db::models::task::Priority;
 
@@ -467,7 +467,7 @@ impl WorkflowOrchestrator {
                 pod_id: None,
             };
 
-            match executor.create_task(project_id, task_def).await {
+            match executor.create_task(project_id.to_string(), task_def).await {
                 Ok(task) => {
                     tracing::info!(
                         "[WORKFLOW_ORCHESTRATOR] Created task '{}' for stage '{}'",

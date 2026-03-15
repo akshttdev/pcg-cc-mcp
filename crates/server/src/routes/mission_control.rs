@@ -25,9 +25,9 @@ use crate::{DeploymentImpl, error::ApiError};
 #[derive(Debug, Serialize, TS)]
 pub struct ActiveExecutionInfo {
     pub process: ExecutionProcess,
-    pub task_id: Uuid,
+    pub task_id: String,
     pub task_title: String,
-    pub project_id: Uuid,
+    pub project_id: String,
     pub project_name: String,
     pub executor: String,
     pub plan: Option<AgentTaskPlan>,
@@ -38,9 +38,9 @@ pub struct ActiveExecutionInfo {
 #[derive(Debug, Serialize, TS)]
 pub struct ActiveWorkflowInfo {
     pub flow: AgentFlow,
-    pub task_id: Uuid,
+    pub task_id: String,
     pub task_title: String,
-    pub project_id: Option<Uuid>,
+    pub project_id: Option<String>,
     pub project_name: Option<String>,
     pub events_count: usize,
 }
@@ -56,7 +56,7 @@ pub struct MissionControlDashboard {
 
 #[derive(Debug, Serialize, TS)]
 pub struct ProjectExecutionSummary {
-    pub project_id: Uuid,
+    pub project_id: String,
     pub project_name: String,
     pub active_count: usize,
     pub capacity: ProjectCapacity,
@@ -72,7 +72,7 @@ pub async fn get_dashboard(
     let running_processes = ExecutionProcess::find_running(pool).await?;
 
     let mut active_executions = Vec::new();
-    let mut project_map: std::collections::HashMap<Uuid, (String, usize, Option<ProjectCapacity>)> =
+    let mut project_map: std::collections::HashMap<String, (String, usize, Option<ProjectCapacity>)> =
         std::collections::HashMap::new();
 
     for process in running_processes {
@@ -89,10 +89,10 @@ pub async fn get_dashboard(
                 .await
                 .unwrap_or_default();
 
-            let project_id = ctx.task.project_id;
+            let project_id = ctx.task.project_id.clone();
 
             // Update project summary
-            let entry = project_map.entry(project_id).or_insert_with(|| {
+            let entry = project_map.entry(project_id.clone()).or_insert_with(|| {
                 let project_name = String::new(); // Will be populated below
                 (project_name, 0, None)
             });
@@ -101,20 +101,22 @@ pub async fn get_dashboard(
             // Get project name if not already fetched
             if entry.0.is_empty() {
                 if let Ok(Some(project)) =
-                    db::models::project::Project::find_by_id(pool, project_id).await
+                    db::models::project::Project::find_by_id(pool, &project_id).await
                 {
                     entry.0 = project.name;
                     // Get capacity for this project
-                    if let Ok(capacity) = deployment.container().get_project_capacity(project_id).await
-                    {
-                        entry.2 = Some(capacity);
+                    if let Ok(pid) = Uuid::parse_str(&project_id) {
+                        if let Ok(capacity) = deployment.container().get_project_capacity(pid).await
+                        {
+                            entry.2 = Some(capacity);
+                        }
                     }
                 }
             }
 
             active_executions.push(ActiveExecutionInfo {
                 process,
-                task_id: ctx.task.id,
+                task_id: ctx.task.id.clone(),
                 task_title: ctx.task.title,
                 project_id,
                 project_name: entry.0.clone(),
@@ -128,19 +130,22 @@ pub async fn get_dashboard(
     // Build project summaries
     let by_project: Vec<ProjectExecutionSummary> = project_map
         .into_iter()
-        .map(|(project_id, (project_name, active_count, capacity))| ProjectExecutionSummary {
-            project_id,
-            project_name,
-            active_count,
-            capacity: capacity.unwrap_or(ProjectCapacity {
+        .map(|(project_id, (project_name, active_count, capacity))| {
+            let pid = Uuid::parse_str(&project_id).unwrap_or_default();
+            ProjectExecutionSummary {
                 project_id,
-                max_concurrent_agents: 3,
-                max_concurrent_browser_agents: 1,
-                active_agent_slots: active_count as i32,
-                active_browser_slots: 0,
-                available_agent_slots: 3 - active_count as i32,
-                available_browser_slots: 1,
-            }),
+                project_name,
+                active_count,
+                capacity: capacity.unwrap_or(ProjectCapacity {
+                    project_id: pid,
+                    max_concurrent_agents: 3,
+                    max_concurrent_browser_agents: 1,
+                    active_agent_slots: active_count as i32,
+                    active_browser_slots: 0,
+                    available_agent_slots: 3 - active_count as i32,
+                    available_browser_slots: 1,
+                }),
+            }
         })
         .collect();
 
@@ -152,13 +157,13 @@ pub async fn get_dashboard(
 
     for flow in recent_flows {
         // Get associated task
-        if let Ok(Some(task)) = Task::find_by_id(pool, flow.task_id).await {
+        if let Ok(Some(task)) = Task::find_by_id(pool, &flow.task_id.to_string()).await {
             // Get project info
             let (project_id, project_name) = if let Ok(Some(project)) =
-                db::models::project::Project::find_by_id(pool, task.project_id).await {
+                db::models::project::Project::find_by_id(pool, &task.project_id).await {
                 (Some(project.id), Some(project.name))
             } else {
-                (Some(task.project_id), None)
+                (Some(task.project_id.clone()), None)
             };
 
             // Get events count
@@ -168,7 +173,7 @@ pub async fn get_dashboard(
                 .unwrap_or(0);
 
             active_workflows.push(ActiveWorkflowInfo {
-                task_id: flow.task_id,
+                task_id: flow.task_id.to_string(),
                 task_title: task.title,
                 project_id,
                 project_name,

@@ -42,9 +42,9 @@ pub enum RalphServiceError {
     #[error("Agent not found: {0}")]
     AgentNotFound(String),
     #[error("Task not found: {0}")]
-    TaskNotFound(Uuid),
+    TaskNotFound(String),
     #[error("Task attempt not found: {0}")]
-    TaskAttemptNotFound(Uuid),
+    TaskAttemptNotFound(String),
     #[error("Working directory not found")]
     WorkingDirNotFound,
     #[error("Ralph execution error: {0}")]
@@ -59,7 +59,7 @@ pub enum RalphServiceEvent {
     /// Ralph loop started
     Started {
         ralph_loop_id: String,
-        task_attempt_id: Uuid,
+        task_attempt_id: String,
         max_iterations: u32,
     },
     /// Iteration started
@@ -100,7 +100,7 @@ pub enum RalphServiceEvent {
 /// Request to start a Ralph loop execution
 #[derive(Debug, Deserialize, TS)]
 pub struct StartRalphRequest {
-    pub task_attempt_id: Uuid,
+    pub task_attempt_id: String,
     /// Override max iterations (uses agent config default if not provided)
     pub max_iterations: Option<u32>,
     /// Override backpressure commands
@@ -214,16 +214,18 @@ impl RalphService {
         request: StartRalphRequest,
         event_sender: Option<mpsc::Sender<RalphServiceEvent>>,
     ) -> Result<RalphLoopState, RalphServiceError> {
-        // Get task attempt
-        let task_attempt = TaskAttempt::find_by_id(&self.db.pool, request.task_attempt_id)
+        // Get task attempt — parse string to Uuid at the boundary
+        let attempt_uuid = Uuid::parse_str(&request.task_attempt_id)
+            .map_err(|_| RalphServiceError::TaskAttemptNotFound(request.task_attempt_id.clone()))?;
+        let task_attempt = TaskAttempt::find_by_id(&self.db.pool, attempt_uuid)
             .await?
-            .ok_or(RalphServiceError::TaskAttemptNotFound(request.task_attempt_id))?;
+            .ok_or(RalphServiceError::TaskAttemptNotFound(request.task_attempt_id.clone()))?;
 
         // Get task
         let task = task_attempt
             .parent_task(&self.db.pool)
             .await?
-            .ok_or(RalphServiceError::TaskNotFound(request.task_attempt_id))?;
+            .ok_or(RalphServiceError::TaskNotFound(request.task_attempt_id.clone()))?;
 
         // Resolve config
         let mut resolved = self.resolve_config(&task).await?;
@@ -243,7 +245,7 @@ impl RalphService {
         let agent_id = if let Some(agent_name) = &resolved.agent_name {
             Agent::find_by_short_name(&self.db.pool, agent_name)
                 .await?
-                .map(|a| a.id)
+                .map(|a| a.id.to_string())
         } else {
             None
         };
@@ -252,7 +254,7 @@ impl RalphService {
         let loop_state = RalphLoopState::create(
             &self.db.pool,
             CreateRalphLoopState {
-                task_attempt_id: task_attempt.id,
+                task_attempt_id: task_attempt.id.to_string(),
                 agent_id,
                 max_iterations: resolved.max_iterations as i32,
                 completion_promise: Some(resolved.completion_promise.clone()),
@@ -266,7 +268,7 @@ impl RalphService {
             let _ = sender
                 .send(RalphServiceEvent::Started {
                     ralph_loop_id: loop_state.id.clone(),
-                    task_attempt_id: task_attempt.id,
+                    task_attempt_id: task_attempt.id.to_string(),
                     max_iterations: resolved.max_iterations,
                 })
                 .await;
@@ -422,7 +424,7 @@ impl RalphService {
     /// Get Ralph loop state by task attempt
     pub async fn get_loop_state_by_attempt(
         &self,
-        task_attempt_id: Uuid,
+        task_attempt_id: &str,
     ) -> Result<Option<RalphLoopState>, RalphServiceError> {
         RalphLoopState::find_by_task_attempt(&self.db.pool, task_attempt_id)
             .await

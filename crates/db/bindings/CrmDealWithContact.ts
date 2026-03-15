@@ -3,4 +3,12 @@
 /**
  * Deal with associated contact info for Kanban display
  */
-export type CrmDealWithContact = { contact_name: string | null, contact_email: string | null, contact_company: string | null, contact_avatar_url: string | null, id: string, project_id: string, crm_contact_id: string | null, crm_pipeline_id: string | null, crm_stage_id: string | null, position: number | null, name: string, description: string | null, amount: number | null, currency: string, pipeline: string, stage: string, probability: number, expected_close_date: string | null, actual_close_date: string | null, last_activity_at: string | null, owner_user_id: string | null, assigned_agent_id: string | null, zoho_deal_id: string | null, external_ids: string | null, tags: string | null, custom_fields: string | null, lost_reason: string | null, win_reason: string | null, created_at: string, updated_at: string, };
+export type CrmDealWithContact = { contact_name: string | null, contact_email: string | null, contact_company: string | null, contact_avatar_url: string | null, project_name: string | null, task_total: bigint, task_done: bigint, deliverable_count: bigint, 
+/**
+ * person_id from crm_contacts — bridges to persons table for wiki/intel
+ */
+person_id: string | null, 
+/**
+ * report_id — id of the business report (wiki) for this deal's person
+ */
+report_id: string | null, intelligence_status: string | null, intelligence_summary: string | null, intelligence_confidence: number | null, research_pass_count: bigint | null, report_status: string | null, report_review_status: string | null, review_task_id: string | null, review_task_status: string | null, review_task_assignee: string | null, id: string, project_id: string | null, organization_id: string | null, client_id: string | null, crm_contact_id: string | null, crm_pipeline_id: string | null, crm_stage_id: string | null, position: number | null, name: string, description: string | null, amount: number | null, currency: string, pipeline: string, stage: string, probability: number, expected_close_date: string | null, actual_close_date: string | null, last_activity_at: string | null, owner_user_id: string | null, assigned_agent_id: string | null, zoho_deal_id: string | null, external_ids: string | null, tags: string | null, custom_fields: string | null, lost_reason: string | null, win_reason: string | null, created_at: string, updated_at: string, };

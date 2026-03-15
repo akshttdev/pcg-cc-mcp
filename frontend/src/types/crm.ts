@@ -116,6 +116,20 @@ export interface CrmDealWithContact {
   task_total?: number;
   task_done?: number;
   deliverable_count?: number;
+  person_id?: string;
+  report_id?: string;
+  // Intelligence
+  intelligence_status?: string;
+  intelligence_summary?: string;
+  intelligence_confidence?: number;
+  research_pass_count?: number;
+  // Report
+  report_status?: string;
+  report_review_status?: string;
+  // Review task
+  review_task_id?: string;
+  review_task_status?: string;
+  review_task_assignee?: string;
 }
 
 // Kanban board data structure

@@ -36,6 +36,9 @@
     },
     "vars": {
       "CMAKE_POLICY_VERSION_MINIMUM": "3.5",
+      "E2E_BROWSER": "chromium",
+      "E2E_HEADED": "false",
+      "FRONTEND_PORT": "3000",
       "ORCHA_USERNAME": "Sirak",
       "PCG_SERVER_URL": "http://localhost:3000",
       "RUSTC_WRAPPER": "sccache",

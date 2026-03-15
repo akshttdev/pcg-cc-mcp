@@ -86,6 +86,9 @@ import {
   AirtablePushTaskRequest,
 } from 'shared/types';
 
+// Extend TaskWithAttemptStatus with archived_at (frontend feature, not yet in DB/backend)
+export type TaskWithArchive = TaskWithAttemptStatus & { archived_at?: string | null };
+
 // CRM Pipeline & Deal Types
 import type {
   CrmPipeline,
@@ -169,7 +172,7 @@ export function resolveWsUrl(path: string): string {
   return `${protocol}//${window.location.host}${path}`;
 }
 
-const makeRequest = async (url: string, options: RequestInit = {}) => {
+export const makeRequest = async (url: string, options: RequestInit = {}) => {
   // In Tauri mode, cookies don't work cross-origin (tauri:// → http://localhost).
   // Send the session_id as a Bearer token instead.
   const authHeaders: Record<string, string> = {};
@@ -770,6 +773,11 @@ export interface AssignedTask {
   due_date: string | null;
   project_id: string;
   project_name: string;
+  description?: string | null;
+  assigned_agent?: string | null;
+  assignee_id?: string | null;
+  created_by?: string | null;
+  tags?: string | null;
 }
 
 // Task Management APIs
@@ -778,13 +786,17 @@ export const tasksApi = {
     const response = await makeRequest('/api/tasks/assigned-to-me');
     return handleApiResponse<AssignedTask[]>(response);
   },
+  getCreatedByMe: async (): Promise<AssignedTask[]> => {
+    const response = await makeRequest('/api/tasks/created-by-me');
+    return handleApiResponse<AssignedTask[]>(response);
+  },
   getWatchedTasks: async (): Promise<AssignedTask[]> => {
     const response = await makeRequest('/api/tasks/watched');
     return handleApiResponse<AssignedTask[]>(response);
   },
-  getAll: async (projectId: string): Promise<TaskWithAttemptStatus[]> => {
+  getAll: async (projectId: string): Promise<TaskWithArchive[]> => {
     const response = await makeRequest(`/api/tasks?project_id=${projectId}`);
-    return handleApiResponse<TaskWithAttemptStatus[]>(response);
+    return handleApiResponse<TaskWithArchive[]>(response);
   },
 
   getById: async (taskId: string): Promise<Task> => {
@@ -1445,6 +1457,40 @@ export const agentsApi = {
       `/api/agents/${agentId}/conversations/session/${encodeURIComponent(sessionId)}`
     );
     return handleApiResponse(response);
+  },
+};
+
+// Agent Watcher APIs — type auto-generated from Rust via `npm run generate-types`
+import type { AgentWatcherInfo } from 'shared/types';
+export type { AgentWatcherInfo };
+
+export const agentWatchersApi = {
+  list: async (taskId: string): Promise<AgentWatcherInfo[]> => {
+    const response = await makeRequest(`/api/tasks/${taskId}/agent-watchers`);
+    if (!response.ok) {
+      throw new ApiError('Failed to list agent watchers', response.status, response);
+    }
+    const result = await response.json();
+    return result.data;
+  },
+
+  add: async (taskId: string, agentId: string): Promise<void> => {
+    const response = await makeRequest(`/api/tasks/${taskId}/agent-watchers`, {
+      method: 'POST',
+      body: JSON.stringify({ agent_id: agentId }),
+    });
+    if (!response.ok) {
+      throw new ApiError('Failed to add agent watcher', response.status, response);
+    }
+  },
+
+  remove: async (taskId: string, agentId: string): Promise<void> => {
+    const response = await makeRequest(`/api/tasks/${taskId}/agent-watchers/${agentId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new ApiError('Failed to remove agent watcher', response.status, response);
+    }
   },
 };
 
@@ -3988,6 +4034,7 @@ export interface OrganizationData {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  address?: string;
 }
 
 export interface ClientData {
@@ -4793,6 +4840,8 @@ export interface PersonRecord {
   intelligence_confidence: number;
   intelligence_status?: 'idle' | 'queued' | 'running' | 'done' | 'failed';
   intelligence_agent?: string;
+  research_pass_count?: number;
+  research_depth?: 'shallow' | 'moderate' | 'deep';
   notes?: string;
   tags: string;
   custom_fields: string;
@@ -5114,6 +5163,7 @@ export const proposalsApi = {
     lead_id?: string;
     project_id?: string;
     owner_id?: string;
+    organization_id?: string;
     limit?: number;
   }): Promise<ProposalRecord[]> => {
     const qs = params ? '?' + new URLSearchParams(
@@ -5418,10 +5468,11 @@ export interface CompanyRecord {
 }
 
 export const companiesApi = {
-  list: async (params?: { limit?: number; has_platform_org?: boolean }): Promise<CompanyRecord[]> => {
+  list: async (params?: { limit?: number; has_platform_org?: boolean; created_by_org_id?: string }): Promise<CompanyRecord[]> => {
     const qs = new URLSearchParams();
     if (params?.limit != null) qs.set('limit', String(params.limit));
     if (params?.has_platform_org != null) qs.set('has_platform_org', String(params.has_platform_org));
+    if (params?.created_by_org_id != null) qs.set('created_by_org_id', params.created_by_org_id);
     const response = await makeRequest(`/api/companies?${qs.toString()}`);
     return handleApiResponse<CompanyRecord[]>(response);
   },
@@ -5641,7 +5692,119 @@ export const intelligenceApi = {
     const response = await makeRequest(`/api/persons/${personId}/intelligence-status`);
     return handleApiResponse<IntelligenceStatus>(response);
   },
+
+  listResearchPasses: async (personId: string): Promise<ResearchPass[]> => {
+    const response = await makeRequest(`/api/persons/${personId}/research-passes`);
+    return handleApiResponse<ResearchPass[]>(response);
+  },
+
+  triggerNextPass: async (personId: string, opts?: { focus?: string; project_id?: string }): Promise<{ pass_id: string; pass_number: number; focus: string; status: string }> => {
+    const response = await makeRequest(`/api/persons/${personId}/research-passes/next`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(opts ?? {}),
+    });
+    return handleApiResponse(response);
+  },
+
+  listPersonReports: async (personId: string): Promise<BusinessReportRecord[]> => {
+    const response = await makeRequest(`/api/persons/${personId}/reports`);
+    return handleApiResponse<BusinessReportRecord[]>(response);
+  },
 };
+
+export const reportsApi = {
+  list: async (): Promise<BusinessReportRecord[]> => {
+    const response = await makeRequest('/api/business-reports');
+    return handleApiResponse<BusinessReportRecord[]>(response);
+  },
+
+  get: async (id: string): Promise<BusinessReportRecord> => {
+    const response = await makeRequest(`/api/business-reports/${id}`);
+    return handleApiResponse<BusinessReportRecord>(response);
+  },
+
+  patch: async (id: string, data: Partial<BusinessReportRecord>): Promise<BusinessReportRecord> => {
+    const response = await makeRequest(`/api/business-reports/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<BusinessReportRecord>(response);
+  },
+
+  generate: async (personId: string, reportType?: string): Promise<{ status: string; person_id: string }> => {
+    const response = await makeRequest('/api/business-reports/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ person_id: personId, report_type: reportType }),
+    });
+    return handleApiResponse(response);
+  },
+
+  approve: async (id: string): Promise<{ report: BusinessReportRecord; deal: unknown; proposal: unknown }> => {
+    const response = await makeRequest(`/api/business-reports/${id}/approve`, {
+      method: 'POST',
+    });
+    return handleApiResponse(response);
+  },
+
+  requestRevision: async (id: string, notes: string): Promise<BusinessReportRecord> => {
+    const response = await makeRequest(`/api/business-reports/${id}/request-revision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes }),
+    });
+    return handleApiResponse<BusinessReportRecord>(response);
+  },
+};
+
+export interface ResearchPass {
+  id: string;
+  person_id: string;
+  pass_number: number;
+  research_focus: string;
+  status: string;
+  summary?: string;
+  key_findings: string; // JSON
+  confidence_delta: number;
+  agent_used?: string;
+  created_at: string;
+  completed_at?: string;
+  error?: string;
+}
+
+export interface BusinessReportRecord {
+  id: string;
+  person_id?: string;
+  company_id?: string;
+  report_type: string;
+  title: string;
+  status: string;
+  executive_summary?: string;
+  company_overview?: string;
+  pain_points: string; // JSON [{point, severity}]
+  opportunities: string; // JSON [{title, description, priority, estimated_value}]
+  recommended_services: string; // JSON [{name, rationale, timeline}]
+  next_steps: string; // JSON [{action, owner, deadline}]
+  // Enhanced analytics sections
+  individual_profiles: string; // JSON [{name, role, company, linkedin, summary, key_insights}]
+  market_analysis?: string;
+  competitor_analysis: string; // JSON [{name, website, strengths, weaknesses, threat_level}]
+  target_clients?: string;
+  brand_positioning?: string;
+  digital_presence?: string;
+  sources: string; // JSON [{title, url, excerpt}]
+  full_report_md?: string;
+  // CRM deal linkage + human review checkpoint
+  crm_deal_id?: string;
+  review_status: string; // 'pending_review' | 'approved' | 'rejected'
+  reviewed_by?: string;
+  reviewed_at?: string;
+  review_notes?: string;
+  created_at: string;
+  updated_at: string;
+}
 
 // ============================================================================
 // Data Sources API
@@ -5667,6 +5830,8 @@ export interface DataSourceRecord {
   metadata: string; // JSON string
   status: string;
   processing_error?: string;
+  /** Slash-delimited folder path, e.g. "Meetings/Google Meet" */
+  folder: string;
   created_at: string;
   updated_at: string;
   archived_at?: string;
@@ -5684,6 +5849,7 @@ export interface CreateDataSourceRequest {
   /** Raw text content (for source_type = "text") */
   content?: string;
   metadata?: Record<string, unknown>;
+  folder?: string;
 }
 
 export interface UpdateDataSourceRequest {
@@ -5695,6 +5861,7 @@ export interface UpdateDataSourceRequest {
   metadata?: string;
   status?: string;
   processing_error?: string;
+  folder?: string;
 }
 
 export const SOURCE_TYPE_OPTIONS = [
@@ -6004,7 +6171,7 @@ export interface WorkflowTrigger {
   workflow_id: string;
   name: string;
   enabled: boolean;
-  trigger_type: 'data_source_created' | 'data_source_updated' | 'scheduled';
+  trigger_type: 'data_source_created' | 'data_source_updated' | 'schedule';
   filter_data_source_types: string | null;  // JSON array
   filter_organization_id: string | null;
   filter_project_id: string | null;
@@ -6374,7 +6541,8 @@ export const mediaApi = {
 export interface ReviewComment { id: string; author_name?: string; content: string; timecode_seconds?: number; is_resolved: boolean; resolved_at?: string; created_at: string; }
 export interface ReviewDeliverable { id: string; title: string; status: string; description?: string; working_file_url?: string; final_link?: string; }
 export interface ReviewToken { id: string; view_count: number; expires_at?: string; }
-export interface ReviewData { token: ReviewToken; deliverable: ReviewDeliverable; comments: ReviewComment[]; }
+export interface ReviewSourceFile { name: string; url: string; size_bytes: number; }
+export interface ReviewData { token: ReviewToken; deliverable: ReviewDeliverable; comments: ReviewComment[]; source_files: ReviewSourceFile[]; }
 
 export const reviewApi = {
   getData: async (token: string): Promise<ReviewData> => {
@@ -6784,5 +6952,31 @@ export const syncApi = {
   async getOrgOverview(orgId: string): Promise<OrgSyncOverview> {
     const response = await makeRequest(`/api/organizations/${orgId}/sync/summary`);
     return handleApiResponse<OrgSyncOverview>(response);
+  },
+};
+
+// ========================================
+// System Settings API
+// ========================================
+
+export interface SystemSetting {
+  key: string;
+  value: string;
+  updated_by: string | null;
+  updated_at: string | null;
+}
+
+export const systemSettingsApi = {
+  getAll: async (): Promise<SystemSetting[]> => {
+    const r = await makeRequest('/api/system-settings');
+    return handleApiResponse<SystemSetting[]>(r);
+  },
+  update: async (key: string, value: string): Promise<string> => {
+    const r = await makeRequest(`/api/system-settings/${key}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value }),
+    });
+    return handleApiResponse<string>(r);
   },
 };

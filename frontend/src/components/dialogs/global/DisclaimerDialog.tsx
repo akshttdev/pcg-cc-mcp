@@ -1,7 +1,6 @@
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -25,30 +24,30 @@ const DisclaimerDialog = NiceModal.create(() => {
             <AlertTriangle className="h-6 w-6 text-destructive" />
             <DialogTitle>Safety Notice</DialogTitle>
           </div>
-          <DialogDescription className="text-left space-y-4 pt-4">
-            <p>
-              Duck Kanban runs AI coding agents with{' '}
-              <code>--dangerously-skip-permissions</code> / <code>--yolo</code>{' '}
-              by default, giving them unrestricted access to execute code and
-              run commands on your system.
-            </p>
-            <p>
-              <strong>Important:</strong> Always review what agents are doing
-              and ensure you have backups of important work. This software is
-              experimental - use it responsibly.
-            </p>
-            <p>
-              Learn more at{' '}
-              <a
-                href="https://www.duckkanban.com/docs/getting-started#safety-notice"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-600 dark:text-blue-400 underline hover:no-underline"
-              >
-                https://www.duckkanban.com/docs/getting-started#safety-notice
-              </a>
-            </p>
-          </DialogDescription>
+          <div className="text-sm text-muted-foreground text-left space-y-4 pt-4">
+              <p>
+                Duck Kanban runs AI coding agents with{' '}
+                <code>--dangerously-skip-permissions</code> /{' '}
+                <code>--yolo</code> by default, giving them unrestricted access
+                to execute code and run commands on your system.
+              </p>
+              <p>
+                <strong>Important:</strong> Always review what agents are doing
+                and ensure you have backups of important work. This software is
+                experimental - use it responsibly.
+              </p>
+              <p>
+                Learn more at{' '}
+                <a
+                  href="https://www.duckkanban.com/docs/getting-started#safety-notice"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 dark:text-blue-400 underline hover:no-underline"
+                >
+                  https://www.duckkanban.com/docs/getting-started#safety-notice
+                </a>
+              </p>
+          </div>
         </DialogHeader>
         <DialogFooter>
           <Button onClick={handleAccept} variant="default">

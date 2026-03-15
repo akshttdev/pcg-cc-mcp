@@ -53,12 +53,12 @@ async fn main() -> Result<(), VibeKanbanError> {
     let external_config = ExternalServicesConfig::default();
     let service_status = initialize_external_services(&external_config).await;
     if service_status.apn_node_running {
-        tracing::info!("APN node online - mesh networking active on port {}", external_config.apn_node_port);
+        tracing::info!("[MASTER] Media Monsters Master Node — APN mesh online on port {}", external_config.apn_node_port);
     } else {
         tracing::warn!("APN node not available - mesh networking disabled");
     }
     if service_status.apn_bridge_running {
-        tracing::info!("APN bridge online - dashboard mesh API on port {}", external_config.apn_bridge_port);
+        tracing::info!("[MASTER] Media Monsters Master Node — APN bridge API on port {}", external_config.apn_bridge_port);
     } else {
         tracing::warn!("APN bridge not available - mesh API will use log fallback");
     }
@@ -127,15 +127,9 @@ async fn main() -> Result<(), VibeKanbanError> {
         tracing::warn!("Topsi can still be initialized later via POST /api/topsi/initialize");
     }
 
-    // Spawn Discord voice bot (no-op if DISCORD_BOT_TOKEN is not set)
-    let server_port = std::env::var("PORT")
-        .ok()
-        .and_then(|p| p.parse::<u16>().ok())
-        .unwrap_or(3000);
-    discord_bot::spawn_discord_bot(deployment.db().pool.clone(), server_port).await;
-
-    // Start Discord bot agents (Nora + Topsi) if tokens are configured
-    discord_bots::spawn_discord_bots();
+    // Discord bots are managed by the JS systemd service (pcg-discord-bot.service)
+    // which handles voice + Whisper STT + Chatterbox/ElevenLabs TTS.
+    // The Rust bots use the same tokens and would fight the JS bots — disabled.
 
     // Pre-warm file search cache for most active projects
     let deployment_for_cache = deployment.clone();
@@ -188,7 +182,7 @@ async fn main() -> Result<(), VibeKanbanError> {
     // Start APN Data Service (network-based project/task data serving)
     match server::apn_data_service::APNDataServiceConfig::from_env() {
         Ok(config) if config.enabled => {
-            tracing::info!("Starting APN Data Service (role: {:?})", config.role);
+            tracing::info!("[MASTER] Starting APN Data Service (role: {:?})", config.role);
             let mut service = server::apn_data_service::APNDataService::new(config);
             tokio::spawn(async move {
                 if let Err(e) = service.start().await {
@@ -212,7 +206,10 @@ async fn main() -> Result<(), VibeKanbanError> {
 
     if auto_start_apn {
         tokio::spawn(async move {
-            tracing::info!("🌐 Auto-starting APN node in background...");
+            tracing::info!("🌐 Media Monsters Master Node — starting APN node...");
+
+            // Kill any existing apn_node processes to prevent accumulation
+            utils::external_services::kill_existing_apn_nodes();
 
             let apn_binary = std::env::current_exe()
                 .ok()
@@ -225,9 +222,7 @@ async fn main() -> Result<(), VibeKanbanError> {
             }
 
             let device_name = std::env::var("APN_DEVICE_NAME")
-                .unwrap_or_else(|_| hostname::get()
-                    .map(|h| h.to_string_lossy().to_string())
-                    .unwrap_or_else(|_| "APN Node".to_string()));
+                .unwrap_or_else(|_| "Media Monsters Master Node".to_string());
 
             let mut cmd = tokio::process::Command::new(&apn_binary);
             cmd.arg("--port").arg("4001")
@@ -236,7 +231,7 @@ async fn main() -> Result<(), VibeKanbanError> {
                .arg("--name").arg(&device_name);
 
             // Set custom hostname for master node
-            cmd.env("APN_HOSTNAME", "pythia");
+            cmd.env("APN_HOSTNAME", "media-monsters-master");
 
             // Stdin/stdout/stderr should be null for background process
             cmd.stdin(std::process::Stdio::null())
@@ -245,7 +240,7 @@ async fn main() -> Result<(), VibeKanbanError> {
 
             match cmd.spawn() {
                 Ok(child) => {
-                    tracing::info!("✅ APN node started in background (PID: {:?})", child.id());
+                    tracing::info!("✅ Media Monsters Master Node — APN node active (PID: {:?})", child.id());
                 }
                 Err(e) => {
                     tracing::error!("❌ Failed to start APN node: {}", e);
@@ -289,6 +284,10 @@ async fn main() -> Result<(), VibeKanbanError> {
 
     // Spawn CRM workflow automations (runs hourly)
     routes::automations::spawn_automation_loop(deployment.db().pool.clone());
+
+    // Spawn workflow schedule trigger loop (checks every 5 minutes)
+    let schedule_shutdown = tokio_util::sync::CancellationToken::new();
+    routes::data_source_workflows::spawn_workflow_schedule_loop(deployment.db().pool.clone(), schedule_shutdown.clone());
 
     // Spawn OSS Library Listener (polls GitHub releases hourly)
     routes::oss_listener_bg::spawn_oss_listener(deployment.db().pool.clone());

@@ -91,6 +91,8 @@ pub struct LocalContainerService {
     flow_ids: Arc<RwLock<HashMap<Uuid, Uuid>>>,
 }
 
+use services::services::qa_review::{self, PrCreatedInfo};
+
 impl LocalContainerService {
     // Max cumulative content bytes allowed per diff stream
     const MAX_CUMULATIVE_DIFF_BYTES: usize = 150 * 1024; // 150KB
@@ -199,13 +201,170 @@ impl LocalContainerService {
             ))
     }
 
-    /// Finalize task execution by updating status to InReview and sending notifications
-    async fn finalize_task(db: &DBService, config: &Arc<RwLock<Config>>, ctx: &ExecutionContext) {
-        if let Err(e) = Task::update_status(&db.pool, ctx.task.id, TaskStatus::InReview).await {
+    /// Finalize task execution by updating status to InReview, optionally creating a PR,
+    /// triggering agent watchers (QA review), and sending notifications.
+    async fn finalize_task(
+        db: &DBService,
+        config: &Arc<RwLock<Config>>,
+        git: &GitService,
+        ctx: &ExecutionContext,
+        container: &Self,
+    ) {
+        // Route AgentReview completions to finalize_review (Phase 5)
+        if ctx.execution_process.run_reason == ExecutionProcessRunReason::AgentReview {
+            qa_review::finalize_review(&db.pool, config, git, ctx).await;
+            let notify_cfg = config.read().await.notifications.clone();
+            NotificationService::notify_execution_halted(notify_cfg, ctx).await;
+            return;
+        }
+
+        if let Err(e) = Task::update_status(&db.pool, &ctx.task.id, TaskStatus::InReview).await {
             tracing::error!("Failed to update task status to InReview: {e}");
         }
+
+        // Auto-create PR if agent execution config says so
+        let pr_info = Self::try_auto_create_pr(db, config, git, ctx).await;
+
+        // Post dev agent audit comment on PR + trigger agent watchers
+        if let Some(ref pr) = pr_info {
+            qa_review::post_dev_agent_pr_comment(config, ctx, pr).await;
+            // Trigger all pending agent watchers (replaces try_auto_qa_review)
+            qa_review::trigger_agent_watchers(&db.pool, container, ctx, pr).await;
+        }
+
         let notify_cfg = config.read().await.notifications.clone();
         NotificationService::notify_execution_halted(notify_cfg, ctx).await;
+    }
+
+    /// Attempt to auto-create a GitHub PR if the agent's execution config has
+    /// `auto_create_pr_on_complete` enabled. Returns PR info on success.
+    /// Failures are logged but do not block finalization.
+    async fn try_auto_create_pr(
+        db: &DBService,
+        config: &Arc<RwLock<Config>>,
+        git: &GitService,
+        ctx: &ExecutionContext,
+    ) -> Option<PrCreatedInfo> {
+        use db::models::agent_execution_config::AgentExecutionConfig;
+        use services::services::github_service::{CreatePrRequest, GitHubService};
+
+        // Check if the task has an agent_id with auto_create_pr_on_complete enabled
+        let agent_id = match ctx.task.agent_id {
+            Some(ref id) => id.as_str(),
+            None => return None,
+        };
+
+        let agent_config = match AgentExecutionConfig::find_by_agent_id(&db.pool, agent_id).await {
+            Ok(Some(cfg)) => cfg,
+            _ => return None,
+        };
+
+        if agent_config.auto_create_pr_on_complete != Some(true) {
+            return None;
+        }
+
+        // Need a branch to create a PR from
+        let branch_name = match ctx.task_attempt.branch.as_ref() {
+            Some(b) if !b.is_empty() => b.clone(),
+            _ => {
+                tracing::warn!("Auto-PR skipped: no branch on task attempt {}", ctx.task_attempt.id);
+                return None;
+            }
+        };
+
+        let base_branch = if ctx.task_attempt.base_branch.trim().is_empty() {
+            "main".to_string()
+        } else {
+            ctx.task_attempt.base_branch.clone()
+        };
+
+        // Get GitHub token
+        let github_config = config.read().await.github.clone();
+        let github_token = match github_config.token() {
+            Some(t) => t,
+            None => {
+                tracing::warn!("Auto-PR skipped: no GitHub token configured");
+                return None;
+            }
+        };
+
+        // Get project for repo info
+        let project = match Project::find_by_id(&db.pool, &ctx.task.project_id).await {
+            Ok(Some(p)) => p,
+            _ => {
+                tracing::warn!("Auto-PR skipped: project not found for task {}", ctx.task.id);
+                return None;
+            }
+        };
+
+        // Get workspace path from container_ref
+        let workspace_path = match &ctx.task_attempt.container_ref {
+            Some(path) => PathBuf::from(path),
+            None => {
+                tracing::warn!("Auto-PR skipped: no container_ref on attempt {}", ctx.task_attempt.id);
+                return None;
+            }
+        };
+
+        // Push branch to GitHub
+        if let Err(e) = git.push_to_github(&workspace_path, &branch_name, &github_token) {
+            tracing::error!("Auto-PR: failed to push branch '{}': {}", branch_name, e);
+            return None;
+        }
+
+        // Create the PR
+        let github_service = match GitHubService::new(&github_token) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!("Auto-PR: failed to create GitHub service: {}", e);
+                return None;
+            }
+        };
+
+        let repo_info = match git.get_github_repo_info(&project.git_repo_path) {
+            Ok(info) => info,
+            Err(e) => {
+                tracing::error!("Auto-PR: failed to get repo info: {}", e);
+                return None;
+            }
+        };
+
+        let pr_request = CreatePrRequest {
+            title: format!("[Auto] {}", ctx.task.title),
+            body: ctx.task.description.clone(),
+            head_branch: branch_name.clone(),
+            base_branch: base_branch.clone(),
+        };
+
+        match github_service.create_pr(&repo_info, &pr_request).await {
+            Ok(pr_info) => {
+                tracing::info!(
+                    "Auto-PR created: {} (#{}) for task '{}'",
+                    pr_info.url, pr_info.number, ctx.task.title
+                );
+                if let Err(e) = Merge::create_pr(
+                    &db.pool,
+                    ctx.task_attempt.id,
+                    &base_branch,
+                    pr_info.number,
+                    &pr_info.url,
+                )
+                .await
+                {
+                    tracing::error!("Auto-PR: failed to record PR in database: {}", e);
+                }
+                Some(PrCreatedInfo {
+                    number: pr_info.number,
+                    url: pr_info.url,
+                    repo_owner: repo_info.owner,
+                    repo_name: repo_info.repo_name,
+                })
+            }
+            Err(e) => {
+                tracing::error!("Auto-PR: failed to create PR: {}", e);
+                None
+            }
+        }
     }
 
     /// Generate an execution summary for a completed execution process
@@ -548,12 +707,12 @@ impl LocalContainerService {
                         );
 
                         // Manually finalize task since we're bypassing normal execution flow
-                        Self::finalize_task(&db, &config, &ctx).await;
+                        Self::finalize_task(&db, &config, &container.git, &ctx, &container).await;
                     }
                 }
 
                 if Self::should_finalize(&ctx) {
-                    Self::finalize_task(&db, &config, &ctx).await;
+                    Self::finalize_task(&db, &config, &container.git, &ctx, &container).await;
                     // After finalization, check if a queued follow-up exists and start it
                     if let Err(e) = container.try_consume_queued_followup(&ctx).await {
                         tracing::error!(
@@ -596,7 +755,7 @@ impl LocalContainerService {
                     if let Err(e) = ActivityLog::create(
                         &db.pool,
                         &CreateActivityLog {
-                            task_id: ctx.task.id,
+                            task_id: ctx.task.id.clone(),
                             actor_id: ctx.task_attempt.executor.clone(),
                             actor_type: ActorType::Agent,
                             action: "execution_completed".to_string(),
@@ -620,7 +779,7 @@ impl LocalContainerService {
                     // Update task collaborators
                     if let Err(e) = Task::update_collaborator(
                         &db.pool,
-                        ctx.task.id,
+                        &ctx.task.id,
                         &ctx.task_attempt.executor,
                         "agent",
                         completion_status,
@@ -1138,7 +1297,7 @@ impl ContainerService for LocalContainerService {
         // Copy task images from cache to worktree
         if let Err(e) = self
             .image_service
-            .copy_images_by_task_to_worktree(&worktree_path, task.id)
+            .copy_images_by_task_to_worktree(&worktree_path, Uuid::parse_str(&task.id).unwrap())
             .await
         {
             tracing::warn!("Failed to copy task images to worktree: {}", e);
@@ -1163,7 +1322,7 @@ impl ContainerService for LocalContainerService {
             .parent_task(&self.db.pool)
             .await?
             .ok_or(sqlx::Error::RowNotFound)?;
-        let git_repo_path = match Project::find_by_id(&self.db.pool, task.project_id).await {
+        let git_repo_path = match Project::find_by_id(&self.db.pool, &task.project_id).await {
             Ok(Some(project)) => Some(project.git_repo_path.clone()),
             Ok(None) => None,
             Err(e) => {
@@ -1266,7 +1425,7 @@ impl ContainerService for LocalContainerService {
         if let Err(e) = ActivityLog::create(
             &self.db.pool,
             &CreateActivityLog {
-                task_id: task_attempt.task_id,
+                task_id: task_attempt.task_id.to_string(),
                 actor_id: task_attempt.executor.clone(),
                 actor_type: ActorType::Agent,
                 action: "execution_started".to_string(),
@@ -1290,7 +1449,7 @@ impl ContainerService for LocalContainerService {
         // Update task collaborators
         if let Err(e) = Task::update_collaborator(
             &self.db.pool,
-            task_attempt.task_id,
+            &task_attempt.task_id.to_string(),
             &task_attempt.executor,
             "agent",
             "execution_started",
@@ -1357,7 +1516,7 @@ impl ContainerService for LocalContainerService {
                 ExecutionProcessRunReason::DevServer
             )
             && let Err(e) =
-                Task::update_status(&self.db.pool, ctx.task.id, TaskStatus::InReview).await
+                Task::update_status(&self.db.pool, &ctx.task.id, TaskStatus::InReview).await
         {
             tracing::error!("Failed to update task status to InReview: {e}");
         }
@@ -1714,7 +1873,7 @@ impl LocalContainerService {
         let mut prompt = draft.prompt.clone();
         if let Some(image_ids) = &draft.image_ids {
             // Associate to task
-            let _ = TaskImage::associate_many_dedup(&self.db.pool, ctx.task.id, image_ids).await;
+            let _ = TaskImage::associate_many_dedup(&self.db.pool, Uuid::parse_str(&ctx.task.id).unwrap(), image_ids).await;
 
             // Copy to worktree and canonicalize
             let worktree_path = std::path::PathBuf::from(&container_ref);
@@ -1836,7 +1995,7 @@ impl LocalContainerService {
         let provider = infer_provider(model);
 
         // Try to find and update the pending zero-amount transaction
-        match VibeTransaction::find_by_task_pending(&self.db.pool, ctx.task.id).await {
+        match VibeTransaction::find_by_task_pending(&self.db.pool, Uuid::parse_str(&ctx.task.id).unwrap()).await {
             Ok(Some(pending_tx)) => {
                 // Use VibePricingService to calculate cost
                 let pricing_service = VibePricingService::new(self.db.pool.clone());
@@ -1883,11 +2042,11 @@ impl LocalContainerService {
                 // We need a source_id; use the task's project_id as a fallback
                 if let Err(e) = pricing_service.record_llm_usage(
                     db::models::vibe_transaction::VibeSourceType::Project,
-                    ctx.task.project_id,
+                    Uuid::parse_str(&ctx.task.project_id).unwrap(),
                     model,
                     input_tokens,
                     output_tokens,
-                    Some(ctx.task.id),
+                    Some(Uuid::parse_str(&ctx.task.id).unwrap()),
                     Some(ctx.task_attempt.id),
                     Some(ctx.execution_process.id),
                 ).await {
@@ -1907,7 +2066,7 @@ impl LocalContainerService {
         let flow = AgentFlow::create(
             &self.db.pool,
             CreateAgentFlow {
-                task_id: ctx.task.id,
+                task_id: Uuid::parse_str(&ctx.task.id).unwrap(),
                 flow_type: FlowType::Custom,
                 planner_agent_id: None,
                 executor_agent_id: None,
@@ -1967,7 +2126,7 @@ impl LocalContainerService {
             Some(id) => id,
             None => {
                 // Fallback: try to find by task_id
-                match AgentFlow::find_by_task(&self.db.pool, ctx.task.id).await {
+                match AgentFlow::find_by_task(&self.db.pool, Uuid::parse_str(&ctx.task.id).unwrap()).await {
                     Ok(flows) => {
                         if let Some(flow) = flows.into_iter().find(|f| {
                             f.status != db::models::agent_flow::FlowStatus::Completed

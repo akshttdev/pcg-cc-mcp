@@ -290,6 +290,277 @@ pub fn router() -> Router<DeploymentImpl> {
     Router::new()
         .route("/webhooks/dropbox", get(dropbox_webhook_verify))
         .route("/webhooks/dropbox", post(dropbox_webhook_handler))
+        .route("/webhooks/github", post(github_webhook_handler))
+}
+
+// ── GitHub Webhooks ──────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct GitHubIssue {
+    number: u64,
+    title: String,
+    body: Option<String>,
+    html_url: String,
+    user: Option<GitHubUser>,
+    labels: Option<Vec<GitHubLabel>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubUser {
+    login: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubLabel {
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubIssueEvent {
+    action: String,
+    issue: GitHubIssue,
+    repository: Option<GitHubRepo>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubRepo {
+    full_name: String,
+}
+
+/// Maximum body size for GitHub webhook payloads (256 KB).
+/// GitHub payloads are typically <50 KB; this is generous headroom.
+const GITHUB_WEBHOOK_MAX_BODY_SIZE: usize = 256 * 1024;
+
+/// POST /api/webhooks/github
+///
+/// Handles GitHub webhook events. Currently supports:
+/// - `issues` events (opened, edited, labeled) → creates DataSource → triggers workflows
+///
+/// Security: always validates `X-Hub-Signature-256` via `GITHUB_WEBHOOK_SECRET`.
+/// In development mode (`RUST_ENV=development`), validation is skipped if the secret is unset.
+async fn github_webhook_handler(
+    State(deployment): State<DeploymentImpl>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<StatusCode, StatusCode> {
+    // Fix 2: Reject oversized payloads
+    if body.len() > GITHUB_WEBHOOK_MAX_BODY_SIZE {
+        warn!(
+            "GitHub webhook payload too large: {} bytes (max {})",
+            body.len(),
+            GITHUB_WEBHOOK_MAX_BODY_SIZE
+        );
+        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    let pool = &deployment.db().pool;
+
+    // Fix 1: Require webhook secret — fail closed unless RUST_ENV=development
+    match std::env::var("GITHUB_WEBHOOK_SECRET") {
+        Ok(secret) => verify_github_signature(&headers, &body, &secret)?,
+        Err(_) => {
+            let is_dev = std::env::var("RUST_ENV")
+                .map(|v| v == "development")
+                .unwrap_or(false);
+            if is_dev {
+                warn!("GITHUB_WEBHOOK_SECRET not set — accepting unvalidated webhook (development mode)");
+            } else {
+                error!("GITHUB_WEBHOOK_SECRET not set — rejecting webhook. Set the secret or use RUST_ENV=development to bypass.");
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            }
+        }
+    }
+
+    let event_type = headers
+        .get("x-github-event")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("unknown");
+
+    match event_type {
+        "issues" => handle_github_issue_event(pool, &body, deployment.clone()).await,
+        "ping" => {
+            info!("GitHub webhook ping received");
+            Ok(StatusCode::OK)
+        }
+        _ => {
+            tracing::debug!("Ignoring GitHub event: {event_type}");
+            Ok(StatusCode::OK)
+        }
+    }
+}
+
+async fn handle_github_issue_event(
+    pool: &sqlx::SqlitePool,
+    body: &[u8],
+    deployment: crate::DeploymentImpl,
+) -> Result<StatusCode, StatusCode> {
+    use db::models::data_source::{CreateDataSource, DataSource};
+
+    let event: GitHubIssueEvent = serde_json::from_slice(body).map_err(|e| {
+        warn!("Invalid GitHub issue event payload: {e}");
+        StatusCode::BAD_REQUEST
+    })?;
+
+    // Only process opened, edited, and labeled events
+    if !["opened", "edited", "labeled"].contains(&event.action.as_str()) {
+        return Ok(StatusCode::OK);
+    }
+
+    let issue = &event.issue;
+    let repo_name = event
+        .repository
+        .as_ref()
+        .map(|r| r.full_name.as_str())
+        .unwrap_or("unknown");
+    let reporter = issue
+        .user
+        .as_ref()
+        .map(|u| u.login.as_str())
+        .unwrap_or("unknown");
+    let labels: Vec<String> = issue
+        .labels
+        .as_ref()
+        .map(|l| l.iter().map(|lab| lab.name.clone()).collect())
+        .unwrap_or_default();
+
+    let content = format!(
+        "GitHub Issue #{}: {}\n\nRepository: {}\nReporter: {}\nLabels: {}\nURL: {}\n\n{}",
+        issue.number,
+        issue.title,
+        repo_name,
+        reporter,
+        labels.join(", "),
+        issue.html_url,
+        issue.body.as_deref().unwrap_or("(no description)"),
+    );
+
+    let metadata = serde_json::json!({
+        "github_issue_number": issue.number,
+        "github_issue_url": issue.html_url,
+        "github_repo": repo_name,
+        "github_reporter": reporter,
+        "github_labels": labels,
+        "github_action": event.action,
+    });
+
+    // Scope to ORCHA Platform project's organization
+    let org_id = {
+        use db::constants::BUGREPORTS_PROJECT_ID;
+        use db::models::project::Project;
+        Project::find_by_id(pool, &BUGREPORTS_PROJECT_ID.to_string())
+            .await
+            .ok()
+            .flatten()
+            .and_then(|p| p.organization_id)
+    };
+
+    // Fix 3: Deduplicate — check for existing DataSource for this issue number + repo
+    let external_key = format!("{}#{}", repo_name, issue.number);
+    let existing = sqlx::query_as::<_, DataSource>(
+        r#"SELECT * FROM data_sources
+           WHERE data_type = 'github_issue'
+             AND json_extract(metadata, '$.github_issue_number') = ?
+             AND json_extract(metadata, '$.github_repo') = ?
+             AND archived_at IS NULL
+           LIMIT 1"#,
+    )
+    .bind(issue.number as i64)
+    .bind(repo_name)
+    .fetch_optional(pool)
+    .await
+    .unwrap_or(None);
+
+    let ds = if let Some(existing_ds) = existing {
+        // Update existing DataSource instead of creating a duplicate
+        info!(
+            "Updating existing DataSource {} for GitHub issue {}",
+            existing_ds.id, external_key
+        );
+        use db::models::data_source::UpdateDataSource;
+        let update = UpdateDataSource {
+            title: Some(format!("GitHub Issue #{}: {}", issue.number, issue.title)),
+            description: issue.body.clone(),
+            content: Some(content),
+            metadata: Some(metadata.to_string()),
+            ..Default::default()
+        };
+        DataSource::update(pool, &existing_ds.id, update)
+            .await
+            .map_err(|e| {
+                error!("Failed to update DataSource for GitHub issue: {e}");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
+            .unwrap_or(existing_ds)
+    } else {
+        let create_ds = CreateDataSource {
+            organization_id: org_id,
+            project_id: Some(db::constants::BUGREPORTS_PROJECT_ID.to_string()),
+            created_by: Some(reporter.to_string()),
+            title: format!("GitHub Issue #{}: {}", issue.number, issue.title),
+            description: issue.body.clone(),
+            data_type: "github_issue".to_string(),
+            source_type: Some("integration".to_string()),
+            file_type: None,
+            content: Some(content),
+            file_name: None,
+            file_path: None,
+            file_size_bytes: None,
+            file_hash: None,
+            metadata: Some(metadata.to_string()),
+            folder: Some("GitHub Issues".to_string()),
+        };
+
+        DataSource::create(pool, create_ds).await.map_err(|e| {
+            error!("Failed to create DataSource from GitHub issue: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+    };
+
+    // Fire workflow triggers in the background
+    let trigger_pool = pool.clone();
+    let ds_id = ds.id.clone();
+    tokio::spawn(async move {
+        super::data_source_workflows::fire_triggers_for_data_source(trigger_pool, ds_id, deployment).await;
+    });
+
+    info!(
+        "Created DataSource from GitHub issue #{} ({}), firing workflow triggers",
+        issue.number, event.action
+    );
+
+    Ok(StatusCode::OK)
+}
+
+fn verify_github_signature(
+    headers: &HeaderMap,
+    body: &[u8],
+    secret: &str,
+) -> Result<(), StatusCode> {
+    let sig_header = headers
+        .get("x-hub-signature-256")
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| {
+            warn!("GitHub webhook missing X-Hub-Signature-256 header");
+            StatusCode::UNAUTHORIZED
+        })?;
+
+    let expected_hex = sig_header.strip_prefix("sha256=").unwrap_or(sig_header);
+    let expected_bytes = hex::decode(expected_hex).map_err(|_| {
+        warn!("GitHub webhook signature was not valid hex");
+        StatusCode::UNAUTHORIZED
+    })?;
+
+    type HmacSha256 = Hmac<Sha256>;
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).map_err(|e| {
+        error!("Failed to construct HMAC: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    mac.update(body);
+
+    mac.verify_slice(&expected_bytes).map_err(|_| {
+        warn!("GitHub webhook signature verification failed");
+        StatusCode::UNAUTHORIZED
+    })
 }
 
 fn parse_uuid(value: &Option<String>) -> Result<Option<Uuid>, String> {

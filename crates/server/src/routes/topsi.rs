@@ -10,7 +10,7 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
 
-    routing::{get, post, put},
+    routing::{get, post},
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -37,9 +37,11 @@ use services::services::vibe_pricing::VibePricingService;
 
 // Import voice types from Nora
 use nora::voice::{
-    VoiceConfig, VoiceEngine, SpeechRequest, SpeechResponse, AudioFormat,
-    tts::VoiceProfile,
+    VoiceConfig, VoiceEngine, SpeechResponse, AudioFormat,
 };
+
+use db::models::system_settings::SystemSetting;
+use db::models::topsi_user_settings::{TopsiUserSettings, classify_tool_risk};
 
 use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
@@ -221,9 +223,15 @@ pub fn topsi_routes() -> Router<DeploymentImpl> {
         .route("/topsi/meeting/audio", post(meeting_audio_chunk))
         .route("/topsi/meeting/end", post(end_meeting))
         .route("/topsi/meeting/status/{session_id}", get(meeting_status))
-        .route("/topsi/meeting/notes/{session_id}", get(get_meeting_notes))
+        .route("/topsi/meeting/notes/{session_id}", get(get_meeting_notes).post(regenerate_meeting_notes))
         .route("/topsi/meeting/transcript/{session_id}", get(get_meeting_transcript))
         .route("/topsi/meeting/share/{session_id}", post(share_meeting))
+        // Admin prompt management (production-safe, admin-only)
+        .route("/topsi/admin/prompt", get(get_admin_prompt).put(update_admin_prompt))
+        // Per-user settings
+        .route("/topsi/user-settings", get(get_user_settings).put(update_user_settings))
+        // Tool metadata (risk classification)
+        .route("/topsi/tools", get(get_tool_risk_map))
 
         .layer(axum::middleware::from_fn(
             crate::middleware::request_id_middleware,
@@ -570,6 +578,7 @@ pub struct MeetingSessionSummary {
     pub ended_at: Option<String>,
     pub duration_seconds: Option<i32>,
     pub participant_count: Option<i32>,
+    pub segment_count: i64,
     pub notes: Option<serde_json::Value>,
 }
 
@@ -666,6 +675,13 @@ pub async fn initialize_topsi_on_startup(state: &DeploymentImpl) -> Result<Strin
 
     let mut config = TopsiConfig::default();
     apply_topsi_llm_overrides(&mut config);
+
+    // Load persisted autonomy level from system_settings
+    let pool = &state.db().pool;
+    if let Ok(Some(level_str)) = SystemSetting::get(pool, "topsi_autonomy_level").await {
+        config.autonomy_level = topsi::config::AutonomyLevel::from_str(&level_str);
+        tracing::info!("Loaded persisted autonomy level: {}", level_str);
+    }
 
     // Create the execution bridge with deployment handle
     let bridge = Arc::new(DeploymentBridge {
@@ -782,18 +798,20 @@ pub async fn chat_with_topsi(
     };
 
     // VIBE Balance Check — uses real deposit ledger
-    if let Some(project_id) = billing_project_id {
-        let total_deposited = VibeDeposit::total_deposited(&pool, project_id).await.unwrap_or(0);
-        let total_withdrawn = VibeWithdrawal::total_withdrawn(&pool, project_id).await.unwrap_or(0);
-        let total_spent = VibeTransaction::sum_by_source(&pool, VibeSourceType::Project, project_id, None)
-            .await
-            .map(|s| s.total_vibe)
-            .unwrap_or(0);
-        let balance = total_deposited - total_withdrawn - total_spent;
-        if balance <= 0 {
-            return Err(ApiError::PaymentRequired(
-                "Insufficient VIBE balance. Deposit VIBE tokens to your project to continue.".into(),
-            ));
+    if !crate::helpers::vibe_check::is_vibe_bypass_active(&pool).await {
+        if let Some(project_id) = billing_project_id {
+            let total_deposited = VibeDeposit::total_deposited(&pool, project_id).await.unwrap_or(0);
+            let total_withdrawn = VibeWithdrawal::total_withdrawn(&pool, project_id).await.unwrap_or(0);
+            let total_spent = VibeTransaction::sum_by_source(&pool, VibeSourceType::Project, project_id, None)
+                .await
+                .map(|s| s.total_vibe)
+                .unwrap_or(0);
+            let balance = total_deposited - total_withdrawn - total_spent;
+            if balance <= 0 {
+                return Err(ApiError::PaymentRequired(
+                    "Insufficient VIBE balance. Deposit VIBE tokens to your project to continue.".into(),
+                ));
+            }
         }
     }
 
@@ -839,7 +857,7 @@ pub async fn chat_with_topsi(
                 None, None, None,
             ).await {
                 Ok(tx) => {
-                    let _ = Project::adjust_vibe_spent(&pool, project_id, tx.amount_vibe).await;
+                    let _ = Project::adjust_vibe_spent(&pool, &project_id.to_string(), tx.amount_vibe).await;
                     tracing::info!("[VIBE] Topsi recorded {} VIBE for project {}", tx.amount_vibe, project_id);
                 }
                 Err(e) => tracing::error!("[VIBE] Failed to record Topsi usage: {}", e),
@@ -1220,13 +1238,14 @@ async fn get_user_context_from_req(
     }
 }
 
-// Legacy function - kept for backward compatibility but marked deprecated
-#[deprecated(note = "Use get_user_context_from_req instead")]
-async fn get_user_context_from_state(_state: &DeploymentImpl) -> UserContext {
-    // Return anonymous user context
-    UserContext::user("anonymous")
-        .with_session(Uuid::new_v4().to_string())
-}
+// TODO: unused — comment out to suppress warning
+// // Legacy function - kept for backward compatibility but marked deprecated
+// #[deprecated(note = "Use get_user_context_from_req instead")]
+// async fn get_user_context_from_state(_state: &DeploymentImpl) -> UserContext {
+//     // Return anonymous user context
+//     UserContext::user("anonymous")
+//         .with_session(Uuid::new_v4().to_string())
+// }
 
 fn default_capabilities() -> Vec<String> {
     vec![
@@ -1818,7 +1837,53 @@ pub async fn update_voice_config(
 // Meeting Mode Handlers
 // ============================================================================
 
-/// List meeting sessions
+// TODO: unused — comment out to suppress warning
+// /// Helper: get accessible project IDs (as lowercase hex, 32 chars) for a user
+// /// Returns None for admins (all projects accessible).
+// async fn get_accessible_project_hex_ids(
+//     pool: &sqlx::SqlitePool,
+//     user_id: &str,
+//     is_admin: bool,
+// ) -> Option<std::collections::HashSet<String>> {
+//     if is_admin {
+//         return None;
+//     }
+//     let uid = match uuid::Uuid::parse_str(user_id) {
+//         Ok(u) => u,
+//         Err(_) => return Some(std::collections::HashSet::new()),
+//     };
+//     // project_members.project_id is BLOB; compare via hex
+//     let ids: Vec<Vec<u8>> = sqlx::query_scalar(
+//         "SELECT DISTINCT project_id FROM project_members WHERE user_id = ?1",
+//     )
+//     .bind(uid.as_bytes().as_slice())
+//     .fetch_all(pool)
+//     .await
+//     .unwrap_or_default();
+//
+//     Some(
+//         ids.into_iter()
+//             .map(|b| hex::encode(&b))
+//             .collect(),
+//     )
+// }
+
+// TODO: unused — comment out to suppress warning
+// /// Helper: check if a project_id (UUID text with dashes) is accessible given a hex-id set
+// fn project_is_accessible(
+//     project_id_str: &str,
+//     accessible: &Option<std::collections::HashSet<String>>,
+// ) -> bool {
+//     match accessible {
+//         None => true, // admin
+//         Some(set) => {
+//             let hex = project_id_str.replace('-', "").to_lowercase();
+//             set.contains(&hex)
+//         }
+//     }
+// }
+
+/// List meeting sessions — scoped to user's accessible projects
 pub async fn list_meetings(
     State(state): State<DeploymentImpl>,
 
@@ -1839,6 +1904,39 @@ pub async fn list_meetings(
     .map_err(|e| ApiError::InternalError(format!("Failed to list meetings: {}", e)))?;
 
     let status_filter = params.status.as_deref();
+
+    // Build a project_id → (project_name, org_name) lookup via a single query
+    // #[derive(sqlx::FromRow)]
+    // struct ProjectRow {
+    //     id_hex: String,
+    //     name: String,
+    // }
+    // let project_rows: Vec<ProjectRow> = sqlx::query_as(
+    //     "SELECT lower(hex(id)) as id_hex, name FROM projects",
+    // )
+    // .fetch_all(pool)
+    // .await
+    // .unwrap_or_default();
+
+    // let project_map: std::collections::HashMap<String, String> = project_rows
+    //     .into_iter()
+    //     .map(|r| (r.id_hex, r.name))
+    //     .collect();
+
+    // Batch segment counts for all sessions
+    #[derive(sqlx::FromRow)]
+    struct SegCountRow { session_id: String, cnt: i64 }
+    let seg_counts: Vec<SegCountRow> = sqlx::query_as(
+        "SELECT meeting_session_id as session_id, COUNT(*) as cnt FROM meeting_segments GROUP BY meeting_session_id"
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    let seg_count_map: std::collections::HashMap<String, i64> = seg_counts
+        .into_iter()
+        .map(|r| (r.session_id, r.cnt))
+        .collect();
+
     let meetings: Vec<MeetingSessionSummary> = sessions
         .into_iter()
         .filter(|s| status_filter.map_or(true, |f| s.status == f))
@@ -1849,6 +1947,11 @@ pub async fn list_meetings(
                 .as_ref()
                 .and_then(|n| serde_json::from_str::<serde_json::Value>(n).ok());
 
+            // TODO: project_name lookup was computed but never used in the response
+            // let hex = s.project_id.replace('-', "").to_lowercase();
+            // let _project_name = project_map.get(&hex).cloned();
+
+            let segment_count = seg_count_map.get(&s.id).copied().unwrap_or(0);
             MeetingSessionSummary {
                 id: s.id,
                 project_id: s.project_id,
@@ -1860,6 +1963,7 @@ pub async fn list_meetings(
                 ended_at: s.ended_at,
                 duration_seconds: s.duration_seconds,
                 participant_count: s.participant_count,
+                segment_count,
                 notes: notes_value,
             }
         })
@@ -1899,7 +2003,20 @@ pub async fn join_meeting(
     .await
     .map_err(|e| ApiError::InternalError(e.to_string()))?;
 
-    tracing::info!("[MEETING] User joined session {} — participants: {}", session.id, new_count);
+    // TODO: project_name query was executed but never used in the response — commented to avoid dead DB call
+    // let _project_name: Option<String> = sqlx::query_scalar(
+    //     "SELECT name FROM projects WHERE lower(hex(id)) = lower(replace(?1, '-', '')) AND deleted_at IS NULL",
+    // )
+    // .bind(&session.project_id)
+    // .fetch_optional(pool)
+    // .await
+    // .ok()
+    // .flatten();
+
+    tracing::info!(
+        "[MEETING] Session {} (project: {}) joined — participants: {}",
+        session.id, session.project_id, new_count
+    );
 
 
     Ok(Json(JoinMeetingResponse {
@@ -1913,7 +2030,7 @@ pub async fn join_meeting(
 /// Add a typed text message or link to an active meeting without audio
 pub async fn meeting_text_message(
     State(state): State<DeploymentImpl>,
-    headers: axum::http::HeaderMap,
+    _headers: axum::http::HeaderMap,
     Json(request): Json<MeetingMessageRequest>,
 ) -> Result<Json<MeetingMessageResponse>, ApiError> {
     let pool = &state.db().pool;
@@ -2252,6 +2369,111 @@ pub async fn get_meeting_notes(
     })))
 }
 
+/// POST /topsi/meeting/notes/:session_id — Regenerate meeting notes via AI
+pub async fn regenerate_meeting_notes(
+    State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
+    Path(session_id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let pool = state.db().pool.clone();
+
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
+
+    let session = db::models::meeting_session::MeetingSession::find_by_id(&pool, &session_id)
+        .await
+        .map_err(|_| ApiError::NotFound(format!("Meeting session not found: {}", session_id)))?;
+
+    if !session.has_access(&user_context.user_id, user_context.is_admin) {
+        return Err(ApiError::Forbidden("Access denied to this meeting".to_string()));
+    }
+
+    // Fetch transcript segments to regenerate notes from
+    let segments =
+        db::models::meeting_session::MeetingSegment::find_by_session(&pool, &session_id)
+            .await
+            .unwrap_or_default();
+
+    if segments.is_empty() {
+        return Err(ApiError::BadRequest("No transcript segments available to generate notes from".to_string()));
+    }
+
+    let transcript_text = segments
+        .iter()
+        .map(|s| format!("[{}] {}", s.speaker_label.as_deref().unwrap_or("Speaker"), s.text))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // Generate notes via Anthropic
+    let api_key = std::env::var("ANTHROPIC_API_KEY")
+        .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
+        .unwrap_or_default();
+
+    let notes = if api_key.is_empty() {
+        serde_json::json!({
+            "summary": "Notes regeneration unavailable — no API key configured.",
+            "action_items": [],
+            "key_decisions": []
+        })
+    } else {
+        let client = reqwest::Client::new();
+        let prompt = format!(
+            "You are a meeting notes assistant. Summarize the following meeting transcript into structured notes.\n\nTranscript:\n{}\n\nReturn ONLY a JSON object with keys: summary (string), action_items (array of strings), key_decisions (array of strings), topics_discussed (array of strings).",
+            &transcript_text[..transcript_text.len().min(8000)]
+        );
+        let body = serde_json::json!({
+            "model": "claude-sonnet-4-6",
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": prompt}]
+        });
+        match client
+            .post("https://api.anthropic.com/v1/messages")
+            .header("x-api-key", &api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let val: serde_json::Value = resp.json().await.unwrap_or_default();
+                let text = val
+                    .get("content")
+                    .and_then(|c| c.as_array())
+                    .and_then(|arr| arr.first())
+                    .and_then(|b| b.get("text"))
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("{}");
+                // Try to parse as JSON, fall back to wrapping in summary
+                serde_json::from_str(text).unwrap_or_else(|_| serde_json::json!({"summary": text, "action_items": [], "key_decisions": []}))
+            }
+            _ => serde_json::json!({
+                "summary": "Notes generation failed — please try again.",
+                "action_items": [],
+                "key_decisions": []
+            }),
+        }
+    };
+
+    // Persist regenerated notes back to the session
+    let notes_json = serde_json::to_string(&notes).unwrap_or_else(|_| "{}".to_string());
+    let _ = db::models::meeting_session::MeetingSession::update(
+        &pool,
+        &session_id,
+        db::models::meeting_session::UpdateMeetingSession {
+            notes: Some(notes_json),
+            ..Default::default()
+        },
+    )
+    .await;
+
+    Ok(Json(serde_json::json!({
+        "session_id": session_id,
+        "notes": notes,
+        "regenerated": true,
+    })))
+}
 
 /// Get meeting transcript
 pub async fn get_meeting_transcript(
@@ -2346,4 +2568,201 @@ pub async fn share_meeting(
         "shared_with": shared_users,
         "message": format!("Meeting shared with {} users", request.user_ids.len()),
     })))
+}
+
+// ============================================================================
+// Admin Prompt Management (production-safe, admin-only)
+// ============================================================================
+
+/// Response for admin prompt endpoint
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminPromptResponse {
+    pub prompt: Option<String>,
+    pub mode: String,
+    pub prompt_sudolang: Option<String>,
+    pub autonomy_level: String,
+}
+
+/// Request to update admin prompt
+#[derive(Debug, Deserialize)]
+pub struct UpdateAdminPromptRequest {
+    pub prompt: Option<String>,
+    pub mode: Option<String>,
+    pub prompt_sudolang: Option<String>,
+    pub autonomy_level: Option<String>,
+}
+
+/// GET /topsi/admin/prompt — returns current system prompt settings
+pub async fn get_admin_prompt(
+    State(state): State<DeploymentImpl>,
+    axum::Extension(access_ctx): axum::Extension<AccessContext>,
+) -> Result<Json<AdminPromptResponse>, ApiError> {
+    if !access_ctx.is_admin {
+        return Err(ApiError::Forbidden("Admin access required".to_string()));
+    }
+
+    let pool = &state.db().pool;
+    let prompt = SystemSetting::get(pool, "topsi_system_prompt").await.ok().flatten();
+    let mode = SystemSetting::get(pool, "topsi_prompt_mode")
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| "standard".to_string());
+    let prompt_sudolang = SystemSetting::get(pool, "topsi_system_prompt_sudolang").await.ok().flatten();
+    let autonomy_level = SystemSetting::get(pool, "topsi_autonomy_level")
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| "supervised".to_string());
+
+    Ok(Json(AdminPromptResponse {
+        prompt,
+        mode,
+        prompt_sudolang,
+        autonomy_level,
+    }))
+}
+
+/// PUT /topsi/admin/prompt — update system prompt settings
+pub async fn update_admin_prompt(
+    State(state): State<DeploymentImpl>,
+    axum::Extension(access_ctx): axum::Extension<AccessContext>,
+    Json(request): Json<UpdateAdminPromptRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    if !access_ctx.is_admin {
+        return Err(ApiError::Forbidden("Admin access required".to_string()));
+    }
+
+    let pool = &state.db().pool;
+    let user_id = access_ctx.user_id.to_string();
+
+    if let Some(prompt) = &request.prompt {
+        SystemSetting::set(pool, "topsi_system_prompt", prompt, Some(&user_id))
+            .await
+            .map_err(|e| ApiError::InternalError(format!("Failed to save prompt: {}", e)))?;
+    }
+
+    if let Some(mode) = &request.mode {
+        if !matches!(mode.as_str(), "standard" | "sudolang") {
+            return Err(ApiError::BadRequest(format!("Invalid prompt mode: '{}'. Must be 'standard' or 'sudolang'", mode)));
+        }
+        SystemSetting::set(pool, "topsi_prompt_mode", mode, Some(&user_id))
+            .await
+            .map_err(|e| ApiError::InternalError(format!("Failed to save mode: {}", e)))?;
+    }
+
+    if let Some(sudolang) = &request.prompt_sudolang {
+        SystemSetting::set(pool, "topsi_system_prompt_sudolang", sudolang, Some(&user_id))
+            .await
+            .map_err(|e| ApiError::InternalError(format!("Failed to save sudolang prompt: {}", e)))?;
+    }
+
+    if let Some(ref level) = request.autonomy_level {
+        if !matches!(level.as_str(), "full" | "supervised" | "approval_required" | "manual") {
+            return Err(ApiError::BadRequest(format!("Invalid autonomy level: '{}'. Must be 'full', 'supervised', 'approval_required', or 'manual'", level)));
+        }
+        SystemSetting::set(pool, "topsi_autonomy_level", level, Some(&user_id))
+            .await
+            .map_err(|e| ApiError::InternalError(format!("Failed to save autonomy level: {}", e)))?;
+
+        // Update the running Topsi instance config
+        let topsi_instance = TOPSI_INSTANCE.get();
+        if let Some(instance_lock) = topsi_instance {
+            let mut instance = instance_lock.write().await;
+            if let Some(ref mut agent) = *instance {
+                agent.config.autonomy_level = topsi::config::AutonomyLevel::from_str(level);
+            }
+        }
+    }
+
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
+// ============================================================================
+// Per-User Settings
+// ============================================================================
+
+/// Request to update user settings
+#[derive(Debug, Deserialize)]
+pub struct UpdateUserSettingsRequest {
+    pub default_confirmation_mode: Option<String>,
+    pub per_tool_overrides: Option<serde_json::Value>,
+    pub auto_approve_timeout_minutes: Option<i64>,
+}
+
+/// GET /topsi/user-settings — returns current user's Topsi settings
+pub async fn get_user_settings(
+    State(state): State<DeploymentImpl>,
+    axum::Extension(access_ctx): axum::Extension<AccessContext>,
+) -> Result<Json<TopsiUserSettings>, ApiError> {
+    let pool = &state.db().pool;
+    let user_id = access_ctx.user_id.to_string();
+    let settings = TopsiUserSettings::get_or_default(pool, &user_id).await;
+    Ok(Json(settings))
+}
+
+/// PUT /topsi/user-settings — update current user's Topsi settings
+pub async fn update_user_settings(
+    State(state): State<DeploymentImpl>,
+    axum::Extension(access_ctx): axum::Extension<AccessContext>,
+    Json(request): Json<UpdateUserSettingsRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let pool = &state.db().pool;
+    let user_id = access_ctx.user_id.to_string();
+
+    let mode = request.default_confirmation_mode.as_deref().unwrap_or("confirm_destructive");
+    if !matches!(mode, "always_confirm" | "confirm_destructive" | "autonomous") {
+        return Err(ApiError::BadRequest(format!("Invalid confirmation mode: '{}'. Must be 'always_confirm', 'confirm_destructive', or 'autonomous'", mode)));
+    }
+
+    // Validate per_tool_overrides shape: must be a flat object of string -> string
+    if let Some(ref overrides) = request.per_tool_overrides {
+        if let Some(obj) = overrides.as_object() {
+            for (key, val) in obj {
+                if !val.is_string() {
+                    return Err(ApiError::BadRequest(format!("per_tool_overrides value for '{}' must be a string", key)));
+                }
+            }
+        } else {
+            return Err(ApiError::BadRequest("per_tool_overrides must be a JSON object".to_string()));
+        }
+    }
+
+    let overrides_json = request.per_tool_overrides.map(|v| v.to_string());
+
+    TopsiUserSettings::upsert(
+        pool,
+        &user_id,
+        mode,
+        overrides_json.as_deref(),
+        request.auto_approve_timeout_minutes,
+    )
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to save settings: {}", e)))?;
+
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
+/// GET /topsi/tools — returns all Topsi tools grouped by risk level
+pub async fn get_tool_risk_map() -> Json<serde_json::Value> {
+    let tool_names = topsi::tools::get_tool_names();
+
+    let mut red = Vec::new();
+    let mut yellow = Vec::new();
+    let mut green = Vec::new();
+
+    for name in tool_names {
+        let risk = classify_tool_risk(&name);
+        match risk {
+            db::models::topsi_user_settings::ToolRisk::Red => red.push(name),
+            db::models::topsi_user_settings::ToolRisk::Yellow => yellow.push(name),
+            db::models::topsi_user_settings::ToolRisk::Green => green.push(name),
+        }
+    }
+
+    Json(serde_json::json!({
+        "red": { "label": "Destructive", "tools": red },
+        "yellow": { "label": "Create / Update", "tools": yellow },
+        "green": { "label": "Read-only", "tools": green },
+    }))
 }

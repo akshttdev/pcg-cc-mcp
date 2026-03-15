@@ -15,10 +15,10 @@ use uuid::Uuid;
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct DataSource {
-    pub id: Uuid,
-    pub organization_id: Option<Uuid>,
-    pub project_id: Option<Uuid>,
-    pub created_by: Option<Uuid>,
+    pub id: String,
+    pub organization_id: Option<String>,
+    pub project_id: Option<String>,
+    pub created_by: Option<String>,
 
     pub title: String,
     pub description: Option<String>,
@@ -41,6 +41,9 @@ pub struct DataSource {
     pub status: String,
     pub processing_error: Option<String>,
 
+    /// Slash-delimited folder path, e.g. "Meetings/Google Meet"
+    pub folder: String,
+
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub archived_at: Option<DateTime<Utc>>,
@@ -51,9 +54,9 @@ pub struct DataSource {
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct CreateDataSource {
-    pub organization_id: Option<Uuid>,
-    pub project_id: Option<Uuid>,
-    pub created_by: Option<Uuid>,
+    pub organization_id: Option<String>,
+    pub project_id: Option<String>,
+    pub created_by: Option<String>,
     pub title: String,
     pub description: Option<String>,
     pub data_type: String,
@@ -67,11 +70,12 @@ pub struct CreateDataSource {
     pub file_size_bytes: Option<i64>,
     pub file_hash: Option<String>,
     pub metadata: Option<String>,
+    pub folder: Option<String>,
 }
 
 // ── Update input ────────────────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize, TS)]
+#[derive(Debug, Default, Deserialize, TS)]
 #[ts(export)]
 pub struct UpdateDataSource {
     pub title: Option<String>,
@@ -82,6 +86,7 @@ pub struct UpdateDataSource {
     pub metadata: Option<String>,
     pub status: Option<String>,
     pub processing_error: Option<String>,
+    pub folder: Option<String>,
 }
 
 // ── Metadata templates by data_type ─────────────────────────────────────────
@@ -165,26 +170,23 @@ pub fn metadata_template(data_type: &str, source_type: &str) -> serde_json::Valu
 impl DataSource {
     /// Create a new data source
     pub async fn create(pool: &SqlitePool, input: CreateDataSource) -> Result<Self, sqlx::Error> {
-        let id = Uuid::new_v4();
-        let id_bytes = id.as_bytes().to_vec();
-        let org_bytes = input.organization_id.map(|u| u.as_bytes().to_vec());
-        let proj_bytes = input.project_id.map(|u| u.as_bytes().to_vec());
-        let user_bytes = input.created_by.map(|u| u.as_bytes().to_vec());
+        let id = Uuid::new_v4().to_string();
         let metadata = input.metadata.unwrap_or_else(|| "{}".to_string());
         let source_type = input.source_type.unwrap_or_else(|| "file".to_string());
+        let folder = input.folder.unwrap_or_else(|| "Unfiled".to_string());
 
         sqlx::query(
             r#"INSERT INTO data_sources
                 (id, organization_id, project_id, created_by,
                  title, description, data_type, source_type, file_type,
                  content, file_name, file_path, file_size_bytes, file_hash,
-                 metadata, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')"#,
+                 metadata, status, folder)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)"#,
         )
-        .bind(&id_bytes)
-        .bind(&org_bytes)
-        .bind(&proj_bytes)
-        .bind(&user_bytes)
+        .bind(&id)
+        .bind(&input.organization_id)
+        .bind(&input.project_id)
+        .bind(&input.created_by)
         .bind(&input.title)
         .bind(&input.description)
         .bind(&input.data_type)
@@ -196,21 +198,21 @@ impl DataSource {
         .bind(input.file_size_bytes)
         .bind(&input.file_hash)
         .bind(&metadata)
+        .bind(&folder)
         .execute(pool)
         .await?;
 
-        Self::find_by_id(pool, id)
+        Self::find_by_id(pool, &id)
             .await?
             .ok_or_else(|| sqlx::Error::RowNotFound)
     }
 
     /// Find by ID
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
-        let id_bytes = id.as_bytes().to_vec();
+    pub async fn find_by_id(pool: &SqlitePool, id: &str) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as::<_, Self>(
             "SELECT * FROM data_sources WHERE id = ? AND archived_at IS NULL",
         )
-        .bind(&id_bytes)
+        .bind(id)
         .fetch_optional(pool)
         .await
     }
@@ -218,15 +220,14 @@ impl DataSource {
     /// List by organization
     pub async fn find_by_organization(
         pool: &SqlitePool,
-        org_id: Uuid,
+        org_id: &str,
     ) -> Result<Vec<Self>, sqlx::Error> {
-        let org_bytes = org_id.as_bytes().to_vec();
         sqlx::query_as::<_, Self>(
             r#"SELECT * FROM data_sources
             WHERE organization_id = ? AND archived_at IS NULL
             ORDER BY created_at DESC"#,
         )
-        .bind(&org_bytes)
+        .bind(org_id)
         .fetch_all(pool)
         .await
     }
@@ -234,15 +235,14 @@ impl DataSource {
     /// List by project
     pub async fn find_by_project(
         pool: &SqlitePool,
-        project_id: Uuid,
+        project_id: &str,
     ) -> Result<Vec<Self>, sqlx::Error> {
-        let proj_bytes = project_id.as_bytes().to_vec();
         sqlx::query_as::<_, Self>(
             r#"SELECT * FROM data_sources
             WHERE project_id = ? AND archived_at IS NULL
             ORDER BY created_at DESC"#,
         )
-        .bind(&proj_bytes)
+        .bind(project_id)
         .fetch_all(pool)
         .await
     }
@@ -250,9 +250,8 @@ impl DataSource {
     /// List by organization (including project-scoped ones for org's projects)
     pub async fn find_by_organization_all(
         pool: &SqlitePool,
-        org_id: Uuid,
+        org_id: &str,
     ) -> Result<Vec<Self>, sqlx::Error> {
-        let org_bytes = org_id.as_bytes().to_vec();
         sqlx::query_as::<_, Self>(
             r#"SELECT ds.* FROM data_sources ds
             WHERE ds.archived_at IS NULL
@@ -262,8 +261,8 @@ impl DataSource {
                    ))
             ORDER BY ds.created_at DESC"#,
         )
-        .bind(&org_bytes)
-        .bind(&org_bytes)
+        .bind(org_id)
+        .bind(org_id)
         .fetch_all(pool)
         .await
     }
@@ -271,11 +270,9 @@ impl DataSource {
     /// Update a data source
     pub async fn update(
         pool: &SqlitePool,
-        id: Uuid,
+        id: &str,
         input: UpdateDataSource,
     ) -> Result<Option<Self>, sqlx::Error> {
-        let id_bytes = id.as_bytes().to_vec();
-
         // Build dynamic SET clause
         let mut sets = Vec::new();
         let mut binds: Vec<Option<String>> = Vec::new();
@@ -312,6 +309,10 @@ impl DataSource {
             sets.push("processing_error = ?");
             binds.push(Some(err.clone()));
         }
+        if let Some(ref f) = input.folder {
+            sets.push("folder = ?");
+            binds.push(Some(f.clone()));
+        }
 
         if sets.is_empty() {
             return Self::find_by_id(pool, id).await;
@@ -327,19 +328,18 @@ impl DataSource {
         for val in &binds {
             query = query.bind(val);
         }
-        query = query.bind(&id_bytes);
+        query = query.bind(id);
         query.execute(pool).await?;
 
         Self::find_by_id(pool, id).await
     }
 
     /// Soft-delete
-    pub async fn archive(pool: &SqlitePool, id: Uuid) -> Result<(), sqlx::Error> {
-        let id_bytes = id.as_bytes().to_vec();
+    pub async fn archive(pool: &SqlitePool, id: &str) -> Result<(), sqlx::Error> {
         sqlx::query(
             "UPDATE data_sources SET archived_at = datetime('now', 'subsec'), updated_at = datetime('now', 'subsec') WHERE id = ?",
         )
-        .bind(&id_bytes)
+        .bind(id)
         .execute(pool)
         .await?;
         Ok(())
@@ -348,14 +348,13 @@ impl DataSource {
     /// Update file info after upload
     pub async fn set_file_info(
         pool: &SqlitePool,
-        id: Uuid,
+        id: &str,
         file_name: &str,
         file_path: &str,
         file_size_bytes: i64,
         file_hash: &str,
         file_type: Option<&str>,
     ) -> Result<(), sqlx::Error> {
-        let id_bytes = id.as_bytes().to_vec();
         sqlx::query(
             r#"UPDATE data_sources SET
                 file_name = ?, file_path = ?, file_size_bytes = ?,
@@ -369,7 +368,7 @@ impl DataSource {
         .bind(file_size_bytes)
         .bind(file_hash)
         .bind(file_type)
-        .bind(&id_bytes)
+        .bind(id)
         .execute(pool)
         .await?;
         Ok(())

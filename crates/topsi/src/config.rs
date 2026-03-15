@@ -23,6 +23,29 @@ impl Default for AutonomyLevel {
     }
 }
 
+impl AutonomyLevel {
+    /// Parse from a snake_case string, defaulting to Supervised
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "full" => Self::Full,
+            "supervised" => Self::Supervised,
+            "approval_required" => Self::ApprovalRequired,
+            "manual" => Self::Manual,
+            _ => Self::Supervised,
+        }
+    }
+
+    /// The most permissive ConfirmationMode this autonomy level allows
+    pub fn max_confirmation_mode(&self) -> db::models::topsi_user_settings::ConfirmationMode {
+        use db::models::topsi_user_settings::ConfirmationMode;
+        match self {
+            Self::Manual => ConfirmationMode::AlwaysConfirm,
+            Self::ApprovalRequired => ConfirmationMode::ConfirmDestructive,
+            Self::Supervised | Self::Full => ConfirmationMode::Autonomous,
+        }
+    }
+}
+
 /// LLM provider configuration
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]

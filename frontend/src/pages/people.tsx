@@ -70,7 +70,6 @@ function ContactCard({ contact }: { contact: CrmContactRecord }) {
       className="flex items-center gap-4 p-4 border rounded-lg hover:bg-muted/40 cursor-pointer transition-colors group"
       onClick={() => navigate(`/people/${contact.id}`)}
     >
-      {/* Avatar */}
       <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-sm font-semibold shrink-0">
         {contact.avatar_url ? (
           <img src={contact.avatar_url} alt={fullName} className="w-full h-full rounded-full object-cover" />
@@ -79,7 +78,6 @@ function ContactCard({ contact }: { contact: CrmContactRecord }) {
         )}
       </div>
 
-      {/* Main info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-medium truncate">{fullName}</span>
@@ -112,7 +110,6 @@ function ContactCard({ contact }: { contact: CrmContactRecord }) {
         )}
       </div>
 
-      {/* Lifecycle */}
       <div className="hidden sm:block text-xs text-muted-foreground capitalize shrink-0">
         {contact.lifecycle_stage.replace(/_/g, ' ')}
       </div>
@@ -212,7 +209,7 @@ export function PeoplePage() {
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
-                    <Link to={`/organizations/${selectedOrgId}?tab=crm`} className="flex items-center gap-2">
+                    <Link to={`/organizations/${selectedOrgId}/crm`} className="flex items-center gap-2">
                       <UserCheck className="h-4 w-4" />
                       Open {selectedOrg?.name} CRM
                     </Link>

@@ -9,6 +9,7 @@ import { CustomPropertiesPanel } from '@/components/custom-properties/CustomProp
 import { TaskCommentThread } from './TaskCommentThread';
 import { ActivityTimeline } from './ActivityTimeline';
 import { ApprovalPanel } from './ApprovalPanel';
+import { AgentWatcherPanel } from './AgentWatcherPanel';
 import type {
   AgentFlowEvent,
   ArtifactType,
@@ -40,6 +41,8 @@ import { useTaskViewManager } from '@/hooks/useTaskViewManager.ts';
 import { useExecutionSummary } from '@/hooks';
 import { ExecutionSummaryCard } from './ExecutionSummaryCard';
 import { AirtableRecordLinkBadge } from './AirtableRecordLinkBadge';
+import { AskTopsiButton } from '@/components/topsi/AskTopsiButton';
+import { BreadcrumbNav } from '@/components/breadcrumb/BreadcrumbNav';
 import { TaskArtifactsPanel } from './TaskArtifactsPanel';
 import { WorkflowTerminal } from './WorkflowTerminal';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -428,6 +431,9 @@ export function TaskDetailsPanel({
                   }
                 >
                   <div className={getTaskPanelInnerClasses()}>
+                    {isFullScreen && (
+                      <BreadcrumbNav onToggleFullscreen={toggleFullscreen} isFullscreen={isFullScreen} />
+                    )}
                     {!inIframe() && (
                       <TaskDetailsHeader
                         task={task}
@@ -452,6 +458,11 @@ export function TaskDetailsPanel({
                             <AirtableRecordLinkBadge
                               taskId={task.id}
                               hasExecutionSummary={!!executionSummary}
+                            />
+                            <AskTopsiButton
+                              entityType="task"
+                              entityId={task.id}
+                              entityName={task.title}
                             />
                           </div>
 
@@ -503,6 +514,11 @@ export function TaskDetailsPanel({
                               <ApprovalPanel task={task} />
                             </div>
                           )}
+
+                          {/* Agent Watchers */}
+                          <div className="p-3">
+                            <AgentWatcherPanel taskId={task.id} />
+                          </div>
 
                           {/* Activity Timeline (new collaboration feature) */}
                           <div className="p-3">
@@ -636,7 +652,8 @@ export function TaskDetailsPanel({
                               ) : activeTab === 'workflows' ? (
                                 <div className="p-4">{renderWorkflowBody()}</div>
                               ) : activeTab === 'activity' ? (
-                                <div className="p-4">
+                                <div className="p-4 space-y-4">
+                                  <AgentWatcherPanel taskId={task.id} />
                                   <ActivityTimeline taskId={task.id} />
                                 </div>
                               ) : activeTab === 'artifacts' ? (

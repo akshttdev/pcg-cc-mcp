@@ -98,6 +98,8 @@ backups/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+*.db-shm
+*.db-wal
 
 /frontend/.env.sentry-build-plugin
 .ssh
@@ -122,16 +124,19 @@ voice_samples/
 
 # Claude Code / MCP local config
 .claude-login.json
+.claude/
 .mcp.json
 
-# SQLx offline query cache
-.sqlx/
+# SQLx offline query cache — .sqlx/ MUST be committed for SQLX_OFFLINE=true
+# Only ignore backup copies
+.sqlx.bak/
 
 # Runtime data directory
 data/
 
 # Test artifacts
 screenshots/
+test-screenshots/
 test-project/
 test-project-cleanup/
 sprint-demo-app/
@@ -145,5 +150,9 @@ dev_assets_seed/duck.db
 *.sql.bak
 .vercel
 
-# Playwright MCP
+# Playwright MCP & test artifacts
 .playwright-mcp/
+playwright-report/
+test-results/
+blob-report/
+e2e/.auth/

@@ -100,3 +100,11 @@ export const useKeyDeleteTask = createSemanticHook(Action.DELETE_TASK);
  * useKeyToggleSidebar(() => toggleSidebar(), { scope: Scope.GLOBAL });
  */
 export const useKeyToggleSidebar = createSemanticHook(Action.TOGGLE_SIDEBAR);
+
+/**
+ * Toggle view-as switcher - Cmd+Shift+V / Ctrl+Shift+V
+ *
+ * @example
+ * useKeyToggleViewAs(() => togglePopover(), { scope: Scope.GLOBAL });
+ */
+export const useKeyToggleViewAs = createSemanticHook(Action.TOGGLE_VIEW_AS);

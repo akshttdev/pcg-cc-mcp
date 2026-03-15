@@ -19,7 +19,9 @@
 //!   SOVEREIGN_STORAGE_NATS_URL     - NATS relay URL
 
 use anyhow::{Context, Result};
+use flate2::{Compression, read::GzDecoder, write::GzEncoder};
 use serde::{Deserialize, Serialize};
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::time;
@@ -303,7 +305,17 @@ impl SovereignStorageService {
         let db_path_for_peer = self.config.db_path.clone();
         tokio::spawn(async move {
             while let Some(msg) = peer_sub.next().await {
-                match serde_json::from_slice::<SyncPayload>(&msg.payload) {
+                // Decompress gzip payload (with raw JSON fallback for older nodes)
+                let raw_bytes: Vec<u8> = {
+                    let mut dec = GzDecoder::new(&msg.payload[..]);
+                    let mut buf = Vec::new();
+                    if dec.read_to_end(&mut buf).is_ok() && !buf.is_empty() {
+                        buf
+                    } else {
+                        msg.payload.to_vec()
+                    }
+                };
+                match serde_json::from_slice::<SyncPayload>(&raw_bytes) {
                     Ok(payload) => {
                         // Note: we intentionally do NOT skip messages where from_device
                         // == our own device_id. When two nodes share the same device_id
@@ -348,6 +360,9 @@ impl SovereignStorageService {
                             payload.users.len(),
                             payload.execution_artifacts.len()
                         );
+
+                        // Single overwriting pre-sync backup (throttled to once per 5 min)
+                        backup_pre_sync(&db_path_for_peer).await;
 
                         if has_workflow_data {
                             if let Err(e) = import_peer_workflow_data(&db_path_for_peer, &payload).await {
@@ -427,8 +442,17 @@ impl SovereignStorageService {
 
         // Build snapshot from local DB
         let snapshot = self.build_snapshot(&now).await?;
-        let payload = serde_json::to_vec(&snapshot)?;
+        let raw = serde_json::to_vec(&snapshot)?;
+        let raw_size = raw.len();
+
+        // Gzip-compress to stay under NATS 1MB max_payload
+        let payload = {
+            let mut enc = GzEncoder::new(Vec::new(), Compression::fast());
+            enc.write_all(&raw).context("gzip encode failed")?;
+            enc.finish().context("gzip finish failed")?
+        };
         let payload_size = payload.len();
+        tracing::debug!("[SOVEREIGN_SYNC] Payload: {}KB raw → {}KB gzip", raw_size/1024, payload_size/1024);
 
         // Publish to Pythia's sync channel: apn.storage.sync.{provider_id}
         let sync_subject =
@@ -436,7 +460,7 @@ impl SovereignStorageService {
         client
             .publish(sync_subject.clone(), payload.into())
             .await
-            .context("Failed to publish sync data")?;
+            .map_err(|e| anyhow::anyhow!("Failed to publish sync data ({}B raw / {}B gz): {:?}", raw_size, payload_size, e))?;
 
         self.last_sync = Some(now);
         tracing::info!(
@@ -471,8 +495,13 @@ impl SovereignStorageService {
             .context("Failed to open local DB for sync")?;
 
         let projects: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
-            "SELECT hex(id) as id, name, git_repo_path, hex(organization_id) as organization_id, \
-             hex(client_id) as client_id, hex(folder_id) as folder_id, hex(owner_id) as owner_id, \
+            "SELECT \
+             CASE WHEN typeof(id)='blob' THEN hex(id) ELSE id END as id, \
+             name, git_repo_path, \
+             CASE WHEN typeof(organization_id)='blob' THEN hex(organization_id) ELSE organization_id END as organization_id, \
+             CASE WHEN typeof(client_id)='blob' THEN hex(client_id) ELSE client_id END as client_id, \
+             CASE WHEN typeof(folder_id)='blob' THEN hex(folder_id) ELSE folder_id END as folder_id, \
+             CASE WHEN typeof(owner_id)='blob' THEN hex(owner_id) ELSE owner_id END as owner_id, \
              created_at, updated_at \
              FROM projects WHERE deleted_at IS NULL LIMIT 500",
         )
@@ -484,9 +513,14 @@ impl SovereignStorageService {
         .collect();
 
         let tasks: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
-            "SELECT hex(id) as id, hex(project_id) as project_id, title, description, status, priority, \
-             assigned_agent, custom_properties, hex(board_id) as board_id, assignee_id, tags, \
-             due_date, created_by, created_at, updated_at \
+            "SELECT \
+             CASE WHEN typeof(id)='blob' THEN hex(id) ELSE id END as id, \
+             CASE WHEN typeof(project_id)='blob' THEN hex(project_id) ELSE project_id END as project_id, \
+             title, description, status, priority, assigned_agent, custom_properties, \
+             CASE WHEN typeof(board_id)='blob' THEN hex(board_id) ELSE board_id END as board_id, \
+             assignee_id, tags, due_date, created_by, \
+             CASE WHEN typeof(parent_task_id)='blob' THEN hex(parent_task_id) ELSE parent_task_id END as parent_task_id, \
+             created_at, updated_at \
              FROM tasks WHERE deleted_at IS NULL LIMIT 2000",
         )
         .fetch_all(&pool)
@@ -615,8 +649,11 @@ impl SovereignStorageService {
         .collect();
 
         let organizations: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
-            "SELECT hex(id) as id, name, slug, description, avatar_url, \
-             hex(owner_id) as owner_id, settings, is_active, created_at, updated_at \
+            "SELECT \
+             CASE WHEN typeof(id)='blob' THEN hex(id) ELSE id END as id, \
+             name, slug, description, avatar_url, \
+             CASE WHEN typeof(owner_id)='blob' THEN hex(owner_id) ELSE owner_id END as owner_id, \
+             settings, is_active, created_at, updated_at \
              FROM organizations WHERE deleted_at IS NULL",
         )
         .fetch_all(&pool)
@@ -626,8 +663,11 @@ impl SovereignStorageService {
         .map(|r| r.0)
         .collect();
 
+        // organization_members: id + organization_id are TEXT-migrated; user_id is still BLOB
         let organization_members: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
-            "SELECT hex(id) as id, hex(organization_id) as organization_id, \
+            "SELECT \
+             CASE WHEN typeof(id)='blob' THEN hex(id) ELSE id END as id, \
+             CASE WHEN typeof(organization_id)='blob' THEN hex(organization_id) ELSE organization_id END as organization_id, \
              hex(user_id) as user_id, role, granted_at \
              FROM organization_members",
         )
@@ -639,8 +679,10 @@ impl SovereignStorageService {
         .collect();
 
         let clients: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
-            "SELECT hex(id) as id, hex(organization_id) as organization_id, name, slug, \
-             description, logo_url, website, is_active, created_at, updated_at \
+            "SELECT \
+             CASE WHEN typeof(id)='blob' THEN hex(id) ELSE id END as id, \
+             CASE WHEN typeof(organization_id)='blob' THEN hex(organization_id) ELSE organization_id END as organization_id, \
+             name, slug, description, logo_url, website, is_active, created_at, updated_at \
              FROM clients WHERE deleted_at IS NULL",
         )
         .fetch_all(&pool)
@@ -651,8 +693,11 @@ impl SovereignStorageService {
         .collect();
 
         let project_folders: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
-            "SELECT hex(id) as id, hex(organization_id) as organization_id, \
-             hex(client_id) as client_id, name, sort_order, is_active, created_at, updated_at \
+            "SELECT \
+             CASE WHEN typeof(id)='blob' THEN hex(id) ELSE id END as id, \
+             CASE WHEN typeof(organization_id)='blob' THEN hex(organization_id) ELSE organization_id END as organization_id, \
+             CASE WHEN typeof(client_id)='blob' THEN hex(client_id) ELSE client_id END as client_id, \
+             name, sort_order, is_active, created_at, updated_at \
              FROM project_folders",
         )
         .fetch_all(&pool)
@@ -663,8 +708,10 @@ impl SovereignStorageService {
         .collect();
 
         let project_boards: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
-            "SELECT hex(id) as id, hex(project_id) as project_id, name, slug, \
-             board_type, description, created_at, updated_at \
+            "SELECT \
+             CASE WHEN typeof(id)='blob' THEN hex(id) ELSE id END as id, \
+             CASE WHEN typeof(project_id)='blob' THEN hex(project_id) ELSE project_id END as project_id, \
+             name, slug, board_type, description, created_at, updated_at \
              FROM project_boards",
         )
         .fetch_all(&pool)
@@ -675,10 +722,13 @@ impl SovereignStorageService {
         .collect();
 
         let board_shares: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
-            "SELECT hex(id) as id, hex(board_id) as board_id, \
-             hex(source_organization_id) as source_organization_id, \
-             hex(target_organization_id) as target_organization_id, \
-             permission, share_type, hex(shared_by) as shared_by, \
+            "SELECT \
+             CASE WHEN typeof(id)='blob' THEN hex(id) ELSE id END as id, \
+             CASE WHEN typeof(board_id)='blob' THEN hex(board_id) ELSE board_id END as board_id, \
+             CASE WHEN typeof(source_organization_id)='blob' THEN hex(source_organization_id) ELSE source_organization_id END as source_organization_id, \
+             CASE WHEN typeof(target_organization_id)='blob' THEN hex(target_organization_id) ELSE target_organization_id END as target_organization_id, \
+             permission, share_type, \
+             CASE WHEN typeof(shared_by)='blob' THEN hex(shared_by) ELSE shared_by END as shared_by, \
              is_active, created_at, updated_at \
              FROM board_shares",
         )
@@ -689,8 +739,11 @@ impl SovereignStorageService {
         .map(|r| r.0)
         .collect();
 
+        // project_members: id + project_id are TEXT-migrated; user_id + granted_by are still BLOB
         let project_members: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
-            "SELECT hex(id) as id, hex(project_id) as project_id, \
+            "SELECT \
+             CASE WHEN typeof(id)='blob' THEN hex(id) ELSE id END as id, \
+             CASE WHEN typeof(project_id)='blob' THEN hex(project_id) ELSE project_id END as project_id, \
              hex(user_id) as user_id, role, permissions, \
              hex(granted_by) as granted_by, granted_at \
              FROM project_members",
@@ -894,9 +947,184 @@ impl SovereignStorageService {
 /// Normalize ISO 8601 datetime strings to SQLite text format.
 /// sqlx's DateTime<Utc> decoder for SQLite only accepts "YYYY-MM-DD HH:MM:SS[.fff]"
 /// (space-separated), not the ISO 8601 "T" separator or "Z" suffix.
+/// Writes a single pre-sync backup to `<db>.pre_sync_backup` using VACUUM INTO.
+///
+/// Throttled: skips if the backup file was written within the last 5 minutes so
+/// that rapid sync cycles don't hammer disk I/O. There is only ever one copy —
+/// the file is overwritten on each run.
+async fn backup_pre_sync(db_path: &std::path::Path) {
+    let backup_path = {
+        let mut p = db_path.as_os_str().to_owned();
+        p.push(".pre_sync_backup");
+        std::path::PathBuf::from(p)
+    };
+
+    // Skip if a recent backup already exists
+    if let Ok(meta) = std::fs::metadata(&backup_path) {
+        if let Ok(modified) = meta.modified() {
+            if modified.elapsed().unwrap_or_default() < std::time::Duration::from_secs(300) {
+                return;
+            }
+        }
+    }
+
+    use sqlx::sqlite::SqliteConnectOptions;
+    use std::str::FromStr;
+
+    let db_url = format!("sqlite://{}", db_path.display());
+    let options = match SqliteConnectOptions::from_str(&db_url) {
+        Ok(o) => o,
+        Err(e) => {
+            tracing::warn!("[SOVEREIGN_SYNC] pre-sync backup failed (connect options): {e}");
+            return;
+        }
+    };
+    let pool = match sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+    {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("[SOVEREIGN_SYNC] pre-sync backup failed (pool): {e}");
+            return;
+        }
+    };
+
+    // VACUUM INTO fails if the target file already exists — remove it first
+    let _ = std::fs::remove_file(&backup_path);
+
+    let sql = format!(
+        "VACUUM INTO '{}'",
+        backup_path.to_string_lossy().replace('\'', "''")
+    );
+    if let Err(e) = sqlx::query(&sql).execute(&pool).await {
+        tracing::warn!("[SOVEREIGN_SYNC] pre-sync backup failed (VACUUM INTO): {e}");
+    } else {
+        tracing::info!(
+            "[SOVEREIGN_SYNC] pre-sync backup written → {}",
+            backup_path.display()
+        );
+    }
+    pool.close().await;
+}
+
 fn normalize_dt(s: &str) -> String {
     let s = s.replace('T', " ");
     s.trim_end_matches('Z').to_string()
+}
+
+/// Converts a peer UUID value to a hyphenated lowercase TEXT UUID.
+///
+/// Handles two formats produced by the snapshot `hex(col)` / pass-through logic:
+///   - 32-char hex (from `hex(blob_col)` on old peers) → `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
+///   - 36-char dashed string (from TEXT columns on new peers) → lowercased as-is
+///
+/// Returns `None` for empty or unrecognisable input.
+fn normalize_uuid(s: &str) -> Option<String> {
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    if s.len() == 36 && s.as_bytes().get(8) == Some(&b'-') {
+        return Some(s.to_lowercase());
+    }
+    if s.len() == 32 && s.bytes().all(|b| b.is_ascii_hexdigit()) {
+        let s = s.to_lowercase();
+        return Some(format!(
+            "{}-{}-{}-{}-{}",
+            &s[0..8], &s[8..12], &s[12..16], &s[16..20], &s[20..32]
+        ));
+    }
+    None
+}
+
+fn get_uuid(row: &serde_json::Value, key: &str) -> Option<String> {
+    row.get(key)?.as_str().and_then(normalize_uuid)
+}
+
+/// Converts any BLOB-stored UUIDs in TEXT-migrated columns to hyphenated TEXT strings.
+///
+/// Run once at the start of every peer import so that ON CONFLICT(id) matching works
+/// correctly — a TEXT id and a BLOB id representing the same UUID are NOT equal in
+/// SQLite, so without this step the upsert would insert a duplicate TEXT row rather
+/// than updating the existing BLOB row.
+///
+/// For PRIMARY KEY columns, BLOB rows whose TEXT equivalent already exists are deleted
+/// (the TEXT row is canonical); any remaining BLOB PKs are converted in-place.
+/// For non-PK columns, BLOBs are updated directly.
+///
+/// Only touches rows where `typeof(col) = 'blob'`, so it is a no-op on clean DBs.
+async fn fix_blob_uuids(pool: &sqlx::SqlitePool) {
+    const BLOB_TO_TEXT: &str =
+        "lower(substr(hex(%col%),1,8)||'-'||substr(hex(%col%),9,4)||'-'||\
+         substr(hex(%col%),13,4)||'-'||substr(hex(%col%),17,4)||'-'||substr(hex(%col%),21,12))";
+
+    // Tables whose rows come entirely from peer sync — safe to delete all BLOB-id rows outright.
+    // They are re-imported as TEXT in the same sync call immediately after this function.
+    let delete_blob_pk_tables: &[&str] = &[
+        "project_boards",
+        "board_shares",
+        "organization_members",
+        "project_members",
+        "project_folders",
+    ];
+
+    for table in delete_blob_pk_tables {
+        let sql = format!("DELETE FROM {table} WHERE typeof(id) = 'blob'");
+        if let Err(e) = sqlx::query(&sql).execute(pool).await {
+            tracing::warn!("[SOVEREIGN_SYNC] blob-pk delete failed on {table}.id: {e}");
+        }
+    }
+
+    // Tables where we UPDATE BLOB ids in-place (no secondary unique constraints that would block).
+    // These tables either have locally-authored rows or are also safe to update.
+    let update_blob_pk_tables: &[(&str, &[&str])] = &[
+        ("tasks",         &["project_id", "board_id", "parent_task_id"]),
+        ("projects",      &["organization_id", "client_id", "folder_id", "owner_id"]),
+        ("organizations", &["owner_id"]),
+        ("clients",       &["organization_id"]),
+    ];
+
+    for (table, non_pk_cols) in update_blob_pk_tables {
+        let expr = BLOB_TO_TEXT.replace("%col%", "id");
+
+        // Delete BLOB id rows where the TEXT equivalent already exists to avoid PK conflict
+        let del_sql = format!(
+            "DELETE FROM {table} WHERE typeof(id) = 'blob' \
+             AND {expr} IN (SELECT id FROM {table} WHERE typeof(id) = 'text')"
+        );
+        if let Err(e) = sqlx::query(&del_sql).execute(pool).await {
+            tracing::warn!("[SOVEREIGN_SYNC] blob-pk dedup failed on {table}.id: {e}");
+        }
+
+        // Convert remaining BLOB ids to TEXT
+        let upd_sql = format!(
+            "UPDATE {table} SET id = {expr} WHERE typeof(id) = 'blob'"
+        );
+        if let Err(e) = sqlx::query(&upd_sql).execute(pool).await {
+            tracing::warn!("[SOVEREIGN_SYNC] blob-uuid fix failed on {table}.id: {e}");
+        }
+
+        // Fix non-PK UUID columns
+        for col in *non_pk_cols {
+            let col_expr = BLOB_TO_TEXT.replace("%col%", col);
+            let col_sql = format!(
+                "UPDATE {table} SET {col} = {col_expr} WHERE typeof({col}) = 'blob'"
+            );
+            if let Err(e) = sqlx::query(&col_sql).execute(pool).await {
+                tracing::warn!("[SOVEREIGN_SYNC] blob-uuid fix failed on {table}.{col}: {e}");
+            }
+        }
+    }
+
+    // project_members.project_id — BLOB rows always have TEXT counterparts (duplicate from old sync).
+    // Safe to delete outright; TEXT rows are canonical and the peer re-imports as TEXT.
+    if let Err(e) = sqlx::query(
+        "DELETE FROM project_members WHERE typeof(project_id) = 'blob'"
+    ).execute(pool).await {
+        tracing::warn!("[SOVEREIGN_SYNC] blob-uuid fix failed on project_members.project_id: {e}");
+    }
 }
 
 async fn import_peer_workflow_data(db_path: &std::path::Path, payload: &SyncPayload) -> Result<()> {
@@ -1121,24 +1349,29 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
 
     let mut imported = OrgImportCounts::default();
 
+    // Heal any BLOB UUIDs left in TEXT-migrated columns before upserting, so that
+    // ON CONFLICT(id) matching works correctly (BLOB != TEXT in SQLite even for the
+    // same UUID value).
+    fix_blob_uuids(&pool).await;
+
     // 0a. Projects — no org/client FK enforcement in SQLite by default; insert before tasks
     for row in &payload.projects {
-        let id = match row.get("id").and_then(|v| v.as_str()) {
+        let id = match get_uuid(row, "id") {
             Some(id) => id,
             None => continue,
         };
         let result = sqlx::query(
             "INSERT OR IGNORE INTO projects \
              (id, name, git_repo_path, organization_id, client_id, folder_id, owner_id, created_at, updated_at) \
-             VALUES (unhex($1), $2, $3, unhex($4), unhex($5), unhex($6), unhex($7), $8, $9)"
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
         )
-        .bind(id)
+        .bind(&id)
         .bind(row.get("name").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("git_repo_path").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("organization_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
-        .bind(row.get("client_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
-        .bind(row.get("folder_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
-        .bind(row.get("owner_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(get_uuid(row, "organization_id"))
+        .bind(get_uuid(row, "client_id"))
+        .bind(get_uuid(row, "folder_id"))
+        .bind(get_uuid(row, "owner_id"))
         .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .execute(&pool)
@@ -1153,7 +1386,7 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
 
     // 0b. Tasks — upsert: insert new, update status/title/etc if peer has newer updated_at
     for row in &payload.tasks {
-        let id = match row.get("id").and_then(|v| v.as_str()) {
+        let id = match get_uuid(row, "id") {
             Some(id) => id,
             None => continue,
         };
@@ -1161,28 +1394,31 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
             "INSERT INTO tasks \
              (id, project_id, title, description, status, priority, assigned_agent, \
               custom_properties, board_id, assignee_id, tags, due_date, created_by, \
-              created_at, updated_at) \
-             VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7, $8, unhex($9), $10, $11, $12, $13, $14, $15) \
+              parent_task_id, created_at, updated_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) \
              ON CONFLICT(id) DO UPDATE SET \
                title=excluded.title, description=excluded.description, status=excluded.status, \
                priority=excluded.priority, assigned_agent=excluded.assigned_agent, \
                assignee_id=excluded.assignee_id, tags=excluded.tags, \
-               custom_properties=excluded.custom_properties, updated_at=excluded.updated_at \
+               custom_properties=excluded.custom_properties, \
+               parent_task_id=excluded.parent_task_id, \
+               updated_at=excluded.updated_at \
              WHERE excluded.updated_at > tasks.updated_at"
         )
-        .bind(id)
-        .bind(row.get("project_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(&id)
+        .bind(get_uuid(row, "project_id").unwrap_or_default())
         .bind(row.get("title").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("description").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("status").and_then(|v| v.as_str()).unwrap_or("todo"))
         .bind(row.get("priority").and_then(|v| v.as_str()).unwrap_or("medium"))
         .bind(row.get("assigned_agent").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("custom_properties").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
-        .bind(row.get("board_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(get_uuid(row, "board_id"))
         .bind(row.get("assignee_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("tags").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("due_date").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(normalize_dt))
         .bind(row.get("created_by").and_then(|v| v.as_str()).unwrap_or("system"))
+        .bind(get_uuid(row, "parent_task_id"))
         .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .execute(&pool)
@@ -1227,21 +1463,21 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
 
     // 2. Organizations (FK: users.owner_id)
     for row in &payload.organizations {
-        let id = match row.get("id").and_then(|v| v.as_str()) {
+        let id = match get_uuid(row, "id") {
             Some(id) => id,
             None => continue,
         };
         let result = sqlx::query(
             "INSERT OR IGNORE INTO organizations \
              (id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at) \
-             VALUES (unhex($1), $2, $3, $4, $5, unhex($6), $7, $8, $9, $10)"
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)"
         )
-        .bind(id)
+        .bind(&id)
         .bind(row.get("name").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("slug").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("description").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("avatar_url").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
-        .bind(row.get("owner_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(get_uuid(row, "owner_id"))
         .bind(row.get("settings").and_then(|v| v.as_str()).unwrap_or("{}"))
         .bind(row.get("is_active").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
         .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
@@ -1257,18 +1493,19 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
     }
 
     // 3. Organization members (FK: organizations, users)
+    // organization_members.id and .organization_id are TEXT (migrated); .user_id is still BLOB
     for row in &payload.organization_members {
-        let id = match row.get("id").and_then(|v| v.as_str()) {
+        let id = match get_uuid(row, "id") {
             Some(id) => id,
             None => continue,
         };
         let result = sqlx::query(
             "INSERT OR IGNORE INTO organization_members \
              (id, organization_id, user_id, role, granted_at) \
-             VALUES (unhex($1), unhex($2), unhex($3), $4, $5)"
+             VALUES ($1, $2, unhex($3), $4, $5)"
         )
-        .bind(id)
-        .bind(row.get("organization_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(&id)
+        .bind(get_uuid(row, "organization_id").unwrap_or_default())
         .bind(row.get("user_id").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("role").and_then(|v| v.as_str()).unwrap_or("member"))
         .bind(row.get("granted_at").and_then(|v| v.as_str()).unwrap_or(""))
@@ -1284,17 +1521,17 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
 
     // 4. Clients (FK: organizations)
     for row in &payload.clients {
-        let id = match row.get("id").and_then(|v| v.as_str()) {
+        let id = match get_uuid(row, "id") {
             Some(id) => id,
             None => continue,
         };
         let result = sqlx::query(
             "INSERT OR IGNORE INTO clients \
              (id, organization_id, name, slug, description, logo_url, website, is_active, created_at, updated_at) \
-             VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7, $8, $9, $10)"
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)"
         )
-        .bind(id)
-        .bind(row.get("organization_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(&id)
+        .bind(get_uuid(row, "organization_id").unwrap_or_default())
         .bind(row.get("name").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("slug").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("description").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
@@ -1315,18 +1552,18 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
 
     // 5. Project folders (FK: organizations, clients)
     for row in &payload.project_folders {
-        let id = match row.get("id").and_then(|v| v.as_str()) {
+        let id = match get_uuid(row, "id") {
             Some(id) => id,
             None => continue,
         };
         let result = sqlx::query(
             "INSERT OR IGNORE INTO project_folders \
              (id, organization_id, client_id, name, sort_order, is_active, created_at, updated_at) \
-             VALUES (unhex($1), unhex($2), unhex($3), $4, $5, $6, $7, $8)"
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"
         )
-        .bind(id)
-        .bind(row.get("organization_id").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("client_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(&id)
+        .bind(get_uuid(row, "organization_id").unwrap_or_default())
+        .bind(get_uuid(row, "client_id"))
         .bind(row.get("name").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("sort_order").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
         .bind(row.get("is_active").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
@@ -1344,17 +1581,17 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
 
     // 6. Project boards (FK: projects — already synced)
     for row in &payload.project_boards {
-        let id = match row.get("id").and_then(|v| v.as_str()) {
+        let id = match get_uuid(row, "id") {
             Some(id) => id,
             None => continue,
         };
         let result = sqlx::query(
             "INSERT OR IGNORE INTO project_boards \
              (id, project_id, name, slug, board_type, description, created_at, updated_at) \
-             VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7, $8)"
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"
         )
-        .bind(id)
-        .bind(row.get("project_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(&id)
+        .bind(get_uuid(row, "project_id").unwrap_or_default())
         .bind(row.get("name").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("slug").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("board_type").and_then(|v| v.as_str()).unwrap_or("kanban"))
@@ -1373,7 +1610,7 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
 
     // 7. Board shares (FK: project_boards, organizations)
     for row in &payload.board_shares {
-        let id = match row.get("id").and_then(|v| v.as_str()) {
+        let id = match get_uuid(row, "id") {
             Some(id) => id,
             None => continue,
         };
@@ -1381,15 +1618,15 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
             "INSERT OR IGNORE INTO board_shares \
              (id, board_id, source_organization_id, target_organization_id, permission, \
               share_type, shared_by, is_active, created_at, updated_at) \
-             VALUES (unhex($1), unhex($2), unhex($3), unhex($4), $5, $6, unhex($7), $8, $9, $10)"
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)"
         )
-        .bind(id)
-        .bind(row.get("board_id").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("source_organization_id").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("target_organization_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(&id)
+        .bind(get_uuid(row, "board_id").unwrap_or_default())
+        .bind(get_uuid(row, "source_organization_id").unwrap_or_default())
+        .bind(get_uuid(row, "target_organization_id").unwrap_or_default())
         .bind(row.get("permission").and_then(|v| v.as_str()).unwrap_or("read"))
         .bind(row.get("share_type").and_then(|v| v.as_str()).unwrap_or("org"))
-        .bind(row.get("shared_by").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(get_uuid(row, "shared_by"))
         .bind(row.get("is_active").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
         .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
@@ -1404,18 +1641,19 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
     }
 
     // 8. Project members (FK: projects, users)
+    // project_members.id and .project_id are TEXT (migrated); .user_id and .granted_by are still BLOB
     for row in &payload.project_members {
-        let id = match row.get("id").and_then(|v| v.as_str()) {
+        let id = match get_uuid(row, "id") {
             Some(id) => id,
             None => continue,
         };
         let result = sqlx::query(
             "INSERT OR IGNORE INTO project_members \
              (id, project_id, user_id, role, permissions, granted_by, granted_at) \
-             VALUES (unhex($1), unhex($2), unhex($3), $4, $5, unhex($6), $7)"
+             VALUES ($1, $2, unhex($3), $4, $5, unhex($6), $7)"
         )
-        .bind(id)
-        .bind(row.get("project_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(&id)
+        .bind(get_uuid(row, "project_id").unwrap_or_default())
         .bind(row.get("user_id").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("role").and_then(|v| v.as_str()).unwrap_or("member"))
         .bind(row.get("permissions").and_then(|v| v.as_str()).unwrap_or("{}"))

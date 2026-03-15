@@ -239,12 +239,12 @@ async fn get_ralph_iterations(
 /// Get Ralph loop by task attempt ID
 async fn get_ralph_by_attempt(
     State(deployment): State<DeploymentImpl>,
-    Path(task_attempt_id): Path<Uuid>,
+    Path(task_attempt_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let ralph_service = RalphService::new(deployment.db().clone(), deployment.git().clone());
 
     let state = ralph_service
-        .get_loop_state_by_attempt(task_attempt_id)
+        .get_loop_state_by_attempt(&task_attempt_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -258,7 +258,7 @@ async fn get_ralph_by_attempt(
 #[serde(tag = "type")]
 pub enum RalphByAttemptResponse {
     Found(RalphLoopState),
-    NotFound { task_attempt_id: Uuid },
+    NotFound { task_attempt_id: String },
 }
 
 // ============================================================================
@@ -272,7 +272,7 @@ async fn resolve_task_ralph_config(
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     use db::models::task::Task;
 
-    let task = Task::find_by_id(&deployment.db().pool, task_id)
+    let task = Task::find_by_id(&deployment.db().pool, &task_id.to_string())
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or((StatusCode::NOT_FOUND, "Task not found".to_string()))?;

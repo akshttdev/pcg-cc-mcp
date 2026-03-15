@@ -192,8 +192,24 @@ export default function MissionControlPage() {
                 </>
               ) : dashboard?.active_executions.length === 0 ? (
                 <Card className="border-dashed">
-                  <CardContent className="py-8 text-center text-muted-foreground text-sm">
-                    No active executions
+                  <CardContent className="py-8 text-center text-sm space-y-3">
+                    <Bot className="h-8 w-8 mx-auto opacity-40" />
+                    <div>
+                      <p className="font-medium">No Active Executions</p>
+                      <p className="text-xs text-muted-foreground mt-1">Get started with the agent automation loop:</p>
+                    </div>
+                    <ol className="text-xs text-muted-foreground space-y-1 text-left max-w-[200px] mx-auto">
+                      <li>1. Create a task in a project</li>
+                      <li>2. Assign an agent to the task</li>
+                      <li>3. Send a message to trigger execution</li>
+                    </ol>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => window.location.href = '/projects'}
+                    >
+                      Go to Projects
+                    </Button>
                   </CardContent>
                 </Card>
               ) : (
@@ -495,8 +511,10 @@ export default function MissionControlPage() {
               <>
                 {/* Empty state when no execution selected */}
                 <Card className="flex-1">
-                  <CardContent className="h-full flex items-center justify-center text-muted-foreground text-sm">
-                    Select an execution to view details
+                  <CardContent className="h-full flex flex-col items-center justify-center text-muted-foreground text-sm gap-2">
+                    <Activity className="h-6 w-6 opacity-40" />
+                    <p>Select an execution to view details</p>
+                    <p className="text-xs">Artifacts, checkpoints, and live coordination will appear here.</p>
                   </CardContent>
                 </Card>
 

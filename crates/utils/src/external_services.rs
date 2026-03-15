@@ -408,12 +408,53 @@ fn find_python() -> Option<String> {
 
 // ============= APN Node & Bridge =============
 
+/// Kill any existing apn_node processes to prevent accumulation.
+/// Uses PID file first, then falls back to pkill for orphans.
+pub fn kill_existing_apn_nodes() {
+    // 1. Try PID file
+    if let Ok(pid_str) = std::fs::read_to_string("/tmp/apn_node.pid") {
+        if let Ok(pid) = pid_str.trim().parse::<i32>() {
+            unsafe {
+                libc::kill(pid, libc::SIGTERM);
+            }
+            info!("[APN] Sent SIGTERM to previous node (PID {})", pid);
+        }
+        let _ = std::fs::remove_file("/tmp/apn_node.pid");
+    }
+
+    // 2. Kill any other orphaned apn_node processes (not us)
+    let our_pid = std::process::id();
+    if let Ok(output) = Command::new("pgrep").arg("-f").arg("apn_node").output() {
+        if let Ok(pids) = String::from_utf8(output.stdout) {
+            let mut killed = 0u32;
+            for line in pids.lines() {
+                if let Ok(pid) = line.trim().parse::<u32>() {
+                    if pid != our_pid {
+                        unsafe {
+                            libc::kill(pid as i32, libc::SIGTERM);
+                        }
+                        killed += 1;
+                    }
+                }
+            }
+            if killed > 0 {
+                info!("[APN] Cleaned up {} orphaned apn_node process(es)", killed);
+                // Give them a moment to exit
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+        }
+    }
+}
+
 /// Start the APN node binary (libp2p mesh + NATS relay)
 async fn start_apn_node(binary_path: &str, config: &ExternalServicesConfig) -> bool {
     if !std::path::Path::new(binary_path).exists() {
         warn!("[APN] Binary not found at {}", binary_path);
         return false;
     }
+
+    // Kill any existing apn_node processes before spawning
+    kill_existing_apn_nodes();
 
     let mut cmd = Command::new(binary_path);
     cmd.arg("--port")

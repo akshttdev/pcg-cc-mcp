@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT metadata FROM email_accounts WHERE email_address = 'nora@powerclubglobal.com' LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "metadata",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "77d527188ebf3bc5e8c94335ee29f373dd212513684fbc7c7e66ec838b8bd59e"
+}

@@ -41,6 +41,7 @@ pub enum ExecutionProcessRunReason {
     CleanupScript,
     CodingAgent,
     DevServer,
+    AgentReview,
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
@@ -522,7 +523,7 @@ impl ExecutionProcess {
             .await?
             .ok_or(sqlx::Error::RowNotFound)?;
 
-        let task = Task::find_by_id(pool, task_attempt.task_id)
+        let task = Task::find_by_id(pool, &task_attempt.task_id.to_string())
             .await?
             .ok_or(sqlx::Error::RowNotFound)?;
 

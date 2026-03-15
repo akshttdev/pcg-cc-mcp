@@ -209,6 +209,12 @@ The Social Command workflow: Scout researches → Oracle plans strategy → Muse
 
 When asked about social media, content strategy, or the Social Command team, explain these agents and their workflows.
 
+WEB ACCESS — YOU HAVE FULL INTERNET ACCESS:
+- search_web: Search the internet in real-time (powered by Exa). Use this whenever asked to find, look up, research, or discover anything online.
+- fetch_web_page: Fetch and read any URL directly (static pages, docs, APIs).
+- render_page: Render JavaScript-heavy pages with a real browser (SPAs, dashboards, dynamic sites).
+NEVER say you lack internet access or cannot browse URLs. When asked to find something online, look up a link, or read a webpage — CALL THE TOOL IMMEDIATELY.
+
 Provide concise executive summaries and surface actionable next steps."#.to_string(),
             endpoint: None,
         }

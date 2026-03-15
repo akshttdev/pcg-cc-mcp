@@ -1,4 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -7,103 +9,43 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Bell, CheckCircle2, Edit, Plus, Trash2, ArrowRight, MessageSquare } from 'lucide-react';
+import { Bell, CheckCheck } from 'lucide-react';
 import { resolveApiUrl } from '@/lib/api';
+import type { ActivityItem, InboxNotification } from './types';
+import { getProjectId } from './utils';
+import { ActivityNotificationItem } from './ActivityNotificationItem';
+import { InboxNotificationItem } from './InboxNotificationItem';
 
-function timeAgo(dateStr: string): string {
-  const now = Date.now();
-  const then = new Date(dateStr).getTime();
-  const diff = Math.max(0, now - then);
-  const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return 'just now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(dateStr).toLocaleDateString();
-}
+const READ_ACTIVITY_IDS_KEY = 'orcha:read-activity-ids';
 
-interface ActivityItem {
-  id: string;
-  task_id: string;
-  actor_id: string;
-  actor_type: string;
-  action: string;
-  previous_state: string | null;
-  new_state: string | null;
-  metadata: string | null;
-  timestamp: string;
-}
-
-function getActionIcon(action: string) {
-  switch (action) {
-    case 'created':
-    case 'create':
-    case 'task_created':
-      return <Plus className="h-3 w-3 text-green-500" />;
-    case 'updated':
-    case 'update':
-    case 'task_updated':
-      return <Edit className="h-3 w-3 text-blue-500" />;
-    case 'status_change':
-      return <ArrowRight className="h-3 w-3 text-yellow-500" />;
-    case 'complete':
-    case 'done':
-      return <CheckCircle2 className="h-3 w-3 text-green-500" />;
-    case 'deleted':
-    case 'delete':
-      return <Trash2 className="h-3 w-3 text-red-500" />;
-    case 'comment':
-      return <MessageSquare className="h-3 w-3 text-purple-500" />;
-    default:
-      return <Bell className="h-3 w-3 text-muted-foreground" />;
-  }
-}
-
-function formatActor(item: ActivityItem): string {
-  if (item.actor_type === 'agent') return 'Agent';
-  if (item.actor_type === 'system') return 'System';
-  if (item.actor_id === 'current-user' || !item.actor_id) return 'You';
-  return item.actor_id;
-}
-
-function formatAction(item: ActivityItem): string {
-  const actor = formatActor(item);
-  let meta: Record<string, any> = {};
+function loadReadActivityIds(): Set<string> {
   try {
-    if (item.metadata) meta = JSON.parse(item.metadata);
-  } catch {}
-
-  switch (item.action) {
-    case 'created':
-    case 'create':
-    case 'task_created':
-      return `${actor} created${meta.title ? ` "${meta.title}"` : ' a task'}`;
-    case 'updated':
-    case 'update':
-    case 'task_updated':
-      if (meta.fields_changed) {
-        return `${actor} updated ${meta.fields_changed.join(', ')}`;
-      }
-      return `${actor} updated a task`;
-    case 'status_change':
-      return `${actor} changed status${meta.to ? ` to ${meta.to}` : ''}`;
-    case 'comment':
-      return `${actor} commented`;
-    case 'create_and_start':
-      return `${actor} started execution`;
-    case 'deleted':
-    case 'delete':
-      return `${actor} deleted${meta.title ? ` "${meta.title}"` : ' an item'}`;
-    default:
-      return `${actor} ${item.action.replace(/_/g, ' ')}`;
+    const raw = localStorage.getItem(READ_ACTIVITY_IDS_KEY);
+    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+  } catch {
+    return new Set();
   }
+}
+
+function persistReadActivityIds(ids: Set<string>) {
+  try {
+    localStorage.setItem(READ_ACTIVITY_IDS_KEY, JSON.stringify([...ids]));
+  } catch {}
 }
 
 export function NotificationCenter() {
-  const { data: notifications = [], isLoading } = useQuery({
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [dismissedAt, setDismissedAt] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('orcha:activity-dismissed-at');
+    } catch {
+      return null;
+    }
+  });
+  const [readActivityIds, setReadActivityIds] = useState<Set<string>>(loadReadActivityIds);
+
+  const { data: activityNotifications = [], isLoading: activityLoading } = useQuery({
     queryKey: ['notifications'],
     queryFn: async (): Promise<ActivityItem[]> => {
       const res = await fetch(resolveApiUrl('/api/notifications?limit=30'), {
@@ -117,45 +59,150 @@ export function NotificationCenter() {
     staleTime: 10000,
   });
 
+  const { data: inboxNotifications = [], isLoading: inboxLoading } = useQuery({
+    queryKey: ['notifications-inbox'],
+    queryFn: async (): Promise<InboxNotification[]> => {
+      const res = await fetch(resolveApiUrl('/api/notifications/inbox?limit=30'), {
+        credentials: 'include',
+      });
+      if (!res.ok) return [];
+      const json = await res.json();
+      return json.data || [];
+    },
+    refetchInterval: 30000,
+    staleTime: 10000,
+  });
+
+  const isLoading = activityLoading || inboxLoading;
+  const unreadInbox = inboxNotifications.filter((n) => !n.read_at);
+  const visibleNotifications = dismissedAt
+    ? activityNotifications.filter((n) => new Date(n.timestamp) > new Date(dismissedAt))
+    : activityNotifications;
+  const unreadActivityCount = visibleNotifications.filter((n) => !readActivityIds.has(n.id)).length;
+  const unreadCount = unreadActivityCount + unreadInbox.length;
+
+  const persistDismissedAt = useCallback((ts: string) => {
+    setDismissedAt(ts);
+    try { localStorage.setItem('orcha:activity-dismissed-at', ts); } catch {}
+  }, []);
+
+  const handleMarkAllRead = useCallback(async () => {
+    // Mark all activity as dismissed
+    persistDismissedAt(new Date().toISOString());
+    // Also mark all inbox as read via API
+    try {
+      await fetch(resolveApiUrl('/api/notifications/mark-all-read'), {
+        method: 'PUT',
+        credentials: 'include',
+      });
+      queryClient.invalidateQueries({ queryKey: ['notifications-inbox'] });
+    } catch {
+      // Non-fatal
+    }
+  }, [queryClient, persistDismissedAt]);
+
+  const handleActivityClick = useCallback(
+    (item: ActivityItem) => {
+      // Mark this individual activity as read
+      setReadActivityIds((prev) => {
+        const next = new Set(prev);
+        next.add(item.id);
+        persistReadActivityIds(next);
+        return next;
+      });
+
+      // Deep-link to the task
+      const projectId = getProjectId(item);
+      if (projectId && item.task_id) {
+        navigate(`/projects/${projectId}/tasks/${item.task_id}`);
+      } else if (item.task_id) {
+        navigate('/my-tasks');
+      }
+    },
+    [navigate],
+  );
+
+  const handleInboxClick = useCallback(
+    async (item: InboxNotification) => {
+      // Mark as read via API
+      try {
+        await fetch(resolveApiUrl(`/api/notifications/${item.id}/read`), {
+          method: 'PUT',
+          credentials: 'include',
+        });
+        queryClient.invalidateQueries({ queryKey: ['notifications-inbox'] });
+      } catch {
+        // Non-fatal
+      }
+
+      // Deep-link based on source type
+      if (item.source === 'task' && item.source_id) {
+        // Try to find a project context from the notification's organization
+        // Fall back to my-tasks if no project context available
+        navigate('/my-tasks');
+      } else if (item.source === 'workflow' && item.source_id) {
+        navigate('/workflows');
+      }
+    },
+    [navigate, queryClient],
+  );
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
           <Bell className="h-4 w-4" />
-          {notifications.length > 0 && (
+          {unreadCount > 0 && (
             <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-blue-500" />
           )}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-80" align="end">
         <DropdownMenuLabel className="font-normal">
-          <div>
-            <p className="text-sm font-semibold">Activity</p>
-            <p className="text-xs text-muted-foreground">Recent activity across your projects</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold">Activity</p>
+              <p className="text-xs text-muted-foreground">Recent activity across your projects</p>
+            </div>
+            {unreadCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                onClick={handleMarkAllRead}
+              >
+                <CheckCheck className="h-3 w-3" />
+                Mark all read
+              </Button>
+            )}
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <div className="max-h-80 overflow-y-auto">
           {isLoading ? (
             <div className="p-4 text-center text-sm text-muted-foreground">Loading...</div>
-          ) : notifications.length === 0 ? (
+          ) : visibleNotifications.length === 0 && unreadInbox.length === 0 ? (
             <div className="p-4 text-center text-sm text-muted-foreground">
-              No recent activity
+              {dismissedAt ? 'All caught up' : 'No recent activity'}
             </div>
           ) : (
-            notifications.map((item) => (
-              <div key={item.id} className="px-3 py-2 hover:bg-muted/50 transition-colors cursor-default">
-                <div className="flex items-start gap-2">
-                  <div className="mt-0.5 shrink-0">{getActionIcon(item.action)}</div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs leading-tight">{formatAction(item)}</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      {timeAgo(item.timestamp)}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ))
+            <>
+              {unreadInbox.map((item) => (
+                <InboxNotificationItem
+                  key={`inbox-${item.id}`}
+                  item={item}
+                  onClick={handleInboxClick}
+                />
+              ))}
+              {visibleNotifications.map((item) => (
+                <ActivityNotificationItem
+                  key={item.id}
+                  item={item}
+                  onClick={handleActivityClick}
+                  isRead={readActivityIds.has(item.id)}
+                />
+              ))}
+            </>
           )}
         </div>
       </DropdownMenuContent>

@@ -8,11 +8,13 @@ import { KeyboardShortcutsProvider } from '@/contexts/keyboard-shortcuts-context
 import { HotkeysProvider } from 'react-hotkeys-hook';
 import { ProjectProvider } from '@/contexts/project-context';
 import { OrganizationProvider } from '@/contexts/organization-context';
+import { ViewContextProvider } from '@/contexts/view-context';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { LoginPage } from '@/components/auth/LoginPage';
 import { SignupPage } from '@/pages/auth/SignupPage';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { AdminRoute } from '@/components/auth/AdminRoute';
+import { RoleRoute } from '@/components/auth/RoleRoute';
 import * as Sentry from '@sentry/react';
 import NiceModal from '@ebay/nice-modal-react';
 import { AuthLayout } from '@/layouts/AuthLayout';
@@ -43,8 +45,10 @@ const VirtualEnvironmentPage       = lazy(() => import('@/pages/virtual-environm
 const EmbedVirtualEnvironmentPage  = lazy(() => import('@/pages/embed/virtual-environment').then(m => ({ default: m.EmbedVirtualEnvironmentPage })));
 // MeshPage merged into Settings > Network & Mesh
 const VibePage              = lazy(() => import('@/pages/vibe'));
+const CalendarPage          = lazy(() => import('@/pages/calendar'));
 const PulsePage             = lazy(() => import('@/pages/pulse'));
 const AIUsagePage           = lazy(() => import('@/pages/ai-usage').then(m => ({ default: m.AIUsagePage })));
+const AgentExecutionsPage   = lazy(() => import('@/pages/agent-executions').then(m => ({ default: m.AgentExecutionsPage })));
 const OAuthCallbackPage     = lazy(() => import('@/pages/oauth/OAuthCallbackPage').then(m => ({ default: m.OAuthCallbackPage })));
 const PeoplePage            = lazy(() => import('@/pages/people').then(m => ({ default: m.PeoplePage })));
 const PersonDetailPage      = lazy(() => import('@/pages/person-detail').then(m => ({ default: m.PersonDetailPage })));
@@ -54,6 +58,8 @@ const CompanyProfilePage    = lazy(() => import('@/pages/company-profile').then(
 const CommandCenterPage     = lazy(() => import('@/pages/command-center').then(m => ({ default: m.CommandCenterPage })));
 const InvoicesPage          = lazy(() => import('@/pages/invoices').then(m => ({ default: m.InvoicesPage })));
 const ProjectDeliverablesPage = lazy(() => import('@/pages/project-deliverables').then(m => ({ default: m.ProjectDeliverablesPage })));
+const OrgDeliverablesPage = lazy(() => import('@/pages/org-deliverables').then(m => ({ default: m.OrgDeliverablesPage })));
+const DataSourcesPage      = lazy(() => import('@/pages/data-sources'));
 const DataSourceDetailPage = lazy(() => import('@/pages/data-source-detail').then(m => ({ default: m.DataSourceDetailPage })));
 const DiscordPage             = lazy(() => import('@/pages/discord').then(m => ({ default: m.DiscordPage })));
 const SiteDirectoryPage       = lazy(() => import('@/pages/site-directory').then(m => ({ default: m.SiteDirectoryPage })));
@@ -77,8 +83,17 @@ const McpSettings       = lazy(() => import('@/pages/settings/McpSettings').then
 const WalletSettings    = lazy(() => import('@/pages/settings/WalletSettings').then(m => ({ default: m.WalletSettings })));
 const KeysSettings      = lazy(() => import('@/pages/settings/KeysSettings').then(m => ({ default: m.KeysSettings })));
 const NetworkSettings   = lazy(() => import('@/pages/settings/NetworkSettings').then(m => ({ default: m.NetworkSettings })));
+const DeveloperSettings = lazy(() => import('@/pages/settings/DeveloperSettings').then(m => ({ default: m.DeveloperSettings })));
+const TopsiAdminSettings = lazy(() => import('@/pages/settings/TopsiAdminSettings').then(m => ({ default: m.TopsiAdminSettings })));
+const TopsiUserSettingsPage = lazy(() => import('@/pages/settings/TopsiUserSettings').then(m => ({ default: m.TopsiUserSettings })));
+const TopsiActivityPage = lazy(() => import('@/pages/topsi-activity').then(m => ({ default: m.TopsiActivityPage })));
 const BrandIntakePage   = lazy(() => import('@/pages/brand-intake').then(m => ({ default: m.BrandIntakePage })));
 const BrandGuidePage    = lazy(() => import('@/pages/brand-guide').then(m => ({ default: m.BrandGuidePage })));
+const CallIntakePage      = lazy(() => import('@/pages/call-intake'));
+const BusinessReportsPage = lazy(() => import('@/pages/business-reports'));
+const ReportDetailPage    = lazy(() => import('@/pages/business-reports').then(m => ({ default: m.ReportDetail })));
+const PersonProfilePage   = lazy(() => import('@/pages/person-profile').then(m => ({ default: m.PersonProfilePage })));
+const LeadsPage           = lazy(() => import('@/pages/leads').then(m => ({ default: m.LeadsPage })));
 
 const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
 
@@ -124,15 +139,17 @@ function App() {
           <AuthProvider>
             <UserSystemProvider>
               <OrganizationProvider>
-                <ProjectProvider>
-                  <HotkeysProvider initiallyActiveScopes={['*', 'global', 'kanban']}>
-                    <KeyboardShortcutsProvider>
-                      <NiceModal.Provider>
-                        <AppShell />
-                      </NiceModal.Provider>
-                    </KeyboardShortcutsProvider>
-                  </HotkeysProvider>
-                </ProjectProvider>
+                <ViewContextProvider>
+                  <ProjectProvider>
+                    <HotkeysProvider initiallyActiveScopes={['*', 'global', 'kanban']}>
+                      <KeyboardShortcutsProvider>
+                        <NiceModal.Provider>
+                          <AppShell />
+                        </NiceModal.Provider>
+                      </KeyboardShortcutsProvider>
+                    </HotkeysProvider>
+                  </ProjectProvider>
+                </ViewContextProvider>
               </OrganizationProvider>
             </UserSystemProvider>
           </AuthProvider>
@@ -193,7 +210,7 @@ function App() {
             path="/projects/:projectId/crm/overview"
             element={<ProtectedRoute><CrmOverviewPage /></ProtectedRoute>}
           />
-          {/* Organization - base route (redirects to CRM overview) */}
+          {/* Organization - base route */}
           <Route
             path="/organizations/:orgId"
             element={<ProtectedRoute><OrganizationProfilePage defaultTab="overview" /></ProtectedRoute>}
@@ -209,15 +226,23 @@ function App() {
           />
           <Route
             path="/organizations/:orgId/crm/companies"
-            element={<ProtectedRoute><OrganizationProfilePage defaultTab="companies" /></ProtectedRoute>}
+            element={<ProtectedRoute><CompaniesPage /></ProtectedRoute>}
           />
           <Route
             path="/organizations/:orgId/crm/pipeline"
             element={<ProtectedRoute><OrganizationProfilePage defaultTab="pipelines" /></ProtectedRoute>}
           />
           <Route
+            path="/organizations/:orgId/crm/acquisition"
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="pipelines" defaultPipeline="acquisition" /></ProtectedRoute>}
+          />
+          <Route
+            path="/organizations/:orgId/crm/lifecycle"
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="pipelines" defaultPipeline="lifecycle" /></ProtectedRoute>}
+          />
+          <Route
             path="/organizations/:orgId/crm/deliverables"
-            element={<ProtectedRoute><OrganizationProfilePage defaultTab="deliverables" /></ProtectedRoute>}
+            element={<ProtectedRoute><OrgDeliverablesPage /></ProtectedRoute>}
           />
           {/* Organization - Social */}
           <Route
@@ -227,27 +252,27 @@ function App() {
           {/* Organization - Intelligence sub-routes */}
           <Route
             path="/organizations/:orgId/intelligence"
-            element={<ProtectedRoute><OrganizationProfilePage defaultTab="knowledge" /></ProtectedRoute>}
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="intelligence" /></ProtectedRoute>}
           />
           <Route
             path="/organizations/:orgId/intelligence/data-sources"
-            element={<ProtectedRoute><OrganizationProfilePage defaultTab="knowledge" /></ProtectedRoute>}
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="intelligence" /></ProtectedRoute>}
           />
           <Route
             path="/organizations/:orgId/intelligence/artifacts"
-            element={<ProtectedRoute><OrganizationProfilePage defaultTab="knowledge" /></ProtectedRoute>}
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="intelligence" /></ProtectedRoute>}
           />
           <Route
             path="/organizations/:orgId/intelligence/workflows"
-            element={<ProtectedRoute><OrganizationProfilePage defaultTab="knowledge" /></ProtectedRoute>}
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="intelligence" /></ProtectedRoute>}
           />
           <Route
             path="/organizations/:orgId/intelligence/pulse"
-            element={<ProtectedRoute><OrganizationProfilePage defaultTab="knowledge" /></ProtectedRoute>}
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="intelligence" /></ProtectedRoute>}
           />
           <Route
             path="/organizations/:orgId/intelligence/topology"
-            element={<ProtectedRoute><OrganizationProfilePage defaultTab="knowledge" /></ProtectedRoute>}
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="intelligence" /></ProtectedRoute>}
           />
           {/* Organization - Members, Projects, Integrations */}
           <Route
@@ -268,6 +293,10 @@ function App() {
             element={<ProtectedRoute><ClientOverview /></ProtectedRoute>}
           />
           <Route
+            path="/organizations/:orgId/data-sources"
+            element={<ProtectedRoute><DataSourcesPage /></ProtectedRoute>}
+          />
+          <Route
             path="/organizations/:orgId/data-sources/:dataSourceId"
             element={<ProtectedRoute><DataSourceDetailPage /></ProtectedRoute>}
           />
@@ -284,49 +313,51 @@ function App() {
           <Route path="/site-directory" element={<AdminRoute><SiteDirectoryPage /></AdminRoute>} />
           <Route path="/nora" element={<AdminRoute><NoraPage /></AdminRoute>} />
           <Route path="/topsi" element={<ProtectedRoute><TopsiPage /></ProtectedRoute>} />
+          <Route path="/topsi-activity" element={<AdminRoute><TopsiActivityPage /></AdminRoute>} />
           <Route path="/global-tasks" element={<AdminRoute><GlobalTasksPage /></AdminRoute>} />
-          <Route path="/mission-control" element={<ProtectedRoute><MissionControlPage /></ProtectedRoute>} />
+          <Route path="/mission-control" element={<RoleRoute minRole="platform_member"><MissionControlPage /></RoleRoute>} />
           <Route path="/workflows" element={<ProtectedRoute><WorkflowsPage /></ProtectedRoute>} />
           <Route path="/workflows/staging/:runId" element={<ProtectedRoute><StagingRedirect /></ProtectedRoute>} />
           <Route
             path="/social-command"
-            element={<ProtectedRoute><SocialPage /></ProtectedRoute>}
+            element={<RoleRoute minRole="org_editor"><SocialPage /></RoleRoute>}
           />
           <Route
             path="/projects/:projectId/social"
             element={<Navigate to="/social-command" replace />}
           />
+          {/* Management routes — require operator+ role */}
           <Route
             path="/crm"
-            element={<ProtectedRoute><CrmPage /></ProtectedRoute>}
+            element={<RoleRoute minRole="platform_member"><CrmPage /></RoleRoute>}
           />
           <Route
             path="/people"
-            element={<ProtectedRoute><PeoplePage /></ProtectedRoute>}
+            element={<RoleRoute minRole="platform_member"><PeoplePage /></RoleRoute>}
           />
           <Route
             path="/people/:personId"
-            element={<ProtectedRoute><PersonDetailPage /></ProtectedRoute>}
+            element={<RoleRoute minRole="platform_member"><PersonDetailPage /></RoleRoute>}
           />
           <Route
             path="/proposals"
-            element={<ProtectedRoute><ProposalsPage /></ProtectedRoute>}
+            element={<RoleRoute minRole="platform_member"><ProposalsPage /></RoleRoute>}
           />
           <Route
             path="/companies"
-            element={<ProtectedRoute><CompaniesPage /></ProtectedRoute>}
+            element={<RoleRoute minRole="platform_member"><CompaniesPage /></RoleRoute>}
           />
           <Route
             path="/companies/:companyId"
-            element={<ProtectedRoute><CompanyProfilePage /></ProtectedRoute>}
+            element={<RoleRoute minRole="platform_member"><CompanyProfilePage /></RoleRoute>}
           />
           <Route
             path="/command-center"
-            element={<ProtectedRoute><CommandCenterPage /></ProtectedRoute>}
+            element={<RoleRoute minRole="platform_member"><CommandCenterPage /></RoleRoute>}
           />
           <Route
             path="/invoices"
-            element={<ProtectedRoute><InvoicesPage /></ProtectedRoute>}
+            element={<RoleRoute minRole="platform_member"><InvoicesPage /></RoleRoute>}
           />
           <Route
             path="/projects/:projectId/deliverables"
@@ -347,17 +378,24 @@ function App() {
           />
           <Route
             path="/virtual-environment"
-            element={<ProtectedRoute><VirtualEnvironmentPage /></ProtectedRoute>}
+            element={<RoleRoute minRole="org_editor"><VirtualEnvironmentPage /></RoleRoute>}
           />
           <Route path="/apn-cloud" element={<ProtectedRoute><ApnCloudPage /></ProtectedRoute>} />
           <Route path="/mesh" element={<Navigate to="/settings/network" replace />} />
-          <Route path="/pulse" element={<ProtectedRoute><PulsePage /></ProtectedRoute>} />
+          <Route path="/pulse" element={<RoleRoute minRole="platform_member"><PulsePage /></RoleRoute>} />
           <Route
             path="/projects/:projectId/pulse"
             element={<ProtectedRoute><PulsePage /></ProtectedRoute>}
           />
           <Route path="/ai-usage" element={<AdminRoute><AIUsagePage /></AdminRoute>} />
-          <Route path="/vibe" element={<ProtectedRoute><VibePage /></ProtectedRoute>} />
+          <Route path="/agent-executions" element={<AdminRoute><AgentExecutionsPage /></AdminRoute>} />
+          <Route path="/vibe" element={<RoleRoute minRole="org_editor"><VibePage /></RoleRoute>} />
+          <Route path="/calendar" element={<ProtectedRoute><CalendarPage /></ProtectedRoute>} />
+          <Route path="/call-intake" element={<AdminRoute><CallIntakePage /></AdminRoute>} />
+          <Route path="/business-reports" element={<AdminRoute><BusinessReportsPage /></AdminRoute>} />
+          <Route path="/business-reports/:id" element={<AdminRoute><ReportDetailPage /></AdminRoute>} />
+          <Route path="/persons/:personId" element={<ProtectedRoute><PersonProfilePage /></ProtectedRoute>} />
+          <Route path="/leads" element={<AdminRoute><LeadsPage /></AdminRoute>} />
           <Route
             path="/oauth/:provider/callback"
             element={<ProtectedRoute><OAuthCallbackPage /></ProtectedRoute>}
@@ -378,6 +416,9 @@ function App() {
             <Route path="mcp" element={<McpSettings />} />
             <Route path="airtable" element={<Navigate to="/settings/general" replace />} />
             <Route path="network" element={<NetworkSettings />} />
+            <Route path="topsi" element={<AdminRoute><TopsiAdminSettings /></AdminRoute>} />
+            <Route path="topsi-preferences" element={<TopsiUserSettingsPage />} />
+            <Route path="developer" element={<AdminRoute><DeveloperSettings /></AdminRoute>} />
           </Route>
           <Route
             path="/mcp-servers"

@@ -45,7 +45,7 @@ i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    debug: import.meta.env.DEV,
+    debug: false, // Disabled: too many missingKey warnings from settings namespace
     supportedLngs: SUPPORTED_I18N_CODES,
     load: 'languageOnly', // Load 'en' instead of 'en-US' etc.
 

@@ -148,7 +148,7 @@ impl EventHandler for NoraHandler {
         match self.backend.chat_nora(&clean_message, &session_id).await {
             Ok(response) => {
                 drop(typing);
-                let chunks = split_message(&response.message, 2000);
+                let chunks = split_message(&response.content, 2000);
                 for (i, chunk) in chunks.iter().enumerate() {
                     if i == 0 {
                         let embed = format_agent_embed(
@@ -254,7 +254,7 @@ impl NoraHandler {
             Ok(response) => {
                 let embed = format_agent_embed(
                     "Nora",
-                    &response.message,
+                    &response.content,
                     0x3B82F6,
                     response.input_tokens,
                     response.output_tokens,

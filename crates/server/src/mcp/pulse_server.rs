@@ -236,7 +236,7 @@ impl PulseServer {
             }
         };
 
-        let sources = PulseSource::find_by_project(&self.pool, project_uuid)
+        let sources = PulseSource::find_by_project(&self.pool, &req.project_id)
             .await
             .unwrap_or_default();
         let total_content = PulseContentItem::count_by_project(&self.pool, project_uuid)

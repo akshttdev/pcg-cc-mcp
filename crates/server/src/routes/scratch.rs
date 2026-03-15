@@ -2,7 +2,7 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
     response::Json as ResponseJson,
-    routing::{get, post, delete},
+    routing::get,
 };
 use db::models::scratch::{CreateScratch, Scratch, UpdateScratch};
 use deployment::Deployment;

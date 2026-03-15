@@ -125,7 +125,7 @@ impl PrMonitorService {
                     "PR #{} was merged, updating task {} to done",
                     pr_merge.pr_info.number, task_attempt.task_id
                 );
-                Task::update_status(&self.db.pool, task_attempt.task_id, TaskStatus::Done).await?;
+                Task::update_status(&self.db.pool, &task_attempt.task_id.to_string(), TaskStatus::Done).await?;
             }
         }
 

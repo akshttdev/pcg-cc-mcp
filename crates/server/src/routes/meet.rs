@@ -28,7 +28,7 @@ use tokio::process::{Child, Command};
 use tokio::sync::{Mutex, broadcast};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_stream::wrappers::BroadcastStream;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 use uuid::Uuid;
 use chrono::Utc;
 
@@ -601,7 +601,7 @@ async fn save_meeting_knowledge_source(pool: &sqlx::SqlitePool, session_id: &str
         }).to_string();
 
         let _ = DataSource::create(pool, CreateDataSource {
-            organization_id: org_uuid,
+            organization_id: org_uuid.map(|u| u.to_string()),
             project_id: None,
             created_by: None,
             title: title.clone(),
@@ -615,6 +615,7 @@ async fn save_meeting_knowledge_source(pool: &sqlx::SqlitePool, session_id: &str
             file_size_bytes: None,
             file_hash: None,
             metadata: Some(metadata),
+            folder: None,
         }).await;
 
         // Mark as ready immediately (no processing needed for text)
@@ -670,6 +671,7 @@ async fn detect_and_link_attendees(
     for name in raw_names {
         // Look up person or user by name (case-insensitive partial match)
         #[derive(sqlx::FromRow)]
+        #[allow(dead_code)]
         struct PersonRow { id: Vec<u8> }
 
         // Try persons table first
@@ -767,7 +769,7 @@ async fn detect_and_link_attendees(
         }).to_string();
 
         let _ = DataSource::create(pool, CreateDataSource {
-            organization_id: Some(attendee_org_uuid),
+            organization_id: Some(attendee_org_uuid.to_string()),
             project_id: None,
             created_by: None,
             title: ds_title.to_string(),
@@ -781,6 +783,7 @@ async fn detect_and_link_attendees(
             file_size_bytes: None,
             file_hash: None,
             metadata: Some(metadata),
+            folder: None,
         }).await;
 
         let _ = sqlx::query(

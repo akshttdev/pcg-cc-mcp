@@ -138,12 +138,28 @@ const WAKE_WORDS = {
   topsi: ['hey topsi', 'ok topsi', 'topsi'],
 };
 
+// Regex for phonetic Topsi variants — Whisper consistently mishears it as
+// tulsi, tofsi, topsy, tapsi, topci, topzy, topsei, topsie, etc.
+// Pattern: starts with T, 4-7 chars, ends with s+vowel/y or si/sy
+const TOPSI_REGEX = /\bt[aou][a-z]{0,2}s[aeiouy]\b/i;
+
 /**
  * Checks whether the transcript addresses the given agent.
  * Returns the text after the wake word (the actual command), or null if not addressed.
  */
 export function detectWakeWord(text, agentName) {
   const lower = text.toLowerCase();
+
+  // Regex fallback for Topsi — catches all phonetic mishearings automatically
+  if (agentName.toLowerCase() === 'topsi') {
+    const m = lower.match(TOPSI_REGEX);
+    if (m) {
+      const idx = m.index + m[0].length;
+      const after = text.slice(idx).replace(/^[^a-z0-9]+/i, '').trim();
+      return after || text.trim();
+    }
+  }
+
   const words = WAKE_WORDS[agentName.toLowerCase()] ?? [];
   for (const w of words) {
     const idx = lower.indexOf(w);
@@ -165,7 +181,10 @@ export async function callAgent(serverPort, agentName, message, projectId, sessi
   };
   const identity = identities[agentName.toLowerCase()] ?? `You are ${agentName}, a PowerClub Global AI agent.`;
   const contextPart = participantCtx ? ` ${participantCtx}` : '';
-  const prefix = `[DISCORD VOICE CALL — ${identity}${contextPart} Voice only. 1-3 sentences max. No markdown.]`;
+  const lengthGuide = agentName.toLowerCase() === 'topsi'
+    ? 'No markdown. Respond at whatever length the user requests — if asked to read aloud, read the full text without summarising.'
+    : 'Keep your final spoken response to 1-3 sentences, no markdown.';
+  const prefix = `[DISCORD VOICE CALL — ${identity}${contextPart} Speaking aloud — ${lengthGuide} You MAY and SHOULD still call tools (search_web, fetch_web_page, render_page, etc.) when the user asks you to look something up, fetch a URL, or search the web — tool use is encouraged.]`;
 
   const res = await fetch(`http://127.0.0.1:${serverPort}/api/internal/${endpoint}/chat`, {
     method: 'POST',

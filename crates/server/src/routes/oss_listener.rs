@@ -19,7 +19,7 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::{delete, get, patch, post},
+    routing::{get, patch, post},
     Json,
 };
 use db::models::oss_library::{OssLibrary, OssLibraryUpdate};

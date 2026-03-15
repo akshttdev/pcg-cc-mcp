@@ -233,7 +233,7 @@ export function ProfileSection({ className }: ProfileSectionProps) {
           {user.is_admin && (
             <>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => navigate('/admin')} className="cursor-pointer">
+              <DropdownMenuItem onClick={() => navigate('/settings')} className="cursor-pointer">
                 <Shield className="mr-2 h-4 w-4" />
                 <span>Admin Panel</span>
               </DropdownMenuItem>

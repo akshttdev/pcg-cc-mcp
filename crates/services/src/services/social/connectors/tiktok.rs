@@ -5,7 +5,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::services::social::{
     EngagementMetrics, OAuthTokens, PlatformConnector, PlatformLimits, PlatformMention,
@@ -34,6 +34,7 @@ impl TikTokConnector {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct TikTokTokenResponse {
     access_token: String,
     expires_in: i64,
@@ -44,6 +45,7 @@ struct TikTokTokenResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct TikTokUserInfo {
     open_id: String,
     display_name: String,

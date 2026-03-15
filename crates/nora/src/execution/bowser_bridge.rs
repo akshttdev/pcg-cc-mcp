@@ -18,7 +18,7 @@ use services::services::bowser::BowserService;
 use sqlx::SqlitePool;
 use uuid::Uuid;
 use db::DBService;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::process::Command;
 
 /// A page rendered via Playwright/Bowser

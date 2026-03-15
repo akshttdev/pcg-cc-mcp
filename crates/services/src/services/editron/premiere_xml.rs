@@ -626,7 +626,7 @@ impl PremiereXmlExporter {
         xml.push_str(&format!("          <out>{}</out>\n", self.seconds_to_frames(marker.time)));
 
         // Marker color (Premiere uses color index 0-7)
-        let color_index = match marker.marker_type {
+        let _color_index = match marker.marker_type {
             MarkerType::Chapter => 0,   // Green
             MarkerType::Beat => 1,      // Red
             MarkerType::Section => 2,   // Purple

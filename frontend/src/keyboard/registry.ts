@@ -20,6 +20,7 @@ export enum Action {
   TOGGLE_FULLSCREEN = 'toggle_fullscreen',
   DELETE_TASK = 'delete_task',
   TOGGLE_SIDEBAR = 'toggle_sidebar',
+  TOGGLE_VIEW_AS = 'toggle_view_as',
 }
 
 export interface KeyBinding {
@@ -156,6 +157,13 @@ export const keyBindings: KeyBinding[] = [
     keys: ['meta+b', 'ctrl+b'],
     scopes: [Scope.GLOBAL],
     description: 'Toggle sidebar',
+    group: 'Navigation',
+  },
+  {
+    action: Action.TOGGLE_VIEW_AS,
+    keys: ['meta+shift+v', 'ctrl+shift+v'],
+    scopes: [Scope.GLOBAL],
+    description: 'Toggle view-as switcher',
     group: 'Navigation',
   },
 ];

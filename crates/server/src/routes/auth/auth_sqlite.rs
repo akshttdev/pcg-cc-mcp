@@ -13,6 +13,17 @@ use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 
+/// Returns true if the server is running in a context where Secure cookies are appropriate
+/// (i.e., not localhost HTTP development).
+fn is_secure_context() -> bool {
+    let host = std::env::var("HOST").unwrap_or_default();
+    let env = std::env::var("RUST_ENV").unwrap_or_default();
+    if env == "development" {
+        return false;
+    }
+    !matches!(host.as_str(), "localhost" | "127.0.0.1" | "0.0.0.0" | "")
+}
+
 /// Load platform roles for a user (public alias for cross-module use)
 pub async fn load_platform_roles_pub(pool: &sqlx::SqlitePool, user_id: &[u8]) -> Vec<String> {
     load_platform_roles(pool, user_id).await
@@ -218,8 +229,9 @@ pub async fn login(
         session_id: session_id.clone(),
     };
 
+    let secure_flag = if is_secure_context() { "; Secure" } else { "" };
     let cookie = format!(
-        "session_id={}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age={}",
+        "session_id={}; Path=/; HttpOnly; SameSite=Lax{secure_flag}; Max-Age={}",
         session_id,
         7 * 24 * 60 * 60
     );
@@ -500,8 +512,9 @@ pub async fn register(
         session_id: session_id.clone(),
     };
 
+    let secure_flag = if is_secure_context() { "; Secure" } else { "" };
     let cookie = format!(
-        "session_id={}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age={}",
+        "session_id={}; Path=/; HttpOnly; SameSite=Lax{secure_flag}; Max-Age={}",
         session_id,
         7 * 24 * 60 * 60
     );
@@ -549,7 +562,8 @@ pub async fn logout(
     }
 
     // Clear cookie
-    let cookie = "session_id=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0";
+    let secure_flag = if is_secure_context() { "; Secure" } else { "" };
+    let cookie = format!("session_id=; Path=/; HttpOnly; SameSite=Lax{secure_flag}; Max-Age=0");
 
     Ok((
         StatusCode::OK,

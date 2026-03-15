@@ -2,7 +2,7 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
     response::Json as ResponseJson,
-    routing::{get, post, put, delete},
+    routing::get,
 };
 use db::models::session::{CreateSession, Session, UpdateSession};
 use deployment::Deployment;

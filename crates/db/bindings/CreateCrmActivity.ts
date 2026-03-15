@@ -5,4 +5,4 @@ import type { JsonValue } from "./serde_json/JsonValue";
 /**
  * Data for creating a new CRM activity
  */
-export type CreateCrmActivity = { project_id: string, crm_contact_id: string | null, crm_deal_id: string | null, activity_type: CrmActivityType, subject: string | null, description: string | null, outcome: string | null, email_message_id: string | null, social_mention_id: string | null, task_id: string | null, performed_by_user: string | null, performed_by_agent_id: string | null, metadata: JsonValue | null, duration_minutes: number | null, };
+export type CreateCrmActivity = { organization_id: string | null, client_id: string | null, crm_contact_id: string | null, crm_deal_id: string | null, activity_type: CrmActivityType, subject: string | null, description: string | null, outcome: string | null, email_message_id: string | null, social_mention_id: string | null, task_id: string | null, performed_by_user: string | null, performed_by_agent_id: string | null, metadata: JsonValue | null, duration_minutes: number | null, };

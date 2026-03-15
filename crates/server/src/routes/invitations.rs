@@ -9,7 +9,7 @@ use axum::{
     Extension, Router,
     extract::{Path, State},
     response::Json as ResponseJson,
-    routing::{delete, get, post},
+    routing::{get, post},
 };
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
@@ -20,7 +20,7 @@ use db::services::AuthService;
 
 use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
-pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
+pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         // Invitation management (host only - enforced in handlers)
         .route("/invitations", post(create_invitation))
@@ -32,7 +32,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/virtual-space/{user_id}", get(get_user_space))
 }
 
-pub fn public_router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
+pub fn public_router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         // Public: no auth needed to look up or accept an invite
         .route("/invitations/accept/{token}", get(get_invitation))

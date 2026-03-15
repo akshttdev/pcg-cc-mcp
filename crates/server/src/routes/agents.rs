@@ -12,7 +12,8 @@ use deployment::Deployment;
 use serde::Deserialize;
 use services::services::agent_registry::AgentRegistryService;
 use ts_rs::TS;
-use uuid::Uuid;
+
+use utils::response::ApiResponse;
 
 use crate::{middleware::access_control::AccessContext, DeploymentImpl};
 
@@ -40,6 +41,7 @@ pub fn routes() -> Router<DeploymentImpl> {
         .route("/agents/active", get(list_active_agents))
         .route("/agents/seed", post(seed_agents))
         .route("/agents/{id}", get(get_agent).put(update_agent).delete(delete_agent))
+        .route("/agents/{id}/profile", get(get_agent_profile))
         .route("/agents/by-name/{name}", get(get_agent_by_name))
         .route("/agents/{id}/wallet", put(assign_wallet))
         .route("/agents/{id}/status", put(update_status))
@@ -60,7 +62,7 @@ async fn list_agents(
         }
         Some(axum::Extension(ctx)) => {
             // Regular user sees system-tier + own agents
-            Agent::find_visible_for_user(pool, ctx.user_id).await
+            Agent::find_visible_for_user(pool, &ctx.user_id.to_string()).await
         }
         None => {
             // No auth context (shouldn't happen behind protected routes, but fallback)
@@ -70,7 +72,7 @@ async fn list_agents(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let parsed: Vec<AgentWithParsedFields> = agents.into_iter().map(|a| a.into()).collect();
-    Ok(Json(parsed))
+    Ok(Json(ApiResponse::<_, ()>::success(parsed)))
 }
 
 /// List only active agents
@@ -82,7 +84,7 @@ async fn list_active_agents(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let parsed: Vec<AgentWithParsedFields> = agents.into_iter().map(|a| a.into()).collect();
-    Ok(Json(parsed))
+    Ok(Json(ApiResponse::<_, ()>::success(parsed)))
 }
 
 /// Search and filter agents
@@ -166,7 +168,7 @@ async fn search_agents(
         _ => {}
     }
 
-    Ok(Json(parsed))
+    Ok(Json(ApiResponse::<_, ()>::success(parsed)))
 }
 
 /// Seed core agents (Nora, Maci, Editron)
@@ -184,9 +186,9 @@ async fn seed_agents(
 /// Get agent by ID
 async fn get_agent(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let agent = Agent::find_by_id(&deployment.db().pool, id)
+    let agent = Agent::find_by_id(&deployment.db().pool, &id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -233,11 +235,11 @@ async fn create_agent(
 /// Update an existing agent
 async fn update_agent(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(data): Json<UpdateAgent>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // Check if agent exists
-    let existing = Agent::find_by_id(&deployment.db().pool, id)
+    let existing = Agent::find_by_id(&deployment.db().pool, &id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -245,7 +247,7 @@ async fn update_agent(
         return Err((StatusCode::NOT_FOUND, "Agent not found".to_string()));
     }
 
-    let agent = Agent::update(&deployment.db().pool, id, &data)
+    let agent = Agent::update(&deployment.db().pool, &id, &data)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -256,9 +258,9 @@ async fn update_agent(
 /// Delete an agent
 async fn delete_agent(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let rows = Agent::delete(&deployment.db().pool, id)
+    let rows = Agent::delete(&deployment.db().pool, &id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -277,10 +279,10 @@ struct AssignWalletRequest {
 /// Assign Aptos wallet address to an agent
 async fn assign_wallet(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(request): Json<AssignWalletRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let agent = AgentRegistryService::assign_wallet(&deployment.db().pool, id, &request.wallet_address)
+    let agent = AgentRegistryService::assign_wallet(&deployment.db().pool, &id, &request.wallet_address)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -296,11 +298,11 @@ struct UpdateStatusRequest {
 /// Update agent status
 async fn update_status(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(request): Json<UpdateStatusRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // Check if agent exists
-    let existing = Agent::find_by_id(&deployment.db().pool, id)
+    let existing = Agent::find_by_id(&deployment.db().pool, &id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -308,16 +310,109 @@ async fn update_status(
         return Err((StatusCode::NOT_FOUND, "Agent not found".to_string()));
     }
 
-    Agent::update_status(&deployment.db().pool, id, request.status)
+    Agent::update_status(&deployment.db().pool, &id, request.status)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Return updated agent
-    let agent = Agent::find_by_id(&deployment.db().pool, id)
+    let agent = Agent::find_by_id(&deployment.db().pool, &id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or((StatusCode::NOT_FOUND, "Agent not found".to_string()))?;
 
     let parsed: AgentWithParsedFields = agent.into();
     Ok(Json(parsed))
+}
+
+/// GET /api/agents/:id/profile — Agent capability profile with execution stats
+async fn get_agent_profile(
+    Path(id): Path<String>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let pool = &deployment.db().pool;
+
+    let agent = Agent::find_by_id(pool, &id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Agent not found".to_string()))?;
+
+    let parsed: AgentWithParsedFields = agent.into();
+
+    // Query execution stats from task_attempts
+    let agent_name = &parsed.short_name;
+
+    #[derive(sqlx::FromRow)]
+    struct Stats {
+        total: i64,
+        completed: i64,
+        failed: i64,
+        in_progress: i64,
+    }
+
+    let stats = sqlx::query_as::<_, Stats>(
+        r#"SELECT
+            COUNT(*) as total,
+            SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
+            SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress
+        FROM task_attempts
+        WHERE agent_name = ?1"#,
+    )
+    .bind(agent_name)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    let (total, completed, failed, in_progress) = stats
+        .map(|s| (s.total, s.completed, s.failed, s.in_progress))
+        .unwrap_or((0, 0, 0, 0));
+
+    let success_rate = if total > 0 {
+        (completed as f64 / total as f64) * 100.0
+    } else {
+        0.0
+    };
+
+    // Get recent task attempt history
+    #[derive(sqlx::FromRow, serde::Serialize)]
+    struct RecentAttempt {
+        id: String,
+        task_id: String,
+        status: String,
+        created_at: String,
+    }
+
+    let recent = sqlx::query_as::<_, RecentAttempt>(
+        r#"SELECT id, task_id, status, created_at
+        FROM task_attempts
+        WHERE agent_name = ?1
+        ORDER BY created_at DESC
+        LIMIT 10"#,
+    )
+    .bind(agent_name)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    // Load platform MCP servers available to this agent
+    let mcp_tools: Vec<String> = if let Some(tools) = &parsed.tools {
+        tools.iter().map(|t| t.to_string()).collect()
+    } else {
+        vec![]
+    };
+
+    Ok(Json(serde_json::json!({
+        "agent": parsed,
+        "execution_stats": {
+            "total_attempts": total,
+            "completed": completed,
+            "failed": failed,
+            "in_progress": in_progress,
+            "success_rate": format!("{:.1}%", success_rate),
+        },
+        "recent_attempts": recent,
+        "mcp_tools": mcp_tools,
+        "platform_mcp_servers": ["orcha_task_server", "duck_kanban", "context7", "playwright"],
+    })))
 }

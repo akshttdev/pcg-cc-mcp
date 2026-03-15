@@ -1,14 +1,12 @@
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-    routing::{get, post, put, delete},
+    routing::{get, post, put},
 };
 use db::models::data_source::DataSource;
-use db::models::execution_artifact::{ArtifactType, CreateExecutionArtifact, ExecutionArtifact};
-use db::models::workflow_run::{WorkflowRun, CreateWorkflowRun, UpdateWorkflowRunOnComplete};
-use db::models::workflow_staging::{WorkflowStagingRecord, CreateStagingRecord};
-use regex::Regex;
-
+use db::models::execution_artifact::ExecutionArtifact;
+use db::models::workflow_run::{WorkflowRun, CreateWorkflowRun};
+use db::models::workflow_staging::WorkflowStagingRecord;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use utils::response::ApiResponse;
@@ -17,53 +15,14 @@ use uuid::Uuid;
 use deployment::Deployment;
 use db::models::pcg_router_model::PcgRouterModel;
 use crate::{DeploymentImpl, error::ApiError};
-use super::pcg_router::{self, ChatMessage};
-
-// ── Workflow types (n8n-inspired schema) ─────────────────────────────────────
-
-/// Position on the canvas
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NodePosition {
-    pub x: f64,
-    pub y: f64,
-}
-
-/// A single node in the workflow (n8n-style)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorkflowNode {
-    pub id: String,
-    pub name: String,
-    #[serde(rename = "type")]
-    pub node_type: String,          // "llm_extract", "llm_analyze", "llm_summarize", "transform", "filter", "merge"
-    pub parameters: Value,          // type-specific config (prompt_template, output_schema, etc.)
-    pub position: NodePosition,     // canvas coordinates
-}
-
-/// A connection between two nodes
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorkflowConnection {
-    pub source: String,             // source node id
-    pub target: String,             // target node id
-    pub source_output: Option<i32>, // output index (default 0)
-    pub target_input: Option<i32>,  // input index (default 0)
-}
-
-/// Full workflow definition
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorkflowDefinition {
-    pub id: String,
-    pub name: String,
-    pub description: Option<String>,
-    pub nodes: Vec<WorkflowNode>,
-    pub connections: Vec<WorkflowConnection>,
-    pub is_system: bool,
-    #[serde(default = "default_owner_type")]
-    pub owner_type: String,     // "system", "organization", "user"
-    pub owner_id: Option<String>,
-    pub default_model: Option<String>,
-}
-
-fn default_owner_type() -> String { "system".to_string() }
+pub use services::services::workflow_execution::{
+    NodePosition, WorkflowNode, WorkflowConnection, WorkflowDefinition,
+    extract_records_from_output, is_fallback_placeholder, compute_confidence,
+    build_schema_prompt_text, validate_record_against_schema,
+    check_contact_duplicate, check_company_duplicate,
+    check_deal_duplicate, check_task_duplicate, check_intra_batch_duplicate,
+    execute_node_with_llm, execute_action_node,
+};
 
 // Legacy step type for backwards compat with run_workflow
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -225,6 +184,260 @@ fn default_analysis_workflow() -> WorkflowDefinition {
     }
 }
 
+// ── Sprint 2D: Additional system workflows ──────────────────────────────────
+
+/// Bug Triage Pipeline: Analyze bug reports → filter by severity → create prioritized tasks
+fn bug_triage_workflow() -> WorkflowDefinition {
+    WorkflowDefinition {
+        id: "bug_triage_pipeline".to_string(),
+        name: "Bug Triage Pipeline".to_string(),
+        description: Some(
+            "Investigate and triage bug reports into 4 outcomes: critical fix-now, \
+             low-cost fix-now, high-cost planning, or report-findings-to-user."
+                .to_string(),
+        ),
+        nodes: vec![
+            WorkflowNode {
+                id: "investigate".to_string(),
+                name: "Investigate & Triage".to_string(),
+                node_type: "llm_analyze".to_string(),
+                parameters: json!({
+                    "prompt_template": concat!(
+                        "You are a senior platform engineer triaging a bug report for the ORCHA ",
+                        "dashboard (Rust/Axum backend, React/TypeScript frontend, SQLite DB).\n\n",
+                        "INVESTIGATE the bug report below. Determine:\n",
+                        "1. What component is affected (frontend, backend, db, mcp, workflow, infra)\n",
+                        "2. Whether it's reproducible from the description\n",
+                        "3. Estimated fix complexity (lines of code, number of files)\n",
+                        "4. Risk of the bug (data loss, security, UX degradation, cosmetic)\n\n",
+                        "Then CLASSIFY into exactly ONE triage outcome:\n\n",
+                        "- **critical_fix_now**: Bug causes data loss, security issue, or blocks core ",
+                        "functionality. Must be fixed immediately. Create a task with priority=critical, ",
+                        "tags=[\"bug\",\"critical\",\"fix-now\"], and detailed completion_criteria.\n\n",
+                        "- **low_cost_fix_now**: Bug is straightforward to fix (< 50 lines, 1-2 files). ",
+                        "Just fix it. Create a task with priority=high, tags=[\"bug\",\"quick-fix\"], ",
+                        "and completion_criteria.\n\n",
+                        "- **high_cost_planning**: Bug requires significant refactoring or touches many ",
+                        "files/systems. Create a task with priority=medium, tags=[\"bug\",\"needs-planning\"], ",
+                        "description includes an investigation summary and proposed approach, and ",
+                        "output_format=\"Planning document with implementation steps\".\n\n",
+                        "- **report_findings**: Unclear if it's a real bug, needs more info, or is ",
+                        "actually expected behavior. Create a task with priority=low, ",
+                        "tags=[\"bug\",\"needs-triage\",\"awaiting-feedback\"], description includes ",
+                        "findings and recommended options for the reporter.\n\n",
+                        "OUTPUT as JSON:\n",
+                        "```json\n",
+                        "{\n",
+                        "  \"triage_outcome\": \"critical_fix_now|low_cost_fix_now|high_cost_planning|report_findings\",\n",
+                        "  \"investigation_summary\": \"What you found\",\n",
+                        "  \"affected_component\": \"frontend|backend|db|mcp|workflow|infra\",\n",
+                        "  \"estimated_fix_lines\": 25,\n",
+                        "  \"estimated_files\": 2,\n",
+                        "  \"risk_level\": \"critical|high|medium|low\",\n",
+                        "  \"tasks\": [\n",
+                        "    {\n",
+                        "      \"title\": \"Fix: short description\",\n",
+                        "      \"description\": \"Detailed description with context\",\n",
+                        "      \"priority\": \"critical|high|medium|low\",\n",
+                        "      \"tags\": [\"bug\", ...],\n",
+                        "      \"completion_criteria\": \"Bullet list of done conditions\",\n",
+                        "      \"output_format\": \"PR with tests|Planning document|Investigation report\",\n",
+                        "      \"board_id\": \"d0600000-0000-0000-0000-000000000001\"\n",
+                        "    }\n",
+                        "  ]\n",
+                        "}\n",
+                        "```\n\n",
+                        "Bug Report:\n{{content}}"
+                    ),
+                    "output_schema": "tasks[]"
+                }),
+                position: NodePosition { x: 100.0, y: 200.0 },
+            },
+            WorkflowNode {
+                id: "create_tasks".to_string(),
+                name: "Create Triage Tasks".to_string(),
+                node_type: "output_tasks".to_string(),
+                parameters: json!({}),
+                position: NodePosition { x: 500.0, y: 200.0 },
+            },
+        ],
+        connections: vec![
+            WorkflowConnection {
+                source: "investigate".to_string(),
+                target: "create_tasks".to_string(),
+                source_output: Some(0),
+                target_input: Some(0),
+            },
+        ],
+        is_system: true,
+        owner_type: "system".to_string(),
+        owner_id: None,
+        default_model: None,
+    }
+}
+
+/// Sprint Planning: Extract requirements → break into agent-ready tasks with completion criteria
+fn sprint_planning_workflow() -> WorkflowDefinition {
+    WorkflowDefinition {
+        id: "sprint_planning".to_string(),
+        name: "Sprint Planning from Requirements".to_string(),
+        description: Some("Break down requirements documents into agent-ready tasks with completion criteria.".to_string()),
+        nodes: vec![
+            WorkflowNode {
+                id: "extract_requirements".to_string(),
+                name: "Extract Requirements".to_string(),
+                node_type: "llm_extract".to_string(),
+                parameters: json!({
+                    "prompt_template": concat!(
+                        "Analyze the following requirements document and extract individual work items.\n",
+                        "For each requirement, provide:\n",
+                        "- title: Task title (action-oriented, e.g. 'Implement user login')\n",
+                        "- description: Detailed task description with acceptance criteria\n",
+                        "- priority: One of critical, high, medium, low\n",
+                        "- estimated_effort: small, medium, large\n",
+                        "- completion_criteria: Bullet-pointed list of what must be true for this to be done\n",
+                        "- output_format: Expected deliverable (e.g. 'Pull request with tests', 'Design document')\n",
+                        "- dependencies: Array of other task titles this depends on\n\n",
+                        "Output as JSON with a top-level \"tasks\" array.\n\n",
+                        "Content:\n{{content}}"
+                    ),
+                    "output_schema": "tasks[]"
+                }),
+                position: NodePosition { x: 100.0, y: 200.0 },
+            },
+            WorkflowNode {
+                id: "output_sprint_tasks".to_string(),
+                name: "Create Sprint Tasks".to_string(),
+                node_type: "output_tasks".to_string(),
+                parameters: json!({}),
+                position: NodePosition { x: 500.0, y: 200.0 },
+            },
+        ],
+        connections: vec![
+            WorkflowConnection { source: "extract_requirements".to_string(), target: "output_sprint_tasks".to_string(), source_output: Some(0), target_input: Some(0) },
+        ],
+        is_system: true,
+        owner_type: "system".to_string(),
+        owner_id: None,
+        default_model: None,
+    }
+}
+
+/// Client Onboarding: Process client data → create CRM contacts → create onboarding tasks
+fn client_onboarding_workflow() -> WorkflowDefinition {
+    WorkflowDefinition {
+        id: "client_onboarding".to_string(),
+        name: "Client Onboarding Pipeline".to_string(),
+        description: Some("Process new client data, create CRM contacts, and generate onboarding task checklist.".to_string()),
+        nodes: vec![
+            WorkflowNode {
+                id: "extract_client_info".to_string(),
+                name: "Extract Client Info".to_string(),
+                node_type: "llm_extract".to_string(),
+                parameters: json!({
+                    "prompt_template": concat!(
+                        "Extract client and contact information from the following data.\n",
+                        "Provide:\n",
+                        "- contacts: Array of people with first_name, last_name, email, phone, job_title, company_name\n",
+                        "- company: Object with name, website, industry, address\n",
+                        "- onboarding_notes: Any special requirements or notes mentioned\n\n",
+                        "Output as JSON.\n\n",
+                        "Content:\n{{content}}"
+                    ),
+                    "output_schema": "contacts[]"
+                }),
+                position: NodePosition { x: 100.0, y: 200.0 },
+            },
+            WorkflowNode {
+                id: "create_contacts".to_string(),
+                name: "Create CRM Contacts".to_string(),
+                node_type: "output_crm_contacts".to_string(),
+                parameters: json!({}),
+                position: NodePosition { x: 500.0, y: 100.0 },
+            },
+            WorkflowNode {
+                id: "create_onboarding_tasks".to_string(),
+                name: "Create Onboarding Tasks".to_string(),
+                node_type: "output_tasks".to_string(),
+                parameters: json!({}),
+                position: NodePosition { x: 500.0, y: 300.0 },
+            },
+        ],
+        connections: vec![
+            WorkflowConnection { source: "extract_client_info".to_string(), target: "create_contacts".to_string(), source_output: Some(0), target_input: Some(0) },
+            WorkflowConnection { source: "extract_client_info".to_string(), target: "create_onboarding_tasks".to_string(), source_output: Some(0), target_input: Some(0) },
+        ],
+        is_system: true,
+        owner_type: "system".to_string(),
+        owner_id: None,
+        default_model: None,
+    }
+}
+
+/// Content Pipeline: Summarize content → analyze SEO → create content tasks
+fn content_pipeline_workflow() -> WorkflowDefinition {
+    WorkflowDefinition {
+        id: "content_pipeline".to_string(),
+        name: "Content Analysis Pipeline".to_string(),
+        description: Some("Analyze content for SEO opportunities and create actionable content tasks.".to_string()),
+        nodes: vec![
+            WorkflowNode {
+                id: "summarize_content".to_string(),
+                name: "Summarize Content".to_string(),
+                node_type: "llm_summarize".to_string(),
+                parameters: json!({
+                    "prompt_template": concat!(
+                        "Summarize the following content, identifying:\n",
+                        "- key_topics: Main topics covered\n",
+                        "- target_audience: Who this content is for\n",
+                        "- content_type: blog, documentation, marketing, technical, etc.\n",
+                        "- word_count: Approximate word count\n",
+                        "- summary: 2-3 sentence summary\n\n",
+                        "Output as JSON.\n\n",
+                        "Content:\n{{content}}"
+                    ),
+                    "output_schema": "summary"
+                }),
+                position: NodePosition { x: 100.0, y: 200.0 },
+            },
+            WorkflowNode {
+                id: "analyze_seo".to_string(),
+                name: "SEO Analysis".to_string(),
+                node_type: "llm_analyze".to_string(),
+                parameters: json!({
+                    "prompt_template": concat!(
+                        "Based on the content summary below, perform an SEO analysis.\n",
+                        "Provide:\n",
+                        "- keywords: Array of target keywords with search intent\n",
+                        "- content_gaps: Topics that should be covered but aren't\n",
+                        "- optimization_tasks: Specific actions to improve SEO\n",
+                        "- competitor_angles: Angles competitors might use\n\n",
+                        "Output as JSON with arrays for each field.\n\n",
+                        "Summary:\n{{previous_results}}"
+                    ),
+                    "output_schema": "seo_analysis"
+                }),
+                position: NodePosition { x: 500.0, y: 200.0 },
+            },
+            WorkflowNode {
+                id: "create_content_tasks".to_string(),
+                name: "Create Content Tasks".to_string(),
+                node_type: "output_tasks".to_string(),
+                parameters: json!({}),
+                position: NodePosition { x: 900.0, y: 200.0 },
+            },
+        ],
+        connections: vec![
+            WorkflowConnection { source: "summarize_content".to_string(), target: "analyze_seo".to_string(), source_output: Some(0), target_input: Some(0) },
+            WorkflowConnection { source: "analyze_seo".to_string(), target: "create_content_tasks".to_string(), source_output: Some(0), target_input: Some(0) },
+        ],
+        is_system: true,
+        owner_type: "system".to_string(),
+        owner_id: None,
+        default_model: None,
+    }
+}
+
 // ── DB helpers ───────────────────────────────────────────────────────────────
 
 /// Serialize workflow to DB JSON column
@@ -237,21 +450,29 @@ fn serialize_workflow_data(wf: &WorkflowDefinition) -> String {
     data.to_string()
 }
 
-async fn seed_defaults(pool: &sqlx::SqlitePool) {
-    let default = default_analysis_workflow();
-    let data = serialize_workflow_data(&default);
-    let desc = default.description.unwrap_or_default();
+pub(crate) async fn seed_defaults(pool: &sqlx::SqlitePool) {
+    let workflows = vec![
+        default_analysis_workflow(),
+        bug_triage_workflow(),
+        sprint_planning_workflow(),
+        client_onboarding_workflow(),
+        content_pipeline_workflow(),
+    ];
 
-    let _ = sqlx::query(
-        r#"INSERT OR IGNORE INTO workflow_definitions (id, owner_type, name, description, steps, is_system)
-           VALUES (?1, 'system', ?2, ?3, ?4, 1)"#,
-    )
-    .bind(&default.id)
-    .bind(&default.name)
-    .bind(&desc)
-    .bind(&data)
-    .execute(pool)
-    .await;
+    for wf in &workflows {
+        let data = serialize_workflow_data(wf);
+        let desc = wf.description.clone().unwrap_or_default();
+        let _ = sqlx::query(
+            r#"INSERT OR REPLACE INTO workflow_definitions (id, owner_type, name, description, steps, is_system)
+               VALUES (?1, 'system', ?2, ?3, ?4, 1)"#,
+        )
+        .bind(&wf.id)
+        .bind(&wf.name)
+        .bind(&desc)
+        .bind(&data)
+        .execute(pool)
+        .await;
+    }
 }
 
 fn parse_workflow_from_row(id: String, owner_type: String, owner_id: Option<String>, name: String, description: Option<String>, steps_json: String, is_system: bool) -> WorkflowDefinition {
@@ -294,7 +515,7 @@ fn parse_workflow_from_row(id: String, owner_type: String, owner_id: Option<Stri
     WorkflowDefinition { id, name, description, nodes, connections, is_system, owner_type, owner_id, default_model: None }
 }
 
-async fn load_all_workflows(pool: &sqlx::SqlitePool) -> Result<Vec<WorkflowDefinition>, sqlx::Error> {
+pub(crate) async fn load_all_workflows(pool: &sqlx::SqlitePool) -> Result<Vec<WorkflowDefinition>, sqlx::Error> {
     seed_defaults(pool).await;
 
     let rows = sqlx::query_as::<_, (String, String, Option<String>, String, Option<String>, String, bool)>(
@@ -306,7 +527,7 @@ async fn load_all_workflows(pool: &sqlx::SqlitePool) -> Result<Vec<WorkflowDefin
     Ok(rows.into_iter().map(|(id, ot, oid, name, desc, steps, sys)| parse_workflow_from_row(id, ot, oid, name, desc, steps, sys)).collect())
 }
 
-async fn load_workflow(pool: &sqlx::SqlitePool, workflow_id: &str) -> Result<Option<WorkflowDefinition>, sqlx::Error> {
+pub(crate) async fn load_workflow(pool: &sqlx::SqlitePool, workflow_id: &str) -> Result<Option<WorkflowDefinition>, sqlx::Error> {
     seed_defaults(pool).await;
 
     let row = sqlx::query_as::<_, (String, String, Option<String>, String, Option<String>, String, bool)>(
@@ -319,588 +540,10 @@ async fn load_workflow(pool: &sqlx::SqlitePool, workflow_id: &str) -> Result<Opt
     Ok(row.map(|(id, ot, oid, name, desc, steps, sys)| parse_workflow_from_row(id, ot, oid, name, desc, steps, sys)))
 }
 
-// ── Mock LLM: content-aware extraction ──────────────────────────────────────
 
-/// Extract all email addresses from text using regex
-fn extract_emails_from_text(text: &str) -> Vec<String> {
-    let re = Regex::new(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}").unwrap();
-    let mut emails: Vec<String> = Vec::new();
-    for cap in re.find_iter(text) {
-        let email = cap.as_str().to_string();
-        if !emails.contains(&email) {
-            emails.push(email);
-        }
-    }
-    emails
-}
-
-/// Extract dollar amounts and nearby context from text.
-/// Returns (amount_str, nearby_context_line) pairs.
-fn extract_dollar_amounts_from_text(text: &str) -> Vec<(String, String)> {
-    let re = Regex::new(r"\$[\d,]+(?:\.\d+)?(?:\s*[KkMmBb])?").unwrap();
-    let mut results: Vec<(String, String)> = Vec::new();
-    for line in text.lines() {
-        for cap in re.find_iter(line) {
-            let amount = cap.as_str().to_string();
-            if !results.iter().any(|(a, _)| a == &amount) {
-                results.push((amount, line.trim().to_string()));
-            }
-        }
-    }
-    results
-}
-
-/// Try to find a date near some context text. Looks for YYYY-MM-DD patterns.
-fn extract_date_near_text(text: &str, context_line: &str) -> Option<String> {
-    // First try the specific context line
-    let date_re = Regex::new(r"\d{4}-\d{2}-\d{2}").unwrap();
-    if let Some(m) = date_re.find(context_line) {
-        return Some(m.as_str().to_string());
-    }
-    // Also try nearby lines (within 3 lines of the context)
-    let lines: Vec<&str> = text.lines().collect();
-    for (i, line) in lines.iter().enumerate() {
-        if line.contains(context_line.split_whitespace().next().unwrap_or("")) {
-            // Check lines i-3..i+3
-            let start = i.saturating_sub(3);
-            let end = (i + 4).min(lines.len());
-            for nearby in &lines[start..end] {
-                if let Some(m) = date_re.find(nearby) {
-                    return Some(m.as_str().to_string());
-                }
-            }
-        }
-    }
-    None
-}
-
-fn extract_company_names_from_text(text: &str) -> Vec<String> {
-    let mut companies = Vec::new();
-    // Look for organization suffixes: Group, Inc, Corp, LLC, Ltd, Co, Foundation, etc.
-    let org_suffixes = ["Group", "Inc", "Corp", "Corporation", "LLC", "Ltd", "Co", "Company",
-                        "Foundation", "Institute", "Associates", "Partners", "Solutions",
-                        "Technologies", "Systems", "Services", "Global", "International",
-                        "Health", "Medical", "Consulting", "Labs", "Studio", "Agency"];
-    // Words that cannot be part of a company name (stop walk-back)
-    let stop_words = ["Attendees", "CEO", "CFO", "CTO", "COO", "VP", "Director", "Manager",
-                      "Head", "Lead", "Senior", "Junior", "Chief", "President", "Chair",
-                      "Date", "Time", "Location", "Agenda", "Notes", "Summary", "Action",
-                      "Items", "Discussion", "Meeting", "Call", "Review", "Update", "Status",
-                      "Follow", "Next", "Steps", "Budget", "Revenue", "Cost", "Total"];
-    let words: Vec<&str> = text.split_whitespace().collect();
-    for i in 0..words.len() {
-        let w = words[i].trim_matches(|c: char| !c.is_alphanumeric());
-        if org_suffixes.contains(&w) {
-            // Walk backwards to collect the full company name (max 4 words back)
-            let mut parts: Vec<&str> = vec![w];
-            let mut j = i;
-            let max_walk = 4;
-            while j > 0 && parts.len() <= max_walk {
-                j -= 1;
-                let prev = words[j].trim_matches(|c: char| !c.is_alphanumeric());
-                if prev.is_empty() { break; }
-                if stop_words.contains(&prev) { break; }
-                let starts_upper = prev.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
-                if starts_upper && prev.len() >= 2 {
-                    parts.insert(0, prev);
-                } else {
-                    break;
-                }
-            }
-            if parts.len() >= 2 {
-                let name = parts.join(" ");
-                if !companies.contains(&name) && companies.len() < 5 {
-                    companies.push(name);
-                }
-            }
-        }
-    }
-    // Also look for "COMPANY:" lines
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("COMPANY:") {
-            let company_part = rest.trim().split('|').next().unwrap_or("").trim();
-            if !company_part.is_empty() && !companies.contains(&company_part.to_string()) && companies.len() < 10 {
-                companies.push(company_part.to_string());
-            }
-        }
-    }
-
-    // Look for "CEO of CompanyName", "VP at CompanyName", "works at CompanyName", etc.
-    let at_of_re = Regex::new(r"(?:at|of|from|with)\s+([A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+){0,4})").unwrap();
-    for cap in at_of_re.captures_iter(text) {
-        if let Some(m) = cap.get(1) {
-            let candidate = m.as_str().trim().to_string();
-            // Filter out common false positives
-            let false_positives = ["The", "This", "That", "These", "Those", "Our", "Your",
-                                   "His", "Her", "Its", "My", "January", "February", "March",
-                                   "April", "May", "June", "July", "August", "September",
-                                   "October", "November", "December", "Monday", "Tuesday",
-                                   "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-            let first_word = candidate.split_whitespace().next().unwrap_or("");
-            if !false_positives.contains(&first_word) && candidate.len() >= 3
-                && !companies.contains(&candidate) && companies.len() < 10
-            {
-                companies.push(candidate);
-            }
-        }
-    }
-
-    // Look for "CompanyName: Series B" or "CompanyName - description" patterns
-    // (lines starting with a capitalized name followed by colon or dash)
-    let label_re = Regex::new(r"^([A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+){0,4})\s*(?::\s+\S|–\s+\S|-\s+\S)").unwrap();
-    for line in text.lines() {
-        let trimmed = line.trim().trim_start_matches('-').trim().trim_start_matches('*').trim();
-        if let Some(cap) = label_re.captures(trimmed) {
-            if let Some(m) = cap.get(1) {
-                let candidate = m.as_str().trim().to_string();
-                // Must not be a generic label
-                let generic_labels = ["Date", "Time", "Location", "Agenda", "Notes", "Summary",
-                                      "Action", "Items", "Discussion", "Meeting", "Budget",
-                                      "Revenue", "Status", "Update", "Follow", "Next",
-                                      "Estimated", "Expected", "Total", "Contact", "Phone",
-                                      "Email", "Description", "Details", "Subject", "Title",
-                                      "Priority", "Attendees", "Participants"];
-                let first_word = candidate.split_whitespace().next().unwrap_or("");
-                if !generic_labels.contains(&first_word) && candidate.len() >= 3
-                    && !companies.contains(&candidate) && companies.len() < 10
-                {
-                    companies.push(candidate);
-                }
-            }
-        }
-    }
-
-    companies
-}
-
-/// Structured contact info extracted from text
-struct ExtractedContact {
-    name: String,
-    role: Option<String>,
-    email: Option<String>,
-    phone: Option<String>,
-    company: Option<String>,
-}
-
-fn extract_contacts_from_text(text: &str) -> Vec<ExtractedContact> {
-    let mut contacts = Vec::new();
-    let email_re_simple = |s: &str| -> Option<String> {
-        // Find email-like pattern in a string
-        for word in s.split_whitespace() {
-            let w = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '@' && c != '.' && c != '_' && c != '-');
-            if w.contains('@') && w.contains('.') && w.len() > 5 {
-                return Some(w.to_string());
-            }
-        }
-        None
-    };
-    let phone_re_simple = |s: &str| -> Option<String> {
-        // Find phone-like pattern: (xxx) xxx-xxxx or xxx-xxx-xxxx
-        for segment in s.split_whitespace().collect::<Vec<_>>().windows(3) {
-            let combined = segment.join(" ");
-            let digits: String = combined.chars().filter(|c| c.is_ascii_digit()).collect();
-            if digits.len() >= 10 && digits.len() <= 11 && combined.contains(|c: char| c == '(' || c == '-') {
-                return Some(combined);
-            }
-        }
-        None
-    };
-
-    // Parse "- Name, Title | email | phone | linkedin" lines (contact info format)
-    for line in text.lines() {
-        let trimmed = line.trim().trim_start_matches('-').trim();
-        // Look for lines with pipe separators that contain email addresses
-        if trimmed.contains('|') && trimmed.contains('@') {
-            let parts: Vec<&str> = trimmed.split('|').map(|s| s.trim()).collect();
-            if let Some(name_role) = parts.first() {
-                let (name, role) = if let Some(comma_pos) = name_role.find(',') {
-                    (name_role[..comma_pos].trim().to_string(), Some(name_role[comma_pos+1..].trim().to_string()))
-                } else {
-                    (name_role.trim().to_string(), None)
-                };
-                // Clean "Dr. " prefix but keep it recognizable
-                let clean_name = name.replace("Dr. ", "").trim().to_string();
-                let display_name = if name.starts_with("Dr.") { name.clone() } else { clean_name.clone() };
-                if display_name.len() >= 3 && display_name.contains(' ') {
-                    contacts.push(ExtractedContact {
-                        name: display_name,
-                        role,
-                        email: parts.get(1).and_then(|s| email_re_simple(s)),
-                        phone: parts.get(2).and_then(|s| phone_re_simple(s)),
-                        company: None,
-                    });
-                }
-            }
-        }
-    }
-
-    // Fallback: look for "Title (Role, Company)" patterns in attendee lines
-    if contacts.is_empty() {
-        for line in text.lines() {
-            let trimmed = line.trim();
-            if trimmed.to_lowercase().contains("attendee") || trimmed.contains("(CEO") || trimmed.contains("(CFO") || trimmed.contains("(CTO") {
-                // Parse "Name (Role, Company)" patterns
-                let mut rest = trimmed;
-                if let Some(pos) = trimmed.find(':') {
-                    rest = &trimmed[pos+1..];
-                }
-                for segment in rest.split(',') {
-                    let seg = segment.trim();
-                    if let Some(paren_pos) = seg.find('(') {
-                        let name = seg[..paren_pos].trim();
-                        let role_info = seg[paren_pos..].trim_matches(|c| c == '(' || c == ')');
-                        if name.len() >= 3 && name.contains(' ') && contacts.len() < 10 {
-                            let (role, company) = if let Some(comma) = role_info.find(',') {
-                                (Some(role_info[..comma].trim().to_string()), Some(role_info[comma+1..].trim().to_string()))
-                            } else {
-                                (Some(role_info.trim().to_string()), None)
-                            };
-                            contacts.push(ExtractedContact { name: name.to_string(), role, email: None, phone: None, company });
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Fallback 2: look for "Name, Role of/at Company (email)" patterns
-    // e.g. "Sarah Kim, CEO of NovaBridge Analytics (sarah.kim@novabridge.ai)"
-    if contacts.is_empty() {
-        let name_role_email_re = Regex::new(
-            r"(?m)^[\s\-\*]*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+),\s*((?:CEO|CTO|CFO|COO|VP|Director|Manager|Head|Lead|President|Founder|Partner|Principal|Senior|Chief|SVP|EVP|CMO|CIO|CISO|CRO)\b[^()\n]*?)\s*\(([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})\)"
-        ).unwrap();
-        for cap in name_role_email_re.captures_iter(text) {
-            let name = cap[1].trim().to_string();
-            let role_str = cap[2].trim().to_string();
-            let email = cap[3].trim().to_string();
-            // Parse "CEO of CompanyName" or "VP Engineering at CompanyName"
-            let (role, company) = {
-                let role_lower = role_str.to_lowercase();
-                if let Some(pos) = role_lower.find(" of ") {
-                    let r = role_str[..pos].trim().to_string();
-                    let c = role_str[pos+4..].trim().to_string();
-                    (Some(r), if c.is_empty() { None } else { Some(c) })
-                } else if let Some(pos) = role_lower.find(" at ") {
-                    let r = role_str[..pos].trim().to_string();
-                    let c = role_str[pos+4..].trim().to_string();
-                    (Some(r), if c.is_empty() { None } else { Some(c) })
-                } else {
-                    (Some(role_str), None)
-                }
-            };
-            if contacts.len() < 10 {
-                contacts.push(ExtractedContact { name, role, email: Some(email), phone: None, company });
-            }
-        }
-    }
-
-    // Fallback 3: find all emails and try to associate names with them
-    if contacts.is_empty() {
-        let emails = extract_emails_from_text(text);
-        for email in &emails {
-            if contacts.len() >= 10 { break; }
-            let mut found_name: Option<String> = None;
-            let mut found_role: Option<String> = None;
-            let mut found_company: Option<String> = None;
-
-            for line in text.lines() {
-                if !line.contains(email.as_str()) { continue; }
-                let trimmed = line.trim();
-
-                // Pattern: "Name (email)" or "Name <email>"
-                let before_email = if let Some(pos) = trimmed.find(email.as_str()) {
-                    trimmed[..pos].trim().trim_end_matches(|c: char| c == '(' || c == '<' || c == ',' || c == ' ')
-                } else { "" };
-
-                if !before_email.is_empty() {
-                    // Walk backwards through the before_email to extract the name
-                    let clean = before_email.trim_start_matches(|c: char| c == '-' || c == '*' || c == ' ');
-                    // Check if there's a comma-separated role+company before name
-                    if let Some(comma_pos) = clean.rfind(',') {
-                        let name_part = clean[..comma_pos].trim();
-                        // The name_part might itself contain "Name, Role of Company"
-                        if name_part.contains(' ') && name_part.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
-                            found_name = Some(name_part.to_string());
-                        }
-                        let role_part = clean[comma_pos+1..].trim();
-                        if !role_part.is_empty() {
-                            // Parse "CEO of CompanyName" or "VP at CompanyName"
-                            let role_lower = role_part.to_lowercase();
-                            if let Some(pos) = role_lower.find(" of ") {
-                                found_role = Some(role_part[..pos].trim().to_string());
-                                let c = role_part[pos+4..].trim().to_string();
-                                if !c.is_empty() { found_company = Some(c); }
-                            } else if let Some(pos) = role_lower.find(" at ") {
-                                found_role = Some(role_part[..pos].trim().to_string());
-                                let c = role_part[pos+4..].trim().to_string();
-                                if !c.is_empty() { found_company = Some(c); }
-                            } else {
-                                found_role = Some(role_part.to_string());
-                            }
-                        }
-                    } else if clean.contains(' ') && clean.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
-                        found_name = Some(clean.to_string());
-                    }
-                }
-            }
-
-            // If we couldn't find a name, try to derive one from the email
-            let name = found_name.unwrap_or_else(|| {
-                // e.g. sarah.kim@novabridge.ai -> Sarah Kim
-                let local = email.split('@').next().unwrap_or("");
-                let parts: Vec<String> = local.split(|c: char| c == '.' || c == '_' || c == '-')
-                    .filter(|p| !p.is_empty() && p.len() > 1)
-                    .map(|p| {
-                        let mut chars = p.chars();
-                        match chars.next() {
-                            Some(c) => c.to_uppercase().to_string() + chars.as_str(),
-                            None => String::new(),
-                        }
-                    })
-                    .collect();
-                if parts.len() >= 2 { parts.join(" ") } else { local.to_string() }
-            });
-
-            if name.len() >= 3 && !contacts.iter().any(|c| c.email.as_deref() == Some(email.as_str())) {
-                contacts.push(ExtractedContact {
-                    name,
-                    role: found_role,
-                    email: Some(email.clone()),
-                    phone: None,
-                    company: found_company,
-                });
-            }
-        }
-    }
-
-    contacts
-}
-
-fn generate_mock_step_result(step_id: &str, content: &str, title: &str, previous_results: &[(&str, &str)], node_type: &str, output_schema: &str) -> String {
-    // Match on exact step_id first (system workflows), then use output_schema to determine mock data
-    let key = match step_id {
-        "extract_companies" | "extract_contacts" | "identify_opportunities" | "identify_deals" => step_id.to_string(),
-
-        _ => {
-            // For custom workflows, use output_schema to pick the right mock
-            let schema_lower = output_schema.to_lowercase();
-            if schema_lower.contains("compan") { "extract_companies".to_string() }
-            else if schema_lower.contains("contact") || schema_lower.contains("person") || schema_lower.contains("people") { "extract_contacts".to_string() }
-            else if schema_lower.contains("deal") { "identify_deals".to_string() }
-
-            else if schema_lower.contains("opportunit") || node_type == "llm_analyze" { "identify_opportunities".to_string() }
-            else { step_id.to_string() }
-        }
-    };
-    match key.as_str() {
-        "extract_companies" => {
-            let extracted = extract_company_names_from_text(content);
-            if extracted.is_empty() {
-                // Return empty array rather than a placeholder when nothing found
-                json!({"companies": []}).to_string()
-            } else {
-                let companies: Vec<Value> = extracted.iter().enumerate().map(|(i, name)| {
-                    let rel = match i % 3 { 0 => "potential_client", 1 => "partner", _ => "vendor" };
-                    json!({
-                        "name": name,
-                        "description": format!("Extracted from source content"),
-                        "relationship": rel,
-                        "context": format!("Company '{}' mentioned in document", name),
-                    })
-
-                }).collect();
-                json!({ "companies": companies }).to_string()
-            }
-        }
-        "extract_contacts" => {
-            let extracted = extract_contacts_from_text(content);
-
-            let company_names: Vec<String> = previous_results.iter()
-                .filter(|(sid, _)| *sid == "extract_companies")
-                .filter_map(|(_, result)| serde_json::from_str::<Value>(result).ok().and_then(|v| v["companies"].as_array().cloned()))
-                .flatten().filter_map(|c| c["name"].as_str().map(|s| s.to_string())).collect();
-            if extracted.is_empty() {
-                // Return empty array rather than placeholder contacts
-                json!({"contacts": []}).to_string()
-            } else {
-                let contacts: Vec<Value> = extracted.iter().enumerate().map(|(i, c)| {
-                    let company = c.company.clone()
-                        .or_else(|| company_names.get(i % company_names.len().max(1)).cloned());
-                    // Split name into first/last for CRM contact schema
-                    let (first_name, last_name) = {
-                        let parts: Vec<&str> = c.name.split_whitespace().collect();
-                        if parts.len() >= 2 {
-                            (parts[0].to_string(), parts[1..].join(" "))
-                        } else {
-                            (c.name.clone(), String::new())
-                        }
-                    };
-                    json!({
-                        "first_name": first_name,
-                        "last_name": last_name,
-                        "name": c.name,
-                        "job_title": c.role,
-                        "email": c.email,
-                        "phone": c.phone,
-                        "company_name": company,
-                    })
-
-                }).collect();
-                json!({ "contacts": contacts }).to_string()
-            }
-        }
-        "identify_opportunities" | "identify_deals" => {
-            // Gather context from previous extraction steps
-            let mut primary_company = String::new();
-            let mut primary_contact_name = String::new();
-            let mut primary_contact_email = String::new();
-
-            for (sid, result) in previous_results {
-                if *sid == "extract_companies" {
-                    if let Ok(v) = serde_json::from_str::<Value>(result) {
-                        if let Some(companies) = v["companies"].as_array() {
-                            if let Some(first) = companies.first() {
-                                if let Some(name) = first["name"].as_str() {
-                                    primary_company = name.to_string();
-                                }
-                            }
-                        }
-                    }
-                }
-                if *sid == "extract_contacts" {
-                    if let Ok(v) = serde_json::from_str::<Value>(result) {
-                        if let Some(contacts) = v["contacts"].as_array() {
-                            if let Some(first) = contacts.first() {
-                                if let Some(name) = first["name"].as_str().or(first["first_name"].as_str()) {
-                                    primary_contact_name = if let Some(last) = first["last_name"].as_str() {
-                                        format!("{} {}", name, last)
-                                    } else {
-                                        name.to_string()
-                                    };
-                                }
-                                if let Some(email) = first["email"].as_str() {
-                                    primary_contact_email = email.to_string();
-
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Extract dollar amounts from content
-            let amounts = extract_dollar_amounts_from_text(content);
-
-            if amounts.is_empty() && primary_company.is_empty() {
-                // Nothing to extract — return empty
-                json!({"opportunities": []}).to_string()
-            } else if !amounts.is_empty() {
-                // Build real opportunities from extracted dollar amounts
-                let opportunities: Vec<Value> = amounts.iter().enumerate().map(|(i, (amount, context_line))| {
-                    // Try to find a deal name from nearby context
-                    let deal_name = {
-                        // Look for "Value:" or "Estimated Value:" label — the deal is likely described nearby
-                        let lower_ctx = context_line.to_lowercase();
-                        if lower_ctx.contains("value") || lower_ctx.contains("budget") || lower_ctx.contains("amount") {
-                            // The deal name is probably from the surrounding context
-                            // Look a few lines above for a company or project name
-                            let lines: Vec<&str> = content.lines().collect();
-                            let mut found_name = String::new();
-                            for (li, line) in lines.iter().enumerate() {
-                                if line.contains(context_line.split_whitespace().next().unwrap_or("")) {
-                                    // Walk backwards up to 5 lines to find a descriptive name
-                                    let start = li.saturating_sub(5);
-                                    for check_line in &lines[start..li] {
-                                        let trimmed = check_line.trim().trim_start_matches(|c: char| c == '-' || c == '*' || c == '#');
-                                        let trimmed = trimmed.trim();
-                                        // Look for a line that seems like a deal/project header
-                                        if !trimmed.is_empty() && trimmed.len() > 5 && trimmed.len() < 100
-                                            && trimmed.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
-                                            && !trimmed.to_lowercase().starts_with("estimated")
-                                            && !trimmed.to_lowercase().starts_with("expected")
-                                            && !trimmed.to_lowercase().starts_with("budget")
-                                        {
-                                            found_name = trimmed.to_string();
-                                        }
-                                    }
-                                    break;
-                                }
-                            }
-                            if found_name.is_empty() && !primary_company.is_empty() {
-                                format!("Opportunity with {}", primary_company)
-                            } else if !found_name.is_empty() {
-                                // Truncate if too long
-                                if found_name.len() > 80 { found_name.truncate(80); }
-                                found_name
-                            } else {
-                                format!("Deal #{}", i + 1)
-                            }
-                        } else {
-                            // Use the context line itself (truncated)
-                            let mut name = context_line.clone();
-                            if name.len() > 80 { name.truncate(80); }
-                            name
-                        }
-                    };
-
-                    // Parse dollar amount to a number
-                    let amount_num: Option<f64> = {
-                        let cleaned: String = amount.chars()
-                            .filter(|c| c.is_ascii_digit() || *c == '.')
-                            .collect();
-                        let multiplier = if amount.contains('K') || amount.contains('k') { 1_000.0 }
-                            else if amount.contains('M') || amount.contains('m') { 1_000_000.0 }
-                            else if amount.contains('B') || amount.contains('b') { 1_000_000_000.0 }
-                            else { 1.0 };
-                        cleaned.parse::<f64>().ok().map(|v| v * multiplier)
-                    };
-
-                    // Try to find an expected close date near this amount
-                    let close_date = extract_date_near_text(content, context_line);
-
-                    let contact_name = if !primary_contact_name.is_empty() { Some(primary_contact_name.clone()) } else { None };
-                    let contact_email = if !primary_contact_email.is_empty() { Some(primary_contact_email.clone()) } else { None };
-
-                    json!({
-                        "name": deal_name,
-                        "description": context_line,
-                        "amount": amount_num,
-                        "currency": "USD",
-                        "contact_name": contact_name,
-                        "contact_email": contact_email,
-                        "deal_type": "project",
-                        "estimated_value": amount_num.map(|a| format!("${}", if a >= 1_000_000.0 { format!("{}M", (a / 1_000_000.0 * 10.0).round() / 10.0) } else if a >= 1_000.0 { format!("{}K", (a / 1_000.0).round()) } else { format!("{}", a.round()) })),
-                        "expected_close_date": close_date,
-                        "next_steps": ["Review extracted deal details", "Schedule follow-up meeting"]
-                    })
-                }).collect();
-                json!({"opportunities": opportunities}).to_string()
-            } else {
-                // We have company info but no dollar amounts — create a general opportunity
-                let opp_title = format!("Opportunity with {}", primary_company);
-                let contact_name = if !primary_contact_name.is_empty() { Value::String(primary_contact_name) } else { Value::Null };
-                let contact_email = if !primary_contact_email.is_empty() { Value::String(primary_contact_email) } else { Value::Null };
-                json!({"opportunities": [
-                    {
-                        "name": opp_title,
-                        "description": format!("Potential opportunity identified with {}", primary_company),
-                        "amount": null,
-                        "currency": "USD",
-                        "contact_name": contact_name,
-                        "contact_email": contact_email,
-                        "deal_type": "project",
-                        "next_steps": ["Review opportunity details", "Schedule discovery call"]
-                    }
-                ]}).to_string()
-            }
-        }
-        _ => {
-            json!({"result": format!("Analysis of {} chars of content", content.len()), "status": "completed"}).to_string()
-
-        }
-    }
-}
+// Text extraction, mock LLM, record helpers, dedup, action node execution,
+// and LLM node execution have been extracted to
+// services::services::workflow_execution and re-exported above.
 
 // ── Route handlers ──────────────────────────────────────────────────────────
 
@@ -910,7 +553,7 @@ async fn list_workflows_for_data_source(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Vec<WorkflowDefinition>>>, ApiError> {
     let pool = &deployment.db().pool;
-    DataSource::find_by_id(pool, data_source_id)
+    DataSource::find_by_id(pool, &data_source_id.to_string())
         .await.map_err(|e| ApiError::InternalError(format!("Failed to look up data source: {e}")))?
         .ok_or_else(|| ApiError::NotFound("Data source not found".to_string()))?;
     let workflows = load_all_workflows(pool).await
@@ -926,656 +569,6 @@ struct RunWorkflowRequest {
 }
 
 /// Extract individual records from LLM output JSON
-fn extract_records_from_output(data: &Value, target_type: &str) -> Vec<Value> {
-    // Skip error responses from failed LLM calls
-    if data.get("error").is_some() {
-        tracing::warn!("[WORKFLOW] Skipping record extraction — node returned an error: {}", data);
-        return vec![];
-    }
-
-    // Try direct array
-    if let Some(arr) = data.as_array() {
-        return arr.clone();
-    }
-
-    // Try common keys based on target type
-    let keys = match target_type {
-        "crm_contact" => vec!["contacts", "people", "persons"],
-        "company" => vec!["companies", "organizations"],
-        "crm_deal" => vec!["deals", "opportunities", "proposals"],
-        "task" => vec!["tasks", "action_items", "actions"],
-        _ => vec![],
-    };
-
-    for key in keys {
-        if let Some(arr) = data.get(key).and_then(|v| v.as_array()) {
-            return arr.clone();
-        }
-    }
-
-    // If it's a single object with recognized entity fields, wrap it
-    if data.is_object() && !data.as_object().unwrap().is_empty() {
-        // Only wrap if it looks like an actual entity record (has name/title/email)
-        let obj = data.as_object().unwrap();
-        let looks_like_record = obj.contains_key("name") || obj.contains_key("title")
-            || obj.contains_key("email") || obj.contains_key("first_name");
-        if looks_like_record {
-            return vec![data.clone()];
-        }
-    }
-
-    vec![]
-}
-
-/// Check if a record looks like a fallback placeholder produced by the mock extraction
-/// engine (i.e. when no LLM is connected). These records contain generic names and
-/// no real data, so they should be flagged as very low confidence.
-///
-/// Records with real extracted data (valid emails, real names, real dollar amounts)
-/// should NOT be flagged as placeholders even if they come from the fallback engine.
-fn is_fallback_placeholder(record: &Value) -> bool {
-    let obj = match record.as_object() {
-        Some(o) => o,
-        None => return false,
-    };
-
-    // If the record has a real email address, it's not a placeholder
-    if let Some(email) = obj.get("email").and_then(|v| v.as_str()) {
-        if email.contains('@') && email.contains('.') && email.len() > 5 {
-            return false;
-        }
-    }
-
-    // If the record has a real dollar amount (number), it's not a placeholder
-    if let Some(amount) = obj.get("amount") {
-        if amount.is_number() && amount.as_f64().unwrap_or(0.0) > 0.0 {
-            return false;
-        }
-    }
-
-    // If the record has both first_name and last_name that look real, not a placeholder
-    if let (Some(first), Some(last)) = (
-        obj.get("first_name").and_then(|v| v.as_str()),
-        obj.get("last_name").and_then(|v| v.as_str()),
-    ) {
-        if !first.is_empty() && !last.is_empty()
-            && first != "Unknown" && last != "Contact"
-            && first.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
-        {
-            return false;
-        }
-    }
-
-    // Collect all string values from the record for pattern matching
-    let string_values: Vec<&str> = obj.values().filter_map(|v| v.as_str()).collect();
-
-    let placeholder_patterns = [
-        "Follow-up from '",
-        "CRM Records from '",
-        "Company from '",
-        "Unknown Contact",
-        "Processed step '",
-        "Referenced in data source content",
-        "Referenced in ",
-        "Mentioned in data source content",
-    ];
-
-    for val in &string_values {
-        for pattern in &placeholder_patterns {
-            if val.contains(pattern) {
-                return true;
-            }
-        }
-    }
-
-    // Also check nested arrays (e.g. next_steps) for generic content
-    for v in obj.values() {
-        if let Some(arr) = v.as_array() {
-            for item in arr {
-                if let Some(s) = item.as_str() {
-                    for pattern in &placeholder_patterns {
-                        if s.contains(pattern) {
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    false
-}
-
-
-/// Compute a confidence score (0.0–1.0) for a staging record based on simple heuristics.
-/// - Start at 1.0
-/// - Subtract 0.15 for each missing required field
-/// - Subtract 0.05 for each validation error
-/// - Subtract 0.3 if marked as duplicate
-/// - Subtract 0.1 if more than half of all fields are null/empty
-/// - Cap at 0.1 if the record is a fallback placeholder (no LLM connected)
-/// - Floor at 0.0
-fn compute_confidence(record: &Value, target_type: &str, validation_errors: &[String], is_duplicate: bool) -> f64 {
-    // If this record was produced by the mock/fallback engine, cap confidence very low
-    if is_fallback_placeholder(record) {
-        tracing::warn!(
-            "[WORKFLOW] Detected fallback placeholder record (no LLM connected) — setting low confidence"
-        );
-        return 0.1;
-    }
-
-
-    let mut score: f64 = 1.0;
-
-    // Check required fields against schema
-    if let Some(schema) = super::output_schemas::get_schema_for_target(target_type) {
-        let total_fields = schema.fields.len();
-        let mut null_or_empty_count = 0;
-
-        for (name, field) in &schema.fields {
-            let value = record.get(name.as_str());
-            let is_missing = match value {
-                None => true,
-                Some(Value::Null) => true,
-                Some(Value::String(s)) => s.is_empty(),
-                _ => false,
-            };
-
-            if is_missing {
-                null_or_empty_count += 1;
-                if field.required {
-                    score -= 0.15;
-                }
-            }
-        }
-
-        // Penalize if more than half of all fields are null/empty
-        if total_fields > 0 && null_or_empty_count > total_fields / 2 {
-            score -= 0.1;
-        }
-    }
-
-    // Penalize for each validation error
-    score -= 0.05 * validation_errors.len() as f64;
-
-    // Penalize if duplicate
-    if is_duplicate {
-        score -= 0.3;
-    }
-
-    // Floor at 0.0
-    score.max(0.0)
-}
-
-/// Build a schema prompt text dynamically from output_schemas definitions.
-/// Maps output node target types to their schema definitions and generates
-/// a human-readable prompt describing the expected JSON format.
-fn build_schema_prompt_text(target_type: &str) -> Option<String> {
-    // Map output node types to schema target types
-    let schema_target = match target_type {
-        "crm_contacts" => "crm_contact",
-        "crm_companies" | "companies" => "company",
-        "crm_deals" | "deals" => "crm_deal",
-        "tasks" => "task",
-        _ => return None,
-    };
-
-    // Map to the expected JSON array key
-    let array_key = match target_type {
-        "crm_contacts" => "contacts",
-        "crm_companies" | "companies" => "companies",
-        "crm_deals" | "deals" => "deals",
-        "tasks" => "tasks",
-        _ => return None,
-    };
-
-    let schema = super::output_schemas::get_schema_for_target(schema_target)?;
-
-    let mut parts = vec![format!("Output JSON must contain a \"{}\" array.", array_key)];
-
-    let mut required_fields = Vec::new();
-    let mut optional_fields = Vec::new();
-
-    for (name, field) in &schema.fields {
-        let mut desc = format!("{} ({}", name, field.field_type);
-        if let Some(ref enums) = field.enum_values {
-            desc.push_str(&format!(", one of: {}", enums.join(", ")));
-        }
-        desc.push(')');
-        if field.required {
-            required_fields.push(desc);
-        } else {
-            optional_fields.push(format!("{} or null", desc));
-        }
-    }
-
-    if !required_fields.is_empty() {
-        parts.push(format!("Required fields: {}.", required_fields.join(", ")));
-    }
-    if !optional_fields.is_empty() {
-        parts.push(format!("Optional fields: {}.", optional_fields.join(", ")));
-    }
-
-    // Add anti-hallucination instruction based on entity type
-    let entity_hint = match target_type {
-        "crm_contacts" => "Each entry must be a REAL person explicitly named in the source content. Do NOT use document titles, section headings, or metadata as contact names.",
-        "crm_companies" | "companies" => "Each entry must be a REAL company/organization explicitly named in the source. Do NOT use document titles, dates, or headings as company names.",
-        "crm_deals" | "deals" => "Each entry must represent a REAL business opportunity described in the source.",
-        "tasks" => "Each entry must be a REAL action item or follow-up explicitly described in the source.",
-        _ => "Only extract entities explicitly mentioned in the source content.",
-    };
-    parts.push(format!("IMPORTANT: {} If none exist, return an empty array.", entity_hint));
-
-    Some(parts.join(" "))
-}
-
-/// Validate a single record (serde_json::Value) against the TargetSchema for the given target_type.
-/// Returns Ok(()) if valid, or Err(Vec<String>) with a list of human-readable validation errors.
-fn validate_record_against_schema(record: &Value, target_type: &str) -> Result<(), Vec<String>> {
-    let schema = match super::output_schemas::get_schema_for_target(target_type) {
-        Some(s) => s,
-        None => return Ok(()), // unknown target type — skip validation
-    };
-
-    let obj = match record.as_object() {
-        Some(o) => o,
-        None => return Err(vec!["Record is not a JSON object".to_string()]),
-    };
-
-    let mut errors = Vec::new();
-
-    for (field_name, field_def) in &schema.fields {
-        let value = obj.get(field_name);
-
-        // Check required fields
-        if field_def.required {
-            match value {
-                None | Some(Value::Null) => {
-                    errors.push(format!("Missing required field: {}", field_name));
-                    continue;
-                }
-                Some(Value::String(s)) if s.is_empty() => {
-                    errors.push(format!("Required field '{}' is empty", field_name));
-                    continue;
-                }
-                _ => {}
-            }
-        }
-
-        // If the field is present and not null, check types
-        if let Some(val) = value {
-            if val.is_null() {
-                continue; // null is OK for optional fields
-            }
-
-            let type_ok = match field_def.field_type.as_str() {
-                "string" => val.is_string(),
-                "number" => val.is_number() || val.is_f64() || val.is_i64() || val.is_u64(),
-                "array" => val.is_array(),
-                "object" => val.is_object(),
-                "boolean" => val.is_boolean(),
-                _ => true, // unknown type — don't validate
-            };
-
-            if !type_ok {
-                errors.push(format!(
-                    "Field '{}' expected type '{}', got {}",
-                    field_name,
-                    field_def.field_type,
-                    value_type_name(val)
-                ));
-            }
-
-            // Check enum constraints
-            if let Some(ref enum_values) = field_def.enum_values {
-                if let Some(s) = val.as_str() {
-                    if !enum_values.iter().any(|e| e == s) {
-                        errors.push(format!(
-                            "Field '{}' value '{}' not in allowed values: [{}]",
-                            field_name, s,
-                            enum_values.join(", ")
-                        ));
-                    }
-                }
-            }
-        }
-    }
-
-    if errors.is_empty() {
-        Ok(())
-    } else {
-        Err(errors)
-    }
-}
-
-/// Helper to get a human-readable type name for a serde_json::Value
-fn value_type_name(v: &Value) -> &'static str {
-    match v {
-        Value::Null => "null",
-        Value::Bool(_) => "boolean",
-        Value::Number(_) => "number",
-        Value::String(_) => "string",
-        Value::Array(_) => "array",
-        Value::Object(_) => "object",
-    }
-}
-
-/// Compute Levenshtein distance between two strings
-fn levenshtein_distance(a: &str, b: &str) -> usize {
-    let a_len = a.len();
-    let b_len = b.len();
-    if a_len == 0 { return b_len; }
-    if b_len == 0 { return a_len; }
-
-    let mut prev: Vec<usize> = (0..=b_len).collect();
-    let mut curr = vec![0usize; b_len + 1];
-
-    for (i, ca) in a.chars().enumerate() {
-        curr[0] = i + 1;
-        for (j, cb) in b.chars().enumerate() {
-            let cost = if ca == cb { 0 } else { 1 };
-            curr[j + 1] = (prev[j] + cost)
-                .min(prev[j + 1] + 1)
-                .min(curr[j] + 1);
-        }
-        std::mem::swap(&mut prev, &mut curr);
-    }
-    prev[b_len]
-}
-
-/// Fuzzy name match: lowercases, trims whitespace, then checks Levenshtein distance.
-/// Returns true if distance <= 2 for short names (<=6 chars) or >80% similarity.
-fn fuzzy_name_match(a: &str, b: &str) -> bool {
-    let a = a.to_lowercase().split_whitespace().collect::<Vec<_>>().join(" ");
-    let b = b.to_lowercase().split_whitespace().collect::<Vec<_>>().join(" ");
-    if a == b { return true; }
-    let dist = levenshtein_distance(&a, &b);
-    let max_len = a.len().max(b.len());
-    if max_len == 0 { return true; }
-    if max_len <= 6 {
-        dist <= 2
-    } else {
-        let similarity = 1.0 - (dist as f64 / max_len as f64);
-        similarity > 0.8
-    }
-}
-
-/// Normalize a company name by stripping common suffixes and trimming
-fn normalize_company_name(name: &str) -> String {
-    let suffixes = [
-        " incorporated", " corporation", " company", " limited",
-        " inc.", " inc", " llc.", " llc", " ltd.", " ltd",
-        " corp.", " corp", " co.", " co", " l.l.c.", " l.l.c",
-        " plc", " gmbh", " ag", " s.a.", " sa",
-    ];
-    let mut normalized = name.to_lowercase().trim().to_string();
-    // Strip trailing punctuation like commas
-    normalized = normalized.trim_end_matches(',').trim().to_string();
-    for suffix in &suffixes {
-        if normalized.ends_with(suffix) {
-            let new_len = normalized.len() - suffix.len();
-            normalized.truncate(new_len);
-            normalized = normalized.trim().to_string();
-            break; // Only strip one suffix
-        }
-    }
-    // Collapse extra whitespace
-    normalized.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-/// Check if a CRM contact already exists by email, phone, linkedin, or fuzzy name match.
-/// Returns (existing_id, match_type) where match_type indicates what matched.
-async fn check_contact_duplicate(
-    pool: &sqlx::SqlitePool,
-    record: &Value,
-    project_id: Option<Uuid>,
-) -> Option<(Uuid, String)> {
-    let project_id = project_id?;
-
-    // Try email exact match first (strongest signal)
-    if let Some(email) = record["email"].as_str().filter(|s| !s.is_empty()) {
-        let result = sqlx::query_as::<_, (Uuid,)>(
-            "SELECT id FROM crm_contacts WHERE project_id = ?1 AND LOWER(email) = LOWER(?2) LIMIT 1"
-        )
-        .bind(project_id)
-        .bind(email)
-        .fetch_optional(pool)
-        .await
-        .ok()?;
-
-        if let Some((id,)) = result {
-            return Some((id, "email".to_string()));
-        }
-    }
-
-    // Try phone/mobile match
-    for field in &["phone", "mobile"] {
-        if let Some(phone) = record[*field].as_str().filter(|s| !s.is_empty()) {
-            let result = sqlx::query_as::<_, (Uuid,)>(
-                "SELECT id FROM crm_contacts WHERE project_id = ?1 AND (phone = ?2 OR mobile = ?2) LIMIT 1"
-            )
-            .bind(project_id)
-            .bind(phone.trim())
-            .fetch_optional(pool)
-            .await
-            .ok()?;
-
-            if let Some((id,)) = result {
-                return Some((id, "phone".to_string()));
-            }
-        }
-    }
-
-    // Try LinkedIn URL exact match
-    if let Some(linkedin) = record["linkedin_url"].as_str().filter(|s| !s.is_empty()) {
-        let result = sqlx::query_as::<_, (Uuid,)>(
-            "SELECT id FROM crm_contacts WHERE project_id = ?1 AND LOWER(linkedin_url) = LOWER(?2) LIMIT 1"
-        )
-        .bind(project_id)
-        .bind(linkedin)
-        .fetch_optional(pool)
-        .await
-        .ok()?;
-
-        if let Some((id,)) = result {
-            return Some((id, "linkedin".to_string()));
-        }
-    }
-
-    // Try fuzzy name match (first_name + last_name)
-    let first = record["first_name"].as_str().unwrap_or("").trim();
-    let last = record["last_name"].as_str().unwrap_or("").trim();
-    if !first.is_empty() && !last.is_empty() {
-        // Fetch candidate contacts with the same project_id that have names
-        let candidates = sqlx::query_as::<_, (Uuid, String, String)>(
-            "SELECT id, first_name, last_name FROM crm_contacts WHERE project_id = ?1 AND first_name IS NOT NULL AND last_name IS NOT NULL"
-        )
-        .bind(project_id)
-        .fetch_all(pool)
-        .await
-        .ok()?;
-
-        let full_name = format!("{} {}", first, last);
-        for (id, existing_first, existing_last) in &candidates {
-            let existing_full = format!("{} {}", existing_first, existing_last);
-            if fuzzy_name_match(&full_name, &existing_full) {
-                return Some((*id, "name".to_string()));
-            }
-        }
-    }
-
-    None
-}
-
-/// Check if a company already exists by normalized name or website match
-async fn check_company_duplicate(
-    pool: &sqlx::SqlitePool,
-    record: &Value,
-    _organization_id: Option<Uuid>,
-) -> Option<(Uuid, String)> {
-    let name = record["name"].as_str().filter(|s| !s.is_empty())?;
-    let normalized_input = normalize_company_name(name);
-
-    // Fetch all companies and compare with normalized names
-    let companies = sqlx::query_as::<_, (Uuid, String)>(
-        "SELECT id, name FROM companies"
-    )
-    .fetch_all(pool)
-    .await
-    .ok()?;
-
-    for (id, existing_name) in &companies {
-        let normalized_existing = normalize_company_name(existing_name);
-        if normalized_input == normalized_existing {
-            return Some((*id, "companies".to_string()));
-        }
-    }
-
-    // Also try matching by website domain if available
-    if let Some(website) = record["website"].as_str().filter(|s| !s.is_empty()) {
-        let result = sqlx::query_as::<_, (Uuid,)>(
-            "SELECT id FROM companies WHERE LOWER(website) = LOWER(?1) LIMIT 1"
-        )
-        .bind(website)
-        .fetch_optional(pool)
-        .await
-        .ok()?;
-
-        if let Some((id,)) = result {
-            return Some((id, "companies".to_string()));
-        }
-    }
-
-    None
-}
-
-/// Check if a deal already exists by name + pipeline
-async fn check_deal_duplicate(
-    pool: &sqlx::SqlitePool,
-    record: &Value,
-    project_id: Option<Uuid>,
-) -> Option<(Uuid, String)> {
-    let project_id = project_id?;
-    let name = record["name"].as_str().filter(|s| !s.is_empty())?;
-
-    let result = sqlx::query_as::<_, (Uuid,)>(
-        "SELECT id FROM crm_deals WHERE project_id = ?1 AND LOWER(name) = LOWER(?2) LIMIT 1"
-    )
-    .bind(project_id)
-    .bind(name)
-    .fetch_optional(pool)
-    .await
-    .ok()?;
-
-    if let Some((id,)) = result {
-        return Some((id, "crm_deals".to_string()));
-    }
-
-    None
-}
-
-/// Check if a task already exists by title
-async fn check_task_duplicate(
-    pool: &sqlx::SqlitePool,
-    record: &Value,
-    project_id: Option<Uuid>,
-) -> Option<(Uuid, String)> {
-    let project_id = project_id?;
-    let title = record["title"].as_str().filter(|s| !s.is_empty())?;
-
-    let result = sqlx::query_as::<_, (Uuid,)>(
-        "SELECT id FROM tasks WHERE project_id = ?1 AND LOWER(title) = LOWER(?2) LIMIT 1"
-    )
-    .bind(project_id)
-    .bind(title)
-    .fetch_optional(pool)
-    .await
-    .ok()?;
-
-    if let Some((id,)) = result {
-        return Some((id, "tasks".to_string()));
-    }
-
-    None
-}
-
-/// Also check within the current staging batch for duplicates (same run producing duplicate records)
-async fn check_intra_batch_duplicate(
-    pool: &sqlx::SqlitePool,
-    workflow_run_id: Uuid,
-    target_type: &str,
-    record: &Value,
-) -> Option<(Uuid, String)> {
-    // For contacts: check if same email or phone already staged in this run
-    if target_type == "crm_contact" {
-        if let Some(email) = record["email"].as_str().filter(|s| !s.is_empty()) {
-            let result = sqlx::query_as::<_, (Uuid,)>(
-                r#"SELECT id FROM workflow_output_staging
-                   WHERE workflow_run_id = ?1 AND target_type = 'crm_contact'
-                   AND json_extract(record_data, '$.email') = ?2
-                   AND status != 'rejected' LIMIT 1"#
-            )
-            .bind(workflow_run_id)
-            .bind(email)
-            .fetch_optional(pool)
-            .await
-            .ok()?;
-
-            if let Some((id,)) = result {
-                return Some((id, "workflow_output_staging".to_string()));
-            }
-        }
-
-        // Also check phone/mobile within the batch
-        for field in &["phone", "mobile"] {
-            if let Some(phone) = record[*field].as_str().filter(|s| !s.is_empty()) {
-                let phone_trimmed = phone.trim();
-                let result = sqlx::query_as::<_, (Uuid,)>(
-                    r#"SELECT id FROM workflow_output_staging
-                       WHERE workflow_run_id = ?1 AND target_type = 'crm_contact'
-                       AND (json_extract(record_data, '$.phone') = ?2 OR json_extract(record_data, '$.mobile') = ?2)
-                       AND status != 'rejected' LIMIT 1"#
-                )
-                .bind(workflow_run_id)
-                .bind(phone_trimmed)
-                .fetch_optional(pool)
-                .await
-                .ok()?;
-
-                if let Some((id,)) = result {
-                    return Some((id, "workflow_output_staging".to_string()));
-                }
-            }
-        }
-    }
-
-    // For companies: check if normalized name already staged
-    if target_type == "company" {
-        if let Some(name) = record["name"].as_str().filter(|s| !s.is_empty()) {
-            let normalized_input = normalize_company_name(name);
-            // Fetch all staged company names in this batch and compare normalized
-            let staged = sqlx::query_as::<_, (Uuid, String)>(
-                r#"SELECT id, json_extract(record_data, '$.name') as staged_name
-                   FROM workflow_output_staging
-                   WHERE workflow_run_id = ?1 AND target_type = 'company'
-                   AND status != 'rejected'"#
-            )
-            .bind(workflow_run_id)
-            .fetch_all(pool)
-            .await
-            .ok()?;
-
-            for (id, staged_name) in &staged {
-                if normalize_company_name(staged_name) == normalized_input {
-                    return Some((*id, "workflow_output_staging".to_string()));
-                }
-            }
-        }
-    }
-
-    None
-}
-
 /// POST /api/data-sources/:id/workflows/:workflow_id/run
 async fn run_workflow(
     Path((data_source_id, workflow_id)): Path<(Uuid, String)>,
@@ -1590,7 +583,7 @@ async fn run_workflow(
     let workflow_run_id = Uuid::new_v4();
     let run_start = std::time::Instant::now();
 
-    let data_source = DataSource::find_by_id(pool, data_source_id)
+    let data_source = DataSource::find_by_id(pool, &data_source_id.to_string())
         .await.map_err(|e| ApiError::InternalError(format!("Failed to look up data source: {e}")))?
         .ok_or_else(|| ApiError::NotFound("Data source not found".to_string()))?;
 
@@ -1653,312 +646,57 @@ async fn run_workflow(
     }
 
     // Create workflow run record
+    let ds_org_uuid = data_source.organization_id.as_deref().and_then(|s| Uuid::parse_str(s).ok());
+    let ds_proj_uuid = data_source.project_id.as_deref().and_then(|s| Uuid::parse_str(s).ok());
     if let Err(e) = WorkflowRun::create(pool, CreateWorkflowRun {
         id: workflow_run_id,
         workflow_id: workflow.id.clone(),
         workflow_name: workflow.name.clone(),
         data_source_id: Some(data_source_id),
-        organization_id: data_source.organization_id,
-        project_id: data_source.project_id,
+        organization_id: ds_org_uuid,
+        project_id: ds_proj_uuid,
         model_used: if model.is_empty() { None } else { Some(model.clone()) },
         content_hash: Some(content_hash),
     }).await {
         tracing::error!("[WORKFLOW] Failed to create workflow run record: {e}");
     }
 
-    let title = &data_source.title;
+    // Execute workflow via shared engine
+    let opts = super::workflow_engine::ExecutionOptions {
+        model: model.clone(),
+        data_source_id: Some(data_source_id),
+        organization_id: ds_org_uuid,
+        project_id: ds_proj_uuid,
+        workflow_run_id: Some(workflow_run_id),
+        create_artifacts: true,
+        create_staging: true,
+        artifact_metadata_extra: None,
+        auto_approve: false,
+    };
 
-    // Build dependency map from connections
-    let mut deps_map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-    for conn in &workflow.connections {
-        deps_map.entry(conn.target.clone()).or_default().push(conn.source.clone());
-    }
+    let result = super::workflow_engine::execute_workflow_nodes(pool, &workflow, &content, &opts).await;
 
-    // Topological sort: process nodes in dependency order
-    let mut processed: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut ordered_nodes: Vec<&WorkflowNode> = Vec::new();
-    let mut remaining: Vec<&WorkflowNode> = workflow.nodes.iter().collect();
-
-    while !remaining.is_empty() {
-        let mut progress = false;
-        remaining.retain(|node| {
-            let deps = deps_map.get(&node.id).cloned().unwrap_or_default();
-            if deps.iter().all(|d| processed.contains(d)) {
-                processed.insert(node.id.clone());
-                ordered_nodes.push(node);
-                progress = true;
-                false // remove from remaining
-            } else {
-                true // keep in remaining
-            }
-        });
-        if !progress {
-            // Circular dependency — just process remaining in order
-            for node in &remaining {
-                ordered_nodes.push(node);
-            }
-            break;
-        }
-    }
-
-    // Build downstream output target map: node_id → list of target types
-    let mut downstream_targets: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-    for conn in &workflow.connections {
-        if let Some(target_node) = workflow.nodes.iter().find(|n| n.id == conn.target) {
-            if target_node.node_type.starts_with("output_") {
-                let target_type = target_node.node_type.strip_prefix("output_").unwrap_or("").to_string();
-                downstream_targets.entry(conn.source.clone()).or_default().push(target_type);
-            }
-        }
-    }
-
-    let mut step_results: Vec<StepResult> = Vec::new();
-    let mut step_outputs: Vec<(String, String, String)> = Vec::new(); // (node_id, output, schema_name)
-
-    let mut all_usage: Vec<Value> = Vec::new();
-
-    for node in &ordered_nodes {
-        let deps = deps_map.get(&node.id).cloned().unwrap_or_default();
-        let previous: Vec<(&str, &str, &str)> = step_outputs.iter()
-            .filter(|(sid, _, _)| deps.contains(sid))
-            .map(|(sid, out, schema)| (sid.as_str(), out.as_str(), schema.as_str()))
-
-            .collect();
-
-        let (output, usage_meta) = if node.node_type.starts_with("output_") {
-            // Output nodes pass through their input data unchanged
-            let input_data = previous.iter()
-                .map(|(_, result, _)| result.to_string())
-
-                .collect::<Vec<_>>()
-                .join("\n");
-            (input_data, None)
-        } else {
-            let targets = downstream_targets.get(&node.id).map(|v| v.as_slice()).unwrap_or(&[]);
-            execute_node_with_llm(pool, node, &content, &previous, &model, targets).await
-        };
-
-        // Extract schema name for this node (strip trailing "[]")
-        let schema_name = node.parameters.get("output_schema")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .trim_end_matches("[]")
-            .to_string();
-
-
-        let step_index = ordered_nodes.iter().position(|n| n.id == node.id).unwrap_or(0);
-        let mut artifact_metadata = json!({
-            "data_source_id": data_source_id.to_string(),
-            "workflow_id": workflow.id,
-            "step_id": node.id,
-            "step_index": step_index,
-        });
-        if let Some(usage) = &usage_meta {
-            artifact_metadata["usage"] = usage.clone();
-            all_usage.push(usage.clone());
-        }
-
-        let artifact = ExecutionArtifact::create(
-            pool,
-            CreateExecutionArtifact {
-                execution_process_id: None,
-                artifact_type: ArtifactType::ResearchReport,
-                title: format!("{} - {}", workflow.name, node.name),
-                content: Some(output.clone()),
-                file_path: None,
-                metadata: Some(artifact_metadata),
-            },
-        ).await.map_err(|e| ApiError::InternalError(format!("Failed to create artifact: {e}")))?;
-
-        step_results.push(StepResult {
-            step_id: node.id.clone(),
-            step_name: node.name.clone(),
-            artifact_id: artifact.id,
-        });
-        step_outputs.push((node.id.clone(), output, schema_name));
-
-    }
-
-    // Check if any LLM node failed (returned error JSON) — fail the run early
-    let llm_errors: Vec<String> = step_outputs.iter()
-        .filter_map(|(node_id, output, _)| {
-
-            serde_json::from_str::<Value>(output).ok()
-                .and_then(|v| v.get("error").and_then(|e| e.as_str().map(|s| format!("Node '{}': {}", node_id, s))))
-        })
-        .collect();
-
+    // Check for LLM errors
+    let llm_errors = super::workflow_engine::check_for_llm_errors(&result.node_results);
     if !llm_errors.is_empty() {
-        // Update run as failed
-        let _ = WorkflowRun::update_on_complete(pool, &workflow_run_id.to_string(), UpdateWorkflowRunOnComplete {
-            status: "failed".to_string(),
-            total_input_tokens: 0,
-            total_output_tokens: 0,
-            total_estimated_cost_micros: 0,
-            total_records_staged: 0,
-            total_duplicates_found: 0,
-            node_count: workflow.nodes.len() as i64,
-            llm_node_count: workflow.nodes.iter().filter(|n| n.node_type.starts_with("llm_")).count() as i64,
-            duration_ms: run_start.elapsed().as_millis() as i64,
-        }).await;
-
+        let duration_ms = run_start.elapsed().as_millis() as i64;
+        super::workflow_engine::finalize_workflow_run(pool, workflow_run_id, &workflow, &result, duration_ms, "failed").await;
         return Err(ApiError::InternalError(format!(
             "Workflow failed — LLM calls returned errors. {}. Check that API keys are configured as environment variables (e.g. ANTHROPIC_API_KEY).",
             llm_errors.first().unwrap_or(&String::new())
         )));
     }
 
-    // Aggregate usage stats
-    let total_usage = if all_usage.is_empty() {
-        None
-    } else {
-        let mut total_input: i64 = 0;
-        let mut total_output: i64 = 0;
-        let mut total_cost: i64 = 0;
-        for u in &all_usage {
-            total_input += u["input_tokens"].as_i64().unwrap_or(0);
-            total_output += u["output_tokens"].as_i64().unwrap_or(0);
-            total_cost += u["estimated_cost_micros"].as_i64().unwrap_or(0);
-        }
-        Some(json!({
-            "total_input_tokens": total_input,
-            "total_output_tokens": total_output,
-            "total_estimated_cost_micros": total_cost,
-            "steps": all_usage.len(),
-        }))
-    };
-
-    // Create staging records for output nodes
-    let mut staged_records: i64 = 0;
-    for node in ordered_nodes.iter().filter(|n| n.node_type.starts_with("output_")) {
-        let target_type = node.node_type.strip_prefix("output_").unwrap_or("");
-        let staging_target = match target_type {
-            "crm_contacts" => "crm_contact",
-            "crm_companies" => "company",
-            "crm_deals" => "crm_deal",
-            "tasks" => "task",
-            _ => continue,
-        };
-
-        // Find this node's output
-        if let Some((_, output, _)) = step_outputs.iter().find(|(id, _, _)| id == &node.id) {
-
-            if let Ok(parsed) = serde_json::from_str::<Value>(output) {
-                let records = extract_records_from_output(&parsed, staging_target);
-                for record in records {
-                    // Check for duplicates against existing records
-                    let dup = match staging_target {
-                        "crm_contact" => check_contact_duplicate(pool, &record, data_source.project_id).await,
-                        "company" => check_company_duplicate(pool, &record, data_source.organization_id).await,
-                        "crm_deal" => check_deal_duplicate(pool, &record, data_source.project_id).await,
-                        "task" => check_task_duplicate(pool, &record, data_source.project_id).await,
-                        _ => None,
-                    };
-
-                    // Also check within the current batch
-                    let dup = dup.or(
-                        check_intra_batch_duplicate(pool, workflow_run_id, staging_target, &record).await
-                    );
-
-                    let (dup_id, dup_type) = match dup {
-                        Some((id, t)) => (Some(id), Some(t)),
-                        None => (None, None),
-                    };
-
-                    // Validate the record against the target schema
-                    let mut validation_errors = match validate_record_against_schema(&record, staging_target) {
-
-                        Ok(()) => None,
-                        Err(errs) => {
-                            tracing::warn!(
-                                "[WORKFLOW] Validation errors for {} record in node '{}': {:?}",
-                                staging_target, node.id, errs
-                            );
-                            Some(errs)
-                        }
-                    };
-
-                    // Flag fallback placeholder records with an explanatory validation error
-                    if is_fallback_placeholder(&record) {
-                        validation_errors.get_or_insert_with(Vec::new).push(
-                            "Placeholder record generated without LLM — no real data extracted".to_string()
-                        );
-                    }
-
-                    // Run pre-commit business-rule validation
-                    let precommit_errs = super::workflow_staging::validate_staging_record(staging_target, &record);
-                    if !precommit_errs.is_empty() {
-                        validation_errors.get_or_insert_with(Vec::new).extend(precommit_errs);
-                    }
-
-
-                    let is_duplicate = dup_id.is_some();
-                    let confidence = compute_confidence(
-                        &record,
-                        staging_target,
-                        validation_errors.as_deref().unwrap_or(&[]),
-                        is_duplicate,
-                    );
-
-                    // NOTE: Records within a single run are processed sequentially in this
-                    // for loop, so intra-batch race conditions don't apply. The dedup check
-                    // + create sequence is only vulnerable to races across concurrent trigger
-                    // firings for the same data source — a known limitation with SQLite.
-                    match WorkflowStagingRecord::create(pool, CreateStagingRecord {
-                        workflow_run_id,
-                        workflow_id: workflow.id.clone(),
-                        node_id: node.id.clone(),
-                        data_source_id: Some(data_source_id),
-                        organization_id: data_source.organization_id,
-                        project_id: data_source.project_id,
-                        target_type: staging_target.to_string(),
-                        record_data: record,
-                        duplicate_of_id: dup_id,
-                        duplicate_of_type: dup_type,
-                        confidence: Some(confidence),
-                        validation_errors,
-                    }).await {
-                        Ok(_) => staged_records += 1,
-                        Err(e) => tracing::error!("[WORKFLOW] Failed to create staging record: {e}"),
-                    }
-                }
-            }
-        }
-    }
-
-    // Count duplicates and LLM nodes
-    let duplicates_found = {
-        let staging_records = WorkflowStagingRecord::find_by_run(pool, workflow_run_id).await.unwrap_or_default();
-        staging_records.iter().filter(|r| r.duplicate_of_id.is_some()).count() as i64
-    };
-    let node_count = workflow.nodes.len() as i64;
-    let llm_node_count = workflow.nodes.iter().filter(|n| n.node_type.starts_with("llm_")).count() as i64;
+    // Finalize the run
     let duration_ms = run_start.elapsed().as_millis() as i64;
+    super::workflow_engine::finalize_workflow_run(pool, workflow_run_id, &workflow, &result, duration_ms, "completed").await;
 
-    let (total_input, total_output, total_cost) = if let Some(ref usage) = total_usage {
-        (
-            usage["total_input_tokens"].as_i64().unwrap_or(0),
-            usage["total_output_tokens"].as_i64().unwrap_or(0),
-            usage["total_estimated_cost_micros"].as_i64().unwrap_or(0),
-        )
-    } else {
-        (0, 0, 0)
-    };
-
-    // Update workflow run with final stats
-    if let Err(e) = WorkflowRun::update_on_complete(pool, &workflow_run_id.to_string(), UpdateWorkflowRunOnComplete {
-        status: "completed".to_string(),
-        total_input_tokens: total_input,
-        total_output_tokens: total_output,
-        total_estimated_cost_micros: total_cost,
-        total_records_staged: staged_records,
-        total_duplicates_found: duplicates_found,
-        node_count,
-        llm_node_count,
-        duration_ms,
-    }).await {
-        tracing::error!("[WORKFLOW] Failed to update workflow run on complete: {e}");
-    }
+    // Build step results from node results (artifact_id is not tracked by engine — use Uuid::nil as placeholder)
+    let step_results: Vec<StepResult> = result.node_results.iter().map(|nr| StepResult {
+        step_id: nr.node_id.clone(),
+        step_name: nr.node_name.clone(),
+        artifact_id: Uuid::nil(),
+    }).collect();
 
     Ok(Json(ApiResponse::success(WorkflowRunResult {
         workflow_run_id,
@@ -1966,8 +704,8 @@ async fn run_workflow(
         workflow_name: workflow.name,
         data_source_id,
         steps: step_results,
-        total_usage,
-        staged_records,
+        total_usage: result.total_usage,
+        staged_records: result.staged_records,
         reused: None,
     })))
 }
@@ -1978,7 +716,7 @@ async fn list_data_source_artifacts(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Vec<ExecutionArtifact>>>, ApiError> {
     let pool = &deployment.db().pool;
-    DataSource::find_by_id(pool, data_source_id)
+    DataSource::find_by_id(pool, &data_source_id.to_string())
         .await.map_err(|e| ApiError::InternalError(format!("Failed to look up data source: {e}")))?
         .ok_or_else(|| ApiError::NotFound("Data source not found".to_string()))?;
 
@@ -2150,199 +888,6 @@ async fn list_recent_artifacts(
     Ok(Json(ApiResponse::success(artifacts)))
 }
 
-// ── LLM execution via PCG Router ─────────────────────────────────────────────
-
-/// Execute a workflow node's LLM prompt via the PCG Router.
-/// Routes through all configured providers with priority-based fallback.
-/// Returns an error string (instead of mock data) if no models are available.
-async fn execute_node_with_llm(
-    pool: &sqlx::SqlitePool,
-    node: &WorkflowNode,
-    content: &str,
-    previous_results: &[(&str, &str, &str)],  // (node_id, output, schema_name)
-
-    model: &str,
-    target_schemas: &[String],
-) -> (String, Option<Value>) {
-    let prompt_template = node.parameters.get("prompt_template")
-        .and_then(|v| v.as_str())
-        .unwrap_or("Analyze the following content:\n{{content}}");
-
-    // Build the actual prompt by substituting template variables
-    // {{previous_results}} — backwards-compatible merged text of all upstream outputs
-    let prev_text = previous_results.iter()
-        .map(|(id, result, _)| format!("[{}]: {}", id, result))
-
-        .collect::<Vec<_>>()
-        .join("\n\n");
-
-    // Build schema text dynamically from output_schemas definitions
-    let schema_text = if !target_schemas.is_empty() {
-        let schemas: Vec<String> = target_schemas.iter().filter_map(|t| {
-            build_schema_prompt_text(t)
-        }).collect();
-        schemas.join("\n\n")
-    } else {
-        String::new()
-    };
-
-    // Wrap content with clear delimiters so the LLM distinguishes data from instructions
-    let wrapped_content = format!("--- BEGIN SOURCE CONTENT ---\n{}\n--- END SOURCE CONTENT ---", content);
-
-    let mut prompt = prompt_template
-
-        .replace("{{content}}", &wrapped_content)
-        .replace("{{previous_results}}", &prev_text)
-        .replace("{{target_schema}}", &schema_text);
-
-    // Named variable substitution: replace {{schema_name}} with that upstream node's output
-    // e.g. if an upstream node has output_schema "contacts[]", replace {{contacts}} with its output
-    for (_, result, schema_name) in previous_results {
-        if !schema_name.is_empty() {
-            let placeholder = format!("{{{{{}}}}}", schema_name); // produces {{schema_name}}
-            prompt = prompt.replace(&placeholder, result);
-        }
-    }
-
-
-    // If target_schema is non-empty but the prompt didn't contain the placeholder, append it
-    let prompt = if !schema_text.is_empty() && !prompt_template.contains("{{target_schema}}") {
-        format!("{}\n\n--- OUTPUT FORMAT ---\n{}", prompt, schema_text)
-    } else {
-        prompt
-    };
-
-    // Route through PCG Router — handles multi-provider fallback
-    let messages = vec![
-        ChatMessage {
-            role: "system".to_string(),
-            content: json!("You are a precise data extraction assistant. Your task is to extract REAL entities (people, companies, deals, tasks) that are explicitly mentioned in the source content provided. Rules:\n1. Only extract entities that are clearly and explicitly named in the source text.\n2. NEVER use document metadata (titles, dates, section headings) as entity names.\n3. NEVER fabricate or hallucinate entities that are not in the source.\n4. If no entities of the requested type exist in the source, return an empty array.\n5. Always output valid JSON without markdown formatting or preamble."),
-        },
-        ChatMessage {
-            role: "user".to_string(),
-            content: json!(prompt),
-        },
-    ];
-
-    // Use per-node model override if set, otherwise use the workflow-level model
-    let node_model = node.parameters.get("model")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .or_else(|| if model.is_empty() { None } else { Some(model) });
-
-    match pcg_router::route_completion(pool, messages.clone(), node_model, Some(2048), None).await {
-        Ok((resp, metadata)) => {
-            tracing::info!(
-                "[WORKFLOW] Node '{}' routed via {} ({}), tokens: {:?}/{:?}",
-                node.id, metadata.model_used, metadata.provider,
-                metadata.input_tokens, metadata.output_tokens
-            );
-            let usage_meta = json!({
-                "model_used": metadata.model_used,
-                "provider": metadata.provider,
-                "input_tokens": metadata.input_tokens,
-                "output_tokens": metadata.output_tokens,
-                "estimated_cost_micros": metadata.estimated_cost_micros,
-            });
-            // Extract text from OpenAI-format response
-            if let Some(text) = resp["choices"][0]["message"]["content"].as_str() {
-                if !text.is_empty() {
-                    // Try to parse the response as JSON — if it fails, attempt one repair retry
-                    let trimmed = text.trim();
-                    // Strip markdown code fences if present
-                    let json_text = if trimmed.starts_with("```") {
-                        trimmed
-                            .trim_start_matches("```json")
-                            .trim_start_matches("```")
-                            .trim_end_matches("```")
-                            .trim()
-                    } else {
-                        trimmed
-                    };
-
-                    if serde_json::from_str::<Value>(json_text).is_ok() {
-                        // Valid JSON — return the cleaned text
-                        return (json_text.to_string(), Some(usage_meta));
-                    }
-
-                    // JSON parse failed — attempt one repair retry
-                    tracing::warn!(
-                        "[WORKFLOW] Node '{}' returned invalid JSON, attempting repair retry",
-                        node.id
-                    );
-                    let repair_messages = vec![
-                        ChatMessage {
-                            role: "system".to_string(),
-                            content: json!("You are a data extraction and analysis assistant. Always output valid JSON. Do not include markdown formatting or preamble — respond with raw JSON only."),
-                        },
-                        ChatMessage {
-                            role: "user".to_string(),
-                            content: json!(format!(
-                                "The previous response was not valid JSON. Please fix it and return only valid JSON. Do not include any explanation or markdown formatting.\n\nOriginal response:\n{}",
-                                text
-                            )),
-                        },
-                    ];
-
-                    match pcg_router::route_completion(pool, repair_messages, node_model, Some(2048), None).await {
-                        Ok((retry_resp, retry_meta)) => {
-                            tracing::info!(
-                                "[WORKFLOW] Node '{}' repair retry via {} ({})",
-                                node.id, retry_meta.model_used, retry_meta.provider
-                            );
-                            // Merge usage metadata
-                            let combined_usage = json!({
-                                "model_used": retry_meta.model_used,
-                                "provider": retry_meta.provider,
-                                "input_tokens": metadata.input_tokens.unwrap_or(0) + retry_meta.input_tokens.unwrap_or(0),
-                                "output_tokens": metadata.output_tokens.unwrap_or(0) + retry_meta.output_tokens.unwrap_or(0),
-                                "estimated_cost_micros": metadata.estimated_cost_micros.unwrap_or(0) + retry_meta.estimated_cost_micros.unwrap_or(0),
-                                "retry_used": true,
-                            });
-                            if let Some(retry_text) = retry_resp["choices"][0]["message"]["content"].as_str() {
-                                let retry_trimmed = retry_text.trim();
-                                let retry_json = if retry_trimmed.starts_with("```") {
-                                    retry_trimmed
-                                        .trim_start_matches("```json")
-                                        .trim_start_matches("```")
-                                        .trim_end_matches("```")
-                                        .trim()
-                                } else {
-                                    retry_trimmed
-                                };
-                                if !retry_json.is_empty() {
-                                    return (retry_json.to_string(), Some(combined_usage));
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            tracing::warn!("[WORKFLOW] Repair retry failed for node '{}': {e}", node.id);
-                        }
-                    }
-
-                    // Return original text even if repair failed — validation will catch errors downstream
-                    return (text.to_string(), Some(usage_meta));
-                }
-            }
-            tracing::warn!("[WORKFLOW] Empty response from router for node '{}'", node.id);
-        }
-        Err(e) => {
-            tracing::error!("[WORKFLOW] PCG Router failed for node '{}': {e}. Check that API keys are configured (e.g. ANTHROPIC_API_KEY env var).", node.id);
-        }
-    }
-
-    // Fallback to content-aware mock extraction when no LLM is available
-    tracing::warn!("[WORKFLOW] Falling back to mock extraction for node '{}' ({})", node.id, node.name);
-    let output_schema = node.parameters.get("output_schema")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let node_type = &node.node_type;
-    let prev_refs: Vec<(&str, &str)> = previous_results.iter().map(|(id, out, _)| (*id, *out)).collect();
-    let mock_result = generate_mock_step_result(&node.id, content, &node.name, &prev_refs, node_type, output_schema);
-    (mock_result, None)
-
-}
-
 // ── Preview (dry-run) endpoint ───────────────────────────────────────────────
 
 /// Response for preview node result
@@ -2377,80 +922,33 @@ async fn preview_workflow(
          The meeting covered AI integration services valued at approximately $50,000.".to_string()
     });
 
-    // Build dependency map
-    let mut deps_map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-    for conn in &req.connections {
-        deps_map.entry(conn.target.clone()).or_default().push(conn.source.clone());
-    }
+    // Build an ad-hoc workflow definition from the request
+    let preview_workflow = WorkflowDefinition {
+        id: String::new(),
+        name: "Preview".to_string(),
+        description: None,
+        nodes: req.nodes,
+        connections: req.connections,
+        is_system: false,
+        owner_type: String::new(),
+        owner_id: None,
+        default_model: None,
+    };
 
-    // Build downstream output target map
-    let mut downstream_targets: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-    for conn in &req.connections {
-        if let Some(target_node) = req.nodes.iter().find(|n| n.id == conn.target) {
-            if target_node.node_type.starts_with("output_") {
-                let target_type = target_node.node_type.strip_prefix("output_").unwrap_or("").to_string();
-                downstream_targets.entry(conn.source.clone()).or_default().push(target_type);
-            }
-        }
-    }
+    // Execute via shared engine — no artifacts, no staging
+    let opts = super::workflow_engine::ExecutionOptions {
+        model: String::new(),
+        create_artifacts: false,
+        create_staging: false,
+        ..Default::default()
+    };
 
-    // Topological sort
-    let mut processed: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut ordered: Vec<&WorkflowNode> = Vec::new();
-    let mut remaining: Vec<&WorkflowNode> = req.nodes.iter().collect();
+    let result = super::workflow_engine::execute_workflow_nodes(pool, &preview_workflow, &content, &opts).await;
 
-    while !remaining.is_empty() {
-        let mut progress = false;
-        remaining.retain(|node| {
-            let deps = deps_map.get(&node.id).cloned().unwrap_or_default();
-            if deps.iter().all(|d| processed.contains(d)) {
-                processed.insert(node.id.clone());
-                ordered.push(node);
-                progress = true;
-                false
-            } else {
-                true
-            }
-        });
-        if !progress {
-            for node in &remaining { ordered.push(node); }
-            break;
-        }
-    }
-
-    let mut results: Vec<PreviewNodeResult> = Vec::new();
-    let mut outputs: Vec<(String, String, String)> = Vec::new(); // (node_id, output, schema_name)
-
-    for node in &ordered {
-        let deps = deps_map.get(&node.id).cloned().unwrap_or_default();
-        let previous: Vec<(&str, &str, &str)> = outputs.iter()
-            .filter(|(sid, _, _)| deps.contains(sid))
-            .map(|(sid, out, schema)| (sid.as_str(), out.as_str(), schema.as_str()))
-
-            .collect();
-
-        let (output, usage_meta) = if node.node_type.starts_with("output_") {
-            // Output nodes pass through their input data unchanged
-            let input_data = previous.iter()
-                .map(|(_, result, _)| result.to_string())
-
-                .collect::<Vec<_>>()
-                .join("\n");
-            (input_data, None)
-        } else {
-            let targets = downstream_targets.get(&node.id).map(|v| v.as_slice()).unwrap_or(&[]);
-            execute_node_with_llm(pool, node, &content, &previous, "", targets).await
-        };
-
-        let schema_name = node.parameters.get("output_schema")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .trim_end_matches("[]")
-            .to_string();
-
-        // For output nodes, extract and validate records against schema
-        let records = if node.node_type.starts_with("output_") {
-            let target_type = node.node_type.strip_prefix("output_").unwrap_or("");
+    // Convert node results to preview format with validation info
+    let results: Vec<PreviewNodeResult> = result.node_results.iter().map(|nr| {
+        let records = if nr.node_type.starts_with("output_") {
+            let target_type = nr.node_type.strip_prefix("output_").unwrap_or("");
             let staging_target = match target_type {
                 "crm_contacts" => Some("crm_contact"),
                 "crm_companies" => Some("company"),
@@ -2459,7 +957,7 @@ async fn preview_workflow(
                 _ => None,
             };
             staging_target.and_then(|st| {
-                serde_json::from_str::<Value>(&output).ok().map(|parsed| {
+                serde_json::from_str::<Value>(&nr.output).ok().map(|parsed| {
                     extract_records_from_output(&parsed, st).iter().map(|record| {
                         let validation_errors = match validate_record_against_schema(record, st) {
                             Ok(()) => vec![],
@@ -2478,18 +976,15 @@ async fn preview_workflow(
             None
         };
 
-
-        results.push(PreviewNodeResult {
-            node_id: node.id.clone(),
-            node_name: node.name.clone(),
-            node_type: node.node_type.clone(),
-            output: output.clone(),
-            usage: usage_meta,
+        PreviewNodeResult {
+            node_id: nr.node_id.clone(),
+            node_name: nr.node_name.clone(),
+            node_type: nr.node_type.clone(),
+            output: nr.output.clone(),
+            usage: nr.usage.clone(),
             records,
-        });
-        outputs.push((node.id.clone(), output, schema_name));
-
-    }
+        }
+    }).collect();
 
     Ok(Json(ApiResponse::success(results)))
 }
@@ -2619,16 +1114,16 @@ async fn get_run_stats(
 
 /// Check for matching workflow triggers and run them in the background.
 /// Called after a new data source is created. Non-blocking — spawns tokio tasks.
-pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_id: Uuid) {
+pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_id: String, deployment: crate::DeploymentImpl) {
     use db::models::workflow_trigger::WorkflowTrigger;
 
-    let ds = match DataSource::find_by_id(&pool, data_source_id).await {
+    let ds = match DataSource::find_by_id(&pool, &data_source_id).await {
         Ok(Some(ds)) => ds,
         _ => return,
     };
 
-    let org_id = ds.organization_id.map(|u| u.to_string());
-    let proj_id = ds.project_id.map(|u| u.to_string());
+    let org_id = ds.organization_id.clone();
+    let proj_id = ds.project_id.clone();
 
     let triggers = match WorkflowTrigger::find_matching_triggers(
         &pool,
@@ -2654,12 +1149,22 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
 
     for trigger in triggers {
         let pool = pool.clone();
-        let ds_id = data_source_id;
+        let deployment = deployment.clone();
+        let ds_id = data_source_id.clone();
         let trigger_id = trigger.id.clone();
         let workflow_id = trigger.workflow_id.clone();
         let model_override = trigger.model_override.clone();
+        let trigger_auto_approve = trigger.auto_approve;
 
         tokio::spawn(async move {
+            let trigger_start = std::time::Instant::now();
+            let span = tracing::info_span!("trigger_execution",
+                trigger_id = %trigger_id,
+                workflow_id = %workflow_id,
+                data_source_id = %ds_id,
+            );
+            let _enter = span.enter();
+
             tracing::info!(
                 "[TRIGGER] Firing trigger '{}' (workflow={}) for data source {}",
                 trigger_id, workflow_id, ds_id
@@ -2689,7 +1194,7 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                 .unwrap_or_default();
 
             // Load data source
-            let data_source = match DataSource::find_by_id(&pool, ds_id).await {
+            let data_source = match DataSource::find_by_id(&pool, &ds_id).await {
                 Ok(Some(ds)) => ds,
                 _ => {
                     tracing::error!("[TRIGGER] Data source {} not found", ds_id);
@@ -2705,9 +1210,9 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                 id: workflow_run_id,
                 workflow_id: workflow.id.clone(),
                 workflow_name: workflow.name.clone(),
-                data_source_id: Some(ds_id),
-                organization_id: data_source.organization_id,
-                project_id: data_source.project_id,
+                data_source_id: Uuid::parse_str(&ds_id).ok(),
+                organization_id: data_source.organization_id.as_deref().and_then(|s| Uuid::parse_str(s).ok()),
+                project_id: data_source.project_id.as_deref().and_then(|s| Uuid::parse_str(s).ok()),
                 model_used: if model.is_empty() { None } else { Some(model.clone()) },
                 content_hash: None,
             }).await {
@@ -2715,238 +1220,139 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                 return;
             }
 
+            let ctx_project_id = data_source.project_id.as_deref().and_then(|s| Uuid::parse_str(s).ok());
+            let ctx_org_id = data_source.organization_id.as_deref().and_then(|s| Uuid::parse_str(s).ok());
             let content = data_source.content.unwrap_or_default();
 
-            // Build dependency map
-            let mut deps_map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-            for conn in &workflow.connections {
-                deps_map.entry(conn.target.clone()).or_default().push(conn.source.clone());
-            }
-
-            // Topological sort
-            let mut processed: std::collections::HashSet<String> = std::collections::HashSet::new();
-            let mut ordered_nodes: Vec<&WorkflowNode> = Vec::new();
-            let mut remaining: Vec<&WorkflowNode> = workflow.nodes.iter().collect();
-
-            while !remaining.is_empty() {
-                let mut progress = false;
-                remaining.retain(|node| {
-                    let deps = deps_map.get(&node.id).cloned().unwrap_or_default();
-                    if deps.iter().all(|d| processed.contains(d)) {
-                        processed.insert(node.id.clone());
-                        ordered_nodes.push(node);
-                        progress = true;
-                        false
-                    } else {
-                        true
-                    }
-                });
-                if !progress {
-                    for node in &remaining {
-                        ordered_nodes.push(node);
-                    }
-                    break;
-                }
-            }
-
-            // Build downstream output target map
-            let mut downstream_targets: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-            for conn in &workflow.connections {
-                if let Some(target_node) = workflow.nodes.iter().find(|n| n.id == conn.target) {
-                    if target_node.node_type.starts_with("output_") {
-                        let target_type = target_node.node_type.strip_prefix("output_").unwrap_or("").to_string();
-                        downstream_targets.entry(conn.source.clone()).or_default().push(target_type);
-                    }
-                }
-            }
-
-            let mut step_outputs: Vec<(String, String, String)> = Vec::new(); // (node_id, output, schema_name)
-
-            let mut all_usage: Vec<serde_json::Value> = Vec::new();
-            let mut staged_records: i64 = 0;
-
-            for node in &ordered_nodes {
-                let deps = deps_map.get(&node.id).cloned().unwrap_or_default();
-                let previous: Vec<(&str, &str, &str)> = step_outputs.iter()
-                    .filter(|(sid, _, _)| deps.contains(sid))
-                    .map(|(sid, out, schema)| (sid.as_str(), out.as_str(), schema.as_str()))
-
-                    .collect();
-
-                let (output, usage_meta) = if node.node_type.starts_with("output_") {
-                    let input_data = previous.iter()
-                        .map(|(_, result, _)| result.to_string())
-
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    (input_data, None)
-                } else {
-                    let targets = downstream_targets.get(&node.id).map(|v| v.as_slice()).unwrap_or(&[]);
-                    execute_node_with_llm(&pool, node, &content, &previous, &model, targets).await
-                };
-
-                let schema_name = node.parameters.get("output_schema")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .trim_end_matches("[]")
-                    .to_string();
-
-
-                let step_index = ordered_nodes.iter().position(|n| n.id == node.id).unwrap_or(0);
-                let mut artifact_metadata = serde_json::json!({
-                    "data_source_id": ds_id.to_string(),
-                    "workflow_id": workflow.id,
-                    "step_id": node.id,
-                    "step_index": step_index,
-                    "trigger_id": trigger_id,
-                });
-                if let Some(usage) = &usage_meta {
-                    artifact_metadata["usage"] = usage.clone();
-                    all_usage.push(usage.clone());
-                }
-
-                if let Err(e) = ExecutionArtifact::create(
-                    &pool,
-                    CreateExecutionArtifact {
-                        execution_process_id: None,
-                        artifact_type: ArtifactType::ResearchReport,
-                        title: format!("{} - {} [auto]", workflow.name, node.name),
-                        content: Some(output.clone()),
-                        file_path: None,
-                        metadata: Some(artifact_metadata),
-                    },
-                ).await {
-                    tracing::error!("[TRIGGER] Failed to create execution artifact for node '{}': {e}", node.id);
-                }
-
-                step_outputs.push((node.id.clone(), output, schema_name));
-
-            }
-
-            // Create staging records for output nodes
-            for node in ordered_nodes.iter().filter(|n| n.node_type.starts_with("output_")) {
-                let target_type = node.node_type.strip_prefix("output_").unwrap_or("");
-                let staging_target = match target_type {
-                    "crm_contacts" => "crm_contact",
-                    "crm_companies" => "company",
-                    "crm_deals" => "crm_deal",
-                    "tasks" => "task",
-                    _ => continue,
-                };
-
-                if let Some((_, output, _)) = step_outputs.iter().find(|(id, _, _)| id == &node.id) {
-
-                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(output) {
-                        let records = extract_records_from_output(&parsed, staging_target);
-                        for record in records {
-                            let dup = match staging_target {
-                                "crm_contact" => check_contact_duplicate(&pool, &record, data_source.project_id).await,
-                                "company" => check_company_duplicate(&pool, &record, data_source.organization_id).await,
-                                "crm_deal" => check_deal_duplicate(&pool, &record, data_source.project_id).await,
-                                "task" => check_task_duplicate(&pool, &record, data_source.project_id).await,
-                                _ => None,
-                            };
-                            let dup = dup.or(
-                                check_intra_batch_duplicate(&pool, workflow_run_id, staging_target, &record).await
-                            );
-                            let (dup_id, dup_type) = match dup {
-                                Some((id, t)) => (Some(id), Some(t)),
-                                None => (None, None),
-                            };
-                            let mut validation_errors = match validate_record_against_schema(&record, staging_target) {
-
-                                Ok(()) => None,
-                                Err(errs) => Some(errs),
-                            };
-
-                            // Flag fallback placeholder records with an explanatory validation error
-                            if is_fallback_placeholder(&record) {
-                                validation_errors.get_or_insert_with(Vec::new).push(
-                                    "Placeholder record generated without LLM — no real data extracted".to_string()
-                                );
-                            }
-
-                            // Run pre-commit business-rule validation
-                            let precommit_errs = super::workflow_staging::validate_staging_record(staging_target, &record);
-                            if !precommit_errs.is_empty() {
-                                validation_errors.get_or_insert_with(Vec::new).extend(precommit_errs);
-                            }
-
-
-                            let is_duplicate = dup_id.is_some();
-                            let confidence = compute_confidence(
-                                &record,
-                                staging_target,
-                                validation_errors.as_deref().unwrap_or(&[]),
-                                is_duplicate,
-                            );
-
-                            // NOTE: Records within a single trigger run are processed sequentially,
-                            // so intra-batch dedup races don't apply here. Cross-run races are a
-                            // known limitation with SQLite's limited concurrency.
-                            match WorkflowStagingRecord::create(&pool, CreateStagingRecord {
-                                workflow_run_id,
-                                workflow_id: workflow.id.clone(),
-                                node_id: node.id.clone(),
-                                data_source_id: Some(ds_id),
-                                organization_id: data_source.organization_id,
-                                project_id: data_source.project_id,
-                                target_type: staging_target.to_string(),
-                                record_data: record,
-                                duplicate_of_id: dup_id,
-                                duplicate_of_type: dup_type,
-                                confidence: Some(confidence),
-                                validation_errors,
-                            }).await {
-                                Ok(_) => staged_records += 1,
-                                Err(e) => tracing::error!("[TRIGGER] Failed to create staging record: {e}"),
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Aggregate stats
-            let mut total_input: i64 = 0;
-            let mut total_output: i64 = 0;
-            let mut total_cost: i64 = 0;
-            for u in &all_usage {
-                total_input += u["input_tokens"].as_i64().unwrap_or(0);
-                total_output += u["output_tokens"].as_i64().unwrap_or(0);
-                total_cost += u["estimated_cost_micros"].as_i64().unwrap_or(0);
-            }
-
-            let duplicates_found = {
-                let staging_records = WorkflowStagingRecord::find_by_run(&pool, workflow_run_id).await.unwrap_or_default();
-                staging_records.iter().filter(|r| r.duplicate_of_id.is_some()).count() as i64
+            // Execute via shared engine
+            let opts = super::workflow_engine::ExecutionOptions {
+                model: model.clone(),
+                data_source_id: Uuid::parse_str(&ds_id).ok(),
+                organization_id: ctx_org_id,
+                project_id: ctx_project_id,
+                workflow_run_id: Some(workflow_run_id),
+                create_artifacts: true,
+                create_staging: true,
+                artifact_metadata_extra: Some(serde_json::json!({"trigger_id": trigger_id})),
+                auto_approve: trigger_auto_approve,
             };
-            let node_count = workflow.nodes.len() as i64;
-            let llm_node_count = workflow.nodes.iter().filter(|n| n.node_type.starts_with("llm_")).count() as i64;
-            let duration_ms = run_start.elapsed().as_millis() as i64;
 
-            if let Err(e) = WorkflowRun::update_on_complete(&pool, &workflow_run_id.to_string(), UpdateWorkflowRunOnComplete {
-                status: "completed".to_string(),
-                total_input_tokens: total_input,
-                total_output_tokens: total_output,
-                total_estimated_cost_micros: total_cost,
-                total_records_staged: staged_records,
-                total_duplicates_found: duplicates_found,
-                node_count,
-                llm_node_count,
-                duration_ms,
-            }).await {
-                tracing::error!("[TRIGGER] Failed to update workflow run on complete: {e}");
-            }
+            let result = super::workflow_engine::execute_workflow_nodes(&pool, &workflow, &content, &opts).await;
+
+            let duration_ms = run_start.elapsed().as_millis() as i64;
+            super::workflow_engine::finalize_workflow_run(&pool, workflow_run_id, &workflow, &result, duration_ms, "completed").await;
 
             tracing::info!(
                 "[TRIGGER] Completed trigger '{}' workflow run {} ({} records staged, {}ms)",
-                trigger_id, workflow_run_id, staged_records, duration_ms
+                trigger_id, workflow_run_id, result.staged_records, duration_ms
             );
+
+            // Auto-approve + batch-commit when trigger has auto_approve enabled
+            if trigger_auto_approve && result.staged_records > 0 {
+                let label = format!("trigger '{trigger_id}'");
+                super::workflow_engine::auto_approve_staged_records(
+                    &pool, workflow_run_id, result.staged_records, &deployment, &label,
+                ).await;
+            }
         });
     }
 }
 
 // ── Router ──────────────────────────────────────────────────────────────────
+
+// ── Sprint 2C: Workflow schedule background loop ─────────────────────────────
+
+/// Spawn a background task that checks for due schedule triggers every 5 minutes.
+/// Schedule triggers run workflows without a data source — they use an empty content string.
+pub fn spawn_workflow_schedule_loop(pool: sqlx::SqlitePool, shutdown: tokio_util::sync::CancellationToken) {
+    tokio::spawn(async move {
+        use db::models::workflow_trigger::WorkflowTrigger;
+        use std::time::Duration;
+        use tokio::time::interval;
+
+        // Check every 5 minutes
+        let mut ticker = interval(Duration::from_secs(300));
+        ticker.tick().await; // discard immediate first tick
+
+        loop {
+            tokio::select! {
+                _ = ticker.tick() => {}
+                _ = shutdown.cancelled() => {
+                    tracing::info!("[SCHEDULE] Workflow schedule loop shutting down");
+                    break;
+                }
+            }
+
+            let due_triggers = match WorkflowTrigger::find_due_schedules(&pool).await {
+                Ok(triggers) => triggers,
+                Err(e) => {
+                    tracing::error!("[SCHEDULE] Failed to check schedule triggers: {e}");
+                    continue;
+                }
+            };
+
+            if due_triggers.is_empty() {
+                continue;
+            }
+
+            tracing::info!("[SCHEDULE] Found {} due schedule trigger(s)", due_triggers.len());
+
+            for trigger in due_triggers {
+                let pool = pool.clone();
+                let trigger_id = trigger.id.clone();
+                let workflow_id = trigger.workflow_id.clone();
+                let model_override = trigger.model_override.clone();
+
+                tokio::spawn(async move {
+                    let span = tracing::info_span!("schedule_trigger",
+                        trigger_id = %trigger_id,
+                        workflow_id = %workflow_id,
+                    );
+                    let _enter = span.enter();
+                    let start = std::time::Instant::now();
+
+                    // Mark trigger as fired
+                    if let Err(e) = WorkflowTrigger::increment_trigger_count(&pool, &trigger_id).await {
+                        tracing::warn!("[SCHEDULE] Failed to update trigger count: {e}");
+                    }
+
+                    // Load workflow
+                    let workflow = match load_workflow(&pool, &workflow_id).await {
+                        Ok(Some(wf)) => wf,
+                        Ok(None) => {
+                            tracing::error!("[SCHEDULE] Workflow '{}' not found", workflow_id);
+                            return;
+                        }
+                        Err(e) => {
+                            tracing::error!("[SCHEDULE] Failed to load workflow '{}': {e}", workflow_id);
+                            return;
+                        }
+                    };
+
+                    let model = model_override
+                        .or(workflow.default_model.clone())
+                        .unwrap_or_default();
+
+                    // Schedule triggers run without source data — they rely on action nodes
+                    // (like assign_to_agent, http_request, send_notification) rather than data extraction
+                    let opts = super::workflow_engine::ExecutionOptions {
+                        model: model.clone(),
+                        create_artifacts: false,
+                        create_staging: false,
+                        ..Default::default()
+                    };
+
+                    let result = super::workflow_engine::execute_workflow_nodes(&pool, &workflow, "", &opts).await;
+                    let duration_ms = start.elapsed().as_millis();
+                    tracing::info!(
+                        "[SCHEDULE] Completed workflow '{}' (trigger '{}') in {}ms, {} records staged",
+                        workflow_id, trigger_id, duration_ms, result.staged_records
+                    );
+                });
+            }
+        }
+    });
+}
 
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()

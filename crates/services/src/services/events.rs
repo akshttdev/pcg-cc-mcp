@@ -42,14 +42,14 @@ pub mod task_patch {
     }
 
     /// Create path for task operation
-    fn task_path(task_id: Uuid) -> String {
-        format!("/tasks/{}", escape_pointer_segment(&task_id.to_string()))
+    fn task_path(task_id: &str) -> String {
+        format!("/tasks/{}", escape_pointer_segment(task_id))
     }
 
     /// Create patch for adding a new task
     pub fn add(task: &TaskWithAttemptStatus) -> Patch {
         Patch(vec![PatchOperation::Add(AddOperation {
-            path: task_path(task.id)
+            path: task_path(&task.id)
                 .try_into()
                 .expect("Task path should be valid"),
             value: serde_json::to_value(task).expect("Task serialization should not fail"),
@@ -59,7 +59,7 @@ pub mod task_patch {
     /// Create patch for updating an existing task
     pub fn replace(task: &TaskWithAttemptStatus) -> Patch {
         Patch(vec![PatchOperation::Replace(ReplaceOperation {
-            path: task_path(task.id)
+            path: task_path(&task.id)
                 .try_into()
                 .expect("Task path should be valid"),
             value: serde_json::to_value(task).expect("Task serialization should not fail"),
@@ -67,7 +67,7 @@ pub mod task_patch {
     }
 
     /// Create patch for removing a task
-    pub fn remove(task_id: Uuid) -> Patch {
+    pub fn remove(task_id: &str) -> Patch {
         Patch(vec![PatchOperation::Remove(RemoveOperation {
             path: task_path(task_id)
                 .try_into()
@@ -156,8 +156,8 @@ pub enum RecordTypes {
     FollowUpDraft(db::models::follow_up_draft::FollowUpDraft),
     DeletedTask {
         rowid: i64,
-        project_id: Option<Uuid>,
-        task_id: Option<Uuid>,
+        project_id: Option<String>,
+        task_id: Option<String>,
     },
     DeletedTaskAttempt {
         rowid: i64,
@@ -202,12 +202,13 @@ impl EventService {
         msg_store: Arc<MsgStore>,
         task_id: Uuid,
     ) -> Result<(), SqlxError> {
-        if let Some(task) = Task::find_by_id(pool, task_id).await? {
-            let tasks = Task::find_by_project_id_with_attempt_status(pool, task.project_id).await?;
+        let task_id_str = task_id.to_string();
+        if let Some(task) = Task::find_by_id(pool, &task_id_str).await? {
+            let tasks = Task::find_by_project_id_with_attempt_status(pool, &task.project_id).await?;
 
             if let Some(task_with_status) = tasks
                 .into_iter()
-                .find(|task_with_status| task_with_status.id == task_id)
+                .find(|task_with_status| task_with_status.id == task_id_str)
             {
                 msg_store.push_patch(task_patch::replace(&task_with_status));
             }
@@ -264,8 +265,8 @@ impl EventService {
                                         Task::find_by_rowid(&db.pool, rowid).await.ok().flatten();
                                     RecordTypes::DeletedTask {
                                         rowid,
-                                        project_id: task_info.as_ref().map(|t| t.project_id),
-                                        task_id: task_info.as_ref().map(|t| t.id),
+                                        project_id: task_info.as_ref().map(|t| t.project_id.clone()),
+                                        task_id: task_info.as_ref().map(|t| t.id.clone()),
                                     }
                                 }
                                 (HookTables::TaskAttempts, SqliteOperation::Delete) => {
@@ -393,7 +394,7 @@ impl EventService {
                                     if let Ok(task_list) =
                                         Task::find_by_project_id_with_attempt_status(
                                             &db.pool,
-                                            task.project_id,
+                                            &task.project_id,
                                         )
                                         .await
                                         && let Some(task_with_status) =
@@ -416,22 +417,23 @@ impl EventService {
                                     task_id: Some(task_id),
                                     ..
                                 } => {
-                                    let patch = task_patch::remove(*task_id);
+                                    let patch = task_patch::remove(task_id);
                                     msg_store_for_hook.push_patch(patch);
                                     return;
                                 }
                                 RecordTypes::TaskAttempt(attempt) => {
                                     // Task attempts should update the parent task with fresh data
+                                    let attempt_task_id_str = attempt.task_id.to_string();
                                     if let Ok(Some(task)) =
-                                        Task::find_by_id(&db.pool, attempt.task_id).await
+                                        Task::find_by_id(&db.pool, &attempt_task_id_str).await
                                         && let Ok(task_list) =
                                             Task::find_by_project_id_with_attempt_status(
                                                 &db.pool,
-                                                task.project_id,
+                                                &task.project_id,
                                             )
                                             .await
                                         && let Some(task_with_status) =
-                                            task_list.into_iter().find(|t| t.id == attempt.task_id)
+                                            task_list.into_iter().find(|t| t.id == attempt_task_id_str)
                                     {
                                         let patch = task_patch::replace(&task_with_status);
                                         msg_store_for_hook.push_patch(patch);
@@ -443,16 +445,17 @@ impl EventService {
                                     ..
                                 } => {
                                     // Task attempt deletion should update the parent task with fresh data
+                                    let task_id_str = task_id.to_string();
                                     if let Ok(Some(task)) =
-                                        Task::find_by_id(&db.pool, *task_id).await
+                                        Task::find_by_id(&db.pool, &task_id_str).await
                                         && let Ok(task_list) =
                                             Task::find_by_project_id_with_attempt_status(
                                                 &db.pool,
-                                                task.project_id,
+                                                &task.project_id,
                                             )
                                             .await
                                         && let Some(task_with_status) =
-                                            task_list.into_iter().find(|t| t.id == *task_id)
+                                            task_list.into_iter().find(|t| t.id == task_id_str)
                                     {
                                         let patch = task_patch::replace(&task_with_status);
                                         msg_store_for_hook.push_patch(patch);
@@ -557,7 +560,8 @@ impl EventService {
     ) -> Result<futures::stream::BoxStream<'static, Result<LogMsg, std::io::Error>>, EventError>
     {
         // Get initial snapshot of tasks
-        let tasks = Task::find_by_project_id_with_attempt_status(&self.db.pool, project_id).await?;
+        let project_id_str = project_id.to_string();
+        let tasks = Task::find_by_project_id_with_attempt_status(&self.db.pool, &project_id_str).await?;
 
         // Convert task array to object keyed by task ID
         let tasks_map: serde_json::Map<String, serde_json::Value> = tasks
@@ -574,11 +578,13 @@ impl EventService {
 
         // Clone necessary data for the async filter
         let db_pool = self.db.pool.clone();
+        let project_id_str = project_id.to_string();
 
         // Get filtered event stream
         let filtered_stream =
             BroadcastStream::new(self.msg_store.get_receiver()).filter_map(move |msg_result| {
                 let db_pool = db_pool.clone();
+                let project_id_str = project_id_str.clone();
                 async move {
                     match msg_result {
                         Ok(LogMsg::JsonPatch(patch)) => {
@@ -593,7 +599,7 @@ impl EventService {
                                                 serde_json::from_value::<TaskWithAttemptStatus>(
                                                     op.value.clone(),
                                                 )
-                                                && task.project_id == project_id
+                                                && task.project_id == project_id_str
                                             {
                                                 return Some(Ok(LogMsg::JsonPatch(patch)));
                                             }
@@ -604,7 +610,7 @@ impl EventService {
                                                 serde_json::from_value::<TaskWithAttemptStatus>(
                                                     op.value.clone(),
                                                 )
-                                                && task.project_id == project_id
+                                                && task.project_id == project_id_str
                                             {
                                                 return Some(Ok(LogMsg::JsonPatch(patch)));
                                             }
@@ -625,7 +631,7 @@ impl EventService {
                                     // Handle old EventPatch format for non-task records
                                     match &event_patch.value.record {
                                         RecordTypes::Task(task) => {
-                                            if task.project_id == project_id {
+                                            if task.project_id == project_id_str {
                                                 return Some(Ok(LogMsg::JsonPatch(patch)));
                                             }
                                         }
@@ -633,15 +639,15 @@ impl EventService {
                                             project_id: Some(deleted_project_id),
                                             ..
                                         } => {
-                                            if *deleted_project_id == project_id {
+                                            if *deleted_project_id == project_id_str {
                                                 return Some(Ok(LogMsg::JsonPatch(patch)));
                                             }
                                         }
                                         RecordTypes::TaskAttempt(attempt) => {
                                             // Check if this task_attempt belongs to a task in our project
                                             if let Ok(Some(task)) =
-                                                Task::find_by_id(&db_pool, attempt.task_id).await
-                                                && task.project_id == project_id
+                                                Task::find_by_id(&db_pool, &attempt.task_id.to_string()).await
+                                                && task.project_id == project_id_str
                                             {
                                                 return Some(Ok(LogMsg::JsonPatch(patch)));
                                             }
@@ -652,8 +658,8 @@ impl EventService {
                                         } => {
                                             // Check if deleted attempt belonged to a task in our project
                                             if let Ok(Some(task)) =
-                                                Task::find_by_id(&db_pool, *deleted_task_id).await
-                                                && task.project_id == project_id
+                                                Task::find_by_id(&db_pool, &deleted_task_id.to_string()).await
+                                                && task.project_id == project_id_str
                                             {
                                                 return Some(Ok(LogMsg::JsonPatch(patch)));
                                             }

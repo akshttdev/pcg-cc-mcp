@@ -6,13 +6,13 @@ use uuid::Uuid;
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct BoardShare {
-    pub id: Uuid,
-    pub board_id: Uuid,
-    pub source_organization_id: Uuid,
-    pub target_organization_id: Uuid,
+    pub id: String,
+    pub board_id: String,
+    pub source_organization_id: String,
+    pub target_organization_id: String,
     pub permission: String,
     pub share_type: String,
-    pub shared_by: Uuid,
+    pub shared_by: String,
     pub is_active: bool,
     pub created_at: String,
     pub updated_at: String,
@@ -21,8 +21,8 @@ pub struct BoardShare {
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct CreateBoardShare {
-    pub board_id: Uuid,
-    pub target_organization_id: Uuid,
+    pub board_id: String,
+    pub target_organization_id: String,
     pub permission: Option<String>,
     pub share_type: Option<String>,
 }
@@ -36,7 +36,7 @@ pub struct UpdateBoardShare {
 }
 
 impl BoardShare {
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn find_by_id(pool: &SqlitePool, id: &str) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as::<_, BoardShare>(
             r#"SELECT id, board_id, source_organization_id, target_organization_id,
                       permission, share_type, shared_by, is_active, created_at, updated_at
@@ -47,7 +47,7 @@ impl BoardShare {
         .await
     }
 
-    pub async fn find_by_board(pool: &SqlitePool, board_id: Uuid) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn find_by_board(pool: &SqlitePool, board_id: &str) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, BoardShare>(
             r#"SELECT id, board_id, source_organization_id, target_organization_id,
                       permission, share_type, shared_by, is_active, created_at, updated_at
@@ -61,7 +61,7 @@ impl BoardShare {
 
     pub async fn find_by_target_org(
         pool: &SqlitePool,
-        target_org_id: Uuid,
+        target_org_id: &str,
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, BoardShare>(
             r#"SELECT id, board_id, source_organization_id, target_organization_id,
@@ -76,7 +76,7 @@ impl BoardShare {
 
     pub async fn find_by_source_org(
         pool: &SqlitePool,
-        source_org_id: Uuid,
+        source_org_id: &str,
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, BoardShare>(
             r#"SELECT id, board_id, source_organization_id, target_organization_id,
@@ -91,8 +91,8 @@ impl BoardShare {
 
     pub async fn find_by_board_and_target(
         pool: &SqlitePool,
-        board_id: Uuid,
-        target_org_id: Uuid,
+        board_id: &str,
+        target_org_id: &str,
     ) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as::<_, BoardShare>(
             r#"SELECT id, board_id, source_organization_id, target_organization_id,
@@ -107,10 +107,10 @@ impl BoardShare {
 
     pub async fn create(
         pool: &SqlitePool,
-        id: Uuid,
+        id: &str,
         data: &CreateBoardShare,
-        source_org_id: Uuid,
-        shared_by: Uuid,
+        source_org_id: &str,
+        shared_by: &str,
     ) -> Result<Self, sqlx::Error> {
         let permission = data.permission.as_deref().unwrap_or("editor");
         let share_type = data.share_type.as_deref().unwrap_or("collaboration");
@@ -123,9 +123,9 @@ impl BoardShare {
                          permission, share_type, shared_by, is_active, created_at, updated_at"#,
         )
         .bind(id)
-        .bind(data.board_id)
+        .bind(&data.board_id)
         .bind(source_org_id)
-        .bind(data.target_organization_id)
+        .bind(&data.target_organization_id)
         .bind(permission)
         .bind(share_type)
         .bind(shared_by)
@@ -133,7 +133,7 @@ impl BoardShare {
         .await
     }
 
-    pub async fn update(pool: &SqlitePool, id: Uuid, data: &UpdateBoardShare) -> Result<Self, sqlx::Error> {
+    pub async fn update(pool: &SqlitePool, id: &str, data: &UpdateBoardShare) -> Result<Self, sqlx::Error> {
         let existing = Self::find_by_id(pool, id)
             .await?
             .ok_or(sqlx::Error::RowNotFound)?;
@@ -157,7 +157,7 @@ impl BoardShare {
         .await
     }
 
-    pub async fn delete(pool: &SqlitePool, id: Uuid) -> Result<u64, sqlx::Error> {
+    pub async fn delete(pool: &SqlitePool, id: &str) -> Result<u64, sqlx::Error> {
         let result = sqlx::query("DELETE FROM board_shares WHERE id = ?")
             .bind(id)
             .execute(pool)
@@ -169,7 +169,7 @@ impl BoardShare {
     /// Returns the permission level if access is granted
     pub async fn check_user_share_access(
         pool: &SqlitePool,
-        board_id: Uuid,
+        board_id: &str,
         user_id: Uuid,
     ) -> Result<Option<String>, sqlx::Error> {
         #[derive(FromRow)]

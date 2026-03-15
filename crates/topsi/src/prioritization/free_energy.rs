@@ -241,7 +241,7 @@ impl IntoPotentialAction for db::models::task::Task {
         if self.tags.is_some() { completeness += 0.2; }
 
         PotentialAction {
-            id: self.id,
+            id: Uuid::parse_str(&self.id).unwrap_or_default(),
             name: self.title.clone(),
             prior_uncertainty,
             posterior_uncertainty,

@@ -40,8 +40,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
 
-[profile.release]
-strip = true
-lto = true
-codegen-units = 1
-panic = "abort"
+# Profile sections must be in workspace root Cargo.toml
+# [profile.release]
+# strip = true
+# lto = true
+# codegen-units = 1
+# panic = "abort"

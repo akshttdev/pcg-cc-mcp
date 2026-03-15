@@ -1,9 +1,9 @@
-import { ChevronRight, Home, ChevronsUpDown } from 'lucide-react';
+import { ChevronRight, Home, ChevronsUpDown, Minimize2, Maximize2 } from 'lucide-react';
 import { Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useProject } from '@/contexts/project-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
-import { tasksApi, organizationsApi, dataSourcesApi } from '@/lib/api';
+import { tasksApi, organizationsApi, dataSourcesApi, personsApi, companiesApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import {
   Popover,
@@ -12,18 +12,29 @@ import {
 } from '@/components/ui/popover';
 import { useState, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
+import { useViewStore } from '@/stores/useViewStore';
 
 interface BreadcrumbItem {
   label: string;
   href: string;
 }
 
-export function BreadcrumbNav() {
-  const { projectId, taskId, orgId, dataSourceId } = useParams<{
+interface BreadcrumbNavProps {
+  /** Task-specific fullscreen toggle (URL-based, used on task detail pages) */
+  onToggleFullscreen?: (fullscreen: boolean) => void;
+  isFullscreen?: boolean;
+}
+
+export function BreadcrumbNav({ onToggleFullscreen, isFullscreen }: BreadcrumbNavProps = {}) {
+  const { contentFullscreen, toggleContentFullscreen } = useViewStore();
+  const { projectId, taskId, orgId, dataSourceId, clientId, personId, companyId } = useParams<{
     projectId?: string;
     taskId?: string;
     orgId?: string;
     dataSourceId?: string;
+    clientId?: string;
+    personId?: string;
+    companyId?: string;
   }>();
   const { project } = useProject();
   const { user } = useAuth();
@@ -55,6 +66,31 @@ export function BreadcrumbNav() {
     enabled: !!dataSourceId,
     staleTime: 5 * 60 * 1000,
   });
+
+  // Fetch person if personId is present
+  const { data: person } = useQuery({
+    queryKey: ['person', personId],
+    queryFn: () => personsApi.get(personId!),
+    enabled: !!personId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Fetch company if companyId is present
+  const { data: company } = useQuery({
+    queryKey: ['company', companyId],
+    queryFn: () => companiesApi.get(companyId!),
+    enabled: !!companyId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Fetch client name from org members if clientId is present
+  const { data: clientData } = useQuery({
+    queryKey: ['org-clients', orgId],
+    queryFn: () => organizationsApi.getClients(orgId!),
+    enabled: !!clientId && !!orgId,
+    staleTime: 5 * 60 * 1000,
+  });
+  const clientName = clientData?.find((c: any) => c.id === clientId)?.name;
 
   // Derive current org from route, project, or fall back to user's first org
   const allOrgs = sidebarTree
@@ -109,16 +145,34 @@ export function BreadcrumbNav() {
     });
   }
 
-  // Project sub-pages (knowledge, crm, deliverables, etc.)
+  // Project sub-pages
   if (project && projectId && !taskId) {
+    const projectBase = `/projects/${projectId}`;
     if (location.pathname.includes('/knowledge')) {
-      items.push({ label: 'Knowledge', href: `/projects/${projectId}/knowledge` });
+      items.push({ label: 'Knowledge', href: `${projectBase}/knowledge` });
     } else if (location.pathname.includes('/deliverables')) {
-      items.push({ label: 'Deliverables', href: `/projects/${projectId}/deliverables` });
+      items.push({ label: 'Deliverables', href: `${projectBase}/deliverables` });
     } else if (location.pathname.includes('/control')) {
-      items.push({ label: 'Control', href: `/projects/${projectId}/control` });
+      items.push({ label: 'Controller', href: `${projectBase}/control` });
     } else if (location.pathname.includes('/pulse')) {
-      items.push({ label: 'Pulse', href: `/projects/${projectId}/pulse` });
+      items.push({ label: 'Pulse', href: `${projectBase}/pulse` });
+    } else if (location.pathname.includes('/media')) {
+      items.push({ label: 'Media Library', href: `${projectBase}/media` });
+    } else if (location.pathname.includes('/social')) {
+      items.push({ label: 'Social', href: `${projectBase}/social` });
+    } else if (location.pathname.includes('/crm')) {
+      items.push({ label: 'CRM', href: `${projectBase}/crm` });
+      if (location.pathname.includes('/crm/overview')) {
+        items.push({ label: 'Overview', href: `${projectBase}/crm/overview` });
+      } else if (location.pathname.includes('/crm/sales')) {
+        items.push({ label: 'Sales', href: `${projectBase}/crm/sales` });
+      } else if (location.pathname.includes('/crm/delivery')) {
+        items.push({ label: 'Delivery', href: `${projectBase}/crm/delivery` });
+      } else if (location.pathname.includes('/crm/clients')) {
+        items.push({ label: 'Clients', href: `${projectBase}/crm/clients` });
+      } else if (location.pathname.includes('/crm/conferences')) {
+        items.push({ label: 'Conferences', href: `${projectBase}/crm/conferences` });
+      }
     }
   }
 
@@ -176,6 +230,11 @@ export function BreadcrumbNav() {
       items.push({ label: 'Integrations', href: `/organizations/${orgId}/integrations` });
     } else if (location.pathname.includes('/clients/')) {
       items.push({ label: 'Clients', href: `/organizations/${orgId}/crm/companies` });
+      if (clientId && clientName) {
+        items.push({ label: clientName, href: `/organizations/${orgId}/clients/${clientId}` });
+      }
+    } else if (location.pathname.includes('/brand-guide')) {
+      items.push({ label: 'Brand Guide', href: `/organizations/${orgId}/brand-guide` });
     }
   }
 
@@ -187,6 +246,7 @@ export function BreadcrumbNav() {
       '/pulse': 'Pulse Engine',
       '/mesh': 'Mesh Network',
       '/virtual-environment': 'VIBELAND',
+      '/vibe': 'VIBE',
       '/settings': 'Settings',
       '/nora': 'Nora Command',
       '/topsi': 'Topsi Platform',
@@ -198,13 +258,71 @@ export function BreadcrumbNav() {
       '/people': 'People',
       '/companies': 'Companies',
       '/proposals': 'Proposals',
+      '/invoices': 'Invoices',
+      '/business-reports': 'Business Reports',
+      '/command-center': 'Command Center',
+      '/calendar': 'Calendar',
+      '/discord': 'Discord Voice',
+      '/oss-library-listener': 'OSS Library Listener',
+      '/ai-usage': 'AI Usage',
+      '/agent-executions': 'Agent Executions',
+      '/site-directory': 'Site Directory',
     };
-    const matchedPath = Object.keys(pageLabels).find((p) => location.pathname.startsWith(p));
+    // Sort by length descending so longer paths match first (e.g. /settings/profile before /settings)
+    const matchedPath = Object.keys(pageLabels)
+      .sort((a, b) => b.length - a.length)
+      .find((p) => location.pathname.startsWith(p));
     if (matchedPath) {
       items.push({
         label: pageLabels[matchedPath],
         href: matchedPath,
       });
+    }
+
+    // Settings sub-pages
+    if (location.pathname.startsWith('/settings/')) {
+      const settingsLabels: Record<string, string> = {
+        '/settings/general': 'General',
+        '/settings/profile': 'Profile',
+        '/settings/wallet': 'Wallet',
+        '/settings/users': 'Users',
+        '/settings/organizations': 'Organizations',
+        '/settings/projects': 'Projects',
+        '/settings/privacy': 'Privacy & Security',
+        '/settings/activity': 'Activity Log',
+        '/settings/agents': 'Agents',
+        '/settings/keys': 'API Keys',
+        '/settings/models': 'Models',
+        '/settings/mcp': 'MCP Servers',
+        '/settings/network': 'Network & Mesh',
+      };
+      const matchedSettings = Object.keys(settingsLabels).find((p) => location.pathname === p);
+      if (matchedSettings) {
+        items.push({ label: settingsLabels[matchedSettings], href: matchedSettings });
+      }
+    }
+
+    // Person detail page
+    if (personId && location.pathname.startsWith('/people/')) {
+      const name = person
+        ? person.full_name || person.email || 'Person'
+        : undefined;
+      if (name) {
+        items.push({ label: name.length > 50 ? `${name.substring(0, 50)}...` : name, href: `/people/${personId}` });
+      }
+    }
+
+    // Company detail page
+    if (companyId && location.pathname.startsWith('/companies/')) {
+      const name = company?.name;
+      if (name) {
+        items.push({ label: name.length > 50 ? `${name.substring(0, 50)}...` : name, href: `/companies/${companyId}` });
+      }
+    }
+
+    // Business report detail
+    if (location.pathname.match(/^\/business-reports\/[^/]+$/)) {
+      items.push({ label: 'Report Detail', href: location.pathname });
     }
   }
 
@@ -224,42 +342,72 @@ export function BreadcrumbNav() {
   }
 
   return (
-    <nav className="flex items-center space-x-1 text-sm text-muted-foreground px-4 py-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <Link
-        to={currentOrg ? `/organizations/${currentOrg.id}` : '/projects'}
-        className="flex items-center hover:text-foreground transition-colors"
-      >
-        <Home className="h-4 w-4" />
-      </Link>
+    <nav className="flex items-center text-sm text-muted-foreground px-4 py-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="flex items-center space-x-1 flex-1 min-w-0">
+        <Link
+          to={currentOrg ? `/organizations/${currentOrg.id}` : '/projects'}
+          className="flex items-center hover:text-foreground transition-colors shrink-0"
+        >
+          <Home className="h-4 w-4" />
+        </Link>
 
-      {items.map((item, index) => {
-        const isLast = index === items.length - 1;
-        const isOrgItem = currentOrg && item.href === `/organizations/${currentOrg.id}`;
+        {items.map((item, index) => {
+          const isLast = index === items.length - 1;
+          const isOrgItem = currentOrg && item.href === `/organizations/${currentOrg.id}`;
+
+          return (
+            <div key={item.href} className="flex items-center space-x-1 min-w-0">
+              <ChevronRight className="h-4 w-4 shrink-0" />
+              {isOrgItem && allOrgs.length > 1 ? (
+                <OrgSwitcher
+                  currentOrg={currentOrg}
+                  allOrgs={allOrgs}
+                  onSelect={(id) => navigate(`/organizations/${id}`)}
+                  isLast={isLast}
+                />
+              ) : (
+                <Link
+                  to={item.href}
+                  className={cn(
+                    'hover:text-foreground transition-colors truncate',
+                    isLast && 'text-foreground font-medium'
+                  )}
+                >
+                  {item.label}
+                </Link>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {(() => {
+        // Task pages use URL-based fullscreen; all other pages use store-based
+        const isTaskPage = !!taskId && !!onToggleFullscreen;
+        const isActive = isTaskPage ? !!isFullscreen : contentFullscreen;
+        const handleToggle = isTaskPage
+          ? () => onToggleFullscreen!(!isFullscreen)
+          : toggleContentFullscreen;
 
         return (
-          <div key={item.href} className="flex items-center space-x-1">
-            <ChevronRight className="h-4 w-4" />
-            {isOrgItem && allOrgs.length > 1 ? (
-              <OrgSwitcher
-                currentOrg={currentOrg}
-                allOrgs={allOrgs}
-                onSelect={(id) => navigate(`/organizations/${id}`)}
-                isLast={isLast}
-              />
+          <button
+            onClick={handleToggle}
+            className="shrink-0 ml-3 flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium hover:bg-muted transition-colors"
+          >
+            {isActive ? (
+              <>
+                <Minimize2 className="h-3.5 w-3.5" />
+                Exit Fullscreen
+              </>
             ) : (
-              <Link
-                to={item.href}
-                className={cn(
-                  'hover:text-foreground transition-colors',
-                  isLast && 'text-foreground font-medium'
-                )}
-              >
-                {item.label}
-              </Link>
+              <>
+                <Maximize2 className="h-3.5 w-3.5" />
+                Fullscreen
+              </>
             )}
-          </div>
+          </button>
         );
-      })}
+      })()}
     </nav>
   );
 }

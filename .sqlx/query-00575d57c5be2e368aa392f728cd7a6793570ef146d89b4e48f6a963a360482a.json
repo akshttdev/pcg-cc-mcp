@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                INSERT INTO media_files (\n                    id, batch_id, filename, file_path, size_bytes, checksum_sha256,\n                    duration_seconds, resolution, codec, fps, metadata, created_at\n                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 12
+    },
+    "nullable": []
+  },
+  "hash": "00575d57c5be2e368aa392f728cd7a6793570ef146d89b4e48f6a963a360482a"
+}

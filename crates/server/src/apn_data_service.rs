@@ -890,6 +890,7 @@ pub async fn request_user_sync(
 // ============================================================================
 
 #[derive(sqlx::FromRow)]
+#[allow(dead_code)]
 struct UserRow {
     id: Vec<u8>,
     username: String,

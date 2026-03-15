@@ -559,9 +559,9 @@ impl ConferenceWorkflowEngine {
                     match Task::create(
                         &self.pool,
                         &CreateTask {
-                            project_id: board.project_id,
+                            project_id: board.project_id.clone(),
                             pod_id: None,
-                            board_id: Some(board.id),
+                            board_id: Some(board.id.clone()),
                             title: task_title,
                             description: Some(task_description),
                             parent_task_attempt: None,
@@ -581,6 +581,8 @@ impl ConferenceWorkflowEngine {
                             scheduled_start: publish_due,
                             scheduled_end: review_due,
                             screenshot: None,
+                            completion_criteria: None,
+                            output_format: None,
                         },
                         Uuid::new_v4(),
                     )
@@ -649,9 +651,9 @@ impl ConferenceWorkflowEngine {
                     match Task::create(
                         &self.pool,
                         &CreateTask {
-                            project_id: board.project_id,
+                            project_id: board.project_id.clone(),
                             pod_id: None,
-                            board_id: Some(board.id),
+                            board_id: Some(board.id.clone()),
                             title: task_title,
                             description: Some(task_description),
                             parent_task_attempt: None,
@@ -671,6 +673,8 @@ impl ConferenceWorkflowEngine {
                             scheduled_start: publish_due,
                             scheduled_end: None,
                             screenshot: None,
+                            completion_criteria: None,
+                            output_format: None,
                         },
                         Uuid::new_v4(),
                     )
@@ -756,9 +760,9 @@ impl ConferenceWorkflowEngine {
                     match Task::create(
                         &self.pool,
                         &CreateTask {
-                            project_id: board.project_id,
+                            project_id: board.project_id.clone(),
                             pod_id: None,
-                            board_id: Some(board.id),
+                            board_id: Some(board.id.clone()),
                             title: task_title,
                             description: Some(task_description),
                             parent_task_attempt: None,
@@ -778,6 +782,8 @@ impl ConferenceWorkflowEngine {
                             scheduled_start: publish_due,
                             scheduled_end: None,
                             screenshot: None,
+                            completion_criteria: None,
+                            output_format: None,
                         },
                         Uuid::new_v4(),
                     )

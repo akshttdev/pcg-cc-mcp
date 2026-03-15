@@ -1,7 +1,7 @@
 use axum::{
     Extension, Json, Router,
     extract::{Path, State},
-    routing::{delete, get},
+    routing::get,
 };
 use db::models::{
     project::Project,
@@ -22,7 +22,7 @@ use crate::{
 async fn require_org_access(
     pool: &sqlx::SqlitePool,
     access_context: &AccessContext,
-    org_id: Uuid,
+    org_id: &str,
 ) -> Result<(), ApiError> {
     if access_context.is_admin {
         return Ok(());
@@ -38,7 +38,7 @@ async fn require_org_access(
 async fn require_org_admin(
     pool: &sqlx::SqlitePool,
     access_context: &AccessContext,
-    org_id: Uuid,
+    org_id: &str,
 ) -> Result<(), ApiError> {
     if access_context.is_admin {
         return Ok(());
@@ -56,7 +56,7 @@ pub async fn list_folders(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Vec<ProjectFolder>>>, ApiError> {
-    require_org_access(&deployment.db().pool, &access_context, org_id).await?;
+    require_org_access(&deployment.db().pool, &access_context, &org_id.to_string()).await?;
     let folders = ProjectFolder::find_by_organization(&deployment.db().pool, org_id).await?;
     Ok(Json(ApiResponse::success(folders)))
 }
@@ -68,7 +68,7 @@ pub async fn create_folder(
     State(deployment): State<DeploymentImpl>,
     Json(data): Json<CreateProjectFolder>,
 ) -> Result<Json<ApiResponse<ProjectFolder>>, ApiError> {
-    require_org_admin(&deployment.db().pool, &access_context, org_id).await?;
+    require_org_admin(&deployment.db().pool, &access_context, &org_id.to_string()).await?;
 
     let id = Uuid::new_v4();
     let folder = ProjectFolder::create(&deployment.db().pool, id, org_id, &data).await?;
@@ -85,7 +85,7 @@ pub async fn get_folder(
         .await?
         .ok_or_else(|| ApiError::NotFound("Project folder not found".into()))?;
 
-    require_org_access(&deployment.db().pool, &access_context, folder.organization_id).await?;
+    require_org_access(&deployment.db().pool, &access_context, &folder.organization_id.to_string()).await?;
     Ok(Json(ApiResponse::success(folder)))
 }
 
@@ -100,7 +100,7 @@ pub async fn update_folder(
         .await?
         .ok_or_else(|| ApiError::NotFound("Project folder not found".into()))?;
 
-    require_org_admin(&deployment.db().pool, &access_context, existing.organization_id).await?;
+    require_org_admin(&deployment.db().pool, &access_context, &existing.organization_id.to_string()).await?;
 
     let folder = ProjectFolder::update(&deployment.db().pool, id, &data).await?;
     Ok(Json(ApiResponse::success(folder)))
@@ -116,7 +116,7 @@ pub async fn delete_folder(
         .await?
         .ok_or_else(|| ApiError::NotFound("Project folder not found".into()))?;
 
-    require_org_admin(&deployment.db().pool, &access_context, existing.organization_id).await?;
+    require_org_admin(&deployment.db().pool, &access_context, &existing.organization_id.to_string()).await?;
 
     ProjectFolder::delete(&deployment.db().pool, id).await?;
     Ok(Json(ApiResponse::success(())))
@@ -132,14 +132,14 @@ pub async fn add_project_to_folder(
         .await?
         .ok_or_else(|| ApiError::NotFound("Project folder not found".into()))?;
 
-    require_org_admin(&deployment.db().pool, &access_context, folder.organization_id).await?;
+    require_org_admin(&deployment.db().pool, &access_context, &folder.organization_id.to_string()).await?;
 
     // Verify project exists
-    if !Project::exists(&deployment.db().pool, project_id).await? {
+    if !Project::exists(&deployment.db().pool, &project_id.to_string()).await? {
         return Err(ApiError::NotFound("Project not found".into()));
     }
 
-    Project::set_folder(&deployment.db().pool, project_id, Some(id)).await?;
+    Project::set_folder(&deployment.db().pool, &project_id.to_string(), Some(&id.to_string())).await?;
     Ok(Json(ApiResponse::success(())))
 }
 
@@ -153,9 +153,9 @@ pub async fn remove_project_from_folder(
         .await?
         .ok_or_else(|| ApiError::NotFound("Project folder not found".into()))?;
 
-    require_org_admin(&deployment.db().pool, &access_context, folder.organization_id).await?;
+    require_org_admin(&deployment.db().pool, &access_context, &folder.organization_id.to_string()).await?;
 
-    Project::set_folder(&deployment.db().pool, project_id, None).await?;
+    Project::set_folder(&deployment.db().pool, &project_id.to_string(), None).await?;
     Ok(Json(ApiResponse::success(())))
 }
 

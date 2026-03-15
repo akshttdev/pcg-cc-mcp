@@ -175,7 +175,7 @@ pub async fn create_project_from_github(
     };
 
     let project_id = Uuid::new_v4();
-    match Project::create(&app_state.db_pool, &project_data, project_id).await {
+    match Project::create(&app_state.db_pool, &project_data, &project_id.to_string()).await {
         Ok(project) => {
             // Track project creation event
             app_state

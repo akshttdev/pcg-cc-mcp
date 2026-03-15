@@ -55,7 +55,7 @@ impl TaskExecutor {
     /// This is the main entry point for Nora to assign work to other agents like AURI
     pub async fn delegate_and_execute_task(
         &self,
-        task_id: Uuid,
+        task_id: String,
         agent_name: &str,
         executor_type: &str, // e.g., "CLAUDE_CODE"
     ) -> Result<DelegationResult> {
@@ -76,7 +76,7 @@ impl TaskExecutor {
         )
         .bind(&agent.short_name)
         .bind(agent.id.to_string())
-        .bind(task_id.as_bytes().to_vec())
+        .bind(&task_id)
         .execute(&self.pool)
         .await
         .map_err(|e| NoraError::DatabaseError(e))?;
@@ -87,7 +87,7 @@ impl TaskExecutor {
         );
 
         // 3. Get the task to find its project
-        let _task = Task::find_by_id(&self.pool, task_id)
+        let _task = Task::find_by_id(&self.pool, &task_id)
             .await
             .map_err(|e| NoraError::DatabaseError(e))?
             .ok_or_else(|| NoraError::ToolExecutionError(format!("Task {} not found", task_id)))?;
@@ -122,8 +122,8 @@ impl TaskExecutor {
             );
 
             Ok(DelegationResult {
-                task_id,
-                agent_id: agent.id,
+                task_id: task_id.clone(),
+                agent_id: agent.id.to_string(),
                 agent_name: agent.short_name,
                 executor_type: executor_type.to_string(),
                 status: "execution_started".to_string(),
@@ -142,19 +142,21 @@ impl TaskExecutor {
     }
 
     /// Create a new task in the database
-    pub async fn create_task(&self, project_id: Uuid, definition: TaskDefinition) -> Result<Task> {
+    pub async fn create_task(&self, project_id: String, definition: TaskDefinition) -> Result<Task> {
         tracing::info!(
             "Nora creating task '{}' in project {}",
             definition.title,
             project_id
         );
 
-        let task_id = Uuid::new_v4();
+        let task_id = Uuid::new_v4().to_string();
+        let project_uuid = Uuid::parse_str(&project_id)
+            .map_err(|e| NoraError::ToolExecutionError(format!("Invalid project_id: {}", e)))?;
 
         let create_task = CreateTask {
-            project_id,
-            pod_id: definition.pod_id,
-            board_id: definition.board_id,
+            project_id: project_uuid.to_string(),
+            pod_id: definition.pod_id.clone(),
+            board_id: definition.board_id.clone(),
             title: definition.title,
             description: definition.description,
             parent_task_attempt: None,
@@ -174,9 +176,12 @@ impl TaskExecutor {
             scheduled_start: None,
             scheduled_end: None,
             screenshot: None,
+            completion_criteria: None,
+            output_format: None,
+            collaborators: None,
         };
 
-        let task = Task::create(&self.pool, &create_task, task_id)
+        let task = Task::create(&self.pool, &create_task, &task_id)
             .await
             .map_err(NoraError::DatabaseError)?;
 
@@ -188,13 +193,13 @@ impl TaskExecutor {
     /// Create multiple tasks as a batch
     pub async fn create_tasks_batch(
         &self,
-        project_id: Uuid,
+        project_id: String,
         tasks: Vec<TaskDefinition>,
     ) -> Result<Vec<Task>> {
         let mut created_tasks = Vec::new();
 
         for task_def in tasks {
-            let task = self.create_task(project_id, task_def).await?;
+            let task = self.create_task(project_id.clone(), task_def).await?;
             created_tasks.push(task);
         }
 
@@ -208,13 +213,13 @@ impl TaskExecutor {
     }
 
     /// Find project by name or return error with suggestions
-    pub async fn find_project_by_name(&self, name: &str) -> Result<Uuid> {
+    pub async fn find_project_by_name(&self, name: &str) -> Result<String> {
         // Query the database for project by name using LIKE for fuzzy matching
         let pattern = format!("%{}%", name);
 
         // Use the Project model to query properly
-        let projects: Vec<(Uuid, String)> = sqlx::query_as(
-            r#"SELECT id as "id!: Uuid", name FROM projects WHERE LOWER(name) LIKE LOWER($1) LIMIT 1"#
+        let projects: Vec<(String, String)> = sqlx::query_as(
+            r#"SELECT id, name FROM projects WHERE LOWER(name) LIKE LOWER($1) LIMIT 1"#
         )
         .bind(&pattern)
         .fetch_all(&self.pool)
@@ -224,7 +229,7 @@ impl TaskExecutor {
         match projects.first() {
             Some((id, _name)) => {
                 tracing::info!("[TOOL_FLOW] Found project '{}' with ID: {}", _name, id);
-                Ok(*id)
+                Ok(id.clone())
             }
             None => Err(NoraError::ConfigError(format!(
                 "Project '{}' not found. Please check the project name.",
@@ -251,19 +256,19 @@ impl TaskExecutor {
     }
 
     pub async fn create_project_entry(&self, payload: CreateProject) -> Result<Project> {
-        let project_id = Uuid::new_v4();
-        Project::create(&self.pool, &payload, project_id)
+        let project_id = Uuid::new_v4().to_string();
+        Project::create(&self.pool, &payload, &project_id)
             .await
             .map_err(NoraError::DatabaseError)
     }
 
-    pub async fn ensure_default_boards(&self, project_id: Uuid) -> Result<Vec<ProjectBoard>> {
+    pub async fn ensure_default_boards(&self, project_id: &str) -> Result<Vec<ProjectBoard>> {
         ProjectBoard::ensure_default_boards(&self.pool, project_id)
             .await
             .map_err(NoraError::DatabaseError)
     }
 
-    pub async fn update_task_status(&self, task_id: Uuid, status: TaskStatus) -> Result<()> {
+    pub async fn update_task_status(&self, task_id: &str, status: TaskStatus) -> Result<()> {
         Task::update_status(&self.pool, task_id, status)
             .await
             .map_err(NoraError::DatabaseError)
@@ -271,7 +276,7 @@ impl TaskExecutor {
 
     pub async fn find_board_by_slug(
         &self,
-        project_id: Uuid,
+        project_id: &str,
         slug: &str,
     ) -> Result<Option<ProjectBoard>> {
         ProjectBoard::find_by_slug(&self.pool, project_id, slug)
@@ -281,7 +286,7 @@ impl TaskExecutor {
 
     pub async fn get_default_board_for_tasks(
         &self,
-        project_id: Uuid,
+        project_id: &str,
     ) -> Result<Option<ProjectBoard>> {
         if let Some(board) = self.find_board_by_slug(project_id, "dev-assets").await? {
             return Ok(Some(board));
@@ -294,14 +299,16 @@ impl TaskExecutor {
         Ok(boards.pop())
     }
 
-    pub async fn seed_default_pods(&self, project_id: Uuid) -> Result<Vec<ProjectPod>> {
+    pub async fn seed_default_pods(&self, project_id: &str) -> Result<Vec<ProjectPod>> {
+        let project_uuid = Uuid::parse_str(project_id)
+            .map_err(|e| NoraError::ConfigError(format!("Invalid project UUID: {}", e)))?;
         let mut pods = Vec::new();
         for (title, description) in DEFAULT_POD_TEMPLATES {
             let pod = ProjectPod::create(
                 &self.pool,
                 Uuid::new_v4(),
                 &CreateProjectPod {
-                    project_id,
+                    project_id: project_uuid,
                     title: title.to_string(),
                     description: Some(description.to_string()),
                     status: Some("active".to_string()),
@@ -317,40 +324,40 @@ impl TaskExecutor {
     }
 
     /// Get detailed project information including tasks, boards, and pods
-    pub async fn get_project_details(&self, project_id: Uuid) -> Result<ProjectDetails> {
+    pub async fn get_project_details(&self, project_id: &str) -> Result<ProjectDetails> {
         // Get project basic info
         let project: (String, String, String) = sqlx::query_as(
-            "SELECT hex(id) as id, name, git_repo_path FROM projects WHERE id = ?",
+            "SELECT id, name, git_repo_path FROM projects WHERE id = ?",
         )
-                .bind(project_id.as_bytes().to_vec())
+                .bind(project_id)
                 .fetch_one(&self.pool)
                 .await
                 .map_err(|e| NoraError::DatabaseError(e))?;
 
         // Get tasks for this project
         let tasks: Vec<TaskInfo> = sqlx::query_as(
-            "SELECT hex(id) as id, title, description, status, priority, assignee_id, created_at, updated_at
+            "SELECT id, title, description, status, priority, assignee_id, created_at, updated_at
              FROM tasks WHERE project_id = ? ORDER BY created_at DESC",
         )
-        .bind(project_id.as_bytes().to_vec())
+        .bind(project_id)
         .fetch_all(&self.pool)
         .await
         .map_err(|e| NoraError::DatabaseError(e))?;
 
         // Get boards for this project
         let boards: Vec<BoardInfo> = sqlx::query_as(
-            "SELECT hex(id) as id, name, description FROM project_boards WHERE project_id = ? ORDER BY name",
+            "SELECT id, name, description FROM project_boards WHERE project_id = ? ORDER BY name",
         )
-        .bind(project_id.as_bytes().to_vec())
+        .bind(project_id)
         .fetch_all(&self.pool)
         .await
         .unwrap_or_default();
 
         // Get pods for this project
         let pods: Vec<PodInfo> = sqlx::query_as(
-            "SELECT hex(id) as id, name, description FROM project_pods WHERE project_id = ? ORDER BY name",
+            "SELECT id, name, description FROM project_pods WHERE project_id = ? ORDER BY name",
         )
-        .bind(project_id.as_bytes().to_vec())
+        .bind(project_id)
         .fetch_all(&self.pool)
         .await
         .unwrap_or_default();
@@ -370,10 +377,10 @@ impl TaskExecutor {
         let project_id = self.find_project_by_name(project_name).await?;
 
         let tasks: Vec<TaskInfo> = sqlx::query_as(
-            "SELECT hex(id) as id, title, description, status, priority, assignee_id, created_at, updated_at
+            "SELECT id, title, description, status, priority, assignee_id, created_at, updated_at
              FROM tasks WHERE project_id = ? ORDER BY created_at DESC",
         )
-        .bind(project_id.as_bytes().to_vec())
+        .bind(&project_id)
         .fetch_all(&self.pool)
         .await
         .map_err(|e| NoraError::DatabaseError(e))?;
@@ -384,14 +391,14 @@ impl TaskExecutor {
     /// Get tasks by status
     pub async fn get_tasks_by_status(
         &self,
-        project_id: Uuid,
+        project_id: &str,
         status: &str,
     ) -> Result<Vec<TaskInfo>> {
         let tasks: Vec<TaskInfo> = sqlx::query_as(
-            "SELECT hex(id) as id, title, description, status, priority, assignee_id, created_at, updated_at
+            "SELECT id, title, description, status, priority, assignee_id, created_at, updated_at
              FROM tasks WHERE project_id = ? AND status = ? ORDER BY created_at DESC",
         )
-        .bind(project_id.as_bytes().to_vec())
+        .bind(project_id)
         .bind(status)
         .fetch_all(&self.pool)
         .await
@@ -401,15 +408,15 @@ impl TaskExecutor {
     }
 
     /// Search tasks by keyword
-    pub async fn search_tasks(&self, project_id: Uuid, keyword: &str) -> Result<Vec<TaskInfo>> {
+    pub async fn search_tasks(&self, project_id: &str, keyword: &str) -> Result<Vec<TaskInfo>> {
         let pattern = format!("%{}%", keyword);
         let tasks: Vec<TaskInfo> = sqlx::query_as(
-            "SELECT hex(id) as id, title, description, status, priority, assignee_id, created_at, updated_at
+            "SELECT id, title, description, status, priority, assignee_id, created_at, updated_at
              FROM tasks
              WHERE project_id = ? AND (title LIKE ? OR description LIKE ?)
              ORDER BY created_at DESC",
         )
-        .bind(project_id.as_bytes().to_vec())
+        .bind(project_id)
         .bind(&pattern)
         .bind(&pattern)
         .fetch_all(&self.pool)
@@ -422,7 +429,7 @@ impl TaskExecutor {
     /// Get all tasks across all projects
     pub async fn get_all_tasks(&self) -> Result<Vec<TaskInfo>> {
         let tasks: Vec<TaskInfo> = sqlx::query_as(
-            "SELECT HEX(id) as id, title, description, status, priority, assignee_id, created_at, updated_at
+            "SELECT id, title, description, status, priority, assignee_id, created_at, updated_at
              FROM tasks ORDER BY created_at DESC LIMIT 100"
         )
         .fetch_all(&self.pool)
@@ -442,7 +449,7 @@ impl TaskExecutor {
     ) -> Result<Project> {
         tracing::info!("Nora creating project '{}'", name);
 
-        let project_id = Uuid::new_v4();
+        let project_id = Uuid::new_v4().to_string();
 
         // Generate a unique repo path if none provided (to avoid UNIQUE constraint violation)
         let repo_path = if git_repo_path.is_empty() {
@@ -466,12 +473,12 @@ impl TaskExecutor {
             parent_project_id: None,
         };
 
-        let project = Project::create(&self.pool, &create_project, project_id)
+        let project = Project::create(&self.pool, &create_project, &project_id)
             .await
             .map_err(|e| NoraError::DatabaseError(e))?;
 
         // Create default boards
-        if let Err(e) = ProjectBoard::ensure_default_boards(&self.pool, project.id).await {
+        if let Err(e) = ProjectBoard::ensure_default_boards(&self.pool, &project.id).await {
             tracing::warn!(
                 "Failed to create default boards for project {}: {}",
                 project.id,
@@ -480,7 +487,7 @@ impl TaskExecutor {
         }
 
         // Initialize onboarding workflow with default segments
-        if let Err(e) = self.start_project_onboarding(project.id).await {
+        if let Err(e) = self.start_project_onboarding(&project.id).await {
             tracing::warn!(
                 "Failed to start onboarding for project {}: {}",
                 project.id,
@@ -498,11 +505,14 @@ impl TaskExecutor {
     }
 
     /// Start the onboarding workflow for a project
-    pub async fn start_project_onboarding(&self, project_id: Uuid) -> Result<ProjectOnboarding> {
+    pub async fn start_project_onboarding(&self, project_id: &str) -> Result<ProjectOnboarding> {
         tracing::info!("Starting onboarding workflow for project {}", project_id);
 
+        let project_uuid = Uuid::parse_str(project_id)
+            .map_err(|e| NoraError::ConfigError(format!("Invalid project UUID: {}", e)))?;
+
         let create = CreateProjectOnboarding {
-            project_id,
+            project_id: project_uuid,
             context_data: None,
         };
 
@@ -522,7 +532,7 @@ impl TaskExecutor {
     /// Create a new kanban board for a project
     pub async fn create_board(
         &self,
-        project_id: Uuid,
+        project_id: &str,
         name: String,
         description: Option<String>,
         board_type: Option<ProjectBoardType>,
@@ -530,7 +540,7 @@ impl TaskExecutor {
         tracing::info!("Nora creating board '{}' in project {}", name, project_id);
 
         let create_board = CreateProjectBoard {
-            project_id,
+            project_id: project_id.to_string(),
             name: name.clone(),
             slug: name.to_lowercase().replace(" ", "-"),
             description,
@@ -548,12 +558,12 @@ impl TaskExecutor {
     }
 
     /// Add a task to a specific board
-    pub async fn add_task_to_board(&self, task_id: Uuid, board_id: Uuid) -> Result<()> {
+    pub async fn add_task_to_board(&self, task_id: &str, board_id: &str) -> Result<()> {
         tracing::info!("Nora adding task {} to board {}", task_id, board_id);
 
         sqlx::query("UPDATE tasks SET board_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-            .bind(board_id.as_bytes().to_vec())
-            .bind(task_id.as_bytes().to_vec())
+            .bind(board_id)
+            .bind(task_id)
             .execute(&self.pool)
             .await
             .map_err(|e| NoraError::DatabaseError(e))?;
@@ -579,12 +589,12 @@ impl TaskExecutor {
             project_id
         );
 
-        let task_id = Uuid::new_v4();
+        let task_id = Uuid::new_v4().to_string();
 
         let create_task = CreateTask {
-            project_id,
+            project_id: project_id.to_string(),
             pod_id: None,
-            board_id: Some(board_id),
+            board_id: Some(board_id.to_string()),
             title,
             description,
             parent_task_attempt: None,
@@ -604,9 +614,12 @@ impl TaskExecutor {
             scheduled_start: None,
             scheduled_end: None,
             screenshot: None,
+            completion_criteria: None,
+            output_format: None,
+            collaborators: None,
         };
 
-        let task = Task::create(&self.pool, &create_task, task_id)
+        let task = Task::create(&self.pool, &create_task, &task_id)
             .await
             .map_err(|e| NoraError::DatabaseError(e))?;
 
@@ -634,26 +647,32 @@ impl TaskExecutor {
         );
 
         // Find the project by name
-        let project_id = self.find_project_by_name(project_name).await?;
-        tracing::info!("[TOOL_FLOW] Found project ID: {}", project_id);
+        let project_id_str = self.find_project_by_name(project_name).await?;
+        tracing::info!("[TOOL_FLOW] Found project ID: {}", project_id_str);
+
+        let project_id = Uuid::parse_str(&project_id_str)
+            .map_err(|e| NoraError::ConfigError(format!("Invalid project UUID: {}", e)))?;
 
         // Try to find a default board for this project (table is project_boards)
-        let board_result: Option<(Uuid,)> = sqlx::query_as(
-            r#"SELECT id as "id!: Uuid" FROM project_boards WHERE project_id = $1 LIMIT 1"#,
+        let board_result: Option<(String,)> = sqlx::query_as(
+            r#"SELECT id FROM project_boards WHERE project_id = $1 LIMIT 1"#,
         )
-        .bind(project_id)
+        .bind(&project_id_str)
         .fetch_optional(&self.pool)
         .await
         .map_err(|e| NoraError::DatabaseError(e))?;
 
-        let board_id = board_result.map(|(id,)| id);
+        let board_id = match board_result {
+            Some((id,)) => Some(id),
+            None => None,
+        };
 
         tracing::info!("[TOOL_FLOW] Board ID: {:?}", board_id);
 
-        let task_id = Uuid::new_v4();
+        let task_id = Uuid::new_v4().to_string();
 
         let create_task = CreateTask {
-            project_id,
+            project_id: project_id.to_string(),
             pod_id: None,
             board_id,
             title: title.clone(),
@@ -675,9 +694,12 @@ impl TaskExecutor {
             scheduled_start: None,
             scheduled_end: None,
             screenshot: None,
+            completion_criteria: None,
+            output_format: None,
+            collaborators: None,
         };
 
-        let task = Task::create(&self.pool, &create_task, task_id)
+        let task = Task::create(&self.pool, &create_task, &task_id)
             .await
             .map_err(|e| NoraError::DatabaseError(e))?;
 
@@ -692,10 +714,10 @@ impl TaskExecutor {
     }
 
     /// Get project statistics
-    pub async fn get_project_stats(&self, project_id: Uuid) -> Result<ProjectStats> {
+    pub async fn get_project_stats(&self, project_id: &str) -> Result<ProjectStats> {
         let total_tasks: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE project_id = ?")
-                .bind(project_id.as_bytes().to_vec())
+                .bind(project_id)
                 .fetch_one(&self.pool)
                 .await
                 .map_err(|e| NoraError::DatabaseError(e))?;
@@ -703,7 +725,7 @@ impl TaskExecutor {
         let completed_tasks: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = 'completed'",
         )
-        .bind(project_id.as_bytes().to_vec())
+        .bind(project_id)
         .fetch_one(&self.pool)
         .await
         .unwrap_or(0);
@@ -711,7 +733,7 @@ impl TaskExecutor {
         let in_progress_tasks: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = 'in_progress'",
         )
-        .bind(project_id.as_bytes().to_vec())
+        .bind(project_id)
         .fetch_one(&self.pool)
         .await
         .unwrap_or(0);
@@ -719,7 +741,7 @@ impl TaskExecutor {
         let blocked_tasks: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = 'blocked'",
         )
-        .bind(project_id.as_bytes().to_vec())
+        .bind(project_id)
         .fetch_one(&self.pool)
         .await
         .unwrap_or(0);
@@ -750,8 +772,8 @@ pub struct TaskDefinition {
     pub priority: Option<Priority>,
     pub tags: Option<Vec<String>>,
     pub assignee_id: Option<String>,
-    pub board_id: Option<Uuid>,
-    pub pod_id: Option<Uuid>,
+    pub board_id: Option<String>,
+    pub pod_id: Option<String>,
 }
 
 /// Project information
@@ -804,8 +826,8 @@ pub struct PodInfo {
 /// Result of delegating a task to an agent
 #[derive(Debug, Clone)]
 pub struct DelegationResult {
-    pub task_id: Uuid,
-    pub agent_id: Uuid,
+    pub task_id: String,
+    pub agent_id: String,
     pub agent_name: String,
     pub executor_type: String,
     pub status: String,
@@ -830,21 +852,23 @@ impl TaskCreator for TaskExecutor {
             agent_id
         );
 
+        let project_id_str = project_id.to_string();
+
         // Find or create a default board for this project
-        let board_id: Option<Uuid> = sqlx::query_scalar(
+        let board_id_str: Option<String> = sqlx::query_scalar(
             r#"SELECT id FROM project_boards WHERE project_id = $1 ORDER BY created_at ASC LIMIT 1"#,
         )
-        .bind(project_id)
+        .bind(&project_id_str)
         .fetch_optional(&self.pool)
         .await
         .map_err(|e| format!("Failed to query boards: {}", e))?;
 
-        let board_id = match board_id {
+        let board_id_string = match board_id_str {
             Some(id) => id,
             None => {
                 // Create a default "Agent Flows" board for workflow tasks
                 let board = db::models::project_board::CreateProjectBoard {
-                    project_id,
+                    project_id: project_id_str.clone(),
                     name: "Agent Flows".to_string(),
                     slug: "agent-flows".to_string(),
                     // Use 'custom' - 'agent_flows' blocked by legacy CHECK constraint
@@ -865,10 +889,11 @@ impl TaskCreator for TaskExecutor {
 
         // Create the task
         let task_id = Uuid::new_v4();
+        let task_id_str = task_id.to_string();
         let create_task = CreateTask {
-            project_id,
+            project_id: project_id.to_string(),
             pod_id: None,
-            board_id: Some(board_id),
+            board_id: Some(board_id_string.clone()),
             title: title.clone(),
             description,
             parent_task_attempt: None,
@@ -888,9 +913,12 @@ impl TaskCreator for TaskExecutor {
             scheduled_start: None,
             scheduled_end: None,
             screenshot: None,
+            completion_criteria: None,
+            output_format: None,
+            collaborators: None,
         };
 
-        Task::create(&self.pool, &create_task, task_id)
+        Task::create(&self.pool, &create_task, &task_id_str)
             .await
             .map_err(|e| format!("Failed to create task: {}", e))?;
 
@@ -898,7 +926,7 @@ impl TaskCreator for TaskExecutor {
             "[TASK_CREATOR] Created workflow task: '{}' (ID: {}) on board {}",
             title,
             task_id,
-            board_id
+            board_id_string
         );
 
         Ok(task_id)

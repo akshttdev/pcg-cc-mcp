@@ -11,4 +11,8 @@ status: string, title: string, description: string, quote_amount_vibe: bigint,
 /**
  * one-off | retainer | hybrid
  */
-deal_type: string, sent_at: string | null, seen_at: string | null, verbal_at: string | null, signed_at: string | null, declined_at: string | null, created_at: string, updated_at: string, };
+deal_type: string, company_id: string | null, 
+/**
+ * JSON array of contact person UUIDs: ["uuid", ...]
+ */
+contact_ids: string, sent_at: string | null, seen_at: string | null, verbal_at: string | null, signed_at: string | null, declined_at: string | null, created_at: string, updated_at: string, };

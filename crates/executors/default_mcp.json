@@ -1,4 +1,10 @@
 {
+  "orcha_task_server": {
+    "command": "bash",
+    "args": [
+      "scripts/run-mcp-server.sh"
+    ]
+  },
   "duck_kanban": {
     "command": "npx",
     "args": [
@@ -21,6 +27,12 @@
     ]
   },
   "meta": {
+    "orcha_task_server": {
+      "name": "ORCHA Task Server",
+      "description": "Built-in project management — 26 tools for tasks, knowledge, dependencies, search, and project scaffolding",
+      "url": "docs/mcp/task-server.mdx",
+      "icon": "favicon-vk-light.svg"
+    },
     "duck_kanban": {
       "name": "Duck Kanban",
       "description": "Create, update and delete Duck Kanban tasks",

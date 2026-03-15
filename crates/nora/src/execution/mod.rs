@@ -8,6 +8,7 @@
 //! - Artifact-based communication (Antigravity: plans, outputs, diffs)
 //! - Event broadcast to all UI surfaces (Mission Control, Task Board, Chat)
 
+pub mod bowser_bridge;
 mod artifact;
 mod engine;
 mod events;
