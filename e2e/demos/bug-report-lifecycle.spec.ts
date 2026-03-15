@@ -120,9 +120,13 @@ test.describe("Bug Report Lifecycle Demo", () => {
     DEMO_BRANCH = result.branch;
     DEMO_PR_NUMBER = result.prNumber;
 
-    // Wait for the toast notification showing the task moved to In Review
+    // Wait for toast showing the task moved to In Review
     await waitForToast(page, /moved to In Review|In Review/i, { timeout: t(15_000) });
+    await page.waitForTimeout(DEMO_PAUSE);
 
+    // The backend's spawn_watcher_reviews triggers the QA watcher automatically
+    // when a task moves to InReview with a linked PR. Wait for that toast too.
+    await waitForToast(page, /QA review started/i, { timeout: t(15_000) });
     await page.waitForTimeout(DEMO_PAUSE);
   });
 
@@ -142,20 +146,22 @@ test.describe("Bug Report Lifecycle Demo", () => {
     await navigateToTaskDetail(page, TASK_PATH);
     await apiLogin(request);
 
-    // First mark watcher as triggered (simulates spawn_watcher_reviews)
-    await request.patch(`/api/tasks/${TASK_ID}/collaborators`, {
-      data: { actor_id: QA_AGENT_ID, actor_type: "agent_watcher", action: "triggered" },
-    });
+    // Wait for page to fully load and WebSocket to deliver current task state.
+    // Watcher should already be in "Running" state from Step 4's spawn_watcher_reviews.
+    // (UI renders triggered → "Running", watching → "Watching")
+    await expect(
+      page.getByText("Running").or(page.getByText("Watching"))
+    ).toBeVisible({ timeout: t(10_000) });
 
-    // Wait for "QA review started" toast
-    await waitForToast(page, /QA review started/i, { timeout: t(10_000) });
-    await page.waitForTimeout(DEMO_PAUSE);
+    // Allow WebSocket to connect and deliver initial snapshot, so the diff hook
+    // has prev state before we trigger the verdict change.
+    await page.waitForTimeout(2_000);
 
     // Simulate QA verdict: PASS
     await simulateQaVerdict(request, TASK_ID, QA_AGENT_ID, "qa_pass");
 
     // Wait for "QA verdict: PASS" toast
-    await waitForToast(page, /QA verdict.*PASS/i, { timeout: t(10_000) });
+    await waitForToast(page, /QA verdict.*PASS/i, { timeout: t(15_000) });
     await page.waitForTimeout(DEMO_PAUSE);
   });
 

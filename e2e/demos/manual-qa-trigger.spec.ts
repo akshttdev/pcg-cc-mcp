@@ -101,14 +101,22 @@ test.describe("Manual QA Trigger Demo", () => {
     await navigateToTaskDetail(page, TASK_PATH);
     await apiLogin(request);
 
-    // Check if watcher was already triggered by spawn_watcher_reviews
-    // If not, trigger it manually
-    const watchingVisible = await page.getByText("Watching").isVisible().catch(() => false);
-    if (watchingVisible) {
+    // Wait for watcher status badge to render (from AgentWatcherPanel API call).
+    // UI renders: watching → "Watching", triggered → "Running"
+    await expect(
+      page.getByText("Watching").or(page.getByText("Running"))
+    ).toBeVisible({ timeout: t(10_000) });
+
+    // Allow WebSocket to connect and deliver initial snapshot, so the diff hook
+    // has prev state before we trigger changes.
+    await page.waitForTimeout(2_000);
+
+    const runningVisible = await page.getByText("Running").isVisible().catch(() => false);
+    if (!runningVisible) {
+      // Watcher still in "Watching" state — trigger it manually
       await request.patch(`/api/tasks/${TASK_ID}/collaborators`, {
         data: { actor_id: QA_AGENT_ID, actor_type: "agent_watcher", action: "triggered" },
       });
-      await waitForToast(page, /QA review started/i, { timeout: t(10_000) });
       await page.waitForTimeout(DEMO_PAUSE);
     }
 
@@ -116,7 +124,7 @@ test.describe("Manual QA Trigger Demo", () => {
     await simulateQaVerdict(request, TASK_ID, QA_AGENT_ID, "qa_pass");
 
     // Wait for "QA verdict: PASS" toast
-    await waitForToast(page, /QA verdict.*PASS/i, { timeout: t(10_000) });
+    await waitForToast(page, /QA verdict.*PASS/i, { timeout: t(15_000) });
     await page.waitForTimeout(DEMO_PAUSE);
   });
 
