@@ -1,5 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { resolveApiUrl } from '@/lib/api';
+import { useQuery } from '@tanstack/react-query';
+import { bowserApi } from '@/lib/api';
+import { bowserKeys } from '@/lib/query-keys';
+import { useMutationWithToast } from './useMutationWithToast';
 
 // ========== Types ==========
 
@@ -78,158 +80,28 @@ export interface BowserSummary {
   blocked_actions: number;
 }
 
-// ========== API Functions ==========
-
-async function fetchActiveSessions(): Promise<BrowserSession[]> {
-  const response = await fetch(resolveApiUrl('/api/bowser/sessions'));
-  if (!response.ok) throw new Error('Failed to fetch active sessions');
-  const json = await response.json();
-  return json.data;
-}
-
-async function fetchSession(sessionId: string): Promise<BrowserSession> {
-  const response = await fetch(resolveApiUrl(`/api/bowser/sessions/${sessionId}`));
-  if (!response.ok) throw new Error('Failed to fetch session');
-  const json = await response.json();
-  return json.data;
-}
-
-async function fetchSessionDetails(sessionId: string): Promise<BrowserSessionDetails> {
-  const response = await fetch(resolveApiUrl(`/api/bowser/sessions/${sessionId}/details`));
-  if (!response.ok) throw new Error('Failed to fetch session details');
-  const json = await response.json();
-  return json.data;
-}
-
-async function fetchScreenshots(sessionId: string): Promise<BrowserScreenshot[]> {
-  const response = await fetch(resolveApiUrl(`/api/bowser/sessions/${sessionId}/screenshots`));
-  if (!response.ok) throw new Error('Failed to fetch screenshots');
-  const json = await response.json();
-  return json.data;
-}
-
-async function fetchScreenshotsWithDiffs(sessionId: string): Promise<BrowserScreenshot[]> {
-  const response = await fetch(resolveApiUrl(`/api/bowser/sessions/${sessionId}/screenshots/diffs`));
-  if (!response.ok) throw new Error('Failed to fetch screenshots with diffs');
-  const json = await response.json();
-  return json.data;
-}
-
-async function fetchActions(sessionId: string): Promise<BrowserAction[]> {
-  const response = await fetch(resolveApiUrl(`/api/bowser/sessions/${sessionId}/actions`));
-  if (!response.ok) throw new Error('Failed to fetch actions');
-  const json = await response.json();
-  return json.data;
-}
-
-async function fetchAllowlist(projectId: string): Promise<BrowserAllowlist[]> {
-  const response = await fetch(resolveApiUrl(`/api/bowser/projects/${projectId}/allowlist`));
-  if (!response.ok) throw new Error('Failed to fetch allowlist');
-  const json = await response.json();
-  return json.data;
-}
-
-async function fetchSummary(): Promise<BowserSummary> {
-  const response = await fetch(resolveApiUrl('/api/bowser/summary'));
-  if (!response.ok) throw new Error('Failed to fetch Bowser summary');
-  const json = await response.json();
-  return json.data;
-}
-
-async function checkUrl(projectId: string, url: string): Promise<{ allowed: boolean; url: string }> {
-  const response = await fetch(resolveApiUrl(`/api/bowser/projects/${projectId}/check-url`), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url }),
-  });
-  if (!response.ok) throw new Error('Failed to check URL');
-  const json = await response.json();
-  return json.data;
-}
-
-async function startSession(data: {
-  execution_process_id: string;
-  browser_type?: BrowserType;
-  viewport_width?: number;
-  viewport_height?: number;
-  headless?: boolean;
-}): Promise<BrowserSession> {
-  const response = await fetch(resolveApiUrl('/api/bowser/sessions'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!response.ok) throw new Error('Failed to start session');
-  const json = await response.json();
-  return json.data;
-}
-
-async function closeSession(sessionId: string): Promise<BrowserSession> {
-  const response = await fetch(resolveApiUrl(`/api/bowser/sessions/${sessionId}/close`), {
-    method: 'POST',
-  });
-  if (!response.ok) throw new Error('Failed to close session');
-  const json = await response.json();
-  return json.data;
-}
-
-async function navigate(sessionId: string, projectId: string, url: string): Promise<BrowserAction> {
-  const response = await fetch(resolveApiUrl(`/api/bowser/sessions/${sessionId}/navigate`), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url, project_id: projectId }),
-  });
-  if (!response.ok) throw new Error('Failed to navigate');
-  const json = await response.json();
-  return json.data;
-}
-
-async function addToAllowlist(data: {
-  project_id?: string;
-  pattern: string;
-  pattern_type?: PatternType;
-  description?: string;
-  is_global?: boolean;
-}): Promise<BrowserAllowlist> {
-  const response = await fetch(resolveApiUrl('/api/bowser/allowlist'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!response.ok) throw new Error('Failed to add to allowlist');
-  const json = await response.json();
-  return json.data;
-}
-
-async function removeFromAllowlist(entryId: string): Promise<void> {
-  const response = await fetch(resolveApiUrl(`/api/bowser/allowlist/${entryId}`), {
-    method: 'DELETE',
-  });
-  if (!response.ok) throw new Error('Failed to remove from allowlist');
-}
-
-// ========== Hooks ==========
+// ========== Query Hooks ==========
 
 export function useBowserSummary() {
   return useQuery({
-    queryKey: ['bowser', 'summary'],
-    queryFn: fetchSummary,
+    queryKey: bowserKeys.summary(),
+    queryFn: bowserApi.getSummary,
     refetchInterval: 5000,
   });
 }
 
 export function useActiveSessions() {
   return useQuery({
-    queryKey: ['bowser', 'sessions', 'active'],
-    queryFn: fetchActiveSessions,
+    queryKey: bowserKeys.sessionsActive(),
+    queryFn: bowserApi.listActiveSessions,
     refetchInterval: 3000,
   });
 }
 
 export function useSession(sessionId: string | undefined) {
   return useQuery({
-    queryKey: ['bowser', 'session', sessionId],
-    queryFn: () => fetchSession(sessionId!),
+    queryKey: bowserKeys.session(sessionId!),
+    queryFn: () => bowserApi.getSession(sessionId!),
     enabled: !!sessionId,
     refetchInterval: 2000,
   });
@@ -237,8 +109,8 @@ export function useSession(sessionId: string | undefined) {
 
 export function useSessionDetails(sessionId: string | undefined) {
   return useQuery({
-    queryKey: ['bowser', 'session', sessionId, 'details'],
-    queryFn: () => fetchSessionDetails(sessionId!),
+    queryKey: bowserKeys.sessionDetails(sessionId!),
+    queryFn: () => bowserApi.getSessionDetails(sessionId!),
     enabled: !!sessionId,
     refetchInterval: 2000,
   });
@@ -246,8 +118,8 @@ export function useSessionDetails(sessionId: string | undefined) {
 
 export function useScreenshots(sessionId: string | undefined) {
   return useQuery({
-    queryKey: ['bowser', 'session', sessionId, 'screenshots'],
-    queryFn: () => fetchScreenshots(sessionId!),
+    queryKey: bowserKeys.screenshots(sessionId!),
+    queryFn: () => bowserApi.listScreenshots(sessionId!),
     enabled: !!sessionId,
     refetchInterval: 3000,
   });
@@ -255,16 +127,16 @@ export function useScreenshots(sessionId: string | undefined) {
 
 export function useScreenshotsWithDiffs(sessionId: string | undefined) {
   return useQuery({
-    queryKey: ['bowser', 'session', sessionId, 'screenshots', 'diffs'],
-    queryFn: () => fetchScreenshotsWithDiffs(sessionId!),
+    queryKey: bowserKeys.screenshotsDiffs(sessionId!),
+    queryFn: () => bowserApi.listScreenshotsWithDiffs(sessionId!),
     enabled: !!sessionId,
   });
 }
 
 export function useActions(sessionId: string | undefined) {
   return useQuery({
-    queryKey: ['bowser', 'session', sessionId, 'actions'],
-    queryFn: () => fetchActions(sessionId!),
+    queryKey: bowserKeys.actions(sessionId!),
+    queryFn: () => bowserApi.listActions(sessionId!),
     enabled: !!sessionId,
     refetchInterval: 2000,
   });
@@ -272,64 +144,61 @@ export function useActions(sessionId: string | undefined) {
 
 export function useAllowlist(projectId: string | undefined) {
   return useQuery({
-    queryKey: ['bowser', 'allowlist', projectId],
-    queryFn: () => fetchAllowlist(projectId!),
+    queryKey: bowserKeys.allowlist(projectId!),
+    queryFn: () => bowserApi.listAllowlist(projectId!),
     enabled: !!projectId,
   });
 }
 
+// ========== Mutation Hooks ==========
+
 export function useCheckUrl(projectId: string | undefined) {
-  return useMutation({
-    mutationFn: (url: string) => checkUrl(projectId!, url),
+  return useMutationWithToast({
+    mutationFn: (url: string) => bowserApi.checkUrl(projectId!, url),
+    errorMessage: 'Failed to check URL',
   });
 }
 
 export function useStartSession() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: startSession,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bowser', 'sessions'] });
-    },
+  return useMutationWithToast({
+    mutationFn: bowserApi.startSession,
+    successMessage: 'Browser session started',
+    errorMessage: 'Failed to start session',
+    invalidateKeys: [bowserKeys.sessionsActive()],
   });
 }
 
 export function useCloseSession() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: closeSession,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bowser', 'sessions'] });
-    },
+  return useMutationWithToast({
+    mutationFn: bowserApi.closeSession,
+    successMessage: 'Browser session closed',
+    errorMessage: 'Failed to close session',
+    invalidateKeys: [bowserKeys.sessionsActive()],
   });
 }
 
 export function useNavigate(sessionId: string, projectId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (url: string) => navigate(sessionId, projectId, url),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bowser', 'session', sessionId] });
-    },
+  return useMutationWithToast({
+    mutationFn: (url: string) => bowserApi.navigate(sessionId, projectId, url),
+    errorMessage: 'Failed to navigate',
+    invalidateKeys: [bowserKeys.session(sessionId)],
   });
 }
 
 export function useAddToAllowlist() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: addToAllowlist,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bowser', 'allowlist'] });
-    },
+  return useMutationWithToast({
+    mutationFn: bowserApi.addToAllowlist,
+    successMessage: 'URL pattern added to allowlist',
+    errorMessage: 'Failed to add to allowlist',
+    invalidateKeys: [bowserKeys.all],
   });
 }
 
 export function useRemoveFromAllowlist() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: removeFromAllowlist,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bowser', 'allowlist'] });
-    },
+  return useMutationWithToast({
+    mutationFn: bowserApi.removeFromAllowlist,
+    successMessage: 'Removed from allowlist',
+    errorMessage: 'Failed to remove from allowlist',
+    invalidateKeys: [bowserKeys.all],
   });
 }

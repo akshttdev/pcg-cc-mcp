@@ -4,8 +4,10 @@
  * Hooks for managing autonomy modes, checkpoints, and approval gates.
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { resolveApiUrl } from '@/lib/api';
+import { useQuery } from '@tanstack/react-query';
+import { autonomyApi } from '@/lib/api';
+import { autonomyKeys } from '@/lib/query-keys';
+import { useMutationWithToast } from './useMutationWithToast';
 
 // ========== Types ==========
 
@@ -136,185 +138,28 @@ export interface SubmitApprovalRequest {
   comment?: string;
 }
 
-// ========== Fetch Functions ==========
-
-async function fetchTaskAutonomyMode(taskId: string): Promise<AutonomyMode> {
-  const response = await fetch(resolveApiUrl(`/api/tasks/${taskId}/autonomy-mode`));
-  if (!response.ok) throw new Error('Failed to fetch autonomy mode');
-  const json = await response.json();
-  return json.data;
-}
-
-async function setTaskAutonomyMode(taskId: string, mode: AutonomyMode): Promise<void> {
-  const response = await fetch(resolveApiUrl(`/api/tasks/${taskId}/autonomy-mode`), {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mode }),
-  });
-  if (!response.ok) throw new Error('Failed to set autonomy mode');
-}
-
-async function fetchCheckpointDefinitions(projectId: string): Promise<CheckpointDefinition[]> {
-  const response = await fetch(resolveApiUrl(`/api/projects/${projectId}/checkpoint-definitions`));
-  if (!response.ok) throw new Error('Failed to fetch checkpoint definitions');
-  const json = await response.json();
-  return json.data;
-}
-
-async function createCheckpointDefinition(req: CreateCheckpointDefinitionRequest): Promise<CheckpointDefinition> {
-  const response = await fetch(resolveApiUrl('/api/autonomy/checkpoint-definitions'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(req),
-  });
-  if (!response.ok) throw new Error('Failed to create checkpoint definition');
-  const json = await response.json();
-  return json.data;
-}
-
-async function updateCheckpointDefinition(
-  definitionId: string,
-  req: UpdateCheckpointDefinitionRequest
-): Promise<CheckpointDefinition> {
-  const response = await fetch(resolveApiUrl(`/api/autonomy/checkpoint-definitions/${definitionId}`), {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(req),
-  });
-  if (!response.ok) throw new Error('Failed to update checkpoint definition');
-  const json = await response.json();
-  return json.data;
-}
-
-async function deleteCheckpointDefinition(definitionId: string): Promise<void> {
-  const response = await fetch(resolveApiUrl(`/api/autonomy/checkpoint-definitions/${definitionId}`), {
-    method: 'DELETE',
-  });
-  if (!response.ok) throw new Error('Failed to delete checkpoint definition');
-}
-
-async function fetchExecutionCheckpoints(executionId: string): Promise<ExecutionCheckpoint[]> {
-  const response = await fetch(resolveApiUrl(`/api/executions/${executionId}/checkpoints`));
-  if (!response.ok) throw new Error('Failed to fetch checkpoints');
-  const json = await response.json();
-  return json.data;
-}
-
-async function fetchPendingCheckpoints(executionId: string): Promise<ExecutionCheckpoint[]> {
-  const response = await fetch(resolveApiUrl(`/api/executions/${executionId}/checkpoints/pending`));
-  if (!response.ok) throw new Error('Failed to fetch pending checkpoints');
-  const json = await response.json();
-  return json.data;
-}
-
-async function reviewCheckpoint(checkpointId: string, req: ReviewCheckpointRequest): Promise<ExecutionCheckpoint> {
-  const response = await fetch(resolveApiUrl(`/api/checkpoints/${checkpointId}/review`), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(req),
-  });
-  if (!response.ok) throw new Error('Failed to review checkpoint');
-  const json = await response.json();
-  return json.data;
-}
-
-async function skipCheckpoint(checkpointId: string): Promise<ExecutionCheckpoint> {
-  const response = await fetch(resolveApiUrl(`/api/checkpoints/${checkpointId}/skip`), {
-    method: 'POST',
-  });
-  if (!response.ok) throw new Error('Failed to skip checkpoint');
-  const json = await response.json();
-  return json.data;
-}
-
-async function fetchProjectGates(projectId: string): Promise<ApprovalGate[]> {
-  const response = await fetch(resolveApiUrl(`/api/projects/${projectId}/approval-gates`));
-  if (!response.ok) throw new Error('Failed to fetch approval gates');
-  const json = await response.json();
-  return json.data;
-}
-
-async function createApprovalGate(req: CreateApprovalGateRequest): Promise<ApprovalGate> {
-  const response = await fetch(resolveApiUrl('/api/autonomy/approval-gates'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(req),
-  });
-  if (!response.ok) throw new Error('Failed to create approval gate');
-  const json = await response.json();
-  return json.data;
-}
-
-async function deleteApprovalGate(gateId: string): Promise<void> {
-  const response = await fetch(resolveApiUrl(`/api/autonomy/approval-gates/${gateId}`), {
-    method: 'DELETE',
-  });
-  if (!response.ok) throw new Error('Failed to delete approval gate');
-}
-
-async function fetchPendingGates(executionId: string): Promise<PendingGate[]> {
-  const response = await fetch(resolveApiUrl(`/api/executions/${executionId}/gates`));
-  if (!response.ok) throw new Error('Failed to fetch pending gates');
-  const json = await response.json();
-  return json.data;
-}
-
-async function submitGateApproval(pendingGateId: string, req: SubmitApprovalRequest): Promise<GateApproval> {
-  const response = await fetch(resolveApiUrl(`/api/pending-gates/${pendingGateId}/approve`), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(req),
-  });
-  if (!response.ok) throw new Error('Failed to submit approval');
-  const json = await response.json();
-  return json.data;
-}
-
-async function bypassGate(pendingGateId: string): Promise<PendingGate> {
-  const response = await fetch(resolveApiUrl(`/api/pending-gates/${pendingGateId}/bypass`), {
-    method: 'POST',
-  });
-  if (!response.ok) throw new Error('Failed to bypass gate');
-  const json = await response.json();
-  return json.data;
-}
-
-async function fetchPendingApprovalsSummary(): Promise<PendingApprovalsSummary> {
-  const response = await fetch(resolveApiUrl('/api/autonomy/pending-approvals'));
-  if (!response.ok) throw new Error('Failed to fetch pending approvals');
-  const json = await response.json();
-  return json.data;
-}
-
-async function fetchCanProceed(executionId: string): Promise<boolean> {
-  const response = await fetch(resolveApiUrl(`/api/executions/${executionId}/can-proceed`));
-  if (!response.ok) throw new Error('Failed to check proceed status');
-  const json = await response.json();
-  return json.data;
-}
-
 // ========== Query Hooks ==========
 
 export function useTaskAutonomyMode(taskId: string) {
   return useQuery({
-    queryKey: ['autonomy', 'task', taskId, 'mode'],
-    queryFn: () => fetchTaskAutonomyMode(taskId),
+    queryKey: autonomyKeys.taskMode(taskId),
+    queryFn: () => autonomyApi.getTaskMode(taskId),
     enabled: !!taskId,
   });
 }
 
 export function useCheckpointDefinitions(projectId: string) {
   return useQuery({
-    queryKey: ['autonomy', 'checkpoints', 'definitions', projectId],
-    queryFn: () => fetchCheckpointDefinitions(projectId),
+    queryKey: autonomyKeys.checkpointDefinitions(projectId),
+    queryFn: () => autonomyApi.listCheckpointDefinitions(projectId),
     enabled: !!projectId,
   });
 }
 
 export function useExecutionCheckpoints(executionId: string) {
   return useQuery({
-    queryKey: ['autonomy', 'checkpoints', executionId],
-    queryFn: () => fetchExecutionCheckpoints(executionId),
+    queryKey: autonomyKeys.executionCheckpoints(executionId),
+    queryFn: () => autonomyApi.listExecutionCheckpoints(executionId),
     enabled: !!executionId,
     refetchInterval: 3000,
   });
@@ -322,8 +167,8 @@ export function useExecutionCheckpoints(executionId: string) {
 
 export function usePendingCheckpoints(executionId: string) {
   return useQuery({
-    queryKey: ['autonomy', 'checkpoints', executionId, 'pending'],
-    queryFn: () => fetchPendingCheckpoints(executionId),
+    queryKey: autonomyKeys.pendingCheckpoints(executionId),
+    queryFn: () => autonomyApi.listPendingCheckpoints(executionId),
     enabled: !!executionId,
     refetchInterval: 2000,
   });
@@ -331,16 +176,16 @@ export function usePendingCheckpoints(executionId: string) {
 
 export function useProjectGates(projectId: string) {
   return useQuery({
-    queryKey: ['autonomy', 'gates', projectId],
-    queryFn: () => fetchProjectGates(projectId),
+    queryKey: autonomyKeys.projectGates(projectId),
+    queryFn: () => autonomyApi.listProjectGates(projectId),
     enabled: !!projectId,
   });
 }
 
 export function usePendingGates(executionId: string) {
   return useQuery({
-    queryKey: ['autonomy', 'gates', executionId, 'pending'],
-    queryFn: () => fetchPendingGates(executionId),
+    queryKey: autonomyKeys.pendingGates(executionId),
+    queryFn: () => autonomyApi.listPendingGates(executionId),
     enabled: !!executionId,
     refetchInterval: 2000,
   });
@@ -348,16 +193,16 @@ export function usePendingGates(executionId: string) {
 
 export function usePendingApprovalsSummary() {
   return useQuery({
-    queryKey: ['autonomy', 'pending-summary'],
-    queryFn: fetchPendingApprovalsSummary,
+    queryKey: autonomyKeys.pendingSummary(),
+    queryFn: autonomyApi.getPendingApprovalsSummary,
     refetchInterval: 5000,
   });
 }
 
 export function useCanProceed(executionId: string) {
   return useQuery({
-    queryKey: ['autonomy', 'can-proceed', executionId],
-    queryFn: () => fetchCanProceed(executionId),
+    queryKey: autonomyKeys.canProceed(executionId),
+    queryFn: () => autonomyApi.canProceed(executionId),
     enabled: !!executionId,
     refetchInterval: 2000,
   });
@@ -366,113 +211,95 @@ export function useCanProceed(executionId: string) {
 // ========== Mutation Hooks ==========
 
 export function useSetTaskAutonomyMode() {
-  const queryClient = useQueryClient();
-  return useMutation({
+  return useMutationWithToast({
     mutationFn: ({ taskId, mode }: { taskId: string; mode: AutonomyMode }) =>
-      setTaskAutonomyMode(taskId, mode),
-    onSuccess: (_, { taskId }) => {
-      queryClient.invalidateQueries({ queryKey: ['autonomy', 'task', taskId] });
-    },
+      autonomyApi.setTaskMode(taskId, mode),
+    successMessage: 'Autonomy mode updated',
+    errorMessage: 'Failed to set autonomy mode',
+    invalidateKeys: [autonomyKeys.all],
   });
 }
 
 export function useCreateCheckpointDefinition() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: createCheckpointDefinition,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['autonomy', 'checkpoints', 'definitions'] });
-    },
+  return useMutationWithToast({
+    mutationFn: autonomyApi.createCheckpointDefinition,
+    successMessage: 'Checkpoint definition created',
+    errorMessage: 'Failed to create checkpoint definition',
+    invalidateKeys: [autonomyKeys.all],
   });
 }
 
 export function useUpdateCheckpointDefinition() {
-  const queryClient = useQueryClient();
-  return useMutation({
+  return useMutationWithToast({
     mutationFn: ({ definitionId, ...req }: UpdateCheckpointDefinitionRequest & { definitionId: string }) =>
-      updateCheckpointDefinition(definitionId, req),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['autonomy', 'checkpoints', 'definitions'] });
-    },
+      autonomyApi.updateCheckpointDefinition(definitionId, req),
+    successMessage: 'Checkpoint definition updated',
+    errorMessage: 'Failed to update checkpoint definition',
+    invalidateKeys: [autonomyKeys.all],
   });
 }
 
 export function useDeleteCheckpointDefinition() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: deleteCheckpointDefinition,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['autonomy', 'checkpoints', 'definitions'] });
-    },
+  return useMutationWithToast({
+    mutationFn: autonomyApi.deleteCheckpointDefinition,
+    successMessage: 'Checkpoint definition deleted',
+    errorMessage: 'Failed to delete checkpoint definition',
+    invalidateKeys: [autonomyKeys.all],
   });
 }
 
 export function useReviewCheckpoint() {
-  const queryClient = useQueryClient();
-  return useMutation({
+  return useMutationWithToast({
     mutationFn: ({ checkpointId, ...req }: ReviewCheckpointRequest & { checkpointId: string }) =>
-      reviewCheckpoint(checkpointId, req),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['autonomy', 'checkpoints'] });
-      queryClient.invalidateQueries({ queryKey: ['autonomy', 'pending-summary'] });
-      queryClient.invalidateQueries({ queryKey: ['autonomy', 'can-proceed'] });
-    },
+      autonomyApi.reviewCheckpoint(checkpointId, req),
+    successMessage: 'Checkpoint reviewed',
+    errorMessage: 'Failed to review checkpoint',
+    invalidateKeys: [autonomyKeys.all],
   });
 }
 
 export function useSkipCheckpoint() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: skipCheckpoint,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['autonomy', 'checkpoints'] });
-      queryClient.invalidateQueries({ queryKey: ['autonomy', 'pending-summary'] });
-      queryClient.invalidateQueries({ queryKey: ['autonomy', 'can-proceed'] });
-    },
+  return useMutationWithToast({
+    mutationFn: autonomyApi.skipCheckpoint,
+    successMessage: 'Checkpoint skipped',
+    errorMessage: 'Failed to skip checkpoint',
+    invalidateKeys: [autonomyKeys.all],
   });
 }
 
 export function useCreateApprovalGate() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: createApprovalGate,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['autonomy', 'gates'] });
-    },
+  return useMutationWithToast({
+    mutationFn: autonomyApi.createApprovalGate,
+    successMessage: 'Approval gate created',
+    errorMessage: 'Failed to create approval gate',
+    invalidateKeys: [autonomyKeys.all],
   });
 }
 
 export function useDeleteApprovalGate() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: deleteApprovalGate,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['autonomy', 'gates'] });
-    },
+  return useMutationWithToast({
+    mutationFn: autonomyApi.deleteApprovalGate,
+    successMessage: 'Approval gate deleted',
+    errorMessage: 'Failed to delete approval gate',
+    invalidateKeys: [autonomyKeys.all],
   });
 }
 
 export function useSubmitGateApproval() {
-  const queryClient = useQueryClient();
-  return useMutation({
+  return useMutationWithToast({
     mutationFn: ({ pendingGateId, ...req }: SubmitApprovalRequest & { pendingGateId: string }) =>
-      submitGateApproval(pendingGateId, req),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['autonomy', 'gates'] });
-      queryClient.invalidateQueries({ queryKey: ['autonomy', 'pending-summary'] });
-      queryClient.invalidateQueries({ queryKey: ['autonomy', 'can-proceed'] });
-    },
+      autonomyApi.submitGateApproval(pendingGateId, req),
+    successMessage: 'Approval submitted',
+    errorMessage: 'Failed to submit approval',
+    invalidateKeys: [autonomyKeys.all],
   });
 }
 
 export function useBypassGate() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: bypassGate,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['autonomy', 'gates'] });
-      queryClient.invalidateQueries({ queryKey: ['autonomy', 'pending-summary'] });
-      queryClient.invalidateQueries({ queryKey: ['autonomy', 'can-proceed'] });
-    },
+  return useMutationWithToast({
+    mutationFn: autonomyApi.bypassGate,
+    successMessage: 'Gate bypassed',
+    errorMessage: 'Failed to bypass gate',
+    invalidateKeys: [autonomyKeys.all],
   });
 }
