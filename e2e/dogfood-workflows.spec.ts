@@ -144,7 +144,7 @@ test.describe("Workflow Definitions", () => {
     await expect(page.locator("body")).not.toBeEmpty();
   });
 
-  test("Bug Triage Pipeline visible in org workflows", async ({ page }) => {
+  test("Feedback Triage Pipeline visible in org workflows", async ({ page }) => {
     // Navigate to org intelligence/workflows page
     await page.goto(`/organizations/${PCG_ORG_ID}/intelligence/workflows`);
     await page.waitForLoadState("domcontentloaded");
@@ -152,17 +152,17 @@ test.describe("Workflow Definitions", () => {
     // Wait for the workflows page to load
     await page.waitForLoadState("networkidle");
 
-    // The Bug Triage Pipeline should be visible
+    // The Feedback Triage Pipeline should be visible
     // (text may appear as workflow name or in a card/list)
     const pageContent = await page.textContent("body");
     // If the page shows workflow data, check for triage pipeline
     // If the page is still loading or empty, fall back to API check
-    if (pageContent && pageContent.includes("Bug Triage")) {
-      await expect(page.getByText("Bug Triage").first()).toBeVisible();
+    if (pageContent && pageContent.includes("Feedback Triage")) {
+      await expect(page.getByText("Feedback Triage").first()).toBeVisible();
     }
   });
 
-  test("Bug Triage Pipeline has 4-tier triage prompt (API validation)", async ({ page, request }) => {
+  test("Feedback Triage Pipeline has 4-tier triage prompt (API validation)", async ({ page, request }) => {
     await apiLogin(request);
     const res = await request.get("/api/workflows/definitions");
     expect(res.ok()).toBeTruthy();
@@ -185,12 +185,12 @@ test.describe("Workflow Definitions", () => {
     expect(outputNode).toBeTruthy();
   });
 
-  test("ORCHA Bug Triage trigger is configured (API validation)", async ({ page, request }) => {
+  test("ORCHA Feedback Triage trigger is configured (API validation)", async ({ page, request }) => {
     await apiLogin(request);
     const res = await request.get("/api/workflows/triggers");
     expect(res.ok()).toBeTruthy();
     const triggers = (await res.json()).data;
-    const orchaTrigger = triggers.find((t: any) => t.name === "ORCHA Bug Triage");
+    const orchaTrigger = triggers.find((t: any) => t.name === "ORCHA Bug Triage" || t.name === "ORCHA Feedback Triage");
     expect(orchaTrigger).toBeTruthy();
     expect(orchaTrigger.workflow_id).toBe("bug_triage_pipeline");
     expect(orchaTrigger.filter_organization_id).toBe(PCG_ORG_ID);

@@ -186,11 +186,11 @@ fn default_analysis_workflow() -> WorkflowDefinition {
 
 // ── Sprint 2D: Additional system workflows ──────────────────────────────────
 
-/// Bug Triage Pipeline: Analyze bug reports → filter by severity → create prioritized tasks
+/// Feedback Triage Pipeline: Analyze feedback/bug reports → filter by severity → create prioritized tasks
 fn bug_triage_workflow() -> WorkflowDefinition {
     WorkflowDefinition {
         id: "bug_triage_pipeline".to_string(),
-        name: "Bug Triage Pipeline".to_string(),
+        name: "Feedback Triage Pipeline".to_string(),
         description: Some(
             "Investigate and triage bug reports into 4 outcomes: critical fix-now, \
              low-cost fix-now, high-cost planning, or report-findings-to-user."

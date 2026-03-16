@@ -138,7 +138,7 @@ pub async fn submit_feedback(
         }
     }
 
-    // Also create a DataSource so workflow triggers (Bug Triage Pipeline) fire automatically
+    // Also create a DataSource so workflow triggers (Feedback Triage Pipeline) fire automatically
     let ds_metadata = json!({
         "feedback_type": req.feedback_type,
         "severity": req.severity,
