@@ -635,6 +635,7 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
           scheduled_end: null,
           completion_criteria: completionCriteria || null,
           output_format: outputFormat || null,
+          collaborators: null,
         });
       }
     }, [
@@ -728,6 +729,7 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
           scheduled_end: null,
           completion_criteria: completionCriteria || null,
           output_format: outputFormat || null,
+          collaborators: null,
         },
         executor_profile_id: finalExecutorProfile,
         base_branch: selectedBranch,

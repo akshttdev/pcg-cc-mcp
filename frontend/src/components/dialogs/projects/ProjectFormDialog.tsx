@@ -333,6 +333,7 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
           scheduled_end: null,
           parent_task_attempt: null,
           image_ids: null,
+          collaborators: null,
         });
       }
     };

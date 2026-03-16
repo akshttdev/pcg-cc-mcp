@@ -462,8 +462,8 @@ async fn move_deal_stage(
     // "Lead" stage → auto-trigger "Who Is" person + company research
     if stage_name_lower == "lead" {
         let pool_bg = pool.clone();
-        let deal_id = deal.id;
-        let contact_id = deal.crm_contact_id;
+        let deal_id = deal.id.clone();
+        let contact_id = deal.crm_contact_id.clone();
         tokio::spawn(async move {
             trigger_who_is_research(&pool_bg, deal_id, contact_id).await;
         });
@@ -491,20 +491,20 @@ async fn move_deal_stage(
 /// Auto-trigger "Who Is" research for a deal's contact person and company
 async fn trigger_who_is_research(
     pool: &sqlx::SqlitePool,
-    deal_id: Uuid,
-    contact_id: Option<Uuid>,
+    deal_id: DbUuid,
+    contact_id: Option<DbUuid>,
 ) {
     let Some(contact_id) = contact_id else { return };
 
     // Look up person_id from crm_contacts
     #[derive(sqlx::FromRow)]
     struct ContactRow {
-        person_id: Option<Uuid>,
+        person_id: Option<DbUuid>,
     }
     let person_id = sqlx::query_as::<_, ContactRow>(
         "SELECT person_id FROM crm_contacts WHERE id = ?",
     )
-    .bind(contact_id)
+    .bind(&contact_id)
     .fetch_optional(pool)
     .await
     .ok()
@@ -522,7 +522,7 @@ async fn trigger_who_is_research(
     let intel = sqlx::query_as::<_, IntelRow>(
         "SELECT p.intelligence_status, p.company_name FROM persons p WHERE p.id = ?",
     )
-    .bind(person_id)
+    .bind(&person_id)
     .fetch_optional(pool)
     .await
     .ok()
@@ -536,14 +536,16 @@ async fn trigger_who_is_research(
             let _ = sqlx::query(
                 "UPDATE persons SET intelligence_status = 'queued', updated_at = datetime('now','subsec') WHERE id = ?",
             )
-            .bind(person_id)
+            .bind(&person_id)
             .execute(pool)
             .await;
 
+            // Convert DbUuid to Uuid for intelligence API
+            let person_uuid = uuid::Uuid::parse_str(person_id.as_str()).unwrap_or_default();
             let pool2 = pool.clone();
             tokio::spawn(async move {
-                if let Err(e) = crate::routes::intelligence::trigger_research_for_person(&pool2, person_id).await {
-                    tracing::error!("Auto Who Is research failed for person {}: {}", person_id, e);
+                if let Err(e) = crate::routes::intelligence::trigger_research_for_person(&pool2, person_uuid).await {
+                    tracing::error!("Auto Who Is research failed for person {}: {}", person_uuid, e);
                 }
             });
         }
@@ -559,7 +561,7 @@ async fn trigger_who_is_research(
 async fn trigger_company_research_if_idle(pool: &sqlx::SqlitePool, company_name: &str) {
     #[derive(sqlx::FromRow)]
     struct CompanyRow {
-        id: Uuid,
+        id: DbUuid,
         intelligence_status: Option<String>,
     }
     let company = sqlx::query_as::<_, CompanyRow>(
@@ -575,8 +577,9 @@ async fn trigger_company_research_if_idle(pool: &sqlx::SqlitePool, company_name:
         let status = company.intelligence_status.as_deref().unwrap_or("idle");
         if status == "idle" || status == "" {
             tracing::info!("Auto-triggering company research for '{}' ({})", company_name, company.id);
+            let company_uuid = uuid::Uuid::parse_str(company.id.as_str()).unwrap_or_default();
             crate::routes::intelligence::run_company_research_direct(
-                pool, company.id, company_name, None,
+                pool, company_uuid, company_name, None,
             )
             .await;
         }
@@ -588,13 +591,13 @@ async fn create_review_task_if_needed(pool: &sqlx::SqlitePool, deal: &CrmDeal, d
     let existing_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM tasks WHERE crm_deal_id = ? AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL",
     )
-    .bind(deal.id)
+    .bind(&deal.id)
     .fetch_one(pool)
     .await
     .unwrap_or(0);
 
     if existing_count == 0 {
-        let task_id = Uuid::new_v4();
+        let task_id = DbUuid::new();
         let task_title = format!("Review & approve: {}", deal.name);
         let _ = sqlx::query(
             r#"
@@ -602,11 +605,11 @@ async fn create_review_task_if_needed(pool: &sqlx::SqlitePool, deal: &CrmDeal, d
             VALUES (?, ?, ?, 'todo', ?, ?, datetime('now','subsec'), datetime('now','subsec'))
             "#,
         )
-        .bind(task_id)
+        .bind(&task_id)
         .bind(&task_title)
         .bind(description)
-        .bind(deal.id)
-        .bind(deal.project_id)
+        .bind(&deal.id)
+        .bind(&deal.project_id)
         .execute(pool)
         .await;
     }
@@ -618,16 +621,17 @@ async fn advance_deal(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = DbUuid::from(id);
 
-    let deal = CrmDeal::find_by_id(pool, id).await?;
-    let current_stage_id = deal.crm_stage_id
+    let deal = CrmDeal::find_by_id(pool, &id).await?;
+    let current_stage_id = deal.crm_stage_id.clone()
         .ok_or_else(|| ApiError::BadRequest("Deal has no stage assigned".to_string()))?;
 
     // Validate: active review tasks for this deal must be done
     let pending_tasks: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM tasks WHERE crm_deal_id = ? AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL",
     )
-    .bind(id)
+    .bind(&id)
     .fetch_one(pool)
     .await
     .unwrap_or(0);
@@ -639,19 +643,19 @@ async fn advance_deal(
     }
 
     // Find next stage by position + 1 within the same pipeline
-    let current_stage = db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, current_stage_id).await
+    let current_stage = db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, &current_stage_id).await
         .map_err(|_| ApiError::NotFound("Current stage not found".to_string()))?;
 
     let next_position = current_stage.position + 1;
 
     #[derive(sqlx::FromRow)]
     struct NextStageRow {
-        id: Uuid,
+        id: DbUuid,
     }
     let next_stage = sqlx::query_as::<_, NextStageRow>(
         "SELECT id FROM crm_pipeline_stages WHERE pipeline_id = ? AND position = ? LIMIT 1",
     )
-    .bind(current_stage.pipeline_id)
+    .bind(&current_stage.pipeline_id)
     .bind(next_position)
     .fetch_optional(pool)
     .await
@@ -659,19 +663,19 @@ async fn advance_deal(
     .ok_or_else(|| ApiError::BadRequest("Deal is already at the final stage".to_string()))?;
 
     // Move deal to next stage — position 0 (will be sorted by position within stage)
-    let deal = CrmDeal::move_to_stage(pool, id, next_stage.id, 0).await?;
+    let deal = CrmDeal::move_to_stage(pool, &id, &next_stage.id, 0).await?;
 
     // Fire stage-entry hooks for the new stage
-    let new_stage = db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, next_stage.id).await.ok();
+    let new_stage = db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, &next_stage.id).await.ok();
     let new_stage_name = new_stage.as_ref().map(|s| s.name.to_lowercase()).unwrap_or_default();
     let is_won = new_stage.as_ref().map(|s| s.is_won.unwrap_or(0) == 1).unwrap_or(false);
 
     // Auto-create delivery deal on Closed Won
     if is_won {
-        if let Some(pipeline_id) = deal.crm_pipeline_id {
+        if let Some(ref pipeline_id) = deal.crm_pipeline_id {
             if let Ok(pipeline) = db::models::crm_pipeline::CrmPipeline::find_by_id(pool, pipeline_id).await {
                 if pipeline.pipeline_type == "clients" || pipeline.pipeline_type == "sales" {
-                    if let Some(deal_org_id) = deal.organization_id {
+                    if let Some(ref deal_org_id) = deal.organization_id {
                         if let Ok(Some(delivery_pipeline)) =
                             db::models::crm_pipeline::CrmPipeline::find_by_type_for_org(
                                 pool, deal_org_id,
@@ -679,16 +683,16 @@ async fn advance_deal(
                             ).await
                         {
                             let delivery_stages =
-                                db::models::crm_pipeline::CrmPipelineStage::find_by_pipeline(pool, delivery_pipeline.id)
+                                db::models::crm_pipeline::CrmPipelineStage::find_by_pipeline(pool, &delivery_pipeline.id)
                                     .await
                                     .unwrap_or_default();
                             if let Some(first_stage) = delivery_stages.first() {
                                 let _ = CrmDeal::create(pool, CreateCrmDeal {
-                                    organization_id: deal_org_id,
-                                    client_id: deal.client_id,
-                                    crm_contact_id: deal.crm_contact_id,
-                                    crm_pipeline_id: Some(delivery_pipeline.id),
-                                    crm_stage_id: Some(first_stage.id),
+                                    organization_id: deal_org_id.clone(),
+                                    client_id: deal.client_id.clone(),
+                                    crm_contact_id: deal.crm_contact_id.clone(),
+                                    crm_pipeline_id: Some(delivery_pipeline.id.clone()),
+                                    crm_stage_id: Some(first_stage.id.clone()),
                                     name: format!("{} - Delivery", deal.name),
                                     description: Some(format!("Auto-created from won deal: {}", deal.name)),
                                     amount: deal.amount,
@@ -722,8 +726,8 @@ async fn advance_deal(
     // Auto-trigger research on Lead entry
     if new_stage_name == "lead" {
         let pool_bg = pool.clone();
-        let deal_id = deal.id;
-        let contact_id = deal.crm_contact_id;
+        let deal_id = deal.id.clone();
+        let contact_id = deal.crm_contact_id.clone();
         tokio::spawn(async move {
             trigger_who_is_research(&pool_bg, deal_id, contact_id).await;
         });
