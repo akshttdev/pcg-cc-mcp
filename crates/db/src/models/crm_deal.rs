@@ -124,6 +124,7 @@ pub struct CrmDealWithContact {
     pub review_task_assignee: Option<String>,
     // Company intelligence
     pub company_intelligence_status: Option<String>,
+    pub company_intelligence_summary: Option<String>,
     pub company_id: Option<DbUuid>,
 }
 
@@ -701,30 +702,31 @@ impl CrmDeal {
         )
     }
 
-    /// Look up company intelligence status by company name
+    /// Look up company intelligence status, summary and id by company name
     async fn fetch_company_intel_status(
         pool: &SqlitePool,
         company_name: Option<&str>,
-    ) -> (Option<String>, Option<DbUuid>) {
-        let Some(company_name) = company_name else { return (None, None) };
+    ) -> (Option<String>, Option<DbUuid>, Option<String>) {
+        let Some(company_name) = company_name else { return (None, None, None) };
         if company_name.is_empty() {
-            return (None, None);
+            return (None, None, None);
         }
         #[derive(sqlx::FromRow)]
         struct Row {
             id: DbUuid,
             intelligence_status: Option<String>,
+            intelligence_summary: Option<String>,
         }
         if let Ok(Some(row)) = sqlx::query_as::<_, Row>(
-            "SELECT id, intelligence_status FROM companies WHERE name = ? COLLATE NOCASE LIMIT 1",
+            "SELECT id, intelligence_status, intelligence_summary FROM companies WHERE name = ? COLLATE NOCASE LIMIT 1",
         )
         .bind(company_name)
         .fetch_optional(pool)
         .await
         {
-            (row.intelligence_status, Some(row.id))
+            (row.intelligence_status, Some(row.id), row.intelligence_summary)
         } else {
-            (None, None)
+            (None, None, None)
         }
     }
 
@@ -783,7 +785,7 @@ impl CrmDeal {
                     review_task_id, review_task_status, review_task_assignee,
                 ) = Self::fetch_intel_data(pool, &deal.id, person_id.as_ref()).await;
 
-                let (company_intel_status, company_id_val) = Self::fetch_company_intel_status(
+                let (company_intel_status, company_id_val, company_intel_summary) = Self::fetch_company_intel_status(
                     pool,
                     contact_info.as_ref().and_then(|c| c.company_name.as_deref()),
                 ).await;
@@ -808,6 +810,7 @@ impl CrmDeal {
                     review_task_status,
                     review_task_assignee,
                     company_intelligence_status: company_intel_status,
+                    company_intelligence_summary: company_intel_summary,
                     company_id: company_id_val,
                     deal,
                 });
@@ -931,7 +934,7 @@ impl CrmDeal {
                     review_task_id, review_task_status, review_task_assignee,
                 ) = Self::fetch_intel_data(pool, &deal.id, person_id.as_ref()).await;
 
-                let (company_intel_status, company_id_val) = Self::fetch_company_intel_status(
+                let (company_intel_status, company_id_val, company_intel_summary) = Self::fetch_company_intel_status(
                     pool,
                     contact_info.as_ref().and_then(|c| c.company_name.as_deref()),
                 ).await;
@@ -956,6 +959,7 @@ impl CrmDeal {
                     review_task_status,
                     review_task_assignee,
                     company_intelligence_status: company_intel_status,
+                    company_intelligence_summary: company_intel_summary,
                     company_id: company_id_val,
                     deal,
                 });
