@@ -97,7 +97,7 @@ export const organizationKeys = {
   all: ['organizations'] as const,
   detail: (orgId?: string) => ['organization', orgId] as const,
   clients: (orgId?: string) => ['org-clients', orgId] as const,
-  clientsSettings: (orgId?: string) => ['clients', orgId] as const,
+  clientsSettings: (orgId?: string | null) => ['clients', orgId] as const,
   members: (orgId: string) => ['org-members', orgId] as const,
   orgData: (orgId: string) => ['org', orgId] as const,
   brandProfile: (orgId: string) => ['orgBrandProfile', orgId] as const,

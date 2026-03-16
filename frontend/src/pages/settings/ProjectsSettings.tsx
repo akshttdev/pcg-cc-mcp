@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import { projectKeys, sidebarKeys, organizationKeys } from '@/lib/query-keys';
 import {
   FolderKanban,
   Users,
@@ -99,7 +101,6 @@ const api = {
 };
 
 export function ProjectsSettings() {
-  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProject, setSelectedProject] = useState<ProjectWithOrg | null>(null);
   const [membersDialogOpen, setMembersDialogOpen] = useState(false);
@@ -113,13 +114,13 @@ export function ProjectsSettings() {
 
   // Fetch projects
   const { data: projects = [], isLoading } = useQuery({
-    queryKey: ['projects', searchQuery],
+    queryKey: projectKeys.list(searchQuery),
     queryFn: () => api.listProjects({ search: searchQuery }),
   });
 
   // Fetch clients for the client assignment dialog
   const { data: availableClients = [] } = useQuery({
-    queryKey: ['clients', clientProject?.organization_id],
+    queryKey: organizationKeys.clientsSettings(clientProject?.organization_id),
     queryFn: () =>
       clientProject?.organization_id
         ? organizationsApi.getClients(clientProject.organization_id)
@@ -128,32 +129,23 @@ export function ProjectsSettings() {
   });
 
   // Budget mutation
-  const budgetMutation = useMutation({
+  const budgetMutation = useMutationWithToast({
     mutationFn: ({ projectId, budgetLimit }: { projectId: string; budgetLimit: number | null }) =>
       api.setProjectBudget(projectId, budgetLimit),
-    onSuccess: () => {
-      toast.success('VIBE budget updated successfully');
-      setBudgetDialogOpen(false);
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-    },
-    onError: (error) => {
-      toast.error(`Failed to update budget: ${error.message}`);
-    },
+    successMessage: 'VIBE budget updated successfully',
+    errorMessage: (error: Error) => `Failed to update budget: ${error.message}`,
+    invalidateKeys: [projectKeys.all],
+    onSuccess: () => setBudgetDialogOpen(false),
   });
 
   // Client assignment mutation
-  const clientMutation = useMutation({
+  const clientMutation = useMutationWithToast({
     mutationFn: ({ projectId, clientId }: { projectId: string; clientId: string | null }) =>
       projectsApi.setClient(projectId, clientId),
-    onSuccess: () => {
-      toast.success('Client assignment updated');
-      setClientDialogOpen(false);
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-      queryClient.invalidateQueries({ queryKey: ['sidebar-tree'] });
-    },
-    onError: (error) => {
-      toast.error(`Failed to update client: ${error.message}`);
-    },
+    successMessage: 'Client assignment updated',
+    errorMessage: (error: Error) => `Failed to update client: ${error.message}`,
+    invalidateKeys: [projectKeys.all, sidebarKeys.treeLegacy()],
+    onSuccess: () => setClientDialogOpen(false),
   });
 
   const handleAssignClient = (project: ProjectWithOrg) => {

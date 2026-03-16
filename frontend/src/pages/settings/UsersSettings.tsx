@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import { userKeys } from '@/lib/query-keys';
 import { 
   Users, 
   UserPlus, 
@@ -116,7 +118,6 @@ const api = {
 };
 
 export function UsersSettings() {
-  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [roleFilter, setRoleFilter] = useState<string>('all');
@@ -134,41 +135,41 @@ export function UsersSettings() {
   };
 
   const { data: users = [], isLoading, error } = useQuery({
-    queryKey: ['users', filters],
+    queryKey: userKeys.list(filters),
     queryFn: () => api.listUsers(filters),
   });
 
-  const updateRoleMutation = useMutation({
+  const updateRoleMutation = useMutationWithToast({
     mutationFn: ({ userId, isAdmin }: { userId: string; isAdmin: boolean }) =>
       api.updateUserRole(userId, isAdmin),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      setEditRoleDialogOpen(false);
-    },
+    successMessage: 'Role updated',
+    errorMessage: 'Failed to update role',
+    invalidateKeys: [userKeys.all],
+    onSuccess: () => setEditRoleDialogOpen(false),
   });
 
-  const suspendMutation = useMutation({
+  const suspendMutation = useMutationWithToast({
     mutationFn: api.suspendUser,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      setConfirmDialogOpen(false);
-    },
+    successMessage: 'User suspended',
+    errorMessage: 'Failed to suspend user',
+    invalidateKeys: [userKeys.all],
+    onSuccess: () => setConfirmDialogOpen(false),
   });
 
-  const activateMutation = useMutation({
+  const activateMutation = useMutationWithToast({
     mutationFn: api.activateUser,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      setConfirmDialogOpen(false);
-    },
+    successMessage: 'User activated',
+    errorMessage: 'Failed to activate user',
+    invalidateKeys: [userKeys.all],
+    onSuccess: () => setConfirmDialogOpen(false),
   });
 
-  const createUserMutation = useMutation({
+  const createUserMutation = useMutationWithToast({
     mutationFn: api.createUser,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      setInviteDialogOpen(false);
-    },
+    successMessage: 'User invited',
+    errorMessage: 'Failed to create user',
+    invalidateKeys: [userKeys.all],
+    onSuccess: () => setInviteDialogOpen(false),
   });
 
   const handleSuspendUser = (user: UserListItem) => {
