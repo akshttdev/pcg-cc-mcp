@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bot, Plus, X, Eye, Search } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { AlertTriangle, Bot, Plus, RefreshCw, X, Eye, Search } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -31,13 +32,16 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [removing, setRemoving] = useState<Set<string>>(new Set());
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadWatchers = useCallback(async () => {
     try {
+      setLoadError(null);
       const data = await agentWatchersApi.list(taskId);
       setWatchers(data);
     } catch (err) {
       console.error('Failed to load agent watchers:', err);
+      setLoadError('Failed to load agent reviewers');
     }
   }, [taskId]);
 
@@ -168,7 +172,16 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
         </Popover>
       </div>
 
-      {watchers.length === 0 ? (
+      {loadError ? (
+        <div className="flex items-center gap-2 text-xs text-destructive py-1">
+          <AlertTriangle className="h-3 w-3 shrink-0" />
+          <span className="flex-1">{loadError}</span>
+          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={loadWatchers}>
+            <RefreshCw className="h-3 w-3 mr-1" />
+            Retry
+          </Button>
+        </div>
+      ) : watchers.length === 0 ? (
         <p className="text-xs text-muted-foreground">No agent reviewers assigned</p>
       ) : (
         <div className="space-y-1">
@@ -186,7 +199,13 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
                   <Bot className="h-3 w-3 text-blue-700 dark:text-blue-300" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <span className="text-xs font-medium truncate block">{w.agent_name}</span>
+                  <Link
+                    to={`/agents/${w.agent_id}/profile`}
+                    className="text-xs font-medium truncate block hover:text-primary transition-colors"
+                    title="View agent profile"
+                  >
+                    {w.agent_name}
+                  </Link>
                 </div>
                 <Badge
                   variant="secondary"

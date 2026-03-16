@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { AlertTriangle, Archive, Plus, Sparkles } from 'lucide-react';
+import { AlertTriangle, Archive, EyeOff, Plus, Sparkles } from 'lucide-react';
 import { Loader } from '@/components/ui/loader';
 import { projectsApi, tasksApi, agentsApi, usersApi, resolveApiUrl } from '@/lib/api';
 import type { UserListItem } from '@/lib/api';
@@ -92,6 +92,13 @@ export function ProjectTasks() {
   const [error, setError] = useState<string | null>(null);
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [hideTestTasks, setHideTestTasks] = useState(() => {
+    try {
+      return localStorage.getItem('orcha:hide-test-tasks') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const { currentViewType, useEnhancedCards, setUseEnhancedCards, sortOption } = useViewStore();
@@ -257,6 +264,11 @@ export function ProjectTasks() {
       result = result.filter((t) => !t.archived_at);
     }
 
+    // Hide test/E2E tasks
+    if (hideTestTasks) {
+      result = result.filter((t) => !t.title.startsWith('[E2E]') && !t.title.startsWith('[Test]'));
+    }
+
     if (boardFilter) {
       if (boardFilter === 'unassigned') {
         result = result.filter((task) => !task.board_id);
@@ -282,7 +294,7 @@ export function ProjectTasks() {
     }
 
     return result;
-  }, [tasks, boardFilter, searchQuery, projectId, getActiveFilters, showArchived]);
+  }, [tasks, boardFilter, searchQuery, projectId, getActiveFilters, showArchived, hideTestTasks]);
 
   // Memoize grouped filtered tasks, sorted by active sort option within each column
   const groupedFilteredTasks = useMemo(() => {
@@ -780,6 +792,20 @@ export function ProjectTasks() {
                   )}
                 </Button>
                 <Button
+                  variant={hideTestTasks ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => {
+                    const next = !hideTestTasks;
+                    setHideTestTasks(next);
+                    try { localStorage.setItem('orcha:hide-test-tasks', String(next)); } catch { /* non-fatal */ }
+                  }}
+                  className="gap-2"
+                  title={hideTestTasks ? 'Show test tasks' : 'Hide [E2E]/[Test] tasks'}
+                >
+                  <EyeOff className="h-4 w-4" />
+                  {hideTestTasks ? 'Tests Hidden' : 'Hide Tests'}
+                </Button>
+                <Button
                   variant={useEnhancedCards ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setUseEnhancedCards(!useEnhancedCards)}
@@ -946,6 +972,7 @@ export function ProjectTasks() {
         <ResizableDrawer
           open={isPanelOpen && !!selectedTask && !isFullscreen}
           onClose={handleClosePanel}
+          defaultWidth={800}
         >
           {({ isExpanded, toggleExpand }) =>
             selectedTask && (

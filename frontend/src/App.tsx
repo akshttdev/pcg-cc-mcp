@@ -26,6 +26,8 @@ const Projects              = lazy(() => import('@/pages/projects').then(m => ({
 const ProjectTasks          = lazy(() => import('@/pages/project-tasks').then(m => ({ default: m.ProjectTasks })));
 const ProjectControllerPage = lazy(() => import('@/pages/project-controller').then(m => ({ default: m.ProjectControllerPage })));
 const MyTasksPage           = lazy(() => import('@/pages/my-tasks').then(m => ({ default: m.MyTasksPage })));
+const NotificationsPage     = lazy(() => import('@/pages/notifications').then(m => ({ default: m.NotificationsPage })));
+const AgentProfilePage      = lazy(() => import('@/pages/agent-profile').then(m => ({ default: m.AgentProfilePage })));
 const GlobalTasksPage       = lazy(() => import('@/pages/global-tasks').then(m => ({ default: m.GlobalTasksPage })));
 const NoraPage              = lazy(() => import('@/pages/nora').then(m => ({ default: m.NoraPage })));
 const TopsiPage             = lazy(() => import('@/pages/topsi').then(m => ({ default: m.TopsiPage })));
@@ -312,6 +314,8 @@ function App() {
             element={<ProtectedRoute><KnowledgePage /></ProtectedRoute>}
           />
           <Route path="/my-tasks" element={<ProtectedRoute><MyTasksPage /></ProtectedRoute>} />
+          <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
+          <Route path="/agents/:agentId/profile" element={<ProtectedRoute><AgentProfilePage /></ProtectedRoute>} />
           <Route path="/site-directory" element={<AdminRoute><SiteDirectoryPage /></AdminRoute>} />
           <Route path="/nora" element={<AdminRoute><NoraPage /></AdminRoute>} />
           <Route path="/topsi" element={<ProtectedRoute><TopsiPage /></ProtectedRoute>} />

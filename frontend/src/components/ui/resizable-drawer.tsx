@@ -26,7 +26,7 @@ export function ResizableDrawer({
   open,
   onClose,
   children,
-  defaultWidth = 600,
+  defaultWidth = 800,
   minWidth = DEFAULT_MIN_WIDTH,
   storageKey = 'orcha:drawer-width',
   className,

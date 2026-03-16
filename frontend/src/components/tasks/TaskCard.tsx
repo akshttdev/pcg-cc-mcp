@@ -33,6 +33,13 @@ import type { AgentFlow, UserListItem, TaskWithArchive } from '@/lib/api';
 
 type Task = TaskWithArchive;
 
+const PRIORITY_BORDER_COLORS: Record<string, string> = {
+  critical: 'border-l-[3px] border-l-red-500',
+  high: 'border-l-[3px] border-l-amber-500',
+  medium: 'border-l-[3px] border-l-blue-400',
+  low: 'border-l-[3px] border-l-slate-300 dark:border-l-slate-600',
+};
+
 interface TaskCardProps {
   task: Task;
   index: number;
@@ -165,7 +172,10 @@ export function TaskCard({
       onClick={handleClick}
       isOpen={isOpen}
       forwardedRef={localRef}
-      className={dimmed ? 'opacity-60' : undefined}
+      className={[
+        dimmed ? 'opacity-60' : '',
+        PRIORITY_BORDER_COLORS[task.priority || 'medium'] || '',
+      ].filter(Boolean).join(' ') || undefined}
     >
       <div className="flex flex-col gap-1.5 min-w-0">
         <div className="flex items-start gap-2 min-w-0">

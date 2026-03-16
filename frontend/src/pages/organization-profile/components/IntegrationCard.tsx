@@ -22,7 +22,7 @@ export function IntegrationCard({
   actions: React.ReactNode;
   extra?: React.ReactNode;
 }) {
-  const barColor = status === 'connected' ? '#22c55e' : status === 'warning' ? '#f59e0b' : '#6b728040';
+  const barColor = status === 'connected' ? '#22c55e' : status === 'warning' ? '#f59e0b' : '#94a3b830';
   return (
     <Card className="border-border/60 bg-card/80 overflow-hidden">
       <div className="flex items-stretch">
