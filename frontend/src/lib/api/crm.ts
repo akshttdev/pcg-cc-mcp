@@ -8,6 +8,7 @@ import type {
   UpdateCrmPipelineStage,
   KanbanBoardData,
   CrmDealRecord,
+  CrmDealWithContact,
   CreateCrmDeal,
   UpdateCrmDeal,
   MoveDealRequest,
@@ -418,6 +419,33 @@ export const crmPipelinesApi = {
   },
 };
 
+/** Rich deal detail returned by GET /crm/deals/:id/rich */
+export interface DealTask {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  created_at: string;
+}
+
+export interface DealKnowledgeSource {
+  source_type: string;
+  source_title: string;
+  source_summary: string | null;
+  coverage_score: number;
+  last_refreshed_at: string | null;
+}
+
+export interface CrmDealRich extends CrmDealWithContact {
+  company_id: string | null;
+  company_intelligence_summary: string | null;
+  company_intelligence_status: string | undefined;
+  company_intelligence_confidence: number | null;
+  company_intelligence_last_run_at: string | null;
+  tasks: DealTask[];
+  knowledge_sources: DealKnowledgeSource[];
+}
+
 export const crmDealsApi = {
   listDeals: async (options: {
     organization_id?: string;
@@ -468,9 +496,9 @@ export const crmDealsApi = {
     return handleApiResponse<CrmDealRecord>(response);
   },
 
-  getDealRich: async (dealId: string) => {
+  getDealRich: async (dealId: string): Promise<CrmDealRich> => {
     const response = await makeRequest(`/api/crm/deals/${dealId}/rich`);
-    return handleApiResponse(response);
+    return handleApiResponse<CrmDealRich>(response);
   },
 
   deleteDeal: async (id: string): Promise<void> => {

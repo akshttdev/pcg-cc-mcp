@@ -50,7 +50,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { useDealClient } from '@/hooks/useCrmPipeline';
 import { CrmActivityTimeline } from './CrmActivityTimeline';
 import { DealConvertDialog } from './DealConvertDialog';
-import { reportsApi, crmDealsApi } from '@/lib/api';
+import { reportsApi, crmDealsApi, intelligenceApi } from '@/lib/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import type { CrmDealWithContact, CrmPipelineStage } from '@/types/crm';
@@ -665,6 +665,11 @@ function ReviewTab({ deal, stageName }: { deal: CrmDealWithContact; stageName?: 
   const effectiveStage = (stageName || deal.stage || '').toLowerCase();
 
   const handleAdvance = async () => {
+    const confirmed = window.confirm(
+      `Advance "${deal.name}" to the next pipeline stage? This action cannot be undone.`
+    );
+    if (!confirmed) return;
+
     setAdvanceLoading(true);
     try {
       await crmDealsApi.advanceDeal(deal.id);
@@ -681,15 +686,17 @@ function ReviewTab({ deal, stageName }: { deal: CrmDealWithContact; stageName?: 
     if (!deal.person_id) return;
     setResearchLoading(true);
     try {
-      const response = await fetch(`/api/persons/${deal.person_id}/research`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      if (!response.ok) throw new Error('Research trigger failed');
+      // W6: replaced raw fetch() with API client method
+      // const response = await fetch(`/api/persons/${deal.person_id}/research`, {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({}),
+      // });
+      // if (!response.ok) throw new Error('Research trigger failed');
+      await intelligenceApi.triggerResearch(deal.person_id);
       toast.success('Research triggered — Nora is gathering intel');
-    } catch {
-      toast.error('Failed to trigger research');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to trigger research');
     } finally {
       setResearchLoading(false);
     }
@@ -923,13 +930,15 @@ function IntelTab({ deal }: { deal: CrmDealWithContact }) {
     if (!deal.person_id) return;
     setLoading(true);
     try {
-      await fetch(`/api/persons/${deal.person_id}/research`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
+      // W6/W7: replaced raw fetch() with API client method; now properly throws on 4xx/5xx
+      // await fetch(`/api/persons/${deal.person_id}/research`, {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({}),
+      // });
+      await intelligenceApi.triggerResearch(deal.person_id);
       toast.success('Research triggered');
-    } catch { toast.error('Failed to trigger research'); }
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed to trigger research'); }
     finally { setLoading(false); }
   };
 
