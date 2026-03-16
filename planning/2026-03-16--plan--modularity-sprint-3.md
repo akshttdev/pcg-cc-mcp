@@ -64,16 +64,23 @@ PR #39 (UX engagement polish sprint 2) was squash-merged to main and merged into
 ### Regression found & fixed
 - `useTaskMutations.ts` — `if (projectId)` guard silently suppressed cache invalidation when projectId was undefined. Fixed in be4b674 by restoring original `['tasks', projectId]` inline pattern.
 
-### Known issues (not blocking merge, queued for Sprint 4)
+### QA fixes applied (2 fix commits after initial review)
+- `useTaskFormState.ts` — removed duplicate `useEffect` for executor profile (was pre-existing)
+- `company-profile/tabs/OverviewTab.tsx` — deduplicated `Tab` type (imports from index.tsx now)
+- `enhanced/index.tsx` — replaced `any` type in vibe transaction filter with inferred type
+- `NotificationCenter.tsx` — added `notificationKeys.activity()` to factory, migrated consumer
+- `query-keys.ts` — made `dataSourceKeys.all` a plain array (consistent with others)
+- `permissions.ts` — fixed trailing `?` on empty query params
+- `invoices.tsx` — added successMessage/errorMessage to moveStatus mutation
+- `deal-detail/tabs/OverviewTab.tsx` — replaced no-op `onClick` button with plain `<span>`
+
+### Remaining known issues (queued for Sprint 4)
 - `enhanced/index.tsx` is 749 lines (exceeds 500-line rule) — extract data-fetching into `useTaskPanelData.ts`
-- `useTaskFormState.ts:472-484` — duplicate `useEffect` setting executor profile (pre-existing)
 - `useAgents.ts` — partially migrated; `useActiveAgents`, `useAgent`, `useAgentByName` still bypass factory
-- `NotificationCenter.tsx:50` — `['notifications']` activity query key not in factory
 - `StagingTab.tsx:78` — `['stagingPending', orgId]` doesn't match factory's `workflowKeys.stagingPending()` (no orgId)
-- `company-profile/tabs/OverviewTab.tsx` — duplicate `Tab` type definition (also in index.tsx)
 - `deal-detail/tabs/ActivityTab.tsx:10` — `organization_id` used as `projectId` fallback (pre-existing bug)
-- `enhanced/index.tsx:298` — `any` type usage in vibe transaction filter
 - ~8 `console.log` debug statements in `useTaskFormState.ts` (pre-existing)
+- Type-only circular import: `company-profile/tabs/OverviewTab.tsx` → `../index` (harmless at runtime)
 
 ### Pre-existing patterns preserved (not regressions)
 - Singular vs plural key prefixes (`['task', id]` vs `['tasks']`) — matches original inline keys
@@ -81,13 +88,11 @@ PR #39 (UX engagement polish sprint 2) was squash-merged to main and merged into
 
 ## New items for Sprint 4 (expanded from PR #39 + QA review)
 
-**From QA review:**
+**From QA review (remaining after fixes):**
 - Extract `enhanced/index.tsx` data-fetching into `useTaskPanelData.ts` hook (749 → ~300 lines)
-- Remove duplicate `useEffect` in `useTaskFormState.ts`
-- Complete `useAgents.ts` factory migration
-- Add `['notifications']` activity key to factory + migrate consumer
+- Complete `useAgents.ts` factory migration (useActiveAgents, useAgent, useAgentByName)
 - Fix `StagingTab` to use factory key with orgId param
-- Deduplicate `Tab` type in company-profile
+- Fix `deal-detail/tabs/ActivityTab.tsx` org_id-as-project_id fallback bug
 
 **From PR #39:**
 - `my-tasks.tsx` batch handlers — candidates for `useMutationWithToast`
