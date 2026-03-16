@@ -398,7 +398,7 @@ function App() {
           <Route path="/calendar" element={<ProtectedRoute><CalendarPage /></ProtectedRoute>} />
           <Route path="/call-intake" element={<AdminRoute><CallIntakePage /></AdminRoute>} />
           <Route path="/business-reports" element={<AdminRoute><BusinessReportsPage /></AdminRoute>} />
-          <Route path="/business-reports/:id" element={<AdminRoute><ReportDetailPage /></AdminRoute>} />
+          <Route path="/business-reports/:id" element={<ProtectedRoute><ReportDetailPage /></ProtectedRoute>} />
           <Route path="/persons/:personId" element={<ProtectedRoute><PersonProfilePage /></ProtectedRoute>} />
           <Route path="/leads" element={<AdminRoute><LeadsPage /></AdminRoute>} />
           <Route

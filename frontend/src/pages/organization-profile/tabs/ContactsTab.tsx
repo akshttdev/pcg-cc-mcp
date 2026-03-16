@@ -40,7 +40,6 @@ import {
   type CrmContactRecord,
   type CompanyRecord,
 } from '@/lib/api';
-import { personsApi, type PersonRecord } from '@/lib/api/communication';
 import { useCrmContacts, crmContactsQueryKey } from '@/hooks/queries';
 import { LIFECYCLE_STAGE_INFO } from '@/types/crm';
 import type { CrmDealWithContact } from '@/types/crm';
@@ -70,21 +69,17 @@ export function ContactsTab({ orgId }: { orgId: string }) {
 
   // ── Data fetching ─────────────────────────────────────────────────────────
 
+  // Org-scoped CRM contacts — the source of truth for this org's people
   const { data: contacts = [], isLoading: contactsLoading } = useCrmContacts(orgId);
 
-  const { data: persons = [], isLoading: personsLoading } = useQuery<PersonRecord[]>({
-    queryKey: ['persons-all'],
-    queryFn: () => personsApi.list({ limit: 500 }),
-    staleTime: 60_000,
-  });
-
-  const { data: companies = [], isLoading: companiesLoading } = useQuery<CompanyRecord[]>({
+  // All companies (knowledge graph) — used to look up company profiles by name
+  const { data: allCompanies = [], isLoading: companiesLoading } = useQuery<CompanyRecord[]>({
     queryKey: ['companies-all'],
     queryFn: () => companiesApi.list({ limit: 500 }),
     staleTime: 60_000,
   });
 
-  // Pipeline contacts: CRM deals for this org that have both a linked person and a company
+  // Pipeline deals — used to derive person_id for each contact
   const { data: pipelineDeals = [], isLoading: pipelineLoading } = useQuery<CrmDealWithContact[]>({
     queryKey: ['crm-deals-org', orgId],
     queryFn: async () => {
@@ -97,7 +92,46 @@ export function ContactsTab({ orgId }: { orgId: string }) {
     staleTime: 30_000,
   });
 
-  // Deduplicate pipeline contacts by person_id (keep most recent deal per person)
+  // Build contact_id → person_id + company_id map from deals
+  const dealPersonMap = useMemo(() => {
+    const m = new Map<string, { person_id?: string; company_id?: string; intelligence_status?: string; company_intelligence_status?: string }>();
+    for (const d of pipelineDeals) {
+      if (d.crm_contact_id) {
+        m.set(d.crm_contact_id, {
+          person_id: d.person_id,
+          company_id: d.company_id,
+          intelligence_status: d.intelligence_status,
+          company_intelligence_status: d.company_intelligence_status,
+        });
+      }
+    }
+    return m;
+  }, [pipelineDeals]);
+
+  // Company name → company record lookup
+  const companyByName = useMemo(() => {
+    const m = new Map<string, CompanyRecord>();
+    for (const c of allCompanies) {
+      m.set(c.name.toLowerCase(), c);
+    }
+    return m;
+  }, [allCompanies]);
+
+  // Unique companies from org's contacts
+  const orgCompanies = useMemo(() => {
+    const seen = new Set<string>();
+    const result: CompanyRecord[] = [];
+    for (const contact of contacts) {
+      const name = contact.company_name?.trim();
+      if (!name || seen.has(name.toLowerCase())) continue;
+      seen.add(name.toLowerCase());
+      const company = companyByName.get(name.toLowerCase());
+      if (company) result.push(company);
+    }
+    return result;
+  }, [contacts, companyByName]);
+
+  // Pipeline contacts: deals with both person and company
   const pipelineContacts = useMemo(() => {
     const seen = new Set<string>();
     return pipelineDeals
@@ -116,27 +150,15 @@ export function ContactsTab({ orgId }: { orgId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: crmContactsQueryKey(orgId) });
       setShowAddContact(false);
-      setContactForm({
-        first_name: '',
-        last_name: '',
-        email: '',
-        phone: '',
-        company_name: '',
-        job_title: '',
-        lifecycle_stage: 'lead',
-      });
+      setContactForm({ first_name: '', last_name: '', email: '', phone: '', company_name: '', job_title: '', lifecycle_stage: 'lead' });
       toast.success('Contact created');
     },
     onError: () => toast.error('Failed to create contact'),
   });
 
   const createCompanyMutation = useMutation({
-    mutationFn: (data: {
-      name: string;
-      website?: string;
-      industry?: string;
-      created_by_org_id?: string;
-    }) => companiesApi.create(data),
+    mutationFn: (data: { name: string; website?: string; industry?: string; created_by_org_id?: string }) =>
+      companiesApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['companies-all'] });
       setShowAddCompany(false);
@@ -146,36 +168,30 @@ export function ContactsTab({ orgId }: { orgId: string }) {
     onError: () => toast.error('Failed to create company'),
   });
 
-  const handleCreateContact = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault();
-      createContactMutation.mutate({
-        organization_id: orgId,
-        ...contactForm,
-        first_name: contactForm.first_name || undefined,
-        last_name: contactForm.last_name || undefined,
-        email: contactForm.email || undefined,
-        phone: contactForm.phone || undefined,
-        company_name: contactForm.company_name || undefined,
-        job_title: contactForm.job_title || undefined,
-      });
-    },
-    [contactForm, orgId, createContactMutation]
-  );
+  const handleCreateContact = useCallback((e: React.FormEvent) => {
+    e.preventDefault();
+    createContactMutation.mutate({
+      organization_id: orgId,
+      ...contactForm,
+      first_name: contactForm.first_name || undefined,
+      last_name: contactForm.last_name || undefined,
+      email: contactForm.email || undefined,
+      phone: contactForm.phone || undefined,
+      company_name: contactForm.company_name || undefined,
+      job_title: contactForm.job_title || undefined,
+    });
+  }, [contactForm, orgId, createContactMutation]);
 
-  const handleCreateCompany = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!companyForm.name.trim()) return;
-      createCompanyMutation.mutate({
-        name: companyForm.name,
-        website: companyForm.website || undefined,
-        industry: companyForm.industry || undefined,
-        created_by_org_id: orgId,
-      });
-    },
-    [companyForm, orgId, createCompanyMutation]
-  );
+  const handleCreateCompany = useCallback((e: React.FormEvent) => {
+    e.preventDefault();
+    if (!companyForm.name.trim()) return;
+    createCompanyMutation.mutate({
+      name: companyForm.name,
+      website: companyForm.website || undefined,
+      industry: companyForm.industry || undefined,
+      created_by_org_id: orgId,
+    });
+  }, [companyForm, orgId, createCompanyMutation]);
 
   // ── Filtering ─────────────────────────────────────────────────────────────
 
@@ -184,27 +200,33 @@ export function ContactsTab({ orgId }: { orgId: string }) {
     [contacts, selectedContactId]
   );
 
-  const filteredPersons = useMemo(() => {
-    if (!searchQuery) return persons;
-    const q = searchQuery.toLowerCase();
-    return persons.filter(
-      (p) =>
-        (p.full_name && p.full_name.toLowerCase().includes(q)) ||
-        (p.email && p.email.toLowerCase().includes(q)) ||
-        (p.company_name && p.company_name.toLowerCase().includes(q))
-    );
-  }, [persons, searchQuery]);
+  const filteredContacts = useMemo(() => {
+    let result = contacts;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(
+        (c) =>
+          (c.full_name && c.full_name.toLowerCase().includes(q)) ||
+          (c.email && c.email.toLowerCase().includes(q)) ||
+          (c.company_name && c.company_name.toLowerCase().includes(q))
+      );
+    }
+    if (stageFilter !== 'all') {
+      result = result.filter((c) => c.lifecycle_stage === stageFilter);
+    }
+    return result;
+  }, [contacts, searchQuery, stageFilter]);
 
   const filteredCompanies = useMemo(() => {
-    if (!searchQuery) return companies;
+    if (!searchQuery) return orgCompanies;
     const q = searchQuery.toLowerCase();
-    return companies.filter(
+    return orgCompanies.filter(
       (c) =>
         c.name.toLowerCase().includes(q) ||
         (c.industry && c.industry.toLowerCase().includes(q)) ||
         (c.headquarters && c.headquarters.toLowerCase().includes(q))
     );
-  }, [companies, searchQuery]);
+  }, [orgCompanies, searchQuery]);
 
   const filteredPipeline = useMemo(() => {
     if (!searchQuery) return pipelineContacts;
@@ -218,11 +240,9 @@ export function ContactsTab({ orgId }: { orgId: string }) {
   }, [pipelineContacts, searchQuery]);
 
   const isLoading =
-    view === 'people'
-      ? personsLoading
-      : view === 'companies'
-        ? companiesLoading
-        : pipelineLoading;
+    view === 'people' ? contactsLoading
+    : view === 'companies' ? companiesLoading
+    : pipelineLoading;
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -233,33 +253,27 @@ export function ContactsTab({ orgId }: { orgId: string }) {
         <button
           onClick={() => setView('people')}
           className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
-            view === 'people'
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
+            view === 'people' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
           }`}
         >
           <Users className="h-3.5 w-3.5" />
           People
-          <span className="text-xs text-muted-foreground">({persons.length})</span>
+          <span className="text-xs text-muted-foreground">({contacts.length})</span>
         </button>
         <button
           onClick={() => setView('companies')}
           className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
-            view === 'companies'
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
+            view === 'companies' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
           }`}
         >
           <Building2 className="h-3.5 w-3.5" />
           Companies
-          <span className="text-xs text-muted-foreground">({companies.length})</span>
+          <span className="text-xs text-muted-foreground">({orgCompanies.length})</span>
         </button>
         <button
           onClick={() => setView('pipeline')}
           className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
-            view === 'pipeline'
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
+            view === 'pipeline' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
           }`}
         >
           <Briefcase className="h-3.5 w-3.5" />
@@ -274,17 +288,27 @@ export function ContactsTab({ orgId }: { orgId: string }) {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder={
-              view === 'people'
-                ? 'Search people...'
-                : view === 'companies'
-                  ? 'Search companies...'
-                  : 'Search pipeline contacts...'
+              view === 'people' ? 'Search contacts…'
+              : view === 'companies' ? 'Search companies…'
+              : 'Search pipeline contacts…'
             }
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"
           />
         </div>
+        {view === 'people' && (
+          <select
+            value={stageFilter}
+            onChange={(e) => setStageFilter(e.target.value)}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="all">All Stages</option>
+            {Object.entries(LIFECYCLE_STAGE_INFO).map(([key, info]) => (
+              <option key={key} value={key}>{info.label}</option>
+            ))}
+          </select>
+        )}
         {isLoading && <span className="text-xs text-muted-foreground">Loading…</span>}
         {view === 'people' && (
           <Button size="sm" onClick={() => setShowAddContact(true)}>
@@ -300,72 +324,77 @@ export function ContactsTab({ orgId }: { orgId: string }) {
         )}
       </div>
 
-      {/* ── People view ───────────────────────────────────────────────────── */}
+      {/* ── People (org contacts with person profile links) ─────────────── */}
       {view === 'people' && (
-        filteredPersons.length === 0 ? (
+        filteredContacts.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
-            <Users className="h-8 w-8 mx-auto mb-2 opacity-40" />
-            <p>{personsLoading ? 'Loading people…' : 'No people found'}</p>
+            <Contact2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
+            <p>{contactsLoading ? 'Loading contacts…' : 'No contacts found'}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {filteredPersons.map((person) => (
-              <Link
-                key={person.id}
-                to={`/persons/${person.id}`}
-                className="block p-4 rounded-lg border bg-card hover:border-primary/40 hover:shadow-sm transition-all group"
-              >
-                <div className="flex items-start gap-3">
-                  {person.avatar_url ? (
-                    <img
-                      src={person.avatar_url}
-                      alt=""
-                      className="w-9 h-9 rounded-full object-cover shrink-0"
-                    />
-                  ) : (
-                    <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center shrink-0 text-sm font-semibold text-muted-foreground">
-                      {person.full_name?.charAt(0) ?? '?'}
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold truncate group-hover:text-primary transition-colors">
-                      {person.full_name ?? 'Unknown'}
-                    </p>
-                    {person.title && (
-                      <p className="text-xs text-muted-foreground truncate">{person.title}</p>
+            {filteredContacts.map((contact) => {
+              const personInfo = dealPersonMap.get(contact.id);
+              const personId = personInfo?.person_id;
+              const intelStatus = personInfo?.intelligence_status;
+              return (
+                <div key={contact.id} className="rounded-lg border bg-card p-4 space-y-2">
+                  <div
+                    className="flex items-start gap-3 cursor-pointer"
+                    onClick={() => setSelectedContactId(contact.id)}
+                  >
+                    {contact.avatar_url ? (
+                      <img src={contact.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center shrink-0 text-sm font-semibold text-muted-foreground">
+                        {contact.full_name?.charAt(0) ?? '?'}
+                      </div>
                     )}
-                    {person.company_name && (
-                      <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5">
-                        <Building2 className="h-3 w-3 shrink-0" />
-                        {person.company_name}
-                      </p>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold truncate">{contact.full_name ?? 'Unknown'}</p>
+                      {contact.job_title && (
+                        <p className="text-xs text-muted-foreground truncate">{contact.job_title}</p>
+                      )}
+                      {contact.company_name && (
+                        <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5">
+                          <Building2 className="h-3 w-3 shrink-0" />
+                          {contact.company_name}
+                        </p>
+                      )}
+                    </div>
+                    {intelStatus === 'done' && <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0 mt-0.5" />}
+                    {(intelStatus === 'running' || intelStatus === 'queued') && (
+                      <Loader2 className="h-3.5 w-3.5 text-blue-500 animate-spin shrink-0 mt-0.5" />
                     )}
                   </div>
-                  {person.intelligence_status === 'done' && (
-                    <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0 mt-0.5" />
-                  )}
-                  {(person.intelligence_status === 'running' ||
-                    person.intelligence_status === 'queued') && (
-                    <Loader2 className="h-3.5 w-3.5 text-blue-500 animate-spin shrink-0 mt-0.5" />
+                  {personId && (
+                    <Link
+                      to={`/persons/${personId}`}
+                      className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      View Intelligence Profile
+                    </Link>
                   )}
                 </div>
-                {person.intelligence_summary && (
-                  <p className="text-xs text-muted-foreground mt-2 line-clamp-2">
-                    {person.intelligence_summary}
-                  </p>
-                )}
-              </Link>
-            ))}
+              );
+            })}
           </div>
         )
       )}
 
-      {/* ── Companies view ────────────────────────────────────────────────── */}
+      {/* ── Companies (from org's contact company names) ───────────────── */}
       {view === 'companies' && (
         filteredCompanies.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <Building2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
-            <p>{companiesLoading ? 'Loading companies…' : 'No companies found'}</p>
+            <p>
+              {companiesLoading
+                ? 'Loading companies…'
+                : contacts.length === 0
+                  ? 'No contacts yet — add contacts with company names to see company profiles here'
+                  : 'No company profiles found for your contacts yet'}
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -377,11 +406,7 @@ export function ContactsTab({ orgId }: { orgId: string }) {
               >
                 <div className="flex items-start gap-3">
                   {company.logo_url ? (
-                    <img
-                      src={company.logo_url}
-                      alt=""
-                      className="w-9 h-9 rounded object-cover shrink-0"
-                    />
+                    <img src={company.logo_url} alt="" className="w-9 h-9 rounded object-cover shrink-0" />
                   ) : (
                     <div className="w-9 h-9 rounded bg-muted flex items-center justify-center shrink-0">
                       <Building2 className="h-4 w-4 text-muted-foreground" />
@@ -396,21 +421,16 @@ export function ContactsTab({ orgId }: { orgId: string }) {
                     )}
                     {company.headquarters && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                        <MapPin className="h-3 w-3 shrink-0" />
-                        {company.headquarters}
+                        <MapPin className="h-3 w-3 shrink-0" />{company.headquarters}
                       </p>
                     )}
                   </div>
                   {company.intelligence_status && company.intelligence_status !== 'idle' && (
-                    <span
-                      className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${
-                        company.intelligence_status === 'done'
-                          ? 'bg-green-500'
-                          : company.intelligence_status === 'running'
-                            ? 'bg-blue-500 animate-pulse'
-                            : 'bg-yellow-500'
-                      }`}
-                    />
+                    <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${
+                      company.intelligence_status === 'done' ? 'bg-green-500'
+                      : company.intelligence_status === 'running' ? 'bg-blue-500 animate-pulse'
+                      : 'bg-yellow-500'
+                    }`} />
                   )}
                 </div>
                 {company.intelligence_summary && (
@@ -430,7 +450,7 @@ export function ContactsTab({ orgId }: { orgId: string }) {
         )
       )}
 
-      {/* ── Pipeline view ─────────────────────────────────────────────────── */}
+      {/* ── Pipeline (deals with full person + company profiles) ───────── */}
       {view === 'pipeline' && (
         filteredPipeline.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
@@ -442,17 +462,14 @@ export function ContactsTab({ orgId }: { orgId: string }) {
             </p>
             {!pipelineLoading && (
               <p className="text-xs mt-1">
-                Pipeline contacts appear here once we know both the person and their company.
+                Contacts appear here once they have a linked person entity and company in the pipeline.
               </p>
             )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {filteredPipeline.map((deal) => (
-              <div
-                key={deal.person_id}
-                className="p-4 rounded-lg border bg-card hover:border-primary/40 hover:shadow-sm transition-all"
-              >
+              <div key={deal.person_id} className="p-4 rounded-lg border bg-card hover:border-primary/40 transition-all">
                 {/* Person row */}
                 <div className="flex items-start gap-3">
                   <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center shrink-0 text-sm font-semibold text-muted-foreground">
@@ -495,7 +512,7 @@ export function ContactsTab({ orgId }: { orgId: string }) {
                   </div>
                 )}
 
-                {/* Deal stage badge */}
+                {/* Stage + analysis badges */}
                 <div className="mt-2 flex items-center gap-1.5">
                   <Badge variant="outline" className="text-[10px] h-4 px-1.5">
                     {deal.stage || 'Pipeline'}
@@ -513,86 +530,50 @@ export function ContactsTab({ orgId }: { orgId: string }) {
         )
       )}
 
-      {/* ── Add Contact Dialog ────────────────────────────────────────────── */}
+      {/* ── Add Contact Dialog ─────────────────────────────────────────── */}
       <Dialog open={showAddContact} onOpenChange={setShowAddContact}>
         <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add Contact</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Add Contact</DialogTitle></DialogHeader>
           <form onSubmit={handleCreateContact} className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>First Name</Label>
-                <Input
-                  value={contactForm.first_name}
-                  onChange={(e) => setContactForm((f) => ({ ...f, first_name: e.target.value }))}
-                  placeholder="Jane"
-                />
+                <Input value={contactForm.first_name} onChange={e => setContactForm(f => ({ ...f, first_name: e.target.value }))} placeholder="Jane" />
               </div>
               <div>
                 <Label>Last Name</Label>
-                <Input
-                  value={contactForm.last_name}
-                  onChange={(e) => setContactForm((f) => ({ ...f, last_name: e.target.value }))}
-                  placeholder="Doe"
-                />
+                <Input value={contactForm.last_name} onChange={e => setContactForm(f => ({ ...f, last_name: e.target.value }))} placeholder="Doe" />
               </div>
             </div>
             <div>
               <Label>Email</Label>
-              <Input
-                type="email"
-                value={contactForm.email}
-                onChange={(e) => setContactForm((f) => ({ ...f, email: e.target.value }))}
-                placeholder="jane@example.com"
-              />
+              <Input type="email" value={contactForm.email} onChange={e => setContactForm(f => ({ ...f, email: e.target.value }))} placeholder="jane@example.com" />
             </div>
             <div>
               <Label>Phone</Label>
-              <Input
-                value={contactForm.phone}
-                onChange={(e) => setContactForm((f) => ({ ...f, phone: e.target.value }))}
-                placeholder="+1 555-0123"
-              />
+              <Input value={contactForm.phone} onChange={e => setContactForm(f => ({ ...f, phone: e.target.value }))} placeholder="+1 555-0123" />
             </div>
             <div>
               <Label>Company</Label>
-              <Input
-                value={contactForm.company_name}
-                onChange={(e) => setContactForm((f) => ({ ...f, company_name: e.target.value }))}
-                placeholder="Acme Corp"
-              />
+              <Input value={contactForm.company_name} onChange={e => setContactForm(f => ({ ...f, company_name: e.target.value }))} placeholder="Acme Corp" />
             </div>
             <div>
               <Label>Job Title</Label>
-              <Input
-                value={contactForm.job_title}
-                onChange={(e) => setContactForm((f) => ({ ...f, job_title: e.target.value }))}
-                placeholder="CTO"
-              />
+              <Input value={contactForm.job_title} onChange={e => setContactForm(f => ({ ...f, job_title: e.target.value }))} placeholder="CTO" />
             </div>
             <div>
               <Label>Lifecycle Stage</Label>
-              <Select
-                value={contactForm.lifecycle_stage}
-                onValueChange={(v) => setContactForm((f) => ({ ...f, lifecycle_stage: v }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+              <Select value={contactForm.lifecycle_stage} onValueChange={v => setContactForm(f => ({ ...f, lifecycle_stage: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {Object.entries(LIFECYCLE_STAGE_INFO).map(([key, info]) => (
-                    <SelectItem key={key} value={key}>
-                      {info.label}
-                    </SelectItem>
+                    <SelectItem key={key} value={key}>{info.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setShowAddContact(false)}>
-                Cancel
-              </Button>
+              <Button type="button" variant="outline" onClick={() => setShowAddContact(false)}>Cancel</Button>
               <Button type="submit" disabled={createContactMutation.isPending}>
                 {createContactMutation.isPending ? 'Creating…' : 'Create Contact'}
               </Button>
@@ -601,45 +582,26 @@ export function ContactsTab({ orgId }: { orgId: string }) {
         </DialogContent>
       </Dialog>
 
-      {/* ── Add Company Dialog ────────────────────────────────────────────── */}
+      {/* ── Add Company Dialog ─────────────────────────────────────────── */}
       <Dialog open={showAddCompany} onOpenChange={setShowAddCompany}>
         <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add Company</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Add Company</DialogTitle></DialogHeader>
           <form onSubmit={handleCreateCompany} className="space-y-3">
             <div>
               <Label>Company Name *</Label>
-              <Input
-                value={companyForm.name}
-                onChange={(e) => setCompanyForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="Acme Corp"
-              />
+              <Input value={companyForm.name} onChange={e => setCompanyForm(f => ({ ...f, name: e.target.value }))} placeholder="Acme Corp" />
             </div>
             <div>
               <Label>Website</Label>
-              <Input
-                value={companyForm.website}
-                onChange={(e) => setCompanyForm((f) => ({ ...f, website: e.target.value }))}
-                placeholder="https://acme.com"
-              />
+              <Input value={companyForm.website} onChange={e => setCompanyForm(f => ({ ...f, website: e.target.value }))} placeholder="https://acme.com" />
             </div>
             <div>
               <Label>Industry</Label>
-              <Input
-                value={companyForm.industry}
-                onChange={(e) => setCompanyForm((f) => ({ ...f, industry: e.target.value }))}
-                placeholder="Technology"
-              />
+              <Input value={companyForm.industry} onChange={e => setCompanyForm(f => ({ ...f, industry: e.target.value }))} placeholder="Technology" />
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setShowAddCompany(false)}>
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={createCompanyMutation.isPending || !companyForm.name.trim()}
-              >
+              <Button type="button" variant="outline" onClick={() => setShowAddCompany(false)}>Cancel</Button>
+              <Button type="submit" disabled={createCompanyMutation.isPending || !companyForm.name.trim()}>
                 {createCompanyMutation.isPending ? 'Creating…' : 'Add Company'}
               </Button>
             </DialogFooter>
