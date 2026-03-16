@@ -174,7 +174,7 @@ export function TaskCard({
       forwardedRef={localRef}
       className={[
         dimmed ? 'opacity-60' : '',
-        PRIORITY_BORDER_COLORS[task.priority || 'medium'] || '',
+        (task.priority && PRIORITY_BORDER_COLORS[task.priority]) || '',
       ].filter(Boolean).join(' ') || undefined}
     >
       <div className="flex flex-col gap-1.5 min-w-0">

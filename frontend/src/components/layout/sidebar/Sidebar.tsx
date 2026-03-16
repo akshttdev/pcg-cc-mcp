@@ -572,18 +572,8 @@ export function Sidebar({ className }: SidebarProps) {
           <div className={cn("border-t border-border/40 my-1", sidebarCollapsed ? "mx-1" : "mx-0")} />
 
           {/* External Links — collapsed into "More" popover */}
-          {sidebarCollapsed ? (
-            <Popover>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <PopoverTrigger asChild>
-                    <Button variant="ghost" className="w-full justify-center p-2 h-auto text-muted-foreground hover:text-foreground">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </PopoverTrigger>
-                </TooltipTrigger>
-                <TooltipContent side="right">More</TooltipContent>
-              </Tooltip>
+          {(() => {
+            const morePopoverItems = (
               <PopoverContent side="right" align="end" className="w-48 p-1">
                 {EXTERNAL_LINKS.map((item) => {
                   const Icon = item.icon;
@@ -611,47 +601,37 @@ export function Sidebar({ className }: SidebarProps) {
                   );
                 })}
               </PopoverContent>
-            </Popover>
-          ) : (
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start px-3 py-2 h-auto text-muted-foreground hover:text-foreground"
-                >
-                  <MoreHorizontal className="h-4 w-4 mr-3" />
-                  <span className="text-sm">More</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent side="right" align="end" className="w-48 p-1">
-                {EXTERNAL_LINKS.map((item) => {
-                  const Icon = item.icon;
-                  if (item.external) {
-                    return (
-                      <a key={item.href} href={item.href} target="_blank" rel="noopener noreferrer" className="block">
-                        <Button variant="ghost" className="w-full justify-start px-3 py-2 h-auto text-sm">
-                          <Icon className="h-4 w-4 mr-2" />
-                          {item.label}
-                        </Button>
-                      </a>
-                    );
-                  }
-                  return (
-                    <Button
-                      key={item.label}
-                      variant="ghost"
-                      className="w-full justify-start px-3 py-2 h-auto text-sm"
-                      data-testid={item.action ? `${item.action}-button` : undefined}
-                      onClick={() => { if (item.action) NiceModal.show(item.action); }}
-                    >
-                      <Icon className="h-4 w-4 mr-2" />
-                      {item.label}
-                    </Button>
-                  );
-                })}
-              </PopoverContent>
-            </Popover>
-          )}
+            );
+
+            return sidebarCollapsed ? (
+              <Popover>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <PopoverTrigger asChild>
+                      <Button variant="ghost" className="w-full justify-center p-2 h-auto text-muted-foreground hover:text-foreground">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </PopoverTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">More</TooltipContent>
+                </Tooltip>
+                {morePopoverItems}
+              </Popover>
+            ) : (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start px-3 py-2 h-auto text-muted-foreground hover:text-foreground"
+                  >
+                    <MoreHorizontal className="h-4 w-4 mr-3" />
+                    <span className="text-sm">More</span>
+                  </Button>
+                </PopoverTrigger>
+                {morePopoverItems}
+              </Popover>
+            );
+          })()}
 
           {/* User card with view-as switcher */}
           <div className={cn("border-t border-border/40 my-1", sidebarCollapsed ? "mx-1" : "mx-0")} />

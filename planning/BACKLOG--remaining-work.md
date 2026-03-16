@@ -139,8 +139,9 @@
 - ~~Settings tab URL persistence~~ → Done (PR #39, `?scope=` param)
 
 ### 18. UX Audit — Remaining Items (from `2026-03-16--review--ux-design-audit.md`)
-**P2**: Topsi chat suggested prompts (#14), Login "session expired" on first visit (#16)
-**P3**: Dev banner space reduction (#17)
+**P2**: Topsi chat suggested prompts (#14)
+~~Login "session expired" on first visit (#16)~~ → Already fixed (PR #38, `hadPriorSession` localStorage check)
+~~Dev banner space reduction (#17)~~ → Fixed (PR #41, inline pill in navbar header)
 
 ### 19. UX Audit — Partially Addressed (depth improvements)
 **Source:** `archive/2026-03-16--review--ux-design-audit.md`

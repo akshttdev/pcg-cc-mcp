@@ -64,11 +64,11 @@ The platform has strong bones — clear information architecture, consistent sid
 **Impact**: Users lose kanban context when viewing task details. The drawer tries to be a full page in a half-page space.
 **Resolution**: PR #41 increased default drawer width from 600px to 800px, giving task detail more room while keeping kanban columns visible.
 
-### 7. "Source of truth: ." in Brand Identity
+### 7. ~~"Source of truth: ." in Brand Identity~~ → ADDRESSED (PR #38)
 **Where**: Project detail page (`ux-review/02-project-detail.png`)
 **Problem**: The brand identity card shows `Source of truth: .` and `Repository: .` — these are clearly placeholder/unset values being displayed as literal periods.
 **Impact**: Looks broken. Users will question data integrity.
-**Recommendation**: Show "Not configured" or hide the field entirely when the value is empty or "."
+**Resolution**: `getBrandTagline()` in `helpers.ts` explicitly checks for `"."` and shows fallback text instead. `ProjectStatsPanel` shows "Not configured" for empty repo paths.
 
 ### 8. ~~Test/E2E Data Pollutes the UI~~ → PARTIALLY ADDRESSED (PR #38 + #41)
 **Where**: Kanban board, My Tasks
@@ -134,18 +134,18 @@ The "Jungleverse" entity appears in some breadcrumbs but not others. The org nam
 **Resolution**: PR #41 added `/notifications` to breadcrumb page labels, removed project-level CRM breadcrumbs (CRM is org-scoped).
 **Remaining**: "Jungleverse" still appears as default org name in some breadcrumbs; full standardization of org name display needed.
 
-### 16. Login Page Shows "Session Expired" on First Visit
+### 16. ~~Login Page Shows "Session Expired" on First Visit~~ → ADDRESSED (PR #38)
 **Where**: Login page
 **Problem**: Navigating to the root URL redirects to `/login?expired=1` with a yellow "Your session has expired" alert — even on first visit or after clearing cookies.
-**Impact**: Creates false alarm. Users who haven't logged in before see an error message.
-**Recommendation**: Only show the expiry message when there was actually a prior session (check for a cookie/token before showing).
+**Resolution**: `LoginPage.tsx` checks both `?expired=1` AND `localStorage.getItem('orcha:had-session')` — banner only shows when a prior session actually existed.
 
 ---
 
 ## Low Priority / Polish (P3)
 
-### 17. Development Mode Banner Takes Valuable Space
+### 17. ~~Development Mode Banner Takes Valuable Space~~ → ADDRESSED (PR #41)
 The orange "Development Mode - This is a development build" banner uses ~32px of vertical space on every page. Consider making it a small badge or corner indicator in development builds.
+**Resolution**: PR #41 converted DevBanner from a fixed-position overlay to a small inline pill badge rendered next to the logo in the navbar header. No longer takes extra vertical space.
 
 ### 18. ~~Project Cards Could Show More Context~~ → PARTIALLY ADDRESSED (PR #39)
 On the Projects page, each card shows name, status badge, creation date, boards count, and tasks count. Missing: last activity timestamp, assignee avatars, progress indicator (% tasks done).
@@ -172,14 +172,13 @@ The Settings page shows a Theme selector (System/Light/Dark) but the screenshots
 |----------|-------|-----------|-------|
 | P0 Critical | 4 | 4 of 4 | ~~Onboarding~~ (PR #39), ~~empty states~~ (PR #38+#39), ~~task card density~~ (PR #41), ~~notifications~~ (PR #38+#39+#41) |
 | P1 Major | 6 | 6 of 6 | ~~Sidebar overload~~ (PR #41), ~~drawer layout~~ (PR #41), ~~placeholder data~~ (PR #38), ~~integrations wall~~ (PR #41), ~~KPIs~~ (PR #39), ~~test data~~ (PR #38+#41) |
-| P2 Medium | 6 | 4 of 6 | ~~Workflow status~~ (PR #39), ~~batch actions~~ (PR #38), ~~settings layout~~ (PR #39), Topsi guidance, ~~breadcrumbs~~ (PR #41 partial), login |
-| P3 Polish | 5 | 4 of 5 | Dev banner, ~~project cards~~ (PR #39), ~~CRM duplication~~ (PR #41), ~~kanban add~~ (PR #38), ~~dark mode~~ (PR #39) |
+| P2 Medium | 6 | 5 of 6 | ~~Workflow status~~ (PR #39), ~~batch actions~~ (PR #38), ~~settings layout~~ (PR #39), Topsi guidance, ~~breadcrumbs~~ (PR #41 partial), ~~login~~ (PR #38) |
+| P3 Polish | 5 | 5 of 5 | ~~Dev banner~~ (PR #41), ~~project cards~~ (PR #39), ~~CRM duplication~~ (PR #41), ~~kanban add~~ (PR #38), ~~dark mode~~ (PR #39) |
 
-**Total: 18 of 21 items addressed across PR #38, #39, and #41.**
+**Total: 20 of 21 items addressed across PR #38, #39, and #41.**
 
 ---
 
 ## Remaining Items (Not Yet Addressed)
 
-**P2**: #14 Topsi chat suggested prompts, #16 Login "session expired" on first visit
-**P3**: #17 Dev banner space reduction
+**P2**: #14 Topsi chat suggested prompts
