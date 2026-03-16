@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import { projectKeys, sidebarKeys, organizationKeys } from '@/lib/query-keys';
 import {
   FolderKanban,
   Users,
@@ -41,65 +43,14 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { ProjectMembersDialog } from '@/components/dialogs/project-members-dialog';
-import { projectsApi, organizationsApi, type ClientData } from '@/lib/api';
+import { projectsApi, organizationsApi, type ClientData, permissionsApi } from '@/lib/api';
 import { formatDate } from '@/lib/formatters';
 import type { Project } from 'shared/types';
 
 // Project already includes organization_id and client_id
 type ProjectWithOrg = Project;
 
-interface VibeBudgetResponse {
-  vibe_budget_limit: number | null;
-  vibe_spent_amount: number;
-  vibe_remaining: number | null;
-}
-
-// API functions
-const api = {
-  listProjects: async (filters?: {
-    search?: string;
-  }): Promise<ProjectWithOrg[]> => {
-    const params = new URLSearchParams();
-    if (filters?.search) params.append('search', filters.search);
-
-    const response = await fetch(`/api/projects?${params}`);
-    if (!response.ok) throw new Error('Failed to fetch projects');
-    const data = await response.json();
-    return data.data;
-  },
-
-  getProjectMemberCount: async (projectId: string): Promise<number> => {
-    try {
-      const response = await fetch(`/api/permissions/projects/${projectId}/members`);
-      if (!response.ok) return 0;
-      const data = await response.json();
-      return data.data?.length || 0;
-    } catch {
-      return 0;
-    }
-  },
-
-  getProjectBudget: async (projectId: string): Promise<VibeBudgetResponse> => {
-    const response = await fetch(`/api/projects/${projectId}/budget`);
-    if (!response.ok) throw new Error('Failed to fetch budget');
-    const data = await response.json();
-    return data.data;
-  },
-
-  setProjectBudget: async (projectId: string, budgetLimit: number | null): Promise<VibeBudgetResponse> => {
-    const response = await fetch(`/api/projects/${projectId}/budget`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vibe_budget_limit: budgetLimit }),
-    });
-    if (!response.ok) throw new Error('Failed to set budget');
-    const data = await response.json();
-    return data.data;
-  },
-};
-
 export function ProjectsSettings() {
-  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProject, setSelectedProject] = useState<ProjectWithOrg | null>(null);
   const [membersDialogOpen, setMembersDialogOpen] = useState(false);
@@ -113,13 +64,13 @@ export function ProjectsSettings() {
 
   // Fetch projects
   const { data: projects = [], isLoading } = useQuery({
-    queryKey: ['projects', searchQuery],
-    queryFn: () => api.listProjects({ search: searchQuery }),
+    queryKey: projectKeys.list(searchQuery),
+    queryFn: () => permissionsApi.listProjects({ search: searchQuery }),
   });
 
   // Fetch clients for the client assignment dialog
   const { data: availableClients = [] } = useQuery({
-    queryKey: ['clients', clientProject?.organization_id],
+    queryKey: organizationKeys.clientsSettings(clientProject?.organization_id),
     queryFn: () =>
       clientProject?.organization_id
         ? organizationsApi.getClients(clientProject.organization_id)
@@ -128,32 +79,23 @@ export function ProjectsSettings() {
   });
 
   // Budget mutation
-  const budgetMutation = useMutation({
+  const budgetMutation = useMutationWithToast({
     mutationFn: ({ projectId, budgetLimit }: { projectId: string; budgetLimit: number | null }) =>
-      api.setProjectBudget(projectId, budgetLimit),
-    onSuccess: () => {
-      toast.success('VIBE budget updated successfully');
-      setBudgetDialogOpen(false);
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-    },
-    onError: (error) => {
-      toast.error(`Failed to update budget: ${error.message}`);
-    },
+      permissionsApi.setProjectBudget(projectId, budgetLimit),
+    successMessage: 'VIBE budget updated successfully',
+    errorMessage: (error: Error) => `Failed to update budget: ${error.message}`,
+    invalidateKeys: [projectKeys.all],
+    onSuccess: () => setBudgetDialogOpen(false),
   });
 
   // Client assignment mutation
-  const clientMutation = useMutation({
+  const clientMutation = useMutationWithToast({
     mutationFn: ({ projectId, clientId }: { projectId: string; clientId: string | null }) =>
       projectsApi.setClient(projectId, clientId),
-    onSuccess: () => {
-      toast.success('Client assignment updated');
-      setClientDialogOpen(false);
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-      queryClient.invalidateQueries({ queryKey: ['sidebar-tree'] });
-    },
-    onError: (error) => {
-      toast.error(`Failed to update client: ${error.message}`);
-    },
+    successMessage: 'Client assignment updated',
+    errorMessage: (error: Error) => `Failed to update client: ${error.message}`,
+    invalidateKeys: [projectKeys.all, sidebarKeys.treeLegacy()],
+    onSuccess: () => setClientDialogOpen(false),
   });
 
   const handleAssignClient = (project: ProjectWithOrg) => {

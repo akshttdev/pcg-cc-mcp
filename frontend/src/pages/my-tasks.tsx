@@ -17,6 +17,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { tasksApi, type AssignedTask } from '@/lib/api';
+import { taskKeys, sidebarKeys } from '@/lib/query-keys';
 import type { TaskStatus } from 'shared/types';
 import { toast } from 'sonner';
 import NiceModal from '@ebay/nice-modal-react';
@@ -44,19 +45,19 @@ export function MyTasksPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const { data: assignedTasks = [], isLoading: loadingAssigned } = useQuery<AssignedTask[]>({
-    queryKey: ['my-tasks', user?.id],
+    queryKey: [...taskKeys.my(), user?.id],
     queryFn: () => tasksApi.getAssignedToMe(),
     enabled: !!user,
   });
 
   const { data: createdTasks = [], isLoading: loadingCreated } = useQuery<AssignedTask[]>({
-    queryKey: ['my-created-tasks', user?.id],
+    queryKey: [...taskKeys.myCreated(), user?.id],
     queryFn: () => tasksApi.getCreatedByMe(),
     enabled: !!user,
   });
 
   const { data: watchedTasks = [] } = useQuery<AssignedTask[]>({
-    queryKey: ['my-watched-tasks', user?.id],
+    queryKey: [...taskKeys.myWatched(), user?.id],
     queryFn: () => tasksApi.getWatchedTasks(),
     enabled: !!user,
   });
@@ -114,10 +115,10 @@ export function MyTasksPage() {
   }, []);
 
   const invalidateMyTasks = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
-    queryClient.invalidateQueries({ queryKey: ['my-created-tasks'] });
-    queryClient.invalidateQueries({ queryKey: ['my-watched-tasks'] });
-    queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
+    queryClient.invalidateQueries({ queryKey: taskKeys.my() });
+    queryClient.invalidateQueries({ queryKey: taskKeys.myCreated() });
+    queryClient.invalidateQueries({ queryKey: taskKeys.myWatched() });
+    queryClient.invalidateQueries({ queryKey: sidebarKeys.tree() });
   }, [queryClient]);
 
   const handleBatchStatusChange = useCallback(async (newStatus: string) => {

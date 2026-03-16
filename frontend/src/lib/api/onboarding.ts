@@ -53,8 +53,8 @@ export const orgOnboardingApi = {
     return handleApiResponse<OrgOnboardingWithSegments>(response);
   },
 
-  updateOrg: async (id: string, data: Record<string, unknown>): Promise<OrgOnboardingData> => {
-    const response = await makeRequest(`/api/onboarding/organization/${id}`, {
+  updateOrg: async (orgId: string, data: Record<string, unknown>): Promise<OrgOnboardingData> => {
+    const response = await makeRequest(`/api/onboarding/organization/${orgId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -62,8 +62,8 @@ export const orgOnboardingApi = {
     return handleApiResponse<OrgOnboardingData>(response);
   },
 
-  getOrgSegments: async (onboardingId: string): Promise<OrgOnboardingWithSegments['segments']> => {
-    const response = await makeRequest(`/api/onboarding/organization/${onboardingId}/segments`);
+  getOrgSegments: async (orgId: string): Promise<OrgOnboardingWithSegments['segments']> => {
+    const response = await makeRequest(`/api/onboarding/organization/${orgId}/segments`);
     return handleApiResponse<OrgOnboardingWithSegments['segments']>(response);
   },
 

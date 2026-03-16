@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import type { Project } from 'shared/types';
 import {
   Card,
@@ -66,6 +67,7 @@ import {
   UpdateCrmContactRequest,
 } from '@/lib/api';
 import { EmailAccountConnect } from '@/components/email/EmailAccountConnect';
+import { crmKeys, projectKeys, commsKeys } from '@/lib/query-keys';
 import { LIFECYCLE_STAGE_INFO, CONTACT_SOURCE_INFO } from '@/types/crm';
 import type { LifecycleStage } from '@/types/crm';
 import type { EmailProvider } from '@/types/email';
@@ -86,7 +88,7 @@ export function CrmPage() {
     isLoading: projectsLoading,
     error: projectsError,
   } = useQuery<Project[], Error>({
-    queryKey: ['projects', 'crm'],
+    queryKey: projectKeys.crm(),
     queryFn: projectsApi.getAll,
   });
 
@@ -123,7 +125,7 @@ export function CrmPage() {
   }, [selectedProjectId, activeTab, projectParam, tabParam, setSearchParams]);
 
   const contactsQuery = useQuery<CrmContactRecord[], Error>({
-    queryKey: ['crm-contacts', selectedProjectId, selectedStage],
+    queryKey: crmKeys.contactsFiltered(selectedProjectId, selectedStage),
     queryFn: () =>
       crmApi.listContacts(selectedProjectId!, {
         lifecycleStage: selectedStage === 'all' ? undefined : selectedStage,
@@ -133,48 +135,45 @@ export function CrmPage() {
   });
 
   const searchQuery_result = useQuery<CrmContactRecord[], Error>({
-    queryKey: ['crm-contacts-search', selectedProjectId, searchQuery],
+    queryKey: crmKeys.contactsSearch(selectedProjectId, searchQuery),
     queryFn: () => crmApi.searchContacts(selectedProjectId!, searchQuery, { limit: 50 }),
     enabled: !!selectedProjectId && searchQuery.length > 2,
   });
 
   const statsQuery = useQuery<CrmContactStats, Error>({
-    queryKey: ['crm-stats', selectedProjectId],
+    queryKey: crmKeys.stats(selectedProjectId),
     queryFn: () => crmApi.getContactStats(selectedProjectId!),
     enabled: !!selectedProjectId,
   });
 
   const emailAccountsQuery = useQuery<EmailAccountRecord[], Error>({
-    queryKey: ['email-accounts', selectedProjectId],
+    queryKey: commsKeys.emailAccounts('project', selectedProjectId ?? undefined),
     queryFn: () => emailApi.listAccounts(selectedProjectId ?? undefined),
     enabled: !!selectedProjectId,
   });
 
-  const createContactMutation = useMutation({
+  const createContactMutation = useMutationWithToast({
     mutationFn: (data: CreateCrmContactRequest) => crmApi.createContact(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['crm-contacts'] });
-      queryClient.invalidateQueries({ queryKey: ['crm-stats'] });
-      setIsCreateDialogOpen(false);
-    },
+    successMessage: 'Contact created',
+    errorMessage: 'Failed to create contact',
+    invalidateKeys: [crmKeys.contactsAll(), crmKeys.statsAll()],
+    onSuccess: () => setIsCreateDialogOpen(false),
   });
 
-  const updateContactMutation = useMutation({
+  const updateContactMutation = useMutationWithToast({
     mutationFn: ({ id, data }: { id: string; data: UpdateCrmContactRequest }) =>
       crmApi.updateContact(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['crm-contacts'] });
-      queryClient.invalidateQueries({ queryKey: ['crm-stats'] });
-      setEditingContact(null);
-    },
+    successMessage: 'Contact updated',
+    errorMessage: 'Failed to update contact',
+    invalidateKeys: [crmKeys.contactsAll(), crmKeys.statsAll()],
+    onSuccess: () => setEditingContact(null),
   });
 
-  const deleteContactMutation = useMutation({
+  const deleteContactMutation = useMutationWithToast({
     mutationFn: (id: string) => crmApi.deleteContact(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['crm-contacts'] });
-      queryClient.invalidateQueries({ queryKey: ['crm-stats'] });
-    },
+    successMessage: 'Contact deleted',
+    errorMessage: 'Failed to delete contact',
+    invalidateKeys: [crmKeys.contactsAll(), crmKeys.statsAll()],
   });
 
   const contacts = useMemo(() => {
@@ -204,7 +203,7 @@ export function CrmPage() {
   const handleSyncEmail = async (accountId: string) => {
     try {
       await emailApi.triggerSync(accountId);
-      queryClient.invalidateQueries({ queryKey: ['email-accounts'] });
+      queryClient.invalidateQueries({ queryKey: commsKeys.emailAccountsAll() });
     } catch (error) {
       console.error('Failed to sync email:', error);
     }
@@ -213,7 +212,7 @@ export function CrmPage() {
   const handleDisconnectEmail = async (accountId: string) => {
     try {
       await emailApi.deleteAccount(accountId);
-      queryClient.invalidateQueries({ queryKey: ['email-accounts'] });
+      queryClient.invalidateQueries({ queryKey: commsKeys.emailAccountsAll() });
     } catch (error) {
       console.error('Failed to disconnect email:', error);
     }

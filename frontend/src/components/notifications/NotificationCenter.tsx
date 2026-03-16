@@ -10,7 +10,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Bell, CheckCheck } from 'lucide-react';
-import { resolveApiUrl } from '@/lib/api';
+import { makeRequest } from '@/lib/api';
+import { notificationKeys } from '@/lib/query-keys';
 import type { ActivityItem, InboxNotification } from './types';
 import { getProjectId } from './utils';
 import { ActivityNotificationItem } from './ActivityNotificationItem';
@@ -46,11 +47,9 @@ export function NotificationCenter() {
   const [readActivityIds, setReadActivityIds] = useState<Set<string>>(loadReadActivityIds);
 
   const { data: activityNotifications = [], isLoading: activityLoading } = useQuery({
-    queryKey: ['notifications'],
+    queryKey: notificationKeys.activity(),
     queryFn: async (): Promise<ActivityItem[]> => {
-      const res = await fetch(resolveApiUrl('/api/notifications?limit=30'), {
-        credentials: 'include',
-      });
+      const res = await makeRequest('/api/notifications?limit=30');
       if (!res.ok) return [];
       const json = await res.json();
       return json.data || [];
@@ -60,11 +59,9 @@ export function NotificationCenter() {
   });
 
   const { data: inboxNotifications = [], isLoading: inboxLoading } = useQuery({
-    queryKey: ['notifications-inbox'],
+    queryKey: notificationKeys.inbox(),
     queryFn: async (): Promise<InboxNotification[]> => {
-      const res = await fetch(resolveApiUrl('/api/notifications/inbox?limit=30'), {
-        credentials: 'include',
-      });
+      const res = await makeRequest('/api/notifications/inbox?limit=30');
       if (!res.ok) return [];
       const json = await res.json();
       return json.data || [];
@@ -91,11 +88,8 @@ export function NotificationCenter() {
     persistDismissedAt(new Date().toISOString());
     // Also mark all inbox as read via API
     try {
-      await fetch(resolveApiUrl('/api/notifications/mark-all-read'), {
-        method: 'PUT',
-        credentials: 'include',
-      });
-      queryClient.invalidateQueries({ queryKey: ['notifications-inbox'] });
+      await makeRequest('/api/notifications/mark-all-read', { method: 'PUT' });
+      queryClient.invalidateQueries({ queryKey: notificationKeys.inbox() });
     } catch {
       // Non-fatal
     }
@@ -125,11 +119,8 @@ export function NotificationCenter() {
   const handleDismiss = useCallback(
     async (item: InboxNotification) => {
       try {
-        await fetch(resolveApiUrl(`/api/notifications/${item.id}/read`), {
-          method: 'PUT',
-          credentials: 'include',
-        });
-        queryClient.invalidateQueries({ queryKey: ['notifications-inbox'] });
+        await makeRequest(`/api/notifications/${item.id}/read`, { method: 'PUT' });
+        queryClient.invalidateQueries({ queryKey: notificationKeys.inbox() });
       } catch {
         // Non-fatal
       }
@@ -141,11 +132,8 @@ export function NotificationCenter() {
     async (item: InboxNotification) => {
       // Mark as read via API
       try {
-        await fetch(resolveApiUrl(`/api/notifications/${item.id}/read`), {
-          method: 'PUT',
-          credentials: 'include',
-        });
-        queryClient.invalidateQueries({ queryKey: ['notifications-inbox'] });
+        await makeRequest(`/api/notifications/${item.id}/read`, { method: 'PUT' });
+        queryClient.invalidateQueries({ queryKey: notificationKeys.inbox() });
       } catch {
         // Non-fatal
       }

@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { tasksApi, activityApi } from '@/lib/api';
 import { useTaskViewManager } from '@/hooks/useTaskViewManager';
+import { taskKeys, sidebarKeys } from '@/lib/query-keys';
 import type {
   CreateTask,
   CreateAndStartTaskRequest,
@@ -14,10 +15,11 @@ export function useTaskMutations(projectId?: string) {
   const { navigateToTask } = useTaskViewManager();
 
   const invalidateQueries = (taskId?: string) => {
+    // Always invalidate — when projectId is undefined, ['tasks', undefined] prefix-matches all task queries
     queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
-    queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
+    queryClient.invalidateQueries({ queryKey: sidebarKeys.tree() });
     if (taskId) {
-      queryClient.invalidateQueries({ queryKey: ['task', taskId] });
+      queryClient.invalidateQueries({ queryKey: taskKeys.detail(taskId) });
     }
   };
 

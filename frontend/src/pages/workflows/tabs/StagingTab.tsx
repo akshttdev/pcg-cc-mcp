@@ -5,6 +5,8 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import { workflowKeys } from '@/lib/query-keys';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -136,42 +138,47 @@ export function StagingTab() {
   );
 
   // Global batch mutations -- must be declared before early returns
-  const batchApproveMutation = useMutation({
+  const batchApproveMutation = useMutationWithToast({
     mutationFn: async () => {
       await stagingApi.batchAction(pendingNonDuplicate.map(r => r.id), 'approve');
       // Auto-commit after approving: commit all runs that have approved records
       const runIds = [...new Set(pendingNonDuplicate.map(r => r.workflow_run_id))];
       return Promise.all(runIds.map(rid => stagingApi.batchCommit(rid)));
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['stagingPending'] }),
+    successMessage: 'Batch approved and committed',
+    errorMessage: 'Failed to batch approve',
+    invalidateKeys: [workflowKeys.stagingPending()],
   });
 
-  const batchRejectDupsMutation = useMutation({
+  const batchRejectDupsMutation = useMutationWithToast({
     mutationFn: () => {
       const dupIds = pendingRecords.filter(r => r.status === 'pending_review' && r.duplicate_of_id != null).map(r => r.id);
       return stagingApi.batchAction(dupIds, 'reject');
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['stagingPending'] }),
+    successMessage: 'Duplicates rejected',
+    errorMessage: 'Failed to reject duplicates',
+    invalidateKeys: [workflowKeys.stagingPending()],
   });
 
   // Per-record mutations for table view actions
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: { status?: string; record_data?: any } }) =>
       stagingApi.update(id, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['stagingPending'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: workflowKeys.stagingPending() }),
   });
 
   const commitMutation = useMutation({
     mutationFn: (id: string) => stagingApi.commit(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['stagingPending'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: workflowKeys.stagingPending() }),
   });
 
-  const retryMutation = useMutation({
+  const retryMutation = useMutationWithToast({
     mutationFn: async (id: string) => {
       await stagingApi.update(id, { status: 'approved' });
       return stagingApi.commit(id);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['stagingPending'] }),
+    errorMessage: 'Failed to retry commit',
+    invalidateKeys: [workflowKeys.stagingPending()],
   });
 
   const handleApproveRecord = useCallback((id: string) => {

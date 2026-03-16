@@ -18,4 +18,5 @@ export * from './communication';
 export * from './business';
 export * from './intelligence';
 export * from './misc';
+export * from './permissions';
 export * from './onboarding';

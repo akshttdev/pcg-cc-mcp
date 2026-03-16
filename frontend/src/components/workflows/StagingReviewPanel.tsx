@@ -1,5 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import { workflowKeys } from '@/lib/query-keys';
 import {
   Dialog,
   DialogContent,
@@ -209,7 +211,7 @@ export function StagingReviewContent({
   const [commitErrors, setCommitErrors] = useState<Record<string, string>>({});
 
   const { data: records = [], isLoading } = useQuery({
-    queryKey: ['staging', workflowRunId],
+    queryKey: workflowKeys.staging(workflowRunId),
     queryFn: () => stagingApi.listByRun(workflowRunId),
     enabled: alwaysEnabled ? !!workflowRunId : !!workflowRunId,
   });
@@ -218,7 +220,7 @@ export function StagingReviewContent({
   const targetTypes = useMemo(() => [...new Set(records.map(r => r.target_type))], [records]);
 
   const { data: schemasMap = {} } = useQuery({
-    queryKey: ['schemas', targetTypes],
+    queryKey: workflowKeys.schemas(targetTypes),
     queryFn: async () => {
       const entries = await Promise.all(
         targetTypes.map(async (tt) => {
@@ -310,7 +312,7 @@ export function StagingReviewContent({
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: { status?: string; record_data?: any } }) =>
       stagingApi.update(id, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: workflowKeys.staging(workflowRunId) }),
   });
 
   // Inline field save for expanded view (schema-aware editing)
@@ -330,7 +332,7 @@ export function StagingReviewContent({
       if (result.error) {
         setCommitErrors(prev => ({ ...prev, [result.id]: result.error! }));
       }
-      queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] });
+      queryClient.invalidateQueries({ queryKey: workflowKeys.staging(workflowRunId) });
     },
   });
 
@@ -346,7 +348,7 @@ export function StagingReviewContent({
       if (Object.keys(newErrors).length > 0) {
         setCommitErrors(prev => ({ ...prev, ...newErrors }));
       }
-      queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] });
+      queryClient.invalidateQueries({ queryKey: workflowKeys.staging(workflowRunId) });
     },
   });
 
@@ -366,13 +368,15 @@ export function StagingReviewContent({
           setCommitErrors(prev => ({ ...prev, ...newErrors }));
         }
       }
-      queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] });
+      queryClient.invalidateQueries({ queryKey: workflowKeys.staging(workflowRunId) });
     },
   });
 
-  const rejectDuplicatesMutation = useMutation({
+  const rejectDuplicatesMutation = useMutationWithToast({
     mutationFn: () => stagingApi.rejectDuplicates(workflowRunId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] }),
+    successMessage: 'Duplicates rejected',
+    errorMessage: 'Failed to reject duplicates',
+    invalidateKeys: [workflowKeys.staging(workflowRunId)],
   });
 
   const retryMutation = useMutation({
@@ -390,7 +394,7 @@ export function StagingReviewContent({
           return next;
         });
       }
-      queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] });
+      queryClient.invalidateQueries({ queryKey: workflowKeys.staging(workflowRunId) });
     },
   });
 
