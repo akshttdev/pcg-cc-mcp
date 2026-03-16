@@ -215,13 +215,32 @@ crates/server/src/mcp/task_server/
 
 1. `npx tsc --noEmit` — 0 TS errors
 2. `cargo check` — compiles clean (only pre-existing warnings)
-3. E2E health checks — deferred to PR review
+3. E2E health checks — **40/40 passed**
 4. Zero duplicate `formatDate`/`formatCurrency` definitions confirmed
 5. `EmptyState` component used in 7 files (13 inline patterns replaced)
 6. 10 raw `fetch()` consumers consolidated into API client modules
 7. Split targets no longer in top 25 largest files
 
-## Completion Status — DONE (2026-03-15)
+## QA Review (2026-03-16)
+
+Three agents reviewed all 5 days for dropped code, lost functionality, and missing comments.
+
+**Regression found and fixed:**
+- `discord.tsx`: `formatDate` replaced a local version that included time (hour:minute). Voice session timestamps lost time display. Fixed → `formatDateTime`. Commit `50e4c5278`.
+- `call-intake.tsx`: Local `fmt()` not using centralized `formatDateTime`. Fixed in same commit.
+
+**Incomplete (not regressions):**
+- `formatRelativeDate` not centralized — 3 local implementations remain (EmailInbox, CommunicationsInbox, WorkflowRunsPanel) with different behaviors. These were correctly renamed from `formatDate` to `formatRelativeDate` to avoid shadowing, but not consolidated since they have genuinely different logic.
+
+**Clean (no issues):**
+- Day 2: All 364 NoraExecutiveTool enum variants, all methods, all types preserved
+- Day 3: All 7 workflow components + 7 editor components migrated, router and barrel imports verified
+- Day 4: All 5 project-detail sections + 3 dialogs, all 26 task_server tool methods preserved
+- Day 5: All 11 brand-guide sections + wizard, 3 shared hooks with backward compat re-exports
+
+## Completion Status — DONE (2026-03-16)
+
+**PR:** #37 — `modularity/sprint-2026-03-15`
 
 | Day | Commit | Files Changed | Lines +/- |
 |-----|--------|--------------|-----------|
@@ -230,9 +249,19 @@ crates/server/src/mcp/task_server/
 | 3 | `109c91518` | 18 | +4,824 / -9,587 |
 | 4 | `b45732753` | 21 | +6,231 / -8,164 |
 | 5 | `bf7550ffa` | 30 | +1,925 / -1,763 |
+| QA | `50e4c5278` | 2 | +5 / -8 |
 
 **New module files created:** ~60
 **Stretch items deferred:** useConversationHistory.ts split, useAutonomy.ts split (below priority threshold)
+
+## Remaining Large Files (Future Sprints)
+
+After this sprint, the top frontend files by size are:
+- `virtual-environment.tsx` (1,282 lines) — not a high-traffic page
+- `TaskFormDialog.tsx` (1,240 lines) — complex form, would benefit from split
+- `company-profile.tsx` (1,218 lines) — similar to project-detail split
+- `MeetingMode.tsx` (1,207 lines) — Topsi meeting component
+- `CrmDealDetailPanel.tsx` (1,202 lines) — grew in PR #36, split candidate
 
 ## Critical Files
 
