@@ -24,14 +24,13 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route(
             "/onboarding/organization/{org_id}",
-            get(get_org_onboarding),
+            get(get_org_onboarding).put(update_org_onboarding),
         )
         .route(
             "/onboarding/organization/{org_id}/start",
             post(start_org_onboarding),
         )
-        .route("/onboarding/organization/{id}", put(update_org_onboarding))
-        .route("/onboarding/organization/{id}/segments", get(list_org_segments))
+        .route("/onboarding/organization/{org_id}/segments", get(list_org_segments))
         .route(
             "/onboarding/organization-segment/{segment_id}",
             get(get_org_segment).put(update_org_segment),
@@ -116,11 +115,14 @@ pub struct StartOrgOnboardingRequest {
 /// Update org onboarding status/phase
 async fn update_org_onboarding(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(org_id): Path<Uuid>,
     Json(payload): Json<UpdateOrgOnboarding>,
 ) -> Result<Json<OrgOnboarding>, ApiError> {
     let pool = &deployment.db().pool;
-    let onboarding = OrgOnboarding::update(pool, id, &payload)
+    let existing = OrgOnboarding::find_by_organization(pool, org_id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Org onboarding not found".to_string()))?;
+    let onboarding = OrgOnboarding::update(pool, existing.id, &payload)
         .await?
         .ok_or_else(|| ApiError::NotFound("Org onboarding not found".to_string()))?;
 
@@ -130,10 +132,13 @@ async fn update_org_onboarding(
 /// List all segments for an org onboarding
 async fn list_org_segments(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(org_id): Path<Uuid>,
 ) -> Result<Json<Vec<OrgOnboardingSegment>>, ApiError> {
     let pool = &deployment.db().pool;
-    let segments = OrgOnboardingSegment::list_by_onboarding(pool, id).await?;
+    let onboarding = OrgOnboarding::find_by_organization(pool, org_id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Org onboarding not found".to_string()))?;
+    let segments = OrgOnboardingSegment::list_by_onboarding(pool, onboarding.id).await?;
     Ok(Json(segments))
 }
 
