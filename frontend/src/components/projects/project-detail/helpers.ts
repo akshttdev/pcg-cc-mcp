@@ -78,8 +78,9 @@ export function getBrandInitials(name?: string) {
 
 export function getBrandTagline(project: { git_repo_path?: string | null; dev_script?: string | null } | null) {
   if (!project) return 'Centralized brand + ops workspace.';
-  if (project.git_repo_path) {
-    return `Source of truth: ${project.git_repo_path}`;
+  const repoPath = project.git_repo_path?.trim();
+  if (repoPath && repoPath !== '.') {
+    return `Source of truth: ${repoPath}`;
   }
   if (project.dev_script) {
     return `Runs ${project.dev_script} with live previews.`;

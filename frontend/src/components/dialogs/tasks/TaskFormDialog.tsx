@@ -47,6 +47,7 @@ export interface TaskFormDialogProps {
   initialBaseBranch?: string; // For pre-selecting base branch in spinoff
   parentTaskAttemptId?: string; // For linking to parent task attempt
   initialBoardId?: string | null; // For pre-selecting board (e.g., from URL filter)
+  initialStatus?: TaskStatus; // For pre-selecting status (e.g., from kanban column "+" button)
 }
 
 export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
@@ -58,6 +59,7 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
     initialBaseBranch,
     parentTaskAttemptId,
     initialBoardId,
+    initialStatus,
   }) => {
     // Debug: Log initialBoardId when component renders
     console.log('[TaskFormDialog] Props received:', { initialBoardId, projectId, isEditMode: Boolean(task) });
@@ -68,7 +70,7 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
     const { system, profiles } = useUserSystem();
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
-    const [status, setStatus] = useState<TaskStatus>('todo');
+    const [status, setStatus] = useState<TaskStatus>(initialStatus || 'todo');
     const [priority, setPriority] = useState<Priority>('medium');
     const [assigneeId, setAssigneeId] = useState('');
     const [assignedAgent, setAssignedAgent] = useState('');

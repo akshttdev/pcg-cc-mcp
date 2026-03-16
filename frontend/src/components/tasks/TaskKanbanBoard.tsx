@@ -6,6 +6,8 @@ import {
   KanbanHeader,
   KanbanProvider,
 } from '@/components/ui/shadcn-io/kanban';
+import { Button } from '@/components/ui/button';
+import { Plus } from 'lucide-react';
 import { TaskCard } from './TaskCard';
 import { EnhancedTaskCard, type TaskCardMode } from './EnhancedTaskCard';
 import type { TaskStatus, TaskWithAttemptStatus } from 'shared/types';
@@ -35,6 +37,7 @@ interface TaskKanbanBoardProps {
   defaultCardMode?: TaskCardMode;
   onSendMessageToAgent?: (taskId: string, message: string, agentName?: string) => Promise<string>;
   usersMap?: Map<string, UserListItem>;
+  onCreateTask?: (status: string) => void;
 }
 
 function TaskKanbanBoard({
@@ -53,6 +56,7 @@ function TaskKanbanBoard({
   defaultCardMode,
   onSendMessageToAgent,
   usersMap,
+  onCreateTask,
 }: TaskKanbanBoardProps) {
   // Collect all task IDs for batch fetching enriched data
   const allTaskIds = useMemo(() => {
@@ -93,6 +97,17 @@ function TaskKanbanBoard({
               <span className="text-xs text-muted-foreground tabular-nums">
                 {statusTasks.length}
               </span>
+              {onCreateTask && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-5 w-5 p-0 hover:bg-muted shrink-0"
+                  onClick={() => onCreateTask(status)}
+                  title={`Add task to ${statusLabels[status as TaskStatus]}`}
+                >
+                  <Plus className="h-3 w-3" />
+                </Button>
+              )}
             </div>
           </KanbanHeader>
           <KanbanCards>

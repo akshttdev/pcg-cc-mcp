@@ -7,11 +7,9 @@ export function DevBanner() {
   }
 
   return (
-    <div className="bg-orange-500 text-white text-center py-2 px-4 text-sm font-medium border-b border-orange-600">
-      <div className="flex items-center justify-center gap-2">
-        <AlertTriangle className="h-4 w-4" />
-        <span>Development Mode - This is a development build</span>
-      </div>
+    <div className="fixed bottom-2 left-2 z-50 flex items-center gap-1 rounded-full bg-orange-500/80 px-2 py-0.5 text-white shadow-sm">
+      <AlertTriangle className="h-3 w-3" />
+      <span className="text-[10px] font-medium">DEV</span>
     </div>
   );
 }

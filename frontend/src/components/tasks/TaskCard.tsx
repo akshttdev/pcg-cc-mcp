@@ -28,6 +28,7 @@ import {
 import { TimeTrackerWidget } from '@/components/time-tracking/TimeTrackerWidget';
 import { AgentFlowBadges } from './AgentFlowBadges';
 import { ExecutionSummaryInline } from './ExecutionSummaryInline';
+import { TagChips } from '@/components/ui/tag-chips';
 import type { AgentFlow, UserListItem, TaskWithArchive } from '@/lib/api';
 
 type Task = TaskWithArchive;
@@ -280,6 +281,8 @@ export function TaskCard({
           )}
         </div>
       </div>
+      {/* Tag chips */}
+      {task.tags && <TagChips tags={task.tags} maxVisible={2} size="xs" />}
       {/* Meta row: due date + description preview */}
       {(task.due_date || task.description) && (
         <div className="mt-1">

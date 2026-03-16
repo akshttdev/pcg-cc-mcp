@@ -7,7 +7,7 @@ import { AlertTriangle, Archive, Plus, Sparkles } from 'lucide-react';
 import { Loader } from '@/components/ui/loader';
 import { projectsApi, tasksApi, agentsApi, usersApi, resolveApiUrl } from '@/lib/api';
 import type { UserListItem } from '@/lib/api';
-import type { AgentChatRequest } from 'shared/types';
+import type { AgentChatRequest, TaskStatus } from 'shared/types';
 import { openTaskForm } from '@/lib/openTaskForm';
 import { ViewSwitcher } from '@/components/views/ViewSwitcher';
 import { AskTopsiButton } from '@/components/topsi/AskTopsiButton';
@@ -921,6 +921,9 @@ export function ProjectTasks() {
                 onSendMessageToAgent={handleSendMessageToAgent}
                 showArchived={showArchived}
                 usersMap={usersMap}
+                onCreateTask={(status) => {
+                  openTaskForm({ projectId, initialBoardId: boardFilter, initialStatus: status as TaskStatus });
+                }}
               />
             </div>
           )}
