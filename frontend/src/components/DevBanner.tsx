@@ -7,9 +7,9 @@ export function DevBanner() {
   }
 
   return (
-    <div className="fixed bottom-2 left-2 z-50 flex items-center gap-1 rounded-full bg-orange-500/80 px-2 py-0.5 text-white shadow-sm">
-      <AlertTriangle className="h-3 w-3" />
-      <span className="text-[10px] font-medium">DEV</span>
-    </div>
+    <span className="ml-2 inline-flex items-center gap-0.5 rounded-full bg-orange-500/80 px-1.5 py-0.5 text-white">
+      <AlertTriangle className="h-2.5 w-2.5" />
+      <span className="text-[9px] font-medium leading-none">DEV</span>
+    </span>
   );
 }

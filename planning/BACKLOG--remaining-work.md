@@ -49,18 +49,18 @@
 
 ## P2 — Medium / UX Polish
 
-### 6. AgentWatcherPanel Error State
+### ~~6. AgentWatcherPanel Error State~~ → RESOLVED
 **Source:** `archive/2026-03-13--review--dogfood-e2e-qa.md` (Bug #3)
-**What:** Shows "No agent reviewers" instead of error message when API fails.
+**Resolution:** PR #41 added `loadError` state with error UI (AlertTriangle icon + "Failed to load agent reviewers" message + RefreshCw retry button). Distinguishes "no reviewers configured" from "API error".
 
 ### 7. DbUuid Phase 3 — Remaining Model Conversions
 **Source:** `notes/2026-03-14--reference--dbuuid-phase3-remaining.md`
 **What:** ~107 models still use `Uuid`. Phase 1-2 complete — unblocked agent endpoints. Phase 3 removes bridge code and prevents future BLOB/TEXT mismatches.
 **Effort:** High volume, low risk per file. Batch by domain.
 
-### 8. Agent "View Profile" Link
+### ~~8. Agent "View Profile" Link~~ → RESOLVED
 **Source:** `archive/2026-03-12--tracker--sprint1-issues.md` (item 7)
-**What:** Backend `GET /api/agents/:id/profile` works. No frontend link on agent cards.
+**Resolution:** PR #41 added agent profile page at `/agents/:agentId/profile` showing agent description, capabilities, status, default model, and autonomy level. AgentWatcherPanel agent names now link to the profile page. Route registered in App.tsx with ProtectedRoute wrapper.
 
 ### 9. `http_request` Node Guardrails
 **Source:** `archive/2026-03-12--tracker--sprint1-issues.md`
@@ -136,20 +136,20 @@
 - Mobile user menu shortcut (avatar in navbar)
 - View-as keyboard shortcut (Cmd+Shift+V)
 - Sidebar section animated transitions
-- Settings tab URL persistence
+- ~~Settings tab URL persistence~~ → Done (PR #39, `?scope=` param)
 
 ### 18. UX Audit — Remaining Items (from `2026-03-16--review--ux-design-audit.md`)
-**P0**: Task card visual differentiation — assignee avatars, due dates, description preview (#3)
-**P1**: Sidebar information overload (#5), task detail drawer layout (#6), test/E2E data pollution (#8), integrations hub prioritization (#9)
-**P2**: Breadcrumb inconsistencies (#15), settings two-axis nav simplification (#13 remaining)
-**P3**: Dev banner space reduction (#17), CRM sub-nav duplication (#19)
+**P2**: Topsi chat suggested prompts (#14), Login "session expired" on first visit (#16)
+**P3**: Dev banner space reduction (#17)
 
 ### 19. UX Audit — Partially Addressed (depth improvements)
 **Source:** `archive/2026-03-16--review--ux-design-audit.md`
 - Pipeline: stage visual differentiation (gradient backgrounds), agent action tooltip improvements (#2)
-- Notifications: tabs (All/Unread/Mentions), "Mark all read" button, full notifications page (#4)
+- ~~Notifications: tabs (All/Unread/Mentions), "Mark all read" button, full notifications page (#4)~~ → RESOLVED (PR #41)
 - KPI trends: trend arrows with percentages (requires API), time period selector, sparklines (#10)
 - Project cards: last activity timestamp, assignee avatars (#18)
+- Task card data population: seed data needs richer metadata (assignees, due dates, tags) (#3)
+- Breadcrumbs: "Jungleverse" still appears as default org name in some views (#15)
 
 ### 20. User Account Onboarding (deferred from UX Sprint 2)
 **Source:** `2026-03-16--plan--ux-engagement-polish-sprint2.md`
@@ -242,3 +242,14 @@
 | Task.collaborators missing from struct | Field existed in SQL + DB but not in Task struct — SQLx silently discarded (PR #39) |
 | Notification quick action buttons (Backlog P1.5) | Implemented: source-aware actions, dismiss, deep-linking (PR #39) |
 | Project task count auto-refresh (Backlog #12) | Sidebar task count refresh on create/update (PR #38) |
+| UX Sprint 3: Sidebar merged sections (Audit #5) | Management + Global Views → "Views & Management", "More" popover for external links (PR #41) |
+| UX Sprint 3: Drawer wider default (Audit #6) | Default width 600→800px in resizable-drawer.tsx (PR #41) |
+| UX Sprint 3: Notification tabs + full page (Audit #4) | All/Inbox/Activity tabs in dropdown, `/notifications` page with search/filter (PR #41) |
+| UX Sprint 3: Integrations hub redesign (Audit #9) | Recommended/Optional split, progress ring, muted gray for missing optional (PR #41) |
+| UX Sprint 3: Task card priority borders (Audit #3) | 3px left-border colored by priority level (PR #41) |
+| UX Sprint 3: Hide test tasks toggle (Audit #8) | "Hide Tests" button on kanban filters `[E2E]`/`[Test]` prefix tasks (PR #41) |
+| UX Sprint 3: CRM sub-nav dedup (Audit #19) | CRM removed from project sub-nav in ProjectFolder.tsx (PR #41) |
+| AgentWatcherPanel error state (Backlog #6) | Error UI with retry button, distinguishes empty vs error (PR #41) |
+| Agent profile page (Backlog #8) | `/agents/:agentId/profile` page with capabilities, status, model (PR #41) |
+| Route conflict fix (pre-existing) | Merged duplicate routes in org_onboarding.rs (committed to main) |
+| Migration version collision fix (pre-existing) | Renamed 20260405000000→20260405000001 to avoid collision (committed to main) |
