@@ -12,6 +12,14 @@ export interface IntelligenceStatus {
   last_run_at?: string;
 }
 
+// Automations API
+export const automationsApi = {
+  list: async (): Promise<unknown[]> => {
+    const response = await makeRequest('/api/automations');
+    return handleApiResponse<unknown[]>(response);
+  },
+};
+
 export const intelligenceApi = {
   triggerResearch: async (personId: string, opts?: { project_id?: string; agent_preference?: string }): Promise<{ person_id: string; status: string; message: string }> => {
     const response = await makeRequest(`/api/persons/${personId}/research`, {
@@ -215,6 +223,11 @@ export const DATA_TYPE_OPTIONS = [
 ] as const;
 
 export const dataSourcesApi = {
+  listAll: async (): Promise<DataSourceRecord[]> => {
+    const response = await makeRequest('/api/data-sources?all=1');
+    return handleApiResponse<DataSourceRecord[]>(response);
+  },
+
   listByOrganization: async (orgId: string): Promise<DataSourceRecord[]> => {
     const response = await makeRequest(`/api/organizations/${orgId}/data-sources`);
     return handleApiResponse<DataSourceRecord[]>(response);

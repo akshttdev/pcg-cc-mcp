@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ListTodo, Clock, AlertCircle, CheckCircle2, ArrowRight, Eye, Bot, User, PenLine } from 'lucide-react';
+import { EmptyState } from '@/components/ui/empty-state';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { tasksApi, type AssignedTask } from '@/lib/api';
@@ -182,20 +183,21 @@ export function MyTasksPage() {
       <div className="flex-1 overflow-auto p-6">
         {filteredTasks.length === 0 ? (
           <Card className="border-dashed">
-            <CardContent className="py-8 text-center">
-              <CheckCircle2 className="h-8 w-8 mx-auto mb-3 text-green-500" />
-              <h3 className="text-base font-medium mb-1">
-                {activeTab === 'all' ? 'All caught up!' : `No ${activeTab === 'watching' ? 'watched' : activeTab} tasks`}
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                {activeTab === 'all'
-                  ? 'You have no tasks right now.'
-                  : activeTab === 'assigned'
-                    ? 'No tasks are assigned to you.'
-                    : activeTab === 'created'
-                      ? 'You haven\'t created any tasks yet.'
-                      : 'You\'re not watching any tasks.'}
-              </p>
+            <CardContent className="py-0">
+              <EmptyState
+                icon={CheckCircle2}
+                title={activeTab === 'all' ? 'All caught up!' : `No ${activeTab === 'watching' ? 'watched' : activeTab} tasks`}
+                description={
+                  activeTab === 'all'
+                    ? 'You have no tasks right now.'
+                    : activeTab === 'assigned'
+                      ? 'No tasks are assigned to you.'
+                      : activeTab === 'created'
+                        ? 'You haven\'t created any tasks yet.'
+                        : 'You\'re not watching any tasks.'
+                }
+                className="py-8"
+              />
             </CardContent>
           </Card>
         ) : (

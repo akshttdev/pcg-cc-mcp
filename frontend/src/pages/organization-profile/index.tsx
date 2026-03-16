@@ -52,13 +52,11 @@ import {
 import {
   organizationsApi,
   crmDealsApi,
-  crmApi,
   resolveApiUrl,
-  type OrganizationData,
   type ClientData,
-  type CrmContactRecord,
   type OrgBrandProfile,
 } from '@/lib/api';
+import { useOrganizationById, useCrmContacts } from '@/hooks/queries';
 import type { OrganizationProfilePageProps, OrgMember } from './types';
 import { formatCurrency, parseJsonArray } from './helpers';
 import {
@@ -131,11 +129,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
     setSearchParams(params, { replace: true });
   };
 
-  const { data: org, isLoading: orgLoading } = useQuery<OrganizationData>({
-    queryKey: ['organization', orgId],
-    queryFn: () => organizationsApi.getById(orgId!),
-    enabled: !!orgId,
-  });
+  const { data: org, isLoading: orgLoading } = useOrganizationById(orgId);
 
   const { data: members = [] } = useQuery<OrgMember[]>({
     queryKey: ['org-members', orgId],
@@ -162,12 +156,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
     staleTime: 60_000,
   });
 
-  const { data: crmContacts = [] } = useQuery<CrmContactRecord[]>({
-    queryKey: ['crm-contacts', orgId],
-    queryFn: () => crmApi.listContacts(orgId!),
-    enabled: !!orgId,
-    staleTime: 30_000,
-  });
+  const { data: crmContacts = [] } = useCrmContacts(orgId);
 
   const qc = useQueryClient();
   const { data: brandProfile } = useQuery<OrgBrandProfile | null>({

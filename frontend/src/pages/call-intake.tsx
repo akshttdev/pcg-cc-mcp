@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { formatDateTime } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -10,6 +11,7 @@ import {
   CheckCircle, XCircle, Clock, Loader2, Upload,
   ChevronDown, ChevronRight, Plus, User,
 } from 'lucide-react';
+import { callIntakeApi, reportsApi } from '@/lib/api';
 
 interface CallIntakeItem {
   id: string;
@@ -52,10 +54,6 @@ function parseJson<T>(str: string, fallback: T): T {
   try { return JSON.parse(str); } catch { return fallback; }
 }
 
-function fmt(dt: string | null) {
-  if (!dt) return '—';
-  return new Date(dt).toLocaleString();
-}
 
 export default function CallIntakePage() {
   const navigate = useNavigate();
@@ -75,13 +73,10 @@ export default function CallIntakePage() {
 
   const fetchItems = useCallback(async () => {
     try {
-      const r = await fetch('/api/call-intake', {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      });
-      if (r.ok) {
-        const d = await r.json();
-        setItems(d.data ?? []);
-      }
+      const data = await callIntakeApi.list();
+      setItems((data ?? []) as CallIntakeItem[]);
+    } catch {
+      // ignore
     } finally {
       setLoading(false);
     }
@@ -100,11 +95,10 @@ export default function CallIntakePage() {
   const triggerProcess = async (id: string) => {
     setProcessing(prev => new Set([...prev, id]));
     try {
-      const r = await fetch(`/api/call-intake/${id}/process`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      });
-      if (r.ok) await fetchItems();
+      await callIntakeApi.process(id);
+      await fetchItems();
+    } catch {
+      // ignore
     } finally {
       setProcessing(prev => { const s = new Set(prev); s.delete(id); return s; });
     }
@@ -114,29 +108,20 @@ export default function CallIntakePage() {
     if (!uploadContent.trim()) return;
     setUploading(true);
     try {
-      const r = await fetch('/api/call-intake/email', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify({
-          raw_content: uploadContent,
-          subject: uploadSubject || null,
-          from_name: uploadFromName || null,
-          from_email: uploadFromEmail || null,
-          source_type: uploadSourceType,
-          auto_process: true,
-        }),
+      await callIntakeApi.submitEmail({
+        raw_content: uploadContent,
+        subject: uploadSubject || null,
+        from_name: uploadFromName || null,
+        from_email: uploadFromEmail || null,
+        source_type: uploadSourceType,
+        auto_process: true,
       });
-      if (r.ok) {
-        setShowUpload(false);
-        setUploadContent('');
-        setUploadSubject('');
-        setUploadFromName('');
-        setUploadFromEmail('');
-        await fetchItems();
-      }
+      setShowUpload(false);
+      setUploadContent('');
+      setUploadSubject('');
+      setUploadFromName('');
+      setUploadFromEmail('');
+      await fetchItems();
     } finally {
       setUploading(false);
     }
@@ -299,7 +284,7 @@ export default function CallIntakePage() {
                       <div className="flex items-center gap-3 text-xs text-gray-500">
                         {item.from_name && <span className="flex items-center gap-1"><User className="w-3 h-3" />{item.from_name}</span>}
                         {item.from_email && <span>{item.from_email}</span>}
-                        <span>{fmt(item.created_at)}</span>
+                        <span>{formatDateTime(item.created_at)}</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
@@ -407,14 +392,7 @@ export default function CallIntakePage() {
                         <Button size="sm" variant="outline"
                           className="border-gray-700 text-gray-300 hover:bg-gray-800 gap-2 text-xs"
                           onClick={async () => {
-                            await fetch('/api/business-reports/generate', {
-                              method: 'POST',
-                              headers: {
-                                'Content-Type': 'application/json',
-                                Authorization: `Bearer ${localStorage.getItem('token')}`,
-                              },
-                              body: JSON.stringify({ person_id: item.person_id }),
-                            });
+                            await reportsApi.generate(item.person_id!);
                             fetchItems();
                           }}>
                           <FileText className="w-3 h-3" /> Generate Business Report

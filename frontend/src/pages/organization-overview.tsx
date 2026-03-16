@@ -1,6 +1,7 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { organizationsApi } from '@/lib/api';
+import { useOrganizationById } from '@/hooks/queries';
 import { Building2, Users, FolderKanban, ArrowRight, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader } from '@/components/ui/loader';
@@ -13,11 +14,7 @@ export function OrganizationOverview() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const { data: org, isLoading } = useQuery({
-    queryKey: ['organization', orgId],
-    queryFn: () => organizationsApi.getById(orgId!),
-    enabled: !!orgId,
-  });
+  const { data: org, isLoading } = useOrganizationById(orgId);
 
   const { data: clients = [] } = useQuery({
     queryKey: ['orgClients', orgId],

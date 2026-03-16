@@ -106,7 +106,7 @@ export function EmailInbox({ projectId, accountId }: EmailInboxProps) {
     }
   };
 
-  const formatDate = (dateString: string) => {
+  const formatRelativeDate = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
@@ -256,7 +256,7 @@ export function EmailInbox({ projectId, accountId }: EmailInboxProps) {
                   onClick={() => handleOpenMessage(message)}
                   onStar={() => toggleStarMutation.mutate(message.id)}
                   onDelete={() => moveToTrashMutation.mutate(message.id)}
-                  formatDate={formatDate}
+                  formatDate={formatRelativeDate}
                 />
               ))}
             </div>

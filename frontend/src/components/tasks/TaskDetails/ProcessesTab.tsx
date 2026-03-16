@@ -15,6 +15,7 @@ import ProcessLogsViewer from './ProcessLogsViewer';
 import type { ExecutionProcessStatus, ExecutionProcess } from 'shared/types';
 
 import { useProcessSelection } from '@/contexts/ProcessSelectionContext';
+import { formatDateTime } from '@/lib/formatters';
 
 interface ProcessesTabProps {
   attemptId?: string;
@@ -67,11 +68,6 @@ function ProcessesTab({ attemptId }: ProcessesTabProps) {
       default:
         return 'bg-gray-50 border-gray-200 text-gray-800';
     }
-  };
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleString();
   };
 
   const fetchProcessDetails = useCallback(async (processId: string) => {
@@ -225,10 +221,10 @@ function ProcessesTab({ attemptId }: ProcessesTabProps) {
                   </div>
                   <div className="mt-3 text-xs text-muted-foreground">
                     <div className="flex justify-between">
-                      <span>Started: {formatDate(process.started_at)}</span>
+                      <span>Started: {formatDateTime(process.started_at)}</span>
                       {process.completed_at && (
                         <span>
-                          Completed: {formatDate(process.completed_at)}
+                          Completed: {formatDateTime(process.completed_at)}
                         </span>
                       )}
                     </div>

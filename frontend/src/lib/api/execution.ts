@@ -12,6 +12,16 @@ export interface ExecutionProcessLogs {
   inserted_at: Date;
 }
 
+// Task Attempts API
+export const taskAttemptsApi = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  list: async (): Promise<Array<Record<string, any>>> => {
+    const response = await makeRequest('/api/task-attempts');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return handleApiResponse<Array<Record<string, any>>>(response);
+  },
+};
+
 // Execution Process APIs
 export const executionProcessesApi = {
   getExecutionProcesses: async (

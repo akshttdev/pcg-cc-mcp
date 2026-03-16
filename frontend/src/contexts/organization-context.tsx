@@ -3,6 +3,7 @@ import { useLocation, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { organizationsApi } from '@/lib/api';
 import type { OrganizationData } from '@/lib/api';
+import { useOrganizationById } from '@/hooks/queries';
 import { useAuth } from './AuthContext';
 
 interface OrganizationContextValue {
@@ -45,12 +46,7 @@ export function OrganizationProvider({ children }: OrganizationProviderProps) {
     staleTime: 5 * 60 * 1000,
   });
 
-  const { data: organization, isLoading: isOrgLoading } = useQuery({
-    queryKey: ['organization', orgId],
-    queryFn: () => organizationsApi.getById(orgId!),
-    enabled: !!orgId,
-    staleTime: 5 * 60 * 1000,
-  });
+  const { data: organization, isLoading: isOrgLoading } = useOrganizationById(orgId);
 
   const value = useMemo(
     () => ({

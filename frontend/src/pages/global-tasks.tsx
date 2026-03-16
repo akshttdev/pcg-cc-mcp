@@ -32,9 +32,9 @@ import {
   FolderKanban,
   Filter,
 } from 'lucide-react';
-import { projectsApi } from '@/lib/api';
+import { useProjectList } from '@/hooks/queries';
 import { cn } from '@/lib/utils';
-import type { Project, TaskWithAttemptStatus } from 'shared/types';
+import type { TaskWithAttemptStatus } from 'shared/types';
 
 interface GlobalTask extends TaskWithAttemptStatus {
   project_name: string;
@@ -47,10 +47,7 @@ export function GlobalTasksPage() {
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [projectFilter, setProjectFilter] = useState<string>('all');
 
-  const { data: projects = [], isLoading: projectsLoading } = useQuery<Project[]>({
-    queryKey: ['projects'],
-    queryFn: () => projectsApi.getAll(),
-  });
+  const { data: projects = [], isLoading: projectsLoading } = useProjectList();
 
   const { data: allTasks = [], isLoading: tasksLoading } = useQuery<GlobalTask[]>({
     queryKey: ['global-tasks', projects.map(p => p.id)],

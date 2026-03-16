@@ -33,6 +33,7 @@ import {
 import { cn } from '@/lib/utils';
 import { ArtifactPreviewCard } from '../ArtifactPreviewCard';
 import type { ExecutionArtifact, ArtifactType, ArtifactPhase } from 'shared/types';
+import { formatDate } from '@/lib/formatters';
 
 
 const VIDEO_EDIT_TYPES: ArtifactType[] = ['video_edit_session', 'render_deliverable'];
@@ -99,16 +100,6 @@ function ArtifactListItem({
 
   const phase = metadata.phase as ArtifactPhase | undefined;
   const createdBy = metadata.created_by as 'agent' | 'human' | undefined;
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
 
   return (
     <div

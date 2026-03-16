@@ -273,3 +273,20 @@ export const systemSettingsApi = {
     return handleApiResponse<string>(r);
   },
 };
+
+// Virtual Spaces API
+export interface VirtualSpaceRecord {
+  space_name: string;
+  host_username: string;
+  world_x: number;
+  spawn_x: number;
+  spawn_y: number;
+  spawn_z: number;
+}
+
+export const virtualSpacesApi = {
+  list: async (): Promise<VirtualSpaceRecord[]> => {
+    const r = await makeRequest('/api/virtual-spaces');
+    return handleApiResponse<VirtualSpaceRecord[]>(r);
+  },
+};

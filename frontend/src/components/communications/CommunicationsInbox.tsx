@@ -103,7 +103,7 @@ export function CommunicationsInbox({ projectId }: CommunicationsInboxProps) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const formatDate = (dateString: string | null): string => {
+  const formatRelativeDate = (dateString: string | null): string => {
     if (!dateString) return '';
     const date = new Date(dateString);
     const now = new Date();
@@ -287,7 +287,7 @@ export function CommunicationsInbox({ projectId }: CommunicationsInboxProps) {
                         </p>
                       </div>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <span>{formatDate(call.start_time)}</span>
+                        <span>{formatRelativeDate(call.start_time)}</span>
                         <ChevronRight className="h-4 w-4" />
                       </div>
                     </div>
@@ -351,7 +351,7 @@ export function CommunicationsInbox({ projectId }: CommunicationsInboxProps) {
                         <p className="text-sm text-muted-foreground truncate">{sms.body}</p>
                       </div>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <span>{formatDate(sms.date_sent || sms.created_at)}</span>
+                        <span>{formatRelativeDate(sms.date_sent || sms.created_at)}</span>
                         <ChevronRight className="h-4 w-4" />
                       </div>
                     </div>

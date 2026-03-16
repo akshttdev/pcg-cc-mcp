@@ -47,6 +47,21 @@ export const fileSystemApi = {
   },
 };
 
+// System Status APIs
+export const systemApi = {
+  getOrchaStatus: async (): Promise<{
+    orchestratorName: string;
+    agentId: string;
+    device: string;
+    isAdmin: boolean;
+    subAgents: Array<{ id: string; shortName: string; designation: string; status: string }>;
+  } | null> => {
+    const response = await makeRequest('/api/orcha/status');
+    if (!response.ok) return null;
+    return response.json();
+  },
+};
+
 // Config APIs (backwards compatible)
 export const configApi = {
   getConfig: async (): Promise<UserSystemInfo> => {

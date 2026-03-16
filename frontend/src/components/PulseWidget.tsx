@@ -30,20 +30,6 @@ interface PulseProject {
   scheduler_running: boolean;
 }
 
-interface PulseProjectsResponse {
-  projects: PulseProject[];
-  count: number;
-}
-
-// --- Legacy API (for non-project-scoped widget) ---
-
-async function fetchPulseProjects(): Promise<PulseProjectsResponse> {
-  const response = await fetch('/api/pulse/projects');
-  if (!response.ok) throw new Error('Failed to fetch Pulse projects');
-  const result = await response.json();
-  return result.data;
-}
-
 // --- Helpers ---
 
 function timeAgo(dateStr: string): string {
@@ -172,7 +158,7 @@ export function PulseWidget({ className, projectId }: PulseWidgetProps) {
     error: projectsError,
   } = useQuery({
     queryKey: ['pulse', 'projects'],
-    queryFn: fetchPulseProjects,
+    queryFn: () => pulseApi.listProjects(),
     refetchInterval: 30000,
     enabled: !projectId,
   });
@@ -192,10 +178,8 @@ export function PulseWidget({ className, projectId }: PulseWidgetProps) {
       if (projectId) {
         return pulseApi.triggerCollection(projectId);
       }
-      // Legacy: POST /api/pulse/collect
-      return fetch('/api/pulse/collect', { method: 'POST' }).then((r) => {
-        if (!r.ok) throw new Error('Failed to trigger collection');
-      });
+      // Legacy: global collection
+      return pulseApi.collectAll();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pulse'] });

@@ -15,6 +15,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
 import { toast } from 'sonner';
 import { companiesApi, type CompanyRecord } from '@/lib/api';
 
@@ -296,23 +297,15 @@ export function CompaniesPage() {
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
-            <Building2 className="h-12 w-12 mb-3 opacity-30" />
-            <p className="text-lg font-semibold mb-1 text-foreground">
-              {search ? 'No companies match your search' : 'No companies yet'}
-            </p>
-            <p className="text-sm max-w-sm text-center">
-              {search
-                ? 'Try adjusting your search terms.'
-                : 'Add companies to track organizations, run intelligence, and link them to your CRM.'}
-            </p>
-            {!search && (
-              <Button size="sm" className="mt-4" onClick={() => setShowCreate(true)}>
-                <Plus className="h-4 w-4 mr-1" />
-                New Company
-              </Button>
-            )}
-          </div>
+          <EmptyState
+            icon={Building2}
+            title={search ? 'No companies match your search' : 'No companies yet'}
+            description={search
+              ? 'Try adjusting your search terms.'
+              : 'Add companies to track organizations, run intelligence, and link them to your CRM.'}
+            action={!search ? { label: "New Company", onClick: () => setShowCreate(true) } : undefined}
+            className="h-48"
+          />
         ) : (
           <table className="w-full text-sm">
             <thead>

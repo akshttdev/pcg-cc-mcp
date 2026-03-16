@@ -30,6 +30,7 @@ import {
 import { dataSourcesApi, workflowsApi, stagingApi, DATA_TYPE_OPTIONS, SOURCE_TYPE_OPTIONS } from '@/lib/api';
 import { StagingReviewPanel } from '@/components/workflows/StagingReviewPanel';
 import { WorkflowRunsPanel } from '@/components/workflows/WorkflowRunsPanel';
+import { formatDate } from '@/lib/formatters';
 
 export function DataSourceDetailPage() {
   const { orgId, dataSourceId } = useParams<{ orgId: string; dataSourceId: string }>();
@@ -134,17 +135,6 @@ export function DataSourceDetailPage() {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  const formatDate = (iso: string) => {
-    const d = new Date(iso);
-    return d.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
   };
 
   const statusVariants: Record<string, string> = {

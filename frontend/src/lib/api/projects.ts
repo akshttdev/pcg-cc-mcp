@@ -238,6 +238,22 @@ export const projectsApi = {
     });
     return handleApiResponse<void>(response);
   },
+
+  // Vibe / Budget APIs
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getVibeBalance: async (projectId: string): Promise<any> => {
+    const response = await makeRequest(`/api/projects/${projectId}/vibe/balance`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return handleApiResponse<any>(response);
+  },
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getVibeTransactions: async (projectId: string, limit?: number): Promise<any[]> => {
+    const params = limit ? `?limit=${limit}` : '';
+    const response = await makeRequest(`/api/projects/${projectId}/vibe/transactions${params}`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return handleApiResponse<any[]>(response);
+  },
 };
 
 // Project Controller Types

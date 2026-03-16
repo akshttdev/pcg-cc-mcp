@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { resolveApiUrl, projectsApi, meetingsApi } from '@/lib/api';
+import { resolveApiUrl, meetingsApi } from '@/lib/api';
+import { useProjectList } from '@/hooks/queries';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -158,11 +158,7 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
   const seenSegmentIndicesRef = useRef<Set<number>>(new Set());
 
   // Fetch all projects for the selector
-  const { data: projects = [] } = useQuery({
-    queryKey: ['projects'],
-    queryFn: () => projectsApi.getAll(),
-    staleTime: 60_000,
-  });
+  const { data: projects = [] } = useProjectList();
 
   // Use prop project ID if provided
   const activeProjectId = propProjectId || selectedProjectId;

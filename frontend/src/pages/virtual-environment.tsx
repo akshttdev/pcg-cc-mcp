@@ -30,6 +30,7 @@ import { InventoryPanel, EquipmentPanel } from '@/components/vibeland/hud';
 import { ENTRY_TRIGGER_DISTANCE, BUILDING_HALF_LENGTH } from '@/lib/vibeland/constants';
 import { ProjectBuilding } from '@/components/vibeland/ProjectBuilding';
 import { cn } from '@/lib/utils';
+import { virtualSpacesApi } from '@/lib/api';
 import { useProjectList } from '@/hooks/api/useProjectList';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Project } from 'shared/types';
@@ -344,12 +345,10 @@ export function VirtualEnvironmentPage() {
 
   useEffect(() => {
     // Fetch all virtual spaces to enrich static zone list
-    fetch('/api/virtual-spaces')
-      .then(r => r.json())
-      .then((d: { success: boolean; data: Array<{ space_name: string; host_username: string; world_x: number; spawn_x: number; spawn_y: number; spawn_z: number }> }) => {
-        if (!d.success) return;
+    virtualSpacesApi.list()
+      .then((spaces) => {
         setWorldZones(prev => prev.map(zone => {
-          const found = d.data.find(s => s.space_name === zone.space_name);
+          const found = spaces.find(s => s.space_name === zone.space_name);
           if (found) {
             return { ...zone, world_x: found.world_x, spawn_x: found.spawn_x, spawn_y: found.spawn_y, spawn_z: found.spawn_z };
           }

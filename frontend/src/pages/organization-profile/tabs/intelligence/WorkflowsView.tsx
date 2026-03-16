@@ -14,6 +14,7 @@ import {
 import {
   workflowsApi,
   resolveApiUrl,
+  automationsApi,
 } from '@/lib/api';
 import type { WorkflowDefinition } from '@/lib/api';
 import { WorkflowEditor as WorkflowEditorComponent } from '@/components/workflows/WorkflowEditor';
@@ -489,11 +490,7 @@ export function LegacyPipelinesView({ orgId: _orgId }: { orgId: string }) {
 export function SystemAutomationsSection() {
   const { data: automations = [] } = useQuery({
     queryKey: ['system-automations'],
-    queryFn: async () => {
-      const r = await fetch('/api/automations', { credentials: 'include' });
-      const d = await r.json();
-      return d.data || [];
-    },
+    queryFn: () => automationsApi.list(),
     staleTime: 5 * 60_000,
   });
 
@@ -532,11 +529,7 @@ export function SystemAutomationsSection() {
 export function WorkflowsIntelView({ orgId }: { orgId: string }) {
   const { data: automations = [] } = useQuery({
     queryKey: ['system-automations'],
-    queryFn: async () => {
-      const r = await fetch('/api/automations', { credentials: 'include' });
-      const d = await r.json();
-      return d.data || [];
-    },
+    queryFn: () => automationsApi.list(),
     staleTime: 5 * 60_000,
   });
 

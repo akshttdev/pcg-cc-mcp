@@ -59,6 +59,7 @@ import {
   type UpdateDataSourceRequest,
   DATA_TYPE_OPTIONS,
 } from '@/lib/api';
+import { formatDate } from '@/lib/formatters';
 
 // ── Add Data Source Dialog ────────────────────────────────────────────────────
 
@@ -440,11 +441,6 @@ export function DataSourcesView({
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  const formatDate = (iso: string) => {
-    const d = new Date(iso);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const statusBadge = (status: string) => {

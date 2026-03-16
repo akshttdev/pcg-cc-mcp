@@ -42,6 +42,7 @@ import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { ProjectMembersDialog } from '@/components/dialogs/project-members-dialog';
 import { projectsApi, organizationsApi, type ClientData } from '@/lib/api';
+import { formatDate } from '@/lib/formatters';
 import type { Project } from 'shared/types';
 
 // Project already includes organization_id and client_id
@@ -197,15 +198,6 @@ export function ProjectsSettings() {
   const formatVibe = (amount: number | null) => {
     if (amount === null) return 'Unlimited';
     return `${amount.toLocaleString()} VIBE`;
-  };
-
-  const formatDate = (date: Date | string) => {
-    const dateObj = typeof date === 'string' ? new Date(date) : date;
-    return dateObj.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
   };
 
   return (

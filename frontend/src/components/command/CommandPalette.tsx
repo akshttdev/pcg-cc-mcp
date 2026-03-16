@@ -12,7 +12,8 @@ import {
 import { FolderOpen, Plus, Settings, Clock, Star, FileText } from 'lucide-react';
 import { useCommandStore } from '@/stores/useCommandStore';
 import { useQuery } from '@tanstack/react-query';
-import { projectsApi, tasksApi } from '@/lib/api';
+import { tasksApi } from '@/lib/api';
+import { useProjectList } from '@/hooks/queries';
 import { useProject } from '@/contexts/project-context';
 import { openTaskForm } from '@/lib/openTaskForm';
 import { showProjectForm } from '@/lib/modals';
@@ -34,10 +35,7 @@ export function CommandPalette() {
   const isAdmin = user?.is_admin ?? false;
 
   // Fetch projects
-  const { data: projects = [] } = useQuery({
-    queryKey: ['projects'],
-    queryFn: projectsApi.getAll,
-  });
+  const { data: projects = [] } = useProjectList();
 
   // Fetch tasks for current project
   const { data: tasks = [] } = useQuery({
