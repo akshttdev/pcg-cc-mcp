@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { discordApi, type DiscordSessionSummary, type DiscordSegment } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { formatDate } from '@/lib/formatters';
+import { formatDateTime } from '@/lib/formatters';
 import { EmptyState } from '@/components/ui/empty-state';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -295,7 +295,7 @@ function ArchivedSessionRow({
             {session.title || session.id?.slice(0, 8)}
           </p>
           <p className="text-xs text-muted-foreground">
-            {formatDate(session.started_at || session.created_at)}
+            {formatDateTime(session.started_at || session.created_at)}
             {session.ended_at && (
               <> · {formatElapsed(Math.round((new Date(session.ended_at).getTime() - new Date(session.started_at).getTime()) / 1000))}</>
             )}
@@ -428,7 +428,7 @@ export function DiscordPage() {
                         {selectedActive.channel_name || selectedActive.channel_id}
                       </CardTitle>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        Started {formatDate(selectedActive.started_at)}
+                        Started {formatDateTime(selectedActive.started_at)}
                       </p>
                     </div>
                     <Badge variant="outline" className={cn('text-xs', agentColor(selectedActive.agent))}>

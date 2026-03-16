@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { formatDateTime } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -53,10 +54,6 @@ function parseJson<T>(str: string, fallback: T): T {
   try { return JSON.parse(str); } catch { return fallback; }
 }
 
-function fmt(dt: string | null) {
-  if (!dt) return '—';
-  return new Date(dt).toLocaleString();
-}
 
 export default function CallIntakePage() {
   const navigate = useNavigate();
@@ -287,7 +284,7 @@ export default function CallIntakePage() {
                       <div className="flex items-center gap-3 text-xs text-gray-500">
                         {item.from_name && <span className="flex items-center gap-1"><User className="w-3 h-3" />{item.from_name}</span>}
                         {item.from_email && <span>{item.from_email}</span>}
-                        <span>{fmt(item.created_at)}</span>
+                        <span>{formatDateTime(item.created_at)}</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
