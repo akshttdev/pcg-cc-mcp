@@ -18,6 +18,7 @@ import { useOpenProjectInEditor } from '@/hooks/useOpenProjectInEditor';
 import { useCommandStore } from '@/stores/useCommandStore';
 import { NotificationCenter } from '@/components/notifications/NotificationCenter';
 import { NavbarUserButton } from '@/components/layout/NavbarUserButton';
+import { DevBanner } from '@/components/DevBanner';
 
 const ADMIN_ROUTES = ['/site-directory', '/nora', '/mission-control', '/admin'];
 
@@ -113,6 +114,7 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
               className="h-8 sm:h-9 w-auto"
             />
             <span className="ml-2 text-sm sm:text-base font-semibold hidden sm:inline tracking-widest uppercase" style={{ fontFamily: "'Cinzel', serif", color: 'var(--brand-gold)' }}>Powerclub Global</span>
+            <DevBanner />
           </div>
 
           <div className="hidden sm:flex items-center shrink-0">

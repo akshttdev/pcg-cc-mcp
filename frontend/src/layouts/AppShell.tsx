@@ -21,7 +21,6 @@ import { ThemeMode } from 'shared/types';
 import { Loader } from '@/components/ui/loader';
 import { AppWithStyleOverride } from '@/utils/style-override';
 import { WebviewContextMenu } from '@/vscode/ContextMenu';
-import { DevBanner } from '@/components/DevBanner';
 import NiceModal from '@ebay/nice-modal-react';
 import { OnboardingResult } from '@/components/dialogs/global/OnboardingDialog';
 import { Toaster } from '@/components/ui/toaster';
@@ -169,7 +168,6 @@ export function AppShell() {
           <SearchProvider>
             <div className="h-screen flex flex-col bg-background">
               <WebviewContextMenu />
-              {showNavbar && <DevBanner />}
               {showNavbar && <Navbar onToggleSidebar={handleToggleSidebar} />}
               <BreadcrumbNav onToggleFullscreen={toggleFullscreen} isFullscreen={isFullscreen} />
 

@@ -160,19 +160,7 @@ export function BreadcrumbNav({ onToggleFullscreen, isFullscreen }: BreadcrumbNa
       items.push({ label: 'Media Library', href: `${projectBase}/media` });
     } else if (location.pathname.includes('/social')) {
       items.push({ label: 'Social', href: `${projectBase}/social` });
-    } else if (location.pathname.includes('/crm')) {
-      items.push({ label: 'CRM', href: `${projectBase}/crm` });
-      if (location.pathname.includes('/crm/overview')) {
-        items.push({ label: 'Overview', href: `${projectBase}/crm/overview` });
-      } else if (location.pathname.includes('/crm/sales')) {
-        items.push({ label: 'Sales', href: `${projectBase}/crm/sales` });
-      } else if (location.pathname.includes('/crm/delivery')) {
-        items.push({ label: 'Delivery', href: `${projectBase}/crm/delivery` });
-      } else if (location.pathname.includes('/crm/clients')) {
-        items.push({ label: 'Clients', href: `${projectBase}/crm/clients` });
-      } else if (location.pathname.includes('/crm/conferences')) {
-        items.push({ label: 'Conferences', href: `${projectBase}/crm/conferences` });
-      }
+    // CRM breadcrumbs removed from project scope — CRM is org-level
     }
   }
 
@@ -267,6 +255,7 @@ export function BreadcrumbNav({ onToggleFullscreen, isFullscreen }: BreadcrumbNa
       '/ai-usage': 'AI Usage',
       '/agent-executions': 'Agent Executions',
       '/site-directory': 'Site Directory',
+      '/notifications': 'Notifications',
     };
     // Sort by length descending so longer paths match first (e.g. /settings/profile before /settings)
     const matchedPath = Object.keys(pageLabels)

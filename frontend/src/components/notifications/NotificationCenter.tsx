@@ -9,34 +9,20 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Bell, CheckCheck } from 'lucide-react';
+import { Bell, CheckCheck, ArrowRight } from 'lucide-react';
 import { makeRequest } from '@/lib/api';
 import { notificationKeys } from '@/lib/query-keys';
 import type { ActivityItem, InboxNotification } from './types';
-import { getProjectId } from './utils';
+import { getProjectId, loadReadActivityIds, persistReadActivityIds } from './utils';
 import { ActivityNotificationItem } from './ActivityNotificationItem';
 import { InboxNotificationItem } from './InboxNotificationItem';
 
-const READ_ACTIVITY_IDS_KEY = 'orcha:read-activity-ids';
-
-function loadReadActivityIds(): Set<string> {
-  try {
-    const raw = localStorage.getItem(READ_ACTIVITY_IDS_KEY);
-    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
-  } catch {
-    return new Set();
-  }
-}
-
-function persistReadActivityIds(ids: Set<string>) {
-  try {
-    localStorage.setItem(READ_ACTIVITY_IDS_KEY, JSON.stringify([...ids]));
-  } catch { /* non-fatal */ }
-}
+type NotificationTab = 'all' | 'inbox' | 'activity';
 
 export function NotificationCenter() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<NotificationTab>('all');
   const [dismissedAt, setDismissedAt] = useState<string | null>(() => {
     try {
       return localStorage.getItem('orcha:activity-dismissed-at');
@@ -166,8 +152,7 @@ export function NotificationCenter() {
         <DropdownMenuLabel className="font-normal">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-semibold">Activity</p>
-              <p className="text-xs text-muted-foreground">Recent activity across your projects</p>
+              <p className="text-sm font-semibold">Notifications</p>
             </div>
             {unreadCount > 0 && (
               <Button
@@ -182,34 +167,84 @@ export function NotificationCenter() {
             )}
           </div>
         </DropdownMenuLabel>
-        <DropdownMenuSeparator />
+
+        {/* Tab bar */}
+        <div className="flex border-b border-border px-1">
+          {([
+            { key: 'all' as const, label: 'All', count: unreadCount },
+            { key: 'inbox' as const, label: 'Inbox', count: unreadInbox.length },
+            { key: 'activity' as const, label: 'Activity', count: unreadActivityCount },
+          ]).map((tab) => (
+            <button
+              key={tab.key}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveTab(tab.key); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${
+                activeTab === tab.key
+                  ? 'border-primary text-foreground'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {tab.label}
+              {tab.count > 0 && (
+                <span className="min-w-[16px] h-4 rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400 px-1 text-[10px] font-bold flex items-center justify-center">
+                  {tab.count > 99 ? '99+' : tab.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
         <div className="max-h-80 overflow-y-auto">
           {isLoading ? (
             <div className="p-4 text-center text-sm text-muted-foreground">Loading...</div>
-          ) : visibleNotifications.length === 0 && unreadInbox.length === 0 ? (
-            <div className="p-4 text-center text-sm text-muted-foreground">
-              {dismissedAt ? 'All caught up' : 'No recent activity'}
-            </div>
-          ) : (
-            <>
-              {unreadInbox.map((item) => (
-                <InboxNotificationItem
-                  key={`inbox-${item.id}`}
-                  item={item}
-                  onClick={handleInboxClick}
-                  onDismiss={handleDismiss}
-                />
-              ))}
-              {visibleNotifications.map((item) => (
-                <ActivityNotificationItem
-                  key={item.id}
-                  item={item}
-                  onClick={handleActivityClick}
-                  isRead={readActivityIds.has(item.id)}
-                />
-              ))}
-            </>
-          )}
+          ) : (() => {
+            const showInbox = activeTab === 'all' || activeTab === 'inbox';
+            const showActivity = activeTab === 'all' || activeTab === 'activity';
+            const inboxItems = showInbox ? unreadInbox : [];
+            const activityItems = showActivity ? visibleNotifications : [];
+            const hasItems = inboxItems.length > 0 || activityItems.length > 0;
+
+            if (!hasItems) {
+              return (
+                <div className="p-4 text-center text-sm text-muted-foreground">
+                  {dismissedAt ? 'All caught up' : 'No recent activity'}
+                </div>
+              );
+            }
+
+            return (
+              <>
+                {inboxItems.map((item) => (
+                  <InboxNotificationItem
+                    key={`inbox-${item.id}`}
+                    item={item}
+                    onClick={handleInboxClick}
+                    onDismiss={handleDismiss}
+                  />
+                ))}
+                {activityItems.map((item) => (
+                  <ActivityNotificationItem
+                    key={item.id}
+                    item={item}
+                    onClick={handleActivityClick}
+                    isRead={readActivityIds.has(item.id)}
+                  />
+                ))}
+              </>
+            );
+          })()}
+        </div>
+
+        {/* View All link */}
+        <DropdownMenuSeparator />
+        <div className="p-1">
+          <button
+            onClick={() => navigate('/notifications')}
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors rounded-sm hover:bg-accent"
+          >
+            View All Notifications
+            <ArrowRight className="h-3 w-3" />
+          </button>
         </div>
       </DropdownMenuContent>
     </DropdownMenu>

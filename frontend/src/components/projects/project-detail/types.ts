@@ -38,8 +38,11 @@ export interface ProjectDetailProps {
 export const integrationStatusStyles: Record<ProviderConnectionState, string> = {
   connected: 'bg-emerald-100 text-emerald-700 border-emerald-200',
   manual: 'bg-amber-100 text-amber-700 border-amber-200',
-  missing: 'bg-rose-100 text-rose-700 border-rose-200',
+  missing: 'bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700',
 };
+
+/** Keys for integrations that are recommended (shown prominently when missing) */
+export const RECOMMENDED_INTEGRATION_KEYS = new Set(['github', 'gmail', 'email']);
 
 export const BRAND_PALETTES = [
   {
