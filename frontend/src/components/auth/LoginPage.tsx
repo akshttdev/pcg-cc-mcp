@@ -18,7 +18,9 @@ export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const sessionExpired = new URLSearchParams(location.search).get('expired') === '1';
+  const hasExpiredParam = new URLSearchParams(location.search).get('expired') === '1';
+  const hadPriorSession = typeof window !== 'undefined' && localStorage.getItem('orcha:had-session') === '1';
+  const sessionExpired = hasExpiredParam && hadPriorSession;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -27,6 +29,7 @@ export function LoginPage() {
 
     try {
       await login(username, password);
+      localStorage.setItem('orcha:had-session', '1');
       navigate('/'); // Redirect to home after successful login
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
