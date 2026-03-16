@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ExecutionArtifact, ArtifactType, ArtifactPhase } from 'shared/types';
+import { formatDate } from '@/lib/formatters';
 
 interface TaskArtifactsPanelProps {
   taskId: string;
@@ -73,15 +74,6 @@ function ArtifactCard({
 }) {
   const metadata = artifact.metadata ? JSON.parse(artifact.metadata) : {};
   const phase = metadata.phase as ArtifactPhase | undefined;
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
 
   const isPreviewable = [
     'screenshot', 'visual_brief', 'walkthrough', 'browser_recording',

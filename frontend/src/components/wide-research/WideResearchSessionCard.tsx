@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { WideResearchSession, ResearchSessionStatus } from 'shared/types';
+import { formatDate } from '@/lib/formatters';
 
 interface WideResearchSessionCardProps {
   session: WideResearchSession;
@@ -44,15 +45,6 @@ export function WideResearchSessionCard({
   onClick,
   className,
 }: WideResearchSessionCardProps) {
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
   return (
     <Card
       className={cn(

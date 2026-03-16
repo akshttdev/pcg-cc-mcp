@@ -18,6 +18,7 @@ import {
   SENTIMENT_COLORS,
 } from '../../constants';
 import { formatDate } from '../../helpers';
+import { formatCompactNumber } from '@/lib/formatters';
 
 export function SocialOverviewView({
   projectEntries,
@@ -110,14 +111,12 @@ export function SocialOverviewView({
     return { totalFollowers, scheduled, published, unread, urgent, recentPosts, recentMentions, byPlatform, brandHandles, totalAccounts: allAccounts.length };
   }, [accountQueries, postQueries, mentionQueries, projectEntries, brandProfile]);
 
-  const fmtFollowers = (n: number) => n >= 1_000_000 ? `${(n/1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n/1000).toFixed(1)}k` : n.toString();
-
   return (
     <div className="space-y-6">
       {/* KPI row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Total Followers', value: fmtFollowers(agg.totalFollowers), icon: Users, color: 'text-blue-500', action: () => onSwitchView('accounts') },
+          { label: 'Total Followers', value: formatCompactNumber(agg.totalFollowers), icon: Users, color: 'text-blue-500', action: () => onSwitchView('accounts') },
           { label: 'Scheduled Posts', value: agg.scheduled, icon: CalendarDays, color: 'text-purple-500', action: () => onSwitchView('content') },
           { label: 'Unread Mentions', value: agg.unread, icon: Inbox, color: agg.unread > 0 ? 'text-amber-500' : 'text-muted-foreground', action: () => onSwitchView('inbox') },
           { label: 'Published', value: agg.published, icon: CheckCircle, color: 'text-green-500', action: () => onSwitchView('content') },
@@ -177,7 +176,7 @@ export function SocialOverviewView({
                       <Icon className={`h-4 w-4 shrink-0 ${PLATFORM_COLORS[platform] || 'text-muted-foreground'}`} />
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-medium capitalize">{platform}</p>
-                        <p className="text-[10px] text-muted-foreground">{fmtFollowers(data.followers)} followers</p>
+                        <p className="text-[10px] text-muted-foreground">{formatCompactNumber(data.followers)} followers</p>
                       </div>
                       <span className="text-[10px] text-muted-foreground">{data.accounts} acct{data.accounts !== 1 ? 's' : ''}</span>
                     </div>
@@ -228,7 +227,7 @@ export function SocialOverviewView({
                       </div>
                       {(post.likes > 0 || post.impressions > 0) && (
                         <div className="text-right shrink-0">
-                          {post.impressions > 0 && <p className="text-[10px] text-muted-foreground">{fmtFollowers(post.impressions)} views</p>}
+                          {post.impressions > 0 && <p className="text-[10px] text-muted-foreground">{formatCompactNumber(post.impressions)} views</p>}
                           {post.likes > 0 && <p className="text-[10px] text-muted-foreground">{post.likes} &#9829;</p>}
                         </div>
                       )}

@@ -18,6 +18,7 @@ import {
 import { socialApi, type SocialPostRecord } from '@/lib/api';
 import { PLATFORM_ICONS, PLATFORM_COLORS, PLATFORM_BG, STATUS_COLORS } from '../../constants';
 import { formatDate, buildMonthGrid, buildWeekDays, isSameDay, MONTH_NAMES, DAY_NAMES } from '../../helpers';
+import { formatCompactNumber } from '@/lib/formatters';
 
 export function SocialContentView({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
   const [calView, setCalView] = useState<'list' | 'week' | 'month'>('list');
@@ -91,7 +92,6 @@ export function SocialContentView({ projectEntries }: { projectEntries: { id: st
   // Helpers shared across views
   const STATUS_TABS = ['all', 'draft', 'pending_review', 'scheduled', 'published', 'failed'];
   const parsePlatforms = (p: string): string[] => { try { return JSON.parse(p); } catch { return [p].filter(Boolean); } };
-  const fmtFollowers = (n: number) => n >= 1_000_000 ? `${(n/1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n/1000).toFixed(1)}k` : n.toString();
 
   // Calendar navigation
   const monthYear = `${MONTH_NAMES[calDate.getMonth()]} ${calDate.getFullYear()}`;
@@ -369,8 +369,8 @@ export function SocialContentView({ projectEntries }: { projectEntries: { id: st
                           </div>
                           {post.status === 'published' && (post.impressions > 0 || post.likes > 0) && (
                             <div className="flex gap-3 mt-2 text-[11px] text-muted-foreground">
-                              {post.impressions > 0 && <span>&#128065; {fmtFollowers(post.impressions)}</span>}
-                              {post.reach > 0 && <span>&#128225; {fmtFollowers(post.reach)}</span>}
+                              {post.impressions > 0 && <span>&#128065; {formatCompactNumber(post.impressions)}</span>}
+                              {post.reach > 0 && <span>&#128225; {formatCompactNumber(post.reach)}</span>}
                               {post.likes > 0 && <span>&#9829; {post.likes}</span>}
                               {post.comments > 0 && <span>&#128172; {post.comments}</span>}
                               {post.engagement_rate > 0 && <span>{(post.engagement_rate * 100).toFixed(1)}% eng</span>}

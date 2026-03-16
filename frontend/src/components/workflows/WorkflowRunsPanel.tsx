@@ -52,7 +52,7 @@ function formatTokens(count: number | undefined): string {
   return String(count);
 }
 
-function formatDate(dateStr: string): string {
+function formatRelativeDate(dateStr: string): string {
   const d = new Date(dateStr + 'Z');
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
@@ -216,7 +216,7 @@ export function WorkflowRunsPanel({
                         <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
                           <span className="flex items-center gap-1">
                             <Clock className="h-3 w-3" />
-                            {formatDate(run.started_at)}
+                            {formatRelativeDate(run.started_at)}
                           </span>
                           {run.data_source_id && dataSourceNames[run.data_source_id] && (
                             <span className="flex items-center gap-1 truncate max-w-[180px]" title={dataSourceNames[run.data_source_id]}>

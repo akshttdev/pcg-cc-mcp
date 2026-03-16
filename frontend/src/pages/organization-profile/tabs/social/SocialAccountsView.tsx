@@ -9,6 +9,7 @@ import {
   type SocialAccountRecord,
 } from '@/lib/api';
 import { PLATFORM_ICONS, PLATFORM_COLORS, PLATFORM_BG } from '../../constants';
+import { formatCompactNumber } from '@/lib/formatters';
 
 export function SocialAccountsView({
   projectEntries,
@@ -49,8 +50,6 @@ export function SocialAccountsView({
       });
     },
   });
-
-  const fmtFollowers = (n?: number | null) => !n ? '—' : n >= 1_000_000 ? `${(n/1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n/1000).toFixed(1)}k` : n.toString();
 
   const brandHandles: { platform: string; handle: string }[] = [];
   if (brandProfile) {
@@ -140,7 +139,7 @@ export function SocialAccountsView({
                       <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
                         <span className="capitalize">{account.platform}</span>
                         <span>&middot;</span>
-                        <span>{fmtFollowers(account.follower_count)} followers</span>
+                        <span>{formatCompactNumber(account.follower_count)} followers</span>
                         {account.post_count != null && <><span>&middot;</span><span>{account.post_count} posts</span></>}
                         <span>&middot;</span>
                         <span>{account._project}</span>

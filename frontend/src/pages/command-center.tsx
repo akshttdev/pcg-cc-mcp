@@ -14,18 +14,12 @@ import {
   FileText,
 } from 'lucide-react';
 import { commandCenterApi } from '@/lib/api';
+import { formatDate } from '@/lib/formatters';
 
 function fmtVibe(v: number) {
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M ꝩ`;
   if (v >= 1_000) return `${(v / 1_000).toFixed(0)}k ꝩ`;
   return `${v} ꝩ`;
-}
-
-function formatDate(s: string) {
-  if (!s) return '';
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return s;
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 // ── Section card ──────────────────────────────────────────────────────────────

@@ -8,7 +8,7 @@ import {
   Search, List, FileText, Table2, Music, Image,
   Film, Layers, Folder, MessageSquare, File, Database,
   Upload, ChevronRight, ChevronDown, Palette,
-  Download, Trash2, X, Info, RefreshCw, Play, Plus,
+  Download, Trash2, X, Info, RefreshCw, Play,
   SortAsc, SortDesc, FolderOpen, LayoutGrid, Loader2,
 } from 'lucide-react';
 import { dataSourcesApi, workflowsApi, type DataSourceRecord } from '@/lib/api';
@@ -26,6 +26,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { formatDate } from '@/lib/formatters';
+import { EmptyState } from '@/components/ui/empty-state';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -94,13 +96,6 @@ function formatSize(bytes?: number | null): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
-
-function formatDate(iso?: string | null): string {
-  if (!iso) return '—';
-  try {
-    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  } catch { return '—'; }
 }
 
 function hasLocalFile(source: DataSourceRecord): boolean {
@@ -475,11 +470,8 @@ export default function DataSourcesPage() {
     queryFn: async () => {
       if (effectiveOrgId) return dataSourcesApi.listByOrganization(effectiveOrgId);
       if (effectiveProjectId) return dataSourcesApi.listByProject(effectiveProjectId);
-      // Global fallback: list all by fetching a sentinel
-      const r = await fetch('/api/data-sources?all=1', { credentials: 'include' });
-      if (!r.ok) return [];
-      const d = await r.json();
-      return d.data || [];
+      // Global fallback: list all
+      return dataSourcesApi.listAll();
     },
     staleTime: 30_000,
   });
@@ -513,7 +505,7 @@ export default function DataSourcesPage() {
       let av: any, bv: any;
       if (sortField === 'title') { av = a.title; bv = b.title; }
       else if (sortField === 'data_type') { av = a.data_type; bv = b.data_type; }
-      else if (sortField === 'file_size') { av = a.file_size || 0; bv = b.file_size || 0; }
+      else if (sortField === 'file_size') { av = a.file_size_bytes || 0; bv = b.file_size_bytes || 0; }
       else { av = a.created_at || ''; bv = b.created_at || ''; }
       if (av < bv) return sortDir === 'asc' ? -1 : 1;
       if (av > bv) return sortDir === 'asc' ? 1 : -1;
@@ -681,11 +673,12 @@ export default function DataSourcesPage() {
                 <RefreshCw className="h-4 w-4 animate-spin mr-2" /> Loading files...
               </div>
             ) : filtered.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
-                <Database className="h-8 w-8 mb-2 opacity-40" />
-                <p className="text-sm">No files found</p>
-                {search && <p className="text-xs mt-1">Try a different search term</p>}
-              </div>
+              <EmptyState
+                icon={Database}
+                title="No files found"
+                description={search ? 'Try a different search term' : undefined}
+                className="h-40"
+              />
             ) : viewMode === 'list' ? (
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-card border-b">
@@ -949,17 +942,11 @@ function RunWorkflowFromSourceDialog({ source, onClose }: {
           <div>
             <p className="text-sm text-muted-foreground mb-1">Workflow</p>
             {workflows.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 py-4 px-2 text-center border rounded-md bg-muted/30">
-                <p className="text-sm text-muted-foreground">No workflows available yet.</p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => { handleClose(); navigate('/workflows'); }}
-                >
-                  <Plus className="h-3.5 w-3.5 mr-1.5" />
-                  Create a Workflow
-                </Button>
-              </div>
+              <EmptyState
+                title="No workflows available yet"
+                action={{ label: "Create a Workflow", onClick: () => { handleClose(); navigate('/workflows'); } }}
+                className="py-4 border rounded-md bg-muted/30"
+              />
             ) : (
               <Select value={selectedWorkflowId} onValueChange={setSelectedWorkflowId}>
                 <SelectTrigger>

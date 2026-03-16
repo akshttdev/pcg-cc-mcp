@@ -119,4 +119,17 @@ export const pulseApi = {
     const response = await makeRequest(`/api/pulse/projects/${projectId}/engine/status`);
     return handleApiResponse<any>(response);
   },
+
+  // Global (non-project-scoped) endpoints
+  listProjects: async (): Promise<{ projects: any[]; count: number }> => {
+    const response = await makeRequest('/api/pulse/projects');
+    return handleApiResponse<{ projects: any[]; count: number }>(response);
+  },
+
+  collectAll: async (): Promise<void> => {
+    const response = await makeRequest('/api/pulse/collect', {
+      method: 'POST',
+    });
+    return handleApiResponse<void>(response);
+  },
 };

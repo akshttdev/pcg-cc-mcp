@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { crmDealsApi } from '@/lib/api';
 import type { PipelineMetricsRecord } from '@/lib/api';
+import { formatCurrencyFull } from '@/lib/formatters';
 
 interface CrmPipelineMetricsProps {
   projectId: string;
@@ -26,13 +27,6 @@ export function CrmPipelineMetrics({
     enabled: !!projectId,
     staleTime: 60 * 1000,
   });
-
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-    }).format(amount);
 
   if (isLoading) {
     return (
@@ -73,7 +67,7 @@ export function CrmPipelineMetrics({
               <div>
                 <p className="text-xs text-muted-foreground">Pipeline Value</p>
                 <p className="text-2xl font-bold">
-                  {formatCurrency(metrics.total_value)}
+                  {formatCurrencyFull(metrics.total_value)}
                 </p>
               </div>
             </div>
@@ -89,7 +83,7 @@ export function CrmPipelineMetrics({
               <div>
                 <p className="text-xs text-muted-foreground">Weighted Value</p>
                 <p className="text-2xl font-bold">
-                  {formatCurrency(metrics.weighted_value)}
+                  {formatCurrencyFull(metrics.weighted_value)}
                 </p>
               </div>
             </div>
@@ -105,7 +99,7 @@ export function CrmPipelineMetrics({
               <div>
                 <p className="text-xs text-muted-foreground">Avg Deal Size</p>
                 <p className="text-2xl font-bold">
-                  {formatCurrency(metrics.avg_deal_size)}
+                  {formatCurrencyFull(metrics.avg_deal_size)}
                 </p>
               </div>
             </div>
@@ -149,7 +143,7 @@ export function CrmPipelineMetrics({
                       <span>{stage.stage_name}</span>
                       <span className="text-muted-foreground">
                         {stage.count} deals &middot;{' '}
-                        {formatCurrency(stage.total_value)}
+                        {formatCurrencyFull(stage.total_value)}
                       </span>
                     </div>
                     <div className="h-2 bg-muted rounded-full overflow-hidden">

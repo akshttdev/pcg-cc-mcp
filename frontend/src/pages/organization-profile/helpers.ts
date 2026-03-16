@@ -1,17 +1,4 @@
-export function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
-
-export function formatCurrency(amount: number) {
-  if (amount >= 1_000_000) return `$${(amount / 1_000_000).toFixed(1)}M`;
-  if (amount >= 1_000) return `$${(amount / 1_000).toFixed(0)}k`;
-  return `$${amount.toFixed(0)}`;
-}
-
-export function parseJsonArray(val: string | null | undefined): string[] {
-  if (!val) return [];
-  try { return JSON.parse(val); } catch { return []; }
-}
+export { formatDate, formatCurrency, parseJsonArray } from '@/lib/formatters';
 
 export function buildMonthGrid(year: number, month: number) {
   const firstDay = new Date(year, month, 1).getDay();

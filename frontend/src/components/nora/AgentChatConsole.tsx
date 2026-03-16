@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { resolveApiUrl } from '@/lib/api';
+import { resolveApiUrl, topsiApi } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -376,24 +376,13 @@ export function AgentChatConsole({
 
       setIsSending(true);
       try {
-        const response = await fetch('/api/topsi/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            message: payload,
-            sessionId: sessionIdRef.current,
-            projectId: projectId ?? null,
-            context: null,
-          }),
+        const data = await topsiApi.chat({
+          message: payload,
+          sessionId: sessionIdRef.current,
+          projectId: projectId ?? null,
+          context: null,
         });
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(errorText || `Topsi responded with ${response.status}`);
-        }
-
-        const data = await response.json();
         pushMessage({
           channel: 'direct',
           author: 'agent',

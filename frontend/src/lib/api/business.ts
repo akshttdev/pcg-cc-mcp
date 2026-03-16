@@ -510,6 +510,37 @@ export const meetingsApi = {
   },
 };
 
+// ── Call Intake ──────────────────────────────────────────────────────────────
+
+export const callIntakeApi = {
+  list: async (): Promise<unknown[]> => {
+    const response = await makeRequest('/api/call-intake');
+    return handleApiResponse<unknown[]>(response);
+  },
+
+  submitEmail: async (data: {
+    raw_content: string;
+    subject?: string | null;
+    from_name?: string | null;
+    from_email?: string | null;
+    source_type?: string;
+    auto_process?: boolean;
+  }): Promise<unknown> => {
+    const response = await makeRequest('/api/call-intake/email', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<unknown>(response);
+  },
+
+  process: async (id: string): Promise<unknown> => {
+    const response = await makeRequest(`/api/call-intake/${id}/process`, {
+      method: 'POST',
+    });
+    return handleApiResponse<unknown>(response);
+  },
+};
+
 // ── Discord Voice ─────────────────────────────────────────────────────────────
 
 export interface DiscordSessionSummary {

@@ -24,6 +24,7 @@ import type {
   ReviewStatus,
   ReviewType,
 } from 'shared/types';
+import { formatDate } from '@/lib/formatters';
 
 interface ApprovalCardProps {
   review: ArtifactReview;
@@ -72,15 +73,6 @@ export function ApprovalCard({
   const [rating, setRating] = useState<number>(0);
   const [showFeedbackForm, setShowFeedbackForm] = useState(false);
   const [actionType, setActionType] = useState<'approve' | 'reject' | 'revision' | null>(null);
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
 
   const handleAction = () => {
     if (actionType === 'approve') {

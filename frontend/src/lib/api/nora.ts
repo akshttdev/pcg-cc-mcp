@@ -86,3 +86,47 @@ export const updateNoraPlanNode = async (
   }
   return (await response.json()) as GraphPlan;
 };
+
+// Nora Workflows (conference/meeting workflows)
+export const noraWorkflowsApi = {
+  list: async (): Promise<unknown[]> => {
+    const response = await makeRequest('/api/nora/workflows');
+    if (!response.ok) {
+      throw new ApiError('Failed to load Nora workflows', response.status, response);
+    }
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  },
+};
+
+// Nora Cinematics Briefs
+export const cinematicBriefsApi = {
+  list: async (): Promise<unknown[]> => {
+    const response = await makeRequest('/api/nora/cinematics/briefs');
+    if (!response.ok) {
+      throw new ApiError('Failed to load cinematic briefs', response.status, response);
+    }
+    const res = await response.json();
+    return Array.isArray(res?.data ?? res) ? (res?.data ?? res) : [];
+  },
+};
+
+// Topsi Chat API
+export const topsiApi = {
+  chat: async (data: {
+    message: string;
+    sessionId: string;
+    projectId?: string | null;
+    context?: unknown;
+  }): Promise<{ message?: string }> => {
+    const response = await makeRequest('/api/topsi/chat', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new ApiError(errorText || `Topsi responded with ${response.status}`, response.status, response);
+    }
+    return response.json();
+  },
+};

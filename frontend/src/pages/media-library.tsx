@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader } from '@/components/ui/loader';
 import { toast } from 'sonner';
 import { Upload, Search, Trash2, Image as ImageIcon } from 'lucide-react';
+import { EmptyState } from '@/components/ui/empty-state';
 import { useDebounce } from '@/hooks/useDebounce';
 
 function ShotTypeBadge({ type }: { type?: string }) {
@@ -278,12 +279,12 @@ export function MediaLibraryPage() {
               <Loader message="Loading media…" size={24} />
             </div>
           ) : assets.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-48 text-muted-foreground gap-3">
-              <ImageIcon className="h-12 w-12 opacity-30" />
-              <p className="text-sm">
-                {search ? 'No results for that search' : 'No media yet — upload files to get started'}
-              </p>
-            </div>
+            <EmptyState
+              icon={ImageIcon}
+              title={search ? 'No results for that search' : 'No media yet'}
+              description={search ? undefined : 'Upload files to get started'}
+              className="h-48"
+            />
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
               {assets.map((asset) => (

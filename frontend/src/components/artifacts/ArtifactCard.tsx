@@ -22,6 +22,7 @@ import type {
   ArtifactReviewStatus,
 } from 'shared/types';
 import { parseArtifactMetadata, formatArtifactPhase } from './utils';
+import { formatDate } from '@/lib/formatters';
 
 interface ArtifactCardProps {
   artifact: ExecutionArtifact;
@@ -83,15 +84,6 @@ export function ArtifactCard({
   const metadata = parseArtifactMetadata(artifact.metadata);
   const artifactPhase = metadata.phase;
   const reviewStatus = (metadata.review_status ?? 'none') as ArtifactReviewStatus;
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
 
   const hasPreview =
     artifact.artifact_type === 'screenshot' ||
