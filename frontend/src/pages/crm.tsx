@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import type { Project } from 'shared/types';
 import {
   Card,
@@ -151,31 +152,28 @@ export function CrmPage() {
     enabled: !!selectedProjectId,
   });
 
-  const createContactMutation = useMutation({
+  const createContactMutation = useMutationWithToast({
     mutationFn: (data: CreateCrmContactRequest) => crmApi.createContact(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: crmKeys.contactsAll() });
-      queryClient.invalidateQueries({ queryKey: crmKeys.statsAll() });
-      setIsCreateDialogOpen(false);
-    },
+    successMessage: 'Contact created',
+    errorMessage: 'Failed to create contact',
+    invalidateKeys: [crmKeys.contactsAll(), crmKeys.statsAll()],
+    onSuccess: () => setIsCreateDialogOpen(false),
   });
 
-  const updateContactMutation = useMutation({
+  const updateContactMutation = useMutationWithToast({
     mutationFn: ({ id, data }: { id: string; data: UpdateCrmContactRequest }) =>
       crmApi.updateContact(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: crmKeys.contactsAll() });
-      queryClient.invalidateQueries({ queryKey: crmKeys.statsAll() });
-      setEditingContact(null);
-    },
+    successMessage: 'Contact updated',
+    errorMessage: 'Failed to update contact',
+    invalidateKeys: [crmKeys.contactsAll(), crmKeys.statsAll()],
+    onSuccess: () => setEditingContact(null),
   });
 
-  const deleteContactMutation = useMutation({
+  const deleteContactMutation = useMutationWithToast({
     mutationFn: (id: string) => crmApi.deleteContact(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: crmKeys.contactsAll() });
-      queryClient.invalidateQueries({ queryKey: crmKeys.statsAll() });
-    },
+    successMessage: 'Contact deleted',
+    errorMessage: 'Failed to delete contact',
+    invalidateKeys: [crmKeys.contactsAll(), crmKeys.statsAll()],
   });
 
   const contacts = useMemo(() => {

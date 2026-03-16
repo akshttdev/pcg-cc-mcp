@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import { businessKeys } from '@/lib/query-keys';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -318,19 +320,21 @@ export function InvoicesPage() {
   const queryClient = useQueryClient();
 
   const { data: invoices = [], isLoading } = useQuery<InvoiceRecord[]>({
-    queryKey: ['invoices', statusFilter],
+    queryKey: businessKeys.invoices(statusFilter),
     queryFn: () => invoicesApi.list(statusFilter ? { status: statusFilter } : undefined),
   });
 
-  const moveStatus = useMutation({
+  const moveStatus = useMutationWithToast({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       invoicesApi.moveStatus(id, status),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invoices'] }),
+    invalidateKeys: [businessKeys.invoicesAll()],
   });
 
-  const deleteInvoice = useMutation({
+  const deleteInvoice = useMutationWithToast({
     mutationFn: (id: string) => invoicesApi.delete(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invoices'] }),
+    successMessage: 'Invoice deleted',
+    errorMessage: 'Failed to delete invoice',
+    invalidateKeys: [businessKeys.invoicesAll()],
   });
 
   const filtered = invoices.filter(i => i.invoice_type === tab);
@@ -434,7 +438,7 @@ export function InvoicesPage() {
       <CreateInvoiceDialog
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        onCreated={() => queryClient.invalidateQueries({ queryKey: ['invoices'] })}
+        onCreated={() => queryClient.invalidateQueries({ queryKey: businessKeys.invoicesAll() })}
       />
     </div>
   );
