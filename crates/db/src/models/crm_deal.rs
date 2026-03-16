@@ -122,6 +122,8 @@ pub struct CrmDealWithContact {
     pub review_task_id: Option<DbUuid>,
     pub review_task_status: Option<String>,
     pub review_task_assignee: Option<String>,
+    // Company intelligence
+    pub company_intelligence_status: Option<String>,
 }
 
 /// Kanban board data structure - deals grouped by stage
@@ -698,6 +700,30 @@ impl CrmDeal {
         )
     }
 
+    /// Look up company intelligence status by company name
+    async fn fetch_company_intel_status(
+        pool: &SqlitePool,
+        company_name: Option<&str>,
+    ) -> Option<String> {
+        let company_name = company_name?;
+        if company_name.is_empty() {
+            return None;
+        }
+        #[derive(sqlx::FromRow)]
+        struct Row {
+            intelligence_status: Option<String>,
+        }
+        sqlx::query_as::<_, Row>(
+            "SELECT intelligence_status FROM companies WHERE name = ? COLLATE NOCASE LIMIT 1",
+        )
+        .bind(company_name)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|r| r.intelligence_status)
+    }
+
     pub async fn get_kanban_data(
         pool: &SqlitePool,
         pipeline_id: &DbUuid,
@@ -730,10 +756,10 @@ impl CrmDeal {
 
                 // Fetch person_id from the contact (bridge to persons table)
                 let person_id: Option<DbUuid> = if let Some(ref contact_id) = deal.crm_contact_id {
-                    #[derive(sqlx::FromRow)] struct Row { person_id: Option<DbUuid> }
-                    sqlx::query_as::<_, Row>("SELECT person_id FROM crm_contacts WHERE id = ?")
+                    #[derive(sqlx::FromRow)] struct Row { id: DbUuid }
+                    sqlx::query_as::<_, Row>("SELECT id FROM persons WHERE crm_contact_id = ?")
                         .bind(contact_id)
-                        .fetch_optional(pool).await.ok().flatten().and_then(|r| r.person_id)
+                        .fetch_optional(pool).await.ok().flatten().map(|r| r.id)
                 } else { None };
 
                 let report_id = if let Some(ref pid) = person_id {
@@ -773,6 +799,10 @@ impl CrmDeal {
                     review_task_id,
                     review_task_status,
                     review_task_assignee,
+                    company_intelligence_status: Self::fetch_company_intel_status(
+                        pool,
+                        contact_info.as_ref().and_then(|c| c.company_name.as_deref()),
+                    ).await,
                     deal,
                 });
             }
@@ -872,10 +902,10 @@ impl CrmDeal {
                 };
 
                 let person_id: Option<DbUuid> = if let Some(ref contact_id) = deal.crm_contact_id {
-                    #[derive(sqlx::FromRow)] struct Row { person_id: Option<DbUuid> }
-                    sqlx::query_as::<_, Row>("SELECT person_id FROM crm_contacts WHERE id = ?")
+                    #[derive(sqlx::FromRow)] struct Row { id: DbUuid }
+                    sqlx::query_as::<_, Row>("SELECT id FROM persons WHERE crm_contact_id = ?")
                         .bind(contact_id)
-                        .fetch_optional(pool).await.ok().flatten().and_then(|r| r.person_id)
+                        .fetch_optional(pool).await.ok().flatten().map(|r| r.id)
                 } else { None };
 
                 let report_id = if let Some(ref pid) = person_id {
@@ -915,6 +945,10 @@ impl CrmDeal {
                     review_task_id,
                     review_task_status,
                     review_task_assignee,
+                    company_intelligence_status: Self::fetch_company_intel_status(
+                        pool,
+                        contact_info.as_ref().and_then(|c| c.company_name.as_deref()),
+                    ).await,
                     deal,
                 });
             }

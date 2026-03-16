@@ -1135,6 +1135,8 @@ pub async fn chat_with_nora(
     }
 
     tracing::info!("Nora is active, creating request...");
+    let persist_session_id = request.session_id.clone();
+    let persist_user_msg = request.message.clone();
     let nora_request = NoraRequest {
         request_id: req_id,
         session_id: request.session_id,
@@ -1186,6 +1188,38 @@ pub async fn chat_with_nora(
                 Err(e) => tracing::error!("[VIBE] Failed to record Nora usage: {}", e),
             }
         }
+    }
+
+    // Persist conversation (non-blocking — fire and forget)
+    {
+        let pool_conv = pool.clone();
+        let session_id = persist_session_id;
+        let user_msg = persist_user_msg;
+        let assistant_msg = response.content.clone();
+        let resp_input = response.input_tokens;
+        let resp_output = response.output_tokens;
+        tokio::spawn(async move {
+            // Use Nora's well-known agent ID from the agents table
+            let nora_agent_id = Uuid::parse_str("0907dc4f-3f7f-4c40-93cf-f36a833eaa78")
+                .unwrap_or_else(|_| Uuid::new_v4());
+            match AgentConversation::get_or_create(&pool_conv, nora_agent_id, &session_id, None).await {
+                Ok(conversation) => {
+                    if let Err(e) = AgentConversationMessage::add_user_message(
+                        &pool_conv, conversation.id, &user_msg,
+                    ).await {
+                        tracing::warn!("Failed to persist Nora user message: {}", e);
+                    }
+                    if let Err(e) = AgentConversationMessage::add_assistant_message(
+                        &pool_conv, conversation.id, &assistant_msg,
+                        Some("claude-sonnet-4-20250514"), Some("anthropic"),
+                        resp_input, resp_output, None,
+                    ).await {
+                        tracing::warn!("Failed to persist Nora assistant message: {}", e);
+                    }
+                }
+                Err(e) => tracing::warn!("Failed to get/create Nora conversation: {}", e),
+            }
+        });
     }
 
     Ok(Json(response))
