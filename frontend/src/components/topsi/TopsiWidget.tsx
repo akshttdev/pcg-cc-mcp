@@ -35,6 +35,13 @@ interface TopsiWidgetProps {
   className?: string;
 }
 
+const SUGGESTED_PROMPTS = [
+  { label: 'Summarize my tasks', text: 'Summarize my current tasks and priorities' },
+  { label: 'Deals needing attention', text: 'What deals in my pipeline need attention today?' },
+  { label: 'Draft a status update', text: 'Draft a status update for my active projects' },
+  { label: 'Recent activity', text: 'What happened across my projects this week?' },
+] as const;
+
 export function TopsiWidget({ className }: TopsiWidgetProps) {
   // Widget state — driven by global store
   const widgetState = useAgentChatStore((s) => s.widgetState);
@@ -808,9 +815,21 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
           <ScrollArea className="flex-1 p-3">
             <div className="space-y-3">
               {messages.length === 0 && (
-                <div className="text-center text-muted-foreground py-8">
-                  <Network className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                  <p className="text-sm">Start a conversation with Topsi</p>
+                <div className="text-center text-muted-foreground py-6">
+                  <Network className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                  <p className="text-sm mb-3">Start a conversation with Topsi</p>
+                  <div className="flex flex-wrap justify-center gap-1.5">
+                    {SUGGESTED_PROMPTS.map((prompt) => (
+                      <button
+                        key={prompt.label}
+                        type="button"
+                        className="px-2.5 py-1 rounded-full border border-border/60 bg-muted/50 text-xs text-foreground hover:bg-muted hover:border-border transition-colors"
+                        onClick={() => setInputMessage(prompt.text)}
+                      >
+                        {prompt.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
               {messages.map((msg) => (
