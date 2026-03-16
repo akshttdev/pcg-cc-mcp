@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Brain,
   Building2,
@@ -14,6 +14,9 @@ import {
   ThumbsUp,
   Clock,
   Search,
+  User,
+  FileText,
+  ClipboardCheck,
 } from 'lucide-react';
 import { useDealActions } from '../hooks/useDealActions';
 import type { CrmDealWithContact } from '@/types/crm';
@@ -44,8 +47,17 @@ export function IntelTab({ deal }: IntelTabProps) {
       ? Math.round(deal.intelligence_confidence * 100)
       : null;
 
-  // Combine loading states — the original used a single `loading` for all actions
   const loading = researchLoading || reportLoading;
+
+  const companyStatus = deal.company_intelligence_status;
+  const companyDone = companyStatus === 'done';
+  const companyResearching = companyStatus === 'running' || companyStatus === 'queued';
+
+  const hasAnyData =
+    deal.intelligence_summary ||
+    deal.company_intelligence_summary ||
+    companyDone ||
+    deal.report_id;
 
   const handleApprove = () => {
     if (deal.report_id) approveReport(deal.report_id);
@@ -64,7 +76,8 @@ export function IntelTab({ deal }: IntelTabProps) {
     if (deal.person_id) triggerResearch(deal.person_id);
   };
 
-  if (isResearching) {
+  // Research actively in flight with no data yet
+  if (isResearching && !hasAnyData) {
     return (
       <div className="p-5 flex flex-col items-center justify-center gap-3 text-center py-12">
         <div className="w-12 h-12 rounded-full bg-blue-50 dark:bg-blue-950/30 flex items-center justify-center">
@@ -80,7 +93,8 @@ export function IntelTab({ deal }: IntelTabProps) {
     );
   }
 
-  if (!isDone && !deal.intelligence_summary) {
+  // No data at all yet
+  if (!hasAnyData) {
     return (
       <div className="p-5 flex flex-col items-center justify-center gap-3 text-center py-12">
         <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
@@ -110,17 +124,23 @@ export function IntelTab({ deal }: IntelTabProps) {
   }
 
   return (
-    <div className="p-5 space-y-5">
+    <div className="p-5 space-y-4">
       {/* Status header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           {isDone ? (
             <CheckCircle2 className="h-4 w-4 text-green-500" />
+          ) : isResearching ? (
+            <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />
           ) : (
             <AlertCircle className="h-4 w-4 text-amber-400" />
           )}
           <span className="text-sm font-medium">
-            {isDone ? 'Intelligence Complete' : 'Partial Intelligence'}
+            {isDone
+              ? 'Intelligence Complete'
+              : isResearching
+                ? 'Research Running'
+                : 'Partial Intelligence'}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -139,75 +159,168 @@ export function IntelTab({ deal }: IntelTabProps) {
         </div>
       </div>
 
-      {/* Summary */}
+      {/* Person Intelligence */}
       {deal.intelligence_summary && (
-        <div>
-          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-            AI Profile Summary
-          </h4>
-          <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
+        <Card className="bg-muted/30 border-border/60">
+          <CardHeader className="p-3 pb-2">
+            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+              <User className="h-3.5 w-3.5" />
+              Person Intelligence
+              {deal.person_id && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-5 text-[10px] gap-1 ml-auto px-1.5"
+                  asChild
+                >
+                  <Link to={`/persons/${deal.person_id}`}>
+                    Profile <ExternalLink className="h-2.5 w-2.5" />
+                  </Link>
+                </Button>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-3 pt-0">
             <p className="text-sm leading-relaxed whitespace-pre-wrap">
               {deal.intelligence_summary}
             </p>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Business report */}
+      {/* Company Intelligence */}
+      {deal.contact_company && (
+        <Card className="bg-muted/30 border-border/60">
+          <CardHeader className="p-3 pb-2">
+            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+              <Building2 className="h-3.5 w-3.5" />
+              <span className="truncate">{deal.contact_company}</span>
+              <div className="ml-auto flex items-center gap-1.5 shrink-0">
+                {companyDone && <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />}
+                {companyResearching && (
+                  <Loader2 className="h-3.5 w-3.5 text-blue-500 animate-spin" />
+                )}
+                {!companyDone && !companyResearching && (
+                  <AlertCircle className="h-3.5 w-3.5 text-muted-foreground/40" />
+                )}
+                {deal.company_id && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 text-[10px] gap-1 px-1.5"
+                    asChild
+                  >
+                    <Link to={`/companies/${deal.company_id}`}>
+                      Profile <ExternalLink className="h-2.5 w-2.5" />
+                    </Link>
+                  </Button>
+                )}
+              </div>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-3 pt-0">
+            {deal.company_intelligence_summary ? (
+              <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                {deal.company_intelligence_summary}
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {companyResearching
+                  ? 'Company research in progress\u2026'
+                  : companyDone
+                    ? 'Research complete — view company profile for full details.'
+                    : 'No company research yet'}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Business Analysis Artifact */}
       {deal.report_id && (
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-              Business Report
-            </h4>
-            <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" asChild>
-              <Link to={`/business-reports/${deal.report_id}`}>
-                Open Report <ExternalLink className="h-3 w-3" />
-              </Link>
-            </Button>
-          </div>
-          {deal.report_review_status && (
-            <Card className="bg-muted/30 border-border/60">
-              <CardContent className="p-3 space-y-3">
-                <div className="flex items-center gap-2">
-                  {deal.report_review_status === 'approved' ? (
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                  ) : deal.report_review_status === 'rejected' ? (
-                    <AlertCircle className="h-4 w-4 text-red-400" />
-                  ) : (
-                    <Clock className="h-4 w-4 text-amber-400" />
-                  )}
-                  <span className="text-sm font-medium">
-                    {deal.report_review_status === 'approved'
-                      ? 'Report Approved'
-                      : deal.report_review_status === 'rejected'
-                        ? 'Revision Requested'
-                        : 'Pending Review'}
+        <Card className="border-primary/20 bg-primary/5">
+          <CardHeader className="p-3 pb-2">
+            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+              <FileText className="h-3.5 w-3.5 text-primary" />
+              Business Analysis
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-5 text-[10px] gap-1 ml-auto px-1.5 text-primary"
+                asChild
+              >
+                <Link to={`/business-reports/${deal.report_id}`}>
+                  Open Report <ExternalLink className="h-2.5 w-2.5" />
+                </Link>
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-3 pt-0 space-y-3">
+            {/* Review status */}
+            <div className="flex items-center gap-2">
+              {deal.report_review_status === 'approved' ? (
+                <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+              ) : deal.report_review_status === 'rejected' ? (
+                <AlertCircle className="h-4 w-4 text-red-400 shrink-0" />
+              ) : (
+                <Clock className="h-4 w-4 text-amber-400 shrink-0" />
+              )}
+              <span className="text-sm font-medium">
+                {deal.report_review_status === 'approved'
+                  ? 'Report Approved'
+                  : deal.report_review_status === 'rejected'
+                    ? 'Revision Requested'
+                    : 'Pending Human Review'}
+              </span>
+            </div>
+
+            {/* Review task assignment */}
+            {deal.review_task_id &&
+              deal.review_task_status !== 'done' &&
+              deal.review_task_status !== 'cancelled' && (
+                <div className="flex items-start gap-2 text-xs text-muted-foreground bg-background/60 rounded-md px-2.5 py-2">
+                  <ClipboardCheck className="h-3.5 w-3.5 shrink-0 text-amber-500 mt-0.5" />
+                  <span>
+                    Review task
+                    {deal.review_task_assignee ? (
+                      <>
+                        {' '}assigned to{' '}
+                        <span className="font-medium text-foreground">
+                          {deal.review_task_assignee}
+                        </span>
+                      </>
+                    ) : (
+                      ' unassigned'
+                    )}{' '}
+                    — refine analysis before discovery call
                   </span>
                 </div>
-                {deal.report_review_status !== 'approved' && (
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      className="h-7 text-xs flex-1 gap-1"
-                      onClick={handleApprove}
-                      disabled={loading}
-                    >
-                      <ThumbsUp className="h-3 w-3" />
-                      Approve
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs flex-1 gap-1"
-                      onClick={() => setShowRevisionInput(!showRevisionInput)}
-                      disabled={loading}
-                    >
-                      <RotateCcw className="h-3 w-3" />
-                      Revise
-                    </Button>
-                  </div>
-                )}
+              )}
+
+            {/* Approve / Revise */}
+            {deal.report_review_status !== 'approved' && (
+              <>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs flex-1 gap-1"
+                    onClick={handleApprove}
+                    disabled={loading}
+                  >
+                    <ThumbsUp className="h-3 w-3" />
+                    Approve
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs flex-1 gap-1"
+                    onClick={() => setShowRevisionInput(!showRevisionInput)}
+                    disabled={loading}
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    Revise
+                  </Button>
+                </div>
                 {showRevisionInput && (
                   <div className="space-y-2">
                     <textarea
@@ -227,60 +340,13 @@ export function IntelTab({ deal }: IntelTabProps) {
                     </Button>
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          )}
-        </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
       )}
 
-      {/* Company intel */}
-      {deal.contact_company && (
-        <div>
-          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-            Company Intelligence
-          </h4>
-          <Card className="bg-muted/30 border-border/60">
-            <CardContent className="p-3">
-              <div className="flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
-                <span className="text-sm font-medium">{deal.contact_company}</span>
-                {deal.company_intelligence_status === 'done' && (
-                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500 ml-auto" />
-                )}
-                {(deal.company_intelligence_status === 'running' ||
-                  deal.company_intelligence_status === 'queued') && (
-                  <Loader2 className="h-3.5 w-3.5 text-blue-500 animate-spin ml-auto" />
-                )}
-                {(!deal.company_intelligence_status ||
-                  deal.company_intelligence_status === 'idle') && (
-                  <AlertCircle className="h-3.5 w-3.5 text-muted-foreground/40 ml-auto" />
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground mt-1.5">
-                {deal.company_intelligence_status === 'done'
-                  ? 'Company research complete'
-                  : deal.company_intelligence_status === 'running' ||
-                      deal.company_intelligence_status === 'queued'
-                    ? 'Company research in progress\u2026'
-                    : 'No company research yet'}
-              </p>
-            </CardContent>
-          </Card>
-          {deal.company_id && (
-            <div className="mt-1.5">
-              <Button variant="ghost" size="sm" className="w-full h-7 text-xs gap-1.5 justify-start" asChild>
-                <Link to={`/companies/${deal.company_id}`}>
-                  <Building2 className="h-3 w-3" />
-                  View Company Profile
-                  <ExternalLink className="h-3 w-3 ml-auto" />
-                </Link>
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Re-trigger */}
+      {/* Re-trigger research */}
       {deal.person_id && !isResearching && (
         <Button
           variant="outline"
@@ -298,6 +364,7 @@ export function IntelTab({ deal }: IntelTabProps) {
         </Button>
       )}
 
+      {/* Full profile link */}
       {deal.person_id && (
         <div className="pt-2 border-t">
           <Button variant="ghost" size="sm" className="w-full h-8 text-xs gap-1.5" asChild>

@@ -201,6 +201,7 @@ async fn get_deal_rich(
         review_task_status,
         review_task_assignee,
         company_intelligence_status: deal_company_intel_status,
+        company_intelligence_summary: None,
         company_id: None,
         deal,
     };
