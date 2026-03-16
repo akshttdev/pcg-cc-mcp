@@ -89,53 +89,21 @@ pub async fn trigger_research(
     .execute(pool)
     .await?;
 
-    // Build the research prompt — Nora will delegate to the right agent
     let agent_pref = body.agent_preference.as_deref().unwrap_or("Scout");
-    let project_context = body.project_id
-        .map(|pid| format!(" Project context: {}.", pid))
-
-        .unwrap_or_default();
-
-    let research_prompt = format!(
-        "[INTELLIGENCE TASK — delegate to {}] \
-         Research the following contact and return ONLY a valid JSON object (no markdown, no preamble): \
-         Name: {}, Email: {}, Company: {}, Job Title: {}, Person type: {}. \
-         Use web search to find their professional background, social media, and their company's \
-         public contact information, website, Google My Business listing, and social media. \
-         \
-         Return this exact JSON structure: \
-         {{ \
-           \"summary\": \"1-2 sentence professional profile\", \
-           \"social_profiles\": [{{\"platform\": \"linkedin\", \"handle\": \"...\", \"url\": \"...\", \"followers\": 0}}], \
-           \"company_description\": \"brief company description\", \
-           \"company_website\": \"https://...\", \
-           \"company_phone\": \"+1...\", \
-           \"company_email\": \"info@...\", \
-           \"company_instagram\": \"@handle\", \
-           \"company_linkedin\": \"url\", \
-           \"company_twitter\": \"@handle\", \
-           \"company_facebook\": \"url\", \
-           \"gmb_rating\": 4.5, \
-           \"gmb_review_count\": 42, \
-           \"deal_potential\": \"high\", \
-           \"recommended_approach\": \"1 sentence\", \
-           \"confidence\": 0.8 \
-         }}.{}",
-
-        agent_pref,
-        person.full_name,
-        person.email.as_deref().unwrap_or("unknown"),
-        person.company_name.as_deref().unwrap_or("unknown"),
-        person.job_title.as_deref().unwrap_or("unknown"),
-
-        person.person_type,
-        project_context
-    );
+    // NOTE: research_prompt was built here but never used — run_research_direct
+    // constructs its own prompt internally. Commented out (broken window cleanup).
+    // let project_context = body.project_id
+    //     .map(|pid| format!(" Project context: {}.", pid))
+    //     .unwrap_or_default();
+    // let research_prompt = format!(
+    //     "[INTELLIGENCE TASK — delegate to {}] \
+    //      Research the following contact and return ONLY a valid JSON object ...",
+    //     agent_pref, person.full_name, ... , project_context
+    // );
 
     // Fire async task — Nora orchestrates, Scout/Astra executes
     let pool_clone = pool.clone();
     let project_id = body.project_id;
-    // TODO: full_name and use_direct were computed but never used downstream
     // let full_name = person.full_name.clone();
     // let use_direct = body.agent_preference.as_deref() == Some("direct");
     let person_clone = person.clone();
