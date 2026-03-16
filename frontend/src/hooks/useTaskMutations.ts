@@ -15,6 +15,7 @@ export function useTaskMutations(projectId?: string) {
 
   const invalidateQueries = (taskId?: string) => {
     queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
+    queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
     if (taskId) {
       queryClient.invalidateQueries({ queryKey: ['task', taskId] });
     }

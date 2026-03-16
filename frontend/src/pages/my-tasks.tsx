@@ -1,14 +1,34 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ListTodo, Clock, AlertCircle, CheckCircle2, ArrowRight, Eye, Bot, User, PenLine } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { ListTodo, Clock, AlertCircle, CheckCircle2, ArrowRight, Eye, Bot, User, PenLine, CheckSquare, X, Trash2, ArrowUpDown } from 'lucide-react';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { tasksApi, type AssignedTask } from '@/lib/api';
+import type { TaskStatus } from 'shared/types';
+import { toast } from 'sonner';
+import NiceModal from '@ebay/nice-modal-react';
+import { TagChips } from '@/components/ui/tag-chips';
+
+const BATCH_STATUS_OPTIONS = [
+  { value: 'todo', label: 'To Do' },
+  { value: 'inprogress', label: 'In Progress' },
+  { value: 'inreview', label: 'In Review' },
+  { value: 'done', label: 'Done' },
+  { value: 'cancelled', label: 'Cancelled' },
+] as const;
 
 type FilterTab = 'all' | 'assigned' | 'created' | 'watching';
 type SortBy = 'priority' | 'due_date' | 'updated';
@@ -17,8 +37,11 @@ const priorityOrder: Record<string, number> = { critical: 0, urgent: 0, high: 1,
 
 export function MyTasksPage() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
   const [sortBy, setSortBy] = useState<SortBy>('priority');
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const { data: assignedTasks = [], isLoading: loadingAssigned } = useQuery<AssignedTask[]>({
     queryKey: ['my-tasks', user?.id],
@@ -75,6 +98,67 @@ export function MyTasksPage() {
       return 0; // 'updated' - already ordered by backend
     });
   }, [activeTab, sortBy, assignedTasks, createdTasks, watchedTasks, allTasks]);
+
+  const toggleSelection = useCallback((taskId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  }, []);
+
+  const exitSelectionMode = useCallback(() => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  const invalidateMyTasks = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
+    queryClient.invalidateQueries({ queryKey: ['my-created-tasks'] });
+    queryClient.invalidateQueries({ queryKey: ['my-watched-tasks'] });
+    queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
+  }, [queryClient]);
+
+  const handleBatchStatusChange = useCallback(async (newStatus: string) => {
+    const ids = [...selectedIds];
+    let successCount = 0;
+    for (const id of ids) {
+      try {
+        await tasksApi.update(id, { status: newStatus as TaskStatus });
+        successCount++;
+      } catch {
+        // continue with remaining
+      }
+    }
+    invalidateMyTasks();
+    toast.success(`Updated ${successCount} task${successCount !== 1 ? 's' : ''} to ${newStatus}`);
+    exitSelectionMode();
+  }, [selectedIds, invalidateMyTasks, exitSelectionMode]);
+
+  const handleBatchDelete = useCallback(async () => {
+    const result = await NiceModal.show('confirm', {
+      title: 'Delete Tasks',
+      message: `Are you sure you want to delete ${selectedIds.size} task${selectedIds.size !== 1 ? 's' : ''}? This cannot be undone.`,
+      confirmText: 'Delete',
+      variant: 'destructive',
+    });
+    if (result !== 'confirmed') return;
+
+    const ids = [...selectedIds];
+    let successCount = 0;
+    for (const id of ids) {
+      try {
+        await tasksApi.delete(id);
+        successCount++;
+      } catch {
+        // continue with remaining
+      }
+    }
+    invalidateMyTasks();
+    toast.success(`Deleted ${successCount} task${successCount !== 1 ? 's' : ''}`);
+    exitSelectionMode();
+  }, [selectedIds, invalidateMyTasks, exitSelectionMode]);
 
   const tabs: { key: FilterTab; label: string; count: number; icon: typeof ListTodo }[] = [
     { key: 'all', label: 'All', count: allTasks.length, icon: ListTodo },
@@ -145,15 +229,25 @@ export function MyTasksPage() {
             </p>
           </div>
         </div>
-        <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as SortBy)}
-          className="text-sm border rounded-md px-2 py-1 bg-background"
-        >
-          <option value="priority">Sort: Priority</option>
-          <option value="due_date">Sort: Due Date</option>
-          <option value="updated">Sort: Recently Updated</option>
-        </select>
+        <div className="flex items-center gap-2">
+          <Button
+            variant={selectionMode ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}
+          >
+            <CheckSquare className="h-3.5 w-3.5 mr-1.5" />
+            {selectionMode ? 'Cancel' : 'Select'}
+          </Button>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as SortBy)}
+            className="text-sm border rounded-md px-2 py-1 bg-background"
+          >
+            <option value="priority">Sort: Priority</option>
+            <option value="due_date">Sort: Due Date</option>
+            <option value="updated">Sort: Recently Updated</option>
+          </select>
+        </div>
       </div>
 
       {/* Filter Tabs */}
@@ -203,11 +297,47 @@ export function MyTasksPage() {
         ) : (
           <div className="space-y-2">
             {filteredTasks.map((task) => (
-              <MyTaskCard key={task.id} task={task} />
+              <MyTaskCard
+                key={task.id}
+                task={task}
+                selectionMode={selectionMode}
+                isSelected={selectedIds.has(task.id)}
+                onToggleSelection={toggleSelection}
+              />
             ))}
           </div>
         )}
       </div>
+
+      {/* Floating batch action bar */}
+      {selectionMode && selectedIds.size > 0 && (
+        <div className="sticky bottom-0 border-t bg-background/95 backdrop-blur-sm px-6 py-3 flex items-center gap-3 shadow-lg">
+          <span className="text-sm font-medium">{selectedIds.size} selected</span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <ArrowUpDown className="h-3.5 w-3.5 mr-1.5" />
+                Change Status
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              {BATCH_STATUS_OPTIONS.map((opt) => (
+                <DropdownMenuItem key={opt.value} onClick={() => handleBatchStatusChange(opt.value)}>
+                  {opt.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button variant="destructive" size="sm" onClick={handleBatchDelete}>
+            <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+            Delete
+          </Button>
+          <Button variant="ghost" size="sm" onClick={exitSelectionMode}>
+            <X className="h-3.5 w-3.5 mr-1.5" />
+            Cancel
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -228,67 +358,91 @@ const priorityColors: Record<string, string> = {
   low: 'bg-green-100 text-green-800 border-green-200',
 };
 
-function MyTaskCard({ task }: { task: AssignedTask }) {
-  const tags: string[] = task.tags ? (() => { try { return JSON.parse(task.tags); } catch { return []; } })() : [];
+interface MyTaskCardProps {
+  task: AssignedTask;
+  selectionMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelection?: (id: string) => void;
+}
+
+function MyTaskCard({ task, selectionMode, isSelected, onToggleSelection }: MyTaskCardProps) {
+  const cardContent = (
+    <Card className={cn(
+      'hover:bg-accent/50 transition-colors cursor-pointer',
+      isSelected && 'ring-2 ring-primary bg-primary/5',
+    )}>
+      <CardContent className="py-3 px-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0 space-y-1">
+            <div className="flex items-center gap-2">
+              {selectionMode && (
+                <div
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggleSelection?.(task.id); }}
+                  className="shrink-0"
+                >
+                  <Checkbox checked={isSelected} onCheckedChange={() => onToggleSelection?.(task.id)} />
+                </div>
+              )}
+              {task.status === 'done' ? (
+                <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+              ) : task.status === 'inprogress' ? (
+                <Clock className="h-4 w-4 text-blue-500 shrink-0" />
+              ) : (
+                <AlertCircle className="h-4 w-4 text-gray-400 shrink-0" />
+              )}
+              <p className="font-medium truncate">{task.title}</p>
+            </div>
+
+            {task.description && (
+              <p className="text-xs text-muted-foreground line-clamp-1 pl-6">
+                {task.description.slice(0, 100)}
+              </p>
+            )}
+
+            <div className="flex items-center gap-2 pl-6 flex-wrap">
+              <span className="text-xs text-muted-foreground">{task.project_name}</span>
+
+              {task.assigned_agent && (
+                <span className="flex items-center gap-0.5 text-xs text-blue-600 dark:text-blue-400">
+                  <Bot className="h-3 w-3" />
+                  {task.assigned_agent}
+                </span>
+              )}
+
+              <TagChips tags={task.tags} maxVisible={2} size="xs" />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {task.due_date && (
+              <span className="text-xs text-muted-foreground">
+                {new Date(task.due_date).toLocaleDateString()}
+              </span>
+            )}
+            <Badge className={cn('text-xs', statusColors[task.status] || statusColors.todo)}>
+              {task.status}
+            </Badge>
+            <Badge className={cn('text-xs', priorityColors[task.priority] || priorityColors.low)}>
+              {task.priority || 'low'}
+            </Badge>
+            <ArrowRight className="h-4 w-4 text-muted-foreground" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  if (selectionMode) {
+    return (
+      <div onClick={() => onToggleSelection?.(task.id)}>
+        {cardContent}
+      </div>
+    );
+  }
 
   return (
     <Link to={`/projects/${task.project_id}/tasks/${task.id}`}>
-      <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
-        <CardContent className="py-3 px-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1 min-w-0 space-y-1">
-              <div className="flex items-center gap-2">
-                {task.status === 'done' ? (
-                  <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-                ) : task.status === 'inprogress' ? (
-                  <Clock className="h-4 w-4 text-blue-500 shrink-0" />
-                ) : (
-                  <AlertCircle className="h-4 w-4 text-gray-400 shrink-0" />
-                )}
-                <p className="font-medium truncate">{task.title}</p>
-              </div>
-
-              {task.description && (
-                <p className="text-xs text-muted-foreground line-clamp-1 pl-6">
-                  {task.description.slice(0, 100)}
-                </p>
-              )}
-
-              <div className="flex items-center gap-2 pl-6 flex-wrap">
-                <span className="text-xs text-muted-foreground">{task.project_name}</span>
-
-                {task.assigned_agent && (
-                  <span className="flex items-center gap-0.5 text-xs text-blue-600 dark:text-blue-400">
-                    <Bot className="h-3 w-3" />
-                    {task.assigned_agent}
-                  </span>
-                )}
-
-                {tags.length > 0 && tags.slice(0, 2).map((tag) => (
-                  <Badge key={tag} variant="outline" className="text-[10px] px-1 py-0">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              {task.due_date && (
-                <span className="text-xs text-muted-foreground">
-                  {new Date(task.due_date).toLocaleDateString()}
-                </span>
-              )}
-              <Badge className={cn('text-xs', statusColors[task.status] || statusColors.todo)}>
-                {task.status}
-              </Badge>
-              <Badge className={cn('text-xs', priorityColors[task.priority] || priorityColors.low)}>
-                {task.priority || 'low'}
-              </Badge>
-              <ArrowRight className="h-4 w-4 text-muted-foreground" />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {cardContent}
     </Link>
   );
 }
