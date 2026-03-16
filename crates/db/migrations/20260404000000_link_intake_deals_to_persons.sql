@@ -61,7 +61,7 @@ UPDATE persons SET
     ),
     updated_at = datetime('now','subsec')
 WHERE crm_contact_id IS NULL
-  AND intelligence_status = 'done'
+  AND intelligence_summary IS NOT NULL
   AND EXISTS (
       SELECT 1 FROM crm_contacts cc
       WHERE cc.organization_id = persons.organization_id

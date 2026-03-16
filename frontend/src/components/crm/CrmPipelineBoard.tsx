@@ -10,7 +10,7 @@ import {
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { DollarSign, Settings, Loader2, Bot, User, Users } from 'lucide-react';
+import { DollarSign, Settings, Loader2, Bot, User, Users, Target, Plus } from 'lucide-react';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import NiceModal from '@ebay/nice-modal-react';
@@ -267,6 +267,7 @@ export function CrmPipelineBoard({
 
       {/* Kanban Board */}
       <ScrollArea className="flex-1">
+        <TooltipProvider delayDuration={300}>
         <KanbanProvider onDragEnd={handleDragEnd}>
           {kanbanData.stages.map((stageData) => {
             const stage = stageData.stage;
@@ -293,7 +294,6 @@ export function CrmPipelineBoard({
                         }}
                       />
                       {STAGE_DESCRIPTIONS[stage.name.toLowerCase()] ? (
-                        <TooltipProvider delayDuration={300}>
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <p className="m-0 text-sm font-medium flex-1 truncate cursor-help border-b border-dashed border-muted-foreground/30">
@@ -307,7 +307,6 @@ export function CrmPipelineBoard({
                               )}
                             </TooltipContent>
                           </Tooltip>
-                        </TooltipProvider>
                       ) : (
                         <p className="m-0 text-sm font-medium flex-1 truncate">{stage.name}</p>
                       )}
@@ -358,11 +357,22 @@ export function CrmPipelineBoard({
                       </KanbanCard>
                     );
                   })}
-                  {stageData.deals.length === 0 && (
+                  {stageData.deals.length === 0 && totalDeals === 0 && stageData.stage.id === kanbanData.stages[0]?.stage.id ? (
+                    <div className="mx-2 my-3 p-4 rounded-lg border border-dashed border-primary/30 bg-primary/5 text-center space-y-2">
+                      <Target className="h-8 w-8 mx-auto text-primary/40" />
+                      <p className="text-sm font-medium">Start your pipeline</p>
+                      <p className="text-xs text-muted-foreground">
+                        Add your first deal to start tracking prospects through your sales process.
+                      </p>
+                      <Button size="sm" variant="default" onClick={() => handleAddDeal(stageData.stage.id)}>
+                        <Plus className="h-3.5 w-3.5 mr-1" /> Add Deal
+                      </Button>
+                    </div>
+                  ) : stageData.deals.length === 0 ? (
                     <div className="mx-2 my-3 py-8 rounded-lg border border-dashed border-border/40 text-center text-xs text-muted-foreground/40">
                       No deals
                     </div>
-                  )}
+                  ) : null}
                   <div className="px-2 py-1.5">
                     <Button
                       variant="ghost"
@@ -378,6 +388,7 @@ export function CrmPipelineBoard({
             );
           })}
         </KanbanProvider>
+        </TooltipProvider>
         <ScrollBar orientation="horizontal" />
       </ScrollArea>
 

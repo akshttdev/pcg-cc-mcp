@@ -1,3 +1,7 @@
+//! DEPRECATED: Project-scoped onboarding. Use org_onboarding routes instead.
+//! Retained for backwards compatibility. Scheduled for removal in a future sprint.
+//! See: planning/2026-03-16--plan--ux-engagement-polish-sprint2.md
+//!
 //! Project Onboarding API Routes
 //!
 //! Manages the Airo-style project onboarding workflow with carousel segments.

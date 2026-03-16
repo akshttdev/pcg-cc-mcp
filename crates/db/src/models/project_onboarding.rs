@@ -38,8 +38,11 @@ pub enum SegmentType {
     Research,
     Brand,
     Website,
+    Crm,
     Email,
     Legal,
+    Intelligence,
+    Integrations,
     Social,
     Custom,
 }
@@ -50,8 +53,11 @@ impl SegmentType {
             SegmentType::Research => "Astra",
             SegmentType::Brand => "Genesis",
             SegmentType::Website => "Auri",
+            SegmentType::Crm => "NORA",
             SegmentType::Email => "Relay",
             SegmentType::Legal => "Counsel",
+            SegmentType::Intelligence => "NORA",
+            SegmentType::Integrations => "NORA",
             SegmentType::Social => "Amplify",
             SegmentType::Custom => "NORA",
         }
@@ -61,9 +67,12 @@ impl SegmentType {
         match self {
             SegmentType::Research => "Research & Strategy",
             SegmentType::Brand => "Brand Identity",
-            SegmentType::Website => "Website Development",
-            SegmentType::Email => "Email & CRM Setup",
+            SegmentType::Website => "Website & Web Presence",
+            SegmentType::Crm => "CRM & Pipeline",
+            SegmentType::Email => "Email & Communications",
             SegmentType::Legal => "Legal & Compliance",
+            SegmentType::Intelligence => "Intelligence & Automation",
+            SegmentType::Integrations => "Integrations & Services",
             SegmentType::Social => "Social Media",
             SegmentType::Custom => "Custom Workflow",
         }
@@ -73,9 +82,12 @@ impl SegmentType {
         match self {
             SegmentType::Research => "Market research, competitor analysis, and positioning strategy",
             SegmentType::Brand => "Logo, colors, fonts, brand guide, and visual identity",
-            SegmentType::Website => "Landing page, dashboard, admin panel development",
-            SegmentType::Email => "Gmail master account, Zoho operations, CRM configuration",
+            SegmentType::Website => "Website, landing pages, and web presence",
+            SegmentType::Crm => "CRM pipelines, contacts, deals, and sales workflow",
+            SegmentType::Email => "Email accounts, communication inbox setup",
             SegmentType::Legal => "Entity formation, compliance, and regulatory research",
+            SegmentType::Intelligence => "Data source workflows, LLM extraction, and automation",
+            SegmentType::Integrations => "GitHub, Airtable, social accounts, and external services",
             SegmentType::Social => "Social account setup and content strategy",
             SegmentType::Custom => "Custom workflow for specialized needs",
         }
@@ -244,9 +256,12 @@ impl ProjectOnboarding {
             (SegmentType::Research, 0),
             (SegmentType::Brand, 1),
             (SegmentType::Website, 2),
-            (SegmentType::Email, 3),
-            (SegmentType::Legal, 4),
-            (SegmentType::Social, 5),
+            (SegmentType::Crm, 3),
+            (SegmentType::Email, 4),
+            (SegmentType::Legal, 5),
+            (SegmentType::Intelligence, 6),
+            (SegmentType::Integrations, 7),
+            (SegmentType::Social, 8),
         ];
 
         for (segment_type, order_index) in default_segments {

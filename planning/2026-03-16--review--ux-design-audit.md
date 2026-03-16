@@ -15,21 +15,19 @@ The platform has strong bones — clear information architecture, consistent sid
 
 ## Critical UX Gaps (P0)
 
-### 1. No Onboarding or First-Run Experience
+### 1. ~~No Onboarding or First-Run Experience~~ → ADDRESSED (PR #39)
 **Where**: Every page after login
 **Problem**: A new user lands on the Projects page with zero guidance. No welcome wizard, no tooltips, no "get started" checklist. The platform is complex (CRM, Workflows, Intelligence, Agents, Kanban, Pipeline) but offers no progressive disclosure.
 **Impact**: Users will bounce or feel overwhelmed.
 **Recommendation**: Add a dismissable onboarding checklist widget (similar to Linear's onboarding) that guides through: create org → create project → create first task → explore CRM pipeline.
+**Resolution**: Org-scoped onboarding system with 9-segment carousel on org overview page. DB tables, API, React Query hook, and UI integration all shipped.
 
-### 2. Empty Pipeline Board Is a Dead End
+### 2. ~~Empty Pipeline Board Is a Dead End~~ → PARTIALLY ADDRESSED (PR #38 + #39)
 **Where**: CRM > Pipeline (`ux-review/04-crm-pipeline.png`)
 **Problem**: 8 empty pipeline columns with "No deals" and tiny "+ Add deal" buttons. The board looks broken/incomplete rather than ready to use. No visual hierarchy distinguishing the stages — they all look identical.
 **Impact**: Users see a wall of empty gray columns and don't understand the pipeline progression or what the stages mean.
-**Recommendation**:
-- Show a single-card onboarding prompt in the first column: "Add your first deal to start tracking prospects"
-- Add subtle stage descriptions or tooltips (e.g., "Lead: Initial contact, Nora auto-researches")
-- Differentiate stages visually — e.g., gradient background intensity from left (cold) to right (hot)
-- The "Nora" / "Account Manager" / "Topsi + PM" labels under stages are cryptic — add a tooltip: "This stage is managed by [agent]. They will automatically [action]."
+**Resolution**: PR #38 added pipeline stage tooltips. PR #39 added onboarding prompt card in first column of empty pipeline ("Start your pipeline" + "Add Deal" CTA).
+**Remaining**: Stage visual differentiation (gradient backgrounds), agent action tooltip improvements.
 
 ### 3. Task Cards Are Too Uniform — No Visual Differentiation
 **Where**: Kanban board (`ux-review/03-kanban-board.png`)
@@ -42,16 +40,12 @@ The platform has strong bones — clear information architecture, consistent sid
 - Add a subtle description preview (first line, truncated)
 - Consider color-coding the left border by priority (red=critical, yellow=medium, etc.)
 
-### 4. Notification Dropdown Is Minimal
+### 4. ~~Notification Dropdown Is Minimal~~ → PARTIALLY ADDRESSED (PR #38 + #39)
 **Where**: Notification bell → dropdown (`ux-review/08-notifications.png`)
 **Problem**: Dropdown shows "Activity: Recent activity across your projects" header and "No recent activity." There's no way to filter, no tabs (All/Unread/Mentions), no settings link, no "mark all read" button. Even with activity, the dropdown is a simple text list with no action buttons.
 **Impact**: Notifications are a primary engagement driver. The current implementation doesn't support quick triage or action-taking.
-**Recommendation**:
-- Add tabs: All | Unread | Mentions
-- Add "Mark all read" button
-- Add quick action buttons per notification (from backlog: "Approve", "Review PR", "Mark Done")
-- Add a "View all" link to a full notifications page
-- Show notification count badge on the bell icon
+**Resolution**: PR #38 added notification count badge. PR #39 added source-aware quick action buttons (View Task, View Run), inline dismiss, status chips on activity items, and improved deep-linking.
+**Remaining**: Tabs (All/Unread/Mentions), "Mark all read" button, full notifications page.
 
 ---
 
@@ -100,38 +94,31 @@ The platform has strong bones — clear information architecture, consistent sid
 - Use amber/gray instead of red for optional missing integrations
 - Add a completion percentage or "Quick Start: connect GitHub to unlock code workflows"
 
-### 10. Org Overview KPI Cards Are Static
+### 10. ~~Org Overview KPI Cards Are Static~~ → PARTIALLY ADDRESSED (PR #39)
 **Where**: Org overview page (`ux-review/10-org-overview.png`)
 **Problem**: The top stat cards (Total Tasks: 12, Total Deals: 0, Pipeline Value: $0, Contacts: 0, Active Projects: 1) are just numbers with no trends, sparklines, or period selectors. The quick-nav cards below (Pipelines, Contacts, Projects, Intelligence, Members, Integrations) are just text links styled as cards.
-**Impact**: The overview page doesn't tell a story. Users can't see "are things getting better or worse?"
-**Recommendation**:
-- Add simple trend arrows (↑12% this week) or sparkline charts
-- Add time period selector (7d / 30d / 90d)
-- The quick-nav cards could show a preview metric (e.g., "Pipelines: 2 active, $45K in pipeline")
+**Resolution**: PR #39 added TrendIndicator component showing "Active"/"No data" status on KPI cards, plus recent workflow run stats section with record counts.
+**Remaining**: Trend arrows with percentages (requires additional API), time period selector, sparkline charts.
 
 ---
 
 ## Medium UX Issues (P2)
 
-### 11. Workflow Builder Cards Lack Status Indicators
+### 11. ~~Workflow Builder Cards Lack Status Indicators~~ → ADDRESSED (PR #39)
 **Where**: My Workflows page (`ux-review/06-workflows.png`)
 **Problem**: 5 workflow definition cards show name, description, node tags, and play/edit buttons. But there's no indication of: last run time, success/failure rate, whether triggers are configured, or if the workflow is active/paused.
-**Impact**: Users can't tell which workflows are working and which need attention.
-**Recommendation**: Add a small status indicator (last run: 2h ago ✓ / last run: failed ✗ / never run)
+**Resolution**: PR #39 added last-run status indicators on workflow definition cards (time ago + status icon: checkmark/error/spinner for completed/failed/running, "Never run" for no runs).
 
-### 12. My Tasks List View Lacks Batch Actions
+### 12. ~~My Tasks List View Lacks Batch Actions~~ → ADDRESSED (PR #38)
 **Where**: My Tasks page (`ux-review/07-my-tasks.png`)
 **Problem**: The list shows all 12 tasks with status and priority badges, but no checkboxes for bulk operations. The only interaction is clicking into a task. No way to bulk-change status, reassign, or archive.
-**Impact**: Task triage is one-at-a-time only.
-**Recommendation**: Add a checkbox column, show a floating action bar when items are selected (Move to..., Change status, Archive, Delete)
+**Resolution**: PR #38 added checkbox selection with floating batch action bar (status change, priority change, delete).
 
-### 13. Settings Page Has Unintuitive Tab Layout
+### 13. ~~Settings Page Has Unintuitive Tab Layout~~ → PARTIALLY ADDRESSED (PR #39)
 **Where**: Settings (`ux-review/09-settings.png`)
 **Problem**: Settings has a top-level tab bar (User / Admin / Org / Client) and then a vertical side menu (General, Wallet, Profile, Privacy, Activity Log, API Keys, Topsi Preferences, Integrations "Coming soon"). The two-axis navigation creates confusion.
-**Impact**: Users may not discover all settings. The "Coming soon" integrations tab feels unprofessional.
-**Recommendation**:
-- Remove "Coming soon" items or move them to a roadmap page
-- Consider a single-level nav (flat list in left column) rather than tabs + sidebar
+**Resolution**: PR #39 grouped "Coming soon" items at bottom of nav with "Planned" header and reduced opacity (opacity-40), making them clearly secondary.
+**Remaining**: Consider simplifying two-axis navigation (tabs + sidebar) to single-level nav.
 
 ### 14. Topsi Chat Widget Feels Disconnected
 **Where**: Topsi floating widget (`ux-review/12-topsi-assistant.png`)
@@ -166,47 +153,40 @@ The "Jungleverse" entity appears in some breadcrumbs but not others. The org nam
 ### 17. Development Mode Banner Takes Valuable Space
 The orange "Development Mode - This is a development build" banner uses ~32px of vertical space on every page. Consider making it a small badge or corner indicator in development builds.
 
-### 18. Project Cards Could Show More Context
+### 18. ~~Project Cards Could Show More Context~~ → PARTIALLY ADDRESSED (PR #39)
 On the Projects page, each card shows name, status badge, creation date, boards count, and tasks count. Missing: last activity timestamp, assignee avatars, progress indicator (% tasks done).
+**Resolution**: PR #39 added task completion progress bar to project cards.
+**Remaining**: Last activity timestamp, assignee avatars.
 
 ### 19. CRM Sub-nav Duplication
 CRM appears in both the sidebar (under org) and as a sub-nav item under the project. The project-level CRM and org-level CRM point to the same org CRM page, which is confusing.
 
-### 20. Kanban Column Headers Need Add-Task Button
+### 20. ~~Kanban Column Headers Need Add-Task Button~~ → ADDRESSED (PR #38)
 The kanban columns have headers with status name and count, but no "+" button to add a task directly to that column. Users must use the top-bar "Create new task" button and then manually set status.
+**Resolution**: PR #38 added "+" button to kanban column headers that pre-sets the task status.
 
-### 21. No Dark Mode Preview
-The Settings page shows a Theme selector (System/Light/Dark) but the screenshots show only light mode. Verify dark mode renders correctly across all major screens.
+### 21. ~~No Dark Mode Preview~~ → ADDRESSED (PR #39)
+The Settings page shows a Theme selector (System/Light/Dark) but the screenshots show only light mode.
+**Resolution**: PR #39 fixed hardcoded colors (brand gold → CSS variable, OnboardingCarousel dark variants), then verified dark mode via Playwright walkthrough across all major screens (Projects, Org Overview, CRM Pipeline, Workflows, Settings). All pages render correctly.
 
 ---
 
 ## Summary by Priority
 
-| Priority | Count | Theme |
-|----------|-------|-------|
-| P0 Critical | 4 | Onboarding, empty states, task card density, notifications |
-| P1 Major | 6 | Sidebar overload, drawer layout, placeholder data, integrations wall, KPIs, test data |
-| P2 Medium | 6 | Workflow status, batch actions, settings layout, Topsi guidance, breadcrumbs, login |
-| P3 Polish | 5 | Dev banner, project cards, CRM duplication, kanban add, dark mode |
+| Priority | Count | Addressed | Theme |
+|----------|-------|-----------|-------|
+| P0 Critical | 4 | 3 of 4 | ~~Onboarding~~ (PR #39), ~~empty states~~ (PR #38+#39), task card density, ~~notifications~~ (PR #38+#39) |
+| P1 Major | 6 | 2 of 6 | Sidebar overload, drawer layout, ~~placeholder data~~ (PR #38), integrations wall, ~~KPIs~~ (PR #39), test data |
+| P2 Medium | 6 | 3 of 6 | ~~Workflow status~~ (PR #39), ~~batch actions~~ (PR #38), ~~settings layout~~ (PR #39), Topsi guidance, breadcrumbs, login |
+| P3 Polish | 5 | 3 of 5 | Dev banner, ~~project cards~~ (PR #39), CRM duplication, ~~kanban add~~ (PR #38), ~~dark mode~~ (PR #39) |
+
+**Total: 11 of 21 items addressed across PR #38 and PR #39.**
 
 ---
 
-## Recommended Sprint Priorities
+## Remaining Items (Not Yet Addressed)
 
-**Sprint A (Quick wins — 2-3 days):**
-- Fix "Source of truth: ." placeholder display (#7)
-- Fix login expired message on first visit (#16)
-- Add suggested prompts to Topsi widget (#14)
-- Add "+" button to kanban column headers (#20)
-
-**Sprint B (High-impact — 1 week):**
-- Enhance task cards with assignee, tags, dates (#3)
-- Add notification tabs + mark-all-read + count badge (#4)
-- Add pipeline stage descriptions/tooltips (#2)
-- Add batch select to My Tasks (#12)
-
-**Sprint C (Architecture — 1-2 weeks):**
-- First-run onboarding checklist (#1)
-- Reorganize sidebar navigation (#5)
-- Rethink integrations hub presentation (#9)
-- Add trend indicators to org overview KPIs (#10)
+**P0**: #3 Task card visual differentiation (assignee avatars, due dates, description preview)
+**P1**: #5 Sidebar information overload, #6 Task detail drawer layout, #8 Test/E2E data pollution, #9 Integrations hub prioritization
+**P2**: #14 Topsi chat suggested prompts (partially in PR #38), #15 Breadcrumb inconsistencies, #16 Login "session expired" on first visit (fixed in PR #38)
+**P3**: #17 Dev banner space, #19 CRM sub-nav duplication

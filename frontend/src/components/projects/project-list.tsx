@@ -26,6 +26,7 @@ const createEmptySummary = (
   },
   customCount: 0,
   totalTasks: 0,
+  completedTasks: 0,
   tasksByType: {
     default: 0,
     custom: 0,
@@ -77,6 +78,7 @@ const summarizeBoards = (
   });
 
   summary.totalTasks = tasks.length;
+  summary.completedTasks = tasks.filter((t) => t.status === 'done' || t.status === 'cancelled').length;
   summary.latestActivity = latest;
 
   return summary;

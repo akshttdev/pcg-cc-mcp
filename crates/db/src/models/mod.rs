@@ -52,6 +52,7 @@ pub mod project_folder;
 pub mod project_controller;
 pub mod project_board;
 pub mod project_onboarding;
+pub mod org_onboarding;
 pub mod project_pod;
 pub mod task;
 pub mod task_artifact;
