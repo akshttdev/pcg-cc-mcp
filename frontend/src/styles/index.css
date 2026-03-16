@@ -64,11 +64,17 @@
     --_status-failed-foreground: 0 0% 100%;
     --_status-paused: 32 95% 44%;
     --_status-paused-foreground: 0 0% 100%;
+
+    /* Brand gold */
+    --brand-gold: #b8952a;
   }
 
   .dark {
     color-scheme: dark;
     --_brand: 217 91% 60%;
+
+    /* Brand gold (lighter for dark backgrounds) */
+    --brand-gold: #d4b44a;
     --_brand-foreground: 0 0% 100%;
 
     --_background: 222 47% 7%;

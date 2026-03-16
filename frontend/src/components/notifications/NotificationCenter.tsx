@@ -30,7 +30,7 @@ function loadReadActivityIds(): Set<string> {
 function persistReadActivityIds(ids: Set<string>) {
   try {
     localStorage.setItem(READ_ACTIVITY_IDS_KEY, JSON.stringify([...ids]));
-  } catch {}
+  } catch { /* non-fatal */ }
 }
 
 export function NotificationCenter() {
@@ -83,7 +83,7 @@ export function NotificationCenter() {
 
   const persistDismissedAt = useCallback((ts: string) => {
     setDismissedAt(ts);
-    try { localStorage.setItem('orcha:activity-dismissed-at', ts); } catch {}
+    try { localStorage.setItem('orcha:activity-dismissed-at', ts); } catch { /* non-fatal */ }
   }, []);
 
   const handleMarkAllRead = useCallback(async () => {
@@ -120,6 +120,21 @@ export function NotificationCenter() {
       }
     },
     [navigate],
+  );
+
+  const handleDismiss = useCallback(
+    async (item: InboxNotification) => {
+      try {
+        await fetch(resolveApiUrl(`/api/notifications/${item.id}/read`), {
+          method: 'PUT',
+          credentials: 'include',
+        });
+        queryClient.invalidateQueries({ queryKey: ['notifications-inbox'] });
+      } catch {
+        // Non-fatal
+      }
+    },
+    [queryClient],
   );
 
   const handleInboxClick = useCallback(
@@ -194,6 +209,7 @@ export function NotificationCenter() {
                   key={`inbox-${item.id}`}
                   item={item}
                   onClick={handleInboxClick}
+                  onDismiss={handleDismiss}
                 />
               ))}
               {visibleNotifications.map((item) => (

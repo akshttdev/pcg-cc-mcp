@@ -224,17 +224,22 @@ pub async fn create_task(
 
     // Auto-register agent watchers based on assigned agent's config
     if let Some(ref agent_id) = task.agent_id {
-        if let Ok(Some(config)) =
-            db::models::agent_execution_config::AgentExecutionConfig::find_by_agent_id(
-                &deployment.db().pool,
-                agent_id,
-            )
-            .await
+        match db::models::agent_execution_config::AgentExecutionConfig::find_by_agent_id(
+            &deployment.db().pool,
+            agent_id,
+        )
+        .await
         {
-            for watcher_id in config.get_auto_watch_agent_ids() {
-                let _ = Task::add_agent_watcher(&deployment.db().pool, &task.id, &watcher_id)
-                    .await;
+            Ok(Some(config)) => {
+                let watcher_ids = config.get_auto_watch_agent_ids();
+                for watcher_id in &watcher_ids {
+                    if let Err(e) = Task::add_agent_watcher(&deployment.db().pool, &task.id, watcher_id).await {
+                        tracing::warn!("Failed to auto-register agent watcher {} on task {}: {}", watcher_id, task.id, e);
+                    }
+                }
             }
+            Ok(None) => {} // No config for this agent — skip
+            Err(e) => tracing::warn!("Error looking up agent execution config for {}: {}", agent_id, e),
         }
     }
 

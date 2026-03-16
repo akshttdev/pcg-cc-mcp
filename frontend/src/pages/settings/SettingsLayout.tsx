@@ -239,10 +239,12 @@ export function SettingsLayout() {
   }, [setSearchParams]);
 
   // Filter navigation items by active scope and admin status
-  const visibleNavigation = settingsNavigation.filter((item) => {
+  const allVisible = settingsNavigation.filter((item) => {
     if (item.adminOnly && !user?.is_admin) return false;
     return item.scopes.includes(effectiveScope);
   });
+  const visibleNavigation = allVisible.filter((item) => !item.planned);
+  const plannedNavigation = allVisible.filter((item) => item.planned);
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -281,29 +283,6 @@ export function SettingsLayout() {
             <nav className="space-y-1">
               {visibleNavigation.map((item) => {
                 const Icon = item.icon;
-
-                if (item.planned) {
-                  return (
-                    <div
-                      key={item.path}
-                      className="flex items-start gap-3 px-3 py-2 text-sm rounded-lg text-muted-foreground/50 cursor-default"
-                    >
-                      <Icon className="h-4 w-4 mt-0.5 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium flex items-center gap-2">
-                          {item.label}
-                          <Badge variant="outline" className="text-[9px] px-1 py-0 font-normal text-muted-foreground/50 border-muted-foreground/20">
-                            Coming soon
-                          </Badge>
-                        </div>
-                        <div className="text-xs text-muted-foreground/40">
-                          {item.description}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                }
-
                 return (
                   <NavLink
                     key={item.path}
@@ -335,6 +314,37 @@ export function SettingsLayout() {
                   </NavLink>
                 );
               })}
+
+              {plannedNavigation.length > 0 && (
+                <>
+                  <div className="pt-3 pb-1 px-3">
+                    <div className="border-t border-border/40" />
+                    <p className="text-[10px] font-medium text-muted-foreground/40 uppercase tracking-wider mt-2">Planned</p>
+                  </div>
+                  {plannedNavigation.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <div
+                        key={item.path}
+                        className="flex items-start gap-3 px-3 py-2 text-sm rounded-lg text-muted-foreground/40 cursor-default opacity-40"
+                      >
+                        <Icon className="h-4 w-4 mt-0.5 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium flex items-center gap-2">
+                            {item.label}
+                            <Badge variant="outline" className="text-[9px] px-1 py-0 font-normal text-muted-foreground/40 border-muted-foreground/20">
+                              Coming soon
+                            </Badge>
+                          </div>
+                          <div className="text-xs text-muted-foreground/30">
+                            {item.description}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
             </nav>
           </div>
         </aside>

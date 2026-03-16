@@ -364,7 +364,7 @@ export function checkBoundaryCollision(
   const { radius: newRadius, angle: newAngle } = toPolar(newPos.x, newPos.z);
   const zone = getZoneAtPosition(newPos.x, newPos.z, newPos.y);
 
-  let correctedPos = newPos.clone();
+  const correctedPos = newPos.clone();
   let blocked = false;
   let hitNormal: THREE.Vector3 | undefined;
 

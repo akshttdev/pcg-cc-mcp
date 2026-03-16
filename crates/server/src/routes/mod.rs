@@ -69,6 +69,7 @@ pub mod crm_contacts;
 pub mod crm_deals;
 pub mod crm_pipelines;
 pub mod onboarding;
+pub mod org_onboarding;
 pub mod multiplayer;
 pub mod model_pricing;
 pub mod vibe_treasury;
@@ -251,6 +252,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(system_metrics::router(&deployment))
         .merge(event_stream::router(&deployment))
         .merge(onboarding::router(&deployment))
+        .merge(org_onboarding::router(&deployment))
         .merge(multiplayer::router(&deployment))
         .merge(cms::router(&deployment))
         .merge(tasks::global_router(&deployment))

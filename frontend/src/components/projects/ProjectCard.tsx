@@ -21,6 +21,7 @@ import {
   MoreHorizontal,
   Trash2,
 } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
 import { useNavigate } from 'react-router-dom';
 import { Project, ProjectBoard } from 'shared/types';
 import { useEffect, useRef } from 'react';
@@ -33,6 +34,7 @@ export type ProjectBoardSummary = {
   corePresence: Record<ProjectBoard['board_type'], boolean>;
   customCount: number;
   totalTasks: number;
+  completedTasks: number;
   tasksByType: Record<ProjectBoard['board_type'], number>;
   unassignedTasks: number;
   latestActivity?: string;
@@ -227,6 +229,12 @@ function ProjectCard({
               {boardSummary.totalTasks === 1 ? '' : 's'}
               {latestActivityLabel ? ` · Updated ${latestActivityLabel}` : ''}
             </div>
+            {boardSummary.totalTasks > 0 && (
+              <Progress
+                value={(boardSummary.completedTasks / boardSummary.totalTasks) * 100}
+                className="h-1.5 mt-2"
+              />
+            )}
           </>
         )}
       </CardContent>

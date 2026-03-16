@@ -81,6 +81,8 @@ pub struct Task {
     pub custom_properties: Option<Json<Value>>,
     pub scheduled_start: Option<DateTime<Utc>>,
     pub scheduled_end: Option<DateTime<Utc>>,
+    /// JSON-encoded collaborators/watchers array
+    pub collaborators: Option<String>,
     /// Base64 encoded screenshot image for bug reports
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub screenshot: Option<String>,
@@ -440,6 +442,7 @@ ORDER BY t.created_at DESC"#,
                     custom_properties: rec.custom_properties,
                     scheduled_start: rec.scheduled_start,
                     scheduled_end: rec.scheduled_end,
+                    collaborators: rec.collaborators.clone(),
                     screenshot: rec.screenshot,
                     completion_criteria: rec.completion_criteria,
                     output_format: rec.output_format,
