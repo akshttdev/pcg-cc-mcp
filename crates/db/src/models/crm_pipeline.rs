@@ -450,14 +450,16 @@ impl CrmPipeline {
         )
         .await?;
 
-        // Create default stages for clients
+        // Create default stages for clients (8-stage pipeline with human review gates)
         let stages = vec![
-            ("Lead", "#6B7280", 0, false, false, 10),
-            ("Qualified", "#3B82F6", 1, false, false, 25),
-            ("Proposal", "#F59E0B", 2, false, false, 50),
-            ("Negotiation", "#EF4444", 3, false, false, 75),
-            ("Closed Won", "#22C55E", 4, true, true, 100),
-            ("Closed Lost", "#9CA3AF", 5, true, false, 0),
+            ("Lead",              "#6B7280", 0, false, false, 5),
+            ("Business Analysis", "#3B82F6", 1, false, false, 20),
+            ("Discovery",         "#8B5CF6", 2, false, false, 40),
+            ("Build Proposal",    "#F59E0B", 3, false, false, 55),
+            ("Polish",            "#EC4899", 4, false, false, 70),
+            ("Proposal Meeting",  "#EF4444", 5, false, false, 85),
+            ("Closed Won",        "#22C55E", 6, true,  true,  100),
+            ("Closed Lost",       "#9CA3AF", 7, true,  false, 0),
         ];
 
         for (name, color, position, is_closed, is_won, probability) in stages {
@@ -489,8 +491,8 @@ impl CrmPipeline {
             CreateCrmPipeline {
                 organization_id: organization_id.cloned(),
                 client_id: None,
-                name: "Sales Pipeline".to_string(),
-                description: Some("Agency sales process: Lead → Proposal → Win/Lose".to_string()),
+                name: "Acquisition".to_string(),
+                description: Some("8-stage client acquisition: Lead → Business Analysis → Discovery → Build Proposal → Polish → Proposal Meeting → Won/Lost".to_string()),
                 pipeline_type: PipelineType::Sales,
                 icon: Some("trending-up".to_string()),
                 color: Some("#3B82F6".to_string()),
@@ -499,11 +501,14 @@ impl CrmPipeline {
         .await?;
 
         let stages = vec![
-            ("Lead (Research)", "#3B82F6", 0, false, false, 10),
-            ("Proposal (Schedule Call)", "#F59E0B", 1, false, false, 30),
-            ("Presented", "#8B5CF6", 2, false, false, 60),
-            ("Won", "#22C55E", 3, true, true, 100),
-            ("Lost", "#9CA3AF", 4, true, false, 0),
+            ("Lead",              "#6B7280", 0, false, false, 5),
+            ("Business Analysis", "#3B82F6", 1, false, false, 20),
+            ("Discovery",         "#8B5CF6", 2, false, false, 40),
+            ("Build Proposal",    "#F59E0B", 3, false, false, 55),
+            ("Polish",            "#EC4899", 4, false, false, 70),
+            ("Proposal Meeting",  "#EF4444", 5, false, false, 85),
+            ("Closed Won",        "#22C55E", 6, true,  true,  100),
+            ("Closed Lost",       "#9CA3AF", 7, true,  false, 0),
         ];
 
         for (name, color, position, is_closed, is_won, probability) in stages {

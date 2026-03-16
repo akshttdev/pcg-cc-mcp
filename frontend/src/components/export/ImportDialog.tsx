@@ -136,6 +136,7 @@ export function ImportDialog({
             scheduled_end: null,
             completion_criteria: null,
             output_format: null,
+            collaborators: null,
           });
           if (status !== 'todo') {
             await tasksApi.update(createdTask.id, { status });

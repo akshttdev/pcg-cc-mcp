@@ -362,18 +362,18 @@ test.describe("10D: Full Pipeline Walkthrough", () => {
   test("pipeline components are correctly wired (API integration check)", async ({ request }) => {
     await apiLogin(request);
 
-    // 1. Verify Bug Triage Pipeline workflow definition exists
+    // 1. Verify Feedback Triage Pipeline workflow definition exists
     const defsRes = await request.get("/api/workflows/definitions");
     expect(defsRes.ok()).toBeTruthy();
     const defs = (await defsRes.json()).data;
     const triage = defs.find((d: any) => d.id === "bug_triage_pipeline");
     expect(triage).toBeTruthy();
 
-    // 2. Verify ORCHA Bug Triage trigger is configured
+    // 2. Verify ORCHA Feedback Triage trigger is configured
     const triggersRes = await request.get("/api/workflows/triggers");
     expect(triggersRes.ok()).toBeTruthy();
     const triggers = (await triggersRes.json()).data;
-    const orchaTrigger = triggers.find((t: any) => t.name === "ORCHA Bug Triage");
+    const orchaTrigger = triggers.find((t: any) => t.name === "ORCHA Bug Triage" || t.name === "ORCHA Feedback Triage");
     expect(orchaTrigger).toBeTruthy();
     expect(orchaTrigger.enabled).toBeTruthy();
 

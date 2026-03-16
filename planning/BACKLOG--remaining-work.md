@@ -1,6 +1,6 @@
 # Backlog — Remaining Work
 
-**Last updated:** 2026-03-15
+**Last updated:** 2026-03-16
 **Context:** Consolidated from all completed planning docs. Items prioritized by impact and dependency.
 
 ---
@@ -12,10 +12,9 @@
 **What:** Agent flows exist as data model only — no background worker to progress phases, enforce gates, or handle delegation. Largest remaining architecture gap.
 **Status:** NOT STARTED
 
-### 2. ACP Agents Get No MCP Servers
+### ~~2. ACP Agents Get No MCP Servers~~ → RESOLVED
 **Source:** `archive/2026-03-12--review--ui-backend-capability-gaps.md` (F5)
-**What:** `harness.rs` passes `mcp_servers: vec![]` to Gemini/Qwen sessions. Non-Claude agents can't use any tools.
-**Status:** NOT STARTED
+**Resolution:** Already implemented — `load_platform_mcp_servers()` in `acp/harness.rs` loads from `default_mcp.json` and passes to all ACP sessions (Gemini, Qwen). Discovered during pipeline enhancement sprint (2026-03-16).
 
 ---
 
@@ -68,9 +67,9 @@
 **Source:** `archive/2026-03-12--tracker--sprint1-issues.md`
 **What:** No OAuth/auth token management, no URL allowlisting, no rate limiting. Security concern for production.
 
-### 10. Rename "Bug Triage Pipeline"
+### ~~10. Rename "Bug Triage Pipeline"~~ → RESOLVED
 **Source:** `archive/2026-03-13--review--dogfood-e2e-qa.md` (Bug #12)
-**What:** Feature requests processed by "Bug Triage Pipeline" — should be "Feedback Triage Pipeline".
+**Resolution:** Renamed to "Feedback Triage Pipeline" in `data_source_workflows.rs`, `feedback.rs`, and E2E tests (2026-03-16).
 
 ### 11. ~~No Success Toast for Feedback Submission~~ → RESOLVED
 **Source:** `archive/2026-03-13--review--dogfood-e2e-qa.md` (Bug #4)
@@ -175,3 +174,7 @@
 | Tech debt sprint: org-profile.tsx monolith | 7,086 lines → 33 modular files with lazy-loaded tabs (PR #34) |
 | Tech debt sprint: CI pipeline | fmt + clippy + test + lint + types + audit (PR #34) |
 | Tech debt sprint: eprintln in prod code | 4 calls → 0, replaced with tracing (PR #34) |
+| ACP agents get no MCP servers (Backlog #2) | Already implemented — `load_platform_mcp_servers()` + `default_mcp.json` (2026-03-16) |
+| Rename Bug Triage Pipeline (Backlog #10) | → "Feedback Triage Pipeline" in code + E2E tests (2026-03-16) |
+| Pipeline enhancement merge + DbUuid fixes | sloperation314 merged, 12 Rust + 4 TS compile fixes (2026-03-16) |
+| Pipeline intelligence E2E demo | 5-part 8-stage deal progression demo (2026-03-16) |

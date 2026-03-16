@@ -89,62 +89,29 @@ pub async fn trigger_research(
     .execute(pool)
     .await?;
 
-    // Build the research prompt — Nora will delegate to the right agent
     let agent_pref = body.agent_preference.as_deref().unwrap_or("Scout");
-    let project_context = body.project_id
-        .map(|pid| format!(" Project context: {}.", pid))
-
-        .unwrap_or_default();
-
-    let research_prompt = format!(
-        "[INTELLIGENCE TASK — delegate to {}] \
-         Research the following contact and return ONLY a valid JSON object (no markdown, no preamble): \
-         Name: {}, Email: {}, Company: {}, Job Title: {}, Person type: {}. \
-         Use web search to find their professional background, social media, and their company's \
-         public contact information, website, Google My Business listing, and social media. \
-         \
-         Return this exact JSON structure: \
-         {{ \
-           \"summary\": \"1-2 sentence professional profile\", \
-           \"social_profiles\": [{{\"platform\": \"linkedin\", \"handle\": \"...\", \"url\": \"...\", \"followers\": 0}}], \
-           \"company_description\": \"brief company description\", \
-           \"company_website\": \"https://...\", \
-           \"company_phone\": \"+1...\", \
-           \"company_email\": \"info@...\", \
-           \"company_instagram\": \"@handle\", \
-           \"company_linkedin\": \"url\", \
-           \"company_twitter\": \"@handle\", \
-           \"company_facebook\": \"url\", \
-           \"gmb_rating\": 4.5, \
-           \"gmb_review_count\": 42, \
-           \"deal_potential\": \"high\", \
-           \"recommended_approach\": \"1 sentence\", \
-           \"confidence\": 0.8 \
-         }}.{}",
-
-        agent_pref,
-        person.full_name,
-        person.email.as_deref().unwrap_or("unknown"),
-        person.company_name.as_deref().unwrap_or("unknown"),
-        person.job_title.as_deref().unwrap_or("unknown"),
-
-        person.person_type,
-        project_context
-    );
+    // NOTE: research_prompt was built here but never used — run_research_direct
+    // constructs its own prompt internally. Commented out (broken window cleanup).
+    // let project_context = body.project_id
+    //     .map(|pid| format!(" Project context: {}.", pid))
+    //     .unwrap_or_default();
+    // let research_prompt = format!(
+    //     "[INTELLIGENCE TASK — delegate to {}] \
+    //      Research the following contact and return ONLY a valid JSON object ...",
+    //     agent_pref, person.full_name, ... , project_context
+    // );
 
     // Fire async task — Nora orchestrates, Scout/Astra executes
     let pool_clone = pool.clone();
     let project_id = body.project_id;
-    // TODO: full_name and use_direct were computed but never used downstream
     // let full_name = person.full_name.clone();
     // let use_direct = body.agent_preference.as_deref() == Some("direct");
     let person_clone = person.clone();
 
     tokio::spawn(async move {
-        let result = run_research_via_nora(
+        let result = run_research_direct(
             &pool_clone,
-            person_clone,
-            research_prompt,
+            &person_clone,
             project_id,
         )
         .await;
@@ -261,7 +228,7 @@ async fn run_research_via_nora(
         .map_err(|e| format!("Nora error: {}", e))?
     };
 
-    // Detect Nora failure responses (quota exceeded, API errors) and fall back to direct
+    // Detect Nora failure responses (quota exceeded, API errors, tool-use logs) and fall back to direct
     let content_lower = response.content.to_lowercase();
     let is_failure_response = content_lower.contains("api quota")
         || content_lower.contains("quota limit")
@@ -270,8 +237,16 @@ async fn run_research_via_nora(
         || content_lower.contains("openai api quota")
         || (content_lower.contains("api quota") && content_lower.contains("exceeded"));
 
-    if is_failure_response {
-        tracing::warn!("Nora research hit quota error for person {}, falling back to direct Anthropic research", person_id);
+    // Detect Nora returning action logs instead of clean JSON — fall back to direct
+    let is_action_log = response.content.contains("I've completed")
+        || response.content.contains("completed multiple actions")
+        || response.content.contains("completed the requested")
+        || response.content.starts_with("✅")
+        || (response.content.contains("\"success\":true,\"url\"") && !response.content.contains("\"summary\""))
+        || (response.content.contains("\"results\":[{\"title\"") && !response.content.contains("\"summary\""));
+
+    if is_failure_response || is_action_log {
+        tracing::warn!("Nora research produced unusable output for person {}, falling back to direct Anthropic research", person_id);
         return run_research_direct(pool, &person, project_id).await;
     }
 
@@ -361,6 +336,19 @@ async fn run_research_direct(
         .map_err(|e| format!("JSON parse error: {}", e))?;
 
     let response_text = extract_text_from_anthropic_response(&response);
+
+    // Check for rate limit errors in the direct response — reset status to idle for retry
+    if response_text.contains("rate_limit_error") || response_text.contains("rate limit") {
+        tracing::warn!("Direct research hit rate limit for person {}, resetting to idle for retry", person.id);
+        let _ = sqlx::query(
+            "UPDATE persons SET intelligence_status = 'idle', updated_at = datetime('now','subsec') WHERE id = ?",
+        )
+        .bind(person.id)
+        .execute(pool)
+        .await;
+        return Ok(());
+    }
+
     let summary = extract_summary_from_response(&response_text);
     let confidence = extract_confidence_from_response(&response_text);
 
@@ -420,27 +408,55 @@ pub async fn write_intelligence_results(
 
 // ── Text extraction helpers ───────────────────────────────────────────────────
 
-fn extract_summary_from_response(text: &str) -> String {
-    // Try direct JSON
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
-        if let Some(s) = v.get("summary").and_then(|s| s.as_str()) {
-            return s.to_string();
-        }
+fn extract_summary_from_json(v: &serde_json::Value) -> Option<String> {
+    // Direct "summary" key
+    if let Some(s) = v.get("summary").and_then(|s| s.as_str()) {
+        return Some(s.to_string());
     }
-    // Try JSON block — look for "summary" anywhere in the JSON
-    if let Some(start) = text.find('{') {
-        if let Some(end) = text.rfind('}') {
-            if end > start {
-                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text[start..=end]) {
-                    if let Some(s) = v.get("summary").and_then(|s| s.as_str()) {
-                        return s.to_string();
-                    }
+    // Nested under "subject" or "pcg_contact_intelligence"
+    for key in &["pcg_contact_intelligence", "subject", "person", "contact"] {
+        if let Some(nested) = v.get(key) {
+            if let Some(s) = nested.get("summary").and_then(|s| s.as_str()) {
+                return Some(s.to_string());
+            }
+            // One more level: subject.overview, subject.professional_summary, etc.
+            for inner in &["overview", "professional_summary", "bio", "profile_summary"] {
+                if let Some(s) = nested.get(inner).and_then(|s| s.as_str()) {
+                    return Some(s.to_string());
                 }
             }
         }
     }
-    // Fall back to first 300 chars of text
-    text.chars().take(300).collect()
+    None
+}
+
+fn extract_summary_from_response(text: &str) -> String {
+    // Try direct JSON
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
+        if let Some(s) = extract_summary_from_json(&v) {
+            return s;
+        }
+    }
+    // Try JSON block — scan for embedded JSON
+    let mut search = text;
+    while let Some(start) = search.find('{') {
+        let slice = &search[start..];
+        if let Some(end) = slice.rfind('}') {
+            if end > 0 {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&slice[..=end]) {
+                    if let Some(s) = extract_summary_from_json(&v) {
+                        return s;
+                    }
+                }
+            }
+        }
+        // Move past this brace and keep searching
+        search = &search[start + 1..];
+        if search.is_empty() { break; }
+    }
+    // Fall back to first 300 chars of text (strip markdown fences)
+    let clean = text.trim_start_matches("```json").trim_start_matches("```").trim();
+    clean.chars().take(300).collect()
 }
 
 fn extract_text_from_anthropic_response(response: &serde_json::Value) -> String {
@@ -809,6 +825,53 @@ async fn write_company_intel_results(
     .await;
 }
 
+
+// ── Internal helpers (called from other routes) ──────────────────────────────
+
+/// Trigger person research internally (called from stage-transition hooks).
+/// Assumes intelligence_status is already set to 'queued'.
+pub async fn trigger_research_for_person(
+    pool: &sqlx::SqlitePool,
+    person_id: Uuid,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let person = Person::find_by_id(pool, person_id)
+        .await?
+        .ok_or("Person not found")?;
+
+    let research_prompt = format!(
+        "[INTELLIGENCE TASK — delegate to Scout] \
+         Research the following contact and return ONLY a valid JSON object (no markdown, no preamble): \
+         Name: {}, Email: {}, Company: {}, Job Title: {}, Person type: {}. \
+         Use web search to find their professional background, social media, and their company's \
+         public contact information, website, Google My Business listing, and social media. \
+         \
+         Return this exact JSON structure: \
+         {{ \
+           \"summary\": \"1-2 sentence professional profile\", \
+           \"social_profiles\": [{{\"platform\": \"linkedin\", \"handle\": \"...\", \"url\": \"...\", \"followers\": 0}}], \
+           \"company_description\": \"brief company description\", \
+           \"company_website\": \"https://...\", \
+           \"company_phone\": \"+1...\", \
+           \"company_email\": \"info@...\", \
+           \"company_instagram\": \"@handle\", \
+           \"company_linkedin\": \"url\", \
+           \"company_twitter\": \"@handle\", \
+           \"company_facebook\": \"url\", \
+           \"gmb_rating\": 4.5, \
+           \"gmb_review_count\": 42, \
+           \"deal_potential\": \"high\", \
+           \"recommended_approach\": \"1 sentence\", \
+           \"confidence\": 0.8 \
+         }}",
+        person.full_name,
+        person.email.as_deref().unwrap_or("unknown"),
+        person.company_name.as_deref().unwrap_or("unknown"),
+        person.job_title.as_deref().unwrap_or("unknown"),
+        person.person_type,
+    );
+
+    run_research_via_nora(pool, person, research_prompt, None).await
+}
 
 // ── Router ────────────────────────────────────────────────────────────────────
 
