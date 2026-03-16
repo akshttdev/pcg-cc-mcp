@@ -59,13 +59,42 @@ PR #39 (UX engagement polish sprint 2) was squash-merged to main and merged into
 - my-tasks batch handlers using our `taskKeys`/`sidebarKeys` factory (not inline strings)
 - `npx tsc --noEmit`: zero errors
 
-## New items for Sprint 4 (expanded from PR #39)
+## QA Review Findings (self-review 2026-03-16)
 
-- `useOrgOnboarding.ts` — 4 mutations need `onError` handlers / `useMutationWithToast`
-- `NotificationCenter.tsx` — 1 raw fetch to extract into API module
-- `my-tasks.tsx` batch handlers — candidates for `useMutationWithToast` wrapping
-- Remaining query key factory adoption (~60% of files still use inline strings)
+### Regression found & fixed
+- `useTaskMutations.ts` — `if (projectId)` guard silently suppressed cache invalidation when projectId was undefined. Fixed in be4b674 by restoring original `['tasks', projectId]` inline pattern.
+
+### Known issues (not blocking merge, queued for Sprint 4)
+- `enhanced/index.tsx` is 749 lines (exceeds 500-line rule) — extract data-fetching into `useTaskPanelData.ts`
+- `useTaskFormState.ts:472-484` — duplicate `useEffect` setting executor profile (pre-existing)
+- `useAgents.ts` — partially migrated; `useActiveAgents`, `useAgent`, `useAgentByName` still bypass factory
+- `NotificationCenter.tsx:50` — `['notifications']` activity query key not in factory
+- `StagingTab.tsx:78` — `['stagingPending', orgId]` doesn't match factory's `workflowKeys.stagingPending()` (no orgId)
+- `company-profile/tabs/OverviewTab.tsx` — duplicate `Tab` type definition (also in index.tsx)
+- `deal-detail/tabs/ActivityTab.tsx:10` — `organization_id` used as `projectId` fallback (pre-existing bug)
+- `enhanced/index.tsx:298` — `any` type usage in vibe transaction filter
+- ~8 `console.log` debug statements in `useTaskFormState.ts` (pre-existing)
+
+### Pre-existing patterns preserved (not regressions)
+- Singular vs plural key prefixes (`['task', id]` vs `['tasks']`) — matches original inline keys
+- `taskKeys.list` / `taskKeys.projectTasks` dual purpose — matches original codebase patterns
+
+## New items for Sprint 4 (expanded from PR #39 + QA review)
+
+**From QA review:**
+- Extract `enhanced/index.tsx` data-fetching into `useTaskPanelData.ts` hook (749 → ~300 lines)
+- Remove duplicate `useEffect` in `useTaskFormState.ts`
+- Complete `useAgents.ts` factory migration
+- Add `['notifications']` activity key to factory + migrate consumer
+- Fix `StagingTab` to use factory key with orgId param
+- Deduplicate `Tab` type in company-profile
+
+**From PR #39:**
+- `my-tasks.tsx` batch handlers — candidates for `useMutationWithToast`
+- Remaining query key factory adoption (~40% of files still use inline strings)
 - API modules: topsi-routes.ts, topiclips.ts, nora extensions, system extensions
+
+**Larger scope:**
 - Rust route splits: topsi.rs (2,800), organizations.rs (2,665), nora.rs (2,475)
 - Large component splits: MeetingMode.tsx (1,207), virtual-environment.tsx (1,282)
 
