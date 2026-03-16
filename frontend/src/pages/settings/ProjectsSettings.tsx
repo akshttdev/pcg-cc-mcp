@@ -43,62 +43,12 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { ProjectMembersDialog } from '@/components/dialogs/project-members-dialog';
-import { projectsApi, organizationsApi, type ClientData } from '@/lib/api';
+import { projectsApi, organizationsApi, type ClientData, permissionsApi } from '@/lib/api';
 import { formatDate } from '@/lib/formatters';
 import type { Project } from 'shared/types';
 
 // Project already includes organization_id and client_id
 type ProjectWithOrg = Project;
-
-interface VibeBudgetResponse {
-  vibe_budget_limit: number | null;
-  vibe_spent_amount: number;
-  vibe_remaining: number | null;
-}
-
-// API functions
-const api = {
-  listProjects: async (filters?: {
-    search?: string;
-  }): Promise<ProjectWithOrg[]> => {
-    const params = new URLSearchParams();
-    if (filters?.search) params.append('search', filters.search);
-
-    const response = await fetch(`/api/projects?${params}`);
-    if (!response.ok) throw new Error('Failed to fetch projects');
-    const data = await response.json();
-    return data.data;
-  },
-
-  getProjectMemberCount: async (projectId: string): Promise<number> => {
-    try {
-      const response = await fetch(`/api/permissions/projects/${projectId}/members`);
-      if (!response.ok) return 0;
-      const data = await response.json();
-      return data.data?.length || 0;
-    } catch {
-      return 0;
-    }
-  },
-
-  getProjectBudget: async (projectId: string): Promise<VibeBudgetResponse> => {
-    const response = await fetch(`/api/projects/${projectId}/budget`);
-    if (!response.ok) throw new Error('Failed to fetch budget');
-    const data = await response.json();
-    return data.data;
-  },
-
-  setProjectBudget: async (projectId: string, budgetLimit: number | null): Promise<VibeBudgetResponse> => {
-    const response = await fetch(`/api/projects/${projectId}/budget`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vibe_budget_limit: budgetLimit }),
-    });
-    if (!response.ok) throw new Error('Failed to set budget');
-    const data = await response.json();
-    return data.data;
-  },
-};
 
 export function ProjectsSettings() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -115,7 +65,7 @@ export function ProjectsSettings() {
   // Fetch projects
   const { data: projects = [], isLoading } = useQuery({
     queryKey: projectKeys.list(searchQuery),
-    queryFn: () => api.listProjects({ search: searchQuery }),
+    queryFn: () => permissionsApi.listProjects({ search: searchQuery }),
   });
 
   // Fetch clients for the client assignment dialog
@@ -131,7 +81,7 @@ export function ProjectsSettings() {
   // Budget mutation
   const budgetMutation = useMutationWithToast({
     mutationFn: ({ projectId, budgetLimit }: { projectId: string; budgetLimit: number | null }) =>
-      api.setProjectBudget(projectId, budgetLimit),
+      permissionsApi.setProjectBudget(projectId, budgetLimit),
     successMessage: 'VIBE budget updated successfully',
     errorMessage: (error: Error) => `Failed to update budget: ${error.message}`,
     invalidateKeys: [projectKeys.all],
