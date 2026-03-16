@@ -201,6 +201,7 @@ async fn get_deal_rich(
         review_task_status,
         review_task_assignee,
         company_intelligence_status: deal_company_intel_status,
+        company_id: None,
         deal,
     };
 
@@ -560,8 +561,11 @@ async fn trigger_who_is_research(
     .ok()
     .flatten();
 
-    if let Some(intel) = &intel {
-        let status = intel.intelligence_status.as_deref().unwrap_or("idle");
+    // Extract fields from intel before any borrows
+    let intel_status = intel.as_ref().map(|i| i.intelligence_status.as_deref().unwrap_or("idle").to_string());
+    let intel_company = intel.as_ref().and_then(|i| i.company_name.clone());
+
+    if let Some(ref status) = intel_status {
         if status == "idle" || status == "" {
             // Trigger person research via the same logic as POST /api/persons/:id/research
             tracing::info!("Auto-triggering Who Is research for person {} (deal {})", person_id, deal_id);
@@ -580,12 +584,82 @@ async fn trigger_who_is_research(
                     tracing::error!("Auto Who Is research failed for person {}: {}", person_uuid, e);
                 }
             });
+
+            // Fetch deal's project_id for workflow task visibility
+            #[derive(sqlx::FromRow)]
+            struct DealProjectRow {
+                project_id: Option<DbUuid>,
+            }
+            let deal_project = sqlx::query_as::<_, DealProjectRow>(
+                "SELECT project_id FROM crm_deals WHERE id = ?",
+            )
+            .bind(&deal_id)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
+
+            #[derive(sqlx::FromRow)]
+            struct PersonNameRow {
+                full_name: Option<String>,
+            }
+            let person_data = sqlx::query_as::<_, PersonNameRow>(
+                "SELECT full_name FROM persons WHERE id = ?",
+            )
+            .bind(&person_id)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
+
+            let project_id_ref = deal_project.as_ref().and_then(|d| d.project_id.as_ref());
+
+            // Create Phase 1 workflow visibility tasks (deduped by title prefix)
+            let existing_phase1: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM tasks WHERE crm_deal_id = ? AND title LIKE 'Phase 1 Research:%' AND deleted_at IS NULL",
+            )
+            .bind(&deal_id)
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0);
+
+            if existing_phase1 == 0 {
+                if let Some(ref pd) = person_data {
+                    if let Some(ref name) = pd.full_name {
+                        let task_id = DbUuid::new();
+                        let _ = sqlx::query(
+                            "INSERT INTO tasks (id, title, description, status, crm_deal_id, project_id, created_at, updated_at) VALUES (?, ?, ?, 'in_progress', ?, ?, datetime('now','subsec'), datetime('now','subsec'))",
+                        )
+                        .bind(&task_id)
+                        .bind(format!("Phase 1 Research: {} (Person)", name))
+                        .bind("AI research gathering intelligence profile for this contact")
+                        .bind(&deal_id)
+                        .bind(project_id_ref)
+                        .execute(pool)
+                        .await;
+                    }
+                }
+
+                if let Some(ref cn) = intel_company.as_ref().filter(|n| !n.is_empty()) {
+                    let task_id = DbUuid::new();
+                    let _ = sqlx::query(
+                        "INSERT INTO tasks (id, title, description, status, crm_deal_id, project_id, created_at, updated_at) VALUES (?, ?, ?, 'in_progress', ?, ?, datetime('now','subsec'), datetime('now','subsec'))",
+                    )
+                    .bind(&task_id)
+                    .bind(format!("Phase 1 Research: {} (Company)", cn))
+                    .bind("AI research gathering company intelligence and building company wiki")
+                    .bind(&deal_id)
+                    .bind(project_id_ref)
+                    .execute(pool)
+                    .await;
+                }
+            }
         }
     }
 
     // If person has a company_name, check/create Company and trigger company research if idle
-    if let Some(company_name) = intel.and_then(|i| i.company_name).filter(|n| !n.is_empty()) {
-        trigger_company_research_if_idle(pool, &company_name).await;
+    if let Some(ref company_name) = intel_company.filter(|n| !n.is_empty()) {
+        trigger_company_research_if_idle(pool, company_name).await;
     }
 }
 
@@ -616,6 +690,158 @@ async fn trigger_company_research_if_idle(pool: &sqlx::SqlitePool, company_name:
             .await;
         }
     }
+}
+
+/// Generate a Phase 1 business analysis report when a deal enters Business Analysis stage.
+/// Compiles person + company intelligence into a structured business_report record.
+async fn generate_phase1_business_report(
+    pool: &sqlx::SqlitePool,
+    deal_id: DbUuid,
+    contact_id: Option<DbUuid>,
+    _project_id: Option<DbUuid>,
+) {
+    // Check if a report already exists for this deal
+    let existing: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM business_reports WHERE crm_deal_id = ? AND deleted_at IS NULL",
+    )
+    .bind(&deal_id)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0);
+    if existing > 0 {
+        tracing::info!("Phase 1 report already exists for deal {}, skipping", deal_id);
+        return;
+    }
+
+    let Some(contact_id) = contact_id else { return };
+
+    #[derive(sqlx::FromRow)]
+    struct PersonDataRow {
+        person_id: Option<DbUuid>,
+        company_name: Option<String>,
+    }
+    let contact_data = sqlx::query_as::<_, PersonDataRow>(
+        "SELECT person_id, company_name FROM crm_contacts WHERE id = ?",
+    )
+    .bind(&contact_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    let person_id = contact_data.as_ref().and_then(|c| c.person_id.clone());
+    let company_name = contact_data.as_ref().and_then(|c| c.company_name.clone());
+
+    #[derive(sqlx::FromRow)]
+    struct PersonIntelRow {
+        id: DbUuid,
+        full_name: Option<String>,
+        intelligence_summary: Option<String>,
+        email: Option<String>,
+        title: Option<String>,
+    }
+    let person_intel = if let Some(ref pid) = person_id {
+        sqlx::query_as::<_, PersonIntelRow>(
+            "SELECT id, full_name, intelligence_summary, email, title FROM persons WHERE id = ?",
+        )
+        .bind(pid)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+    } else { None };
+
+    #[derive(sqlx::FromRow)]
+    struct CompanyIntelRow {
+        id: DbUuid,
+        intelligence_summary: Option<String>,
+        industry: Option<String>,
+        description: Option<String>,
+    }
+    let company_intel = if let Some(ref cn) = company_name {
+        sqlx::query_as::<_, CompanyIntelRow>(
+            "SELECT id, intelligence_summary, industry, description FROM companies WHERE name = ? COLLATE NOCASE LIMIT 1",
+        )
+        .bind(cn)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+    } else { None };
+
+    let contact_name = person_intel.as_ref().and_then(|p| p.full_name.clone()).unwrap_or_default();
+    let company_display = company_name.as_deref().unwrap_or("Unknown Company");
+
+    let person_summary = person_intel.as_ref().and_then(|p| p.intelligence_summary.clone());
+    let company_summary = company_intel.as_ref().and_then(|c| c.intelligence_summary.clone());
+
+    let executive_summary = match (person_summary.as_deref(), company_summary.as_deref()) {
+        (Some(ps), Some(cs)) => Some(format!(
+            "## Person Intelligence\n{}\n\n## Company Intelligence\n{}", ps, cs
+        )),
+        (Some(ps), None) => Some(format!("## Person Intelligence\n{}", ps)),
+        (None, Some(cs)) => Some(format!("## Company Intelligence\n{}", cs)),
+        (None, None) => None,
+    };
+
+    let individual_profile = if let Some(ref pi) = person_intel {
+        let mut parts = Vec::new();
+        if let Some(ref name) = pi.full_name { parts.push(format!("**Name:** {}", name)); }
+        if let Some(ref email) = pi.email { parts.push(format!("**Email:** {}", email)); }
+        if let Some(ref title) = pi.title { parts.push(format!("**Title:** {}", title)); }
+        if let Some(ref summary) = pi.intelligence_summary { parts.push(format!("\n{}", summary)); }
+        if parts.is_empty() { None } else { Some(parts.join("\n")) }
+    } else { None };
+
+    let company_overview = company_intel.as_ref().map(|c| {
+        let mut parts = Vec::new();
+        if let Some(ref industry) = c.industry { parts.push(format!("**Industry:** {}", industry)); }
+        if let Some(ref desc) = c.description { parts.push(format!("**Overview:** {}", desc)); }
+        if let Some(ref summary) = c.intelligence_summary { parts.push(format!("\n{}", summary)); }
+        parts.join("\n")
+    });
+
+    let title = format!("Phase 1 Business Analysis: {} / {}", contact_name, company_display);
+    let person_uuid = person_intel.as_ref().and_then(|p| uuid::Uuid::parse_str(p.id.as_str()).ok());
+    let company_uuid = company_intel.as_ref().and_then(|c| uuid::Uuid::parse_str(c.id.as_str()).ok());
+    let deal_uuid = uuid::Uuid::parse_str(deal_id.as_str()).ok();
+
+    let report_id = uuid::Uuid::new_v4();
+    let individual_profiles_json = individual_profile
+        .map(|p| serde_json::json!([{"name": contact_name, "profile": p}]).to_string())
+        .unwrap_or_else(|| "[]".to_string());
+
+    let res = sqlx::query(
+        r#"INSERT INTO business_reports
+           (id, person_id, company_id, crm_deal_id, report_type, title, status,
+            executive_summary, company_overview, individual_profiles,
+            pain_points, opportunities, recommended_services, next_steps,
+            competitor_analysis, intake_item_ids, call_log_ids)
+           VALUES (?, ?, ?, ?, 'phase1_analysis', ?, 'draft', ?, ?, ?, '[]', '[]', '[]', '[]', '[]', '[]', '[]')"#,
+    )
+    .bind(report_id)
+    .bind(person_uuid)
+    .bind(company_uuid)
+    .bind(deal_uuid)
+    .bind(&title)
+    .bind(&executive_summary)
+    .bind(&company_overview)
+    .bind(&individual_profiles_json)
+    .execute(pool)
+    .await;
+
+    match res {
+        Ok(_) => tracing::info!("Phase 1 business report {} created for deal {}", report_id, deal_id),
+        Err(e) => tracing::error!("Failed to create Phase 1 report for deal {}: {}", deal_id, e),
+    }
+
+    // Mark Phase 1 research tasks as done
+    let _ = sqlx::query(
+        "UPDATE tasks SET status = 'done', updated_at = datetime('now','subsec') WHERE crm_deal_id = ? AND title LIKE 'Phase 1 Research:%' AND status = 'in_progress' AND deleted_at IS NULL",
+    )
+    .bind(&deal_id)
+    .execute(pool)
+    .await;
 }
 
 /// Create a review task for a deal if none exists
@@ -893,6 +1119,17 @@ async fn advance_deal(
             create_review_task_if_needed(pool, &deal, task_desc).await;
             break;
         }
+    }
+
+    // Generate Phase 1 business analysis report on Business Analysis stage entry
+    if new_stage_name == "business analysis" {
+        let pool_bg = pool.clone();
+        let deal_id_bg = deal.id.clone();
+        let contact_id_bg = deal.crm_contact_id.clone();
+        let project_id_bg = deal.project_id.clone();
+        tokio::spawn(async move {
+            generate_phase1_business_report(&pool_bg, deal_id_bg, contact_id_bg, project_id_bg).await;
+        });
     }
 
     // Auto-trigger research on Lead entry
