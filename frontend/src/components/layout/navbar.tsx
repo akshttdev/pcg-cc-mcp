@@ -7,6 +7,8 @@ import {
   Plus,
   Command as CommandIcon,
   Menu,
+  PanelLeftOpen,
+  PanelLeftClose,
 } from 'lucide-react';
 import { SearchBar } from '@/components/search-bar';
 import { useSearch } from '@/contexts/search-context';
@@ -19,6 +21,7 @@ import { useCommandStore } from '@/stores/useCommandStore';
 import { NotificationCenter } from '@/components/notifications/NotificationCenter';
 import { NavbarUserButton } from '@/components/layout/NavbarUserButton';
 import { DevBanner } from '@/components/DevBanner';
+import { useViewStore } from '@/stores/useViewStore';
 
 const ADMIN_ROUTES = ['/site-directory', '/nora', '/mission-control', '/admin'];
 
@@ -65,6 +68,7 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
   const { query, setQuery, active, clear, registerInputRef } = useSearch();
   const handleOpenInEditor = useOpenProjectInEditor(project || null);
   const { openCommandPalette } = useCommandStore();
+  const { sidebarCollapsed } = useViewStore();
 
   const setSearchBarRef = useCallback(
     (node: HTMLInputElement | null) => {
@@ -95,15 +99,19 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
     <div className="border-b border-border/40 bg-card/80 backdrop-blur-xl sticky top-0 z-30">
       <div className="w-full max-w-[1600px] mx-auto px-3 sm:px-4 lg:px-6">
         <div className="flex items-center h-14 py-2 gap-2 sm:gap-3">
-          {/* Mobile menu button */}
+          {/* Sidebar toggle — hamburger on mobile, panel icon on desktop */}
           <Button
             variant="ghost"
             size="icon"
             onClick={onToggleSidebar}
-            className="lg:hidden shrink-0 h-8 w-8"
-            aria-label="Toggle navigation"
+            className="shrink-0 h-8 w-8"
+            aria-label="Toggle sidebar"
           >
-            <Menu className="h-5 w-5" />
+            <Menu className="h-5 w-5 lg:hidden" />
+            {sidebarCollapsed
+              ? <PanelLeftOpen className="h-5 w-5 hidden lg:block" />
+              : <PanelLeftClose className="h-5 w-5 hidden lg:block" />
+            }
           </Button>
 
           {/* Logo */}

@@ -266,6 +266,17 @@ export function IntelTab({ deal }: IntelTabProps) {
               </p>
             </CardContent>
           </Card>
+          {deal.company_id && (
+            <div className="mt-1.5">
+              <Button variant="ghost" size="sm" className="w-full h-7 text-xs gap-1.5 justify-start" asChild>
+                <Link to={`/companies/${deal.company_id}`}>
+                  <Building2 className="h-3 w-3" />
+                  View Company Profile
+                  <ExternalLink className="h-3 w-3 ml-auto" />
+                </Link>
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -290,7 +301,7 @@ export function IntelTab({ deal }: IntelTabProps) {
       {deal.person_id && (
         <div className="pt-2 border-t">
           <Button variant="ghost" size="sm" className="w-full h-8 text-xs gap-1.5" asChild>
-            <Link to={`/people/${deal.person_id}`}>
+            <Link to={`/persons/${deal.person_id}`}>
               <Brain className="h-3.5 w-3.5" />
               View Full Intelligence Profile
               <ExternalLink className="h-3 w-3 ml-auto" />
