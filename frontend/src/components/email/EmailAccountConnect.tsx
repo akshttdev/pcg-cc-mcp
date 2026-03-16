@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { EmailAccount, EmailProvider, EmailAccountStatus } from '@/types/email';
+import { formatDate } from '@/lib/formatters';
 
 interface EmailAccountConnectProps {
   accounts: EmailAccount[];
@@ -114,14 +115,6 @@ function ConnectedAccountCard({
       setIsSyncing(false);
     }
   }, [onSync]);
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  };
 
   const formatRelativeTime = (dateString: string | undefined | null) => {
     if (!dateString) return 'Never';

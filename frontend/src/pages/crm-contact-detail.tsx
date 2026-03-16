@@ -23,6 +23,7 @@ import { LIFECYCLE_STAGE_INFO } from '@/types/crm';
 import type { LifecycleStage } from '@/types/crm';
 import { CrmActivityTimeline } from '@/components/crm/CrmActivityTimeline';
 import { formatDistanceToNow } from 'date-fns';
+import { formatCurrencyFull } from '@/lib/formatters';
 
 export function CrmContactDetailPage() {
   const { projectId, contactId } = useParams<{
@@ -82,13 +83,6 @@ export function CrmContactDetailPage() {
     label: contact.lifecycle_stage,
     color: '#6B7280',
   };
-
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-    }).format(amount);
 
   return (
     <div className="p-6 space-y-6">
@@ -248,7 +242,7 @@ export function CrmContactDetailPage() {
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base">Linked Deals</CardTitle>
                   <span className="text-sm text-muted-foreground">
-                    Total: {formatCurrency(totalRevenue)}
+                    Total: {formatCurrencyFull(totalRevenue)}
                   </span>
                 </div>
               </CardHeader>
@@ -268,7 +262,7 @@ export function CrmContactDetailPage() {
                       {deal.amount && (
                         <span className="text-sm font-semibold text-green-600 flex items-center gap-1">
                           <DollarSign className="h-3 w-3" />
-                          {formatCurrency(deal.amount)}
+                          {formatCurrencyFull(deal.amount)}
                         </span>
                       )}
                     </div>
@@ -306,7 +300,7 @@ export function CrmContactDetailPage() {
               <div className="flex justify-between">
                 <span className="text-sm text-muted-foreground">Total Revenue</span>
                 <span className="text-sm font-medium text-green-600">
-                  {formatCurrency(contact.total_revenue || 0)}
+                  {formatCurrencyFull(contact.total_revenue || 0)}
                 </span>
               </div>
               <div className="flex justify-between">

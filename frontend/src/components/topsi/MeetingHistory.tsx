@@ -22,6 +22,7 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatDate } from '@/lib/formatters';
 import { toast } from 'sonner';
 
 interface MeetingSession {
@@ -292,15 +293,6 @@ export function MeetingHistory({ projectId, className }: MeetingHistoryProps) {
     if (h > 0) return `${h}h ${m}m`;
     if (m > 0) return `${m}m ${s}s`;
     return `${s}s`;
-  };
-
-  const formatDate = (dateStr: string) => {
-    try {
-      return new Date(dateStr).toLocaleDateString(undefined, {
-        month: 'short', day: 'numeric', year: 'numeric',
-        hour: '2-digit', minute: '2-digit',
-      });
-    } catch { return dateStr; }
   };
 
   const isNora = (m: MeetingSession) => m.startedBy === 'nora';

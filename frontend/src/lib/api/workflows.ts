@@ -210,20 +210,16 @@ export interface VibeDepositRecord {
 
 export const vibeApi = {
   getConfig: async (): Promise<{ revenue_address: string; network: string; vibe_token_address: string }> => {
-    const res = await fetch('/api/vibe/config');
-    const data = await res.json();
-    return data.data as { revenue_address: string; network: string; vibe_token_address: string };
+    const response = await makeRequest('/api/vibe/config');
+    return handleApiResponse<{ revenue_address: string; network: string; vibe_token_address: string }>(response);
   },
 
   verifyDeposit: async (projectId: string, txHash: string, amountVibe: number): Promise<VibeDepositRecord> => {
-    const res = await fetch('/api/vibe/deposit/verify', {
+    const response = await makeRequest('/api/vibe/deposit/verify', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ project_id: projectId, tx_hash: txHash, amount_vibe: amountVibe }),
     });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error_data || 'Deposit verification failed');
-    return data.data as VibeDepositRecord;
+    return handleApiResponse<VibeDepositRecord>(response);
   },
 };
 

@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Bot, Play, CheckCircle, XCircle, Clock, RefreshCw, AlertCircle } from 'lucide-react';
-import { agentsApi } from '@/lib/api';
+import { agentsApi, taskAttemptsApi } from '@/lib/api';
 
 function statusBadge(status: string) {
   switch (status) {
@@ -59,12 +59,7 @@ export function AgentExecutionsPage() {
 
   const { data: recentAttempts = [], isLoading: attemptsLoading, isError: attemptsError, refetch } = useQuery({
     queryKey: ['task-attempts-all'],
-    queryFn: async () => {
-      const res = await fetch('/api/task-attempts');
-      if (!res.ok) throw new Error(`Failed to fetch attempts: ${res.status}`);
-      const json = await res.json();
-      return (json.data || json || []) as Array<Record<string, any>>;
-    },
+    queryFn: () => taskAttemptsApi.list(),
     refetchInterval: 10_000,
   });
 

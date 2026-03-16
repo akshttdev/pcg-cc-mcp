@@ -44,6 +44,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   Select,
   SelectContent,
@@ -560,14 +561,12 @@ function OverviewTab({
 function ProposalsTab({ proposals, onNewProposal }: { proposals: ProposalRecord[]; onNewProposal: () => void }) {
   if (proposals.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-32 text-muted-foreground gap-3">
-        <FileText className="h-8 w-8 opacity-20" />
-        <p className="text-sm">No proposals yet</p>
-        <Button size="sm" onClick={onNewProposal}>
-          <Plus className="h-4 w-4 mr-1" />
-          Create Proposal
-        </Button>
-      </div>
+      <EmptyState
+        icon={FileText}
+        title="No proposals yet"
+        action={{ label: "Create Proposal", onClick: onNewProposal }}
+        className="h-32"
+      />
     );
   }
   return (
@@ -613,11 +612,12 @@ function ContactsTab({ contacts, onResearch }: { contacts: PersonRecord[]; onRes
 
   if (contacts.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-32 text-muted-foreground gap-2">
-        <Users className="h-8 w-8 opacity-20" />
-        <p className="text-sm">No contacts linked</p>
-        <p className="text-xs text-muted-foreground">Research this company to auto-discover contacts</p>
-      </div>
+      <EmptyState
+        icon={Users}
+        title="No contacts linked"
+        description="Research this company to auto-discover contacts"
+        className="h-32"
+      />
     );
   }
   return (
@@ -740,10 +740,12 @@ function IntelligenceTab({
           </CardContent>
         </Card>
       ) : (
-        <div className="flex flex-col items-center justify-center h-24 text-muted-foreground gap-2 border rounded-lg">
-          <Sparkles className="h-6 w-6 opacity-20" />
-          <p className="text-sm">No intelligence gathered yet — run research to populate</p>
-        </div>
+        <EmptyState
+          icon={Sparkles}
+          title="No intelligence gathered yet"
+          description="Run research to populate"
+          className="h-24 border rounded-lg"
+        />
       )}
 
       {/* Raw intel fields (populated by research) */}

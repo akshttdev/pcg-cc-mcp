@@ -10,6 +10,7 @@ import {
   CheckCircle, XCircle, Clock, Loader2, Upload,
   ChevronDown, ChevronRight, Plus, User,
 } from 'lucide-react';
+import { callIntakeApi, reportsApi } from '@/lib/api';
 
 interface CallIntakeItem {
   id: string;
@@ -75,13 +76,10 @@ export default function CallIntakePage() {
 
   const fetchItems = useCallback(async () => {
     try {
-      const r = await fetch('/api/call-intake', {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      });
-      if (r.ok) {
-        const d = await r.json();
-        setItems(d.data ?? []);
-      }
+      const data = await callIntakeApi.list();
+      setItems((data ?? []) as CallIntakeItem[]);
+    } catch {
+      // ignore
     } finally {
       setLoading(false);
     }
@@ -100,11 +98,10 @@ export default function CallIntakePage() {
   const triggerProcess = async (id: string) => {
     setProcessing(prev => new Set([...prev, id]));
     try {
-      const r = await fetch(`/api/call-intake/${id}/process`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      });
-      if (r.ok) await fetchItems();
+      await callIntakeApi.process(id);
+      await fetchItems();
+    } catch {
+      // ignore
     } finally {
       setProcessing(prev => { const s = new Set(prev); s.delete(id); return s; });
     }
@@ -114,29 +111,20 @@ export default function CallIntakePage() {
     if (!uploadContent.trim()) return;
     setUploading(true);
     try {
-      const r = await fetch('/api/call-intake/email', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify({
-          raw_content: uploadContent,
-          subject: uploadSubject || null,
-          from_name: uploadFromName || null,
-          from_email: uploadFromEmail || null,
-          source_type: uploadSourceType,
-          auto_process: true,
-        }),
+      await callIntakeApi.submitEmail({
+        raw_content: uploadContent,
+        subject: uploadSubject || null,
+        from_name: uploadFromName || null,
+        from_email: uploadFromEmail || null,
+        source_type: uploadSourceType,
+        auto_process: true,
       });
-      if (r.ok) {
-        setShowUpload(false);
-        setUploadContent('');
-        setUploadSubject('');
-        setUploadFromName('');
-        setUploadFromEmail('');
-        await fetchItems();
-      }
+      setShowUpload(false);
+      setUploadContent('');
+      setUploadSubject('');
+      setUploadFromName('');
+      setUploadFromEmail('');
+      await fetchItems();
     } finally {
       setUploading(false);
     }
@@ -407,14 +395,7 @@ export default function CallIntakePage() {
                         <Button size="sm" variant="outline"
                           className="border-gray-700 text-gray-300 hover:bg-gray-800 gap-2 text-xs"
                           onClick={async () => {
-                            await fetch('/api/business-reports/generate', {
-                              method: 'POST',
-                              headers: {
-                                'Content-Type': 'application/json',
-                                Authorization: `Bearer ${localStorage.getItem('token')}`,
-                              },
-                              body: JSON.stringify({ person_id: item.person_id }),
-                            });
+                            await reportsApi.generate(item.person_id!);
                             fetchItems();
                           }}>
                           <FileText className="w-3 h-3" /> Generate Business Report

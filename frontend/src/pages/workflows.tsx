@@ -42,6 +42,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   GitBranch,
   CheckCircle2,
@@ -99,6 +100,7 @@ import { WorkflowRunsPanel } from '@/components/workflows/WorkflowRunsPanel';
 import { StagingReviewContent } from '@/components/workflows/StagingReviewPanel';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
+import { formatDate } from '@/lib/formatters';
 
 interface AutomationDefinition {
   id: string;
@@ -206,11 +208,6 @@ export function WorkflowsPage() {
   const formatTime = (ts?: string) => {
     if (!ts) return '-';
     return new Date(ts).toLocaleTimeString();
-  };
-
-  const formatDate = (ts?: string) => {
-    if (!ts) return '-';
-    return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   return (
@@ -801,15 +798,12 @@ function WorkflowBuilderTab() {
       </div>
 
       {workflows.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <Hammer className="h-10 w-10 mx-auto mb-3 opacity-30" />
-          <p className="text-sm font-medium">No workflows yet</p>
-          <p className="text-xs mt-1">Create your first workflow to start processing data sources.</p>
-          <Button size="sm" variant="outline" className="mt-4 gap-1.5" onClick={() => { setEditingWorkflow(null); setEditorOpen(true); }}>
-            <Plus className="h-3.5 w-3.5" />
-            Create Workflow
-          </Button>
-        </div>
+        <EmptyState
+          icon={Hammer}
+          title="No workflows yet"
+          description="Create your first workflow to start processing data sources."
+          action={{ label: "Create Workflow", onClick: () => { setEditingWorkflow(null); setEditorOpen(true); } }}
+        />
       ) : (
         <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {workflows.map((wf: WorkflowDefinition) => {
@@ -1299,12 +1293,14 @@ function RunWorkflowDialog({ workflow, onClose }: { workflow: WorkflowDefinition
             {/* Data source list */}
             <div className="border rounded-md flex-1 min-h-0 overflow-auto">
               {filteredSources.length === 0 ? (
-                <div className="py-8 text-center text-sm text-muted-foreground">
-                  <Database className="h-6 w-6 mx-auto mb-2 opacity-40" />
-                  {dataSources.length === 0
-                    ? 'No data sources available. Add data sources in the Knowledge tab.'
+                <EmptyState
+                  icon={Database}
+                  title={dataSources.length === 0 ? 'No data sources available' : 'No matching data sources'}
+                  description={dataSources.length === 0
+                    ? 'Add data sources in the Knowledge tab.'
                     : 'No data sources match your filters.'}
-                </div>
+                  className="py-8"
+                />
               ) : (
                 filteredSources.map((ds) => (
                   <button

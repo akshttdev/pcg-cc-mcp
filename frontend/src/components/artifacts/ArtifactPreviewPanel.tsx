@@ -25,6 +25,7 @@ import {
 import { cn } from '@/lib/utils';
 import type { ExecutionArtifact, ArtifactReview } from 'shared/types';
 import { parseArtifactMetadata, formatArtifactPhase } from './utils';
+import { formatDateTime } from '@/lib/formatters';
 
 interface ArtifactPreviewPanelProps {
   artifact: ExecutionArtifact | null;
@@ -87,10 +88,6 @@ export function ArtifactPreviewPanel({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
   };
 
   return (
@@ -200,7 +197,7 @@ export function ArtifactPreviewPanel({
                     </label>
                     <div className="flex items-center gap-1 text-sm">
                       <Clock className="h-3 w-3" />
-                      {formatDate(artifact.created_at)}
+                      {formatDateTime(artifact.created_at)}
                     </div>
                   </div>
                 </div>
@@ -320,7 +317,7 @@ export function ArtifactPreviewPanel({
                       )}
 
                       <div className="text-xs text-muted-foreground">
-                        {formatDate(review.created_at)}
+                        {formatDateTime(review.created_at)}
                       </div>
                     </div>
                   ))}

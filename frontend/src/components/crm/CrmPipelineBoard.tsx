@@ -19,6 +19,7 @@ import { CrmDealCard } from './CrmDealCard';
 import { CrmDealForm } from './CrmDealForm';
 import { CrmDealDetailPanel } from './CrmDealDetailPanel';
 import type { PipelineType, CrmDealWithContact, CreateCrmDeal, UpdateCrmDeal } from '@/types/crm';
+import { formatCurrencyFull } from '@/lib/formatters';
 
 interface CrmPipelineBoardProps {
   projectId?: string;
@@ -177,14 +178,6 @@ export function CrmPipelineBoard({
     [kanbanData]
   );
 
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-
   if (isPipelineLoading || (isKanbanLoading && !kanbanData)) {
     return (
       <div className="h-full flex flex-col">
@@ -227,7 +220,7 @@ export function CrmPipelineBoard({
               <span>{totalDeals} deals</span>
               <span className="flex items-center gap-1">
                 <DollarSign className="h-3.5 w-3.5" />
-                {formatCurrency(totalAmount)}
+                {formatCurrencyFull(totalAmount)}
               </span>
               {isRefetching && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             </div>
@@ -281,7 +274,7 @@ export function CrmPipelineBoard({
                       {owner ? <StageOwnerBadge owner={owner} /> : <span />}
                       {stageData.total_amount > 0 && (
                         <span className="text-[10px] text-muted-foreground">
-                          {formatCurrency(stageData.total_amount)}
+                          {formatCurrencyFull(stageData.total_amount)}
                         </span>
                       )}
                     </div>

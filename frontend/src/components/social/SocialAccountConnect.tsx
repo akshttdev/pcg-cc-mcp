@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { SocialAccount, SocialPlatform } from '@/types/social';
+import { formatDate } from '@/lib/formatters';
 
 interface SocialAccountConnectProps {
   accounts: SocialAccount[];
@@ -149,14 +150,6 @@ function ConnectedAccountCard({
       setIsRefreshing(false);
     }
   }, [onRefresh]);
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  };
 
   const formatFollowers = (count?: number) => {
     if (!count) return null;

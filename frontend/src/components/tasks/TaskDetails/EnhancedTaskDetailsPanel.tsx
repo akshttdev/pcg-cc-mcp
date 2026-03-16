@@ -34,7 +34,7 @@ import { CollaborationTimeline } from './CollaborationTimeline';
 import { AgentWatcherPanel } from '../AgentWatcherPanel';
 import { EnhancedWorkflowView } from './EnhancedWorkflowView';
 import { ActivityTimeline } from '../ActivityTimeline';
-import { agentFlowsApi, taskArtifactsApi, agentsApi, artifactContentApi } from '@/lib/api';
+import { agentFlowsApi, taskArtifactsApi, agentsApi, artifactContentApi, projectsApi } from '@/lib/api';
 import type { ExecutionArtifact as ApiExecutionArtifact } from '@/lib/api';
 import type { AgentChatRequest } from 'shared/types';
 
@@ -296,14 +296,8 @@ export function EnhancedTaskDetailsPanel({
     setVibeLoading(true);
 
     Promise.all([
-      fetch(`/api/projects/${projectId}/vibe/balance`, { credentials: 'include' })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => d?.data ?? null)
-        .catch(() => null),
-      fetch(`/api/projects/${projectId}/vibe/transactions?limit=50`, { credentials: 'include' })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => Array.isArray(d?.data) ? d.data : [])
-        .catch(() => []),
+      projectsApi.getVibeBalance(projectId).catch(() => null),
+      projectsApi.getVibeTransactions(projectId, 50).catch(() => []),
     ]).then(([balance, txns]) => {
       setVibeBalance(balance);
       // Filter to this task's transactions

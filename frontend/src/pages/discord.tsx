@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 import { discordApi, type DiscordSessionSummary, type DiscordSegment } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { formatDate } from '@/lib/formatters';
+import { EmptyState } from '@/components/ui/empty-state';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -32,16 +34,6 @@ function formatElapsed(secs: number) {
   if (h > 0) return `${h}h ${m}m`;
   if (m > 0) return `${m}m ${s}s`;
   return `${s}s`;
-}
-
-function formatDate(s: string) {
-  if (!s) return '';
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return s;
-  return d.toLocaleString('en-US', {
-    month: 'short', day: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  });
 }
 
 function agentColor(agent: string) {
@@ -406,15 +398,12 @@ export function DiscordPage() {
               ))}
             </div>
           ) : activeSessions.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
-              <Headphones className="h-10 w-10 mb-3 opacity-30" />
-              <p className="text-sm font-medium">No active voice sessions</p>
-              <p className="text-xs mt-1 max-w-xs text-center">
-                Use <code className="bg-muted px-1 rounded">/nora-join</code> or{' '}
-                <code className="bg-muted px-1 rounded">/topsi-join</code> in Discord to
-                start a session
-              </p>
-            </div>
+            <EmptyState
+              icon={Headphones}
+              title="No active voice sessions"
+              description="Use /nora-join or /topsi-join in Discord to start a session"
+              className="h-48"
+            />
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4 h-full">
               {/* Session list */}
@@ -468,10 +457,11 @@ export function DiscordPage() {
               ))}
             </div>
           ) : archivedSessions.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
-              <Calendar className="h-10 w-10 mb-3 opacity-30" />
-              <p className="text-sm font-medium">No archived sessions yet</p>
-            </div>
+            <EmptyState
+              icon={Calendar}
+              title="No archived sessions yet"
+              className="h-48"
+            />
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4 h-full">
               {/* Session list */}

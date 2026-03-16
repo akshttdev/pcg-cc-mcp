@@ -86,3 +86,23 @@ export const updateNoraPlanNode = async (
   }
   return (await response.json()) as GraphPlan;
 };
+
+// Topsi Chat API
+export const topsiApi = {
+  chat: async (data: {
+    message: string;
+    sessionId: string;
+    projectId?: string | null;
+    context?: unknown;
+  }): Promise<{ message?: string }> => {
+    const response = await makeRequest('/api/topsi/chat', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new ApiError(errorText || `Topsi responded with ${response.status}`, response.status, response);
+    }
+    return response.json();
+  },
+};
