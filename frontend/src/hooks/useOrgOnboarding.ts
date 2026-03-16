@@ -1,16 +1,15 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { orgOnboardingApi } from '@/lib/api';
+import { organizationKeys } from '@/lib/query-keys';
 import { toast } from 'sonner';
-
-const ORG_ONBOARDING_KEY = 'org-onboarding';
 
 export function useOrgOnboarding(orgId: string | undefined) {
   const queryClient = useQueryClient();
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: [ORG_ONBOARDING_KEY, orgId] });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: organizationKeys.onboarding(orgId!) });
 
   const query = useQuery({
-    queryKey: [ORG_ONBOARDING_KEY, orgId],
+    queryKey: organizationKeys.onboarding(orgId!),
     queryFn: () => orgOnboardingApi.getByOrg(orgId!),
     enabled: !!orgId,
     staleTime: 60_000,

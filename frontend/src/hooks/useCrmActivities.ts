@@ -1,10 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { crmActivitiesApi } from '@/lib/api';
 
+import { crmKeys } from '@/lib/query-keys';
+
+// Re-export for backward compatibility — prefer importing from @/lib/query-keys directly
 export const crmActivityQueryKeys = {
-  activities: (projectId: string) => ['crm', 'activities', projectId] as const,
-  contactActivities: (contactId: string) => ['crm', 'activities', 'contact', contactId] as const,
-  dealActivities: (dealId: string) => ['crm', 'activities', 'deal', dealId] as const,
+  activities: crmKeys.activities,
+  contactActivities: crmKeys.activitiesByContact,
+  dealActivities: crmKeys.activitiesByDeal,
 };
 
 export function useCrmActivities(options: {

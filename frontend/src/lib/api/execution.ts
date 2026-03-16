@@ -134,4 +134,44 @@ export const usersApi = {
     const response = await makeRequest(`/api/users/${userId}`);
     return handleApiResponse<UserListItem>(response);
   },
+
+  // Update user role
+  updateRole: async (userId: string, isAdmin: boolean): Promise<UserListItem> => {
+    const response = await makeRequest(`/api/users/${userId}/role`, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_admin: isAdmin }),
+    });
+    return handleApiResponse<UserListItem>(response);
+  },
+
+  // Suspend user
+  suspend: async (userId: string): Promise<UserListItem> => {
+    const response = await makeRequest(`/api/users/${userId}/suspend`, {
+      method: 'PATCH',
+    });
+    return handleApiResponse<UserListItem>(response);
+  },
+
+  // Activate user
+  activate: async (userId: string): Promise<UserListItem> => {
+    const response = await makeRequest(`/api/users/${userId}/activate`, {
+      method: 'PATCH',
+    });
+    return handleApiResponse<UserListItem>(response);
+  },
+
+  // Create user
+  create: async (userData: {
+    username: string;
+    password: string;
+    email?: string;
+    full_name: string;
+    is_admin: boolean;
+  }): Promise<{ message: string; user_id: string; username: string }> => {
+    const response = await makeRequest('/api/users/create', {
+      method: 'POST',
+      body: JSON.stringify(userData),
+    });
+    return handleApiResponse<{ message: string; user_id: string; username: string }>(response);
+  },
 };

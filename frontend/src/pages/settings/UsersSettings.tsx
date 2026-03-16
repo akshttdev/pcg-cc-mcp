@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import { userKeys } from '@/lib/query-keys';
 import { 
   Users, 
   UserPlus, 
@@ -44,79 +46,10 @@ import {
   EditUserRoleDialog,
   ConfirmActionDialog
 } from '@/components/dialogs/user-management-dialogs';
-import type { UserListItem, UserDetail } from 'shared/types';
-import { resolveApiUrl } from '@/lib/api';
-
-// API functions
-const api = {
-  listUsers: async (filters?: {
-    search?: string;
-    is_active?: boolean;
-    is_admin?: boolean;
-  }): Promise<UserListItem[]> => {
-    const params = new URLSearchParams();
-    if (filters?.search) params.append('search', filters.search);
-    if (filters?.is_active !== undefined) params.append('is_active', filters.is_active.toString());
-    if (filters?.is_admin !== undefined) params.append('is_admin', filters.is_admin.toString());
-    
-    const response = await fetch(resolveApiUrl(`/api/users?${params}`));
-    if (!response.ok) throw new Error('Failed to fetch users');
-    const data = await response.json();
-    return data.data;
-  },
-
-  updateUserRole: async (userId: string, isAdmin: boolean): Promise<UserDetail> => {
-    const response = await fetch(resolveApiUrl(`/api/users/${userId}/role`), {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ is_admin: isAdmin }),
-    });
-    if (!response.ok) throw new Error('Failed to update user role');
-    const data = await response.json();
-    return data.data;
-  },
-
-  suspendUser: async (userId: string): Promise<UserDetail> => {
-    const response = await fetch(resolveApiUrl(`/api/users/${userId}/suspend`), {
-      method: 'PATCH',
-    });
-    if (!response.ok) throw new Error('Failed to suspend user');
-    const data = await response.json();
-    return data.data;
-  },
-
-  activateUser: async (userId: string): Promise<UserDetail> => {
-    const response = await fetch(resolveApiUrl(`/api/users/${userId}/activate`), {
-      method: 'PATCH',
-    });
-    if (!response.ok) throw new Error('Failed to activate user');
-    const data = await response.json();
-    return data.data;
-  },
-
-  createUser: async (userData: {
-    username: string;
-    password: string;
-    email?: string;
-    full_name: string;
-    is_admin: boolean;
-  }): Promise<{ message: string; user_id: string; username: string }> => {
-    const response = await fetch(resolveApiUrl('/api/users/create'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(userData),
-    });
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to create user');
-    }
-    const data = await response.json();
-    return data.data;
-  },
-};
+import type { UserListItem } from 'shared/types';
+import { usersApi } from '@/lib/api';
 
 export function UsersSettings() {
-  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [roleFilter, setRoleFilter] = useState<string>('all');
@@ -134,41 +67,41 @@ export function UsersSettings() {
   };
 
   const { data: users = [], isLoading, error } = useQuery({
-    queryKey: ['users', filters],
-    queryFn: () => api.listUsers(filters),
+    queryKey: userKeys.list(filters),
+    queryFn: () => usersApi.list(filters),
   });
 
-  const updateRoleMutation = useMutation({
+  const updateRoleMutation = useMutationWithToast({
     mutationFn: ({ userId, isAdmin }: { userId: string; isAdmin: boolean }) =>
-      api.updateUserRole(userId, isAdmin),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      setEditRoleDialogOpen(false);
-    },
+      usersApi.updateRole(userId, isAdmin),
+    successMessage: 'Role updated',
+    errorMessage: 'Failed to update role',
+    invalidateKeys: [userKeys.all],
+    onSuccess: () => setEditRoleDialogOpen(false),
   });
 
-  const suspendMutation = useMutation({
-    mutationFn: api.suspendUser,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      setConfirmDialogOpen(false);
-    },
+  const suspendMutation = useMutationWithToast({
+    mutationFn: usersApi.suspend,
+    successMessage: 'User suspended',
+    errorMessage: 'Failed to suspend user',
+    invalidateKeys: [userKeys.all],
+    onSuccess: () => setConfirmDialogOpen(false),
   });
 
-  const activateMutation = useMutation({
-    mutationFn: api.activateUser,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      setConfirmDialogOpen(false);
-    },
+  const activateMutation = useMutationWithToast({
+    mutationFn: usersApi.activate,
+    successMessage: 'User activated',
+    errorMessage: 'Failed to activate user',
+    invalidateKeys: [userKeys.all],
+    onSuccess: () => setConfirmDialogOpen(false),
   });
 
-  const createUserMutation = useMutation({
-    mutationFn: api.createUser,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      setInviteDialogOpen(false);
-    },
+  const createUserMutation = useMutationWithToast({
+    mutationFn: usersApi.create,
+    successMessage: 'User invited',
+    errorMessage: 'Failed to create user',
+    invalidateKeys: [userKeys.all],
+    onSuccess: () => setInviteDialogOpen(false),
   });
 
   const handleSuspendUser = (user: UserListItem) => {

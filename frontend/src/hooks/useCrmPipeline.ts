@@ -8,15 +8,16 @@ import type {
   CrmDealWithContact,
 } from '@/types/crm';
 
-// Query keys for cache invalidation
+import { crmKeys } from '@/lib/query-keys';
+
+// Re-export for backward compatibility — prefer importing from @/lib/query-keys directly
 export const crmQueryKeys = {
-  pipelines: (organizationId: string) => ['crm', 'pipelines', organizationId] as const,
-  pipelinesByType: (organizationId: string, type: PipelineType) =>
-    ['crm', 'pipelines', organizationId, type] as const,
-  pipeline: (id: string) => ['crm', 'pipeline', id] as const,
-  kanban: (pipelineId: string) => ['crm', 'kanban', pipelineId] as const,
-  deals: (organizationId: string) => ['crm', 'deals', organizationId] as const,
-  deal: (id: string) => ['crm', 'deal', id] as const,
+  pipelines: crmKeys.pipelines,
+  pipelinesByType: crmKeys.pipelinesByType,
+  pipeline: crmKeys.pipeline,
+  kanban: crmKeys.kanban,
+  deals: crmKeys.deals,
+  deal: crmKeys.deal,
 };
 
 // Hook to list all pipelines for an organization
@@ -66,12 +67,11 @@ export function useCrmKanban(pipelineId: string | undefined) {
 
 // ── Org-scoped hooks ──
 
+// Re-export for backward compatibility — prefer importing from @/lib/query-keys directly
 export const orgCrmQueryKeys = {
-  pipelines: (orgId: string) => ['crm', 'org-pipelines', orgId] as const,
-  pipelinesByType: (orgId: string, type: PipelineType) =>
-    ['crm', 'org-pipelines', orgId, type] as const,
-  kanban: (orgId: string, pipelineId: string) =>
-    ['crm', 'org-kanban', orgId, pipelineId] as const,
+  pipelines: crmKeys.orgPipelines,
+  pipelinesByType: crmKeys.orgPipelinesByType,
+  kanban: crmKeys.orgKanban,
 };
 
 // Hook to list all pipelines for an organization
@@ -264,9 +264,9 @@ export function useDeleteDeal() {
     mutationFn: (id: string) => crmDealsApi.deleteDeal(id),
     onSuccess: () => {
       // Invalidate all kanban queries (both project-scoped and org-scoped)
-      queryClient.invalidateQueries({ queryKey: ['crm', 'kanban'] });
-      queryClient.invalidateQueries({ queryKey: ['crm', 'org-kanban'] });
-      queryClient.invalidateQueries({ queryKey: ['crm', 'deals'] });
+      queryClient.invalidateQueries({ queryKey: crmKeys.kanbanAll() });
+      queryClient.invalidateQueries({ queryKey: crmKeys.orgKanbanAll() });
+      queryClient.invalidateQueries({ queryKey: crmKeys.dealsAll() });
     },
   });
 }

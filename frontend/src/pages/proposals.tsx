@@ -2,7 +2,9 @@ import { useState, useMemo, lazy, Suspense } from 'react';
 const ProposalCreateModal = lazy(() =>
   import('@/components/dialogs/ProposalCreateModal').then((m) => ({ default: m.ProposalCreateModal }))
 );
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import { businessKeys } from '@/lib/query-keys';
 import {
   DndContext,
   DragOverlay,
@@ -34,7 +36,6 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { toast } from 'sonner';
 import {
   proposalsApi,
   type ProposalRecord,
@@ -215,20 +216,19 @@ function DroppableColumn({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export function ProposalsPage() {
-  const queryClient = useQueryClient();
   const [activeProposal, setActiveProposal] = useState<ProposalRecord | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   const { data: proposals = [], isLoading } = useQuery({
-    queryKey: ['proposals'],
+    queryKey: businessKeys.proposals(),
     queryFn: () => proposalsApi.list({ limit: 500 }),
   });
 
-  const moveStatus = useMutation({
+  const moveStatus = useMutationWithToast({
     mutationFn: ({ id, status }: { id: string; status: ProposalStatus }) =>
       proposalsApi.moveStatus(id, status),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['proposals'] }),
-    onError: () => toast.error('Failed to move proposal'),
+    errorMessage: 'Failed to move proposal',
+    invalidateKeys: [businessKeys.proposals()],
   });
 
   // Group by status
