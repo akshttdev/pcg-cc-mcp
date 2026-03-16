@@ -379,11 +379,8 @@ function MyTaskCard({ task, selectionMode, isSelected, onToggleSelection }: MyTa
           <div className="flex-1 min-w-0 space-y-1">
             <div className="flex items-center gap-2">
               {selectionMode && (
-                <div
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                  className="shrink-0"
-                >
-                  <Checkbox checked={isSelected} onCheckedChange={() => onToggleSelection?.(task.id)} />
+                <div className="shrink-0">
+                  <Checkbox checked={isSelected} />
                 </div>
               )}
               {task.status === 'done' ? (
