@@ -164,3 +164,8 @@ playwright-report/
 test-results/
 blob-report/
 e2e/.auth/
+ux-review/
+
+# Stray test screenshots
+screenshot_bug_confirmation.png
+test_bug_screenshot.png
