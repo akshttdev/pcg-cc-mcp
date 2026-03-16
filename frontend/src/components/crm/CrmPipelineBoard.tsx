@@ -267,6 +267,7 @@ export function CrmPipelineBoard({
 
       {/* Kanban Board */}
       <ScrollArea className="flex-1">
+        <TooltipProvider delayDuration={300}>
         <KanbanProvider onDragEnd={handleDragEnd}>
           {kanbanData.stages.map((stageData) => {
             const stage = stageData.stage;
@@ -293,7 +294,6 @@ export function CrmPipelineBoard({
                         }}
                       />
                       {STAGE_DESCRIPTIONS[stage.name.toLowerCase()] ? (
-                        <TooltipProvider delayDuration={300}>
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <p className="m-0 text-sm font-medium flex-1 truncate cursor-help border-b border-dashed border-muted-foreground/30">
@@ -307,7 +307,6 @@ export function CrmPipelineBoard({
                               )}
                             </TooltipContent>
                           </Tooltip>
-                        </TooltipProvider>
                       ) : (
                         <p className="m-0 text-sm font-medium flex-1 truncate">{stage.name}</p>
                       )}
@@ -389,6 +388,7 @@ export function CrmPipelineBoard({
             );
           })}
         </KanbanProvider>
+        </TooltipProvider>
         <ScrollBar orientation="horizontal" />
       </ScrollArea>
 

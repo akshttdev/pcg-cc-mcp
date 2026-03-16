@@ -30,6 +30,15 @@ import { useOrgOnboarding } from '@/hooks/useOrgOnboarding';
 import { OnboardingCarousel, type OnboardingSegment } from '@/components/onboarding/OnboardingCarousel';
 import { formatDate, formatCurrency } from '../helpers';
 
+function TrendIndicator({ value }: { value: number }) {
+  if (value === 0) return <span className="text-[10px] text-muted-foreground">No data</span>;
+  return (
+    <span className="text-[10px] text-green-600 dark:text-green-400 flex items-center gap-0.5">
+      <TrendingUp className="h-3 w-3" /> Active
+    </span>
+  );
+}
+
 export function OverviewTab({
   orgId,
   projectEntries,
@@ -39,11 +48,8 @@ export function OverviewTab({
   contactCount,
 }: {
   orgId: string;
-  orgName: string;
   projectEntries: { id: string; name: string }[];
   projectCount: number;
-  clientCount: number;
-  memberCount: number;
   totalDealValue: number;
   totalDeals: number;
   contactCount: number;
@@ -51,7 +57,7 @@ export function OverviewTab({
   const navigate = useNavigate();
 
   // Org onboarding
-  const { data: onboardingData, startOnboarding, startSegment } = useOrgOnboarding(orgId);
+  const { data: onboardingData, isLoading: onboardingLoading, startOnboarding, startSegment } = useOrgOnboarding(orgId);
   const onboardingStatus = onboardingData?.onboarding?.status;
   const onboardingSegments: OnboardingSegment[] = useMemo(
     () =>
@@ -110,15 +116,6 @@ export function OverviewTab({
     all.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     return all.slice(0, 20);
   }, [activityQueries, projectEntries]);
-
-  function TrendIndicator({ value }: { value: number }) {
-    if (value === 0) return <span className="text-[10px] text-muted-foreground">No data</span>;
-    return (
-      <span className="text-[10px] text-green-600 dark:text-green-400 flex items-center gap-0.5">
-        <TrendingUp className="h-3 w-3" /> Active
-      </span>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -207,7 +204,7 @@ export function OverviewTab({
           <span className="text-sm font-medium text-green-700 dark:text-green-300">Organization setup complete</span>
         </div>
       )}
-      {!onboardingData && (
+      {!onboardingLoading && !onboardingData && (
         <Card className="bg-card/80 backdrop-blur-sm border-border/50 border-dashed">
           <CardContent className="py-6 text-center space-y-3">
             <Rocket className="h-8 w-8 mx-auto text-primary/40" />

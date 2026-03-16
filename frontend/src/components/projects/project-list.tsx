@@ -78,7 +78,7 @@ const summarizeBoards = (
   });
 
   summary.totalTasks = tasks.length;
-  summary.completedTasks = tasks.filter((t) => t.status === 'done').length;
+  summary.completedTasks = tasks.filter((t) => t.status === 'done' || t.status === 'cancelled').length;
   summary.latestActivity = latest;
 
   return summary;

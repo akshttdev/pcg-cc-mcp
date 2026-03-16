@@ -147,6 +147,8 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
     // Protected routes that require authentication
     // These routes handle sensitive data and must not be publicly accessible
     let protected_routes = Router::new()
+        .merge(onboarding::router(&deployment))
+        .merge(org_onboarding::router(&deployment))
         .merge(invitations::router(&deployment))
         .merge(apn_data::router())
         .merge(airtable::router())
@@ -251,8 +253,6 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(token_usage::router(&deployment))
         .merge(system_metrics::router(&deployment))
         .merge(event_stream::router(&deployment))
-        .merge(onboarding::router(&deployment))
-        .merge(org_onboarding::router(&deployment))
         .merge(multiplayer::router(&deployment))
         .merge(cms::router(&deployment))
         .merge(tasks::global_router(&deployment))

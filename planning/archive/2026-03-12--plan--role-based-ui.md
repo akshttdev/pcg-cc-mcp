@@ -1,7 +1,7 @@
 # Role-Based UI: View-As Context Switcher & Settings Scoping
 
 **Branch:** `feature/role-based-ui` (from `origin/feature/blob-to-text-scoped`)
-**Status:** Planning — awaiting approval
+**Status:** COMPLETE — implemented (view-as switcher, role hierarchy in `lib/roles.ts`, settings scoping)
 
 ## Problem
 

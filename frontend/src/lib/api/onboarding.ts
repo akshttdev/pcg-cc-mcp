@@ -54,7 +54,7 @@ export const orgOnboardingApi = {
   },
 
   updateOrg: async (id: string, data: Record<string, unknown>): Promise<OrgOnboardingData> => {
-    const response = await makeRequest(`/api/onboarding/org/${id}`, {
+    const response = await makeRequest(`/api/onboarding/organization/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -63,17 +63,17 @@ export const orgOnboardingApi = {
   },
 
   getOrgSegments: async (onboardingId: string): Promise<OrgOnboardingWithSegments['segments']> => {
-    const response = await makeRequest(`/api/onboarding/org/${onboardingId}/segments`);
+    const response = await makeRequest(`/api/onboarding/organization/${onboardingId}/segments`);
     return handleApiResponse<OrgOnboardingWithSegments['segments']>(response);
   },
 
   getOrgSegment: async (segmentId: string): Promise<OrgOnboardingWithSegments['segments'][0]> => {
-    const response = await makeRequest(`/api/onboarding/org-segment/${segmentId}`);
+    const response = await makeRequest(`/api/onboarding/organization-segment/${segmentId}`);
     return handleApiResponse<OrgOnboardingWithSegments['segments'][0]>(response);
   },
 
   updateOrgSegment: async (segmentId: string, data: Record<string, unknown>): Promise<OrgOnboardingWithSegments['segments'][0]> => {
-    const response = await makeRequest(`/api/onboarding/org-segment/${segmentId}`, {
+    const response = await makeRequest(`/api/onboarding/organization-segment/${segmentId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -82,7 +82,7 @@ export const orgOnboardingApi = {
   },
 
   startOrgSegment: async (segmentId: string): Promise<OrgOnboardingWithSegments['segments'][0]> => {
-    const response = await makeRequest(`/api/onboarding/org-segment/${segmentId}/start`, {
+    const response = await makeRequest(`/api/onboarding/organization-segment/${segmentId}/start`, {
       method: 'POST',
     });
     return handleApiResponse<OrgOnboardingWithSegments['segments'][0]>(response);
@@ -92,7 +92,7 @@ export const orgOnboardingApi = {
     segmentId: string,
     opts?: { user_decisions?: string; skip?: boolean }
   ): Promise<OrgOnboardingWithSegments['segments'][0]> => {
-    const response = await makeRequest(`/api/onboarding/org-segment/${segmentId}/complete`, {
+    const response = await makeRequest(`/api/onboarding/organization-segment/${segmentId}/complete`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(opts ?? {}),

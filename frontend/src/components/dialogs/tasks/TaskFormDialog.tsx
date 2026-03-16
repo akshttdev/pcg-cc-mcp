@@ -61,9 +61,6 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
     initialBoardId,
     initialStatus,
   }) => {
-    // Debug: Log initialBoardId when component renders
-    console.log('[TaskFormDialog] Props received:', { initialBoardId, projectId, isEditMode: Boolean(task) });
-
     const modal = useModal();
     const { createTask, createAndStart, updateTask } =
       useTaskMutations(projectId);
@@ -258,17 +255,6 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
     }, [boards, selectedBoardId, boardsProjectId, projectId]);
 
     useEffect(() => {
-      console.log('[TaskFormDialog] Board selection effect running:', {
-        isEditMode,
-        modalVisible: modal.visible,
-        boardsLoading,
-        boardsLength: boards.length,
-        boardsProjectId,
-        projectId,
-        selectedBoardId,
-        initialBoardId,
-      });
-
       if (isEditMode) return;
       if (!modal.visible) return;
       if (boardsLoading) return;
@@ -277,13 +263,11 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
       if (boardsProjectId !== projectId) return;
 
       if (selectedBoardId && boards.some((board) => board.id === selectedBoardId)) {
-        console.log('[TaskFormDialog] Board already selected and valid:', selectedBoardId);
         return;
       }
 
       // If initialBoardId is provided and exists in the boards list, use it
       if (initialBoardId && boards.some((board) => board.id === initialBoardId)) {
-        console.log('[TaskFormDialog] Setting board from initialBoardId:', initialBoardId);
         setSelectedBoardId(initialBoardId);
         return;
       }
@@ -292,7 +276,6 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
       const preferred =
         boards.find((board) => board.board_type === 'default') || boards[0];
       if (preferred) {
-        console.log('[TaskFormDialog] Falling back to preferred board:', preferred.id, preferred.name);
         setSelectedBoardId(preferred.id);
       }
     }, [boards, boardsLoading, isEditMode, selectedBoardId, modal.visible, initialBoardId, boardsProjectId, projectId]);
@@ -300,13 +283,6 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
     useEffect(() => {
       // Only run form reset when modal is visible
       if (!modal.visible) return;
-
-      console.log('[TaskFormDialog] Form reset effect running:', {
-        task: !!task,
-        initialTask: !!initialTask,
-        initialTemplate: !!initialTemplate,
-        initialBoardId
-      });
 
       if (task) {
         // Edit mode - populate with existing task data

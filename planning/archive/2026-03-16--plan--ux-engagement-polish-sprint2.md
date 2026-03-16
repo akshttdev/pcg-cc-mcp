@@ -5,8 +5,11 @@
 PR #38 shipped 11 UX polish items. This sprint targets the next tier: **org-scoped onboarding system**, **notification quick actions**, and **dark mode verification** — balanced with visual polish items (KPI trends, project card progress, workflow status, pipeline empty state).
 
 **Branch:** `feature/ux-engagement-polish-sprint2`
+**PR:** [#39](https://github.com/KingBodhi/pcg-cc-mcp/pull/39)
+**Status:** COMPLETE (2026-03-16)
 **Duration:** 5 days (1 week)
 **Scope:** 12 items across ~20 files, ~400 lines of changes
+**E2E Results:** 85/85 passing (including fix for Task.collaborators missing field bug)
 
 ## Key Design Decision: Org-Scoped Onboarding
 

@@ -156,11 +156,13 @@ impl OrgOnboarding {
         }
     }
 
-    /// Create a new onboarding record and default segments
+    /// Create a new onboarding record and default segments (transactional)
     pub async fn create_with_segments(
         pool: &SqlitePool,
         payload: &CreateOrgOnboarding,
     ) -> Result<Self, sqlx::Error> {
+        let mut tx = pool.begin().await?;
+
         let id = Uuid::new_v4();
         let status = "active";
         let current_phase = "context_gathering";
@@ -179,7 +181,7 @@ impl OrgOnboarding {
         .bind(status)
         .bind(current_phase)
         .bind(&payload.context_data)
-        .fetch_one(pool)
+        .fetch_one(&mut *tx)
         .await?;
 
         let onboarding = org_onboarding_from_row(&row)?;
@@ -220,10 +222,11 @@ impl OrgOnboarding {
             .bind(agent_name)
             .bind(seg_status)
             .bind(order_index)
-            .execute(pool)
+            .execute(&mut *tx)
             .await?;
         }
 
+        tx.commit().await?;
         Ok(onboarding)
     }
 

@@ -30,18 +30,18 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/onboarding/organization/{org_id}/start",
             post(start_org_onboarding),
         )
-        .route("/onboarding/org/{id}", put(update_org_onboarding))
-        .route("/onboarding/org/{id}/segments", get(list_org_segments))
+        .route("/onboarding/organization/{id}", put(update_org_onboarding))
+        .route("/onboarding/organization/{id}/segments", get(list_org_segments))
         .route(
-            "/onboarding/org-segment/{segment_id}",
+            "/onboarding/organization-segment/{segment_id}",
             get(get_org_segment).put(update_org_segment),
         )
         .route(
-            "/onboarding/org-segment/{segment_id}/start",
+            "/onboarding/organization-segment/{segment_id}/start",
             post(start_org_segment),
         )
         .route(
-            "/onboarding/org-segment/{segment_id}/complete",
+            "/onboarding/organization-segment/{segment_id}/complete",
             post(complete_org_segment),
         )
 }
