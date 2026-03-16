@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Plus, Trash2, Pencil, Play, Hammer, CheckCircle2, AlertCircle, Loader2 as Loader2Icon } from 'lucide-react';
 import { workflowsApi } from '@/lib/api';
 import type { WorkflowDefinition, WorkflowRun } from '@/lib/api';
+import { workflowKeys } from '@/lib/query-keys';
 import { formatDistanceToNow } from 'date-fns';
 import { WorkflowEditor, getNodeTypeDef } from '@/components/workflows/WorkflowEditor';
 import { WorkflowTriggersPanel } from '@/components/workflows/WorkflowTriggersPanel';
@@ -21,13 +22,13 @@ import { RunWorkflowDialog } from '../components/RunWorkflowDialog';
 export function WorkflowBuilderTab() {
   const queryClient = useQueryClient();
   const { data: workflows = [], isLoading } = useQuery({
-    queryKey: ['workflowDefinitions'],
+    queryKey: workflowKeys.definitions(),
     queryFn: () => workflowsApi.listDefinitions(),
   });
 
   // Fetch recent runs across all workflows to show last-run status
   const { data: recentRuns = [] } = useQuery({
-    queryKey: ['workflow-runs-builder'],
+    queryKey: workflowKeys.runsBuilder(),
     queryFn: () => workflowsApi.listRecentRuns({ limit: 50 }),
     staleTime: 30_000,
   });
@@ -66,7 +67,7 @@ export function WorkflowBuilderTab() {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workflowDefinitions'] });
+      queryClient.invalidateQueries({ queryKey: workflowKeys.definitions() });
       setEditorOpen(false);
       setEditingWorkflow(null);
     },
@@ -75,7 +76,7 @@ export function WorkflowBuilderTab() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => workflowsApi.deleteDefinition(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workflowDefinitions'] });
+      queryClient.invalidateQueries({ queryKey: workflowKeys.definitions() });
       setDetailWorkflow(null);
     },
   });
