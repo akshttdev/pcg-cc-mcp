@@ -81,6 +81,32 @@
 
 ---
 
+## P2.5 — Modularity Sprint 3 Candidates
+
+### Modularity Sprint 3 — Next Large File Splits
+**Source:** `2026-03-15--plan--modularity-sprint-2.md` (remaining large files section)
+**What:** After Sprint 2, these are the largest remaining frontend files:
+- `virtual-environment.tsx` (1,282 lines)
+- `TaskFormDialog.tsx` (1,240 lines) — complex form, high-traffic
+- `company-profile.tsx` (1,218 lines) — similar pattern to project-detail split
+- `MeetingMode.tsx` (1,207 lines) — Topsi meeting component
+- `CrmDealDetailPanel.tsx` (1,202 lines) — grew in PR #36
+**Status:** NOT STARTED — candidates for next modularity sprint
+
+### Modularity — Deferred Stretch Items
+**Source:** `2026-03-15--plan--modularity-sprint-2.md` (Day 5c)
+**What:** Hook splits deferred (below priority threshold):
+- `useConversationHistory.ts` (540 lines) → extract `flattenEntries`, `executionHelpers`, `patchWithKey`
+- `useAutonomy.ts` (478 lines) → extract `useCheckpoints`, `useApprovalGates`
+**Status:** NOT STARTED
+
+### Modularity — formatRelativeDate Centralization
+**Source:** PR #37 QA review
+**What:** 3 independent `formatRelativeDate` implementations remain in EmailInbox, CommunicationsInbox, WorkflowRunsPanel. Different logic in each (today/yesterday vs "Xm ago" format). Could centralize with a configurable formatter.
+**Status:** NOT STARTED — not a regression, just incomplete DRY
+
+---
+
 ## P3 — Low Priority / Future Sprints
 
 ### 13. Schema Improvements for Dogfood Pipeline
