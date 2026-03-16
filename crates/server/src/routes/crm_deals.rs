@@ -496,12 +496,25 @@ async fn trigger_who_is_research(
 ) {
     let Some(contact_id) = contact_id else { return };
 
-    // Look up person_id from crm_contacts
+    // Look up person_id from crm_contacts (direction 1: crm_contacts.person_id)
+    // OR from persons table (direction 2: persons.crm_contact_id → migration-linked records)
     #[derive(sqlx::FromRow)]
     struct ContactRow {
         person_id: Option<DbUuid>,
     }
-    let person_id = sqlx::query_as::<_, ContactRow>(
+    // // OLD: only checked crm_contacts.person_id — missed migration-linked records
+    // let person_id = sqlx::query_as::<_, ContactRow>(
+    //     "SELECT person_id FROM crm_contacts WHERE id = ?",
+    // )
+    // .bind(&contact_id)
+    // .fetch_optional(pool)
+    // .await
+    // .ok()
+    // .flatten()
+    // .and_then(|r| r.person_id);
+
+    // Direction 1: crm_contacts.person_id
+    let person_id_via_contact = sqlx::query_as::<_, ContactRow>(
         "SELECT person_id FROM crm_contacts WHERE id = ?",
     )
     .bind(&contact_id)
@@ -510,6 +523,25 @@ async fn trigger_who_is_research(
     .ok()
     .flatten()
     .and_then(|r| r.person_id);
+
+    // Direction 2: persons.crm_contact_id (migration-linked records)
+    let person_id = if person_id_via_contact.is_some() {
+        person_id_via_contact
+    } else {
+        #[derive(sqlx::FromRow)]
+        struct PersonRow {
+            id: DbUuid,
+        }
+        sqlx::query_as::<_, PersonRow>(
+            "SELECT id FROM persons WHERE crm_contact_id = ? LIMIT 1",
+        )
+        .bind(&contact_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .map(|r| r.id)
+    };
 
     let Some(person_id) = person_id else { return };
 
@@ -616,6 +648,11 @@ async fn create_review_task_if_needed(pool: &sqlx::SqlitePool, deal: &CrmDeal, d
 }
 
 /// POST /crm/deals/:id/advance - Advance deal to next stage after review approval
+///
+/// Auth: This handler is behind the `require_auth` middleware layer applied to all
+/// `protected_routes` in `routes/mod.rs`, which rejects unauthenticated requests
+/// with 401. Per-deal ownership checks are not performed here (consistent with all
+/// other CRM deal handlers: create, update, move_deal_stage, delete).
 async fn advance_deal(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
@@ -670,7 +707,7 @@ async fn advance_deal(
     let new_stage_name = new_stage.as_ref().map(|s| s.name.to_lowercase()).unwrap_or_default();
     let is_won = new_stage.as_ref().map(|s| s.is_won.unwrap_or(0) == 1).unwrap_or(false);
 
-    // Auto-create delivery deal on Closed Won
+    // Auto-create delivery deal on Closed Won (with dedup check)
     if is_won {
         if let Some(ref pipeline_id) = deal.crm_pipeline_id {
             if let Ok(pipeline) = db::models::crm_pipeline::CrmPipeline::find_by_id(pool, pipeline_id).await {
@@ -682,25 +719,43 @@ async fn advance_deal(
                                 db::models::crm_pipeline::PipelineType::Delivery,
                             ).await
                         {
-                            let delivery_stages =
-                                db::models::crm_pipeline::CrmPipelineStage::find_by_pipeline(pool, &delivery_pipeline.id)
-                                    .await
-                                    .unwrap_or_default();
-                            if let Some(first_stage) = delivery_stages.first() {
-                                let _ = CrmDeal::create(pool, CreateCrmDeal {
-                                    organization_id: deal_org_id.clone(),
-                                    client_id: deal.client_id.clone(),
-                                    crm_contact_id: deal.crm_contact_id.clone(),
-                                    crm_pipeline_id: Some(delivery_pipeline.id.clone()),
-                                    crm_stage_id: Some(first_stage.id.clone()),
-                                    name: format!("{} - Delivery", deal.name),
-                                    description: Some(format!("Auto-created from won deal: {}", deal.name)),
-                                    amount: deal.amount,
-                                    currency: Some(deal.currency.clone()),
-                                    expected_close_date: None,
-                                    tags: None,
-                                    custom_fields: None,
-                                }).await;
+                            // Dedup: check if a delivery deal with the same name pattern already exists
+                            let delivery_deal_name = format!("{} - Delivery", deal.name);
+                            let existing_count: i64 = sqlx::query_scalar(
+                                "SELECT COUNT(*) FROM crm_deals WHERE crm_pipeline_id = ? AND name = ?",
+                            )
+                            .bind(&delivery_pipeline.id)
+                            .bind(&delivery_deal_name)
+                            .fetch_one(pool)
+                            .await
+                            .unwrap_or(0);
+
+                            if existing_count > 0 {
+                                tracing::warn!(
+                                    "Skipping delivery deal creation: deal '{}' already exists in pipeline {}",
+                                    delivery_deal_name, delivery_pipeline.id
+                                );
+                            } else {
+                                let delivery_stages =
+                                    db::models::crm_pipeline::CrmPipelineStage::find_by_pipeline(pool, &delivery_pipeline.id)
+                                        .await
+                                        .unwrap_or_default();
+                                if let Some(first_stage) = delivery_stages.first() {
+                                    let _ = CrmDeal::create(pool, CreateCrmDeal {
+                                        organization_id: deal_org_id.clone(),
+                                        client_id: deal.client_id.clone(),
+                                        crm_contact_id: deal.crm_contact_id.clone(),
+                                        crm_pipeline_id: Some(delivery_pipeline.id.clone()),
+                                        crm_stage_id: Some(first_stage.id.clone()),
+                                        name: delivery_deal_name,
+                                        description: Some(format!("Auto-created from won deal: {}", deal.name)),
+                                        amount: deal.amount,
+                                        currency: Some(deal.currency.clone()),
+                                        expected_close_date: None,
+                                        tags: None,
+                                        custom_fields: None,
+                                    }).await;
+                                }
                             }
                         }
                     }
