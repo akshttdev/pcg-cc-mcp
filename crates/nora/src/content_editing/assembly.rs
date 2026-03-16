@@ -170,7 +170,7 @@ impl AssemblyProcessor {
         let output_h = directive.output_spec.height;
         let mut video_streams = Vec::new();
 
-        for (i, (_, asset)) in referenced_assets.iter().enumerate().skip(0) {
+        for (i, (_, asset)) in referenced_assets.iter().enumerate() {
             // Skip audio-only inputs
             if asset.width == 0 {
                 continue;

@@ -130,6 +130,8 @@ export interface CrmDealWithContact {
   review_task_id?: string;
   review_task_status?: string;
   review_task_assignee?: string;
+  // Company intelligence
+  company_intelligence_status?: string;
 }
 
 // Kanban board data structure

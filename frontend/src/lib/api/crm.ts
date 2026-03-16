@@ -463,6 +463,16 @@ export const crmDealsApi = {
     return handleApiResponse<CrmDealRecord>(response);
   },
 
+  advanceDeal: async (dealId: string): Promise<CrmDealRecord> => {
+    const response = await makeRequest(`/api/crm/deals/${dealId}/advance`, { method: 'POST' });
+    return handleApiResponse<CrmDealRecord>(response);
+  },
+
+  getDealRich: async (dealId: string) => {
+    const response = await makeRequest(`/api/crm/deals/${dealId}/rich`);
+    return handleApiResponse(response);
+  },
+
   deleteDeal: async (id: string): Promise<void> => {
     const response = await makeRequest(`/api/crm/deals/${id}`, { method: 'DELETE' });
     await handleApiResponse<void>(response);
