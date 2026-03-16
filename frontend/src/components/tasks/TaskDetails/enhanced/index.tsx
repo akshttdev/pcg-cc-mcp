@@ -295,7 +295,7 @@ export function EnhancedTaskDetailsPanel({
     ]).then(([balance, txns]) => {
       setVibeBalance(balance);
       // Filter to this task's transactions
-      setVibeTransactions(txns.filter((t: any) => t.task_id === task.id));
+      setVibeTransactions(txns.filter((t) => t.task_id === task.id));
     }).finally(() => setVibeLoading(false));
   }, [activeTab, projectId, task.id]);
 

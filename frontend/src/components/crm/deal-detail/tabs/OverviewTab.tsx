@@ -66,7 +66,7 @@ interface OverviewTabProps {
   orgId?: string;
 }
 
-export function OverviewTab({ deal, stageColor, onConvert, orgId }: OverviewTabProps) {
+export function OverviewTab({ deal, stageColor, onConvert }: OverviewTabProps) {
   const navigate = useNavigate();
   const taskTotal = deal.task_total ?? 0;
   const taskDone = deal.task_done ?? 0;
@@ -359,13 +359,7 @@ export function OverviewTab({ deal, stageColor, onConvert, orgId }: OverviewTabP
           </h4>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Workflow className="h-3.5 w-3.5 shrink-0" />
-            {orgId ? (
-              <button type="button" className="text-primary hover:underline text-left" onClick={() => {}}>
-                Imported via workflow
-              </button>
-            ) : (
-              <span>Imported via workflow</span>
-            )}
+            <span>Imported via workflow</span>
           </div>
         </div>
       )}

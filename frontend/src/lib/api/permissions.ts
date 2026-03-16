@@ -37,7 +37,8 @@ export const permissionsApi = {
   listProjects: async (filters?: { search?: string }): Promise<Project[]> => {
     const params = new URLSearchParams();
     if (filters?.search) params.append('search', filters.search);
-    const response = await makeRequest(`/api/projects?${params}`);
+    const query = params.toString();
+    const response = await makeRequest(query ? `/api/projects?${query}` : '/api/projects');
     return handleApiResponse<Project[]>(response);
   },
 };

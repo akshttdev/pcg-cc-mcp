@@ -476,13 +476,6 @@ export function useTaskFormState({
     }
   }, [system.config?.executor_profile]);
 
-  // Set default executor from config (following TaskDetailsToolbar pattern)
-  useEffect(() => {
-    if (system.config?.executor_profile) {
-      setSelectedExecutorProfile(system.config.executor_profile);
-    }
-  }, [system.config?.executor_profile]);
-
   // Handle template selection
   const handleTemplateChange = (templateId: string) => {
     setSelectedTemplate(templateId);

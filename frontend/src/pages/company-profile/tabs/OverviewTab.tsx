@@ -29,7 +29,7 @@ import {
   ContactRail,
 } from '../components/helpers';
 
-export type Tab = 'overview' | 'proposals' | 'contacts' | 'intelligence' | 'edit';
+import type { Tab } from '../index';
 
 export function OverviewTab({
   company,

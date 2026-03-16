@@ -47,7 +47,7 @@ export function NotificationCenter() {
   const [readActivityIds, setReadActivityIds] = useState<Set<string>>(loadReadActivityIds);
 
   const { data: activityNotifications = [], isLoading: activityLoading } = useQuery({
-    queryKey: ['notifications'],
+    queryKey: notificationKeys.activity(),
     queryFn: async (): Promise<ActivityItem[]> => {
       const res = await makeRequest('/api/notifications?limit=30');
       if (!res.ok) return [];

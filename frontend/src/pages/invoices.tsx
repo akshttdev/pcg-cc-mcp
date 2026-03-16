@@ -327,6 +327,8 @@ export function InvoicesPage() {
   const moveStatus = useMutationWithToast({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       invoicesApi.moveStatus(id, status),
+    successMessage: 'Status updated',
+    errorMessage: 'Failed to update status',
     invalidateKeys: [businessKeys.invoicesAll()],
   });
 

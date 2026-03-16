@@ -26,7 +26,7 @@ import { EditTab } from './tabs/EditTab';
 
 // ── Tab types ─────────────────────────────────────────────────────────────────
 
-type Tab = 'overview' | 'proposals' | 'contacts' | 'intelligence' | 'edit';
+export type Tab = 'overview' | 'proposals' | 'contacts' | 'intelligence' | 'edit';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'overview',     label: 'Overview' },

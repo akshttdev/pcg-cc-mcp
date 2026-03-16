@@ -151,7 +151,7 @@ export const workflowKeys = {
 // ── Data Sources ───────────────────────────────────────────────────────────
 
 export const dataSourceKeys = {
-  all: () => ['dataSources'] as const,
+  all: ['dataSources'] as const,
   detail: (id: string) => ['dataSource', id] as const,
   workflows: (id: string) => ['dataSourceWorkflows', id] as const,
   artifacts: (id: string) => ['dataSourceArtifacts', id] as const,
@@ -172,6 +172,7 @@ export const userKeys = {
 // ── Notifications ──────────────────────────────────────────────────────────
 
 export const notificationKeys = {
+  activity: () => ['notifications'] as const,
   inbox: () => ['notifications-inbox'] as const,
 };
 
