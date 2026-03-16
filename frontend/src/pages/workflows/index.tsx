@@ -50,7 +50,7 @@ import {
   Activity,
   ChevronDown,
 } from 'lucide-react';
-import { agentFlowsApi, wideResearchApi, resolveApiUrl } from '@/lib/api';
+import { agentFlowsApi, wideResearchApi, automationsApi, noraWorkflowsApi, cinematicBriefsApi } from '@/lib/api';
 import type { AgentFlow, WideResearchSession } from '@/lib/api';
 import { formatDate } from '@/lib/formatters';
 
@@ -94,19 +94,16 @@ export function WorkflowsPage() {
       if (Array.isArray(sessions)) setResearchSessions(sessions);
     }).catch(() => {});
 
-    fetch(resolveApiUrl('/api/automations'), { credentials: 'include' })
-      .then((r) => r.json())
-      .then((res) => { if (res?.data) setAutomations(res.data); })
+    automationsApi.list()
+      .then((data) => { if (Array.isArray(data)) setAutomations(data as AutomationDefinition[]); })
       .catch(() => {});
 
-    fetch(resolveApiUrl('/api/nora/workflows'), { credentials: 'include' })
-      .then((r) => r.json())
-      .then((data: ConferenceWorkflow[]) => { if (Array.isArray(data)) setConferences(data); })
+    noraWorkflowsApi.list()
+      .then((data) => { setConferences(data as ConferenceWorkflow[]); })
       .catch(() => {});
 
-    fetch(resolveApiUrl('/api/nora/cinematics/briefs'), { credentials: 'include' })
-      .then((r) => r.json())
-      .then((res) => { if (Array.isArray(res?.data ?? res)) setCinematicBriefs(res?.data ?? res); })
+    cinematicBriefsApi.list()
+      .then((data) => { setCinematicBriefs(data as CinematicBrief[]); })
       .catch(() => {});
   }, []);
 

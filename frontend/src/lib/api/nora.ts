@@ -87,6 +87,30 @@ export const updateNoraPlanNode = async (
   return (await response.json()) as GraphPlan;
 };
 
+// Nora Workflows (conference/meeting workflows)
+export const noraWorkflowsApi = {
+  list: async (): Promise<unknown[]> => {
+    const response = await makeRequest('/api/nora/workflows');
+    if (!response.ok) {
+      throw new ApiError('Failed to load Nora workflows', response.status, response);
+    }
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  },
+};
+
+// Nora Cinematics Briefs
+export const cinematicBriefsApi = {
+  list: async (): Promise<unknown[]> => {
+    const response = await makeRequest('/api/nora/cinematics/briefs');
+    if (!response.ok) {
+      throw new ApiError('Failed to load cinematic briefs', response.status, response);
+    }
+    const res = await response.json();
+    return Array.isArray(res?.data ?? res) ? (res?.data ?? res) : [];
+  },
+};
+
 // Topsi Chat API
 export const topsiApi = {
   chat: async (data: {
