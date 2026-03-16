@@ -27,6 +27,7 @@ import {
   type CrmContactRecord,
   type CompanyRecord,
 } from '@/lib/api';
+import { useCrmContacts, crmContactsQueryKey } from '@/hooks/queries';
 import { LIFECYCLE_STAGE_INFO } from '@/types/crm';
 import { ContactCard } from '../components/ContactCard';
 import { ContactDetailModal } from '../components/ContactDetailModal';
@@ -42,12 +43,7 @@ export function ContactsTab({ orgId }: { orgId: string }) {
   const [companyForm, setCompanyForm] = useState({ name: '', website: '', industry: '' });
   const queryClient = useQueryClient();
 
-  const { data: contacts = [], isLoading } = useQuery({
-    queryKey: ['crm-contacts', orgId],
-    queryFn: () => crmApi.listContacts(orgId),
-    enabled: !!orgId,
-    staleTime: 30_000,
-  });
+  const { data: contacts = [], isLoading } = useCrmContacts(orgId);
 
   const selectedContact = useMemo(
     () => contacts.find((c: CrmContactRecord) => c.id === selectedContactId),
@@ -57,7 +53,7 @@ export function ContactsTab({ orgId }: { orgId: string }) {
   const createContactMutation = useMutation({
     mutationFn: (data: CreateCrmContactRequest) => crmApi.createContact(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['crm-contacts', orgId] });
+      queryClient.invalidateQueries({ queryKey: crmContactsQueryKey(orgId) });
       setShowAddContact(false);
       setContactForm({ first_name: '', last_name: '', email: '', phone: '', company_name: '', job_title: '', lifecycle_stage: 'lead' });
       toast.success('Contact created');
