@@ -18,3 +18,4 @@ export * from './communication';
 export * from './business';
 export * from './intelligence';
 export * from './misc';
+export * from './onboarding';

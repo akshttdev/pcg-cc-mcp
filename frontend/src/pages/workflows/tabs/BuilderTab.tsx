@@ -2,15 +2,16 @@
 //
 // Builder tab: create, edit, and manage workflow definitions using the n8n-style editor.
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Plus, Trash2, Pencil, Play, Hammer } from 'lucide-react';
+import { Plus, Trash2, Pencil, Play, Hammer, CheckCircle2, AlertCircle, Loader2 as Loader2Icon } from 'lucide-react';
 import { workflowsApi } from '@/lib/api';
-import type { WorkflowDefinition } from '@/lib/api';
+import type { WorkflowDefinition, WorkflowRun } from '@/lib/api';
+import { formatDistanceToNow } from 'date-fns';
 import { WorkflowEditor, getNodeTypeDef } from '@/components/workflows/WorkflowEditor';
 import { WorkflowTriggersPanel } from '@/components/workflows/WorkflowTriggersPanel';
 import { WorkflowRunsPanel } from '@/components/workflows/WorkflowRunsPanel';
@@ -23,6 +24,24 @@ export function WorkflowBuilderTab() {
     queryKey: ['workflowDefinitions'],
     queryFn: () => workflowsApi.listDefinitions(),
   });
+
+  // Fetch recent runs across all workflows to show last-run status
+  const { data: recentRuns = [] } = useQuery({
+    queryKey: ['workflow-runs-builder'],
+    queryFn: () => workflowsApi.listRecentRuns({ limit: 50 }),
+    staleTime: 30_000,
+  });
+
+  // Index last run by workflow_id for quick lookup
+  const lastRunByWorkflow = useMemo(() => {
+    const map = new Map<string, WorkflowRun>();
+    for (const run of recentRuns) {
+      if (!map.has(run.workflow_id)) {
+        map.set(run.workflow_id, run);
+      }
+    }
+    return map;
+  }, [recentRuns]);
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingWorkflow, setEditingWorkflow] = useState<WorkflowDefinition | null>(null);
@@ -167,6 +186,18 @@ export function WorkflowBuilderTab() {
                       )}
                     </div>
                   </div>
+                  {(() => {
+                    const lastRun = lastRunByWorkflow.get(wf.id);
+                    if (!lastRun) return <p className="text-[10px] text-muted-foreground/50 mt-1.5">Never run</p>;
+                    return (
+                      <div className="text-[10px] text-muted-foreground mt-1.5 flex items-center gap-1">
+                        Last run: {formatDistanceToNow(new Date(lastRun.created_at), { addSuffix: true })}
+                        {lastRun.status === 'completed' && <CheckCircle2 className="h-3 w-3 text-green-500" />}
+                        {lastRun.status === 'failed' && <AlertCircle className="h-3 w-3 text-red-500" />}
+                        {lastRun.status === 'running' && <Loader2Icon className="h-3 w-3 text-blue-500 animate-spin" />}
+                      </div>
+                    );
+                  })()}
                 </CardContent>
               </Card>
             );

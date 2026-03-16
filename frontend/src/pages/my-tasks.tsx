@@ -126,31 +126,40 @@ export function MyTasksPage() {
       ids.map((id) => tasksApi.update(id, { status: newStatus as TaskStatus }))
     );
     const successCount = results.filter((r) => r.status === 'fulfilled').length;
-    const failCount = results.length - successCount;
+    const failCount = results.filter((r) => r.status === 'rejected').length;
     invalidateMyTasks();
-    if (successCount > 0) toast.success(`Updated ${successCount} task${successCount !== 1 ? 's' : ''} to ${newStatus}`);
-    if (failCount > 0) toast.error(`Failed to update ${failCount} task${failCount !== 1 ? 's' : ''}`);
+    if (failCount > 0) {
+      toast.warning(`Updated ${successCount} task${successCount !== 1 ? 's' : ''} to ${newStatus}, ${failCount} failed`);
+    } else {
+      toast.success(`Updated ${successCount} task${successCount !== 1 ? 's' : ''} to ${newStatus}`);
+    }
     exitSelectionMode();
   }, [selectedIds, invalidateMyTasks, exitSelectionMode]);
 
   const handleBatchDelete = useCallback(async () => {
-    const result = await NiceModal.show('confirm', {
-      title: 'Delete Tasks',
-      message: `Are you sure you want to delete ${selectedIds.size} task${selectedIds.size !== 1 ? 's' : ''}? This cannot be undone.`,
-      confirmText: 'Delete',
-      variant: 'destructive',
-    });
+    let result: string;
+    try {
+      result = await NiceModal.show('confirm', {
+        title: 'Delete Tasks',
+        message: `Are you sure you want to delete ${selectedIds.size} task${selectedIds.size !== 1 ? 's' : ''}? This cannot be undone.`,
+        confirmText: 'Delete',
+        variant: 'destructive',
+      }) as string;
+    } catch {
+      return; // Dialog dismissed
+    }
     if (result !== 'confirmed') return;
 
     const ids = [...selectedIds];
-    const results = await Promise.allSettled(
-      ids.map((id) => tasksApi.delete(id))
-    );
+    const results = await Promise.allSettled(ids.map((id) => tasksApi.delete(id)));
     const successCount = results.filter((r) => r.status === 'fulfilled').length;
-    const failCount = results.length - successCount;
+    const failCount = results.filter((r) => r.status === 'rejected').length;
     invalidateMyTasks();
-    if (successCount > 0) toast.success(`Deleted ${successCount} task${successCount !== 1 ? 's' : ''}`);
-    if (failCount > 0) toast.error(`Failed to delete ${failCount} task${failCount !== 1 ? 's' : ''}`);
+    if (failCount > 0) {
+      toast.warning(`Deleted ${successCount} task${successCount !== 1 ? 's' : ''}, ${failCount} failed`);
+    } else {
+      toast.success(`Deleted ${successCount} task${successCount !== 1 ? 's' : ''}`);
+    }
     exitSelectionMode();
   }, [selectedIds, invalidateMyTasks, exitSelectionMode]);
 
@@ -370,11 +379,8 @@ function MyTaskCard({ task, selectionMode, isSelected, onToggleSelection }: MyTa
           <div className="flex-1 min-w-0 space-y-1">
             <div className="flex items-center gap-2">
               {selectionMode && (
-                <div
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggleSelection?.(task.id); }}
-                  className="shrink-0"
-                >
-                  <Checkbox checked={isSelected} onCheckedChange={() => onToggleSelection?.(task.id)} />
+                <div className="shrink-0">
+                  <Checkbox checked={isSelected} />
                 </div>
               )}
               {task.status === 'done' ? (
@@ -428,7 +434,12 @@ function MyTaskCard({ task, selectionMode, isSelected, onToggleSelection }: MyTa
 
   if (selectionMode) {
     return (
-      <div onClick={() => onToggleSelection?.(task.id)}>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => onToggleSelection?.(task.id)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggleSelection?.(task.id); } }}
+      >
         {cardContent}
       </div>
     );

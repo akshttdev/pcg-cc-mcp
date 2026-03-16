@@ -44,7 +44,7 @@ export function LoginPage() {
         <CardHeader className="space-y-1">
           <div className="flex items-center justify-center mb-4">
             <img src="/pcg-globe-logo.png" alt="Powerclub Global" className="h-10 w-auto" />
-            <span className="ml-2 text-xl font-bold tracking-widest uppercase" style={{ fontFamily: "'Cinzel', serif", color: '#b8952a' }}>Powerclub Global</span>
+            <span className="ml-2 text-xl font-bold tracking-widest uppercase" style={{ fontFamily: "'Cinzel', serif", color: 'var(--brand-gold)' }}>Powerclub Global</span>
           </div>
           <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
           <CardDescription>

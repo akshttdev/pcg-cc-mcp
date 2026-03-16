@@ -1,4 +1,4 @@
-import { CheckCircle2, Trash2, Info, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, Trash2, Info, AlertTriangle, ExternalLink, X } from 'lucide-react';
 import type { InboxNotification } from './types';
 import { timeAgo } from './utils';
 
@@ -14,9 +14,10 @@ function getNotificationIcon(type: string) {
 interface InboxNotificationItemProps {
   item: InboxNotification;
   onClick: (item: InboxNotification) => void;
+  onDismiss?: (item: InboxNotification) => void;
 }
 
-export function InboxNotificationItem({ item, onClick }: InboxNotificationItemProps) {
+export function InboxNotificationItem({ item, onClick, onDismiss }: InboxNotificationItemProps) {
   return (
     <div
       className={`px-3 py-2 transition-colors cursor-pointer hover:bg-muted/50 ${
@@ -34,10 +35,48 @@ export function InboxNotificationItem({ item, onClick }: InboxNotificationItemPr
           <p className="text-[10px] text-muted-foreground mt-0.5">
             {timeAgo(item.created_at)}
           </p>
+          {item.source === 'task' && item.source_id && (
+            <button
+              className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline mt-0.5"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClick(item);
+              }}
+            >
+              <ExternalLink className="h-2.5 w-2.5" />
+              View Task
+            </button>
+          )}
+          {item.source === 'workflow' && item.source_id && (
+            <button
+              className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline mt-0.5"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClick(item);
+              }}
+            >
+              <ExternalLink className="h-2.5 w-2.5" />
+              View Run
+            </button>
+          )}
         </div>
-        {!item.read_at && (
-          <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
-        )}
+        <div className="flex items-center gap-1 shrink-0">
+          {!item.read_at && (
+            <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary" />
+          )}
+          {onDismiss && (
+            <button
+              className="mt-0.5 p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDismiss(item);
+              }}
+              aria-label="Dismiss notification"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

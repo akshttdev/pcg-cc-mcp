@@ -12,6 +12,9 @@ import {
   Mail,
   Scale,
   Share2,
+  Target,
+  Brain,
+  Plug,
   CheckCircle2,
   Clock,
   Play,
@@ -20,7 +23,7 @@ import {
 import { cn } from '@/lib/utils';
 
 // Segment types matching the backend
-export type SegmentType = 'research' | 'brand' | 'website' | 'email' | 'legal' | 'social' | 'custom';
+export type SegmentType = 'research' | 'brand' | 'website' | 'crm' | 'email' | 'legal' | 'intelligence' | 'integrations' | 'social' | 'custom';
 export type SegmentStatus = 'pending' | 'in_progress' | 'needs_review' | 'completed' | 'skipped';
 
 export interface OnboardingSegment {
@@ -50,43 +53,61 @@ const SEGMENT_CONFIG: Record<SegmentType, {
 }> = {
   research: {
     icon: Search,
-    color: 'text-indigo-600',
+    color: 'text-indigo-600 dark:text-indigo-400',
     bgGradient: 'from-indigo-500/20 to-indigo-600/5',
     description: 'Market research, competitor analysis, and positioning strategy',
   },
   brand: {
     icon: Palette,
-    color: 'text-pink-600',
+    color: 'text-pink-600 dark:text-pink-400',
     bgGradient: 'from-pink-500/20 to-pink-600/5',
     description: 'Logo, colors, fonts, brand guide, and visual identity',
   },
   website: {
     icon: Globe,
-    color: 'text-sky-600',
+    color: 'text-sky-600 dark:text-sky-400',
     bgGradient: 'from-sky-500/20 to-sky-600/5',
-    description: 'Landing page, dashboard, admin panel development',
+    description: 'Website, landing pages, and web presence',
+  },
+  crm: {
+    icon: Target,
+    color: 'text-orange-600 dark:text-orange-400',
+    bgGradient: 'from-orange-500/20 to-orange-600/5',
+    description: 'CRM pipelines, contacts, deals, and sales workflow',
   },
   email: {
     icon: Mail,
-    color: 'text-amber-600',
+    color: 'text-amber-600 dark:text-amber-400',
     bgGradient: 'from-amber-500/20 to-amber-600/5',
-    description: 'Gmail master account, Zoho operations, CRM configuration',
+    description: 'Email accounts, communication inbox setup',
   },
   legal: {
     icon: Scale,
-    color: 'text-emerald-600',
+    color: 'text-emerald-600 dark:text-emerald-400',
     bgGradient: 'from-emerald-500/20 to-emerald-600/5',
     description: 'Entity formation, compliance, and regulatory research',
   },
+  intelligence: {
+    icon: Brain,
+    color: 'text-purple-600 dark:text-purple-400',
+    bgGradient: 'from-purple-500/20 to-purple-600/5',
+    description: 'Data source workflows, LLM extraction, and automation',
+  },
+  integrations: {
+    icon: Plug,
+    color: 'text-teal-600 dark:text-teal-400',
+    bgGradient: 'from-teal-500/20 to-teal-600/5',
+    description: 'GitHub, Airtable, social accounts, and external services',
+  },
   social: {
     icon: Share2,
-    color: 'text-violet-600',
+    color: 'text-violet-600 dark:text-violet-400',
     bgGradient: 'from-violet-500/20 to-violet-600/5',
     description: 'Social account setup and content strategy',
   },
   custom: {
     icon: Search,
-    color: 'text-slate-600',
+    color: 'text-slate-600 dark:text-slate-400',
     bgGradient: 'from-slate-500/20 to-slate-600/5',
     description: 'Custom workflow for specialized needs',
   },
@@ -98,9 +119,9 @@ const STATUS_CONFIG: Record<SegmentStatus, {
   color: string;
 }> = {
   pending: { label: 'Not Started', icon: Clock, color: 'text-muted-foreground' },
-  in_progress: { label: 'In Progress', icon: Loader2, color: 'text-blue-600' },
-  needs_review: { label: 'Needs Review', icon: Clock, color: 'text-amber-600' },
-  completed: { label: 'Completed', icon: CheckCircle2, color: 'text-green-600' },
+  in_progress: { label: 'In Progress', icon: Loader2, color: 'text-blue-600 dark:text-blue-400' },
+  needs_review: { label: 'Needs Review', icon: Clock, color: 'text-amber-600 dark:text-amber-400' },
+  completed: { label: 'Completed', icon: CheckCircle2, color: 'text-green-600 dark:text-green-400' },
   skipped: { label: 'Skipped', icon: Clock, color: 'text-muted-foreground' },
 };
 
@@ -292,7 +313,7 @@ export function OnboardingCarousel({
       </Card>
 
       {/* Segment Quick Links */}
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+      <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-2">
         {sortedSegments.map((segment, idx) => {
           const segConfig = SEGMENT_CONFIG[segment.segment_type] || SEGMENT_CONFIG.custom;
           const SegIcon = segConfig.icon;
@@ -312,7 +333,7 @@ export function OnboardingCarousel({
               <div
                 className={cn(
                   'p-1.5 rounded-md',
-                  isCompleted ? 'bg-green-100 text-green-600' : 'bg-muted',
+                  isCompleted ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400' : 'bg-muted',
                   isActive && !isCompleted && segConfig.color
                 )}
               >

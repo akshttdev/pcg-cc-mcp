@@ -493,11 +493,8 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 <Suspense fallback={<TabSkeleton />}>
                   <OverviewTab
                     orgId={orgId}
-                    orgName={org.name}
                     projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))}
                     projectCount={allProjects.length}
-                    clientCount={clients.length}
-                    memberCount={members.length}
                     totalDealValue={totalDealValue}
                     totalDeals={orgDeals.length}
                     contactCount={crmContacts.length}

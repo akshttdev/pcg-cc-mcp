@@ -2,7 +2,7 @@
 
 **Branch:** `dev/2026-03-14`
 **PR:** [#30](https://github.com/KingBodhi/pcg-cc-mcp/pull/30)
-**Status:** In Review
+**Status:** COMPLETE — merged 2026-03-15 (PR #30)
 
 ---
 

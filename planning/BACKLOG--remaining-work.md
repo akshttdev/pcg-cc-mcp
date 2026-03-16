@@ -36,10 +36,9 @@
 
 ## P1.5 — Notification & Demo Enhancements
 
-### Notification Quick Action Buttons (Future Sprint)
+### ~~Notification Quick Action Buttons~~ → RESOLVED
 **Source:** 2026-03-15 dogfood session
-**What:** Add quick action buttons to notification items so users can take the next workflow step directly from the notification dropdown (e.g., "Approve" staged records, "Review PR", "Mark Done"). Reduces context switching.
-**Status:** NOT STARTED — deferred to future sprint
+**Resolution:** Implemented in PR #39 — InboxNotificationItem has source-aware action buttons (View Task, View Run), dismiss button; ActivityNotificationItem has status chips and view buttons; NotificationCenter has improved deep-linking (2026-03-16).
 
 ### Demo Script Improvements
 **Source:** 2026-03-15 dogfood session
@@ -75,9 +74,9 @@
 **Source:** `archive/2026-03-13--review--dogfood-e2e-qa.md` (Bug #4)
 **Resolution:** FeedbackDialog now uses toast (commit `7cd4b22c9`)
 
-### 12. Project Task Count Doesn't Auto-Refresh
+### ~~12. Project Task Count Doesn't Auto-Refresh~~ → RESOLVED
 **Source:** `archive/2026-03-13--review--dogfood-e2e-qa.md` (Bug #5)
-**What:** After feedback creates a task, the sidebar project task count is stale until page refresh.
+**Resolution:** Fixed in PR #38 — sidebar task count refresh on task creation/update (2026-03-16).
 
 ---
 
@@ -119,7 +118,7 @@
 ### 14. Sprint 2-3 Roadmap Items
 **Source:** `archive/2026-03-12--plan--three-sprint-roadmap.md`
 - Convert hardcoded automations to editable system workflows
-- Bulk task operations (select multiple, batch status change)
+- ~~Bulk task operations (select multiple, batch status change)~~ → Done (PR #38)
 - Progress indicator for agent execution on task cards
 - Undo reject / re-open task workflow
 
@@ -138,6 +137,24 @@
 - View-as keyboard shortcut (Cmd+Shift+V)
 - Sidebar section animated transitions
 - Settings tab URL persistence
+
+### 18. UX Audit — Remaining Items (from `2026-03-16--review--ux-design-audit.md`)
+**P0**: Task card visual differentiation — assignee avatars, due dates, description preview (#3)
+**P1**: Sidebar information overload (#5), task detail drawer layout (#6), test/E2E data pollution (#8), integrations hub prioritization (#9)
+**P2**: Breadcrumb inconsistencies (#15), settings two-axis nav simplification (#13 remaining)
+**P3**: Dev banner space reduction (#17), CRM sub-nav duplication (#19)
+
+### 19. UX Audit — Partially Addressed (depth improvements)
+**Source:** `archive/2026-03-16--review--ux-design-audit.md`
+- Pipeline: stage visual differentiation (gradient backgrounds), agent action tooltip improvements (#2)
+- Notifications: tabs (All/Unread/Mentions), "Mark all read" button, full notifications page (#4)
+- KPI trends: trend arrows with percentages (requires API), time period selector, sparklines (#10)
+- Project cards: last activity timestamp, assignee avatars (#18)
+
+### 20. User Account Onboarding (deferred from UX Sprint 2)
+**Source:** `2026-03-16--plan--ux-engagement-polish-sprint2.md`
+**What:** First-login walkthrough — profile setup, preferences, Topsi intro. Org onboarding (PR #39) covers org-level setup; user account onboarding covers individual user first-run experience.
+**Status:** NOT STARTED
 
 ### 17. React Router v7 Migration Warnings
 **Source:** `archive/2026-03-12--review--sprint1-qa-results.md`
@@ -214,3 +231,14 @@
 | Rename Bug Triage Pipeline (Backlog #10) | → "Feedback Triage Pipeline" in code + E2E tests (2026-03-16) |
 | Pipeline enhancement merge + DbUuid fixes | sloperation314 merged, 12 Rust + 4 TS compile fixes (2026-03-16) |
 | Pipeline intelligence E2E demo | 5-part 8-stage deal progression demo (2026-03-16) |
+| UX Sprint 2: Org-scoped onboarding system | New DB tables, API module, React Query hook, org overview integration (PR #39) |
+| UX Sprint 2: Notification quick actions | Source-aware action buttons, dismiss, improved deep-linking (PR #39) |
+| UX Sprint 2: Dark mode hardcoded color fixes | CSS `--brand-gold` variable, OnboardingCarousel dark variants (PR #39) |
+| UX Sprint 2: KPI trend indicators | TrendIndicator + workflow run stats on org overview (PR #39) |
+| UX Sprint 2: Project card progress bar | Task completion Progress bar on ProjectCard (PR #39) |
+| UX Sprint 2: Workflow last-run status | Status indicator on workflow definition cards (PR #39) |
+| UX Sprint 2: Pipeline empty state | Onboarding prompt card in empty pipeline first column (PR #39) |
+| UX Sprint 2: Settings "Coming Soon" cleanup | Planned items grouped at bottom with reduced opacity (PR #39) |
+| Task.collaborators missing from struct | Field existed in SQL + DB but not in Task struct — SQLx silently discarded (PR #39) |
+| Notification quick action buttons (Backlog P1.5) | Implemented: source-aware actions, dismiss, deep-linking (PR #39) |
+| Project task count auto-refresh (Backlog #12) | Sidebar task count refresh on create/update (PR #38) |

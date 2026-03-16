@@ -1,4 +1,5 @@
 import { Bell, Bot, CheckCircle2, Edit, Plus, Trash2, ArrowRight, MessageSquare, User, Cog } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import type { ActivityItem } from './types';
 import { timeAgo, formatAction } from './utils';
 
@@ -115,6 +116,11 @@ export function ActivityNotificationItem({ item, onClick, isRead }: ActivityNoti
           <p className="text-[10px] text-muted-foreground mt-0.5">
             {timeAgo(item.timestamp)}
           </p>
+          {item.action === 'status_change' && item.new_state && (
+            <Badge variant="secondary" className="text-[9px] px-1 py-0 mt-0.5">
+              &rarr; {item.new_state}
+            </Badge>
+          )}
         </div>
         {!isRead && (
           <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />
