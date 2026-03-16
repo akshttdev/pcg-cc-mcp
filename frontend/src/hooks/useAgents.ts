@@ -1,8 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { agentsApi } from '@/lib/api';
 import type { CreateAgent, UpdateAgent, AgentStatus } from 'shared/types';
+import { agentKeys } from '@/lib/query-keys';
 
-const AGENTS_QUERY_KEY = ['agents'];
+const AGENTS_QUERY_KEY = agentKeys.all;
 
 /**
  * Hook to fetch all agents

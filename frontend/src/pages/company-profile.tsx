@@ -54,6 +54,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { entityKeys, businessKeys } from '@/lib/query-keys';
 import {
   companiesApi,
   type CompanyRecord,
@@ -969,31 +970,31 @@ export function CompanyProfilePage() {
   const [isExporting, setIsExporting] = useState(false);
 
   const { data: company, isLoading, refetch: refetchCompany } = useQuery({
-    queryKey: ['company', companyId],
+    queryKey: entityKeys.company(companyId!),
     queryFn: () => companiesApi.get(companyId!),
     enabled: !!companyId,
   });
 
   const { data: proposals = [] } = useQuery({
-    queryKey: ['company-proposals', companyId],
+    queryKey: businessKeys.companyProposals(companyId!),
     queryFn: () => companiesApi.listProposals(companyId!),
     enabled: !!companyId,
   });
 
   const { data: contacts = [] } = useQuery({
-    queryKey: ['company-contacts', companyId],
+    queryKey: entityKeys.companyContacts(companyId!),
     queryFn: () => companiesApi.listPersons(companyId!),
     enabled: !!companyId,
   });
 
   const { data: intel, refetch: refetchIntel } = useQuery({
-    queryKey: ['company-intel', companyId],
+    queryKey: entityKeys.companyIntel(companyId!),
     queryFn: () => companiesApi.getIntelligenceStatus(companyId!),
     enabled: !!companyId,
   });
 
   const { data: contactMethods = [], refetch: refetchMethods } = useQuery({
-    queryKey: ['company-contact-methods', companyId],
+    queryKey: entityKeys.companyContactMethods(companyId!),
     queryFn: () => companiesApi.listContactMethods(companyId!),
     enabled: !!companyId,
   });
@@ -1017,7 +1018,7 @@ export function CompanyProfilePage() {
             clearInterval(pollRef.current!);
             pollRef.current = null;
             setIsPolling(false);
-            queryClient.invalidateQueries({ queryKey: ['company', companyId] });
+            queryClient.invalidateQueries({ queryKey: entityKeys.company(companyId!) });
           }
         }, 3000);
       }
