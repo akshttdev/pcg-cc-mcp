@@ -122,17 +122,14 @@ export function MyTasksPage() {
 
   const handleBatchStatusChange = useCallback(async (newStatus: string) => {
     const ids = [...selectedIds];
-    let successCount = 0;
-    for (const id of ids) {
-      try {
-        await tasksApi.update(id, { status: newStatus as TaskStatus });
-        successCount++;
-      } catch {
-        // continue with remaining
-      }
-    }
+    const results = await Promise.allSettled(
+      ids.map((id) => tasksApi.update(id, { status: newStatus as TaskStatus }))
+    );
+    const successCount = results.filter((r) => r.status === 'fulfilled').length;
+    const failCount = results.length - successCount;
     invalidateMyTasks();
-    toast.success(`Updated ${successCount} task${successCount !== 1 ? 's' : ''} to ${newStatus}`);
+    if (successCount > 0) toast.success(`Updated ${successCount} task${successCount !== 1 ? 's' : ''} to ${newStatus}`);
+    if (failCount > 0) toast.error(`Failed to update ${failCount} task${failCount !== 1 ? 's' : ''}`);
     exitSelectionMode();
   }, [selectedIds, invalidateMyTasks, exitSelectionMode]);
 
@@ -146,17 +143,14 @@ export function MyTasksPage() {
     if (result !== 'confirmed') return;
 
     const ids = [...selectedIds];
-    let successCount = 0;
-    for (const id of ids) {
-      try {
-        await tasksApi.delete(id);
-        successCount++;
-      } catch {
-        // continue with remaining
-      }
-    }
+    const results = await Promise.allSettled(
+      ids.map((id) => tasksApi.delete(id))
+    );
+    const successCount = results.filter((r) => r.status === 'fulfilled').length;
+    const failCount = results.length - successCount;
     invalidateMyTasks();
-    toast.success(`Deleted ${successCount} task${successCount !== 1 ? 's' : ''}`);
+    if (successCount > 0) toast.success(`Deleted ${successCount} task${successCount !== 1 ? 's' : ''}`);
+    if (failCount > 0) toast.error(`Failed to delete ${failCount} task${failCount !== 1 ? 's' : ''}`);
     exitSelectionMode();
   }, [selectedIds, invalidateMyTasks, exitSelectionMode]);
 
