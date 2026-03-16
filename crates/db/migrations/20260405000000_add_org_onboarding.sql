@@ -30,10 +30,11 @@ CREATE TABLE IF NOT EXISTS org_onboarding_segments (
     started_at TEXT,
     completed_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now','subsec')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now','subsec'))
+    updated_at TEXT NOT NULL DEFAULT (datetime('now','subsec')),
+    UNIQUE(onboarding_id, segment_type)
 );
 
-CREATE INDEX IF NOT EXISTS idx_org_onboarding_org ON org_onboarding(organization_id);
+-- UNIQUE(organization_id) on org_onboarding already creates an implicit index
 CREATE INDEX IF NOT EXISTS idx_org_onboarding_status ON org_onboarding(status);
 CREATE INDEX IF NOT EXISTS idx_org_onboarding_segments_org ON org_onboarding_segments(organization_id);
 CREATE INDEX IF NOT EXISTS idx_org_onboarding_segments_onboarding ON org_onboarding_segments(onboarding_id);

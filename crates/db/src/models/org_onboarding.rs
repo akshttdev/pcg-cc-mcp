@@ -1,13 +1,13 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, Row, SqlitePool};
+use sqlx::{Row, SqlitePool};
 use ts_rs::TS;
 use uuid::Uuid;
 
 use super::project_onboarding::{OnboardingStatus, SegmentStatus, SegmentType};
 
 /// Main organization onboarding record
-#[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct OrgOnboarding {
     pub id: Uuid,
@@ -26,7 +26,7 @@ pub struct OrgOnboarding {
 }
 
 /// Individual organization onboarding segment (carousel item)
-#[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct OrgOnboardingSegment {
     pub id: Uuid,
