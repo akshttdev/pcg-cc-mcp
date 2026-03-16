@@ -1,5 +1,24 @@
 import type { ActivityItem } from './types';
 
+// ── Read-activity localStorage persistence ─────────────────────────────────
+
+const READ_ACTIVITY_IDS_KEY = 'orcha:read-activity-ids';
+
+export function loadReadActivityIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(READ_ACTIVITY_IDS_KEY);
+    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+export function persistReadActivityIds(ids: Set<string>) {
+  try {
+    localStorage.setItem(READ_ACTIVITY_IDS_KEY, JSON.stringify([...ids]));
+  } catch { /* non-fatal */ }
+}
+
 export function timeAgo(dateStr: string): string {
   const now = Date.now();
   const then = new Date(dateStr).getTime();

@@ -1,6 +1,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { agentsApi } from '@/lib/api';
+import { agentKeys } from '@/lib/query-keys';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -11,7 +12,7 @@ export function AgentProfilePage() {
   const { agentId } = useParams<{ agentId: string }>();
 
   const { data: agent, isLoading, error } = useQuery({
-    queryKey: ['agent', agentId],
+    queryKey: agentKeys.detail(agentId!),
     queryFn: () => agentsApi.getById(agentId!),
     enabled: !!agentId,
     staleTime: 60000,

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -7,26 +7,9 @@ import { CheckCheck, Search } from 'lucide-react';
 import { makeRequest } from '@/lib/api';
 import { notificationKeys } from '@/lib/query-keys';
 import type { ActivityItem, InboxNotification } from '@/components/notifications/types';
-import { getProjectId } from '@/components/notifications/utils';
+import { getProjectId, loadReadActivityIds, persistReadActivityIds } from '@/components/notifications/utils';
 import { ActivityNotificationItem } from '@/components/notifications/ActivityNotificationItem';
 import { InboxNotificationItem } from '@/components/notifications/InboxNotificationItem';
-
-const READ_ACTIVITY_IDS_KEY = 'orcha:read-activity-ids';
-
-function loadReadActivityIds(): Set<string> {
-  try {
-    const raw = localStorage.getItem(READ_ACTIVITY_IDS_KEY);
-    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
-  } catch {
-    return new Set();
-  }
-}
-
-function persistReadActivityIds(ids: Set<string>) {
-  try {
-    localStorage.setItem(READ_ACTIVITY_IDS_KEY, JSON.stringify([...ids]));
-  } catch { /* non-fatal */ }
-}
 
 type NotificationTab = 'all' | 'inbox' | 'activity';
 type ReadFilter = 'all' | 'unread' | 'read';
@@ -133,40 +116,38 @@ export function NotificationsPage() {
   );
 
   // Filter items based on tab, read status, and search
-  const getFilteredItems = () => {
+  const { inboxItems, activityItems } = useMemo(() => {
     const showInbox = activeTab === 'all' || activeTab === 'inbox';
     const showActivity = activeTab === 'all' || activeTab === 'activity';
     const query = searchQuery.toLowerCase().trim();
 
-    let inboxItems = showInbox ? inboxNotifications : [];
-    let activityItems = showActivity ? visibleActivity : [];
+    let filteredInbox = showInbox ? inboxNotifications : [];
+    let filteredActivity = showActivity ? visibleActivity : [];
 
     // Read filter
     if (readFilter === 'unread') {
-      inboxItems = inboxItems.filter((n) => !n.read_at);
-      activityItems = activityItems.filter((n) => !readActivityIds.has(n.id));
+      filteredInbox = filteredInbox.filter((n) => !n.read_at);
+      filteredActivity = filteredActivity.filter((n) => !readActivityIds.has(n.id));
     } else if (readFilter === 'read') {
-      inboxItems = inboxItems.filter((n) => !!n.read_at);
-      activityItems = activityItems.filter((n) => readActivityIds.has(n.id));
+      filteredInbox = filteredInbox.filter((n) => !!n.read_at);
+      filteredActivity = filteredActivity.filter((n) => readActivityIds.has(n.id));
     }
 
     // Search filter
     if (query) {
-      inboxItems = inboxItems.filter((n) =>
+      filteredInbox = filteredInbox.filter((n) =>
         n.message.toLowerCase().includes(query) ||
         n.source?.toLowerCase().includes(query)
       );
-      activityItems = activityItems.filter((n) =>
+      filteredActivity = filteredActivity.filter((n) =>
         n.action.toLowerCase().includes(query) ||
         n.actor_name?.toLowerCase().includes(query) ||
         n.metadata?.toLowerCase().includes(query)
       );
     }
 
-    return { inboxItems, activityItems };
-  };
-
-  const { inboxItems, activityItems } = getFilteredItems();
+    return { inboxItems: filteredInbox, activityItems: filteredActivity };
+  }, [activeTab, searchQuery, readFilter, inboxNotifications, visibleActivity, readActivityIds]);
   const totalFiltered = inboxItems.length + activityItems.length;
 
   const TABS: { key: NotificationTab; label: string; count: number }[] = [

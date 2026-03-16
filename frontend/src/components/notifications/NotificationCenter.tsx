@@ -9,30 +9,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Bell, CheckCheck, ExternalLink } from 'lucide-react';
+import { Bell, CheckCheck, ArrowRight } from 'lucide-react';
 import { makeRequest } from '@/lib/api';
 import { notificationKeys } from '@/lib/query-keys';
 import type { ActivityItem, InboxNotification } from './types';
-import { getProjectId } from './utils';
+import { getProjectId, loadReadActivityIds, persistReadActivityIds } from './utils';
 import { ActivityNotificationItem } from './ActivityNotificationItem';
 import { InboxNotificationItem } from './InboxNotificationItem';
-
-const READ_ACTIVITY_IDS_KEY = 'orcha:read-activity-ids';
-
-function loadReadActivityIds(): Set<string> {
-  try {
-    const raw = localStorage.getItem(READ_ACTIVITY_IDS_KEY);
-    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
-  } catch {
-    return new Set();
-  }
-}
-
-function persistReadActivityIds(ids: Set<string>) {
-  try {
-    localStorage.setItem(READ_ACTIVITY_IDS_KEY, JSON.stringify([...ids]));
-  } catch { /* non-fatal */ }
-}
 
 type NotificationTab = 'all' | 'inbox' | 'activity';
 
@@ -260,7 +243,7 @@ export function NotificationCenter() {
             className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors rounded-sm hover:bg-accent"
           >
             View All Notifications
-            <ExternalLink className="h-3 w-3" />
+            <ArrowRight className="h-3 w-3" />
           </button>
         </div>
       </DropdownMenuContent>

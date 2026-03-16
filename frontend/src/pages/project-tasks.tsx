@@ -972,7 +972,7 @@ export function ProjectTasks() {
         <ResizableDrawer
           open={isPanelOpen && !!selectedTask && !isFullscreen}
           onClose={handleClosePanel}
-          defaultWidth={800}
+
         >
           {({ isExpanded, toggleExpand }) =>
             selectedTask && (
