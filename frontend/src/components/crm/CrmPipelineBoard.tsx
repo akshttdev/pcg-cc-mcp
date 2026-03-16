@@ -11,6 +11,7 @@ import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DollarSign, Settings, Loader2, Bot, User, Users } from 'lucide-react';
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import NiceModal from '@ebay/nice-modal-react';
 import { useCrmKanban, useCrmPipelineByType, useOrgCrmPipelineByType, useOrgCrmKanban, useMoveDeal, useCreateDeal, useUpdateDeal, useDeleteDeal } from '@/hooks/useCrmPipeline';
@@ -71,6 +72,32 @@ function StageOwnerBadge({ owner }: { owner: StageOwner }) {
     </span>
   );
 }
+
+const STAGE_DESCRIPTIONS: Record<string, string> = {
+  // Clients pipeline
+  'lead': 'New inbound lead — Nora qualifies and enriches contact data.',
+  'business analysis': 'AI-driven research on the company, competitors, and fit.',
+  'discovery': 'Account manager holds discovery call to understand needs.',
+  'build proposal': 'Collaborative proposal drafting between Topsi and PM.',
+  'polish': 'Final refinements to proposal by PM or EP.',
+  'proposal meeting': 'Formal presentation of the proposal to the client.',
+  // Acquisition pipeline
+  'research': 'AI-powered prospect research and lead scoring.',
+  'analysis done': 'Research complete — AM reviews and decides next steps.',
+  'proposal': 'Proposal being drafted with AI assistance.',
+  'sent': 'Proposal delivered to the prospect.',
+  'negotiation': 'Active negotiation on terms and scope.',
+  // Delivery pipeline
+  'onboarding': 'Client onboarding and project kickoff.',
+  'in production': 'Active production work by the team.',
+  'review': 'PM and client reviewing deliverables.',
+  'final delivery': 'Packaging and delivering final assets.',
+  // Conferences pipeline
+  'researching': 'AI researching relevant conferences and events.',
+  'applied': 'Application submitted to the conference.',
+  'in discussion': 'Active discussions with conference organizers.',
+  'confirmed': 'Attendance or sponsorship confirmed.',
+};
 
 export function CrmPipelineBoard({
   projectId,
@@ -265,7 +292,25 @@ export function CrmPipelineBoard({
                           boxShadow: `0 0 6px 1px ${stage.color}60`,
                         }}
                       />
-                      <p className="m-0 text-sm font-medium flex-1 truncate">{stage.name}</p>
+                      {STAGE_DESCRIPTIONS[stage.name.toLowerCase()] ? (
+                        <TooltipProvider delayDuration={300}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <p className="m-0 text-sm font-medium flex-1 truncate cursor-help border-b border-dashed border-muted-foreground/30">
+                                {stage.name}
+                              </p>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="max-w-[220px] text-xs">
+                              <p>{STAGE_DESCRIPTIONS[stage.name.toLowerCase()]}</p>
+                              {owner && (
+                                <p className="mt-1 text-muted-foreground">Managed by: {owner.label}</p>
+                              )}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      ) : (
+                        <p className="m-0 text-sm font-medium flex-1 truncate">{stage.name}</p>
+                      )}
                       <span className="text-xs text-muted-foreground tabular-nums">
                         {stageData.deals.length}
                       </span>

@@ -33,6 +33,7 @@ import {
 import { cn } from '@/lib/utils';
 import { AgentFlowBadges } from './AgentFlowBadges';
 import { ExecutionSummaryInline } from './ExecutionSummaryInline';
+import { TagChips } from '@/components/ui/tag-chips';
 import type { TaskWithAttemptStatus, ExecutionArtifact, ArtifactType, AgentFlowEvent } from 'shared/types';
 import type { AgentFlow, UserListItem } from '@/lib/api';
 
@@ -410,6 +411,9 @@ export function EnhancedTaskCard({
             );
           })()}
         </div>
+
+        {/* Tag chips */}
+        {task.tags && <TagChips tags={task.tags} maxVisible={2} size="xs" />}
 
         {/* Status indicators row */}
         <div className="flex items-center flex-wrap gap-1">
