@@ -647,6 +647,123 @@ async fn create_review_task_if_needed(pool: &sqlx::SqlitePool, deal: &CrmDeal, d
     }
 }
 
+/// GET /crm/deals/:id/advance-requirements - Pre-flight check for advancing a deal
+///
+/// Returns what is required before the deal can advance to the next stage.
+/// Callers should poll this before showing the advance button as enabled.
+async fn get_advance_requirements(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let pool = &deployment.db().pool;
+    let id = DbUuid::from(id);
+
+    let deal = CrmDeal::find_by_id(pool, &id).await?;
+
+    let current_stage_id = match &deal.crm_stage_id {
+        Some(s) => s.clone(),
+        None => {
+            return Ok(Json(serde_json::json!({
+                "can_advance": false,
+                "blocking_reason": "Deal has no stage assigned",
+                "pending_tasks": 0,
+                "current_stage": null,
+                "next_stage": null,
+                "intel_status": null,
+            })));
+        }
+    };
+
+    // Count pending review tasks
+    let pending_tasks: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM tasks WHERE crm_deal_id = ? AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL",
+    )
+    .bind(&id)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0);
+
+    // Get current stage info
+    let current_stage = db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, &current_stage_id)
+        .await
+        .map_err(|_| ApiError::NotFound("Current stage not found".to_string()))?;
+
+    let is_closed = current_stage.is_closed.unwrap_or(0) == 1;
+
+    // Look up next stage
+    #[derive(sqlx::FromRow)]
+    struct StageNameRow {
+        name: String,
+    }
+    let next_stage_name: Option<String> = sqlx::query_as::<_, StageNameRow>(
+        "SELECT name FROM crm_pipeline_stages WHERE pipeline_id = ? AND position = ? LIMIT 1",
+    )
+    .bind(&current_stage.pipeline_id)
+    .bind(current_stage.position + 1)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
+    .map(|r| r.name);
+
+    // Get intel status for the linked person (if any)
+    let intel_status: Option<String> = if let Some(ref contact_id) = deal.crm_contact_id {
+        #[derive(sqlx::FromRow)]
+        struct IntelRow { intelligence_status: Option<String> }
+        // Try crm_contacts.person_id → persons
+        let status = sqlx::query_as::<_, IntelRow>(
+            "SELECT p.intelligence_status FROM persons p
+             JOIN crm_contacts c ON c.person_id = p.id
+             WHERE c.id = ? LIMIT 1",
+        )
+        .bind(contact_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .map(|r| r.intelligence_status)
+        .flatten();
+
+        if status.is_some() {
+            status
+        } else {
+            // Fallback: persons.crm_contact_id
+            sqlx::query_as::<_, IntelRow>(
+                "SELECT intelligence_status FROM persons WHERE crm_contact_id = ? LIMIT 1",
+            )
+            .bind(contact_id)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten()
+            .map(|r| r.intelligence_status)
+            .flatten()
+        }
+    } else {
+        None
+    };
+
+    let can_advance = pending_tasks == 0 && !is_closed && next_stage_name.is_some();
+    let blocking_reason = if is_closed {
+        Some("Deal is at a closed stage".to_string())
+    } else if next_stage_name.is_none() {
+        Some("Deal is already at the final stage".to_string())
+    } else if pending_tasks > 0 {
+        Some(format!("{} pending review task(s) must be completed first", pending_tasks))
+    } else {
+        None
+    };
+
+    Ok(Json(serde_json::json!({
+        "can_advance": can_advance,
+        "blocking_reason": blocking_reason,
+        "pending_tasks": pending_tasks,
+        "current_stage": current_stage.name,
+        "next_stage": next_stage_name,
+        "intel_status": intel_status,
+    })))
+}
+
 /// POST /crm/deals/:id/advance - Advance deal to next stage after review approval
 ///
 /// Auth: This handler is behind the `require_auth` middleware layer applied to all
@@ -957,6 +1074,7 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/crm/deals/{id}", delete(delete_deal))
         .route("/crm/deals/{id}/rich", get(get_deal_rich))
         .route("/crm/deals/{id}/stage", patch(move_deal_stage))
+        .route("/crm/deals/{id}/advance-requirements", get(get_advance_requirements))
         .route("/crm/deals/{id}/advance", post(advance_deal))
         // Org-scoped CRM deal routes
         .route("/organizations/{org_id}/crm/deals", get(list_org_deals))

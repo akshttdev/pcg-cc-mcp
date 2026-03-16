@@ -821,9 +821,12 @@ impl SovereignStorageService {
 
         // v0.6.0: CRM data
         let crm_pipelines: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
-            "SELECT hex(id) as id, hex(project_id) as project_id, name, description, \
-             pipeline_type, is_active, is_default, icon, color, created_at, updated_at \
-             FROM crm_pipelines LIMIT 500",
+            "SELECT \
+             CASE WHEN typeof(id)='blob' THEN lower(substr(hex(id),1,8)||'-'||substr(hex(id),9,4)||'-'||substr(hex(id),13,4)||'-'||substr(hex(id),17,4)||'-'||substr(hex(id),21,12)) ELSE id END as id, \
+             CASE WHEN project_id IS NULL THEN NULL WHEN typeof(project_id)='blob' THEN lower(substr(hex(project_id),1,8)||'-'||substr(hex(project_id),9,4)||'-'||substr(hex(project_id),13,4)||'-'||substr(hex(project_id),17,4)||'-'||substr(hex(project_id),21,12)) ELSE project_id END as project_id, \
+             CASE WHEN organization_id IS NULL THEN NULL WHEN typeof(organization_id)='blob' THEN lower(substr(hex(organization_id),1,8)||'-'||substr(hex(organization_id),9,4)||'-'||substr(hex(organization_id),13,4)||'-'||substr(hex(organization_id),17,4)||'-'||substr(hex(organization_id),21,12)) ELSE organization_id END as organization_id, \
+             name, description, pipeline_type, is_active, is_default, icon, color, created_at, updated_at \
+             FROM crm_pipelines WHERE typeof(id) != 'blob' LIMIT 500",
         )
         .fetch_all(&pool)
         .await
@@ -833,10 +836,12 @@ impl SovereignStorageService {
         .collect();
 
         let crm_pipeline_stages: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
-            "SELECT hex(id) as id, hex(pipeline_id) as pipeline_id, name, description, \
-             color, position, is_closed, is_won, probability, \
+            "SELECT \
+             CASE WHEN typeof(id)='blob' THEN lower(substr(hex(id),1,8)||'-'||substr(hex(id),9,4)||'-'||substr(hex(id),13,4)||'-'||substr(hex(id),17,4)||'-'||substr(hex(id),21,12)) ELSE id END as id, \
+             CASE WHEN typeof(pipeline_id)='blob' THEN lower(substr(hex(pipeline_id),1,8)||'-'||substr(hex(pipeline_id),9,4)||'-'||substr(hex(pipeline_id),13,4)||'-'||substr(hex(pipeline_id),17,4)||'-'||substr(hex(pipeline_id),21,12)) ELSE pipeline_id END as pipeline_id, \
+             name, description, color, position, is_closed, is_won, probability, \
              auto_move_after_days, notify_on_enter, created_at, updated_at \
-             FROM crm_pipeline_stages LIMIT 5000",
+             FROM crm_pipeline_stages WHERE typeof(id) != 'blob' LIMIT 5000",
         )
         .fetch_all(&pool)
         .await
@@ -1904,19 +1909,21 @@ async fn import_peer_crm_data(db_path: &std::path::Path, payload: &SyncPayload) 
     let mut activities_imported: usize = 0;
 
     // 1. Import crm_pipelines (depends on projects)
+    // Store as TEXT UUIDs. Skip entries with BLOB-origin hex ids (no hyphens).
     for row in &payload.crm_pipelines {
         let id = match row.get("id").and_then(|v| v.as_str()) {
-            Some(id) => id,
-            None => continue,
+            Some(id) if id.len() == 36 && id.contains('-') => id,
+            _ => continue,
         };
         let result = sqlx::query(
             "INSERT OR IGNORE INTO crm_pipelines \
-             (id, project_id, name, description, pipeline_type, is_active, is_default, \
+             (id, project_id, organization_id, name, description, pipeline_type, is_active, is_default, \
               icon, color, created_at, updated_at) \
-             VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7, $8, $9, $10, $11)"
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)"
         )
         .bind(id)
-        .bind(row.get("project_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("project_id").and_then(|v| v.as_str()).filter(|s| s.len() == 36 && s.contains('-')))
+        .bind(row.get("organization_id").and_then(|v| v.as_str()).filter(|s| s.len() == 36 && s.contains('-')))
         .bind(row.get("name").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("description").and_then(|v| v.as_str()))
         .bind(row.get("pipeline_type").and_then(|v| v.as_str()).unwrap_or("custom"))
@@ -1937,19 +1944,28 @@ async fn import_peer_crm_data(db_path: &std::path::Path, payload: &SyncPayload) 
     }
 
     // 2. Import crm_pipeline_stages (depends on crm_pipelines)
+    // Store as TEXT UUIDs (not BLOB) to be compatible with Rust DbUuid queries.
     for row in &payload.crm_pipeline_stages {
         let id = match row.get("id").and_then(|v| v.as_str()) {
             Some(id) => id,
             None => continue,
         };
+        // Only import stages that have a UUID-format id (skip BLOB-origin hex garbage)
+        if id.len() != 36 || !id.contains('-') {
+            continue;
+        }
+        let pipeline_id = match row.get("pipeline_id").and_then(|v| v.as_str()) {
+            Some(pid) if pid.len() == 36 && pid.contains('-') => pid,
+            _ => continue,
+        };
         let result = sqlx::query(
             "INSERT OR IGNORE INTO crm_pipeline_stages \
              (id, pipeline_id, name, description, color, position, is_closed, is_won, \
               probability, auto_move_after_days, notify_on_enter, created_at, updated_at) \
-             VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)"
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)"
         )
         .bind(id)
-        .bind(row.get("pipeline_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(pipeline_id)
         .bind(row.get("name").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("description").and_then(|v| v.as_str()))
         .bind(row.get("color").and_then(|v| v.as_str()).unwrap_or("#6B7280"))
