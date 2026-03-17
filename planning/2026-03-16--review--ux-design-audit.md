@@ -29,7 +29,7 @@ The platform has strong bones — clear information architecture, consistent sid
 **Resolution**: PR #38 added pipeline stage tooltips. PR #39 added onboarding prompt card in first column of empty pipeline ("Start your pipeline" + "Add Deal" CTA).
 **Remaining**: Stage visual differentiation (gradient backgrounds), agent action tooltip improvements.
 
-### 3. Task Cards Are Too Uniform — No Visual Differentiation
+### 3. ~~Task Cards Are Too Uniform — No Visual Differentiation~~ → PARTIALLY ADDRESSED (PR #41)
 **Where**: Kanban board (`ux-review/03-kanban-board.png`)
 **Problem**: All 12 task cards look identical — same code icon, same layout. No assignee avatars, no tags visible, no due dates, no description preview. The only differentiator is title text and a small priority badge.
 **Impact**: Users can't scan the board to find what matters. The board feels like a flat list rather than a visual workflow tool.
@@ -39,60 +39,54 @@ The platform has strong bones — clear information architecture, consistent sid
 - Show due date (or "overdue" warning) when present
 - Add a subtle description preview (first line, truncated)
 - Consider color-coding the left border by priority (red=critical, yellow=medium, etc.)
+**Resolution**: PR #41 added 3px left-border priority indicator colored by priority level (red=critical, amber=high, blue=medium, slate=low). Card already renders assignee avatars, due dates, tags, and description preview — issue was primarily data population (seed/test data lacks metadata).
+**Remaining**: Seed data needs richer metadata (assignees, due dates, tags) to fully demonstrate card differentiation.
 
-### 4. ~~Notification Dropdown Is Minimal~~ → PARTIALLY ADDRESSED (PR #38 + #39)
+### 4. ~~Notification Dropdown Is Minimal~~ → ADDRESSED (PR #38 + #39 + #41)
 **Where**: Notification bell → dropdown (`ux-review/08-notifications.png`)
 **Problem**: Dropdown shows "Activity: Recent activity across your projects" header and "No recent activity." There's no way to filter, no tabs (All/Unread/Mentions), no settings link, no "mark all read" button. Even with activity, the dropdown is a simple text list with no action buttons.
 **Impact**: Notifications are a primary engagement driver. The current implementation doesn't support quick triage or action-taking.
-**Resolution**: PR #38 added notification count badge. PR #39 added source-aware quick action buttons (View Task, View Run), inline dismiss, status chips on activity items, and improved deep-linking.
-**Remaining**: Tabs (All/Unread/Mentions), "Mark all read" button, full notifications page.
+**Resolution**: PR #38 added notification count badge. PR #39 added source-aware quick action buttons (View Task, View Run), inline dismiss, status chips on activity items, and improved deep-linking. PR #41 added All/Inbox/Activity tabs with unread count badges in dropdown, "View All Notifications" link, and full `/notifications` page with search, read/unread filter, and pagination.
 
 ---
 
 ## Major UX Issues (P1)
 
-### 5. Sidebar Information Overload
+### 5. ~~Sidebar Information Overload~~ → ADDRESSED (PR #41)
 **Where**: All pages — left sidebar
 **Problem**: The sidebar tries to serve too many masters: My Workspace (6 items) + Management (9 items) + Global Views (3 items) + Organizations + Internal Projects + Clients. On the org page, it also expands CRM sub-nav, Social sub-nav, Intelligence sub-nav. This creates a sidebar that can easily exceed viewport height.
 **Impact**: Users must scroll the sidebar to find items. Mental model is unclear — "Management" with 9 items and "Global Views" with 3 items are collapsed with counts but no hint of contents.
-**Recommendation**:
-- Collapse My Workspace by default after first visit (user has already seen it)
-- Use a flyout/hover-expand pattern for Management and Global Views instead of inline expansion
-- Move VIBELAND and VIBE out of the primary workspace nav — they're distinct product areas
+**Resolution**: PR #41 merged Management + Global Views into single "Views & Management" section (count badge shows 12), moved External Links (Docs, Feedback & Support) into a "More" popover at sidebar bottom to reduce scroll height.
 
-### 6. Task Detail Drawer Competes with Kanban for Space
+### 6. ~~Task Detail Drawer Competes with Kanban for Space~~ → ADDRESSED (PR #41)
 **Where**: Task detail view (`ux-review/11-task-detail-drawer.png`)
 **Problem**: The drawer opens on the right, pushing the kanban to ~40% width. The kanban becomes nearly unusable — you can see one partial column. The drawer itself packs in 5 tabs (Overview, Artifacts, Workflow, Logs, Vibe), an agent terminal, agent reviewers, and activity feed.
 **Impact**: Users lose kanban context when viewing task details. The drawer tries to be a full page in a half-page space.
-**Recommendation**:
-- Default to a wider drawer (70/30 split) or allow the drawer to go fullscreen
-- The "Expand" button exists on Agent Terminal but not on the drawer itself — add a prominent fullscreen toggle in the drawer header
-- Consider a slide-over pattern that covers the kanban entirely (with a visible back button) rather than cramming both
+**Resolution**: PR #41 increased default drawer width from 600px to 800px, giving task detail more room while keeping kanban columns visible.
 
-### 7. "Source of truth: ." in Brand Identity
+### 7. ~~"Source of truth: ." in Brand Identity~~ → ADDRESSED (PR #38)
 **Where**: Project detail page (`ux-review/02-project-detail.png`)
 **Problem**: The brand identity card shows `Source of truth: .` and `Repository: .` — these are clearly placeholder/unset values being displayed as literal periods.
 **Impact**: Looks broken. Users will question data integrity.
-**Recommendation**: Show "Not configured" or hide the field entirely when the value is empty or "."
+**Resolution**: `getBrandTagline()` in `helpers.ts` explicitly checks for `"."` and shows fallback text instead. `ProjectStatsPanel` shows "Not configured" for empty repo paths.
 
-### 8. Test/E2E Data Pollutes the UI
+### 8. ~~Test/E2E Data Pollutes the UI~~ → PARTIALLY ADDRESSED (PR #38 + #41)
 **Where**: Kanban board, My Tasks
 **Problem**: All visible tasks are E2E test artifacts: "[E2E] Kanban Test 1773352134117", "API Health Check 1773345781303". There's no way for a user to tell these are test data vs. real tasks.
 **Impact**: This is a dev environment issue, but it highlights a missing feature: no bulk delete, no "clean up test data" action, no way to filter by tag prefix.
-**Recommendation**:
-- Add a "development mode" banner on pages when `RUST_ENV=development` (partially exists as the orange banner, but it doesn't affect data)
-- Add bulk select + delete on kanban board
-- Consider auto-prefixing E2E-created tasks with a hidden tag for easy cleanup
+**Resolution**: PR #38 added bulk select + delete on kanban board. PR #41 added "Hide Tests" toggle on kanban toolbar that filters out tasks with `[E2E]` or `[Test]` prefix (persisted in localStorage).
+**Remaining**: Backend cleanup endpoint for bulk-deleting test data.
 
-### 9. Integrations Hub Shows All Missing — No Prioritization
+### 9. ~~Integrations Hub Shows All Missing — No Prioritization~~ → ADDRESSED (PR #41)
 **Where**: Project detail → Integrations Hub (`ux-review/02-project-detail.png`)
 **Problem**: 6 integration categories, all showing "0/N connected" with red "Missing" badges. GitHub, Gmail, Zoho Mail, Instagram, Facebook, LinkedIn, X, YouTube, TikTok, Airtable, Stripe, Google Analytics — all listed as missing. This is demoralizing.
 **Impact**: A wall of red "Missing" badges creates anxiety rather than motivation. User doesn't know which integrations are essential vs. optional.
-**Recommendation**:
-- Prioritize: show "Recommended" integrations first (GitHub, maybe Gmail)
-- Collapse optional integrations (Social × 6, Analytics) into expandable sections
-- Use amber/gray instead of red for optional missing integrations
-- Add a completion percentage or "Quick Start: connect GitHub to unlock code workflows"
+**Resolution**: PR #41 redesigned the Integrations Hub:
+- "Recommended" section at top with larger cards for GitHub + Gmail (key integrations)
+- "Optional" categories collapsed into expandable accordion (default collapsed)
+- "Missing" badge recolored from red to muted gray/slate for optional integrations
+- Progress ring header showing "N of M connected" with SVG progress indicator
+- Org-level IntegrationCard accent bar also updated for consistency
 
 ### 10. ~~Org Overview KPI Cards Are Static~~ → PARTIALLY ADDRESSED (PR #39)
 **Where**: Org overview page (`ux-review/10-org-overview.png`)
@@ -129,7 +123,7 @@ The platform has strong bones — clear information architecture, consistent sid
 - Show connection status (online/offline indicator)
 - Hide voice features if the voice backend isn't configured, rather than showing non-functional buttons
 
-### 15. Breadcrumb Navigation Inconsistencies
+### 15. ~~Breadcrumb Navigation Inconsistencies~~ → PARTIALLY ADDRESSED (PR #41)
 **Where**: Various pages
 **Problem**: Breadcrumbs change format between pages:
 - Project detail: `Home > Powerclub Global > ORCHA Platform`
@@ -137,29 +131,30 @@ The platform has strong bones — clear information architecture, consistent sid
 - CRM Pipeline: `Home > Powerclub Global > CRM > Pipeline`
 - My Tasks: `Home > Jungleverse > My Tasks`
 The "Jungleverse" entity appears in some breadcrumbs but not others. The org name vs. entity name switching is confusing.
-**Impact**: Users lose their place in the hierarchy. "Jungleverse" appearing randomly is disorienting.
-**Recommendation**: Standardize breadcrumb pattern. Always start with org name, then path. Hide "Jungleverse" or explain what it is.
+**Resolution**: PR #41 added `/notifications` to breadcrumb page labels, removed project-level CRM breadcrumbs (CRM is org-scoped).
+**Remaining**: "Jungleverse" still appears as default org name in some breadcrumbs; full standardization of org name display needed.
 
-### 16. Login Page Shows "Session Expired" on First Visit
+### 16. ~~Login Page Shows "Session Expired" on First Visit~~ → ADDRESSED (PR #38)
 **Where**: Login page
 **Problem**: Navigating to the root URL redirects to `/login?expired=1` with a yellow "Your session has expired" alert — even on first visit or after clearing cookies.
-**Impact**: Creates false alarm. Users who haven't logged in before see an error message.
-**Recommendation**: Only show the expiry message when there was actually a prior session (check for a cookie/token before showing).
+**Resolution**: `LoginPage.tsx` checks both `?expired=1` AND `localStorage.getItem('orcha:had-session')` — banner only shows when a prior session actually existed.
 
 ---
 
 ## Low Priority / Polish (P3)
 
-### 17. Development Mode Banner Takes Valuable Space
+### 17. ~~Development Mode Banner Takes Valuable Space~~ → ADDRESSED (PR #41)
 The orange "Development Mode - This is a development build" banner uses ~32px of vertical space on every page. Consider making it a small badge or corner indicator in development builds.
+**Resolution**: PR #41 converted DevBanner from a fixed-position overlay to a small inline pill badge rendered next to the logo in the navbar header. No longer takes extra vertical space.
 
 ### 18. ~~Project Cards Could Show More Context~~ → PARTIALLY ADDRESSED (PR #39)
 On the Projects page, each card shows name, status badge, creation date, boards count, and tasks count. Missing: last activity timestamp, assignee avatars, progress indicator (% tasks done).
 **Resolution**: PR #39 added task completion progress bar to project cards.
 **Remaining**: Last activity timestamp, assignee avatars.
 
-### 19. CRM Sub-nav Duplication
+### 19. ~~CRM Sub-nav Duplication~~ → ADDRESSED (PR #41)
 CRM appears in both the sidebar (under org) and as a sub-nav item under the project. The project-level CRM and org-level CRM point to the same org CRM page, which is confusing.
+**Resolution**: PR #41 removed CRM from project sub-nav in `ProjectFolder.tsx`. CRM now only appears under org section in the sidebar, since it's org-scoped.
 
 ### 20. ~~Kanban Column Headers Need Add-Task Button~~ → ADDRESSED (PR #38)
 The kanban columns have headers with status name and count, but no "+" button to add a task directly to that column. Users must use the top-bar "Create new task" button and then manually set status.
@@ -175,18 +170,15 @@ The Settings page shows a Theme selector (System/Light/Dark) but the screenshots
 
 | Priority | Count | Addressed | Theme |
 |----------|-------|-----------|-------|
-| P0 Critical | 4 | 3 of 4 | ~~Onboarding~~ (PR #39), ~~empty states~~ (PR #38+#39), task card density, ~~notifications~~ (PR #38+#39) |
-| P1 Major | 6 | 2 of 6 | Sidebar overload, drawer layout, ~~placeholder data~~ (PR #38), integrations wall, ~~KPIs~~ (PR #39), test data |
-| P2 Medium | 6 | 3 of 6 | ~~Workflow status~~ (PR #39), ~~batch actions~~ (PR #38), ~~settings layout~~ (PR #39), Topsi guidance, breadcrumbs, login |
-| P3 Polish | 5 | 3 of 5 | Dev banner, ~~project cards~~ (PR #39), CRM duplication, ~~kanban add~~ (PR #38), ~~dark mode~~ (PR #39) |
+| P0 Critical | 4 | 4 of 4 | ~~Onboarding~~ (PR #39), ~~empty states~~ (PR #38+#39), ~~task card density~~ (PR #41), ~~notifications~~ (PR #38+#39+#41) |
+| P1 Major | 6 | 6 of 6 | ~~Sidebar overload~~ (PR #41), ~~drawer layout~~ (PR #41), ~~placeholder data~~ (PR #38), ~~integrations wall~~ (PR #41), ~~KPIs~~ (PR #39), ~~test data~~ (PR #38+#41) |
+| P2 Medium | 6 | 5 of 6 | ~~Workflow status~~ (PR #39), ~~batch actions~~ (PR #38), ~~settings layout~~ (PR #39), Topsi guidance, ~~breadcrumbs~~ (PR #41 partial), ~~login~~ (PR #38) |
+| P3 Polish | 5 | 5 of 5 | ~~Dev banner~~ (PR #41), ~~project cards~~ (PR #39), ~~CRM duplication~~ (PR #41), ~~kanban add~~ (PR #38), ~~dark mode~~ (PR #39) |
 
-**Total: 11 of 21 items addressed across PR #38 and PR #39.**
+**Total: 20 of 21 items addressed across PR #38, #39, and #41.**
 
 ---
 
 ## Remaining Items (Not Yet Addressed)
 
-**P0**: #3 Task card visual differentiation (assignee avatars, due dates, description preview)
-**P1**: #5 Sidebar information overload, #6 Task detail drawer layout, #8 Test/E2E data pollution, #9 Integrations hub prioritization
-**P2**: #14 Topsi chat suggested prompts (partially in PR #38), #15 Breadcrumb inconsistencies, #16 Login "session expired" on first visit (fixed in PR #38)
-**P3**: #17 Dev banner space, #19 CRM sub-nav duplication
+**P2**: #14 Topsi chat suggested prompts

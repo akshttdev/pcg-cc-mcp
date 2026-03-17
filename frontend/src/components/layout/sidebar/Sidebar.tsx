@@ -14,11 +14,12 @@ import {
   Crown,
   Star,
   UserCircle,
-  BarChart3,
   LayoutDashboard,
 } from 'lucide-react';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { MoreHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { projectsApi, organizationsApi, stagingApi } from '@/lib/api';
@@ -118,7 +119,6 @@ export function Sidebar({ className }: SidebarProps) {
   };
 
   // Part A fix: use Zustand-backed store for section toggles
-  const [globalViewsExpanded, setGlobalViewsExpanded] = useExpandable('sidebar:globalViews', false);
   const [adminPlatformsExpanded, setAdminPlatformsExpanded] = useExpandable('sidebar:adminPlatforms', false);
   const [managementExpanded, setManagementExpanded] = useExpandable('sidebar:management', false);
   const [myWorkspaceExpanded, setMyWorkspaceExpanded] = useExpandable('sidebar:myWorkspace', true);
@@ -321,21 +321,20 @@ export function Sidebar({ className }: SidebarProps) {
             </Collapsible>
           </div>
 
-          {/* Management, Global Views - role-gated (collapsed into sections) */}
+          {/* Views & Management — merged section, role-gated */}
           <div className={cn(
             "transition-all duration-200 ease-in-out overflow-hidden",
             roleInfo.canSeeManagement ? "max-h-[800px] opacity-100" : "max-h-0 opacity-0"
           )}>
             <div className="border-b border-border/40">
-              {/* Management section */}
               <Collapsible open={managementExpanded} onOpenChange={setManagementExpanded}>
                 <CollapsibleTrigger asChild>
                   <div className="sidebar-nav-item mx-3 my-1.5 justify-between cursor-pointer">
                     <div className="flex items-center gap-2.5">
                       <LayoutDashboard className="h-4 w-4" />
-                      <span>Management</span>
+                      <span>Views & Management</span>
                       {!managementExpanded && (
-                        <span className="text-[10px] text-muted-foreground/70 font-medium">{MANAGEMENT_NAV_ITEMS.length}</span>
+                        <span className="text-[10px] text-muted-foreground/70 font-medium">{MANAGEMENT_NAV_ITEMS.length + GLOBAL_VIEW_ITEMS.length}</span>
                       )}
                     </div>
                     {managementExpanded ? (
@@ -347,7 +346,8 @@ export function Sidebar({ className }: SidebarProps) {
                 </CollapsibleTrigger>
                 <CollapsibleContent className="px-3 pb-1">
                   <div className="space-y-0.5 pl-4 border-l border-border/40 ml-2">
-                    {MANAGEMENT_NAV_ITEMS.map((item) => {
+                    {/* Global Views first (fewer, higher-level) */}
+                    {GLOBAL_VIEW_ITEMS.map((item) => {
                       const Icon = item.icon;
                       const active = location.pathname === item.to;
                       return (
@@ -362,31 +362,9 @@ export function Sidebar({ className }: SidebarProps) {
                         </Link>
                       );
                     })}
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-
-              {/* Global Views section */}
-              <Collapsible open={globalViewsExpanded} onOpenChange={setGlobalViewsExpanded}>
-                <CollapsibleTrigger asChild>
-                  <div className="sidebar-nav-item mx-3 my-1.5 justify-between cursor-pointer">
-                    <div className="flex items-center gap-2.5">
-                      <BarChart3 className="h-4 w-4" />
-                      <span>Global Views</span>
-                      {!globalViewsExpanded && (
-                        <span className="text-[10px] text-muted-foreground/70 font-medium">{GLOBAL_VIEW_ITEMS.length}</span>
-                      )}
-                    </div>
-                    {globalViewsExpanded ? (
-                      <ChevronDown className="h-3.5 w-3.5" />
-                    ) : (
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    )}
-                  </div>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="px-3 pb-2">
-                  <div className="space-y-0.5 pl-4 border-l border-border/40 ml-2">
-                    {GLOBAL_VIEW_ITEMS.map((item) => {
+                    {/* Subtle divider between global views and management */}
+                    <div className="border-t border-border/30 my-1" />
+                    {MANAGEMENT_NAV_ITEMS.map((item) => {
                       const Icon = item.icon;
                       const active = location.pathname === item.to;
                       return (
@@ -593,80 +571,67 @@ export function Sidebar({ className }: SidebarProps) {
           {/* Subtle separator */}
           <div className={cn("border-t border-border/40 my-1", sidebarCollapsed ? "mx-1" : "mx-0")} />
 
-          {/* External Links */}
-          {EXTERNAL_LINKS.map((item) => {
-            const Icon = item.icon;
-
-            if (sidebarCollapsed) {
-              if (item.external) {
-                return (
-                  <Tooltip key={item.href}>
-                    <TooltipTrigger asChild>
-                      <a href={item.href} target="_blank" rel="noopener noreferrer" className="block">
-                        <Button variant="ghost" className="w-full justify-center p-2 h-auto text-muted-foreground hover:text-foreground">
-                          <Icon className="h-4 w-4" />
+          {/* External Links — collapsed into "More" popover */}
+          {(() => {
+            const morePopoverItems = (
+              <PopoverContent side="right" align="end" className="w-48 p-1">
+                {EXTERNAL_LINKS.map((item) => {
+                  const Icon = item.icon;
+                  if (item.external) {
+                    return (
+                      <a key={item.href} href={item.href} target="_blank" rel="noopener noreferrer" className="block">
+                        <Button variant="ghost" className="w-full justify-start px-3 py-2 h-auto text-sm">
+                          <Icon className="h-4 w-4 mr-2" />
+                          {item.label}
                         </Button>
                       </a>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">{item.label}</TooltipContent>
-                  </Tooltip>
-                );
-              }
-              return (
-                <Tooltip key={item.label}>
-                  <TooltipTrigger asChild>
+                    );
+                  }
+                  return (
                     <Button
+                      key={item.label}
                       variant="ghost"
-                      className="w-full justify-center p-2 h-auto text-muted-foreground hover:text-foreground"
+                      className="w-full justify-start px-3 py-2 h-auto text-sm"
                       data-testid={item.action ? `${item.action}-button` : undefined}
                       onClick={() => { if (item.action) NiceModal.show(item.action); }}
                     >
-                      <Icon className="h-4 w-4" />
+                      <Icon className="h-4 w-4 mr-2" />
+                      {item.label}
                     </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">{item.label}</TooltipContent>
-                </Tooltip>
-              );
-            }
+                  );
+                })}
+              </PopoverContent>
+            );
 
-            if (item.external) {
-              return (
-                <a
-                  key={item.href}
-                  href={item.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block"
-                >
+            return sidebarCollapsed ? (
+              <Popover>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <PopoverTrigger asChild>
+                      <Button variant="ghost" className="w-full justify-center p-2 h-auto text-muted-foreground hover:text-foreground">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </PopoverTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">More</TooltipContent>
+                </Tooltip>
+                {morePopoverItems}
+              </Popover>
+            ) : (
+              <Popover>
+                <PopoverTrigger asChild>
                   <Button
                     variant="ghost"
                     className="w-full justify-start px-3 py-2 h-auto text-muted-foreground hover:text-foreground"
                   >
-                    <Icon className="h-4 w-4 mr-3" />
-                    <span className="text-sm">{item.label}</span>
+                    <MoreHorizontal className="h-4 w-4 mr-3" />
+                    <span className="text-sm">More</span>
                   </Button>
-                </a>
-              );
-            }
-
-            // Internal action (opens modal)
-            return (
-              <Button
-                key={item.label}
-                variant="ghost"
-                className="w-full justify-start px-3 py-2 h-auto text-muted-foreground hover:text-foreground"
-                data-testid={item.action ? `${item.action}-button` : undefined}
-                onClick={() => {
-                  if (item.action) {
-                    NiceModal.show(item.action);
-                  }
-                }}
-              >
-                <Icon className="h-4 w-4 mr-3" />
-                <span className="text-sm">{item.label}</span>
-              </Button>
+                </PopoverTrigger>
+                {morePopoverItems}
+              </Popover>
             );
-          })}
+          })()}
 
           {/* User card with view-as switcher */}
           <div className={cn("border-t border-border/40 my-1", sidebarCollapsed ? "mx-1" : "mx-0")} />

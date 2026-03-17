@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
+import { useQuery } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import { organizationKeys, userKeys } from '@/lib/query-keys';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,15 +39,14 @@ import { formatDate } from '../helpers';
 import { MemberAssignments } from '../components/MemberAssignments';
 
 export function MembersTab({ orgId, orgName }: { orgId: string; orgName: string }) {
-  const queryClient = useQueryClient();
   const { data: members = [], isLoading } = useQuery<OrgMember[]>({
-    queryKey: ['org-members', orgId],
+    queryKey: organizationKeys.members(orgId),
     queryFn: () => organizationsApi.getMembers(orgId),
     enabled: !!orgId,
   });
 
   const { data: allUsers = [] } = useQuery<any[]>({
-    queryKey: ['all-users'],
+    queryKey: userKeys.allUsers(),
     queryFn: async () => {
       const res = await fetch(resolveApiUrl('/api/users'), { credentials: 'include' });
       if (!res.ok) return [];
@@ -68,43 +68,40 @@ export function MembersTab({ orgId, orgName }: { orgId: string; orgName: string 
     (u: any) => !members.some((m) => m.user_id === u.id)
   );
 
-  const addMemberMutation = useMutation({
+  const addMemberMutation = useMutationWithToast({
     mutationFn: () => organizationsApi.addMember(orgId, addUserId, addRole),
+    successMessage: 'Member added',
+    errorMessage: 'Failed to add member',
+    invalidateKeys: [organizationKeys.members(orgId)],
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['org-members', orgId] });
       setAddUserId('');
       setAddRole('member');
       setShowAddMember(false);
-      toast.success('Member added');
     },
-    onError: () => toast.error('Failed to add member'),
   });
 
-  const removeMemberMutation = useMutation({
+  const removeMemberMutation = useMutationWithToast({
     mutationFn: (userId: string) => organizationsApi.removeMember(orgId, userId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['org-members', orgId] });
-      toast.success('Member removed');
-    },
-    onError: () => toast.error('Failed to remove member'),
+    successMessage: 'Member removed',
+    errorMessage: 'Failed to remove member',
+    invalidateKeys: [organizationKeys.members(orgId)],
   });
 
-  const changeRoleMutation = useMutation({
+  const changeRoleMutation = useMutationWithToast({
     mutationFn: ({ userId, role }: { userId: string; role: string }) =>
       organizationsApi.changeMemberRole(orgId, userId, role),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['org-members', orgId] });
-      toast.success('Role updated');
-    },
-    onError: () => toast.error('Failed to update role'),
+    successMessage: 'Role updated',
+    errorMessage: 'Failed to update role',
+    invalidateKeys: [organizationKeys.members(orgId)],
   });
 
-  const createInviteMutation = useMutation({
+  const createInviteMutation = useMutationWithToast({
     mutationFn: () => organizationsApi.createInvitation(orgId, inviteRole),
+    successMessage: 'Invite link created',
+    errorMessage: 'Failed to create invite',
     onSuccess: (data: any) => {
       setInviteLink(data.invite_url || '');
     },
-    onError: () => toast.error('Failed to create invite'),
   });
 
   const handleCopyLink = () => {

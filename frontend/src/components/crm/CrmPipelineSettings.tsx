@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -59,7 +60,7 @@ interface StageDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialValues: StageFormValues;
-  onSubmit: (values: StageFormValues) => Promise<void>;
+  onSubmit: (values: StageFormValues) => Promise<unknown>;
   title: string;
 }
 
@@ -173,7 +174,7 @@ interface PipelineDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialValues: PipelineFormValues;
-  onSubmit: (values: PipelineFormValues) => Promise<void>;
+  onSubmit: (values: PipelineFormValues) => Promise<unknown>;
   title: string;
   disableType?: boolean;
 }
@@ -329,8 +330,8 @@ export function CrmPipelineSettings({ organizationId }: CrmPipelineSettingsProps
         pipeline_type: 'custom',
       };
 
-  const stageMutation = useMutation({
-    mutationFn: async (values: StageFormValues) => {
+  const stageMutation = useMutationWithToast({
+    mutationFn: async (values: StageFormValues): Promise<string> => {
       if (!selectedPipelineId) throw new Error('No pipeline selected');
 
       if (editingStage) {
@@ -342,7 +343,7 @@ export function CrmPipelineSettings({ organizationId }: CrmPipelineSettingsProps
           is_closed: values.is_closed,
           is_won: values.is_won,
         });
-        toast.success('Stage updated.');
+        return 'Stage updated.';
       } else {
         const position = pipelineData?.stages.length ?? 0;
         await crmPipelinesApi.createStage(selectedPipelineId, {
@@ -354,26 +355,28 @@ export function CrmPipelineSettings({ organizationId }: CrmPipelineSettingsProps
           is_closed: values.is_closed,
           is_won: values.is_won,
         });
-        toast.success('Stage created.');
+        return 'Stage created.';
       }
     },
+    successMessage: (msg) => msg,
+    errorMessage: 'Failed to save stage',
+    invalidateKeys: selectedPipelineId
+      ? [crmQueryKeys.pipeline(selectedPipelineId), crmQueryKeys.kanban(selectedPipelineId)]
+      : [],
     onSuccess: () => {
-      if (!selectedPipelineId) return;
-      queryClient.invalidateQueries({ queryKey: crmQueryKeys.pipeline(selectedPipelineId) });
-      queryClient.invalidateQueries({ queryKey: crmQueryKeys.kanban(selectedPipelineId) });
       setEditingStage(null);
     },
   });
 
-  const pipelineMutation = useMutation({
-    mutationFn: async (values: PipelineFormValues) => {
+  const pipelineMutation = useMutationWithToast({
+    mutationFn: async (values: PipelineFormValues): Promise<string> => {
       if (editingPipeline) {
         await crmPipelinesApi.updatePipeline(editingPipeline.id, {
           name: values.name,
           description: values.description,
           color: values.color,
         } as UpdateCrmPipeline);
-        toast.success('Pipeline updated.');
+        return 'Pipeline updated.';
       } else {
         await crmPipelinesApi.createPipeline({
           organization_id: organizationId,
@@ -382,46 +385,48 @@ export function CrmPipelineSettings({ organizationId }: CrmPipelineSettingsProps
           color: values.color,
           pipeline_type: values.pipeline_type,
         } as CreateCrmPipeline);
-        toast.success('Pipeline created.');
+        return 'Pipeline created.';
       }
     },
+    successMessage: (msg) => msg,
+    errorMessage: 'Failed to save pipeline',
+    invalidateKeys: [crmQueryKeys.pipelines(organizationId)],
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: crmQueryKeys.pipelines(organizationId) });
       setEditingPipeline(null);
     },
   });
 
-  const reorderMutation = useMutation({
+  const reorderMutation = useMutationWithToast({
     mutationFn: async (stageIds: string[]) => {
       if (!selectedPipelineId) return;
       await crmPipelinesApi.reorderStages(selectedPipelineId, stageIds);
     },
-    onSuccess: () => {
-      if (!selectedPipelineId) return;
-      queryClient.invalidateQueries({ queryKey: crmQueryKeys.pipeline(selectedPipelineId) });
-    },
+    errorMessage: 'Failed to reorder stages',
+    invalidateKeys: selectedPipelineId
+      ? [crmQueryKeys.pipeline(selectedPipelineId)]
+      : [],
   });
 
-  const deleteStageMutation = useMutation({
+  const deleteStageMutation = useMutationWithToast({
     mutationFn: async (stageId: string) => {
       if (!selectedPipelineId) return;
       await crmPipelinesApi.deleteStage(selectedPipelineId, stageId);
     },
-    onSuccess: () => {
-      if (!selectedPipelineId) return;
-      toast.success('Stage deleted.');
-      queryClient.invalidateQueries({ queryKey: crmQueryKeys.pipeline(selectedPipelineId) });
-      queryClient.invalidateQueries({ queryKey: crmQueryKeys.kanban(selectedPipelineId) });
-    },
+    successMessage: 'Stage deleted.',
+    errorMessage: 'Failed to delete stage',
+    invalidateKeys: selectedPipelineId
+      ? [crmQueryKeys.pipeline(selectedPipelineId), crmQueryKeys.kanban(selectedPipelineId)]
+      : [],
   });
 
-  const deletePipelineMutation = useMutation({
+  const deletePipelineMutation = useMutationWithToast({
     mutationFn: async (pipelineId: string) => {
       await crmPipelinesApi.deletePipeline(pipelineId);
     },
+    successMessage: 'Pipeline deleted.',
+    errorMessage: 'Failed to delete pipeline',
+    invalidateKeys: [crmQueryKeys.pipelines(organizationId)],
     onSuccess: () => {
-      toast.success('Pipeline deleted.');
-      queryClient.invalidateQueries({ queryKey: crmQueryKeys.pipelines(organizationId) });
       if (selectedPipelineId) {
         queryClient.removeQueries({ queryKey: crmQueryKeys.pipeline(selectedPipelineId) });
       }
@@ -715,7 +720,7 @@ export function CrmPipelineSettings({ organizationId }: CrmPipelineSettingsProps
           }
         }}
         initialValues={pipelineDialogValues}
-        onSubmit={(values) => pipelineMutation.mutateAsync(values)}
+        onSubmit={async (values) => { await pipelineMutation.mutateAsync(values); }}
         title={editingPipeline ? 'Edit Pipeline' : 'Create Pipeline'}
         disableType={!!editingPipeline}
       />

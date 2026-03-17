@@ -38,7 +38,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { agentWalletApi, agentsApi, type AgentSearchParams } from '@/lib/api';
 import type {
   AgentWallet,
@@ -47,6 +47,8 @@ import type {
   AgentStatus,
 } from 'shared/types';
 import { toast } from 'sonner';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import { agentKeys } from '@/lib/query-keys';
 
 import { useProfiles } from '@/hooks/useProfiles';
 import { AgentDetailDialog } from '@/components/dialogs/agent-detail-dialog';
@@ -165,13 +167,12 @@ export function AgentSettings() {
   // Parsed profiles for wallet profile options
   const [localParsedProfiles, setLocalParsedProfiles] = useState<any>(null);
 
-  const queryClient = useQueryClient();
   const {
     data: agentWallets = [],
     isLoading: walletsLoading,
     isFetching: walletsFetching,
   } = useQuery({
-    queryKey: ['agent-wallets'],
+    queryKey: agentKeys.wallets(),
     queryFn: agentWalletApi.list,
   });
 
@@ -226,20 +227,19 @@ export function AgentSettings() {
   const [isNewBudget, setIsNewBudget] = useState(false);
   const [budgetError, setBudgetError] = useState<string | null>(null);
 
-  const upsertWalletMutation = useMutation({
+  const extractWalletError = (error: unknown): string =>
+    error instanceof Error ? error.message : 'Failed to save wallet budget';
+
+  const upsertWalletMutation = useMutationWithToast({
     mutationFn: agentWalletApi.upsert,
+    successMessage: 'Wallet budget saved',
+    errorMessage: extractWalletError,
+    invalidateKeys: [agentKeys.wallets()],
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['agent-wallets'] });
-      toast.success('Wallet budget saved');
       setBudgetModalOpen(false);
     },
     onError: (error: unknown) => {
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Failed to save wallet budget';
-      setBudgetError(message);
-      toast.error(message);
+      setBudgetError(extractWalletError(error));
     },
   });
 

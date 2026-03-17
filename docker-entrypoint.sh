@@ -10,6 +10,25 @@ BACKUP_LATEST="/app/backups/backup_latest.sqlite"
 
 echo "🚀 Starting PCG-CC-MCP..."
 
+# Refresh frontend assets in shared volume (ensures updates are picked up)
+# The frontend-dist volume is shared with nginx, so we need to sync on each start
+FRONTEND_SRC="/app/frontend-build"
+FRONTEND_DST="/app/frontend/dist"
+if [ -d "$FRONTEND_SRC" ] && [ -d "$FRONTEND_DST" ]; then
+    echo "🔄 Syncing frontend assets to shared volume..."
+    cp -r "$FRONTEND_SRC"/* "$FRONTEND_DST"/ 2>/dev/null || true
+    echo "✅ Frontend assets synced"
+fi
+
+# Refresh docs site in shared volume
+DOCS_SRC="/app/docs-build"
+DOCS_DST="/app/docs-site"
+if [ -d "$DOCS_SRC" ] && [ -d "$DOCS_DST" ]; then
+    echo "🔄 Syncing docs site to shared volume..."
+    cp -r "$DOCS_SRC"/* "$DOCS_DST"/ 2>/dev/null || true
+    echo "✅ Docs site synced"
+fi
+
 # Start Ollama service in background
 echo "🤖 Starting Ollama service..."
 ollama serve > /tmp/ollama.log 2>&1 &

@@ -30,6 +30,7 @@ import {
   type ProjectControllerConversation,
 } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { controllerKeys } from '@/lib/query-keys';
 import { ControllerSettingsDialog } from '@/components/dialogs/controller-settings-dialog';
 import type { Project, TaskWithAttemptStatus } from 'shared/types';
 
@@ -59,21 +60,21 @@ export function ProjectControllerPage() {
 
   // Fetch controller config
   const { data: controllerConfig } = useQuery<ProjectControllerConfig>({
-    queryKey: ['project-controller-config', projectId],
+    queryKey: controllerKeys.config(projectId!),
     queryFn: () => projectControllersApi.getConfig(projectId!),
     enabled: !!projectId,
   });
 
   // Fetch conversation list
   const { data: conversations = [] } = useQuery<ProjectControllerConversation[]>({
-    queryKey: ['project-controller-conversations', projectId],
+    queryKey: controllerKeys.conversations(projectId!),
     queryFn: () => projectControllersApi.getConversations(projectId!),
     enabled: !!projectId,
   });
 
   // Fetch conversation messages when a conversation is selected
   const { data: conversationData, isLoading: messagesLoading } = useQuery({
-    queryKey: ['project-controller-conversation', projectId, conversationId],
+    queryKey: controllerKeys.conversation(projectId!, conversationId!),
     queryFn: () => projectControllersApi.getConversation(projectId!, conversationId!),
     enabled: !!projectId && !!conversationId,
   });
@@ -108,7 +109,7 @@ export function ProjectControllerPage() {
   const deleteConversationMutation = useMutation({
     mutationFn: (convId: string) => projectControllersApi.deleteConversation(projectId!, convId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['project-controller-conversations', projectId] });
+      queryClient.invalidateQueries({ queryKey: controllerKeys.conversations(projectId!) });
       if (conversationId) {
         startNewConversation();
       }
@@ -134,7 +135,7 @@ export function ProjectControllerPage() {
       setMessages((prev) => [...prev, assistantMessage]);
 
       // Refresh conversations list
-      queryClient.invalidateQueries({ queryKey: ['project-controller-conversations', projectId] });
+      queryClient.invalidateQueries({ queryKey: controllerKeys.conversations(projectId!) });
     },
     onError: (error) => {
       console.error('Failed to send message:', error);

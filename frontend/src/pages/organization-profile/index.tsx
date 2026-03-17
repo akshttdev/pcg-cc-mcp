@@ -56,6 +56,7 @@ import {
   type ClientData,
   type OrgBrandProfile,
 } from '@/lib/api';
+import { organizationKeys } from '@/lib/query-keys';
 import { useOrganizationById, useCrmContacts } from '@/hooks/queries';
 import type { OrganizationProfilePageProps, OrgMember } from './types';
 import { formatCurrency, parseJsonArray } from './helpers';
@@ -134,13 +135,13 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
   const { data: org, isLoading: orgLoading } = useOrganizationById(orgId);
 
   const { data: members = [] } = useQuery<OrgMember[]>({
-    queryKey: ['org-members', orgId],
+    queryKey: organizationKeys.members(orgId!),
     queryFn: () => organizationsApi.getMembers(orgId!),
     enabled: !!orgId,
   });
 
   const { data: clients = [] } = useQuery<ClientData[]>({
-    queryKey: ['org-clients', orgId],
+    queryKey: organizationKeys.clients(orgId),
     queryFn: () => organizationsApi.getClients(orgId!),
     enabled: !!orgId,
   });
@@ -162,7 +163,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
 
   const qc = useQueryClient();
   const { data: brandProfile } = useQuery<OrgBrandProfile | null>({
-    queryKey: ['orgBrandProfile', orgId],
+    queryKey: organizationKeys.brandProfile(orgId!),
     queryFn: () => organizationsApi.getBrandProfile(orgId!),
     enabled: !!orgId,
     staleTime: 5 * 60_000,
@@ -210,7 +211,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
     setBrandSaving(true);
     try {
       await organizationsApi.upsertBrandProfile(orgId!, brandForm);
-      qc.invalidateQueries({ queryKey: ['orgBrandProfile', orgId] });
+      qc.invalidateQueries({ queryKey: organizationKeys.brandProfile(orgId!) });
       setBrandEditing(false);
     } finally {
       setBrandSaving(false);
@@ -236,7 +237,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
         if (status.status === 'done' || status.status === 'failed') {
           clearInterval(poll);
           setBrandResearching(false);
-          qc.invalidateQueries({ queryKey: ['orgBrandProfile', orgId] });
+          qc.invalidateQueries({ queryKey: organizationKeys.brandProfile(orgId!) });
         }
       }, 3000);
       setTimeout(() => { clearInterval(poll); setBrandResearching(false); }, 120_000);

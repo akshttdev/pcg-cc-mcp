@@ -95,6 +95,7 @@ export const projectKeys = {
 
 export const organizationKeys = {
   all: ['organizations'] as const,
+  admin: () => ['organizations-admin'] as const,
   detail: (orgId?: string) => ['organization', orgId] as const,
   clients: (orgId?: string) => ['org-clients', orgId] as const,
   clientsSettings: (orgId?: string | null) => ['clients', orgId] as const,
@@ -162,6 +163,7 @@ export const dataSourceKeys = {
 
 export const userKeys = {
   all: ['users'] as const,
+  allUsers: () => ['all-users'] as const,
   list: (filters?: unknown) => ['users', filters] as const,
   search: (query: string) => ['users-search', query] as const,
   profiles: () => ['profiles'] as const,
@@ -307,6 +309,45 @@ export const knowledgeKeys = {
   project: (projectId: string) => ['projectKnowledge', projectId] as const,
 };
 
+// ── Autonomy ────────────────────────────────────────────────────────────────
+
+export const autonomyKeys = {
+  all: ['autonomy'] as const,
+  taskMode: (taskId: string) => ['autonomy', 'task', taskId, 'mode'] as const,
+  checkpointDefinitions: (projectId: string) => ['autonomy', 'checkpoints', 'definitions', projectId] as const,
+  executionCheckpoints: (executionId: string) => ['autonomy', 'checkpoints', executionId] as const,
+  pendingCheckpoints: (executionId: string) => ['autonomy', 'checkpoints', executionId, 'pending'] as const,
+  projectGates: (projectId: string) => ['autonomy', 'gates', projectId] as const,
+  pendingGates: (executionId: string) => ['autonomy', 'gates', executionId, 'pending'] as const,
+  pendingSummary: () => ['autonomy', 'pending-summary'] as const,
+  canProceed: (executionId: string) => ['autonomy', 'can-proceed', executionId] as const,
+};
+
+// ── Bowser (Browser Automation) ─────────────────────────────────────────────
+
+export const bowserKeys = {
+  all: ['bowser'] as const,
+  summary: () => ['bowser', 'summary'] as const,
+  sessionsActive: () => ['bowser', 'sessions', 'active'] as const,
+  session: (sessionId: string) => ['bowser', 'session', sessionId] as const,
+  sessionDetails: (sessionId: string) => ['bowser', 'session', sessionId, 'details'] as const,
+  screenshots: (sessionId: string) => ['bowser', 'session', sessionId, 'screenshots'] as const,
+  screenshotsDiffs: (sessionId: string) => ['bowser', 'session', sessionId, 'screenshots', 'diffs'] as const,
+  actions: (sessionId: string) => ['bowser', 'session', sessionId, 'actions'] as const,
+  allowlist: (projectId: string) => ['bowser', 'allowlist', projectId] as const,
+};
+
+// ── Collaboration ───────────────────────────────────────────────────────────
+
+export const collaborationKeys = {
+  all: ['collaboration'] as const,
+  state: (executionId: string) => ['collaboration', executionId] as const,
+  pauseHistory: (executionId: string) => ['collaboration', executionId, 'pause-history'] as const,
+  handoffs: (executionId: string) => ['collaboration', executionId, 'handoffs'] as const,
+  injections: (executionId: string) => ['collaboration', executionId, 'injections'] as const,
+  pendingInjections: (executionId: string) => ['collaboration', executionId, 'pending-injections'] as const,
+};
+
 // ── Unified export ─────────────────────────────────────────────────────────
 
 export const queryKeys = {
@@ -333,4 +374,7 @@ export const queryKeys = {
   discord: discordKeys,
   media: mediaKeys,
   knowledge: knowledgeKeys,
+  autonomy: autonomyKeys,
+  bowser: bowserKeys,
+  collaboration: collaborationKeys,
 } as const;

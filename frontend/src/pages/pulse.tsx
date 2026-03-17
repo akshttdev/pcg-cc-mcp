@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { pulseApi } from '@/lib/api';
+import { pulseKeys } from '@/lib/query-keys';
 import { MobileLayout } from '@/components/mobile';
 import { useMobile } from '@/hooks/useMobile';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -52,37 +53,37 @@ export default function PulsePage() {
 
   // Project-scoped dashboard
   const { data: stats } = useQuery({
-    queryKey: ['pulse', 'stats', projectId],
+    queryKey: pulseKeys.stats(projectId),
     queryFn: () => pulseApi.getStats(projectId),
     refetchInterval: 30000,
   });
 
   const { data: contentData, isLoading: contentLoading } = useQuery({
-    queryKey: ['pulse', 'content', projectId],
+    queryKey: pulseKeys.content(projectId),
     queryFn: () => pulseApi.getLatestContent(projectId, 50),
     enabled: activeTab === 'content' || activeTab === 'overview',
   });
 
   const { data: sources } = useQuery({
-    queryKey: ['pulse', 'sources', projectId],
+    queryKey: pulseKeys.sources(projectId),
     queryFn: () => pulseApi.getSources(projectId),
     enabled: activeTab === 'sources' || activeTab === 'overview',
   });
 
   const { data: alerts } = useQuery({
-    queryKey: ['pulse', 'alerts', projectId],
+    queryKey: pulseKeys.alerts(projectId),
     queryFn: () => pulseApi.getAlerts(projectId),
     enabled: activeTab === 'alerts' || activeTab === 'overview',
   });
 
   const { data: alertRules } = useQuery({
-    queryKey: ['pulse', 'alert-rules', projectId],
+    queryKey: pulseKeys.alertRules(projectId),
     queryFn: () => pulseApi.getAlertRules(projectId),
     enabled: activeTab === 'alerts',
   });
 
   const { data: trackingConfig } = useQuery({
-    queryKey: ['pulse', 'tracking', projectId],
+    queryKey: pulseKeys.tracking(projectId),
     queryFn: () => pulseApi.getTrackingConfig(projectId),
     enabled: activeTab === 'config',
   });
@@ -90,7 +91,7 @@ export default function PulsePage() {
   const collectMutation = useMutation({
     mutationFn: () => pulseApi.triggerCollection(projectId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pulse'] });
+      queryClient.invalidateQueries({ queryKey: pulseKeys.all() });
     },
   });
 
@@ -98,8 +99,8 @@ export default function PulsePage() {
     mutationFn: ({ contentId, action }: { contentId: string; action: { action: string } }) =>
       pulseApi.contentAction(projectId, contentId, action),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pulse', 'content'] });
-      queryClient.invalidateQueries({ queryKey: ['pulse', 'stats'] });
+      queryClient.invalidateQueries({ queryKey: pulseKeys.contentAll() });
+      queryClient.invalidateQueries({ queryKey: pulseKeys.statsAll() });
     },
   });
 

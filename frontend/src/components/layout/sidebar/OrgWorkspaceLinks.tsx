@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { /* useMemo, */ useState } from 'react';
 import { Link, type useLocation } from 'react-router-dom';
 import {
   Collapsible,
@@ -15,7 +15,7 @@ import {
   LayoutGrid,
   Brain,
   Share2,
-  Calendar,
+  // Calendar, — used only by commented-out CrmSidebarLinks
   Database,
   FileText,
   BarChart2,
@@ -23,7 +23,7 @@ import {
   Radio,
   Network,
   GitBranch,
-  BarChart3,
+  // BarChart3, — used only by commented-out CrmSidebarLinks
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -210,8 +210,10 @@ export function OrgIntelligenceSection({
 
 // ============================================================================
 // CrmSidebarLinks — project-level CRM links (collapsible)
+// Commented out: CRM moved to org-scoped sidebar only (PR #41, audit #19)
 // ============================================================================
 
+/*
 export function CrmSidebarLinks({
   projectId,
   location,
@@ -274,3 +276,4 @@ export function CrmSidebarLinks({
     </Collapsible>
   );
 }
+*/

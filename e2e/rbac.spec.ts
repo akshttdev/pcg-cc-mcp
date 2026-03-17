@@ -105,8 +105,7 @@ test.describe("Sidebar Visibility by Role", () => {
 
   test("admin sees all sidebar sections", async ({ page }) => {
     await expect(page.getByText("Admin Platforms")).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText("Management")).toBeVisible();
-    await expect(page.getByText("Global Views")).toBeVisible();
+    await expect(page.getByText("Views & Management")).toBeVisible();
     await expect(page.getByText("My Workspace")).toBeVisible();
   });
 
@@ -116,7 +115,7 @@ test.describe("Sidebar Visibility by Role", () => {
     // Admin sections are hidden via animated wrapper (opacity-0 + max-h-0 + overflow-hidden).
     // Playwright doesn't treat opacity:0 ancestors as "hidden", so we verify
     // the wrapper's computed styles directly.
-    for (const label of ["Admin Platforms", "Management", "Global Views"]) {
+    for (const label of ["Admin Platforms", "Views & Management"]) {
       const isHidden = await page.getByText(label).evaluate((el) => {
         let n: Element | null = el;
         while (n && n !== document.body) {

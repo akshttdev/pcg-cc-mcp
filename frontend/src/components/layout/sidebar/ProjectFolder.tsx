@@ -42,7 +42,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useDroppable } from '@dnd-kit/core';
 import { HealthDot } from './HealthDot';
-import { CrmSidebarLinks } from './OrgWorkspaceLinks';
+// CrmSidebarLinks removed — CRM is now org-scoped only
 import { SortableProjectList } from './ProjectList';
 
 // ============================================================================
@@ -158,8 +158,7 @@ export function ProjectFolder({
             <span className="font-medium">Controller</span>
           </Link>
 
-          {/* CRM */}
-          <CrmSidebarLinks projectId={project.id} location={location} indent="pl-2" />
+          {/* CRM removed from project sub-nav — CRM is org-scoped (see sidebar org section) */}
 
           {/* Social */}
           <Link
@@ -475,8 +474,7 @@ export function SortableSidebarProjectFolder({
                   <span className="font-medium">Controller</span>
                 </Link>
 
-                {/* CRM Section */}
-                <CrmSidebarLinks projectId={project.id} location={location} indent="pl-2" />
+                {/* CRM removed from project sub-nav — CRM is org-scoped (see sidebar org section) */}
 
                 {/* Social Media Link */}
                 <Link
