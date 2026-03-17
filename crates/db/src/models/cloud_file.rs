@@ -230,12 +230,14 @@ impl CloudFile {
             binds.push(vis.clone());
         }
         if let Some(ref search) = params.search {
-            sql.push_str(" AND file_name LIKE ?");
-            binds.push(format!("%{}%", search));
+            sql.push_str(" AND file_name LIKE ? ESCAPE '\\'");
+            let escaped = search.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+            binds.push(format!("%{}%", escaped));
         }
         if let Some(ref mime) = params.mime_type {
-            sql.push_str(" AND mime_type LIKE ?");
-            binds.push(format!("{}%", mime));
+            sql.push_str(" AND mime_type LIKE ? ESCAPE '\\'");
+            let escaped = mime.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+            binds.push(format!("{}%", escaped));
         }
 
         // Scope to visible projects if provided (for non-admin members)

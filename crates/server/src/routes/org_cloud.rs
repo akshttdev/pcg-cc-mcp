@@ -386,9 +386,10 @@ async fn contribute_file(
         return Ok(Json(ApiResponse::success(existing)));
     }
 
-    // Store file in sovereign stack uploads directory
-    let upload_dir = std::path::PathBuf::from("E:/topos/sovereign_stack/Sirak Studios/Uploads");
-    std::fs::create_dir_all(&upload_dir)
+    // Store file in sovereign stack uploads directory (uses env vars via resolve_volume_path)
+    let upload_dir = resolve_volume_path("sovereign_org", "Uploads")?;
+    tokio::fs::create_dir_all(&upload_dir)
+        .await
         .map_err(|e| ApiError::InternalError(format!("Failed to create upload dir: {}", e)))?;
 
     let ext = std::path::Path::new(&filename)
@@ -397,7 +398,8 @@ async fn contribute_file(
         .unwrap_or_default();
     let stored_name = format!("{}_{}.{}", &hash[..8], Uuid::new_v4(), ext);
     let stored_path = upload_dir.join(&stored_name);
-    std::fs::write(&stored_path, &bytes)
+    tokio::fs::write(&stored_path, &bytes)
+        .await
         .map_err(|e| ApiError::InternalError(format!("Failed to write file: {}", e)))?;
 
     let mime = mime_guess::from_path(&filename)
@@ -575,16 +577,22 @@ async fn update_file(
         return Err(ApiError::Forbidden("Insufficient permissions".into()));
     }
 
-    let file = CloudFile::update(pool, &file_id, &input)
+    // Verify file belongs to this org BEFORE mutating
+    let existing = CloudFile::find_by_id(pool, &file_id)
         .await
         .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?
         .ok_or_else(|| ApiError::NotFound("File not found".into()))?;
 
-    if file.organization_id != org_id {
+    if existing.organization_id != org_id {
         return Err(ApiError::Forbidden(
             "File does not belong to this org".into(),
         ));
     }
+
+    let file = CloudFile::update(pool, &file_id, &input)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?
+        .ok_or_else(|| ApiError::NotFound("File not found".into()))?;
 
     Ok(Json(ApiResponse::success(file)))
 }
