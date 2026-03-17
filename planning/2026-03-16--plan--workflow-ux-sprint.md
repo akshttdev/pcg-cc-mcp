@@ -450,7 +450,7 @@ Day 7 (Layout + runs) ──> Day 8 (Real-time) ──┘              │
 
 **All other files**: No conflicts. PR #43's Rust route splits (twilio, task_attempts, nora, helpers) and frontend API modules (topsi.ts, topiclips.ts) are in completely different files.
 
-**Merge order recommendation**: Either order works. If PR #43 merges first, rebase our branch and resolve the single `data-source-detail.tsx` conflict (~2 min).
+**Merge order recommendation**: **PR #43 first, then PR #44.** Agreed by both reviewer and author (2026-03-17). After #43 merges, `git merge origin/main` on this branch and resolve the single `data-source-detail.tsx` import-line conflict (~2 min). The `workflowKeys` factory will already be on `main`, so our code adopts it cleanly.
 
 ### PR #44 Code Review Fixes (2026-03-17)
 
