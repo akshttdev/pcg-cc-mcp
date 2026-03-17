@@ -29,7 +29,7 @@ export function RunsTab() {
     queryFn: async () => {
       const out: Record<string, string> = {};
       await Promise.all(runDsIds.map(async (id) => {
-        try { out[id] = (await dataSourcesApi.get(id)).title; } catch { out[id] = id.slice(0, 8) + '\u2026'; }
+        try { out[id] = (await dataSourcesApi.get(id)).title; } catch { out[id] = '(Deleted source)'; }
       }));
       return out;
     },
@@ -81,7 +81,10 @@ export function RunsTab() {
                     </Badge>
                     <span className="text-sm font-medium">{run.workflow_name || run.workflow_id}</span>
                     {run.data_source_id && dsNames[run.data_source_id] && (
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <span
+                        className={`text-xs text-muted-foreground flex items-center gap-1 ${dsNames[run.data_source_id] === '(Deleted source)' ? 'italic opacity-60' : ''}`}
+                        title={dsNames[run.data_source_id] === '(Deleted source)' ? run.data_source_id : undefined}
+                      >
                         <Database className="h-3 w-3" />
                         {dsNames[run.data_source_id]}
                       </span>
