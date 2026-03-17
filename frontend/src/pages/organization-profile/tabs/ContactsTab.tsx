@@ -32,10 +32,13 @@ import {
   CheckCircle2,
   Loader2,
   ExternalLink,
+  Brain,
+  User,
 } from 'lucide-react';
 import {
   crmApi,
   companiesApi,
+  organizationsApi,
   type CreateCrmContactRequest,
   type CrmContactRecord,
   type CompanyRecord,
@@ -79,12 +82,13 @@ export function ContactsTab({ orgId }: { orgId: string }) {
     staleTime: 60_000,
   });
 
-  // Pipeline deals — used to derive person_id for each contact
+  // Pipeline deals — enriched with person_id, contact_company, company_id for each contact
   const { data: pipelineDeals = [], isLoading: pipelineLoading } = useQuery<CrmDealWithContact[]>({
-    queryKey: ['crm-deals-org', orgId],
+    queryKey: ['crm-deals-org-enriched', orgId],
     queryFn: async () => {
-      const res = await fetch(`/api/crm/deals?organization_id=${orgId}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token') ?? ''}` },
+      const res = await fetch(`/api/crm/deals/enriched?organization_id=${orgId}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('session_id') ?? ''}` },
+        credentials: 'include',
       });
       const json = await res.json();
       return (json.data ?? []) as CrmDealWithContact[];
@@ -107,6 +111,33 @@ export function ContactsTab({ orgId }: { orgId: string }) {
     }
     return m;
   }, [pipelineDeals]);
+
+  // Build company_id → person_id map from deals (for company card Profile/Intel buttons)
+  const companyPersonMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const d of pipelineDeals) {
+      if (d.company_id && d.person_id && !m.has(d.company_id)) {
+        m.set(d.company_id, d.person_id);
+      }
+    }
+    return m;
+  }, [pipelineDeals]);
+
+  // Org clients — used to link company cards to client pages
+  const { data: orgClients = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ['org-clients', orgId],
+    queryFn: () => organizationsApi.getClients(orgId),
+    staleTime: 60_000,
+  });
+
+  // Client name → client id lookup
+  const clientByName = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of orgClients) {
+      m.set(c.name.toLowerCase(), c.id);
+    }
+    return m;
+  }, [orgClients]);
 
   // Company name → company record lookup
   const companyByName = useMemo(() => {
@@ -336,6 +367,7 @@ export function ContactsTab({ orgId }: { orgId: string }) {
             {filteredContacts.map((contact) => {
               const personInfo = dealPersonMap.get(contact.id);
               const personId = personInfo?.person_id;
+              const contactCompanyId = personInfo?.company_id;
               const intelStatus = personInfo?.intelligence_status;
               return (
                 <div key={contact.id} className="rounded-lg border bg-card p-4 space-y-2">
@@ -358,7 +390,13 @@ export function ContactsTab({ orgId }: { orgId: string }) {
                       {contact.company_name && (
                         <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5">
                           <Building2 className="h-3 w-3 shrink-0" />
-                          {contact.company_name}
+                          {contactCompanyId ? (
+                            <Link to={`/companies/${contactCompanyId}`} onClick={(e) => e.stopPropagation()} className="hover:text-primary transition-colors truncate">
+                              {contact.company_name}
+                            </Link>
+                          ) : (
+                            contact.company_name
+                          )}
                         </p>
                       )}
                     </div>
@@ -368,13 +406,22 @@ export function ContactsTab({ orgId }: { orgId: string }) {
                     )}
                   </div>
                   {personId && (
-                    <Link
-                      to={`/persons/${personId}`}
-                      className="flex items-center gap-1.5 text-xs text-primary hover:underline"
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                      View Intelligence Profile
-                    </Link>
+                    <div className="flex items-center gap-1.5 pt-0.5">
+                      <Link
+                        to={`/people/${personId}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex-1 flex items-center justify-center gap-1 text-xs py-1 px-2 rounded border border-border hover:bg-accent transition-colors"
+                      >
+                        <User className="h-3 w-3" /> Profile
+                      </Link>
+                      <Link
+                        to={`/people/${personId}/intel`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex-1 flex items-center justify-center gap-1 text-xs py-1 px-2 rounded border border-indigo-700/60 text-indigo-400 hover:bg-indigo-950/40 transition-colors"
+                      >
+                        <Brain className="h-3 w-3" /> Intel
+                      </Link>
+                    </div>
                   )}
                 </div>
               );
@@ -398,54 +445,69 @@ export function ContactsTab({ orgId }: { orgId: string }) {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {filteredCompanies.map((company) => (
-              <Link
-                key={company.id}
-                to={`/companies/${company.id}`}
-                className="block p-4 rounded-lg border bg-card hover:border-primary/40 hover:shadow-sm transition-all group"
-              >
-                <div className="flex items-start gap-3">
-                  {company.logo_url ? (
-                    <img src={company.logo_url} alt="" className="w-9 h-9 rounded object-cover shrink-0" />
-                  ) : (
-                    <div className="w-9 h-9 rounded bg-muted flex items-center justify-center shrink-0">
-                      <Building2 className="h-4 w-4 text-muted-foreground" />
+            {filteredCompanies.map((company) => {
+              const personId = companyPersonMap.get(company.id);
+              return (
+                <div key={company.id} className="rounded-lg border bg-card p-4 space-y-2 hover:border-primary/40 hover:shadow-sm transition-all">
+                  <Link to={`/companies/${company.id}`} className="block group">
+                    <div className="flex items-start gap-3">
+                      {company.logo_url ? (
+                        <img src={company.logo_url} alt="" className="w-9 h-9 rounded object-cover shrink-0" />
+                      ) : (
+                        <div className="w-9 h-9 rounded bg-muted flex items-center justify-center shrink-0">
+                          <Building2 className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold truncate group-hover:text-primary transition-colors">
+                          {company.name}
+                        </p>
+                        {company.industry && (
+                          <p className="text-xs text-muted-foreground truncate">{company.industry}</p>
+                        )}
+                        {company.headquarters && (
+                          <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                            <MapPin className="h-3 w-3 shrink-0" />{company.headquarters}
+                          </p>
+                        )}
+                      </div>
+                      {company.intelligence_status && company.intelligence_status !== 'idle' && (
+                        <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${
+                          company.intelligence_status === 'done' ? 'bg-green-500'
+                          : company.intelligence_status === 'running' ? 'bg-blue-500 animate-pulse'
+                          : 'bg-yellow-500'
+                        }`} />
+                      )}
                     </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold truncate group-hover:text-primary transition-colors">
-                      {company.name}
-                    </p>
-                    {company.industry && (
-                      <p className="text-xs text-muted-foreground truncate">{company.industry}</p>
-                    )}
-                    {company.headquarters && (
-                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                        <MapPin className="h-3 w-3 shrink-0" />{company.headquarters}
+                    {company.intelligence_summary && (
+                      <p className="text-xs text-muted-foreground mt-2 line-clamp-2">
+                        {company.intelligence_summary}
                       </p>
                     )}
+                    {company.website && (
+                      <p className="text-xs text-primary/70 mt-1 truncate flex items-center gap-1">
+                        <Globe className="h-3 w-3 shrink-0" />
+                        {company.website.replace(/^https?:\/\//, '')}
+                      </p>
+                    )}
+                  </Link>
+                  <div className="flex items-center gap-1.5 pt-0.5">
+                    <Link
+                      to={`/companies/${company.id}`}
+                      className="flex-1 flex items-center justify-center gap-1 text-xs py-1 px-2 rounded border border-border hover:bg-accent transition-colors"
+                    >
+                      <Building2 className="h-3 w-3" /> Profile
+                    </Link>
+                    <Link
+                      to={`/companies/${company.id}?tab=intelligence`}
+                      className="flex-1 flex items-center justify-center gap-1 text-xs py-1 px-2 rounded border border-indigo-700/60 text-indigo-400 hover:bg-indigo-950/40 transition-colors"
+                    >
+                      <Brain className="h-3 w-3" /> Intel
+                    </Link>
                   </div>
-                  {company.intelligence_status && company.intelligence_status !== 'idle' && (
-                    <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${
-                      company.intelligence_status === 'done' ? 'bg-green-500'
-                      : company.intelligence_status === 'running' ? 'bg-blue-500 animate-pulse'
-                      : 'bg-yellow-500'
-                    }`} />
-                  )}
                 </div>
-                {company.intelligence_summary && (
-                  <p className="text-xs text-muted-foreground mt-2 line-clamp-2">
-                    {company.intelligence_summary}
-                  </p>
-                )}
-                {company.website && (
-                  <p className="text-xs text-primary/70 mt-1 truncate flex items-center gap-1">
-                    <Globe className="h-3 w-3 shrink-0" />
-                    {company.website.replace(/^https?:\/\//, '')}
-                  </p>
-                )}
-              </Link>
-            ))}
+              );
+            })}
           </div>
         )
       )}
@@ -487,7 +549,7 @@ export function ContactsTab({ orgId }: { orgId: string }) {
                     )}
                   </div>
                   {deal.person_id && (
-                    <Link to={`/persons/${deal.person_id}`}>
+                    <Link to={`/people/${deal.person_id}`}>
                       <ExternalLink className="h-3.5 w-3.5 text-muted-foreground hover:text-primary transition-colors" />
                     </Link>
                   )}
@@ -616,6 +678,7 @@ export function ContactsTab({ orgId }: { orgId: string }) {
           orgId={orgId}
           open={!!selectedContactId}
           onClose={() => setSelectedContactId(null)}
+          personId={dealPersonMap.get(selectedContact.id)?.person_id}
         />
       )}
     </div>

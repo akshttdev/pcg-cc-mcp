@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Link } from 'react-router-dom';
 import {
   Building2,
   MapPin,
@@ -23,6 +24,9 @@ import {
   Linkedin,
   Phone,
   Activity,
+  Brain,
+  ExternalLink,
+  User,
 } from 'lucide-react';
 import { LIFECYCLE_STAGE_INFO, type LifecycleStage } from '@/types/crm';
 import {
@@ -38,11 +42,13 @@ export function ContactDetailModal({
   orgId,
   open,
   onClose,
+  personId,
 }: {
   contact: CrmContactRecord;
   orgId: string;
   open: boolean;
   onClose: () => void;
+  personId?: string;
 }) {
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
@@ -102,11 +108,26 @@ export function ContactDetailModal({
             <DialogTitle className="text-lg">
               {contact.full_name || `${contact.first_name ?? ''} ${contact.last_name ?? ''}`.trim() || 'Unnamed Contact'}
             </DialogTitle>
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="ghost" onClick={() => setIsEditing(!isEditing)}>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {personId && (
+                <>
+                  <Button size="sm" variant="outline" className="gap-1.5 text-xs h-7" asChild>
+                    <Link to={`/people/${personId}`} onClick={onClose}>
+                      <User className="h-3 w-3" /> Profile
+                    </Link>
+                  </Button>
+                  <Button size="sm" variant="outline" className="gap-1.5 text-xs h-7 border-indigo-700 text-indigo-400 hover:bg-indigo-950/40" asChild>
+                    <Link to={`/people/${personId}/intel`} onClick={onClose}>
+                      <Brain className="h-3 w-3" /> Intel
+                      <ExternalLink className="h-2.5 w-2.5 ml-0.5" />
+                    </Link>
+                  </Button>
+                </>
+              )}
+              <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setIsEditing(!isEditing)}>
                 <Pencil className="h-3.5 w-3.5" />
               </Button>
-              <Button size="sm" variant="ghost" className="text-destructive" onClick={() => {
+              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive" onClick={() => {
                 if (confirm('Delete this contact?')) deleteMutation.mutate();
               }}>
                 <Trash2 className="h-3.5 w-3.5" />

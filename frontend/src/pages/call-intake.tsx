@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import {
   PhoneIncoming, RefreshCw, Play, FileText,
   CheckCircle, XCircle, Clock, Loader2, Upload,
-  ChevronDown, ChevronRight, Plus, User,
+  ChevronDown, ChevronRight, Plus, User, Building2, Brain,
 } from 'lucide-react';
 import { callIntakeApi, reportsApi } from '@/lib/api';
 
@@ -28,7 +28,9 @@ interface CallIntakeItem {
   extracted_action_items: string; // JSON
   extracted_sentiment: string | null;
   person_id: string | null;
+  company_id: string | null;
   report_id: string | null;
+  crm_deal_id: string | null;
   created_at: string;
   processed_at: string | null;
   error: string | null;
@@ -292,6 +294,12 @@ export default function CallIntakePage() {
                         <Button size="sm" variant="ghost" className="text-gray-400 hover:text-white h-7 px-2 text-xs gap-1"
                           onClick={() => navigate(`/people/${item.person_id}`)}>
                           <User className="w-3 h-3" /> Profile
+                        </Button>
+                      )}
+                      {item.company_id && (
+                        <Button size="sm" variant="ghost" className="text-indigo-400 hover:text-indigo-300 h-7 px-2 text-xs gap-1"
+                          onClick={() => navigate(`/companies/${item.company_id}?tab=intelligence`)}>
+                          <Brain className="w-3 h-3" /> Co. Intel
                         </Button>
                       )}
                       {item.report_id && (

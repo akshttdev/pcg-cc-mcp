@@ -763,6 +763,15 @@ pub async fn update_task(
         });
     }
 
+    // Auto-trigger Phase 2 when all Phase 1 CRM research tasks are marked done
+    if old_status != task.status && task.status == db::models::task::TaskStatus::Done {
+        let pool_bg = deployment.db().pool.clone();
+        let task_id_bg = task.id.clone();
+        tokio::spawn(async move {
+            check_phase1_completion_and_trigger(&pool_bg, &task_id_bg).await;
+        });
+    }
+
     // Broadcast task update to WebSocket clients
     // Fetch full TaskWithAttemptStatus for accurate attempt info
     if let Ok(tasks) = Task::find_by_project_id_with_attempt_status(&deployment.db().pool, &task.project_id).await {
@@ -772,6 +781,69 @@ pub async fn update_task(
     }
 
     Ok(ResponseJson(ApiResponse::success(task)))
+}
+
+/// Check if all Phase 1 CRM research tasks for a deal are done; if so, auto-generate the BA report.
+async fn check_phase1_completion_and_trigger(pool: &sqlx::SqlitePool, task_id: &str) {
+
+    #[derive(sqlx::FromRow)]
+    struct TaskMeta {
+        crm_deal_id: Option<String>,
+        title: String,
+    }
+
+    let meta = sqlx::query_as::<_, TaskMeta>(
+        "SELECT crm_deal_id, title FROM tasks WHERE id = ? AND deleted_at IS NULL",
+    )
+    .bind(task_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    let Some(meta) = meta else { return };
+    let Some(deal_id_str) = meta.crm_deal_id else { return };
+    if !meta.title.starts_with("Phase 1 Research:") { return }
+
+    // Are ALL Phase 1 tasks for this deal now done?
+    let pending: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM tasks WHERE crm_deal_id = ? AND title LIKE 'Phase 1 Research:%' AND status NOT IN ('done','cancelled') AND deleted_at IS NULL",
+    )
+    .bind(&deal_id_str)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(1);
+
+    if pending > 0 { return }
+
+    tracing::info!("All Phase 1 tasks done for deal {}, triggering BA report generation", deal_id_str);
+
+    // Fetch deal + contact for report generation
+    #[derive(sqlx::FromRow)]
+    struct DealMeta {
+        crm_contact_id: Option<String>,
+        project_id: Option<String>,
+    }
+    let deal = sqlx::query_as::<_, DealMeta>(
+        "SELECT crm_contact_id, project_id FROM crm_deals WHERE id = ? AND deleted_at IS NULL",
+    )
+    .bind(&deal_id_str)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    let Some(deal) = deal else { return };
+
+    let deal_uuid = match db_uuid_from_str(&deal_id_str) { Some(u) => u, None => return };
+    let contact_uuid = deal.crm_contact_id.as_deref().and_then(db_uuid_from_str);
+    let project_uuid = deal.project_id.as_deref().and_then(db_uuid_from_str);
+
+    crate::routes::crm_deals::generate_phase1_business_report(pool, deal_uuid, contact_uuid, project_uuid).await;
+}
+
+fn db_uuid_from_str(s: &str) -> Option<db::db_uuid::DbUuid> {
+    uuid::Uuid::parse_str(s).ok().map(|u| db::db_uuid::DbUuid::from(u))
 }
 
 pub async fn delete_task(

@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -11,7 +13,12 @@ import {
   ShieldCheck,
   Search,
   CircleDot,
+  Phone,
+  FileText,
+  ExternalLink,
+  User,
 } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useDealActions } from '../hooks/useDealActions';
 import type { CrmDealWithContact } from '@/types/crm';
@@ -41,10 +48,10 @@ const STAGE_CHECKLIST: Record<string, { item: string; description?: string }[]> 
     },
     { item: 'Discovery call scheduled', description: 'Meeting with prospect is booked' },
   ],
-  discovery: [
+  'discovery and analysis': [
     {
-      item: 'Discovery notes captured',
-      description: 'Call notes are complete in the system',
+      item: 'Discovery call completed',
+      description: 'Call notes and transcript are in the system',
     },
     {
       item: 'Pain points identified',
@@ -71,7 +78,7 @@ const STAGE_CHECKLIST: Record<string, { item: string; description?: string }[]> 
       description: 'AI proposal draft has been created',
     },
   ],
-  polish: [
+  'polish assets': [
     {
       item: 'Presentation deck complete',
       description: 'Slides are polished and client-ready',
@@ -86,7 +93,7 @@ const STAGE_CHECKLIST: Record<string, { item: string; description?: string }[]> 
       description: 'Leadership has approved the proposal',
     },
   ],
-  'proposal meeting': [
+  presentation: [
     {
       item: 'Meeting scheduled',
       description: 'Date and time confirmed with client',
@@ -96,6 +103,24 @@ const STAGE_CHECKLIST: Record<string, { item: string; description?: string }[]> 
       description: 'The right stakeholders will be present',
     },
     { item: 'Presentation rehearsed', description: 'Team is prepared for the pitch' },
+  ],
+  'follow up': [
+    {
+      item: 'Follow-up sent within 24h',
+      description: 'Post-presentation email sent with recap and next steps',
+    },
+    {
+      item: 'Objections addressed',
+      description: 'Any client concerns have been responded to',
+    },
+    {
+      item: 'Decision timeline confirmed',
+      description: 'Client has given a decision timeline',
+    },
+    {
+      item: 'Final terms agreed',
+      description: 'Pricing and scope are mutually confirmed',
+    },
   ],
 };
 
@@ -181,7 +206,7 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
           <CardContent className="p-4 text-center space-y-2">
             <AlertCircle className="h-6 w-6 mx-auto text-muted-foreground/40" />
             <p className="text-sm text-muted-foreground">No review task for this stage.</p>
-            {!['closed won', 'closed lost', 'proposal meeting'].includes(effectiveStage) && (
+            {!['closed won', 'closed lost', 'presentation', 'follow up'].includes(effectiveStage) && (
               <p className="text-xs text-muted-foreground/70">
                 A review task is created automatically when entering an active stage.
               </p>
@@ -287,9 +312,16 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
             {deal.intelligence_summary && (
               <Card className="bg-muted/20 border-border/50">
                 <CardContent className="p-3">
-                  <div className="flex items-center gap-1.5 mb-1.5">
-                    <Brain className="h-3.5 w-3.5 text-blue-500" />
-                    <span className="text-xs font-medium">Person Intel</span>
+                  <div className="flex items-center justify-between gap-1.5 mb-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <Brain className="h-3.5 w-3.5 text-blue-500" />
+                      <span className="text-xs font-medium">Person Intel</span>
+                    </div>
+                    {deal.person_id && (
+                      <Link to={`/people/${deal.person_id}?tab=reports`} className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-0.5">
+                        <ExternalLink className="h-3 w-3" /> Intel
+                      </Link>
+                    )}
                   </div>
                   <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-3">
                     {deal.intelligence_summary}
@@ -300,11 +332,18 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
             {deal.company_intelligence_status === 'done' && (
               <Card className="bg-muted/20 border-border/50">
                 <CardContent className="p-3">
-                  <div className="flex items-center gap-1.5 mb-1.5">
-                    <Building2 className="h-3.5 w-3.5 text-purple-500" />
-                    <span className="text-xs font-medium">
-                      Company Intel — {deal.contact_company}
-                    </span>
+                  <div className="flex items-center justify-between gap-1.5 mb-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <Building2 className="h-3.5 w-3.5 text-purple-500" />
+                      <span className="text-xs font-medium">
+                        Company Intel — {deal.contact_company}
+                      </span>
+                    </div>
+                    {deal.company_id && (
+                      <Link to={`/companies/${deal.company_id}`} className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-0.5">
+                        <ExternalLink className="h-3 w-3" /> View
+                      </Link>
+                    )}
                   </div>
                   <p className="text-[11px] text-muted-foreground">Company research complete.</p>
                 </CardContent>
@@ -313,6 +352,116 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
           </div>
         </div>
       )}
+
+      {/* Data Sources */}
+      <DataSourcesSection deal={deal} />
     </div>
   );
+}
+
+// ── DataSourcesSection ───────────────────────────────────────────────────────
+
+function DataSourcesSection({ deal }: { deal: CrmDealWithContact }) {
+  const { data: callLogs = [], isLoading } = useQuery<CallLogSummary[]>({
+    queryKey: ['call-logs-deal', deal.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/communications/calls?crm_deal_id=${deal.id}&limit=10`, { credentials: 'include' });
+      const json = await res.json();
+      return json.data ?? [];
+    },
+    staleTime: 60_000,
+  });
+
+  const hasSources = deal.report_id || deal.person_id || callLogs.length > 0;
+  if (!hasSources && !isLoading) return null;
+
+  return (
+    <div>
+      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+        Data Sources
+      </h4>
+      <div className="space-y-2">
+        {/* Business Report */}
+        {deal.report_id && (
+          <Link to={`/business-reports/${deal.report_id}`}>
+            <Card className="bg-muted/20 border-border/50 hover:bg-muted/40 transition-colors cursor-pointer">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+                  <span className="text-xs font-medium flex-1">Business Analysis Report</span>
+                  <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                </div>
+                {deal.report_status && (
+                  <p className="text-[11px] text-muted-foreground mt-1 capitalize">
+                    Status: {deal.report_status.replace(/_/g, ' ')}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </Link>
+        )}
+
+        {/* Person Profile */}
+        {deal.person_id && (
+          <Link to={`/people/${deal.person_id}`}>
+            <Card className="bg-muted/20 border-border/50 hover:bg-muted/40 transition-colors cursor-pointer">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2">
+                  <User className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                  <span className="text-xs font-medium flex-1">
+                    {deal.contact_name ?? 'Contact Profile'}
+                  </span>
+                  <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                </div>
+                {deal.intelligence_status && (
+                  <p className="text-[11px] text-muted-foreground mt-1 capitalize">
+                    Intel: {deal.intelligence_status}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </Link>
+        )}
+
+        {/* Call Transcripts */}
+        {isLoading && (
+          <div className="h-10 bg-muted/20 rounded-lg animate-pulse" />
+        )}
+        {callLogs.map((log) => (
+          <Card key={log.id} className="bg-muted/20 border-border/50">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-2">
+                <Phone className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                <span className="text-xs font-medium flex-1 truncate">
+                  {log.caller_name ?? log.from_number}
+                </span>
+                {log.created_at && (
+                  <span className="text-[10px] text-muted-foreground shrink-0">
+                    {formatDistanceToNow(new Date(log.created_at), { addSuffix: true })}
+                  </span>
+                )}
+              </div>
+              {log.summary && (
+                <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{log.summary}</p>
+              )}
+              {log.transcription_status === 'completed' && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 mt-1.5 text-green-600">
+                  Transcript available
+                </Badge>
+              )}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+interface CallLogSummary {
+  id: string;
+  caller_name?: string;
+  from_number: string;
+  summary?: string;
+  transcription_status?: string;
+  created_at: string;
 }

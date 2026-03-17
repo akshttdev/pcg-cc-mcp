@@ -223,6 +223,29 @@ impl CallLog {
         Ok(calls)
     }
 
+    pub async fn find_by_deal(
+        pool: &SqlitePool,
+        deal_id: Uuid,
+        limit: i64,
+    ) -> Result<Vec<Self>, CallLogError> {
+        // crm_deal_id is stored as BLOB (16 bytes) — bind as bytes to match
+        let deal_id_bytes = deal_id.as_bytes().to_vec();
+        let calls = sqlx::query_as::<_, CallLog>(
+            r#"
+            SELECT * FROM call_logs
+            WHERE crm_deal_id = ?1
+            ORDER BY start_time DESC
+            LIMIT ?2
+            "#,
+        )
+        .bind(&deal_id_bytes)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(calls)
+    }
+
     pub async fn update(
         pool: &SqlitePool,
         id: Uuid,

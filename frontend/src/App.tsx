@@ -95,6 +95,7 @@ const CallIntakePage      = lazy(() => import('@/pages/call-intake'));
 const BusinessReportsPage = lazy(() => import('@/pages/business-reports'));
 const ReportDetailPage    = lazy(() => import('@/pages/business-reports').then(m => ({ default: m.ReportDetail })));
 const PersonProfilePage   = lazy(() => import('@/pages/person-profile').then(m => ({ default: m.PersonProfilePage })));
+const PersonIntelPage     = lazy(() => import('@/pages/person-intel').then(m => ({ default: m.PersonIntelPage })));
 const LeadsPage           = lazy(() => import('@/pages/leads').then(m => ({ default: m.LeadsPage })));
 
 const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
@@ -113,6 +114,11 @@ function HomeRedirect() {
 function StagingRedirect() {
   const { runId } = useParams();
   return <Navigate to={`/workflows?tab=staging&run=${runId}`} replace />;
+}
+
+function PersonsRedirect({ suffix = '' }: { suffix?: string }) {
+  const { personId } = useParams<{ personId: string }>();
+  return <Navigate to={`/people/${personId}${suffix}`} replace />;
 }
 
 function App() {
@@ -291,6 +297,10 @@ function App() {
             path="/organizations/:orgId/integrations"
             element={<ProtectedRoute><OrganizationProfilePage defaultTab="integrations" /></ProtectedRoute>}
           />
+          <Route
+            path="/organizations/:orgId/wiki"
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="wiki" /></ProtectedRoute>}
+          />
           {/* Organization - Clients and Data Sources */}
           <Route
             path="/organizations/:orgId/clients/:clientId"
@@ -343,7 +353,11 @@ function App() {
           />
           <Route
             path="/people/:personId"
-            element={<RoleRoute minRole="platform_member"><PersonDetailPage /></RoleRoute>}
+            element={<RoleRoute minRole="platform_member"><PersonProfilePage /></RoleRoute>}
+          />
+          <Route
+            path="/people/:personId/intel"
+            element={<RoleRoute minRole="platform_member"><PersonIntelPage /></RoleRoute>}
           />
           <Route
             path="/proposals"
@@ -399,7 +413,8 @@ function App() {
           <Route path="/call-intake" element={<AdminRoute><CallIntakePage /></AdminRoute>} />
           <Route path="/business-reports" element={<AdminRoute><BusinessReportsPage /></AdminRoute>} />
           <Route path="/business-reports/:id" element={<ProtectedRoute><ReportDetailPage /></ProtectedRoute>} />
-          <Route path="/persons/:personId" element={<ProtectedRoute><PersonProfilePage /></ProtectedRoute>} />
+          <Route path="/persons/:personId" element={<PersonsRedirect />} />
+          <Route path="/persons/:personId/intel" element={<PersonsRedirect suffix="/intel" />} />
           <Route path="/leads" element={<AdminRoute><LeadsPage /></AdminRoute>} />
           <Route
             path="/oauth/:provider/callback"

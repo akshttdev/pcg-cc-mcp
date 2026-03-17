@@ -23,6 +23,10 @@ import {
   User,
   TrendingUp,
   Clock,
+  FileText,
+  Presentation,
+  Receipt,
+  Trophy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { CrmDealWithContact } from '@/types/crm';
@@ -100,9 +104,16 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, boa
   const intelDone = intelStatus === 'done';
   const intelRunning = intelStatus === 'running' || intelStatus === 'queued';
 
-  const isLeadOrResearch = currentStage === 'lead' || currentStage === 'research';
-  const researchNeeded = isLeadOrResearch && (!intelStatus || intelStatus === 'idle');
-  const researchReady = isLeadOrResearch && intelDone;
+  const isIntelStage = currentStage === 'intel' || currentStage === 'lead' || currentStage === 'research';
+  const researchNeeded = isIntelStage && (!intelStatus || intelStatus === 'idle');
+  const researchReady = isIntelStage && intelDone;
+
+  // Proposal / deck / invoice / won chips
+  const hasProposal = !!deal.proposal_text;
+  const proposalApproved = deal.proposal_status === 'approved';
+  const hasDeck = !!deal.deck_url;
+  const hasInvoice = !!deal.invoice_id;
+  const isWon = !!deal.won_at;
 
   const hasActiveReviewTask = deal.review_task_id && deal.review_task_status !== 'done' && deal.review_task_status !== 'cancelled';
   const reviewTaskDone = deal.review_task_id && deal.review_task_status === 'done';
@@ -181,7 +192,8 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, boa
         </div>
 
         {/* Row 2: Stage-aware status chips */}
-        {(researchNeeded || researchReady || intelRunning || hasActiveReviewTask || reviewTaskDone || deal.report_review_status === 'rejected') && (
+        {(researchNeeded || researchReady || intelRunning || hasActiveReviewTask || reviewTaskDone ||
+          deal.report_review_status === 'rejected' || hasProposal || hasDeck || hasInvoice || isWon) && (
           <div className="flex flex-wrap gap-1">
             {researchNeeded && <StatusChip icon={Search} label="Research needed" variant="amber" />}
             {intelRunning && <StatusChip icon={Loader2} label="Researching…" variant="blue" pulse />}
@@ -189,6 +201,11 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, boa
             {hasActiveReviewTask && <StatusChip icon={CircleDot} label="Needs review" variant="blue" pulse />}
             {reviewTaskDone && <StatusChip icon={CheckCircle2} label="Review done" variant="green" />}
             {deal.report_review_status === 'rejected' && <StatusChip icon={RotateCcw} label="Revision needed" variant="red" />}
+            {hasProposal && !proposalApproved && <StatusChip icon={FileText} label="Proposal draft" variant="amber" />}
+            {proposalApproved && <StatusChip icon={FileText} label="Proposal ✓" variant="green" />}
+            {hasDeck && <StatusChip icon={Presentation} label="Deck ready" variant="green" />}
+            {hasInvoice && <StatusChip icon={Receipt} label="Invoice sent" variant="blue" />}
+            {isWon && <StatusChip icon={Trophy} label="Won!" variant="green" />}
           </div>
         )}
 

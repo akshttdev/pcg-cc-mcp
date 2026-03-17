@@ -23,6 +23,7 @@ import {
   MoreHorizontal,
   Pencil,
   Trash2,
+  Building2,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -224,6 +225,8 @@ export function SortableSidebarProjectFolder({
   expandedProjects,
   onToggleProject,
   queryClient,
+  orgId,
+  clientId,
 }: {
   project: SidebarProjectType;
   projectId?: string;
@@ -232,6 +235,8 @@ export function SortableSidebarProjectFolder({
   expandedProjects: Set<string>;
   onToggleProject: (id: string) => void;
   queryClient?: QueryClient;
+  orgId?: string;
+  clientId?: string;
 }) {
   const location = useLocation();
   const isActive = project.id === projectId || location.pathname.includes(`/projects/${project.id}`);
@@ -522,6 +527,22 @@ export function SortableSidebarProjectFolder({
                   <Activity className="h-3 w-3 text-muted-foreground" />
                   <span>Pulse</span>
                 </Link>
+
+                {/* Organization quick link (only when not inside a client group) */}
+                {orgId && !clientId && (
+                  <div className="pt-1 mt-1 border-t border-border/40 space-y-0.5">
+                    <Link
+                      to={`/organizations/${orgId}`}
+                      className={cn(
+                        'flex items-center gap-1.5 pl-2 pr-2 py-1 text-[10px] rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors text-muted-foreground',
+                        location.pathname === `/organizations/${orgId}` && 'bg-primary/10 text-foreground font-medium'
+                      )}
+                    >
+                      <Building2 className="h-3 w-3 shrink-0" />
+                      <span>Organization</span>
+                    </Link>
+                  </div>
+                )}
               </>
             )}
           </div>

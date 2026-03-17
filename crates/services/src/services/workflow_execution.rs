@@ -2231,6 +2231,7 @@ fn build_deal_update(template: &Value, record: &Value) -> UpdateCrmDeal {
         crm_contact_id: None,
         crm_pipeline_id: None,
         crm_stage_id: None,
+        project_id: get_str("project_id"),
         position: None,
         name: get_str("name"),
         description: get_str("description"),
@@ -2244,6 +2245,10 @@ fn build_deal_update(template: &Value, record: &Value) -> UpdateCrmDeal {
         custom_fields: template.get("custom_fields").cloned(),
         lost_reason: get_str("lost_reason"),
         win_reason: get_str("win_reason"),
+        proposal_text: None,
+        proposal_status: None,
+        deck_url: None,
+        invoice_id: None,
     }
 }
 

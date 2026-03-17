@@ -173,7 +173,7 @@ export function IntelTab({ deal }: IntelTabProps) {
                   className="h-5 text-[10px] gap-1 ml-auto px-1.5"
                   asChild
                 >
-                  <Link to={`/persons/${deal.person_id}`}>
+                  <Link to={`/people/${deal.person_id}`}>
                     Profile <ExternalLink className="h-2.5 w-2.5" />
                   </Link>
                 </Button>
@@ -368,7 +368,7 @@ export function IntelTab({ deal }: IntelTabProps) {
       {deal.person_id && (
         <div className="pt-2 border-t">
           <Button variant="ghost" size="sm" className="w-full h-8 text-xs gap-1.5" asChild>
-            <Link to={`/persons/${deal.person_id}`}>
+            <Link to={`/people/${deal.person_id}`}>
               <Brain className="h-3.5 w-3.5" />
               View Full Intelligence Profile
               <ExternalLink className="h-3 w-3 ml-auto" />

@@ -41,7 +41,7 @@ function LeadCard({ person }: { person: PersonRecord }) {
   const orgEntry = person.organization_id ? ORG_LABELS[person.organization_id] : null;
 
   return (
-    <Link to={`/persons/${person.id}`} className="block group">
+    <Link to={`/people/${person.id}`} className="block group">
       <div className="rounded-xl border border-slate-800 bg-slate-900/50 hover:border-indigo-700/50 hover:bg-slate-900 transition-all p-4">
         <div className="flex items-start gap-4">
           {/* Avatar */}

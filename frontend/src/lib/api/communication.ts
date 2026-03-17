@@ -113,6 +113,12 @@ export interface PersonRecord {
   onboarding_channel?: string;
   /** Preferred outbound contact channel */
   preferred_contact?: string;
+  /** JSON: [{value: string, label: string}] */
+  emails?: string;
+  /** JSON: [{value: string, label: string}] */
+  phones?: string;
+  company_id?: string;
+  assigned_to?: string;
   created_at: string;
   updated_at: string;
 }
@@ -171,6 +177,18 @@ export interface PersonWithSocials extends PersonRecord {
   social_profiles: PersonSocialProfile[];
   company_roles: PersonCompanyRole[];
   org_contacts: PersonOrgContact[];
+}
+
+export interface PersonNote {
+  id: string;
+  person_id: string;
+  author_id?: string;
+  text: string;
+  status: string;
+  attachments: string;
+  proposal_id?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface InvoiceRecord {
@@ -340,6 +358,30 @@ export const personsApi = {
   },
   removeCompany: async (id: string, company_id: string): Promise<void> => {
     const response = await makeRequest(`/api/persons/${id}/companies/${company_id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
+
+  // Notes
+  listNotes: async (id: string): Promise<PersonNote[]> => {
+    const response = await makeRequest(`/api/persons/${id}/notes`);
+    return handleApiResponse<PersonNote[]>(response);
+  },
+  createNote: async (id: string, text: string, status?: string): Promise<PersonNote> => {
+    const response = await makeRequest(`/api/persons/${id}/notes`, {
+      method: 'POST',
+      body: JSON.stringify({ text, status: status ?? 'open', person_id: id }),
+    });
+    return handleApiResponse<PersonNote>(response);
+  },
+  updateNote: async (noteId: string, data: { text?: string; status?: string }): Promise<PersonNote> => {
+    const response = await makeRequest(`/api/person-notes/${noteId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<PersonNote>(response);
+  },
+  deleteNote: async (noteId: string): Promise<void> => {
+    const response = await makeRequest(`/api/person-notes/${noteId}`, { method: 'DELETE' });
     return handleApiResponse<void>(response);
   },
 
