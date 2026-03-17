@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import { organizationKeys, sidebarKeys } from '@/lib/query-keys';
 import { Building2, Search, MoreVertical, Power, PowerOff, Trash2, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,37 +32,33 @@ import {
 import { organizationsApi, type OrganizationData } from '@/lib/api';
 
 export function OrganizationsSettings() {
-  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
   const { data: orgs = [], isLoading, error } = useQuery({
-    queryKey: ['organizations-admin'],
+    queryKey: organizationKeys.admin(),
     queryFn: () => organizationsApi.getAll(),
   });
 
-  const activateMutation = useMutation({
+  const activateMutation = useMutationWithToast({
     mutationFn: organizationsApi.activate,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organizations-admin'] });
-      queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
-    },
+    successMessage: 'Organization activated',
+    errorMessage: 'Failed to activate organization',
+    invalidateKeys: [organizationKeys.admin(), sidebarKeys.tree()],
   });
 
-  const deactivateMutation = useMutation({
+  const deactivateMutation = useMutationWithToast({
     mutationFn: organizationsApi.deactivate,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organizations-admin'] });
-      queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
-    },
+    successMessage: 'Organization deactivated',
+    errorMessage: 'Failed to deactivate organization',
+    invalidateKeys: [organizationKeys.admin(), sidebarKeys.tree()],
   });
 
-  const deleteMutation = useMutation({
+  const deleteMutation = useMutationWithToast({
     mutationFn: organizationsApi.delete,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organizations-admin'] });
-      queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
-    },
+    successMessage: 'Organization deleted',
+    errorMessage: 'Failed to delete organization',
+    invalidateKeys: [organizationKeys.admin(), sidebarKeys.tree()],
   });
 
   const filtered = orgs.filter((org: OrganizationData) => {

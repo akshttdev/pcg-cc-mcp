@@ -29,6 +29,7 @@ import {
   Eye,
 } from 'lucide-react';
 import { apiClient } from '@/lib/api';
+import { ossKeys } from '@/lib/query-keys';
 import { formatDistanceToNow } from 'date-fns';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -103,8 +104,8 @@ function UpdateRow({ update, libraryName }: { update: OssLibraryUpdate; libraryN
   const dismiss = useMutation({
     mutationFn: () => ossApi.dismiss(update.id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['oss-recent'] });
-      qc.invalidateQueries({ queryKey: ['oss-updates', update.library_id] });
+      qc.invalidateQueries({ queryKey: ossKeys.recent() });
+      qc.invalidateQueries({ queryKey: ossKeys.updates(update.library_id) });
     },
   });
 
@@ -206,7 +207,7 @@ function LibraryCard({ lib }: { lib: OssLibrary }) {
   const qc = useQueryClient();
 
   const { data: updates = [] } = useQuery({
-    queryKey: ['oss-updates', lib.id],
+    queryKey: ossKeys.updates(lib.id),
     queryFn: () => ossApi.listUpdates(lib.id),
   });
 
@@ -214,16 +215,16 @@ function LibraryCard({ lib }: { lib: OssLibrary }) {
     mutationFn: () => ossApi.checkNow(lib.id),
     onSuccess: () => {
       setTimeout(() => {
-        qc.invalidateQueries({ queryKey: ['oss-libraries'] });
-        qc.invalidateQueries({ queryKey: ['oss-updates', lib.id] });
-        qc.invalidateQueries({ queryKey: ['oss-recent'] });
+        qc.invalidateQueries({ queryKey: ossKeys.libraries() });
+        qc.invalidateQueries({ queryKey: ossKeys.updates(lib.id) });
+        qc.invalidateQueries({ queryKey: ossKeys.recent() });
       }, 2000);
     },
   });
 
   const deleteLib = useMutation({
     mutationFn: () => ossApi.deleteLibrary(lib.id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['oss-libraries'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ossKeys.libraries() }),
   });
 
   const pendingUpdates = updates.filter((u: any) => u.recommendation_status !== 'dismissed');
@@ -316,7 +317,7 @@ function AddLibraryDialog() {
       notes: form.notes || undefined,
     }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['oss-libraries'] });
+      qc.invalidateQueries({ queryKey: ossKeys.libraries() });
       setOpen(false);
       setForm({ name: '', github_owner: '', github_repo: '', notes: '' });
     },
@@ -376,7 +377,7 @@ function AddLibraryDialog() {
 
 export function OssLibraryListenerPage() {
   const { data: libraries = [], isLoading } = useQuery({
-    queryKey: ['oss-libraries'],
+    queryKey: ossKeys.libraries(),
     queryFn: ossApi.listLibraries,
     refetchInterval: 60_000,
   });

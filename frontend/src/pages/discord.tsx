@@ -21,6 +21,7 @@ import {
   Hash,
 } from 'lucide-react';
 import { discordApi, type DiscordSessionSummary, type DiscordSegment } from '@/lib/api';
+import { discordKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/lib/formatters';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -320,13 +321,13 @@ export function DiscordPage() {
   const [selectedArchivedId, setSelectedArchivedId] = useState<string | null>(null);
 
   const { data: activeSessions = [], isLoading: loadingActive } = useQuery({
-    queryKey: ['discord-active'],
+    queryKey: discordKeys.active(),
     queryFn: discordApi.activeSessions,
     refetchInterval: 5000,
   });
 
   const { data: archivedSessions = [], isLoading: loadingArchived } = useQuery({
-    queryKey: ['discord-archive'],
+    queryKey: discordKeys.archive(),
     queryFn: () => discordApi.archivedSessions({ limit: 50 }),
     refetchInterval: 30000,
   });
@@ -362,8 +363,8 @@ export function DiscordPage() {
           size="sm"
           variant="ghost"
           onClick={() => {
-            qc.invalidateQueries({ queryKey: ['discord-active'] });
-            qc.invalidateQueries({ queryKey: ['discord-archive'] });
+            qc.invalidateQueries({ queryKey: discordKeys.active() });
+            qc.invalidateQueries({ queryKey: discordKeys.archive() });
           }}
         >
           <RefreshCw className="h-4 w-4" />

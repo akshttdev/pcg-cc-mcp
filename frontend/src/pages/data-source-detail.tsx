@@ -28,6 +28,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { dataSourcesApi, workflowsApi, DATA_TYPE_OPTIONS, SOURCE_TYPE_OPTIONS } from '@/lib/api';
+import { dataSourceKeys } from '@/lib/query-keys';
 import { StagingReviewPanel } from '@/components/workflows/StagingReviewPanel';
 import { RunAndReviewPanel } from '@/components/workflows/RunAndReviewPanel';
 
@@ -64,19 +65,19 @@ export function DataSourceDetailPage() {
   const [showRunHistory, setShowRunHistory] = useState(false);
 
   const { data: source, isLoading } = useQuery({
-    queryKey: ['dataSource', dataSourceId],
+    queryKey: dataSourceKeys.detail(dataSourceId!),
     queryFn: () => dataSourcesApi.get(dataSourceId!),
     enabled: !!dataSourceId,
   });
 
   const { data: workflows } = useQuery({
-    queryKey: ['dataSourceWorkflows', dataSourceId],
+    queryKey: dataSourceKeys.workflows(dataSourceId!),
     queryFn: () => dataSourcesApi.getWorkflows(dataSourceId!),
     enabled: !!dataSourceId,
   });
 
   const { data: artifacts = [] } = useQuery({
-    queryKey: ['dataSourceArtifacts', dataSourceId],
+    queryKey: dataSourceKeys.artifacts(dataSourceId!),
     queryFn: () => dataSourcesApi.getArtifacts(dataSourceId!),
     enabled: !!dataSourceId,
   });
@@ -108,7 +109,7 @@ export function DataSourceDetailPage() {
       if (data.workflow_run_id && data.staged_records > 0) {
         setReviewRunId(data.workflow_run_id);
       }
-      queryClient.invalidateQueries({ queryKey: ['dataSourceArtifacts', dataSourceId] });
+      queryClient.invalidateQueries({ queryKey: dataSourceKeys.artifacts(dataSourceId!) });
     },
   });
 

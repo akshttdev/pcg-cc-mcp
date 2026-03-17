@@ -95,6 +95,7 @@ export const projectKeys = {
 
 export const organizationKeys = {
   all: ['organizations'] as const,
+  admin: () => ['organizations-admin'] as const,
   detail: (orgId?: string) => ['organization', orgId] as const,
   clients: (orgId?: string) => ['org-clients', orgId] as const,
   clientsSettings: (orgId?: string | null) => ['clients', orgId] as const,
@@ -162,6 +163,7 @@ export const dataSourceKeys = {
 
 export const userKeys = {
   all: ['users'] as const,
+  allUsers: () => ['all-users'] as const,
   list: (filters?: unknown) => ['users', filters] as const,
   search: (query: string) => ['users-search', query] as const,
   profiles: () => ['profiles'] as const,
@@ -207,6 +209,7 @@ export const entityKeys = {
   companyContactMethods: (id: string) => ['company-contact-methods', id] as const,
   person: (id: string) => ['person', id] as const,
   researchPasses: (personId: string) => ['research-passes', personId] as const,
+  personReports: (personId: string) => ['person-reports', personId] as const,
   leads: (orgFilter?: string, typeFilter?: string, search?: string) =>
     ['persons', 'leads', orgFilter, typeFilter, search] as const,
   allDirectory: () => ['allProjectsDirectory'] as const,
@@ -224,6 +227,9 @@ export const pulseKeys = {
   alerts: (projectId: string) => ['pulse', 'alerts', projectId] as const,
   alertRules: (projectId: string) => ['pulse', 'alert-rules', projectId] as const,
   tracking: (projectId: string) => ['pulse', 'tracking', projectId] as const,
+  projects: () => ['pulse', 'projects'] as const,
+  contentLatest: (projectId: string) => ['pulse', 'content', 'latest', projectId] as const,
+  contentLegacy: () => ['pulse', 'content', 'legacy'] as const,
 };
 
 // ── Communications ─────────────────────────────────────────────────────────
@@ -307,6 +313,82 @@ export const knowledgeKeys = {
   project: (projectId: string) => ['projectKnowledge', projectId] as const,
 };
 
+// ── Autonomy ────────────────────────────────────────────────────────────────
+
+export const autonomyKeys = {
+  all: ['autonomy'] as const,
+  taskMode: (taskId: string) => ['autonomy', 'task', taskId, 'mode'] as const,
+  checkpointDefinitions: (projectId: string) => ['autonomy', 'checkpoints', 'definitions', projectId] as const,
+  executionCheckpoints: (executionId: string) => ['autonomy', 'checkpoints', executionId] as const,
+  pendingCheckpoints: (executionId: string) => ['autonomy', 'checkpoints', executionId, 'pending'] as const,
+  projectGates: (projectId: string) => ['autonomy', 'gates', projectId] as const,
+  pendingGates: (executionId: string) => ['autonomy', 'gates', executionId, 'pending'] as const,
+  pendingSummary: () => ['autonomy', 'pending-summary'] as const,
+  canProceed: (executionId: string) => ['autonomy', 'can-proceed', executionId] as const,
+};
+
+// ── Bowser (Browser Automation) ─────────────────────────────────────────────
+
+export const bowserKeys = {
+  all: ['bowser'] as const,
+  summary: () => ['bowser', 'summary'] as const,
+  sessionsActive: () => ['bowser', 'sessions', 'active'] as const,
+  session: (sessionId: string) => ['bowser', 'session', sessionId] as const,
+  sessionDetails: (sessionId: string) => ['bowser', 'session', sessionId, 'details'] as const,
+  screenshots: (sessionId: string) => ['bowser', 'session', sessionId, 'screenshots'] as const,
+  screenshotsDiffs: (sessionId: string) => ['bowser', 'session', sessionId, 'screenshots', 'diffs'] as const,
+  actions: (sessionId: string) => ['bowser', 'session', sessionId, 'actions'] as const,
+  allowlist: (projectId: string) => ['bowser', 'allowlist', projectId] as const,
+};
+
+// ── TopiClips ─────────────────────────────────────────────────────────────
+
+export const topiclipsKeys = {
+  all: ['topiclips'] as const,
+  gallery: (projectId: string) => ['topiclips', 'gallery', projectId] as const,
+  symbols: () => ['topiclips', 'symbols'] as const,
+  timeline: (sessionId: string) => ['topiclips', 'timeline', sessionId] as const,
+};
+
+// ── Topsi ──────────────────────────────────────────────────────────────────
+
+export const topsiKeys = {
+  all: ['topsi'] as const,
+  status: () => ['topsi', 'status'] as const,
+  topology: () => ['topsi', 'topology'] as const,
+  issues: () => ['topsi', 'issues'] as const,
+  projects: () => ['topsi', 'projects'] as const,
+  recommendations: (projectId?: string) => ['topsi', 'recommendations', projectId ?? 'all'] as const,
+};
+
+// ── Collaboration ───────────────────────────────────────────────────────────
+
+export const collaborationKeys = {
+  all: ['collaboration'] as const,
+  state: (executionId: string) => ['collaboration', executionId] as const,
+  pauseHistory: (executionId: string) => ['collaboration', executionId, 'pause-history'] as const,
+  handoffs: (executionId: string) => ['collaboration', executionId, 'handoffs'] as const,
+  injections: (executionId: string) => ['collaboration', executionId, 'injections'] as const,
+  pendingInjections: (executionId: string) => ['collaboration', executionId, 'pending-injections'] as const,
+};
+
+// ── Social ──────────────────────────────────────────────────────────────────
+
+export const socialKeys = {
+  accounts: (projectId?: string | null) => ['social-accounts', projectId] as const,
+  posts: (projectId?: string | null) => ['social-posts', projectId] as const,
+  mentions: (projectId?: string | null) => ['social-mentions', projectId] as const,
+  inboxStats: (projectId?: string | null) => ['social-inbox-stats', projectId] as const,
+};
+
+// ── Network ─────────────────────────────────────────────────────────────────
+
+export const networkKeys = {
+  apnIdentity: () => ['apn-identity'] as const,
+  pythiaHealth: () => ['pythia-health'] as const,
+  pythiaEconomics: () => ['pythia-economics'] as const,
+};
+
 // ── Unified export ─────────────────────────────────────────────────────────
 
 export const queryKeys = {
@@ -333,4 +415,11 @@ export const queryKeys = {
   discord: discordKeys,
   media: mediaKeys,
   knowledge: knowledgeKeys,
+  autonomy: autonomyKeys,
+  bowser: bowserKeys,
+  topiclips: topiclipsKeys,
+  topsi: topsiKeys,
+  collaboration: collaborationKeys,
+  social: socialKeys,
+  network: networkKeys,
 } as const;

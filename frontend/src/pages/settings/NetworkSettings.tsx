@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { resolveApiUrl } from '@/lib/api';
 import { MeshPanel } from '@/components/mesh';
+import { networkKeys, settingsKeys } from '@/lib/query-keys';
 
 interface ApnIdentity {
   node_id: string | null;
@@ -70,21 +71,21 @@ export function NetworkSettings() {
 
   // Fetch APN Core identity
   const { data: apnIdentity, isLoading: apnLoading } = useQuery<ApnIdentity>({
-    queryKey: ['apn-identity'],
+    queryKey: networkKeys.apnIdentity(),
     queryFn: () => fetchJson('/api/apn/identity'),
     refetchInterval: 30000,
   });
 
   // Fetch Pythia health
   const { data: pythiaHealth, isLoading: pythiaLoading } = useQuery<PythiaHealth>({
-    queryKey: ['pythia-health'],
+    queryKey: networkKeys.pythiaHealth(),
     queryFn: () => fetchJson('/api/pythia/health'),
     refetchInterval: 30000,
   });
 
   // Fetch capabilities from APN Core
   const { data: capabilities } = useQuery<Capabilities>({
-    queryKey: ['apn-capabilities'],
+    queryKey: settingsKeys.apnCapabilities(),
     queryFn: async () => {
       const res = await fetch(resolveApiUrl('/api/mesh/stats'));
       if (!res.ok) throw new Error('Failed to fetch');
@@ -103,7 +104,7 @@ export function NetworkSettings() {
 
   // Fetch Pythia economics stats
   const { data: economicsStats } = useQuery({
-    queryKey: ['pythia-economics'],
+    queryKey: networkKeys.pythiaEconomics(),
     queryFn: () => fetchJson('/api/pythia/economics/stats'),
     refetchInterval: 30000,
   });
@@ -120,7 +121,7 @@ export function NetworkSettings() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['apn-capabilities'] });
+      queryClient.invalidateQueries({ queryKey: settingsKeys.apnCapabilities() });
     },
   });
 

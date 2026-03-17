@@ -83,9 +83,15 @@ RUN python3.11 -m pip install --no-cache-dir chatterbox-tts
 
 # Copy binary and frontend assets from builder
 COPY --from=builder /app/target/release/server /usr/local/bin/server
+# Copy frontend to build directory (source for volume sync)
+COPY --from=builder /app/frontend/dist /app/frontend-build
+# Also copy to dist for initial volume population
 COPY --from=builder /app/frontend/dist /app/frontend/dist
 
 # Copy built docs (if available)
+# Copy to build directory (source for volume sync)
+COPY --from=builder /app/.docs-output /app/docs-build
+# Also copy to docs-site for initial volume population
 COPY --from=builder /app/.docs-output /app/docs-site
 
 # Copy Python scripts for Chatterbox server

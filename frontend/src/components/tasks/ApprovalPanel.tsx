@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { taskApprovalApi } from '@/lib/api';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import { taskKeys } from '@/lib/query-keys';
 import type { Task, ApprovalStatus } from 'shared/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -42,45 +43,31 @@ const APPROVAL_STATUS_CONFIG: Record<
 };
 
 export function ApprovalPanel({ task, canApprove = true }: ApprovalPanelProps) {
-  const queryClient = useQueryClient();
   const [showCommentInput, setShowCommentInput] = useState(false);
   const [comment, setComment] = useState('');
 
-  const approveMutation = useMutation({
+  const approveMutation = useMutationWithToast({
     mutationFn: () => taskApprovalApi.approve(task.id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['taskActivity', task.id] });
-      toast.success('Task approved');
-    },
-    onError: () => {
-      toast.error('Failed to approve task');
-    },
+    successMessage: 'Task approved',
+    errorMessage: 'Failed to approve task',
+    invalidateKeys: [taskKeys.all, taskKeys.activity(task.id)],
   });
 
-  const rejectMutation = useMutation({
+  const rejectMutation = useMutationWithToast({
     mutationFn: () => taskApprovalApi.reject(task.id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['taskActivity', task.id] });
-      toast.success('Task rejected');
-    },
-    onError: () => {
-      toast.error('Failed to reject task');
-    },
+    successMessage: 'Task rejected',
+    errorMessage: 'Failed to reject task',
+    invalidateKeys: [taskKeys.all, taskKeys.activity(task.id)],
   });
 
-  const requestChangesMutation = useMutation({
+  const requestChangesMutation = useMutationWithToast({
     mutationFn: () => taskApprovalApi.requestChanges(task.id),
+    successMessage: 'Changes requested',
+    errorMessage: 'Failed to request changes',
+    invalidateKeys: [taskKeys.all, taskKeys.activity(task.id)],
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['taskActivity', task.id] });
-      toast.success('Changes requested');
       setShowCommentInput(false);
       setComment('');
-    },
-    onError: () => {
-      toast.error('Failed to request changes');
     },
   });
 

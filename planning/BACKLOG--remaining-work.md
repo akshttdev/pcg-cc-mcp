@@ -1,6 +1,6 @@
 # Backlog — Remaining Work
 
-**Last updated:** 2026-03-16
+**Last updated:** 2026-03-17
 **Context:** Consolidated from all completed planning docs. Items prioritized by impact and dependency.
 
 ---
@@ -80,17 +80,29 @@
 
 ---
 
-## P2.5 — Modularity Sprint 3 Candidates
+## P2.5 — Modularity Sprint 6 Candidates
 
-### Modularity Sprint 3 — Next Large File Splits
+### Modularity Sprint 6 — Hook Mutations + Remaining Debt
+**Source:** `2026-03-16--plan--modularity-sprint-5.md` (deferred 2e)
+**What:** 6 hooks with raw `useMutation` → `useMutationWithToast`:
+- `hooks/useAgentFlows.ts` (4 mutations)
+- `hooks/useOrgOnboarding.ts` (4 mutations)
+- `hooks/useWorkflowTemplates.ts` (1 mutation)
+- `hooks/useCrmActivities.ts` (2 mutations)
+- `hooks/useTaskMutations.ts` (3 mutations)
+- `pages/oss-library-listener.tsx` (4 mutations)
+Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~268 inline query keys
+**Status:** NOT STARTED
+
+### Modularity — Large Frontend File Splits
 **Source:** `2026-03-15--plan--modularity-sprint-2.md` (remaining large files section)
-**What:** After Sprint 2, these are the largest remaining frontend files:
+**What:** Largest remaining frontend files:
 - `virtual-environment.tsx` (1,282 lines)
 - `TaskFormDialog.tsx` (1,240 lines) — complex form, high-traffic
 - `company-profile.tsx` (1,218 lines) — similar pattern to project-detail split
 - `MeetingMode.tsx` (1,207 lines) — Topsi meeting component
 - `CrmDealDetailPanel.tsx` (1,202 lines) — grew in PR #36
-**Status:** NOT STARTED — candidates for next modularity sprint
+**Status:** NOT STARTED — candidates for future modularity sprint
 
 ### Modularity — Deferred Stretch Items
 **Source:** `2026-03-15--plan--modularity-sprint-2.md` (Day 5c)
@@ -254,3 +266,11 @@
 | Agent profile page (Backlog #8) | `/agents/:agentId/profile` page with capabilities, status, model (PR #41) |
 | Route conflict fix (pre-existing) | Merged duplicate routes in org_onboarding.rs (committed to main) |
 | Migration version collision fix (pre-existing) | Renamed 20260405000000→20260405000001 to avoid collision (committed to main) |
+| Modularity Sprint 5: VIBE billing duplication | `ensure_vibe_balance` + `record_llm_vibe_usage` in `helpers/billing.rs`, 5 blocks eliminated (PR #43) |
+| Modularity Sprint 5: topsi raw fetch() | `topsi.ts` API module wrapping 7 endpoints + `topsiKeys` factory (PR #43) |
+| Modularity Sprint 5: topiclips raw fetch() | `topiclips.ts` API module wrapping 7 endpoints + `topiclipsKeys` factory (PR #43) |
+| Modularity Sprint 5: twilio.rs monolith | 2285 lines → 8-file `twilio/` directory module (PR #43) |
+| Modularity Sprint 5: task_attempts.rs monolith | 1909 lines → 6-file `task_attempts/` directory module (PR #43) |
+| Modularity Sprint 5: nora/mod.rs decomposition | 1172→718 lines, extracted config.rs, rate_limiter.rs, initialization.rs (PR #43) |
+| Modularity Sprint 5: conversation persistence | `helpers/conversations.rs` with `persist_chat_exchange`, adopted in topsi + nora chat (PR #43) |
+| Modularity Sprint 5: query key migration (8 files) | ~43 inline keys → factories, new `socialKeys`/`networkKeys` factories (PR #43) |
