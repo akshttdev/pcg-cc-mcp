@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -487,14 +488,12 @@ export default function DataSourcesPage() {
     return all.filter((s: DataSourceRecord) => !s.folder?.startsWith('Personal/'));
   }, [sourcesQuery.data]);
 
-  const deleteMutation = useMutation({
+  const deleteMutation = useMutationWithToast({
     mutationFn: (id: string) => dataSourcesApi.delete(id),
-    onSuccess: () => {
-      toast.success('Deleted');
-      queryClient.invalidateQueries({ queryKey: dataSourceKeys.all });
-      setSelectedSource(null);
-    },
-    onError: () => toast.error('Failed to delete'),
+    successMessage: 'Deleted',
+    errorMessage: 'Failed to delete',
+    invalidateKeys: [dataSourceKeys.all],
+    onSuccess: () => setSelectedSource(null),
   });
 
   // Build folder tree

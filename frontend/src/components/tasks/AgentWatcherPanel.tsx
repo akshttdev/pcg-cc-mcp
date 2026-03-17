@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Bot, Plus, RefreshCw, X, Eye, Search } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/popover';
 import { agentWatchersApi, agentsApi } from '@/lib/api';
 import { agentWatcherKeys } from '@/lib/query-keys';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import type { AgentWithParsedFields } from 'shared/types';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -69,13 +70,11 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
     );
   }, [availableAgents, watcherIds, searchQuery]);
 
-  const addMutation = useMutation({
+  const addMutation = useMutationWithToast({
     mutationFn: (agentId: string) => agentWatchersApi.add(taskId, agentId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: agentWatcherKeys.watchers(taskId) });
-      handlePickerOpenChange(false);
-    },
-    onError: () => toast.error('Failed to add agent reviewer'),
+    errorMessage: 'Failed to add agent reviewer',
+    invalidateKeys: [agentWatcherKeys.watchers(taskId)],
+    onSuccess: () => handlePickerOpenChange(false),
   });
 
   const handleRemove = async (agentId: string) => {
