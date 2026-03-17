@@ -75,14 +75,20 @@ Cherry-picked from `spleration316-database-sync`:
 | Path traversal: `resolve_volume_path` only checked `..` literally | Added canonicalize verification, null byte rejection, encoded `..` check |
 | Content-Disposition header injection via malicious filenames | Sanitize `"` and `\` in `file.file_name` |
 | Hardcoded Windows paths in `org_cloud.rs`, `org_cloud_indexer.rs`, `data_sources.rs` | Replaced with `SOVEREIGN_STACK_ROOT`/`SOVEREIGN_STACK_ORG_NAME`/`SOVEREIGN_STORAGE_ROOT` env vars |
+| Hardcoded upload path in `contribute_file` | Replaced with `resolve_volume_path("sovereign_org", "Uploads")` |
+| TOCTOU race in `update_file` — org check after mutation | Moved ownership check before `CloudFile::update` call |
+| LIKE search injection (`%`, `_` not escaped) | Added `ESCAPE '\'` clause + input escaping in `CloudFile::browse` |
+| Sync `std::fs` in async handler (`contribute_file`) | Replaced with `tokio::fs::create_dir_all` / `tokio::fs::write` |
 
 ### Deferred (not blocking)
 
 | Issue | Reason |
 |-------|--------|
+| Communications + CRM deal handlers lack org-level authorization | All routes behind `require_auth` (authenticated), need fine-grained authz — tracked |
 | `~20+ any` types in new TS code | Pre-existing pattern, not introduced by this PR — tracked in backlog |
 | `Company::find_by_id` uses `hex(id)` workaround | Blocks on DbUuid Phase C (`users.id` BLOB→TEXT migration) |
 | Business reports route changed to `ProtectedRoute` | Intentional per commit `81dd3d7f9` |
+| Sovereign stack no graceful shutdown (CancellationToken) | Acceptable for background scraper |
 
 ## DbUuid TODO Comments
 
@@ -113,3 +119,5 @@ Added `// TODO(dbuuid)` annotations to 16 Rust files with heaviest Uuid conversi
 | `3cb61d165` | refactor: centralize query keys in hooks |
 | `a47994a82` | docs: add integration tracker and DbUuid migration plan |
 | `61990c363` | fix: harden org cloud — path traversal, env vars, header sanitization |
+| `b564de793` | docs: update integration tracker with QA results and backlog |
+| `ea9541131` | fix: org cloud — TOCTOU race, hardcoded upload path, LIKE injection, sync fs |
