@@ -3,6 +3,7 @@
 // Shared workflow card grid used in both My Workflows (BuilderTab)
 // and Intelligence (WorkflowsView).
 
+import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -53,7 +54,7 @@ function OwnershipBadge({ ownerType }: { ownerType: string }) {
   const config = OWNER_BADGE_CONFIG[ownerType] ?? OWNER_BADGE_CONFIG.system;
   const Icon = config.icon;
   return (
-    <Badge variant="outline" className={`text-[10px] gap-1 ${config.className}`}>
+    <Badge variant="outline" className={cn('text-[10px] gap-1', config.className)}>
       <Icon className="h-2.5 w-2.5" />
       {config.label}
     </Badge>
@@ -136,7 +137,7 @@ export function WorkflowCardGrid({
         return (
           <Card
             key={wf.id}
-            className={`card-interactive cursor-pointer transition-all ${isSelected ? 'ring-2 ring-primary border-primary' : ''}`}
+            className={cn('card-interactive cursor-pointer transition-all', isSelected && 'ring-2 ring-primary border-primary')}
             onClick={() => onSelect?.(wf)}
           >
             <CardHeader className="pb-2">
@@ -164,7 +165,7 @@ export function WorkflowCardGrid({
                     const nDef = getNodeTypeDef(node.type);
                     const badgeColor = NODE_BADGE_COLORS[nDef?.color ?? ''] ?? 'bg-muted text-muted-foreground';
                     return (
-                      <Badge key={node.id} variant="outline" className={`text-[9px] px-1.5 ${badgeColor}`}>
+                      <Badge key={node.id} variant="outline" className={cn('text-[9px] px-1.5', badgeColor)}>
                         {node.name}
                       </Badge>
                     );

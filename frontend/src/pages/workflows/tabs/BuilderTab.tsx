@@ -7,7 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
 import { workflowsApi } from '@/lib/api';
-import type { WorkflowDefinition, WorkflowRun } from '@/lib/api';
+import type { WorkflowDefinition, WorkflowRun, WorkflowNode, WorkflowConnection } from '@/lib/api';
 import { workflowKeys } from '@/lib/query-keys';
 import { WorkflowEditor } from '@/components/workflows/WorkflowEditor';
 import { WorkflowTriggersPanel } from '@/components/workflows/WorkflowTriggersPanel';
@@ -55,7 +55,7 @@ export function WorkflowBuilderTab() {
   const [copyWorkflow, setCopyWorkflow] = useState<{ wf: WorkflowDefinition; direction: 'to-org' | 'to-user' } | null>(null);
 
   const saveMutation = useMutation({
-    mutationFn: async (data: { id: string; name: string; description?: string; nodes: any[]; connections: any[] }) => {
+    mutationFn: async (data: { id: string; name: string; description?: string; nodes: WorkflowNode[]; connections: WorkflowConnection[] }) => {
       if (editingWorkflow) {
         return workflowsApi.updateDefinition(data.id, {
           name: data.name,

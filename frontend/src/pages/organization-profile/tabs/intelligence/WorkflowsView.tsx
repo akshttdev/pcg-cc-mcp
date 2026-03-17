@@ -15,7 +15,8 @@ import {
   resolveApiUrl,
   automationsApi,
 } from '@/lib/api';
-import type { WorkflowDefinition } from '@/lib/api';
+import type { WorkflowDefinition, WorkflowNode, WorkflowConnection } from '@/lib/api';
+import { workflowKeys } from '@/lib/query-keys';
 import { WorkflowEditor as WorkflowEditorComponent } from '@/components/workflows/WorkflowEditor';
 import { WorkflowCardGrid } from '@/components/workflows/WorkflowCardGrid';
 import { RunWorkflowDialog } from '@/pages/workflows/components/RunWorkflowDialog';
@@ -137,7 +138,7 @@ export function PipelineNodeCard({ node, isLast }: { node: PipelineNode; isLast:
 export function EditableWorkflowsView({ orgId }: { orgId: string }) {
   const queryClient = useQueryClient();
   const { data: workflows = [], isLoading } = useQuery({
-    queryKey: ['workflowDefinitions'],
+    queryKey: workflowKeys.definitions(),
     queryFn: () => workflowsApi.listDefinitions(),
   });
 
@@ -146,7 +147,7 @@ export function EditableWorkflowsView({ orgId }: { orgId: string }) {
   const [runWorkflow, setRunWorkflow] = useState<WorkflowDefinition | null>(null);
 
   const saveMutation = useMutation({
-    mutationFn: async (data: { id: string; name: string; description?: string; nodes: any[]; connections: any[] }) => {
+    mutationFn: async (data: { id: string; name: string; description?: string; nodes: WorkflowNode[]; connections: WorkflowConnection[] }) => {
       if (editingWorkflow) {
         return workflowsApi.updateDefinition(data.id, {
           name: data.name,
@@ -163,7 +164,7 @@ export function EditableWorkflowsView({ orgId }: { orgId: string }) {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workflowDefinitions'] });
+      queryClient.invalidateQueries({ queryKey: workflowKeys.definitions() });
       setEditorOpen(false);
       setEditingWorkflow(null);
     },
@@ -172,7 +173,7 @@ export function EditableWorkflowsView({ orgId }: { orgId: string }) {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => workflowsApi.deleteDefinition(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workflowDefinitions'] });
+      queryClient.invalidateQueries({ queryKey: workflowKeys.definitions() });
     },
   });
 

@@ -68,7 +68,6 @@ export function CopyWorkflowDialog({ workflow, direction, onClose }: CopyWorkflo
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: workflowKeys.definitions() });
-      queryClient.invalidateQueries({ queryKey: ['workflowDefinitions'] });
       onClose();
     },
   });

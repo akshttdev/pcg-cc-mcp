@@ -30,6 +30,23 @@ import {
 import { dataSourcesApi, workflowsApi, DATA_TYPE_OPTIONS, SOURCE_TYPE_OPTIONS } from '@/lib/api';
 import { StagingReviewPanel } from '@/components/workflows/StagingReviewPanel';
 import { RunAndReviewPanel } from '@/components/workflows/RunAndReviewPanel';
+
+interface WorkflowRunStep {
+  name: string;
+  status: string;
+  output?: string;
+  error?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  result?: any;
+}
+
+interface WorkflowRunResult {
+  workflow_run_id: string;
+  staged_records: number;
+  workflow_name?: string;
+  steps?: WorkflowRunStep[];
+  reused?: boolean;
+}
 import { WorkflowRunsPanel } from '@/components/workflows/WorkflowRunsPanel';
 import { formatDate } from '@/lib/formatters';
 
@@ -40,7 +57,7 @@ export function DataSourceDetailPage() {
 
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
   const [expandedArtifacts, setExpandedArtifacts] = useState<Set<string>>(new Set());
-  const [workflowResult, setWorkflowResult] = useState<any>(null);
+  const [workflowResult, setWorkflowResult] = useState<WorkflowRunResult | null>(null);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>('');
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [reviewRunId, setReviewRunId] = useState<string | null>(null);
@@ -462,7 +479,7 @@ export function DataSourceDetailPage() {
             </div>
           )}
 
-          {workflowResult?.staged_records > 0 && workflowResult?.workflow_run_id && (
+          {workflowResult && workflowResult.staged_records > 0 && workflowResult.workflow_run_id && (
             <div className="mb-4">
               <RunAndReviewPanel
                 runId={workflowResult.workflow_run_id}
@@ -482,7 +499,7 @@ export function DataSourceDetailPage() {
 
           {workflowResult?.steps && workflowResult.steps.length > 0 ? (
             <div className="space-y-1">
-              {workflowResult.steps.map((step: any, index: number) => {
+              {workflowResult.steps.map((step, index) => {
                 const isExpanded = expandedSteps.has(index);
                 const StatusIcon =
                   step.status === 'complete'
@@ -499,7 +516,7 @@ export function DataSourceDetailPage() {
 
                 return (
                   <div key={index} className="relative">
-                    {index < workflowResult.steps.length - 1 && (
+                    {index < (workflowResult.steps?.length ?? 0) - 1 && (
                       <div className="absolute left-[11px] top-8 bottom-0 w-px bg-border" />
                     )}
                     <button

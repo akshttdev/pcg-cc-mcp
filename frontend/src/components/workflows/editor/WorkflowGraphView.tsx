@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Network, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { WorkflowNode, WorkflowConnection } from '@/lib/api';
@@ -15,7 +15,7 @@ export function WorkflowGraphView({ nodes, connections, selectedNodeId, onSelect
   const [zoom, setZoom] = useState(1);
 
   // Warn about connections referencing non-existent nodes
-  useMemo(() => {
+  useEffect(() => {
     const nodeIds = new Set(nodes.map((n) => n.id));
     for (const c of connections) {
       if (!nodeIds.has(c.source)) {
