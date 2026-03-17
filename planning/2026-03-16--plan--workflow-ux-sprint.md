@@ -451,3 +451,19 @@ Day 7 (Layout + runs) ──> Day 8 (Real-time) ──┘              │
 **All other files**: No conflicts. PR #43's Rust route splits (twilio, task_attempts, nora, helpers) and frontend API modules (topsi.ts, topiclips.ts) are in completely different files.
 
 **Merge order recommendation**: Either order works. If PR #43 merges first, rebase our branch and resolve the single `data-source-detail.tsx` conflict (~2 min).
+
+### PR #44 Code Review Fixes (2026-03-17)
+
+Addressed review feedback from @KingBodhi in commit `7d71522`:
+
+**Fixed**:
+- **C2**: `any[]` → `WorkflowNode[]` / `WorkflowConnection[]` in mutation signatures (BuilderTab, WorkflowsView)
+- **C3**: Added `WorkflowRunResult` + `WorkflowRunStep` interfaces for `workflowResult` state in data-source-detail
+- **W1**: Removed redundant `['workflowDefinitions']` key in CopyWorkflowDialog; migrated WorkflowsView to `workflowKeys.definitions()`
+- **W2**: 3× template literal → `cn()` in WorkflowCardGrid
+- **W4**: `useMemo` with side effects → `useEffect` in WorkflowGraphView
+
+**Deferred** (non-blocking, higher effort):
+- **C1**: CopyWorkflowDialog NiceModal migration — dialog works correctly, best done as cross-codebase pass
+- **W3**: `window.confirm()` → `AlertDialog` — inherited pattern, separate cleanup task
+- **W5**: Fixed `h-[500px]` in RunAndReviewPanel — intentional for scroll area
