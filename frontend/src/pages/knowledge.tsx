@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import { knowledgeApi } from '@/lib/api';
 import { knowledgeKeys } from '@/lib/query-keys';
 import type { ProjectKnowledgeSource, ProjectKnowledgeResponse } from '@/lib/api';
@@ -57,16 +58,16 @@ function SourceCard({
   projectId: string;
   onView: (source: ProjectKnowledgeSource) => void;
 }) {
-  const queryClient = useQueryClient();
-
-  const refreshMutation = useMutation({
+  const refreshMutation = useMutationWithToast({
     mutationFn: () => knowledgeApi.refreshSource(projectId, source.id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: knowledgeKeys.project(projectId!) }),
+    errorMessage: 'Failed to refresh source',
+    invalidateKeys: [knowledgeKeys.project(projectId!)],
   });
 
-  const staleMutation = useMutation({
+  const staleMutation = useMutationWithToast({
     mutationFn: () => knowledgeApi.markStale(projectId, source.id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: knowledgeKeys.project(projectId!) }),
+    errorMessage: 'Failed to mark source as stale',
+    invalidateKeys: [knowledgeKeys.project(projectId!)],
   });
 
   return (

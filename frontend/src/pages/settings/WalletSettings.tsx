@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import {
   Card,
   CardContent,
@@ -52,7 +53,6 @@ import { formatDistanceToNow } from 'date-fns';
 export function WalletSettings() {
   useTranslation('settings'); // Load translations namespace
   const { config } = useUserSystem();
-  const queryClient = useQueryClient();
   const [showPrivateKey, setShowPrivateKey] = useState(false);
   const [sendModalOpen, setSendModalOpen] = useState(false);
   const [receiveModalOpen, setReceiveModalOpen] = useState(false);
@@ -94,18 +94,15 @@ export function WalletSettings() {
   });
 
   // Send VIBE mutation
-  const sendMutation = useMutation({
+  const sendMutation = useMutationWithToast({
     mutationFn: (request: SendVibeRequest) => aptosApi.sendVibe(request),
-    onSuccess: (data) => {
-      toast.success(data.message);
+    successMessage: (data) => data.message,
+    errorMessage: (error) => `Transaction failed: ${error.message}`,
+    invalidateKeys: [['vibe-balance', walletAddress], ['aptos-transactions', walletAddress]],
+    onSuccess: () => {
       setSendModalOpen(false);
       setSendAmount('');
       setRecipientAddress('');
-      queryClient.invalidateQueries({ queryKey: ['vibe-balance', walletAddress] });
-      queryClient.invalidateQueries({ queryKey: ['aptos-transactions', walletAddress] });
-    },
-    onError: (error) => {
-      toast.error(`Transaction failed: ${error.message}`);
     },
   });
 

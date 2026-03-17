@@ -5,7 +5,7 @@
 // - Organization → User (confirm copy to personal)
 
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import {
   Dialog,
   DialogContent,
@@ -44,14 +44,13 @@ function generateCopyId(baseId: string): string {
 }
 
 export function CopyWorkflowDialog({ workflow, direction, onClose }: CopyWorkflowDialogProps) {
-  const queryClient = useQueryClient();
   const { organizations = [] } = useOrganization();
   const [selectedOrgId, setSelectedOrgId] = useState<string>('');
 
   const copyId = workflow ? generateCopyId(workflow.id) : '';
   const copyName = workflow ? `${workflow.name} (Copy)` : '';
 
-  const copyMutation = useMutation({
+  const copyMutation = useMutationWithToast({
     mutationFn: async () => {
       if (!workflow) throw new Error('No workflow selected');
 
@@ -66,10 +65,10 @@ export function CopyWorkflowDialog({ workflow, direction, onClose }: CopyWorkflo
         default_model: workflow.default_model,
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: workflowKeys.definitions() });
-      onClose();
-    },
+    successMessage: 'Workflow copied',
+    errorMessage: 'Failed to copy workflow',
+    invalidateKeys: [workflowKeys.definitions()],
+    onSuccess: () => onClose(),
   });
 
   const isOpen = workflow !== null;
