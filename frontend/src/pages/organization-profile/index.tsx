@@ -80,6 +80,7 @@ const MembersTab = lazy(() => import('./tabs/MembersTab').then(m => ({ default: 
 const SocialTab = lazy(() => import('./tabs/social'));
 const IntelligenceTab = lazy(() => import('./tabs/intelligence'));
 const IntegrationsTab = lazy(() => import('./tabs/integrations'));
+const OrgWikiTab = lazy(() => import('./tabs/WikiTab').then(m => ({ default: m.OrgWikiTab })));
 
 function TabSkeleton() {
   return (
@@ -109,6 +110,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
     projects: '/projects',
     social: '/social',
     intelligence: '/intelligence',
+    wiki: '/wiki',
     members: '/members',
     integrations: '/integrations',
   };
@@ -427,6 +429,15 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                     Set Up Brand
                   </Button>
                 )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs gap-1.5 border-indigo-700/60 text-indigo-400 hover:bg-indigo-950/40"
+                  onClick={() => setTab('wiki')}
+                >
+                  <Brain className="h-3.5 w-3.5" />
+                  Intel
+                </Button>
               </div>
             </div>
 
@@ -469,6 +480,10 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
               <TabsTrigger value="intelligence">
                 <Brain className="h-4 w-4 mr-2" />
                 Intelligence
+              </TabsTrigger>
+              <TabsTrigger value="wiki">
+                <BookOpen className="h-4 w-4 mr-2" />
+                Wiki
               </TabsTrigger>
               <TabsTrigger value="members">
                 <Users className="h-4 w-4 mr-2" />
@@ -547,6 +562,14 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                     projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))}
                     orgId={orgId}
                   />
+                </Suspense>
+              </PageErrorBoundary>
+            </TabsContent>
+
+            <TabsContent value="wiki">
+              <PageErrorBoundary label="Wiki">
+                <Suspense fallback={<TabSkeleton />}>
+                  <OrgWikiTab orgId={orgId} orgName={org.name} />
                 </Suspense>
               </PageErrorBoundary>
             </TabsContent>

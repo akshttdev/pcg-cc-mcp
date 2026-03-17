@@ -2,12 +2,13 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
+use crate::db_uuid::DbUuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct BusinessReport {
-    pub id: Uuid,
-    pub person_id: Option<Uuid>,
-    pub company_id: Option<Uuid>,
+    pub id: DbUuid,
+    pub person_id: Option<DbUuid>,
+    pub company_id: Option<DbUuid>,
     pub report_type: String,
     pub title: String,
     pub status: String,
@@ -29,13 +30,13 @@ pub struct BusinessReport {
     // Source tracking
     pub intake_item_ids: String,
     pub call_log_ids: String,
-    pub created_by: Option<Uuid>,
+    pub created_by: Option<DbUuid>,
     pub created_at: String,
     pub updated_at: String,
     // CRM deal linkage + human review checkpoint
-    pub crm_deal_id: Option<Uuid>,
+    pub crm_deal_id: Option<DbUuid>,
     pub review_status: String,
-    pub reviewed_by: Option<Uuid>,
+    pub reviewed_by: Option<DbUuid>,
     pub reviewed_at: Option<DateTime<Utc>>,
     pub review_notes: Option<String>,
 }
@@ -91,7 +92,7 @@ impl BusinessReport {
         pool: &sqlx::SqlitePool,
         data: CreateBusinessReport,
     ) -> Result<Self, sqlx::Error> {
-        let id = Uuid::new_v4();
+        let id = Uuid::new_v4().to_string();
         sqlx::query_as::<_, Self>(
             "INSERT INTO business_reports
              (id, person_id, company_id, report_type, title, status,
@@ -103,9 +104,9 @@ impl BusinessReport {
              VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              RETURNING *",
         )
-        .bind(id)
-        .bind(data.person_id)
-        .bind(data.company_id)
+        .bind(&id)
+        .bind(data.person_id.map(|u| u.to_string()))
+        .bind(data.company_id.map(|u| u.to_string()))
         .bind(data.report_type.as_deref().unwrap_or("business_audit"))
         .bind(&data.title)
         .bind(&data.executive_summary)
@@ -134,7 +135,7 @@ impl BusinessReport {
         id: Uuid,
     ) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as::<_, Self>("SELECT * FROM business_reports WHERE id = ?")
-            .bind(id)
+            .bind(id.to_string())
             .fetch_optional(pool)
             .await
     }
@@ -154,7 +155,7 @@ impl BusinessReport {
         sqlx::query_as::<_, Self>(
             "SELECT * FROM business_reports WHERE person_id = ? ORDER BY created_at DESC",
         )
-        .bind(person_id)
+        .bind(person_id.to_string())
         .fetch_all(pool)
         .await
     }
@@ -166,7 +167,7 @@ impl BusinessReport {
         sqlx::query(
             "UPDATE business_reports SET status = 'ready', updated_at = datetime('now','subsec') WHERE id = ?",
         )
-        .bind(id)
+        .bind(id.to_string())
         .execute(pool)
         .await?;
         Ok(())
@@ -228,7 +229,7 @@ impl BusinessReport {
         bind_if_some!(data.digital_presence);
         bind_if_some!(data.sources);
         bind_if_some!(data.review_notes);
-        q = q.bind(id);
+        q = q.bind(id.to_string());
 
         q.fetch_optional(pool).await
     }

@@ -88,6 +88,7 @@ pub struct CrmPipelineStage {
     pub probability: i32,
     pub auto_move_after_days: Option<i32>,
     pub notify_on_enter: Option<i32>,
+    pub stage_type: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

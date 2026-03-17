@@ -24,6 +24,7 @@ use db::models::sms_message::{SmsMessage, SmsStats, UpdateSmsMessage};
 #[derive(Debug, Deserialize)]
 pub struct ListCallsQuery {
     pub project_id: Option<Uuid>,
+    pub crm_deal_id: Option<Uuid>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
@@ -37,7 +38,9 @@ async fn list_calls(
     let limit = query.limit.unwrap_or(50).min(100);
     let offset = query.offset.unwrap_or(0);
 
-    let calls = if let Some(project_id) = query.project_id {
+    let calls = if let Some(deal_id) = query.crm_deal_id {
+        CallLog::find_by_deal(pool, deal_id, limit).await?
+    } else if let Some(project_id) = query.project_id {
         CallLog::find_by_project(pool, project_id, limit, offset).await?
     } else {
         vec![]

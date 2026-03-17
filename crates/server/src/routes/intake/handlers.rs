@@ -312,12 +312,12 @@ pub async fn approve_business_report(
 
     // Auto-create a proposal from the report
     let mut proposal_json: Option<serde_json::Value> = None;
-    if let Some(person_id) = report.person_id {
+    if let Some(person_id) = report.person_id.clone() {
         // Check if a proposal already exists for this person
         let exists: bool = sqlx::query_scalar(
             "SELECT COUNT(*) > 0 FROM proposals WHERE lead_id = ?",
         )
-        .bind(person_id)
+        .bind(person_id.as_str())
         .fetch_optional(pool)
         .await
         .ok()
@@ -339,7 +339,7 @@ pub async fn approve_business_report(
             let person_info = sqlx::query_as::<_, NameRow>(
                 "SELECT full_name, company_name FROM persons WHERE id = ?",
             )
-            .bind(person_id)
+            .bind(person_id.as_str())
             .fetch_optional(pool)
             .await
             .ok()
@@ -361,7 +361,7 @@ pub async fn approve_business_report(
             let org_id = sqlx::query_as::<_, OrgRow>(
                 "SELECT organization_id FROM person_organization_contacts WHERE person_id = ? LIMIT 1",
             )
-            .bind(person_id)
+            .bind(person_id.as_str())
             .fetch_optional(pool)
             .await
             .ok()
@@ -370,11 +370,11 @@ pub async fn approve_business_report(
 
             let new_proposal = Proposal::create(pool, CreateProposal {
                 title,
-                lead_id: Some(person_id),
+                lead_id: Some(uuid::Uuid::parse_str(person_id.as_str()).unwrap_or_default()),
                 organization_id: org_id,
                 owner_id: Some(user_id),
                 project_id: None,
-                company_id: report.company_id,
+                company_id: report.company_id.as_ref().and_then(|id| uuid::Uuid::parse_str(id.as_str()).ok()),
                 description: Some(description),
                 quote_amount_vibe: None,
                 deal_type: None,

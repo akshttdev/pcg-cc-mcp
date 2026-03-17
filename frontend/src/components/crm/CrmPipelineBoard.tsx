@@ -37,19 +37,16 @@ type StageOwner = {
 
 function getStageOwner(stageName: string): StageOwner | null {
   const name = stageName.toLowerCase();
-  // --- Clients pipeline (8-stage) ---
-  if (name === 'lead') return { label: 'Nora', type: 'agent' };
-  if (name === 'business analysis') return { label: 'Nora', type: 'agent' };
-  if (name === 'discovery') return { label: 'Account Manager', type: 'human' };
-  if (name === 'build proposal') return { label: 'Topsi + PM', type: 'team' };
-  if (name === 'polish') return { label: 'PM / EP', type: 'human' };
-  if (name === 'proposal meeting') return { label: 'Account Manager', type: 'human' };
-  // --- Acquisition pipeline (sales) ---
-  if (name === 'research') return { label: 'Nora', type: 'agent' };
-  if (name === 'analysis done') return { label: 'Account Manager', type: 'human' };
-  if (name === 'proposal') return { label: 'AM + Topsi', type: 'team' };
-  if (name === 'sent') return { label: 'Account Manager', type: 'human' };
-  if (name === 'negotiation') return { label: 'Account Manager', type: 'human' };
+  // --- 9-Stage Dealflow (Acquisition/Sales) ---
+  if (name === 'intel') return { label: 'Scout', type: 'agent' };
+  if (name === 'business analysis') return { label: 'Astra', type: 'agent' };
+  if (name === 'discovery') return { label: 'Account Manager + Nora', type: 'team' };
+  if (name === 'proposal') return { label: 'Cash', type: 'agent' };
+  if (name === 'polish') return { label: 'Lux', type: 'agent' };
+  if (name === 'present') return { label: 'Account Manager', type: 'human' };
+  if (name === 'follow up') return { label: 'Nora + AM', type: 'team' };
+  if (name === 'won') return { label: 'Team', type: 'team' };
+  if (name === 'lost') return { label: 'Account Manager', type: 'human' };
   // --- Delivery pipeline ---
   if (name === 'onboarding') return { label: 'PM', type: 'human' };
   if (name === 'in production') return { label: 'Team', type: 'team' };
@@ -60,6 +57,11 @@ function getStageOwner(stageName: string): StageOwner | null {
   if (name === 'applied') return { label: 'AM', type: 'human' };
   if (name === 'in discussion') return { label: 'AM', type: 'human' };
   if (name === 'confirmed') return { label: 'Team', type: 'team' };
+  // --- Legacy / other ---
+  if (name === 'lead') return { label: 'Scout', type: 'agent' };
+  if (name === 'build proposal') return { label: 'Cash', type: 'agent' };
+  if (name === 'proposal meeting') return { label: 'Account Manager', type: 'human' };
+  if (name === 'closed won') return { label: 'Team', type: 'team' };
   return null;
 }
 
@@ -74,19 +76,16 @@ function StageOwnerBadge({ owner }: { owner: StageOwner }) {
 }
 
 const STAGE_DESCRIPTIONS: Record<string, string> = {
-  // Clients pipeline
-  'lead': 'New inbound lead — Nora qualifies and enriches contact data.',
-  'business analysis': 'AI-driven research on the company, competitors, and fit.',
-  'discovery': 'Account manager holds discovery call to understand needs.',
-  'build proposal': 'Collaborative proposal drafting between Topsi and PM.',
-  'polish': 'Final refinements to proposal by PM or EP.',
-  'proposal meeting': 'Formal presentation of the proposal to the client.',
-  // Acquisition pipeline
-  'research': 'AI-powered prospect research and lead scoring.',
-  'analysis done': 'Research complete — AM reviews and decides next steps.',
-  'proposal': 'Proposal being drafted with AI assistance.',
-  'sent': 'Proposal delivered to the prospect.',
-  'negotiation': 'Active negotiation on terms and scope.',
+  // 9-Stage Dealflow
+  'intel': 'Scout runs Phase I — Who-Is on person + company. Person intel wiki & company intel wiki auto-generated.',
+  'business analysis': 'Astra runs Phase II — comprehensive business research. Business Report Artifact generated, discovery call scheduled.',
+  'discovery': 'Discovery call with the prospect. Nora auto-links transcript. Out-of-order flow triggers Scout if no intel exists.',
+  'proposal': 'Cash generates AI proposal from full knowledge graph — business report, discovery transcript, intel wikis. Operator reviews + approves.',
+  'polish': 'Lux generates branded sales deck from approved proposal + org & client brand guides. Operator reviews before presenting.',
+  'present': 'Live presentation to client. Invoice sent from this stage. Payment received → auto-advances to Won.',
+  'follow up': 'Post-presentation follow-up. Nora sends follow-up comms. Close out as Won or Lost.',
+  'won': 'Deal closed. Automation: client record + project + tasks from proposal deliverables auto-created.',
+  'lost': 'Deal closed lost. Reason recorded for future learning. Deal retained for re-engagement.',
   // Delivery pipeline
   'onboarding': 'Client onboarding and project kickoff.',
   'in production': 'Active production work by the team.',
@@ -97,6 +96,10 @@ const STAGE_DESCRIPTIONS: Record<string, string> = {
   'applied': 'Application submitted to the conference.',
   'in discussion': 'Active discussions with conference organizers.',
   'confirmed': 'Attendance or sponsorship confirmed.',
+  // Legacy fallbacks
+  'lead': 'New inbound lead — Scout qualifies and enriches contact data.',
+  'build proposal': 'Cash generating AI proposal from full knowledge graph.',
+  'proposal meeting': 'Formal presentation of the proposal to the client.',
 };
 
 export function CrmPipelineBoard({

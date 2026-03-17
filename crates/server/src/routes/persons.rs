@@ -7,7 +7,7 @@
 use axum::{
     Router,
     extract::{Path, Query, State},
-    routing::{delete, get, patch},
+    routing::{delete, get, patch, post},
     Json,
 };
 use deployment::Deployment;
@@ -21,6 +21,7 @@ use db::models::person::{
     UpdatePerson, UpsertPersonSocialProfile,
 };
 use db::models::invoice::{CreateInvoice, Invoice, UpdateInvoice};
+use db::models::person_note::{CreatePersonNote, PersonNote, UpdatePersonNote};
 use db::models::person_association::{
     PersonCompanyRole, PersonOrgContact, UpsertPersonCompanyRole, PatchPersonCompanyRole,
     UpsertPersonOrgContact,
@@ -398,6 +399,50 @@ async fn delete_person_org(
 }
 
 // ---------------------------------------------------------------------------
+// Person Notes
+// ---------------------------------------------------------------------------
+
+pub async fn list_person_notes(
+    Path(id): Path<Uuid>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<Vec<PersonNote>>>, ApiError> {
+    let notes = PersonNote::list_for_person(&deployment.db().pool, id, None).await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
+    Ok(Json(ApiResponse::success(notes)))
+}
+
+pub async fn create_person_note(
+    Path(id): Path<Uuid>,
+    State(deployment): State<DeploymentImpl>,
+    Json(mut body): Json<CreatePersonNote>,
+) -> Result<Json<ApiResponse<PersonNote>>, ApiError> {
+    body.person_id = id;
+    let note = PersonNote::create(&deployment.db().pool, body).await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
+    Ok(Json(ApiResponse::success(note)))
+}
+
+pub async fn update_person_note(
+    Path(note_id): Path<Uuid>,
+    State(deployment): State<DeploymentImpl>,
+    Json(body): Json<UpdatePersonNote>,
+) -> Result<Json<ApiResponse<PersonNote>>, ApiError> {
+    let note = PersonNote::update(&deployment.db().pool, note_id, body).await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?
+        .ok_or_else(|| ApiError::NotFound("Note not found".into()))?;
+    Ok(Json(ApiResponse::success(note)))
+}
+
+pub async fn delete_person_note(
+    Path(note_id): Path<Uuid>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<()>>, ApiError> {
+    PersonNote::delete(&deployment.db().pool, note_id).await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
+    Ok(Json(ApiResponse::success(())))
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -427,6 +472,9 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         // Org associations
         .route("/persons/{id}/organizations", get(list_person_orgs).post(add_person_org))
         .route("/persons/{id}/organizations/{org_id}", delete(delete_person_org))
+        // Person notes
+        .route("/persons/{id}/notes", get(list_person_notes).post(create_person_note))
+        .route("/person-notes/{note_id}", patch(update_person_note).delete(delete_person_note))
         // Person invoices
         .route("/persons/{id}/invoices", get(list_person_invoices))
         // Invoice CRUD

@@ -181,13 +181,13 @@ async fn run_research_via_nora(
     prompt: String,
     project_id: Option<Uuid>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let person_id = person.id;
+    let person_id = person.id.clone();
     let full_name = person.full_name.clone();
 
     sqlx::query(
         "UPDATE persons SET intelligence_status = 'running', updated_at = datetime('now','subsec') WHERE id = ?",
     )
-    .bind(person_id)
+    .bind(&person_id)
     .execute(pool)
     .await?;
 
@@ -254,7 +254,7 @@ async fn run_research_via_nora(
     let summary = extract_summary_from_response(&response.content);
     let confidence = extract_confidence_from_response(&response.content);
 
-    write_intelligence_results(pool, person_id, &summary, confidence, &response.content, project_id, &full_name).await?;
+    write_intelligence_results(pool, &person_id.to_string(), &summary, confidence, &response.content, project_id, &full_name).await?;
     Ok(())
 }
 
@@ -343,7 +343,7 @@ async fn run_research_direct(
         let _ = sqlx::query(
             "UPDATE persons SET intelligence_status = 'idle', updated_at = datetime('now','subsec') WHERE id = ?",
         )
-        .bind(person.id)
+        .bind(person.id.clone())
         .execute(pool)
         .await;
         return Ok(());
@@ -352,13 +352,13 @@ async fn run_research_direct(
     let summary = extract_summary_from_response(&response_text);
     let confidence = extract_confidence_from_response(&response_text);
 
-    write_intelligence_results(pool, person.id, &summary, confidence, &response_text, project_id, &person.full_name).await?;
+    write_intelligence_results(pool, &person.id.to_string(), &summary, confidence, &response_text, project_id, &person.full_name).await?;
     Ok(())
 }
 
 pub async fn write_intelligence_results(
     pool: &sqlx::SqlitePool,
-    person_id: Uuid,
+    person_id: &str,
     summary: &str,
     confidence: f64,
     raw: &str,

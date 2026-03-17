@@ -28,6 +28,8 @@ export function SortableProjectList({
   expandedProjects,
   onToggleProject,
   queryClient,
+  orgId,
+  clientId,
 }: {
   scopeKey: string;
   projects: SidebarProjectType[];
@@ -35,6 +37,8 @@ export function SortableProjectList({
   expandedProjects: Set<string>;
   onToggleProject: (id: string) => void;
   queryClient?: QueryClient;
+  orgId?: string;
+  clientId?: string;
 }) {
   const { getOrderedProjects, setOrder } = useProjectOrderStore();
 
@@ -100,6 +104,8 @@ export function SortableProjectList({
             expandedProjects={expandedProjects}
             onToggleProject={onToggleProject}
             queryClient={queryClient}
+            orgId={orgId}
+            clientId={clientId}
           />
         ))}
       </SortableContext>

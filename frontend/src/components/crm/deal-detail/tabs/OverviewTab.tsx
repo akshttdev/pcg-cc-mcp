@@ -1,4 +1,5 @@
 import { useNavigate, Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { AskTopsiButton } from '@/components/topsi/AskTopsiButton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -21,9 +22,11 @@ import {
   DollarSign,
   User,
   CheckSquare,
+  Users,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { organizationsApi } from '@/lib/api';
 import type { CrmDealWithContact } from '@/types/crm';
 
 // ── MetricCard (local helper) ────────────────────────────────────────────────
@@ -66,9 +69,17 @@ interface OverviewTabProps {
   orgId?: string;
 }
 
-export function OverviewTab({ deal, stageColor, onConvert }: OverviewTabProps) {
+export function OverviewTab({ deal, stageColor, onConvert, orgId }: OverviewTabProps) {
   const navigate = useNavigate();
   const taskTotal = deal.task_total ?? 0;
+
+  const effectiveOrgId = orgId || deal.organization_id;
+  const { data: orgData } = useQuery({
+    queryKey: ['org', effectiveOrgId],
+    queryFn: () => organizationsApi.getById(effectiveOrgId!),
+    enabled: !!effectiveOrgId,
+    staleTime: 5 * 60 * 1000,
+  });
   const taskDone = deal.task_done ?? 0;
   const taskPct = taskTotal > 0 ? Math.round((taskDone / taskTotal) * 100) : 0;
 
@@ -104,11 +115,11 @@ export function OverviewTab({ deal, stageColor, onConvert }: OverviewTabProps) {
 
   return (
     <div className="p-5 space-y-5">
-      {/* Description */}
+      {/* Status */}
       {deal.description && (
         <div>
           <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-            Description
+            Status
           </h4>
           <p className="text-sm whitespace-pre-wrap leading-relaxed">{deal.description}</p>
         </div>
@@ -133,8 +144,12 @@ export function OverviewTab({ deal, stageColor, onConvert }: OverviewTabProps) {
           }
         />
         <MetricCard
-          label="Currency"
-          value={deal.currency || 'USD'}
+          label="Deal Value"
+          value={
+            deal.amount
+              ? deal.amount.toLocaleString('en-US', { style: 'currency', currency: deal.currency || 'USD', maximumFractionDigits: 0 })
+              : '—'
+          }
           icon={DollarSign}
           accent={stageColor}
         />
@@ -263,11 +278,74 @@ export function OverviewTab({ deal, stageColor, onConvert }: OverviewTabProps) {
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Building2 className="h-3.5 w-3.5 shrink-0" />
                 <span className="truncate">{deal.contact_company}</span>
+                {deal.company_id && (
+                  <Button variant="ghost" size="sm" className="h-5 text-[10px] px-1 ml-auto gap-0.5" asChild>
+                    <Link to={`/companies/${deal.company_id}`}>
+                      Co. Profile <ExternalLink className="h-2.5 w-2.5" />
+                    </Link>
+                  </Button>
+                )}
               </div>
             )}
           </CardContent>
         </Card>
       </div>
+
+      {/* Organization */}
+      {effectiveOrgId && (
+        <div>
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+            Organization
+          </h4>
+          <Card className="bg-muted/30 border-border/60">
+            <CardContent className="p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Users className="h-3.5 w-3.5 text-primary shrink-0" />
+                  <span className="text-sm font-medium truncate">
+                    {orgData?.name ?? 'Loading…'}
+                  </span>
+                </div>
+                <Button variant="ghost" size="sm" className="h-6 text-[10px] px-1.5 shrink-0 gap-0.5" asChild>
+                  <Link to={`/organizations/${effectiveOrgId}`}>
+                    Open <ExternalLink className="h-2.5 w-2.5" />
+                  </Link>
+                </Button>
+              </div>
+              {deal.contact_company && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Building2 className="h-3 w-3 shrink-0" />
+                  {deal.company_id ? (
+                    <Link to={`/companies/${deal.company_id}`} className="truncate hover:text-primary transition-colors">
+                      {deal.contact_company}
+                    </Link>
+                  ) : (
+                    <span className="truncate">{deal.contact_company}</span>
+                  )}
+                  {deal.company_id && (
+                    <Button variant="ghost" size="sm" className="h-5 text-[10px] px-1 ml-auto gap-0.5 shrink-0" asChild>
+                      <Link to={`/companies/${deal.company_id}`}>
+                        Profile <ExternalLink className="h-2.5 w-2.5" />
+                      </Link>
+                    </Button>
+                  )}
+                </div>
+              )}
+              {deal.project_id && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <FolderKanban className="h-3 w-3 shrink-0" />
+                  <span className="truncate">{deal.project_name ?? 'Linked project'}</span>
+                  <Button variant="ghost" size="sm" className="h-5 text-[10px] px-1 ml-auto gap-0.5 shrink-0" asChild>
+                    <Link to={`/organizations/${effectiveOrgId}`}>
+                      CRM <ExternalLink className="h-2.5 w-2.5" />
+                    </Link>
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Timeline */}
       <div>
@@ -366,10 +444,22 @@ export function OverviewTab({ deal, stageColor, onConvert }: OverviewTabProps) {
 
       {/* Actions */}
       <div className="space-y-2 pt-2 border-t">
-        <Button size="sm" className="w-full gap-1.5" onClick={onConvert}>
-          <Rocket className="h-3.5 w-3.5" />
-          Convert to Project
-        </Button>
+        {deal.project_id ? (
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full gap-1.5"
+            onClick={() => navigate(`/projects/${deal.project_id}/tasks`)}
+          >
+            <FolderKanban className="h-3.5 w-3.5" />
+            View Project Board
+          </Button>
+        ) : (
+          <Button size="sm" className="w-full gap-1.5" onClick={onConvert}>
+            <Rocket className="h-3.5 w-3.5" />
+            Convert to Project
+          </Button>
+        )}
         <AskTopsiButton
           entityType="crm_deal"
           entityId={deal.id}

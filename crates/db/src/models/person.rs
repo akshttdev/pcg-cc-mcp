@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
 use ts_rs::TS;
 use uuid::Uuid;
+use crate::db_uuid::DbUuid;
 use crate::models::person_association::{PersonCompanyRole, PersonOrgContact};
 
 /// Universal Person entity — the single canonical identity record.
@@ -13,7 +14,7 @@ use crate::models::person_association::{PersonCompanyRole, PersonOrgContact};
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Person {
-    pub id: Uuid,
+    pub id: DbUuid,
     pub full_name: String,
     pub email: Option<String>,
     pub phone: Option<String>,
@@ -39,9 +40,9 @@ pub struct Person {
     pub website: Option<String>,
 
     // Bridge FKs
-    pub user_id: Option<Uuid>,
-    pub crm_contact_id: Option<Uuid>,
-    pub organization_id: Option<Uuid>,
+    pub user_id: Option<DbUuid>,
+    pub crm_contact_id: Option<DbUuid>,
+    pub organization_id: Option<DbUuid>,
 
     // AI intelligence
     pub intelligence_summary: Option<String>,
@@ -78,8 +79,8 @@ pub struct PersonWithSocials {
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct PersonSocialProfile {
-    pub id: Uuid,
-    pub person_id: Uuid,
+    pub id: DbUuid,
+    pub person_id: DbUuid,
 
     /// 'linkedin' | 'twitter' | 'instagram' | 'youtube' | 'tiktok' | 'github' | 'facebook' | 'website'
     pub platform: String,
@@ -184,7 +185,7 @@ impl Person {
         sqlx::query_as(
             "SELECT * FROM persons WHERE id = ?1",
         )
-        .bind(id.as_bytes().as_slice())
+        .bind(id.to_string())
         .fetch_optional(pool)
         .await
     }
@@ -237,8 +238,8 @@ impl Person {
             qb = qb.bind(ls);
         }
         if let Some(org_id) = q.organization_id {
-            let bytes = org_id.as_bytes().to_vec();
-            qb = qb.bind(bytes.clone()).bind(bytes);
+            let s = org_id.to_string();
+            qb = qb.bind(s.clone()).bind(s);
         }
         if let Some(ref query) = q.query {
             let like = format!("%{}%", query);
@@ -269,7 +270,7 @@ impl Person {
                 onboarding_channel, preferred_contact)
                VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)"#,
         )
-        .bind(id.as_bytes().as_slice())
+        .bind(id.to_string())
         .bind(&data.full_name)
         .bind(&data.email)
         .bind(&data.phone)
@@ -283,7 +284,7 @@ impl Person {
         .bind(&data.company_name)
         .bind(&data.job_title)
         .bind(&data.website)
-        .bind(data.organization_id.as_ref().map(|u| u.as_bytes().to_vec()))
+        .bind(data.organization_id.as_ref().map(|u| u.to_string()))
         .bind(&data.notes)
         .bind(&tags)
         .bind(&custom_fields)
@@ -327,7 +328,7 @@ impl Person {
                updated_at=datetime('now','subsec')
                WHERE id=?1"#,
         )
-        .bind(id.as_bytes().as_slice())
+        .bind(id.to_string())
         .bind(&full_name)
         .bind(data.email.or(existing.email))
         .bind(data.phone.or(existing.phone))
@@ -341,7 +342,7 @@ impl Person {
         .bind(data.company_name.or(existing.company_name))
         .bind(data.job_title.or(existing.job_title))
         .bind(data.website.or(existing.website))
-        .bind(data.organization_id.or(existing.organization_id).as_ref().map(|u| u.as_bytes().to_vec()))
+        .bind(data.organization_id.map(|u| u.to_string()).or_else(|| existing.organization_id.map(|u| u.into_string())))
         .bind(data.intelligence_summary.or(existing.intelligence_summary))
         .bind(data.intelligence_raw.or(existing.intelligence_raw))
         .bind(intelligence_confidence)
@@ -358,7 +359,7 @@ impl Person {
 
     pub async fn delete(pool: &SqlitePool, id: Uuid) -> sqlx::Result<bool> {
         let result = sqlx::query("DELETE FROM persons WHERE id = ?1")
-            .bind(id.as_bytes().as_slice())
+            .bind(id.to_string())
             .execute(pool)
             .await?;
         Ok(result.rows_affected() > 0)
@@ -373,7 +374,7 @@ impl PersonSocialProfile {
         sqlx::query_as(
             "SELECT * FROM person_social_profiles WHERE person_id = ?1 ORDER BY platform ASC",
         )
-        .bind(person_id.as_bytes().as_slice())
+        .bind(person_id.to_string())
         .fetch_all(pool)
         .await
     }
@@ -404,8 +405,8 @@ impl PersonSocialProfile {
                  last_synced_at=datetime('now','subsec'),
                  updated_at=datetime('now','subsec')"#,
         )
-        .bind(id.as_bytes().as_slice())
-        .bind(person_id.as_bytes().as_slice())
+        .bind(id.to_string())
+        .bind(person_id.to_string())
         .bind(&data.platform)
         .bind(&data.handle)
         .bind(&data.profile_url)
@@ -421,7 +422,7 @@ impl PersonSocialProfile {
         sqlx::query_as(
             "SELECT * FROM person_social_profiles WHERE person_id = ?1 AND platform = ?2",
         )
-        .bind(person_id.as_bytes().as_slice())
+        .bind(person_id.to_string())
         .bind(&data.platform)
         .fetch_one(pool)
         .await
@@ -435,7 +436,7 @@ impl PersonSocialProfile {
         let result = sqlx::query(
             "DELETE FROM person_social_profiles WHERE person_id = ?1 AND platform = ?2",
         )
-        .bind(person_id.as_bytes().as_slice())
+        .bind(person_id.to_string())
         .bind(platform)
         .execute(pool)
         .await?;

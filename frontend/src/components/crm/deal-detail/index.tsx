@@ -9,6 +9,9 @@ import { IntelTab } from './tabs/IntelTab';
 import { ReviewTab } from './tabs/ReviewTab';
 import { ProjectsTab } from './tabs/ProjectsTab';
 import { ActivityTab } from './tabs/ActivityTab';
+import { ProposalTab } from './tabs/ProposalTab';
+import { DeckTab } from './tabs/DeckTab';
+import { TranscriptsTab } from './tabs/TranscriptsTab';
 import { DealConvertDialog } from '../DealConvertDialog';
 import type { CrmDealWithContact, CrmPipelineStage } from '@/types/crm';
 
@@ -55,6 +58,8 @@ export function CrmDealDetailPanel({
     deal.review_task_id &&
     deal.review_task_status !== 'done' &&
     deal.review_task_status !== 'cancelled';
+  const proposalDot = deal.won_at ? undefined : deal.proposal_status === 'approved' ? 'green' : deal.proposal_text ? 'amber' : undefined;
+  const deckDot = deal.won_at ? 'green' : deal.deck_url ? 'amber' : undefined;
 
   return (
     <>
@@ -84,6 +89,9 @@ export function CrmDealDetailPanel({
                   label: 'Review',
                   dot: hasActiveReview ? 'amber' : undefined,
                 },
+                { value: 'transcripts', label: 'Transcripts' },
+                { value: 'proposal', label: 'Proposal', dot: proposalDot },
+                { value: 'deck', label: 'Deck & Close', dot: deckDot },
                 { value: 'projects', label: 'Projects' },
                 { value: 'activity', label: 'Activity' },
               ].map(({ value, label, dot }) => (
@@ -126,6 +134,24 @@ export function CrmDealDetailPanel({
               <TabsContent value="review" className="h-full m-0">
                 <ScrollArea className="h-full">
                   <ReviewTab deal={deal} stageName={effectiveStageName} />
+                </ScrollArea>
+              </TabsContent>
+
+              <TabsContent value="transcripts" className="h-full m-0">
+                <ScrollArea className="h-full">
+                  <TranscriptsTab deal={deal} />
+                </ScrollArea>
+              </TabsContent>
+
+              <TabsContent value="proposal" className="h-full m-0">
+                <ScrollArea className="h-full">
+                  <ProposalTab deal={deal} />
+                </ScrollArea>
+              </TabsContent>
+
+              <TabsContent value="deck" className="h-full m-0">
+                <ScrollArea className="h-full">
+                  <DeckTab deal={deal} onMarkWon={onClose} />
                 </ScrollArea>
               </TabsContent>
 

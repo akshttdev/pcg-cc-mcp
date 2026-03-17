@@ -6,11 +6,13 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
+  BookOpen,
   Building2,
   Download,
   Plus,
   RefreshCw,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
@@ -22,17 +24,19 @@ import { OverviewTab } from './tabs/OverviewTab';
 import { ProposalsTab } from './tabs/ProposalsTab';
 import { ContactsTab } from './tabs/ContactsTab';
 import { IntelligenceTab } from './tabs/IntelligenceTab';
+import { WikiTab } from './tabs/WikiTab';
 import { EditTab } from './tabs/EditTab';
 
 // ── Tab types ─────────────────────────────────────────────────────────────────
 
-export type Tab = 'overview' | 'proposals' | 'contacts' | 'intelligence' | 'edit';
+export type Tab = 'overview' | 'proposals' | 'contacts' | 'intelligence' | 'wiki' | 'edit';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'overview',     label: 'Overview' },
   { key: 'proposals',    label: 'Proposals' },
   { key: 'contacts',     label: 'Contacts' },
   { key: 'intelligence', label: 'Intelligence' },
+  { key: 'wiki',         label: 'Wiki' },
   { key: 'edit',         label: 'Edit' },
 ];
 
@@ -179,6 +183,14 @@ export function CompanyProfilePage() {
                 ${totalRevenue.toLocaleString()} earned
               </span>
             )}
+            {company.organization_id && (
+              <Link to={`/organizations/${company.organization_id}/brand-guide`}>
+                <Button size="sm" variant="secondary" className="h-7 text-xs gap-1">
+                  <BookOpen className="h-3 w-3" />
+                  Brand Guide
+                </Button>
+              </Link>
+            )}
             <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={handleExportAnalysis} disabled={isExporting}>
               {isExporting ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
             </Button>
@@ -274,6 +286,12 @@ export function CompanyProfilePage() {
             intel={intel ?? null}
             onRun={handleRunResearch}
             isPolling={isPolling}
+          />
+        )}
+        {activeTab === 'wiki' && (
+          <WikiTab
+            company={company}
+            onSaved={() => refetchCompany()}
           />
         )}
         {activeTab === 'edit' && (

@@ -436,21 +436,21 @@ pub async fn run_report_generation(
             "UPDATE business_reports SET crm_deal_id = ? WHERE id = ?",
         )
         .bind(deal_id)
-        .bind(report.id)
+        .bind(report.id.as_str())
         .execute(&pool)
         .await;
     }
 
-    BusinessReport::mark_ready(&pool, report.id).await?;
+    let report_id_str = report.id.to_string();
+    BusinessReport::mark_ready(&pool, uuid::Uuid::parse_str(&report_id_str).unwrap_or_default()).await?;
 
     // Link report back to intake items
-    let report_id = report.id;
     for intake_id in &intake_ids {
         if let Ok(iid) = Uuid::parse_str(intake_id) {
             let _ = sqlx::query(
                 "UPDATE call_intake_items SET report_id = ?, updated_at = datetime('now','subsec') WHERE id = ?",
             )
-            .bind(report_id)
+            .bind(&report_id_str)
             .bind(iid)
             .execute(&pool)
             .await;
@@ -465,7 +465,7 @@ pub async fn run_report_generation(
     // Ingest report sources into org-scoped knowledge graph
     ingest_sources_into_kg(&pool, person_id, &merged_sources).await;
 
-    info!("Report {} created for person {}", report.id, person_id);
+    info!("Report {} created for person {}", report_id_str, person_id);
     Ok(())
 }
 

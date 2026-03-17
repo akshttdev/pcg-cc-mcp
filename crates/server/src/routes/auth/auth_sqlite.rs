@@ -178,11 +178,10 @@ pub async fn login(
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to create session: {}", e)))?;
 
-    // Get user organizations
+    // Get user organizations (o.id is TEXT, om.user_id is BLOB — bind as bytes)
     #[derive(FromRow)]
     struct OrgRow {
-        #[sqlx(try_from = "Vec<u8>")]
-        id: Uuid,
+        id: String,
         name: String,
         slug: String,
         role: String,
@@ -202,7 +201,7 @@ pub async fn login(
     let organizations = orgs
         .into_iter()
         .map(|row| UserOrganization {
-            id: row.id.to_string(),
+            id: row.id,
             name: row.name,
             slug: row.slug,
             role: row.role,
@@ -311,17 +310,16 @@ pub async fn get_current_user(
     .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?
     .ok_or_else(|| ApiError::BadRequest("User not found".to_string()))?;
 
-    // Get organizations
+    // Get organizations (o.id is TEXT, om.user_id is BLOB)
     #[derive(FromRow)]
-    struct OrgRow {
-        #[sqlx(try_from = "Vec<u8>")]
-        id: Uuid,
+    struct OrgRow2 {
+        id: String,
         name: String,
         slug: String,
         role: String,
     }
 
-    let orgs = sqlx::query_as::<_, OrgRow>(
+    let orgs = sqlx::query_as::<_, OrgRow2>(
         "SELECT o.id, o.name, o.slug, om.role
          FROM organizations o
          JOIN organization_members om ON o.id = om.organization_id
@@ -335,7 +333,7 @@ pub async fn get_current_user(
     let organizations = orgs
         .into_iter()
         .map(|row| UserOrganization {
-            id: row.id.to_string(),
+            id: row.id,
             name: row.name,
             slug: row.slug,
             role: row.role,

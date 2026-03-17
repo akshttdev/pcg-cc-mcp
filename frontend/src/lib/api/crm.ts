@@ -532,6 +532,63 @@ export const crmDealsApi = {
     const response = await makeRequest(`/api/organizations/${orgId}/crm/deals`);
     return handleApiResponse<CrmDealRecord[]>(response);
   },
+
+  /** Generate proposal text via Cash agent */
+  generateProposal: async (dealId: string): Promise<CrmDealRecord> => {
+    const response = await makeRequest(`/api/crm/deals/${dealId}/generate-proposal`, { method: 'POST' });
+    return handleApiResponse<CrmDealRecord>(response);
+  },
+
+  /** Approve the proposal, advancing proposal_status → 'approved' */
+  approveProposal: async (dealId: string): Promise<CrmDealRecord> => {
+    const response = await makeRequest(`/api/crm/deals/${dealId}/approve-proposal`, { method: 'POST' });
+    return handleApiResponse<CrmDealRecord>(response);
+  },
+
+  /** Generate deck script via Lux agent */
+  generateDeck: async (dealId: string): Promise<CrmDealRecord> => {
+    const response = await makeRequest(`/api/crm/deals/${dealId}/generate-deck`, { method: 'POST' });
+    return handleApiResponse<CrmDealRecord>(response);
+  },
+
+  /** Send invoice from Present stage */
+  sendInvoice: async (dealId: string, opts?: { notes?: string; due_days?: number }): Promise<import('@/types/crm').SendInvoiceResult> => {
+    const response = await makeRequest(`/api/crm/deals/${dealId}/send-invoice`, {
+      method: 'POST',
+      body: JSON.stringify(opts ?? {}),
+    });
+    return handleApiResponse<import('@/types/crm').SendInvoiceResult>(response);
+  },
+
+  /** Mark deal as won — triggers full automation chain */
+  markWon: async (dealId: string, winReason?: string): Promise<import('@/types/crm').MarkWonResult> => {
+    const response = await makeRequest(`/api/crm/deals/${dealId}/mark-won`, {
+      method: 'POST',
+      body: JSON.stringify({ win_reason: winReason }),
+    });
+    return handleApiResponse<import('@/types/crm').MarkWonResult>(response);
+  },
+
+  /** List transcripts linked to a deal */
+  listTranscripts: async (dealId: string): Promise<import('@/types/crm').DealTranscript[]> => {
+    const response = await makeRequest(`/api/crm/deals/${dealId}/transcripts`);
+    return handleApiResponse<import('@/types/crm').DealTranscript[]>(response);
+  },
+
+  /** Link a transcript to a deal */
+  linkTranscript: async (dealId: string, data: {
+    intake_item_id?: string;
+    call_log_id?: string;
+    transcript_text?: string;
+    summary?: string;
+    matched_by?: string;
+  }): Promise<import('@/types/crm').DealTranscript> => {
+    const response = await makeRequest(`/api/crm/deals/${dealId}/transcripts`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<import('@/types/crm').DealTranscript>(response);
+  },
 };
 
 // CRM Activities API
