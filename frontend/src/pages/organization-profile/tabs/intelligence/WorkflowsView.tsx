@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   GitBranch,
   Plus,
-  Trash2,
   Activity,
   ExternalLink,
 } from 'lucide-react';
@@ -16,9 +15,11 @@ import {
   resolveApiUrl,
   automationsApi,
 } from '@/lib/api';
-import type { WorkflowDefinition } from '@/lib/api';
+import type { WorkflowDefinition, WorkflowNode, WorkflowConnection } from '@/lib/api';
 import { workflowKeys } from '@/lib/query-keys';
 import { WorkflowEditor as WorkflowEditorComponent } from '@/components/workflows/WorkflowEditor';
+import { WorkflowCardGrid } from '@/components/workflows/WorkflowCardGrid';
+import { RunWorkflowDialog } from '@/pages/workflows/components/RunWorkflowDialog';
 
 // ── Pipeline Types & Constants ───────────────────────────────────────────────
 
@@ -143,9 +144,10 @@ export function EditableWorkflowsView({ orgId }: { orgId: string }) {
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingWorkflow, setEditingWorkflow] = useState<WorkflowDefinition | null>(null);
+  const [runWorkflow, setRunWorkflow] = useState<WorkflowDefinition | null>(null);
 
   const saveMutation = useMutation({
-    mutationFn: async (data: { id: string; name: string; description?: string; nodes: any[]; connections: any[] }) => {
+    mutationFn: async (data: { id: string; name: string; description?: string; nodes: WorkflowNode[]; connections: WorkflowConnection[] }) => {
       if (editingWorkflow) {
         return workflowsApi.updateDefinition(data.id, {
           name: data.name,
@@ -175,16 +177,6 @@ export function EditableWorkflowsView({ orgId }: { orgId: string }) {
     },
   });
 
-  const openNew = () => {
-    setEditingWorkflow(null);
-    setEditorOpen(true);
-  };
-
-  const openEdit = (wf: WorkflowDefinition) => {
-    setEditingWorkflow(wf);
-    setEditorOpen(true);
-  };
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-48">
@@ -201,7 +193,7 @@ export function EditableWorkflowsView({ orgId }: { orgId: string }) {
           <h2 className="text-lg font-semibold">Workflows</h2>
           <Badge variant="secondary">{workflows.length}</Badge>
         </div>
-        <Button size="sm" variant="outline" className="gap-1.5" onClick={openNew}>
+        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { setEditingWorkflow(null); setEditorOpen(true); }}>
           <Plus className="h-3.5 w-3.5" />
           New Workflow
         </Button>
@@ -212,85 +204,18 @@ export function EditableWorkflowsView({ orgId }: { orgId: string }) {
         Run them from any data source detail page.
       </p>
 
-      {workflows.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <GitBranch className="h-8 w-8 mx-auto mb-2 opacity-40" />
-          <p className="text-sm">No workflows defined yet.</p>
-          <Button size="sm" variant="outline" className="mt-3 gap-1.5" onClick={openNew}>
-            <Plus className="h-3.5 w-3.5" />
-            Create your first workflow
-          </Button>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {workflows.map((wf: WorkflowDefinition) => {
-            const nodeCount = wf.nodes?.length ?? 0;
-            return (
-              <Card
-                key={wf.id}
-                className="bg-card/80 border-border/50 hover:border-primary/30 transition-colors cursor-pointer"
-                onClick={() => openEdit(wf)}
-              >
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <GitBranch className="h-4 w-4 text-purple-500" />
-                      <CardTitle className="text-base">{wf.name}</CardTitle>
-                      {wf.is_system && (
-                        <Badge variant="secondary" className="text-[10px]">System</Badge>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline">{nodeCount} node{nodeCount !== 1 ? 's' : ''}</Badge>
-                      {!wf.is_system && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (confirm(`Delete workflow "${wf.name}"?`)) {
-                              deleteMutation.mutate(wf.id);
-                            }
-                          }}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                  {wf.description && (
-                    <CardDescription className="text-xs">{wf.description}</CardDescription>
-                  )}
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-2">
-                    {(wf.nodes ?? []).map((node: any, idx: number) => {
-                      const inputs = (wf.connections ?? []).filter((c: any) => c.target === node.id);
-                      return (
-                        <div
-                          key={node.id}
-                          className="flex items-center gap-1.5 rounded-md border bg-muted/50 px-2 py-1 text-xs"
-                        >
-                          <div className="w-4 h-4 rounded bg-primary/20 flex items-center justify-center text-[9px] font-bold">
-                            {idx + 1}
-                          </div>
-                          <span>{node.name}</span>
-                          {inputs.length > 0 && (
-                            <span className="text-muted-foreground">
-                              ({inputs.length} input{inputs.length !== 1 ? 's' : ''})
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+      <WorkflowCardGrid
+        workflows={workflows}
+        showOwnerBadge
+        onSelect={(wf) => { setEditingWorkflow(wf); setEditorOpen(true); }}
+        onEdit={(wf) => { setEditingWorkflow(wf); setEditorOpen(true); }}
+        onRun={(wf) => setRunWorkflow(wf)}
+        onDelete={(wf) => deleteMutation.mutate(wf.id)}
+        onCreateNew={() => { setEditingWorkflow(null); setEditorOpen(true); }}
+        emptyIcon={GitBranch}
+        emptyTitle="No workflows defined yet"
+        emptyDescription="Create your first workflow to start processing data sources."
+      />
 
       <WorkflowEditorComponent
         open={editorOpen}
@@ -298,6 +223,11 @@ export function EditableWorkflowsView({ orgId }: { orgId: string }) {
         workflow={editingWorkflow}
         onSave={(data) => saveMutation.mutate(data)}
         isSaving={saveMutation.isPending}
+      />
+
+      <RunWorkflowDialog
+        workflow={runWorkflow}
+        onClose={() => setRunWorkflow(null)}
       />
     </div>
   );

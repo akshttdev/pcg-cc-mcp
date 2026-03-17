@@ -104,7 +104,7 @@ export function WorkflowRunsPanel({
             const ds = await dataSourcesApi.get(id);
             results[id] = ds.title;
           } catch {
-            results[id] = id.slice(0, 8) + '…';
+            results[id] = '(Deleted source)';
           }
         }),
       );
@@ -219,7 +219,10 @@ export function WorkflowRunsPanel({
                             {formatRelativeDate(run.started_at)}
                           </span>
                           {run.data_source_id && dataSourceNames[run.data_source_id] && (
-                            <span className="flex items-center gap-1 truncate max-w-[180px]" title={dataSourceNames[run.data_source_id]}>
+                            <span
+                              className={`flex items-center gap-1 truncate max-w-[180px] ${dataSourceNames[run.data_source_id] === '(Deleted source)' ? 'text-muted-foreground/60 italic' : ''}`}
+                              title={dataSourceNames[run.data_source_id] === '(Deleted source)' ? run.data_source_id : dataSourceNames[run.data_source_id]}
+                            >
                               <Database className="h-3 w-3" />
                               {dataSourceNames[run.data_source_id]}
                             </span>

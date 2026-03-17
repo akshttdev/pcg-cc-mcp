@@ -298,22 +298,52 @@ export function Sidebar({ className }: SidebarProps) {
                     const active = isNavActive(item);
                     const badgeCount = item.id === 'workflows' ? stagingPendingCount : 0;
                     return (
-                      <Link key={item.id} to={item.to}>
-                        <div className={cn(
-                          "sidebar-nav-item text-xs py-1 justify-between",
-                          active && "sidebar-nav-item-active"
-                        )}>
-                          <div className="flex items-center gap-2">
-                            <Icon className="h-3.5 w-3.5" />
-                            {item.label}
+                      <div key={item.id}>
+                        <Link to={item.to}>
+                          <div className={cn(
+                            "sidebar-nav-item text-xs py-1 justify-between",
+                            active && "sidebar-nav-item-active"
+                          )}>
+                            <div className="flex items-center gap-2">
+                              <Icon className="h-3.5 w-3.5" />
+                              {item.label}
+                            </div>
+                            {badgeCount > 0 && (
+                              <span className="text-[9px] bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 rounded-full px-1.5 py-0.5 leading-none font-medium">
+                                {badgeCount}
+                              </span>
+                            )}
                           </div>
-                          {badgeCount > 0 && (
-                            <span className="text-[9px] bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 rounded-full px-1.5 py-0.5 leading-none font-medium">
-                              {badgeCount}
-                            </span>
-                          )}
-                        </div>
-                      </Link>
+                        </Link>
+                        {item.id === 'workflows' && active && (
+                          <div className="pl-5 space-y-0.5 py-0.5">
+                            {[
+                              { label: 'Builder', tab: 'builder' },
+                              { label: 'Runs', tab: 'runs' },
+                              { label: 'Staging', tab: 'staging', badge: stagingPendingCount },
+                            ].map((sub) => {
+                              const sp = new URLSearchParams(location.search);
+                              const currentTab = sp.get('tab') || 'builder';
+                              const isSubActive = active && currentTab === sub.tab;
+                              return (
+                                <Link key={sub.tab} to={`/workflows?tab=${sub.tab}`}>
+                                  <div className={cn(
+                                    "text-[11px] px-2 py-0.5 rounded-sm hover:bg-accent/60 transition-colors flex items-center justify-between",
+                                    isSubActive && "bg-primary/10 text-foreground font-medium"
+                                  )}>
+                                    <span>{sub.label}</span>
+                                    {sub.badge != null && sub.badge > 0 && (
+                                      <span className="text-[9px] bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 rounded-full px-1.5 py-0.5 leading-none font-medium">
+                                        {sub.badge}
+                                      </span>
+                                    )}
+                                  </div>
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
