@@ -436,3 +436,18 @@ Day 7 (Layout + runs) ──> Day 8 (Real-time) ──┘              │
 - `e2e/demos/workflow-crm-pipeline.spec.ts` — inline staging flow
 - `e2e/demos/workflow-spanish-pipeline.spec.ts` — inline staging flow
 - `e2e/demos/pipeline-intelligence-workflow.spec.ts` — shared component docs
+
+### Conflict Resolution Plan with PR #43 (Modularity Sprint 5)
+
+**Analysis date**: 2026-03-17
+**PR #43 branch**: `modularity/sprint-5` — infrastructure extraction + route splits
+**Method**: `git merge-tree --write-tree` between both branches
+
+| File | Conflict Type | Resolution Strategy |
+|------|--------------|---------------------|
+| `frontend/src/pages/data-source-detail.tsx` | Content conflict (imports + query keys) | **Take both**: PR #43 migrates `['dataSource', id]` → `dataSourceKeys.detail(id)`. Our branch removes `AlertTriangle`, `stagingApi`, `useMemo` and adds `RunAndReviewPanel`. Changes are adjacent lines — merge both sets. |
+| `frontend/src/pages/organization-profile/tabs/intelligence/WorkflowsView.tsx` | Auto-merges cleanly | No action needed — our `WorkflowCardGrid` rewrite already uses `workflowKeys.definitions()` which PR #43 introduces. |
+
+**All other files**: No conflicts. PR #43's Rust route splits (twilio, task_attempts, nora, helpers) and frontend API modules (topsi.ts, topiclips.ts) are in completely different files.
+
+**Merge order recommendation**: Either order works. If PR #43 merges first, rebase our branch and resolve the single `data-source-detail.tsx` conflict (~2 min).
