@@ -25,6 +25,7 @@ import {
   PhoneIncoming,
   ClipboardList,
   FileText,
+  Brain,
 } from 'lucide-react';
 
 // Navigation items with role-based visibility
@@ -51,6 +52,7 @@ export const ADMIN_NAV_ITEMS: NavItem[] = [
 
 // Primary navigation - workspace destinations (user-level pages)
 export const PRIMARY_NAV_ITEMS: NavItem[] = [
+  { label: 'Intelligence', icon: Brain, to: '/intelligence', id: 'intelligence' },
   { label: 'My Projects', icon: FolderOpen, to: '/projects', id: 'projects' },
   { label: 'My Tasks', icon: ListTodo, to: '/my-tasks', id: 'my-tasks', memberOnly: true },
   { label: 'My Workflows', icon: Workflow, to: '/workflows', id: 'workflows' },

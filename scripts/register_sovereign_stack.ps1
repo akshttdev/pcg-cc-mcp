@@ -1,13 +1,13 @@
-# Register Sovereign Stack in Windows File Explorer Navigation Pane
+# Register APN Cloud in Windows File Explorer Navigation Pane
 # Run as: powershell -ExecutionPolicy Bypass -File scripts/register_sovereign_stack.ps1
 
 $CLSID = "{B3E49587-7262-0631-A680-2FDE729BF2B2}"
 $TargetFolder = "E:\topos\sovereign_stack"
-$DisplayName = "Sovereign Stack"
+$DisplayName = "APN Cloud"
 $IconPath = "%SystemRoot%\system32\shell32.dll,275"
 
 # Check if custom icon exists, use it if available
-$CustomIcon = "E:\topos\sovereign_stack\.sovereign\sovereign-stack.ico"
+$CustomIcon = "E:\topos\sovereign_stack\.sovereign\apn-cloud.ico"
 if (Test-Path $CustomIcon) {
     $IconPath = $CustomIcon
 }
@@ -76,3 +76,5 @@ Write-Host "Done! '$DisplayName' has been registered."
 Write-Host "Restart File Explorer (or log out/in) to see it in the sidebar."
 Write-Host ""
 Write-Host "To unregister, run: scripts/unregister_sovereign_stack.ps1"
+Write-Host ""
+Write-Host "Note: If you had a previous 'Sovereign Stack' entry, run unregister first."
