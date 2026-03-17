@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import {
   PhoneIncoming, RefreshCw, Play, FileText,
   CheckCircle, XCircle, Clock, Loader2, Upload,
-  ChevronDown, ChevronRight, Plus, User, Building2, Brain,
+  ChevronDown, ChevronRight, Plus, User, Brain,
 } from 'lucide-react';
 import { callIntakeApi, reportsApi } from '@/lib/api';
 

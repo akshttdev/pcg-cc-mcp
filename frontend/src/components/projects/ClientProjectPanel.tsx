@@ -74,7 +74,7 @@ interface ClientProjectPanelProps {
   clientPageUrl?: string; // back-nav target
 }
 
-export function ClientProjectPanel({ projectId, clientPageUrl }: ClientProjectPanelProps) {
+export function ClientProjectPanel({ projectId }: ClientProjectPanelProps) {
   const navigate = useNavigate();
 
   const { data: project, isLoading: projectLoading } = useQuery({
@@ -90,9 +90,9 @@ export function ClientProjectPanel({ projectId, clientPageUrl }: ClientProjectPa
     enabled: !!project,
   });
 
-  const { data: allTasks = [], isLoading: tasksLoading } = useQuery({
+  const { data: allTasks = [] } = useQuery({
     queryKey: ['projectTasks', projectId],
-    queryFn: () => tasksApi.getByProject(projectId),
+    queryFn: () => tasksApi.getAll(projectId),
     staleTime: 60 * 1000,
     enabled: !!project,
   });
@@ -147,12 +147,10 @@ export function ClientProjectPanel({ projectId, clientPageUrl }: ClientProjectPa
               </div>
               <div>
                 <p className="text-xs uppercase tracking-widest text-muted-foreground mb-0.5">
-                  {project.project_status ?? 'Active'}
+                  {'Active'}
                 </p>
                 <h3 className="text-xl font-bold leading-tight">{project.name}</h3>
-                {project.description && (
-                  <p className="text-sm text-muted-foreground mt-0.5">{project.description}</p>
-                )}
+                {/* Project type has no description field */}
                 {/* Brand palette chips */}
                 <div className="flex items-center gap-2 mt-2">
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">

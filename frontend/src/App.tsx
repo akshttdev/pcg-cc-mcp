@@ -54,7 +54,7 @@ const AIUsagePage           = lazy(() => import('@/pages/ai-usage').then(m => ({
 const AgentExecutionsPage   = lazy(() => import('@/pages/agent-executions').then(m => ({ default: m.AgentExecutionsPage })));
 const OAuthCallbackPage     = lazy(() => import('@/pages/oauth/OAuthCallbackPage').then(m => ({ default: m.OAuthCallbackPage })));
 const PeoplePage            = lazy(() => import('@/pages/people').then(m => ({ default: m.PeoplePage })));
-const PersonDetailPage      = lazy(() => import('@/pages/person-detail').then(m => ({ default: m.PersonDetailPage })));
+// const PersonDetailPage      = lazy(() => import('@/pages/person-detail').then(m => ({ default: m.PersonDetailPage })));
 const ProposalsPage         = lazy(() => import('@/pages/proposals').then(m => ({ default: m.ProposalsPage })));
 const CompaniesPage         = lazy(() => import('@/pages/companies').then(m => ({ default: m.CompaniesPage })));
 const CompanyProfilePage    = lazy(() => import('@/pages/company-profile').then(m => ({ default: m.CompanyProfilePage })));

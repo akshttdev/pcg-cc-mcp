@@ -38,7 +38,7 @@ import {
 import {
   crmApi,
   companiesApi,
-  organizationsApi,
+  // organizationsApi,
   type CreateCrmContactRequest,
   type CrmContactRecord,
   type CompanyRecord,
@@ -46,7 +46,7 @@ import {
 import { useCrmContacts, crmContactsQueryKey } from '@/hooks/queries';
 import { LIFECYCLE_STAGE_INFO } from '@/types/crm';
 import type { CrmDealWithContact } from '@/types/crm';
-import { ContactCard } from '../components/ContactCard';
+// import { ContactCard } from '../components/ContactCard';
 import { ContactDetailModal } from '../components/ContactDetailModal';
 
 type PeopleView = 'people' | 'companies' | 'pipeline';
@@ -113,31 +113,22 @@ export function ContactsTab({ orgId }: { orgId: string }) {
   }, [pipelineDeals]);
 
   // Build company_id → person_id map from deals (for company card Profile/Intel buttons)
-  const companyPersonMap = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const d of pipelineDeals) {
-      if (d.company_id && d.person_id && !m.has(d.company_id)) {
-        m.set(d.company_id, d.person_id);
-      }
-    }
-    return m;
-  }, [pipelineDeals]);
+  // const companyPersonMap = useMemo(() => {
+  //   const m = new Map<string, string>();
+  //   for (const d of pipelineDeals) {
+  //     if (d.company_id && d.person_id && !m.has(d.company_id)) {
+  //       m.set(d.company_id, d.person_id);
+  //     }
+  //   }
+  //   return m;
+  // }, [pipelineDeals]);
 
   // Org clients — used to link company cards to client pages
-  const { data: orgClients = [] } = useQuery<{ id: string; name: string }[]>({
-    queryKey: ['org-clients', orgId],
-    queryFn: () => organizationsApi.getClients(orgId),
-    staleTime: 60_000,
-  });
-
-  // Client name → client id lookup
-  const clientByName = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const c of orgClients) {
-      m.set(c.name.toLowerCase(), c.id);
-    }
-    return m;
-  }, [orgClients]);
+  // const { data: orgClients = [] } = useQuery<{ id: string; name: string }[]>({
+  //   queryKey: ['org-clients', orgId],
+  //   queryFn: () => organizationsApi.getClients(orgId),
+  //   staleTime: 60_000,
+  // });
 
   // Company name → company record lookup
   const companyByName = useMemo(() => {
@@ -446,7 +437,7 @@ export function ContactsTab({ orgId }: { orgId: string }) {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {filteredCompanies.map((company) => {
-              const personId = companyPersonMap.get(company.id);
+              // const personId = companyPersonMap.get(company.id);
               return (
                 <div key={company.id} className="rounded-lg border bg-card p-4 space-y-2 hover:border-primary/40 hover:shadow-sm transition-all">
                   <Link to={`/companies/${company.id}`} className="block group">

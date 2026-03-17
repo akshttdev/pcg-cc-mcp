@@ -3,10 +3,10 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { organizationsApi, projectsApi, type CrmContactRecord, type OrgBrandProfile } from '@/lib/api';
 import {
-  UserCircle, Users, Layers,
+  Users, Layers,
   Brain, FolderKanban, Package, ExternalLink, Globe,
   BarChart3, CheckCircle, Activity, ArrowLeft, BookOpen,
-  Share2, Plug, Mail, Phone, Contact2, RefreshCw, Loader2,
+  Share2, Plug, Mail, Phone, Contact2,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';

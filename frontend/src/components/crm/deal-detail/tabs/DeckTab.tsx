@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
-import { Loader2, Presentation, Wand2, Receipt, Trophy, ExternalLink } from 'lucide-react';
+import { Loader2, Presentation, Wand2, Receipt, Trophy } from 'lucide-react';
 import { toast } from 'sonner';
 import { crmDealsApi } from '@/lib/api/crm';
 import type { CrmDealWithContact } from '@/types/crm';

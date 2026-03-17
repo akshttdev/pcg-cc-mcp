@@ -381,7 +381,7 @@ export function ActivityTab({ deal, projectId: _ignored }: ActivityTabProps) {
               </div>
               <div>
                 <p className="text-lg font-semibold">
-                  {tasks.filter((t) => t.status === 'completed' || t.status === 'done').length}
+                  {tasks.filter((t) => t.status === 'done').length}
                 </p>
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Done</p>
               </div>

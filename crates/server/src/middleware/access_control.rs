@@ -410,7 +410,7 @@ impl AccessContext {
                     "SELECT 1 FROM organization_members WHERE organization_id = ? AND user_id = ? LIMIT 1"
                 )
                 .bind(org_id)
-                .bind(&user_id_str)
+                .bind(&user_id_bytes)
                 .fetch_optional(pool)
                 .await
                 .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -429,7 +429,7 @@ impl AccessContext {
                        WHERE c.id = ? AND om.user_id = ? AND om.role = 'admin' LIMIT 1"#
                 )
                 .bind(client_id)
-                .bind(&user_id_str)
+                .bind(&user_id_bytes)
                 .fetch_optional(pool)
                 .await
                 .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -443,7 +443,7 @@ impl AccessContext {
                     "SELECT 1 FROM client_members WHERE client_id = ? AND user_id = ? LIMIT 1"
                 )
                 .bind(client_id)
-                .bind(&user_id_str)
+                .bind(&user_id_bytes)
                 .fetch_optional(pool)
                 .await
                 .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;

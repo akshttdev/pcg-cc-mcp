@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { personsApi, intelligenceApi, reportsApi, type PersonRecord, type PersonNote, type PersonSocialProfile, type PersonCompanyRole } from '@/lib/api';
+import { personsApi, intelligenceApi, reportsApi, type PersonRecord, type PersonSocialProfile, type PersonCompanyRole } from '@/lib/api';
 import { entityKeys } from '@/lib/query-keys';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,7 +12,7 @@ import {
   FileText, ChevronRight, Loader2, Zap, Linkedin, Twitter, Instagram,
   Youtube, Github, Facebook, MessageCircle, Star, BookOpen, StickyNote,
   Plus, Pencil, Trash2, CheckCircle2, Clock, AlertCircle, Hash, ExternalLink,
-  Briefcase, Target, DollarSign, User,
+  Target, DollarSign, User,
 } from 'lucide-react';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
