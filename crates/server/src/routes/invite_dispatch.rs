@@ -456,8 +456,8 @@ async fn publish_meeting(
            WHERE id = ?1"#,
     )
     .bind(&session_id)
-    .bind(body.company_id.as_ref().map(|u| u.as_bytes().to_vec()))
-    .bind(body.proposal_id.as_ref().map(|u| u.as_bytes().to_vec()))
+    .bind(body.company_id.as_ref().map(|u| u.to_string()))
+    .bind(body.proposal_id.as_ref().map(|u| u.to_string()))
     .bind(&attendees_json)
     .bind(ks_id.to_string())
     .execute(pool)
@@ -487,7 +487,7 @@ async fn export_company_analysis(
     let persons: Vec<Person> = sqlx::query_as(
         "SELECT * FROM persons WHERE company_id = ?1 ORDER BY lead_score DESC LIMIT 20",
     )
-    .bind(company_id.as_bytes().as_slice())
+    .bind(company_id.to_string())
     .fetch_all(pool)
     .await
     .unwrap_or_default();
@@ -495,7 +495,7 @@ async fn export_company_analysis(
     let proposals: Vec<Proposal> = sqlx::query_as(
         "SELECT * FROM proposals WHERE company_id = ?1 ORDER BY created_at DESC LIMIT 10",
     )
-    .bind(company_id.as_bytes().as_slice())
+    .bind(company_id.to_string())
     .fetch_all(pool)
     .await
     .unwrap_or_default();
@@ -507,7 +507,7 @@ async fn export_company_analysis(
          (SELECT id FROM meeting_sessions WHERE company_id = ?1) \
          ORDER BY created_at DESC LIMIT 5",
     )
-    .bind(company_id.as_bytes().as_slice())
+    .bind(company_id.to_string())
     .fetch_all(pool)
     .await
     .unwrap_or_default();

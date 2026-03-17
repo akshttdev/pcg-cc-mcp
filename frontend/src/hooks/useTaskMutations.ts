@@ -16,7 +16,8 @@ export function useTaskMutations(projectId?: string) {
 
   const invalidateQueries = (taskId?: string) => {
     // Always invalidate — when projectId is undefined, ['tasks', undefined] prefix-matches all task queries
-    queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
+    // When projectId is undefined, ['tasks', undefined] prefix-matches all task queries
+    queryClient.invalidateQueries({ queryKey: projectId ? taskKeys.list(projectId) : taskKeys.all });
     queryClient.invalidateQueries({ queryKey: sidebarKeys.tree() });
     if (taskId) {
       queryClient.invalidateQueries({ queryKey: taskKeys.detail(taskId) });

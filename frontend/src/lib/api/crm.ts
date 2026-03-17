@@ -437,8 +437,8 @@ export interface DealKnowledgeSource {
 }
 
 export interface CrmDealRich extends CrmDealWithContact {
-  company_id: string | null;
-  company_intelligence_summary: string | null;
+  company_id?: string;
+  company_intelligence_summary?: string;
   company_intelligence_status: string | undefined;
   company_intelligence_confidence: number | null;
   company_intelligence_last_run_at: string | null;

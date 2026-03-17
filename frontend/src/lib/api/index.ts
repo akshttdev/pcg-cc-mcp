@@ -23,3 +23,6 @@ export * from './onboarding';
 export * from './autonomy';
 export * from './bowser';
 export * from './collaboration';
+export * from './topsi';
+export * from './topiclips';
+export * from './org-cloud';

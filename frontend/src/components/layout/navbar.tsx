@@ -22,6 +22,7 @@ import { NotificationCenter } from '@/components/notifications/NotificationCente
 import { NavbarUserButton } from '@/components/layout/NavbarUserButton';
 import { useViewStore } from '@/stores/useViewStore';
 import { DevBanner } from '@/components/DevBanner';
+import { useViewStore } from '@/stores/useViewStore';
 
 const ADMIN_ROUTES = ['/site-directory', '/nora', '/mission-control', '/admin'];
 

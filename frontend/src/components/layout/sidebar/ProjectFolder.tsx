@@ -37,6 +37,7 @@ import { projectsApi } from '@/lib/api';
 import type { SidebarProject as SidebarProjectType } from '@/lib/api';
 import type { Project, ProjectBoard } from 'shared/types';
 import NiceModal from '@ebay/nice-modal-react';
+import { showConfirm } from '@/lib/modals';
 import type { CreateNameDialogResult } from '@/components/dialogs';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -296,7 +297,7 @@ export function SortableSidebarProjectFolder({
   };
 
   const handleDelete = async () => {
-    if (!window.confirm(`Delete "${project.name}"? ${hasChildren ? 'Child projects will be ungrouped.' : ''}`)) return;
+    if (!await showConfirm({ title: 'Delete Project', message: `Delete "${project.name}"?${hasChildren ? ' Child projects will be ungrouped.' : ''}`, variant: 'destructive', confirmText: 'Delete' })) return;
     try {
       await projectsApi.delete(project.id);
       queryClient?.invalidateQueries({ queryKey: ['sidebarTree'] });

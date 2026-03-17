@@ -10,6 +10,7 @@ use axum::{
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
+// TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 
 use crate::{error::ApiError, DeploymentImpl};
@@ -1945,7 +1946,6 @@ async fn approve_proposal(
     Ok(Json(ApiResponse::success(updated)))
 }
 
-// ── POST /crm/deals/:id/generate-deck (Lux) ─────────────────────────────────
 // ── Background helper: generate deck (Lux) ──────────────────────────────────
 async fn generate_deck_background(pool: &sqlx::SqlitePool, deal_id: DbUuid) {
     match generate_deck_core(pool, &deal_id).await {
@@ -1954,6 +1954,7 @@ async fn generate_deck_background(pool: &sqlx::SqlitePool, deal_id: DbUuid) {
     }
 }
 
+// ── POST /crm/deals/:id/generate-deck (Lux) ─────────────────────────────────
 async fn generate_deck_core(pool: &sqlx::SqlitePool, id: &DbUuid) -> Result<CrmDeal, ApiError> {
     let deal = CrmDeal::find_by_id(pool, id).await?;
 
@@ -2146,7 +2147,7 @@ async fn mark_deal_won(
 
     // ── Create Project ───────────────────────────────────────────────────────
     let project_id = DbUuid::new();
-    let project_name = format!("{} Project", company_name);
+    let project_name = format!("{} — {}", deal.name, company_name);
     let _ = sqlx::query(
         "INSERT INTO projects (id, name, git_repo_path, client_id, organization_id, created_at, updated_at) VALUES (?, ?, '', ?, ?, datetime('now','subsec'), datetime('now','subsec'))"
     )

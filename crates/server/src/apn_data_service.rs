@@ -815,7 +815,7 @@ impl APNDataService {
         for entry in &response.access_map {
             let project_id_bytes = hex::decode(&entry.project_id).unwrap_or_default();
             let user_id_bytes = hex::decode(&entry.user_id).unwrap_or_default();
-            let member_id = uuid::Uuid::new_v4().as_bytes().to_vec();
+            let member_id = uuid::Uuid::new_v4().to_string();
 
             sqlx::query(
                 r#"INSERT INTO project_members (id, project_id, user_id, role)

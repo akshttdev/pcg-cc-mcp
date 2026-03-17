@@ -1,0 +1,98 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT  ta.id                AS \"id!: Uuid\",\n                       ta.task_id           AS \"task_id!: Uuid\",\n                       ta.container_ref,\n                       ta.branch,\n                       ta.base_branch,\n                       ta.executor AS \"executor!\",\n                       ta.worktree_deleted  AS \"worktree_deleted!: bool\",\n                       ta.setup_completed_at AS \"setup_completed_at: DateTime<Utc>\",\n                       ta.archived AS \"archived!: bool\",\n                       ta.pinned AS \"pinned!: bool\",\n                       ta.name,\n                       ta.seen_at AS \"seen_at: DateTime<Utc>\",\n                       ta.created_at        AS \"created_at!: DateTime<Utc>\",\n                       ta.updated_at        AS \"updated_at!: DateTime<Utc>\"\n               FROM    task_attempts ta\n               JOIN    tasks t ON ta.task_id = t.id\n               JOIN    projects p ON t.project_id = p.id\n               WHERE   ta.id = $1 AND t.id = $2 AND p.id = $3",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "task_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "container_ref",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "branch",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "base_branch",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "executor!",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "worktree_deleted!: bool",
+        "ordinal": 6,
+        "type_info": "Bool"
+      },
+      {
+        "name": "setup_completed_at: DateTime<Utc>",
+        "ordinal": 7,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "archived!: bool",
+        "ordinal": 8,
+        "type_info": "Integer"
+      },
+      {
+        "name": "pinned!: bool",
+        "ordinal": 9,
+        "type_info": "Integer"
+      },
+      {
+        "name": "name",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "seen_at: DateTime<Utc>",
+        "ordinal": 11,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 12,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 13,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      true,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "c31b7de81999b6a2f1ac1262119e7637ec637e954afd52bf9287808c19b942c2"
+}

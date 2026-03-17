@@ -37,6 +37,7 @@ import {
   CallStats,
   SmsStats,
 } from '@/lib/api';
+import { commsKeys } from '@/lib/query-keys';
 
 interface CommunicationsInboxProps {
   projectId: string;
@@ -50,26 +51,26 @@ export function CommunicationsInbox({ projectId }: CommunicationsInboxProps) {
 
   // Calls queries
   const { data: callStats } = useQuery<CallStats>({
-    queryKey: ['call-stats', projectId],
+    queryKey: commsKeys.callStats(projectId),
     queryFn: () => communicationsApi.getCallStats(projectId),
     enabled: !!projectId,
   });
 
   const { data: calls = [], isLoading: callsLoading, refetch: refetchCalls } = useQuery<CallLogRecord[]>({
-    queryKey: ['calls', projectId],
+    queryKey: commsKeys.calls(projectId),
     queryFn: () => communicationsApi.listCalls({ project_id: projectId, limit: 50 }),
     enabled: !!projectId,
   });
 
   // SMS queries
   const { data: smsStats } = useQuery<SmsStats>({
-    queryKey: ['sms-stats', projectId],
+    queryKey: commsKeys.smsStats(projectId),
     queryFn: () => communicationsApi.getSmsStats(projectId),
     enabled: !!projectId,
   });
 
   const { data: smsMessages = [], isLoading: smsLoading, refetch: refetchSms } = useQuery<SmsMessageRecord[]>({
-    queryKey: ['sms', projectId],
+    queryKey: commsKeys.sms(projectId),
     queryFn: () => communicationsApi.listSms({ project_id: projectId, limit: 50 }),
     enabled: !!projectId,
   });
@@ -77,15 +78,15 @@ export function CommunicationsInbox({ projectId }: CommunicationsInboxProps) {
   const markSmsReadMutation = useMutation({
     mutationFn: communicationsApi.markSmsRead,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sms'] });
-      queryClient.invalidateQueries({ queryKey: ['sms-stats'] });
+      queryClient.invalidateQueries({ queryKey: commsKeys.smsAll() });
+      queryClient.invalidateQueries({ queryKey: commsKeys.smsStatsAll() });
     },
   });
 
   const toggleSmsStarMutation = useMutation({
     mutationFn: communicationsApi.toggleSmsStar,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sms'] });
+      queryClient.invalidateQueries({ queryKey: commsKeys.smsAll() });
     },
   });
 

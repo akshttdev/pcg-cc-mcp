@@ -8,7 +8,7 @@ import type {
   CrmDealWithContact,
 } from '@/types/crm';
 
-import { crmKeys } from '@/lib/query-keys';
+import { crmKeys, projectKeys, organizationKeys } from '@/lib/query-keys';
 
 // Re-export for backward compatibility — prefer importing from @/lib/query-keys directly
 export const crmQueryKeys = {
@@ -173,7 +173,7 @@ export function useMoveDeal() {
     onMutate: async ({ dealId, data }) => {
       // Get the pipeline ID from the current kanban cache
       const cacheEntries = queryClient.getQueriesData({
-        queryKey: ['crm', 'kanban'],
+        queryKey: crmKeys.kanbanAll(),
       });
 
       // Find which pipeline this deal belongs to and optimistically update
@@ -274,7 +274,7 @@ export function useDeleteDeal() {
 // Hook to fetch projects by client ID
 export function useClientProjects(clientId?: string) {
   return useQuery({
-    queryKey: ['projects', 'byClient', clientId],
+    queryKey: projectKeys.byClient(clientId),
     queryFn: () => projectsApi.getByClientId(clientId!),
     enabled: !!clientId,
     staleTime: 5 * 60 * 1000,
@@ -285,7 +285,7 @@ export function useClientProjects(clientId?: string) {
 export function useDealClient(orgId?: string, deal?: CrmDealWithContact | null) {
   // Fetch org clients
   const { data: clients } = useQuery({
-    queryKey: ['organizations', orgId, 'clients'],
+    queryKey: organizationKeys.orgClients(orgId),
     queryFn: () => organizationsApi.getClients(orgId!),
     enabled: !!orgId && !!deal,
     staleTime: 5 * 60 * 1000,

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Bot, Plus, RefreshCw, X, Eye, Search } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,10 +9,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { agentWatchersApi, agentsApi, type AgentWatcherInfo } from '@/lib/api';
+import { agentWatchersApi, agentsApi } from '@/lib/api';
 import type { AgentWithParsedFields } from 'shared/types';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+
+const WATCHER_POLL_INTERVAL = 10_000;
 
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   watching: { label: 'Watching', className: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' },
@@ -26,43 +29,22 @@ interface AgentWatcherPanelProps {
 }
 
 export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
-  const [watchers, setWatchers] = useState<AgentWatcherInfo[]>([]);
-  const [availableAgents, setAvailableAgents] = useState<AgentWithParsedFields[]>([]);
+  const queryClient = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [loading, setLoading] = useState(false);
   const [removing, setRemoving] = useState<Set<string>>(new Set());
-  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const loadWatchers = useCallback(async () => {
-    try {
-      setLoadError(null);
-      const data = await agentWatchersApi.list(taskId);
-      setWatchers(data);
-    } catch (err) {
-      console.error('Failed to load agent watchers:', err);
-      setLoadError('Failed to load agent reviewers');
-    }
-  }, [taskId]);
+  const { data: watchers = [], error: loadError, refetch: refetchWatchers } = useQuery({
+    queryKey: ['agent-watchers', taskId],
+    queryFn: () => agentWatchersApi.list(taskId),
+    refetchInterval: WATCHER_POLL_INTERVAL,
+  });
 
-  useEffect(() => {
-    loadWatchers();
-  }, [loadWatchers]);
-
-  const loadAgents = useCallback(async () => {
-    try {
-      const agents = await agentsApi.listActive();
-      setAvailableAgents(agents);
-    } catch (err) {
-      console.error('Failed to load agents:', err);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (pickerOpen) {
-      loadAgents();
-    }
-  }, [pickerOpen, loadAgents]);
+  const { data: availableAgents = [] } = useQuery({
+    queryKey: ['available-agents-for-watchers'],
+    queryFn: () => agentsApi.listActive(),
+    enabled: pickerOpen,
+  });
 
   const handlePickerOpenChange = useCallback((open: boolean) => {
     setPickerOpen(open);
@@ -76,37 +58,31 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
     [watchers]
   );
 
-  // Client-side filtering is fine for typical agent counts (<50).
-  // If the agent list grows large, consider server-side search.
   const filteredAgents = useMemo(() => {
     const q = searchQuery.toLowerCase();
     return availableAgents.filter(
-      (a) =>
+      (a: AgentWithParsedFields) =>
         !watcherIds.has(a.id) &&
         (a.short_name.toLowerCase().includes(q) ||
           a.designation.toLowerCase().includes(q))
     );
   }, [availableAgents, watcherIds, searchQuery]);
 
-  const handleAdd = async (agentId: string) => {
-    setLoading(true);
-    try {
-      await agentWatchersApi.add(taskId, agentId);
-      await loadWatchers();
+  const addMutation = useMutation({
+    mutationFn: (agentId: string) => agentWatchersApi.add(taskId, agentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agent-watchers', taskId] });
       handlePickerOpenChange(false);
-    } catch {
-      toast.error('Failed to add agent reviewer');
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+    onError: () => toast.error('Failed to add agent reviewer'),
+  });
 
   const handleRemove = async (agentId: string) => {
     if (removing.has(agentId)) return;
     setRemoving((prev) => new Set(prev).add(agentId));
     try {
       await agentWatchersApi.remove(taskId, agentId);
-      await loadWatchers();
+      queryClient.invalidateQueries({ queryKey: ['agent-watchers', taskId] });
     } catch {
       toast.error('Failed to remove agent reviewer');
     } finally {
@@ -153,8 +129,8 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
                 filteredAgents.map((agent) => (
                   <button
                     key={agent.id}
-                    disabled={loading}
-                    onClick={() => handleAdd(agent.id)}
+                    disabled={addMutation.isPending}
+                    onClick={() => addMutation.mutate(agent.id)}
                     className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs hover:bg-accent transition-colors text-left"
                   >
                     <div className="h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center flex-shrink-0">
@@ -175,8 +151,8 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
       {loadError ? (
         <div className="flex items-center gap-2 text-xs text-destructive py-1">
           <AlertTriangle className="h-3 w-3 shrink-0" />
-          <span className="flex-1">{loadError}</span>
-          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={loadWatchers}>
+          <span className="flex-1">Failed to load agent reviewers</span>
+          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => refetchWatchers()}>
             <RefreshCw className="h-3 w-3 mr-1" />
             Retry
           </Button>

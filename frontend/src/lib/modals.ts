@@ -1,5 +1,6 @@
 import NiceModal from '@ebay/nice-modal-react';
 import type {
+  ConfirmDialogProps,
   FolderPickerDialogProps,
   TaskTemplateEditDialogProps,
   TaskTemplateEditResult,
@@ -60,6 +61,16 @@ export function showProjectForm(
     'project-form',
     props as Record<string, unknown>
   );
+}
+
+/**
+ * Show a styled confirmation dialog, replacing window.confirm()
+ * @param props - Confirmation dialog options (title, message, variant, etc.)
+ * @returns Promise<boolean> - true if confirmed, false if canceled
+ */
+export async function showConfirm(props: ConfirmDialogProps): Promise<boolean> {
+  const result = await showModal<ConfirmResult>('confirm', props as unknown as Record<string, unknown>);
+  return result === 'confirmed';
 }
 
 /**

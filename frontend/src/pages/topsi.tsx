@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { resolveApiUrl } from '@/lib/api';
+import { topsiApi } from '@/lib/api';
+import type { TopsiStatusResponse, TopologyOverview, DetectedIssue, ProjectAccess } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -33,44 +34,12 @@ import { MeetingMode } from '@/components/topsi/MeetingMode';
 import { MeetingHistory } from '@/components/topsi/MeetingHistory';
 import { AgentIntegrationsTab } from '@/components/email';
 
-// Types for Topsi responses
-interface TopsiStatusResponse {
-  isActive: boolean;
-  topsiId?: string;
-  uptimeMs?: number;
-  accessScope: string;
-  projectsVisible: number;
-  systemHealth?: number;
-}
-
 interface TopsiChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
   hasAudio?: boolean;
-}
-
-interface TopologyOverview {
-  totalNodes: number;
-  totalEdges: number;
-  totalClusters: number;
-  systemHealth?: number;
-}
-
-interface DetectedIssue {
-  issueType: string;
-  severity: string;
-  description: string;
-  affectedNodes: string[];
-  suggestedAction?: string;
-}
-
-interface ProjectAccess {
-  projectId: string;
-  projectName: string;
-  role: string;
-  grantedAt: string;
 }
 
 export function TopsiPage() {
@@ -117,11 +86,8 @@ export function TopsiPage() {
   // Fetch Topsi status
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch(resolveApiUrl('/api/topsi/status'));
-      if (res.ok) {
-        const data = await res.json();
-        setStatus(data);
-      }
+      const data = await topsiApi.getStatus();
+      setStatus(data);
     } catch (error) {
       console.error('Failed to fetch Topsi status:', error);
     } finally {
@@ -133,18 +99,9 @@ export function TopsiPage() {
   const initializeTopsi = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(resolveApiUrl('/api/topsi/initialize'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ activateImmediately: true }),
-      });
-      if (res.ok) {
-        await res.json(); // Consume response
-        toast.success('Topsi initialized successfully');
-        await fetchStatus();
-      } else {
-        toast.error('Failed to initialize Topsi');
-      }
+      await topsiApi.initialize(true);
+      toast.success('Topsi initialized successfully');
+      await fetchStatus();
     } catch (error) {
       console.error('Failed to initialize Topsi:', error);
       toast.error('Failed to initialize Topsi');
@@ -156,11 +113,8 @@ export function TopsiPage() {
   // Fetch topology overview
   const fetchTopology = useCallback(async () => {
     try {
-      const res = await fetch(resolveApiUrl('/api/topsi/topology'));
-      if (res.ok) {
-        const data = await res.json();
-        setTopology(data);
-      }
+      const data = await topsiApi.getTopology();
+      setTopology(data);
     } catch (error) {
       console.error('Failed to fetch topology:', error);
     }
@@ -169,11 +123,8 @@ export function TopsiPage() {
   // Fetch issues
   const fetchIssues = useCallback(async () => {
     try {
-      const res = await fetch(resolveApiUrl('/api/topsi/issues'));
-      if (res.ok) {
-        const data = await res.json();
-        setIssues(data.issues || []);
-      }
+      const data = await topsiApi.getIssues();
+      setIssues(data.issues || []);
     } catch (error) {
       console.error('Failed to fetch issues:', error);
     }
@@ -182,11 +133,8 @@ export function TopsiPage() {
   // Fetch accessible projects
   const fetchProjects = useCallback(async () => {
     try {
-      const res = await fetch(resolveApiUrl('/api/topsi/projects'));
-      if (res.ok) {
-        const data = await res.json();
-        setProjects(data.projects || []);
-      }
+      const data = await topsiApi.getProjects();
+      setProjects(data.projects || []);
     } catch (error) {
       console.error('Failed to fetch projects:', error);
     }
@@ -212,32 +160,16 @@ export function TopsiPage() {
     const timeoutId = setTimeout(() => controller.abort(), 120000);
 
     try {
-      const res = await fetch(resolveApiUrl('/api/topsi/chat'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: inputMessage,
-          sessionId,
-        }),
-        signal: controller.signal,
-      });
-
+      const data = await topsiApi.chat({ message: inputMessage, sessionId }, controller.signal);
       clearTimeout(timeoutId);
 
-      if (res.ok) {
-        const data = await res.json();
-        const assistantMessage: TopsiChatMessage = {
-          id: `assistant-${Date.now()}`,
-          role: 'assistant',
-          content: data.message,
-          timestamp: new Date(),
-        };
-        setMessages((prev) => [...prev, assistantMessage]);
-      } else {
-        const errorText = await res.text();
-        console.error('Topsi error:', errorText);
-        toast.error(`Topsi error: ${res.status}`);
-      }
+      const assistantMessage: TopsiChatMessage = {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        content: data.message ?? '',
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
       clearTimeout(timeoutId);
       console.error('Failed to send message:', error);
@@ -367,48 +299,35 @@ export function TopsiPage() {
     try {
       const base64Audio = await blobToBase64(audioBlob);
 
-      const res = await fetch(resolveApiUrl('/api/topsi/voice/interaction'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId,
-          audioInput: base64Audio,
-        }),
-      });
+      const voiceResult = await topsiApi.voiceInteraction(sessionId, base64Audio);
+      const responseData = voiceResult.data || voiceResult;
 
-      if (res.ok) {
-        const data = await res.json();
-        const responseData = data.data || data;
-
-        // Add user's transcribed message
-        if (responseData.transcription) {
-          const userMessage: TopsiChatMessage = {
-            id: `user-${Date.now()}`,
-            role: 'user',
-            content: responseData.transcription,
-            timestamp: new Date(),
-          };
-          setMessages((prev) => [...prev, userMessage]);
-        }
-
-        // Add Topsi's response
-        const responseText = responseData.responseText || 'I received your message.';
-        const hasAudio = responseData.audioResponse && responseData.audioResponse.length > 100;
-        const assistantMessage: TopsiChatMessage = {
-          id: `assistant-${Date.now()}`,
-          role: 'assistant',
-          content: responseText,
+      // Add user's transcribed message
+      if (responseData.transcription) {
+        const userMessage: TopsiChatMessage = {
+          id: `user-${Date.now()}`,
+          role: 'user',
+          content: responseData.transcription,
           timestamp: new Date(),
-          hasAudio,
         };
-        setMessages((prev) => [...prev, assistantMessage]);
+        setMessages((prev) => [...prev, userMessage]);
+      }
 
-        // Play audio response
-        if (hasAudio) {
-          await playAudio(responseData.audioResponse);
-        }
-      } else {
-        toast.error('Voice processing failed');
+      // Add Topsi's response
+      const responseText = responseData.responseText || 'I received your message.';
+      const hasAudio = !!(responseData.audioResponse && responseData.audioResponse.length > 100);
+      const assistantMessage: TopsiChatMessage = {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        content: responseText,
+        timestamp: new Date(),
+        hasAudio,
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+
+      // Play audio response
+      if (hasAudio) {
+        await playAudio(responseData.audioResponse!);
       }
     } catch (error) {
       console.error('Failed to process voice:', error);

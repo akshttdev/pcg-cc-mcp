@@ -22,8 +22,8 @@ impl BrandIntakeToken {
         expires_at: DateTime<Utc>,
     ) -> Result<Self, sqlx::Error> {
         let id = Uuid::new_v4();
-        let id_bytes = id.as_bytes().to_vec();
-        let org_bytes = org_id.as_bytes().to_vec();
+        let id_bytes = id.to_string();
+        let org_bytes = org_id.to_string();
         sqlx::query(
             "INSERT INTO brand_intake_tokens (id, organization_id, token, expires_at)
              VALUES (?, ?, ?, ?)",

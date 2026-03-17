@@ -121,7 +121,7 @@ impl ProjectKnowledgeSource {
         pool: &SqlitePool,
         project_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
-        let pid = project_id.as_bytes().to_vec();
+        let pid = project_id.to_string();
         sqlx::query_as::<_, Self>(
             r#"SELECT
                 id, project_id, source_type, source_id, source_title, source_summary,
@@ -147,8 +147,8 @@ impl ProjectKnowledgeSource {
         coverage_score: f64,
     ) -> Result<(), sqlx::Error> {
         let id = Uuid::new_v4();
-        let pid = project_id.as_bytes().to_vec();
-        let id_bytes = id.as_bytes().to_vec();
+        let pid = project_id.to_string();
+        let id_bytes = id.to_string();
         let st = source_type.to_string();
 
         sqlx::query(
@@ -181,7 +181,7 @@ impl ProjectKnowledgeSource {
         pool: &SqlitePool,
         id: Uuid,
     ) -> Result<(), sqlx::Error> {
-        let id_bytes = id.as_bytes().to_vec();
+        let id_bytes = id.to_string();
         sqlx::query(
             "UPDATE project_knowledge_sources SET is_stale = 1, updated_at = datetime('now', 'subsec') WHERE id = ?",
         )
@@ -196,7 +196,7 @@ impl ProjectKnowledgeSource {
         pool: &SqlitePool,
         id: Uuid,
     ) -> Result<(), sqlx::Error> {
-        let id_bytes = id.as_bytes().to_vec();
+        let id_bytes = id.to_string();
         sqlx::query(
             "UPDATE project_knowledge_sources SET is_stale = 0, last_refreshed_at = datetime('now', 'subsec'), updated_at = datetime('now', 'subsec') WHERE id = ?",
         )
@@ -211,7 +211,7 @@ impl ProjectKnowledgeSource {
         pool: &SqlitePool,
         project_id: Uuid,
     ) -> Result<Option<ProjectKnowledgeCompleteness>, sqlx::Error> {
-        let pid = project_id.as_bytes().to_vec();
+        let pid = project_id.to_string();
         sqlx::query_as::<_, ProjectKnowledgeCompleteness>(
             r#"SELECT
                 project_id, total_sources, fresh_sources,

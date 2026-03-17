@@ -7,6 +7,7 @@ use axum::{
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+// TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
@@ -533,7 +534,7 @@ async fn load_platform_roles(pool: &sqlx::SqlitePool, user_id: Uuid) -> Vec<Stri
     sqlx::query_as::<_, RoleRow>(
         "SELECT role FROM user_platform_roles WHERE user_id = ?"
     )
-    .bind(user_id.as_bytes().to_vec())
+    .bind(user_id.to_string())
     .fetch_all(pool)
     .await
     .unwrap_or_default()
@@ -575,7 +576,7 @@ pub async fn get_current_user(
 
             #[derive(FromRow)]
             struct UserSession {
-                id: Vec<u8>,
+                id: String,
                 is_admin: i32,
                 is_active: i32,
             }
@@ -594,7 +595,7 @@ pub async fn get_current_user(
             .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
             if let Some(user_session) = result {
-                let user_id = Uuid::from_slice(&user_session.id)
+                let user_id = Uuid::parse_str(&user_session.id)
                     .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {}", e)))?;
 
                 // Extend session expiry on activity (sliding window)
@@ -623,7 +624,7 @@ pub async fn get_current_user(
 
         #[derive(FromRow)]
         struct UserSession {
-            id: Vec<u8>,
+            id: String,
             is_admin: i32,
             is_active: i32,
         }
@@ -642,7 +643,7 @@ pub async fn get_current_user(
         .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
         if let Some(user_session) = result {
-            let user_id = Uuid::from_slice(&user_session.id)
+            let user_id = Uuid::parse_str(&user_session.id)
                 .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {}", e)))?;
 
             // Extend session expiry on activity (sliding window)

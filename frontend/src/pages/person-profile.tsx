@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { personsApi, intelligenceApi, reportsApi, type PersonRecord, type PersonNote, type PersonSocialProfile, type PersonCompanyRole } from '@/lib/api';
+import { entityKeys } from '@/lib/query-keys';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -489,15 +490,15 @@ function NotesTab({ personId }: { personId: string }) {
 function ResearchTab({ personId }: { personId: string }) {
   const queryClient = useQueryClient();
   const { data: passes = [], isLoading } = useQuery({
-    queryKey: ['research-passes', personId],
+    queryKey: entityKeys.researchPasses(personId),
     queryFn: () => intelligenceApi.listResearchPasses(personId),
   });
 
   const triggerMut = useMutation({
     mutationFn: () => intelligenceApi.triggerNextPass(personId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['research-passes', personId] });
-      queryClient.invalidateQueries({ queryKey: ['person', personId] });
+      queryClient.invalidateQueries({ queryKey: entityKeys.researchPasses(personId) });
+      queryClient.invalidateQueries({ queryKey: entityKeys.person(personId) });
       toast.success('Research pass queued');
     },
     onError: () => toast.error('Failed to trigger research'),
@@ -582,7 +583,7 @@ function ResearchTab({ personId }: { personId: string }) {
 
 function ReportsTab({ personId }: { personId: string }) {
   const { data: reports = [], isLoading } = useQuery({
-    queryKey: ['person-reports', personId],
+    queryKey: entityKeys.personReports(personId),
     queryFn: () => intelligenceApi.listPersonReports(personId),
   });
 
@@ -649,7 +650,7 @@ export function PersonProfilePage() {
   const [tab, setTab] = useState<'overview' | 'social' | 'notes' | 'research' | 'reports'>('overview');
 
   const { data: person, isLoading } = useQuery({
-    queryKey: ['person', personId],
+    queryKey: entityKeys.person(personId!),
     queryFn: () => personsApi.get(personId!),
     enabled: !!personId,
   });

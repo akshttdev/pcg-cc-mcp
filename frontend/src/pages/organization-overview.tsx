@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Loader } from '@/components/ui/loader';
 import { Button } from '@/components/ui/button';
 import NiceModal from '@ebay/nice-modal-react';
+import { showConfirm } from '@/lib/modals';
 import '@/components/dialogs/shared/ConvertEntityDialog';
 
 export function OrganizationOverview() {
@@ -96,7 +97,7 @@ export function OrganizationOverview() {
             size="sm"
             className="text-destructive hover:text-destructive"
             onClick={async () => {
-              if (!window.confirm(`Delete "${org.name}"? This will deactivate the organization and hide it from the sidebar.`)) return;
+              if (!await showConfirm({ title: 'Delete Organization', message: `Delete "${org.name}"? This will deactivate the organization and hide it from the sidebar.`, variant: 'destructive', confirmText: 'Delete' })) return;
               try {
                 await organizationsApi.delete(org.id);
                 queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });

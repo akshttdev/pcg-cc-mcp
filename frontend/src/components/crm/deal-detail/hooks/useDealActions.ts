@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { reportsApi, crmDealsApi, intelligenceApi } from '@/lib/api';
+import { showConfirm } from '@/lib/modals';
 import { toast } from 'sonner';
 
 /**
@@ -14,9 +15,12 @@ export function useDealActions() {
   const [reportLoading, setReportLoading] = useState(false);
 
   const advanceDeal = async (dealId: string, dealName: string) => {
-    const confirmed = window.confirm(
-      `Advance "${dealName}" to the next pipeline stage? This action cannot be undone.`
-    );
+    const confirmed = await showConfirm({
+      title: 'Advance Deal',
+      message: `Advance "${dealName}" to the next pipeline stage? This action cannot be undone.`,
+      variant: 'destructive',
+      confirmText: 'Advance',
+    });
     if (!confirmed) return;
 
     setAdvanceLoading(true);

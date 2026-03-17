@@ -4,7 +4,7 @@
 
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,10 +30,13 @@ import { useAuth } from '@/contexts/AuthContext';
 interface RunWorkflowDialogProps {
   workflow: WorkflowDefinition | null;
   onClose: () => void;
+  /** When provided, called instead of navigating away after a successful run */
+  onRunComplete?: (runId: string, stagedRecords: number) => void;
 }
 
-export function RunWorkflowDialog({ workflow, onClose }: RunWorkflowDialogProps) {
+export function RunWorkflowDialog({ workflow, onClose, onRunComplete }: RunWorkflowDialogProps) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const orgId = user?.home_organization_id ?? user?.organizations?.[0]?.id;
   const [selectedDataSourceId, setSelectedDataSourceId] = useState<string>('');
@@ -74,8 +77,15 @@ export function RunWorkflowDialog({ workflow, onClose }: RunWorkflowDialogProps)
     mutationFn: () => dataSourcesApi.runWorkflow(selectedDataSourceId, workflow!.id, effectiveModel || undefined),
     onSuccess: (data) => {
       if (data.workflow_run_id && data.staged_records > 0) {
-        handleClose();
-        navigate('/workflows?tab=staging&run=' + data.workflow_run_id);
+        queryClient.invalidateQueries({ queryKey: ['staging', data.workflow_run_id] });
+        queryClient.invalidateQueries({ queryKey: ['staging-pending'] });
+        if (onRunComplete) {
+          handleClose();
+          onRunComplete(data.workflow_run_id, data.staged_records);
+        } else {
+          handleClose();
+          navigate('/workflows?tab=staging&run=' + data.workflow_run_id);
+        }
       }
     },
   });

@@ -48,7 +48,7 @@ pub async fn get_notifications(
             project_id: DbUuid,
         }
         // project_members.user_id is BLOB — bind as raw bytes for correct comparison
-        let user_id_bytes = access.user_id.as_bytes().to_vec();
+        let user_id_bytes = access.user_id.to_string();
         let rows: Vec<ProjectId> =
             sqlx::query_as("SELECT project_id FROM project_members WHERE user_id = ?")
                 .bind(&user_id_bytes)

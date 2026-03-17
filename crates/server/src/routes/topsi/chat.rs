@@ -29,22 +29,9 @@ pub async fn chat_with_topsi(
         }
     };
 
-    // VIBE Balance Check — uses real deposit ledger
-    if !crate::helpers::vibe_check::is_vibe_bypass_active(&pool).await {
-        if let Some(project_id) = billing_project_id {
-            let total_deposited = VibeDeposit::total_deposited(&pool, project_id).await.unwrap_or(0);
-            let total_withdrawn = VibeWithdrawal::total_withdrawn(&pool, project_id).await.unwrap_or(0);
-            let total_spent = VibeTransaction::sum_by_source(&pool, VibeSourceType::Project, project_id, None)
-                .await
-                .map(|s| s.total_vibe)
-                .unwrap_or(0);
-            let balance = total_deposited - total_withdrawn - total_spent;
-            if balance <= 0 {
-                return Err(ApiError::PaymentRequired(
-                    "Insufficient VIBE balance. Deposit VIBE tokens to your project to continue.".into(),
-                ));
-            }
-        }
+    // VIBE Balance Check
+    if let Some(project_id) = billing_project_id {
+        crate::helpers::billing::ensure_vibe_balance(&pool, project_id).await?;
     }
 
     let topsi_instance = get_topsi_instance().await?;
@@ -80,28 +67,15 @@ pub async fn chat_with_topsi(
 
     // Record VIBE cost
     if let Some(project_id) = billing_project_id {
-        let input_tokens = response.input_tokens.unwrap_or(0);
-        let output_tokens = response.output_tokens.unwrap_or(0);
-        if input_tokens > 0 || output_tokens > 0 {
-            let vibe_pricing = VibePricingService::new(pool.clone());
-            match vibe_pricing.record_llm_usage(
-                VibeSourceType::Project, project_id,
-                "claude-sonnet-4-20250514",
-                input_tokens, output_tokens,
-                None, None, None,
-            ).await {
-                Ok(tx) => {
-                    let _ = Project::adjust_vibe_spent(&pool, &project_id.to_string(), tx.amount_vibe).await;
-                    tracing::info!("[VIBE] Topsi recorded {} VIBE for project {}", tx.amount_vibe, project_id);
-                }
-                Err(e) => tracing::error!("[VIBE] Failed to record Topsi usage: {}", e),
-            }
-        }
+        crate::helpers::billing::record_llm_vibe_usage(
+            &pool, project_id, "claude-sonnet-4-20250514",
+            response.input_tokens.unwrap_or(0), response.output_tokens.unwrap_or(0),
+            None, None, None, "Topsi",
+        ).await;
     }
 
     // Persist conversation (non-blocking)
     {
-        use db::models::agent_conversation::{AgentConversation, AgentConversationMessage};
         let pool_conv = pool.clone();
         let sess = session_id.clone();
         let user_msg = request.message.clone();
@@ -109,23 +83,12 @@ pub async fn chat_with_topsi(
         let resp_input = response.input_tokens;
         let resp_output = response.output_tokens;
         tokio::spawn(async move {
-            match AgentConversation::get_or_create(&pool_conv, topsi_agent_id, &sess, None).await {
-                Ok(conversation) => {
-                    if let Err(e) = AgentConversationMessage::add_user_message(
-                        &pool_conv, conversation.id, &user_msg,
-                    ).await {
-                        tracing::warn!("Failed to persist Topsi user message: {}", e);
-                    }
-                    if let Err(e) = AgentConversationMessage::add_assistant_message(
-                        &pool_conv, conversation.id, &assistant_msg,
-                        Some("claude-sonnet-4-20250514"), Some("anthropic"),
-                        resp_input, resp_output, None,
-                    ).await {
-                        tracing::warn!("Failed to persist Topsi assistant message: {}", e);
-                    }
-                }
-                Err(e) => tracing::warn!("Failed to get/create Topsi conversation: {}", e),
-            }
+            crate::helpers::conversations::persist_chat_exchange(
+                &pool_conv, topsi_agent_id, &sess, None,
+                &user_msg, &assistant_msg,
+                Some("claude-sonnet-4-20250514"), Some("anthropic"),
+                resp_input, resp_output, "Topsi",
+            ).await;
         });
     }
 

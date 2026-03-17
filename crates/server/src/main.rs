@@ -161,6 +161,24 @@ async fn main() -> Result<(), VibeKanbanError> {
         }
     }
 
+    // Start Sovereign Stack scraper service (Dropbox C: → sovereign stack E:)
+    match server::sovereign_stack::SovereignStackConfig::from_env() {
+        Ok(config) if config.enabled => {
+            let mut service = server::sovereign_stack::SovereignStackService::new(config);
+            tokio::spawn(async move {
+                if let Err(e) = service.start().await {
+                    tracing::error!("Failed to start sovereign stack scraper: {}", e);
+                }
+            });
+        }
+        Ok(_) => {
+            tracing::info!("Sovereign stack scraper is disabled (set SOVEREIGN_STACK_ENABLED=true to enable)");
+        }
+        Err(e) => {
+            tracing::warn!("Failed to load sovereign stack config: {}", e);
+        }
+    }
+
     // Start Pulse Engine NATS consumer and publisher
     {
         let nats_url = std::env::var("PULSE_NATS_URL")

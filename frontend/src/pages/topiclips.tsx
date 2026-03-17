@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { resolveApiUrl } from '@/lib/api';
+import { topiclipsApi } from '@/lib/api';
+import type {
+  TopiClipSession,
+  TopiClipGalleryResponse,
+  TopiClipTimelineEntry,
+  TopiClipSymbol,
+} from '@/lib/api';
 import { useParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -32,71 +38,7 @@ import {
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-// Types for TopiClips
-interface TopiClipSession {
-  id: string;
-  projectId: string;
-  title: string;
-  dayNumber: number;
-  triggerType: 'daily' | 'event' | 'manual';
-  primaryTheme?: string;
-  emotionalArc?: string;
-  narrativeSummary?: string;
-  artisticPrompt?: string;
-  status: 'pending' | 'analyzing' | 'interpreting' | 'rendering' | 'delivered' | 'failed' | 'cancelled';
-  outputAssetIds?: string[];
-  eventsAnalyzed: number;
-  significanceScore?: number;
-  createdAt: string;
-  deliveredAt?: string;
-}
-
-interface TopiClipGalleryResponse {
-  sessions: TopiClipSession[];
-  schedule?: TopiClipDailySchedule;
-  currentStreak: number;
-  longestStreak: number;
-  totalClips: number;
-}
-
-interface TopiClipDailySchedule {
-  id: string;
-  projectId: string;
-  scheduledTime: string;
-  timezone?: string;
-  isEnabled: boolean;
-  currentStreak: number;
-  longestStreak: number;
-  totalClipsGenerated: number;
-  lastGenerationDate?: string;
-}
-
-interface TopiClipTimelineEntry {
-  session: TopiClipSession;
-  events: TopiClipCapturedEvent[];
-  assetUrls: string[];
-}
-
-interface TopiClipCapturedEvent {
-  id: string;
-  sessionId: string;
-  eventType: string;
-  narrativeRole?: string;
-  significanceScore?: number;
-  assignedSymbol?: string;
-  symbolPrompt?: string;
-  occurredAt: string;
-}
-
-interface TopiClipSymbol {
-  id: string;
-  eventPattern: string;
-  symbolName: string;
-  symbolDescription?: string;
-  promptTemplate: string;
-  themeAffinity?: string;
-  motionType?: string;
-}
+// Types imported from @/lib/api/topiclips
 
 export function TopiClipsPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -115,11 +57,8 @@ export function TopiClipsPage() {
   // Fetch gallery data
   const fetchGallery = useCallback(async () => {
     try {
-      const res = await fetch(resolveApiUrl(`/api/topiclips/gallery?projectId=${projectId}`));
-      if (res.ok) {
-        const data = await res.json();
-        setGallery(data.data);
-      }
+      const data = await topiclipsApi.getGallery(projectId || '');
+      setGallery(data.data);
     } catch (error) {
       console.error('Failed to fetch gallery:', error);
     } finally {
@@ -130,11 +69,8 @@ export function TopiClipsPage() {
   // Fetch symbols
   const fetchSymbols = useCallback(async () => {
     try {
-      const res = await fetch(resolveApiUrl('/api/topiclips/symbols'));
-      if (res.ok) {
-        const data = await res.json();
-        setSymbols(data.data || []);
-      }
+      const data = await topiclipsApi.getSymbols();
+      setSymbols(data.data || []);
     } catch (error) {
       console.error('Failed to fetch symbols:', error);
     }
@@ -143,11 +79,8 @@ export function TopiClipsPage() {
   // Fetch timeline for a session
   const fetchTimeline = useCallback(async (sessionId: string) => {
     try {
-      const res = await fetch(resolveApiUrl(`/api/topiclips/sessions/${sessionId}/timeline`));
-      if (res.ok) {
-        const data = await res.json();
-        setTimeline(data.data);
-      }
+      const data = await topiclipsApi.getSessionTimeline(sessionId);
+      setTimeline(data.data);
     } catch (error) {
       console.error('Failed to fetch timeline:', error);
     }
@@ -157,34 +90,11 @@ export function TopiClipsPage() {
   const createManualClip = useCallback(async () => {
     setIsGenerating(true);
     try {
-      // Create session
-      const createRes = await fetch(resolveApiUrl('/api/topiclips/sessions'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId,
-          triggerType: 'manual',
-        }),
-      });
-
-      if (!createRes.ok) {
-        throw new Error('Failed to create session');
-      }
-
-      const createData = await createRes.json();
+      const createData = await topiclipsApi.createSession(projectId || '', 'manual');
       const session = createData.data;
-
-      // Generate the clip
-      const generateRes = await fetch(resolveApiUrl(`/api/topiclips/sessions/${session.id}/generate`), {
-        method: 'POST',
-      });
-
-      if (generateRes.ok) {
-        toast.success('TopiClip generated successfully!');
-        await fetchGallery();
-      } else {
-        toast.error('Generation failed');
-      }
+      await topiclipsApi.generateSession(session.id);
+      toast.success('TopiClip generated successfully!');
+      await fetchGallery();
     } catch (error) {
       console.error('Failed to create clip:', error);
       toast.error('Failed to create TopiClip');
@@ -197,16 +107,9 @@ export function TopiClipsPage() {
   const forceDailyGeneration = useCallback(async () => {
     setIsGenerating(true);
     try {
-      const res = await fetch(resolveApiUrl(`/api/topiclips/daily/${projectId}/generate`), {
-        method: 'POST',
-      });
-
-      if (res.ok) {
-        toast.success('Daily TopiClip generated!');
-        await fetchGallery();
-      } else {
-        toast.error('Generation failed');
-      }
+      await topiclipsApi.generateDaily(projectId || '');
+      toast.success('Daily TopiClip generated!');
+      await fetchGallery();
     } catch (error) {
       console.error('Failed to generate daily clip:', error);
       toast.error('Failed to generate daily TopiClip');
@@ -218,23 +121,10 @@ export function TopiClipsPage() {
   // Create/update schedule
   const saveSchedule = useCallback(async () => {
     try {
-      const res = await fetch(resolveApiUrl('/api/topiclips/daily'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId,
-          scheduledTime: scheduleTime,
-          timezone: 'UTC',
-        }),
-      });
-
-      if (res.ok) {
-        toast.success('Schedule saved!');
-        setScheduleDialogOpen(false);
-        await fetchGallery();
-      } else {
-        toast.error('Failed to save schedule');
-      }
+      await topiclipsApi.saveSchedule(projectId || '', scheduleTime, 'UTC');
+      toast.success('Schedule saved!');
+      setScheduleDialogOpen(false);
+      await fetchGallery();
     } catch (error) {
       console.error('Failed to save schedule:', error);
       toast.error('Failed to save schedule');
