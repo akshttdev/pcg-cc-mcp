@@ -5,8 +5,8 @@
  *   1. Build a CRM extraction workflow (contacts, companies, deals)
  *   2. Create a "conversation" data source via the org intelligence page
  *   3. Run the workflow against the data source
- *   4. Verify the workflow successfully parsed the data source — MUST produce staged records
- *   5. Approve & commit staged records into the CRM
+ *   4. Verify staged records appear inline (RunAndReviewPanel) — MUST produce staged records
+ *   5. Approve & commit staged records into the CRM (inline)
  *   6. Verify the workflow run on the Runs tab
  *   7. Navigate to CRM contacts page — verify extracted contacts and view detail
  *   8. Navigate to CRM pipeline — verify extracted deals
@@ -152,31 +152,29 @@ test.describe("Workflow → CRM Pipeline Demo", () => {
     // Click the Run Workflow button in the dialog
     await page.getByRole("button", { name: /Run Workflow/ }).last().click();
 
-    // Wait for the workflow to complete — the dialog should change to "Running..."
-    // then close on success, redirecting to the staging tab.
+    // Wait for the workflow to complete — the dialog shows "Running..." then
+    // closes on success. The RunAndReviewPanel renders staging results inline
+    // on the data source detail page (via onRunComplete callback).
     //
-    // SUCCESS path: dialog closes → navigates to /workflows?tab=staging&run=...
+    // SUCCESS path: dialog closes → RunAndReviewPanel appears inline with staged records
     // FAILURE path: toast shows "Failed to run workflow" and dialog stays open
     //
-    // We MUST end up on the staging tab — anything else means parsing failed.
+    // We MUST see inline staging results — anything else means parsing failed.
 
     // First, wait for the "Running..." state to appear (confirms the request was sent)
     await expect(
       page.getByRole("button", { name: "Running..." })
     ).toBeVisible({ timeout: t(10_000) });
 
-    // Now wait for navigation to staging tab (only happens on successful parse with records)
-    await expect(page).toHaveURL(/tab=staging/, { timeout: t(60_000) });
+    // Wait for the dialog to close and inline staging results to appear
+    // (RunAndReviewPanel renders after onRunComplete fires)
+    await expect(
+      page.getByText(/records staged|contacts|companies|deals/i).first()
+    ).toBeVisible({ timeout: t(60_000) });
 
     // Verify we're NOT seeing failure indicators
     const failedText = page.getByText("Failed to run workflow");
     await expect(failedText).not.toBeVisible();
-
-    // Verify the staging tab loaded and has records
-    // (the URL includes &run=<id> which auto-selects the run)
-    await expect(
-      page.getByText(/records staged|contacts|companies|deals/i).first()
-    ).toBeVisible({ timeout: t(15_000) });
 
     await page.waitForTimeout(demoPause.medium);
   });
@@ -184,20 +182,13 @@ test.describe("Workflow → CRM Pipeline Demo", () => {
   test("Part 4: Verify staged records contain parsed CRM data", async ({ page }) => {
     test.setTimeout(60_000);
 
-    // If Part 3 navigated us to staging, we might already be there.
-    // Otherwise, go to workflows staging tab directly.
-    if (!page.url().includes("tab=staging")) {
-      await page.goto("/workflows");
-      await expect(page.getByRole("tab", { name: "Staging" })).toBeVisible({
-        timeout: t(10_000),
-      });
-      await page.getByRole("tab", { name: "Staging" }).click();
-    }
+    // Part 3 left us on the data source detail page with the RunAndReviewPanel
+    // showing inline staging results. Verify records are present.
 
     // Wait for staging records to load — must NOT show "No staged records"
     const noRecordsText = page.getByText("No staged records for this workflow run.");
     const noRecordsVisible = await noRecordsText.isVisible().catch(() => false);
-    expect(noRecordsVisible, "Staging tab shows 'No staged records' — workflow parsing failed").toBe(false);
+    expect(noRecordsVisible, "Inline staging panel shows 'No staged records' — workflow parsing failed").toBe(false);
 
     // Verify the staging panel contains actual parsed data from the conversation.
     // The conversation mentions: Marcus Webb, Lisa Park, Raj Patel, Sarah Chen,
@@ -263,11 +254,8 @@ test.describe("Workflow → CRM Pipeline Demo", () => {
     test.setTimeout(60_000);
     await apiLogin(request);
 
-    // Navigate to staging tab (Part 3 left us on ?tab=staging)
-    if (!page.url().includes("tab=staging")) {
-      await page.goto("/workflows");
-      await page.getByRole("tab", { name: "Staging" }).click();
-    }
+    // Part 4 left us on the data source detail page with inline staging results
+    // (RunAndReviewPanel). The approve/commit actions are available inline.
 
     // Wait for staging panel to render with records
     await expect(
@@ -302,12 +290,12 @@ test.describe("Workflow → CRM Pipeline Demo", () => {
       // Auto-approve didn't work (likely low confidence scores).
       // Approve all pending records via API and batch-commit.
 
-      // Find the workflow run ID from the URL (?run=<id>)
-      const url = new URL(page.url(), "http://localhost");
-      let workflowRunId = url.searchParams.get("run");
+      // Find the workflow run ID — inline review doesn't use URL params,
+      // so we look up pending staging records via API.
+      let workflowRunId: string | null = null;
 
-      if (!workflowRunId) {
-        // Fallback: list staging records to find the run ID
+      {
+        // List staging records to find the run ID
         const stagingRes = await request.get("/api/workflow-staging/pending?organization_id=" + ORG_ID);
         if (stagingRes.ok()) {
           const staging = await stagingRes.json();
@@ -365,13 +353,14 @@ test.describe("Workflow → CRM Pipeline Demo", () => {
   test("Part 6: Verify workflow run on Runs tab", async ({ page }) => {
     test.setTimeout(30_000);
     await login(page);
-    await page.goto("/workflows");
+    // Navigate directly to the Runs tab — sidebar now shows sub-links
+    // (Builder, Runs, Staging) when My Workflows is active.
+    await page.goto("/workflows?tab=runs");
 
-    // Click the Runs tab
+    // Verify Runs tab is active
     await expect(page.getByRole("tab", { name: /Runs/i })).toBeVisible({
       timeout: t(10_000),
     });
-    await page.getByRole("tab", { name: /Runs/i }).click();
 
     // Verify we see our workflow run with completed status
     const workflowName = WORKFLOW_NAME.replace(`${TEST_DATA_PREFIX} `, "");

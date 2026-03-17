@@ -14,6 +14,13 @@
  * Uses API for deal creation/advancement (mirrors agent behavior) and UI for
  * pipeline board verification and deal detail panel interactions.
  *
+ * UI Component Notes:
+ *   - Intelligence WorkflowsView uses shared WorkflowCardGrid component
+ *     (same as BuilderTab). Cards show ownership badges (Personal/Organization/System).
+ *   - Workflow cards in Intelligence view have a "Run" button for direct execution.
+ *   - After running a workflow, staging results appear inline via RunAndReviewPanel
+ *     (not via navigation to /workflows?tab=staging).
+ *
  * Prerequisites:
  *   - Dev server running on FRONTEND_PORT (default 3001)
  *   - Seed database with Powerclub Global organization + Clients pipeline
