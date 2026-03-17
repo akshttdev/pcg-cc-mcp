@@ -20,7 +20,7 @@ services:
               count: all
               capabilities: [gpu]
       restart_policy:
-        condition: any
+        condition: on-failure
         delay: 5s
         max_attempts: 10
         window: 120s
@@ -102,8 +102,6 @@ services:
       - docs-site:/app/docs-site
     ports:
       - "3001:3001"        # Main application API
-      - "11434:11434"      # Ollama API (local LLM)
-      - "8100:8100"        # Chatterbox TTS API (local voice)
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3001/api/health"]
       interval: 30s

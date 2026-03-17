@@ -1,17 +1,25 @@
-# Build stage
-FROM node:24-alpine AS builder
+# Build stage — use Debian for glibc (Alpine musl can't link native C deps like opus/sodium)
+FROM node:24-bookworm AS builder
 
 # Install build dependencies
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    build-base \
+    build-essential \
     perl \
     python3 \
-    py3-pip
+    python3-pip \
+    cmake \
+    pkg-config \
+    libssl-dev \
+    libopus-dev \
+    libsodium-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install Rust
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+# Install Rust (nightly toolchain matching rust-toolchain.toml)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly-2025-05-18
 ENV PATH="/root/.cargo/bin:${PATH}"
+# Disable sccache in Docker (not installed, not needed for one-shot builds)
+ENV RUSTC_WRAPPER=""
 
 # Set working directory
 WORKDIR /app
@@ -29,8 +37,10 @@ COPY . .
 
 # Build application
 ENV SQLX_OFFLINE=true
+# Remove sccache wrapper from cargo config (not installed in Docker)
+RUN sed -i '/rustc-wrapper/d' .cargo/config.toml || true
 RUN npm run generate-types
-RUN cd frontend && npm install --ignore-scripts && npx vite build --mode production
+RUN cd frontend && npm install --ignore-scripts --legacy-peer-deps && npx vite build --mode production
 RUN cargo build --release --bin server
 
 # Build Mintlify documentation as static site
