@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,12 +23,13 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
-  AlertTriangle,
+
   History,
   ExternalLink,
 } from 'lucide-react';
-import { dataSourcesApi, workflowsApi, stagingApi, DATA_TYPE_OPTIONS, SOURCE_TYPE_OPTIONS } from '@/lib/api';
+import { dataSourcesApi, workflowsApi, DATA_TYPE_OPTIONS, SOURCE_TYPE_OPTIONS } from '@/lib/api';
 import { StagingReviewPanel } from '@/components/workflows/StagingReviewPanel';
+import { RunAndReviewPanel } from '@/components/workflows/RunAndReviewPanel';
 import { WorkflowRunsPanel } from '@/components/workflows/WorkflowRunsPanel';
 import { formatDate } from '@/lib/formatters';
 
@@ -69,36 +70,6 @@ export function DataSourceDetailPage() {
     staleTime: 60 * 60 * 1000,
   });
 
-  // Fetch staging records for the current workflow run result
-  const { data: stagingRecords = [] } = useQuery({
-    queryKey: ['staging', workflowResult?.workflow_run_id],
-    queryFn: () => stagingApi.listByRun(workflowResult.workflow_run_id),
-    enabled: !!workflowResult?.workflow_run_id,
-  });
-
-  // Compute summary stats from staging records
-  const runSummary = useMemo(() => {
-    if (stagingRecords.length === 0) return null;
-
-    const byTargetType: Record<string, number> = {};
-    let validationIssueCount = 0;
-    let duplicateCount = 0;
-
-    for (const rec of stagingRecords) {
-      byTargetType[rec.target_type] = (byTargetType[rec.target_type] || 0) + 1;
-
-      if (rec.duplicate_of_id) duplicateCount++;
-
-      if (rec.validation_errors) {
-        try {
-          const errs = JSON.parse(rec.validation_errors);
-          if (Array.isArray(errs) && errs.length > 0) validationIssueCount++;
-        } catch {}
-      }
-    }
-
-    return { byTargetType, validationIssueCount, duplicateCount, total: stagingRecords.length };
-  }, [stagingRecords]);
 
   const effectiveModel = selectedModel || availableModels?.find((m) => m.is_default)?.id || '';
 
@@ -491,58 +462,21 @@ export function DataSourceDetailPage() {
             </div>
           )}
 
-          {(workflowResult?.staged_records > 0 || stagingRecords.length > 0) && (
-            <div className="mb-4 p-4 rounded-md border bg-muted/20 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">Run Results</p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-1.5"
-                  onClick={() => navigate('/workflows?tab=staging&run=' + workflowResult.workflow_run_id)}
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  Review in Staging
-                </Button>
-              </div>
-
-              {/* Per-target-type breakdown */}
-              {runSummary && (
-                <div className="flex flex-wrap items-center gap-2">
-                  {Object.entries(runSummary.byTargetType).map(([type, count]) => {
-                    const labels: Record<string, string> = {
-                      crm_contact: 'contacts',
-                      company: 'companies',
-                      crm_deal: 'deals',
-                      task: 'tasks',
-                    };
-                    return (
-                      <Badge key={type} variant="secondary" className="text-xs">
-                        {count} {labels[type] || type}
-                      </Badge>
-                    );
-                  })}
-
-                  {runSummary.validationIssueCount > 0 && (
-                    <Badge variant="outline" className="text-xs text-amber-600 border-amber-200 gap-1">
-                      <AlertTriangle className="h-3 w-3" />
-                      {runSummary.validationIssueCount} record{runSummary.validationIssueCount !== 1 ? 's have' : ' has'} validation issues
-                    </Badge>
-                  )}
-
-                  {runSummary.duplicateCount > 0 && (
-                    <Badge variant="outline" className="text-xs text-amber-600 border-amber-200">
-                      {runSummary.duplicateCount} duplicate{runSummary.duplicateCount !== 1 ? 's' : ''}
-                    </Badge>
-                  )}
-                </div>
-              )}
-
-              {!runSummary && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>{workflowResult.staged_records} records staged for review</span>
-                </div>
-              )}
+          {workflowResult?.staged_records > 0 && workflowResult?.workflow_run_id && (
+            <div className="mb-4">
+              <RunAndReviewPanel
+                runId={workflowResult.workflow_run_id}
+                stagedRecords={workflowResult.staged_records}
+                workflowName={workflowResult.workflow_name}
+                onRunAnother={() => {
+                  setWorkflowResult(null);
+                  setReviewRunId(null);
+                }}
+                onClose={() => {
+                  setWorkflowResult(null);
+                  setReviewRunId(null);
+                }}
+              />
             </div>
           )}
 

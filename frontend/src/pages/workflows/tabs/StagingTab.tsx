@@ -3,7 +3,7 @@
 // Staging tab: review, approve, reject, and commit records extracted by workflows.
 
 import { useState, useMemo, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import { workflowKeys } from '@/lib/query-keys';
@@ -34,6 +34,7 @@ import {
   ArrowDown,
   ArrowRight,
   Info,
+  Hammer,
 } from 'lucide-react';
 import { workflowsApi, stagingApi, schemasApi } from '@/lib/api';
 import type { WorkflowStagingRecord, TargetSchema } from '@/lib/api';
@@ -45,6 +46,7 @@ import { InlineEditField } from '../components/InlineEditField';
 
 export function StagingTab() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const orgId = user?.home_organization_id ?? user?.organizations?.[0]?.id;
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -455,7 +457,19 @@ export function StagingTab() {
         <div className="text-center py-16 text-muted-foreground">
           <ClipboardCheck className="h-10 w-10 mx-auto mb-3 opacity-30" />
           <p className="text-sm font-medium">No pending records</p>
-          <p className="text-xs mt-1">Records extracted by workflow runs will appear here for review.</p>
+          <p className="text-xs mt-1 max-w-sm mx-auto">
+            When you run a workflow against a data source, extracted records appear here for review before being committed to your CRM.
+          </p>
+          <div className="flex items-center justify-center gap-2 mt-4">
+            <Button
+              size="sm"
+              className="gap-1.5"
+              onClick={() => navigate('/workflows?tab=builder')}
+            >
+              <Hammer className="h-3.5 w-3.5" />
+              Go to Builder
+            </Button>
+          </div>
         </div>
       ) : viewMode === 'cards' ? (
         <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">

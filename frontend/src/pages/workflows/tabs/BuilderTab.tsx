@@ -4,20 +4,19 @@
 
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { EmptyState } from '@/components/ui/empty-state';
-import { Plus, Trash2, Pencil, Play, Hammer, CheckCircle2, AlertCircle, Loader2 as Loader2Icon } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { workflowsApi } from '@/lib/api';
 import type { WorkflowDefinition, WorkflowRun } from '@/lib/api';
 import { workflowKeys } from '@/lib/query-keys';
-import { formatDistanceToNow } from 'date-fns';
-import { WorkflowEditor, getNodeTypeDef } from '@/components/workflows/WorkflowEditor';
+import { WorkflowEditor } from '@/components/workflows/WorkflowEditor';
 import { WorkflowTriggersPanel } from '@/components/workflows/WorkflowTriggersPanel';
 import { WorkflowRunsPanel } from '@/components/workflows/WorkflowRunsPanel';
+import { WorkflowCardGrid } from '@/components/workflows/WorkflowCardGrid';
 import { WorkflowDetailPanel } from '../components/WorkflowDetailPanel';
 import { RunWorkflowDialog } from '../components/RunWorkflowDialog';
+import { RunAndReviewPanel } from '@/components/workflows/RunAndReviewPanel';
+import { CopyWorkflowDialog } from '@/components/workflows/CopyWorkflowDialog';
 
 export function WorkflowBuilderTab() {
   const queryClient = useQueryClient();
@@ -52,6 +51,8 @@ export function WorkflowBuilderTab() {
   const [runsWorkflow, setRunsWorkflow] = useState<WorkflowDefinition | null>(null);
   const [runWorkflow, setRunWorkflow] = useState<WorkflowDefinition | null>(null);
   const [detailWorkflow, setDetailWorkflow] = useState<WorkflowDefinition | null>(null);
+  const [inlineReview, setInlineReview] = useState<{ runId: string; stagedRecords: number; workflowName?: string } | null>(null);
+  const [copyWorkflow, setCopyWorkflow] = useState<{ wf: WorkflowDefinition; direction: 'to-org' | 'to-user' } | null>(null);
 
   const saveMutation = useMutation({
     mutationFn: async (data: { id: string; name: string; description?: string; nodes: any[]; connections: any[] }) => {
@@ -104,107 +105,19 @@ export function WorkflowBuilderTab() {
         </Button>
       </div>
 
-      {workflows.length === 0 ? (
-        <EmptyState
-          icon={Hammer}
-          title="No workflows yet"
-          description="Create your first workflow to start processing data sources."
-          action={{ label: "Create Workflow", onClick: () => { setEditingWorkflow(null); setEditorOpen(true); } }}
-        />
-      ) : (
-        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-          {workflows.map((wf: WorkflowDefinition) => {
-            const nodeCount = wf.nodes?.length ?? 0;
-            const isSelected = detailWorkflow?.id === wf.id;
-            return (
-              <Card
-                key={wf.id}
-                className={`card-interactive cursor-pointer transition-all ${isSelected ? 'ring-2 ring-primary border-primary' : ''}`}
-                onClick={() => setDetailWorkflow(isSelected ? null : wf)}
-              >
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm">{wf.name}</CardTitle>
-                    <div className="flex items-center gap-1.5">
-                      {wf.is_system && <Badge variant="secondary" className="text-[10px]">System</Badge>}
-                      <Badge variant="outline" className="text-[10px]">{nodeCount} node{nodeCount !== 1 ? 's' : ''}</Badge>
-                    </div>
-                  </div>
-                  {wf.description && <CardDescription className="text-xs line-clamp-2">{wf.description}</CardDescription>}
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between">
-                    <div className="flex flex-wrap gap-1">
-                      {(wf.nodes ?? []).slice(0, 4).map((node: any) => {
-                        const nDef = getNodeTypeDef(node.type);
-                        const colorMap: Record<string, string> = {
-                          'bg-blue-500': 'bg-blue-500/10 text-blue-700 border-blue-500/20',
-                          'bg-purple-500': 'bg-purple-500/10 text-purple-700 border-purple-500/20',
-                          'bg-emerald-500': 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20',
-                          'bg-amber-500': 'bg-amber-500/10 text-amber-700 border-amber-500/20',
-                          'bg-orange-500': 'bg-orange-500/10 text-orange-700 border-orange-500/20',
-                          'bg-teal-500': 'bg-teal-500/10 text-teal-700 border-teal-500/20',
-                        };
-                        const badgeColor = colorMap[nDef?.color ?? ''] ?? 'bg-muted text-muted-foreground';
-                        return (
-                          <Badge key={node.id} variant="outline" className={`text-[9px] px-1.5 ${badgeColor}`}>{node.name}</Badge>
-                        );
-                      })}
-                      {nodeCount > 4 && <Badge variant="outline" className="text-[9px] px-1.5">+{nodeCount - 4}</Badge>}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        className="p-1 rounded hover:bg-primary/10 hover:text-primary transition-colors"
-                        title="Run workflow"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setRunWorkflow(wf);
-                        }}
-                      >
-                        <Play className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        className="p-1 rounded hover:bg-blue-500/10 hover:text-blue-600 transition-colors"
-                        title="Edit in visual builder"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingWorkflow(wf);
-                          setEditorOpen(true);
-                        }}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      {!wf.is_system && (
-                        <button
-                          className="p-1 rounded hover:bg-destructive/10 hover:text-destructive transition-colors"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (confirm(`Delete "${wf.name}"?`)) deleteMutation.mutate(wf.id);
-                          }}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  {(() => {
-                    const lastRun = lastRunByWorkflow.get(wf.id);
-                    if (!lastRun) return <p className="text-[10px] text-muted-foreground/50 mt-1.5">Never run</p>;
-                    return (
-                      <div className="text-[10px] text-muted-foreground mt-1.5 flex items-center gap-1">
-                        Last run: {formatDistanceToNow(new Date(lastRun.created_at), { addSuffix: true })}
-                        {lastRun.status === 'completed' && <CheckCircle2 className="h-3 w-3 text-green-500" />}
-                        {lastRun.status === 'failed' && <AlertCircle className="h-3 w-3 text-red-500" />}
-                        {lastRun.status === 'running' && <Loader2Icon className="h-3 w-3 text-blue-500 animate-spin" />}
-                      </div>
-                    );
-                  })()}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+      <WorkflowCardGrid
+        workflows={workflows}
+        lastRunByWorkflow={lastRunByWorkflow}
+        selectedId={detailWorkflow?.id}
+        showOwnerBadge
+        onSelect={(wf) => setDetailWorkflow(detailWorkflow?.id === wf.id ? null : wf)}
+        onEdit={(wf) => { setEditingWorkflow(wf); setEditorOpen(true); }}
+        onRun={(wf) => setRunWorkflow(wf)}
+        onDelete={(wf) => deleteMutation.mutate(wf.id)}
+        onCopyToOrg={(wf) => setCopyWorkflow({ wf, direction: 'to-org' })}
+        onCopyToUser={(wf) => setCopyWorkflow({ wf, direction: 'to-user' })}
+        onCreateNew={() => { setEditingWorkflow(null); setEditorOpen(true); }}
+      />
 
       {/* Workflow Detail Panel -- shown inline below the grid when a workflow is selected */}
       {detailWorkflow && (
@@ -214,6 +127,20 @@ export function WorkflowBuilderTab() {
           onRun={() => setRunWorkflow(detailWorkflow)}
           onViewTriggers={() => { setTriggersWorkflow(detailWorkflow); setTriggersOpen(true); }}
           onClose={() => setDetailWorkflow(null)}
+        />
+      )}
+
+      {/* Inline staging review -- shown after a successful run */}
+      {inlineReview && (
+        <RunAndReviewPanel
+          runId={inlineReview.runId}
+          stagedRecords={inlineReview.stagedRecords}
+          workflowName={inlineReview.workflowName}
+          onRunAnother={() => {
+            setInlineReview(null);
+            setRunWorkflow(runWorkflow);
+          }}
+          onClose={() => setInlineReview(null)}
         />
       )}
 
@@ -241,6 +168,15 @@ export function WorkflowBuilderTab() {
       <RunWorkflowDialog
         workflow={runWorkflow}
         onClose={() => setRunWorkflow(null)}
+        onRunComplete={(runId, stagedRecords) => {
+          setInlineReview({ runId, stagedRecords, workflowName: runWorkflow?.name });
+        }}
+      />
+
+      <CopyWorkflowDialog
+        workflow={copyWorkflow?.wf ?? null}
+        direction={copyWorkflow?.direction ?? 'to-org'}
+        onClose={() => setCopyWorkflow(null)}
       />
     </div>
   );
