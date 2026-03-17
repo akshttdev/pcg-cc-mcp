@@ -1,3 +1,4 @@
+// TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use super::*;
 pub async fn get_org_brand_profile(
     State(deployment): State<DeploymentImpl>,

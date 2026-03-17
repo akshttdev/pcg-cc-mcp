@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { projectsApi, tasksApi } from '@/lib/api';
+import { projectBoardKeys } from '@/lib/query-keys';
 import type { ProjectBoard, TaskWithAttemptStatus } from 'shared/types';
 
 interface BoardProgress {
@@ -19,14 +20,14 @@ const STAGE_BOARD_MAP: Record<string, string[]> = {
 
 export function useProjectBoardProgress(projectId: string | undefined) {
   const { data: boards = [] } = useQuery<ProjectBoard[]>({
-    queryKey: ['projectBoards', projectId],
+    queryKey: projectBoardKeys.boards(projectId),
     queryFn: () => projectsApi.listBoards(projectId!),
     enabled: !!projectId,
     staleTime: 5 * 60 * 1000,
   });
 
   const { data: tasks = [] } = useQuery<TaskWithAttemptStatus[]>({
-    queryKey: ['projectTasks', projectId],
+    queryKey: projectBoardKeys.tasks(projectId),
     queryFn: () => tasksApi.getAll(projectId!),
     enabled: !!projectId,
     staleTime: 60 * 1000,

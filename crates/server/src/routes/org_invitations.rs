@@ -11,6 +11,7 @@ use axum::{
 };
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
+// TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 use utils::response::ApiResponse;
 

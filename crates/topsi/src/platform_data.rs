@@ -12,6 +12,7 @@ use serde_json::json;
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use db::db_uuid::DbUuid;
+// TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 
 use crate::agent::access_control::{AccessScope, UserContext};

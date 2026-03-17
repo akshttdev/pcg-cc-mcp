@@ -9,6 +9,7 @@ use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use utils::response::ApiResponse;
+// TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};

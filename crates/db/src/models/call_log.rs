@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
 use thiserror::Error;
 use ts_rs::TS;
+// TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 
 #[derive(Debug, Error)]

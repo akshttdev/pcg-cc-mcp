@@ -73,6 +73,7 @@ use utils::{
     msg_store::MsgStore,
     text::{git_branch_id, short_uuid},
 };
+// TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 
 use crate::command;

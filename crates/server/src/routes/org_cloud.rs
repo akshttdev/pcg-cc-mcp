@@ -12,6 +12,7 @@ use sha2::{Digest, Sha256};
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 use utils::response::ApiResponse;
+// TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 
 use crate::{
@@ -130,27 +131,20 @@ async fn browse_files(
 
     // For non-admin members, scope to their visible projects
     let visible_projects: Option<Vec<String>> = if cloud_access.role != "admin" {
-        let org_uuid = Uuid::parse_str(&org_id)
-            .map_err(|e| ApiError::BadRequest(format!("Invalid org UUID: {}", e)))?;
-        let org_id_bytes = org_uuid.to_string();
-
         #[derive(sqlx::FromRow)]
         struct IdRow {
-            id: Vec<u8>,
+            id: String,
         }
 
         let rows: Vec<IdRow> = sqlx::query_as(
-            "SELECT p.id FROM projects p WHERE p.organization_id = ?",
+            "SELECT CASE WHEN typeof(p.id) = 'blob' THEN lower(hex(p.id)) ELSE p.id END AS id FROM projects p WHERE p.organization_id = ?",
         )
-        .bind(&org_id_bytes)
+        .bind(&org_id)
         .fetch_all(pool)
         .await
         .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
-        let ids: Vec<String> = rows
-            .iter()
-            .filter_map(|r| Uuid::from_slice(&r.id).ok().map(|u| u.to_string()))
-            .collect();
+        let ids: Vec<String> = rows.into_iter().map(|r| r.id).collect();
         Some(ids)
     } else {
         None

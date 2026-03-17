@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS cloud_files (
     task_id TEXT,
     file_name TEXT NOT NULL,
     file_path TEXT NOT NULL,
-    storage_volume TEXT NOT NULL CHECK (storage_volume IN ('data_sources', 'media_pipeline', 'sovereign', 'artifacts', 'dropbox')),
+    storage_volume TEXT NOT NULL CHECK (storage_volume IN ('data_sources', 'media_pipeline', 'sovereign', 'sovereign_personal', 'sovereign_org', 'artifacts', 'dropbox')),
     content_hash TEXT,
     file_size_bytes INTEGER NOT NULL DEFAULT 0,
     mime_type TEXT,

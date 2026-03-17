@@ -29,6 +29,7 @@ use tokio::sync::{Mutex, broadcast};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{info, warn};
+// TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 use chrono::Utc;
 

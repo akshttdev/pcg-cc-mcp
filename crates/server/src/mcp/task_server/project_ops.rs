@@ -8,6 +8,7 @@ use rmcp::{
     model::CallToolResult,
     tool,
 };
+// TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 
 use super::TaskServer;

@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use ts_rs::TS;
 use utils::response::ApiResponse;
+// TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 
 use crate::{
