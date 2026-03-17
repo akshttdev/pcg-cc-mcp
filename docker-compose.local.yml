@@ -1,16 +1,5 @@
-version: '3.8'
-
 # Local development version without cloudflared
 # Use this for testing locally before deploying with cloudflared
-
-# Tests
-# Online status check
-# Prometheus Metrics
-# Access control for Nora
-# LRU Cache
-# Rate Limiting
-#LLM STreaming
-#Agentic Tools
 
 services:
   app:
@@ -18,7 +7,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: pcg-cc-mcp-local
-    restart: unless-stopped
+    restart: always
     environment:
       - HOST=0.0.0.0
       - BACKEND_PORT=3001
@@ -31,11 +20,11 @@ services:
     ports:
       - "3001:3001"
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/api/auth/me"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
 
 volumes:
   repos_data:
