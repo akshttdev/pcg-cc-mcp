@@ -57,7 +57,7 @@ async fn import_wallet(
         "SELECT id FROM users WHERE wallet_address = ? AND id != ?",
     )
     .bind(addr)
-    .bind(access_ctx.user_id.as_bytes().as_slice())
+    .bind(access_ctx.user_id.to_string())
     .fetch_optional(pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;

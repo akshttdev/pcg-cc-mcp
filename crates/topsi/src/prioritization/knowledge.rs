@@ -52,11 +52,11 @@ pub async fn enrich_actions_with_knowledge(
         .collect();
 
     // Collect unique project IDs
-    let unique_project_ids: Vec<Vec<u8>> = task_to_project
+    let unique_project_ids: Vec<String> = task_to_project
         .values()
         .collect::<std::collections::HashSet<_>>()
         .into_iter()
-        .map(|pid| pid.as_bytes().to_vec())
+        .map(|pid| pid.to_string())
         .collect();
 
     if unique_project_ids.is_empty() {

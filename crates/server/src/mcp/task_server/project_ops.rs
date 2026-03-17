@@ -22,7 +22,7 @@ impl TaskServer {
         } else {
             // Safety: checked self.user_id.is_none() above, so this is guaranteed Some
             let user_id = self.user_id.unwrap_or_default();
-            let user_id_bytes = user_id.as_bytes().to_vec();
+            let user_id_bytes = user_id.to_string();
 
             #[derive(sqlx::FromRow)]
             struct ProjId {
@@ -107,7 +107,7 @@ impl TaskServer {
                JOIN users u ON pm.user_id = u.id
                WHERE pm.project_id = ? AND u.is_active = 1"#,
         )
-        .bind(project_uuid.as_bytes().as_slice())
+        .bind(project_uuid.to_string())
         .fetch_all(&self.pool)
         .await;
 

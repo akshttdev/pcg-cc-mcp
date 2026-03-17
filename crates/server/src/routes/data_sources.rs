@@ -17,19 +17,6 @@ use crate::{DeploymentImpl, error::ApiError};
 
 // ── List endpoints ──────────────────────────────────────────────────────────
 
-// TODO: unused — comment out to suppress warning
-// /// GET /api/organizations/:org_id/data-sources
-// async fn list_by_organization(
-//     Path(org_id): Path<Uuid>,
-//     State(deployment): State<DeploymentImpl>,
-// ) -> Result<Json<ApiResponse<Vec<DataSource>>>, ApiError> {
-//     let pool = &deployment.db().pool;
-//     let sources = DataSource::find_by_organization_all(pool, &org_id.to_string())
-//         .await
-//         .map_err(|e| ApiError::InternalError(format!("Failed to list data sources: {e}")))?;
-//     Ok(Json(ApiResponse::success(sources)))
-// }
-
 /// GET /api/projects/:project_id/data-sources
 async fn list_by_project(
     Path(project_id): Path<Uuid>,
@@ -433,13 +420,37 @@ async fn download_data_source(
 
     // For file uploads, read from disk
     let meta: serde_json::Value = serde_json::from_str(&source.metadata).unwrap_or(serde_json::json!({}));
-    let stored_name = meta.get("file_path")
-        .and_then(|v| v.as_str())
-        .or(source.file_path.as_deref())
-        .ok_or_else(|| ApiError::NotFound("File not stored locally".to_string()))?;
 
-    let uploads_dir = utils::cache_dir().join("data_sources");
-    let file_path = uploads_dir.join(stored_name);
+    // Check if this is a cloud-indexed file with a storage_volume
+    let storage_volume = meta.get("storage_volume").and_then(|v| v.as_str());
+    let original_path = meta.get("original_path").and_then(|v| v.as_str());
+
+    let file_path = if let (Some(volume), Some(rel_path)) = (storage_volume, original_path) {
+        // Cloud-indexed: resolve volume path
+        let base = match volume {
+            // Sovereign stack volumes (primary)
+            "sovereign_personal" => std::path::PathBuf::from("E:/topos/sovereign_stack/Personal"),
+            "sovereign_org" => std::path::PathBuf::from("E:/topos/sovereign_stack/Sirak Studios"),
+            "media_pipeline" => std::path::PathBuf::from("E:/topos/sovereign_stack/Sirak Studios/Media Pipeline"),
+            "sovereign" => std::path::PathBuf::from("E:/topos/sovereign_storage"),
+            // Standard volumes
+            "data_sources" => utils::cache_dir().join("data_sources"),
+            "artifacts" => utils::cache_dir().join("artifacts"),
+            "dropbox" => std::path::PathBuf::from("E:/topos/dropbox_ingest"),
+            // Legacy fallbacks
+            "dropbox_personal" | "sovereign_dropbox_personal" => std::path::PathBuf::from("E:/topos/Sirak Studios (sirak)"),
+            "dropbox_team" | "sovereign_dropbox_team" => std::path::PathBuf::from("E:/topos/Sirak Studios Team"),
+            _ => return Err(ApiError::NotFound(format!("Unknown volume: {}", volume))),
+        };
+        base.join(rel_path)
+    } else {
+        // Legacy: look in cache_dir/data_sources
+        let stored_name = meta.get("file_path")
+            .and_then(|v| v.as_str())
+            .or(source.file_path.as_deref())
+            .ok_or_else(|| ApiError::NotFound("File not stored locally".to_string()))?;
+        utils::cache_dir().join("data_sources").join(stored_name)
+    };
 
     if !file_path.exists() {
         return Err(ApiError::NotFound("File not found on disk".to_string()));
@@ -453,8 +464,8 @@ async fn download_data_source(
         .or(source.file_name.as_deref())
         .unwrap_or(&source.title);
 
-    let mime = meta.get("file_mime")
-        .and_then(|v| v.as_str())
+    let mime = source.file_type.as_deref()
+        .or_else(|| meta.get("file_mime").and_then(|v| v.as_str()))
         .unwrap_or("application/octet-stream");
 
     Ok(Response::builder()

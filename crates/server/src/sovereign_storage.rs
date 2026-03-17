@@ -168,6 +168,9 @@ struct SyncPayload {
     crm_deals: Vec<serde_json::Value>,
     #[serde(default)]
     crm_activities: Vec<serde_json::Value>,
+    // v0.7.0: Org Cloud file index
+    #[serde(default)]
+    cloud_files: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -905,6 +908,19 @@ impl SovereignStorageService {
         .map(|r| r.0)
         .collect();
 
+        let cloud_files: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT id, organization_id, file_name, file_path, storage_volume, \
+             content_hash, file_size_bytes, mime_type, source_type, visibility, \
+             created_at, updated_at \
+             FROM cloud_files WHERE deleted_at IS NULL LIMIT 50000",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
         pool.close().await;
 
         Ok(SyncPayload {
@@ -941,6 +957,7 @@ impl SovereignStorageService {
             crm_contacts,
             crm_deals,
             crm_activities,
+            cloud_files,
         })
     }
 }

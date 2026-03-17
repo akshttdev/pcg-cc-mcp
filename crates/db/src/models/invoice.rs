@@ -86,7 +86,7 @@ pub struct UpdateInvoice {
 impl Invoice {
     pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> sqlx::Result<Option<Self>> {
         sqlx::query_as("SELECT * FROM invoices WHERE id = ?1")
-            .bind(id.as_bytes().as_slice())
+            .bind(id.to_string())
             .fetch_optional(pool)
             .await
     }
@@ -95,7 +95,7 @@ impl Invoice {
         sqlx::query_as(
             "SELECT * FROM invoices WHERE person_id = ?1 ORDER BY created_at DESC",
         )
-        .bind(person_id.as_bytes().as_slice())
+        .bind(person_id.to_string())
         .fetch_all(pool)
         .await
     }
@@ -104,7 +104,7 @@ impl Invoice {
         sqlx::query_as(
             "SELECT * FROM invoices WHERE project_id = ?1 ORDER BY created_at DESC",
         )
-        .bind(project_id.as_bytes().as_slice())
+        .bind(project_id.to_string())
         .fetch_all(pool)
         .await
     }
@@ -135,11 +135,11 @@ impl Invoice {
                 notes, created_by)
                VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)"#,
         )
-        .bind(id.as_bytes().as_slice())
+        .bind(id.to_string())
         .bind(&invoice_number)
-        .bind(data.person_id.as_ref().map(|u| u.as_bytes().to_vec()))
-        .bind(data.organization_id.as_ref().map(|u| u.as_bytes().to_vec()))
-        .bind(data.project_id.as_ref().map(|u| u.as_bytes().to_vec()))
+        .bind(data.person_id.as_ref().map(|u| u.to_string()))
+        .bind(data.organization_id.as_ref().map(|u| u.to_string()))
+        .bind(data.project_id.as_ref().map(|u| u.to_string()))
         .bind(invoice_type)
         .bind(data.amount_usd.unwrap_or(0.0))
         .bind(data.amount_vibe.unwrap_or(0))
@@ -150,7 +150,7 @@ impl Invoice {
         .bind(&data.issue_date)
         .bind(&data.due_date)
         .bind(&data.notes)
-        .bind(data.created_by.as_ref().map(|u| u.as_bytes().to_vec()))
+        .bind(data.created_by.as_ref().map(|u| u.to_string()))
         .execute(pool)
         .await?;
 
@@ -177,7 +177,7 @@ impl Invoice {
                line_items=?11, notes=?12, updated_at=datetime('now','subsec')
                WHERE id=?1"#,
         )
-        .bind(id.as_bytes().as_slice())
+        .bind(id.to_string())
         .bind(&status)
         .bind(data.title.or(existing.title))
         .bind(data.description.or(existing.description))
@@ -197,7 +197,7 @@ impl Invoice {
 
     pub async fn delete(pool: &SqlitePool, id: Uuid) -> sqlx::Result<bool> {
         let result = sqlx::query("DELETE FROM invoices WHERE id = ?1")
-            .bind(id.as_bytes().as_slice())
+            .bind(id.to_string())
             .execute(pool)
             .await?;
         Ok(result.rows_affected() > 0)

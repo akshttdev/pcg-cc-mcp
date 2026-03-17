@@ -788,7 +788,7 @@ pub async fn chat_with_topsi(
             let home: Option<Vec<u8>> = sqlx::query_scalar(
                 "SELECT home_project_id FROM users WHERE id = ?",
             )
-            .bind(access_ctx.user_id.as_bytes().as_slice())
+            .bind(access_ctx.user_id.to_string())
             .fetch_optional(&pool)
             .await
             .ok()
@@ -1888,7 +1888,7 @@ pub async fn update_voice_config(
 //     let ids: Vec<Vec<u8>> = sqlx::query_scalar(
 //         "SELECT DISTINCT project_id FROM project_members WHERE user_id = ?1",
 //     )
-//     .bind(uid.as_bytes().as_slice())
+//     .bind(uid.to_string())
 //     .fetch_all(pool)
 //     .await
 //     .unwrap_or_default();

@@ -307,6 +307,16 @@ export const knowledgeKeys = {
   project: (projectId: string) => ['projectKnowledge', projectId] as const,
 };
 
+// ── Org Cloud ─────────────────────────────────────────────────────────────
+
+export const orgCloudKeys = {
+  all: (orgId: string) => ['org-cloud', orgId] as const,
+  browse: (orgId: string, params?: Record<string, unknown>) => ['org-cloud', orgId, params] as const,
+  stats: (orgId: string) => ['org-cloud-stats', orgId] as const,
+  settings: (orgId: string) => ['org-cloud-settings', orgId] as const,
+  contributions: (orgId: string) => ['org-cloud-contributions', orgId] as const,
+};
+
 // ── Unified export ─────────────────────────────────────────────────────────
 
 export const queryKeys = {
@@ -333,4 +343,5 @@ export const queryKeys = {
   discord: discordKeys,
   media: mediaKeys,
   knowledge: knowledgeKeys,
+  orgCloud: orgCloudKeys,
 } as const;

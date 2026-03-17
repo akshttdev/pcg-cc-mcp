@@ -61,7 +61,7 @@ impl PersonCompanyRole {
                WHERE pcr.person_id = ?1
                ORDER BY pcr.is_primary DESC, pcr.created_at ASC"#,
         )
-        .bind(person_id.as_bytes().as_slice())
+        .bind(person_id.to_string())
         .fetch_all(pool)
         .await
     }
@@ -80,7 +80,7 @@ impl PersonCompanyRole {
                WHERE pcr.company_id = ?1
                ORDER BY pcr.is_primary DESC, pcr.created_at ASC"#,
         )
-        .bind(company_id.as_bytes().as_slice())
+        .bind(company_id.to_string())
         .fetch_all(pool)
         .await
     }
@@ -106,9 +106,9 @@ impl PersonCompanyRole {
                  end_date=excluded.end_date,
                  notes=excluded.notes"#,
         )
-        .bind(id.as_bytes().as_slice())
-        .bind(person_id.as_bytes().as_slice())
-        .bind(data.company_id.as_bytes().as_slice())
+        .bind(id.to_string())
+        .bind(person_id.to_string())
+        .bind(data.company_id.to_string())
         .bind(&role)
         .bind(&data.title)
         .bind(is_primary)
@@ -127,8 +127,8 @@ impl PersonCompanyRole {
                LEFT JOIN companies c ON c.id = pcr.company_id
                WHERE pcr.person_id = ?1 AND pcr.company_id = ?2"#,
         )
-        .bind(person_id.as_bytes().as_slice())
-        .bind(data.company_id.as_bytes().as_slice())
+        .bind(person_id.to_string())
+        .bind(data.company_id.to_string())
         .fetch_one(pool)
         .await
     }
@@ -143,8 +143,8 @@ impl PersonCompanyRole {
         let exists: Option<(Vec<u8>,)> = sqlx::query_as(
             "SELECT id FROM person_company_roles WHERE person_id = ?1 AND company_id = ?2",
         )
-        .bind(person_id.as_bytes().as_slice())
-        .bind(company_id.as_bytes().as_slice())
+        .bind(person_id.to_string())
+        .bind(company_id.to_string())
         .fetch_optional(pool)
         .await?;
 
@@ -157,8 +157,8 @@ impl PersonCompanyRole {
                 "UPDATE person_company_roles SET role = ?1 WHERE person_id = ?2 AND company_id = ?3",
             )
             .bind(role)
-            .bind(person_id.as_bytes().as_slice())
-            .bind(company_id.as_bytes().as_slice())
+            .bind(person_id.to_string())
+            .bind(company_id.to_string())
             .execute(pool)
             .await?;
         }
@@ -167,8 +167,8 @@ impl PersonCompanyRole {
                 "UPDATE person_company_roles SET title = ?1 WHERE person_id = ?2 AND company_id = ?3",
             )
             .bind(title)
-            .bind(person_id.as_bytes().as_slice())
-            .bind(company_id.as_bytes().as_slice())
+            .bind(person_id.to_string())
+            .bind(company_id.to_string())
             .execute(pool)
             .await?;
         }
@@ -177,8 +177,8 @@ impl PersonCompanyRole {
                 "UPDATE person_company_roles SET is_primary = ?1 WHERE person_id = ?2 AND company_id = ?3",
             )
             .bind(primary as i32)
-            .bind(person_id.as_bytes().as_slice())
-            .bind(company_id.as_bytes().as_slice())
+            .bind(person_id.to_string())
+            .bind(company_id.to_string())
             .execute(pool)
             .await?;
         }
@@ -192,8 +192,8 @@ impl PersonCompanyRole {
                LEFT JOIN companies c ON c.id = pcr.company_id
                WHERE pcr.person_id = ?1 AND pcr.company_id = ?2"#,
         )
-        .bind(person_id.as_bytes().as_slice())
-        .bind(company_id.as_bytes().as_slice())
+        .bind(person_id.to_string())
+        .bind(company_id.to_string())
         .fetch_optional(pool)
         .await?;
 
@@ -208,8 +208,8 @@ impl PersonCompanyRole {
         let result = sqlx::query(
             "DELETE FROM person_company_roles WHERE person_id = ?1 AND company_id = ?2",
         )
-        .bind(person_id.as_bytes().as_slice())
-        .bind(company_id.as_bytes().as_slice())
+        .bind(person_id.to_string())
+        .bind(company_id.to_string())
         .execute(pool)
         .await?;
         Ok(result.rows_affected() > 0)
@@ -256,7 +256,7 @@ impl PersonOrgContact {
                WHERE poc.person_id = ?1
                ORDER BY poc.added_at ASC"#,
         )
-        .bind(person_id.as_bytes().as_slice())
+        .bind(person_id.to_string())
         .fetch_all(pool)
         .await
     }
@@ -274,7 +274,7 @@ impl PersonOrgContact {
                WHERE poc.organization_id = ?1
                ORDER BY poc.added_at ASC"#,
         )
-        .bind(org_id.as_bytes().as_slice())
+        .bind(org_id.to_string())
         .fetch_all(pool)
         .await
     }
@@ -295,9 +295,9 @@ impl PersonOrgContact {
                  context=excluded.context,
                  notes=excluded.notes"#,
         )
-        .bind(id.as_bytes().as_slice())
-        .bind(person_id.as_bytes().as_slice())
-        .bind(data.organization_id.as_bytes().as_slice())
+        .bind(id.to_string())
+        .bind(person_id.to_string())
+        .bind(data.organization_id.to_string())
         .bind(&context)
         .bind(&data.notes)
         .execute(pool)
@@ -311,8 +311,8 @@ impl PersonOrgContact {
                LEFT JOIN organizations o ON o.id = poc.organization_id
                WHERE poc.person_id = ?1 AND poc.organization_id = ?2"#,
         )
-        .bind(person_id.as_bytes().as_slice())
-        .bind(data.organization_id.as_bytes().as_slice())
+        .bind(person_id.to_string())
+        .bind(data.organization_id.to_string())
         .fetch_one(pool)
         .await
     }
@@ -325,8 +325,8 @@ impl PersonOrgContact {
         let result = sqlx::query(
             "DELETE FROM person_organization_contacts WHERE person_id = ?1 AND organization_id = ?2",
         )
-        .bind(person_id.as_bytes().as_slice())
-        .bind(org_id.as_bytes().as_slice())
+        .bind(person_id.to_string())
+        .bind(org_id.to_string())
         .execute(pool)
         .await?;
         Ok(result.rows_affected() > 0)
@@ -370,7 +370,7 @@ impl CompanyContactMethod {
                WHERE company_id = ?1
                ORDER BY is_primary DESC, created_at ASC"#,
         )
-        .bind(company_id.as_bytes().as_slice())
+        .bind(company_id.to_string())
         .fetch_all(pool)
         .await
     }
@@ -387,8 +387,8 @@ impl CompanyContactMethod {
             r#"INSERT INTO company_contact_methods (id, company_id, method_type, label, value, is_primary)
                VALUES (?1, ?2, ?3, ?4, ?5, ?6)"#,
         )
-        .bind(id.as_bytes().as_slice())
-        .bind(company_id.as_bytes().as_slice())
+        .bind(id.to_string())
+        .bind(company_id.to_string())
         .bind(&data.method_type)
         .bind(&data.label)
         .bind(&data.value)
@@ -399,14 +399,14 @@ impl CompanyContactMethod {
         sqlx::query_as(
             "SELECT id, company_id, method_type, label, value, is_primary, created_at FROM company_contact_methods WHERE id = ?1",
         )
-        .bind(id.as_bytes().as_slice())
+        .bind(id.to_string())
         .fetch_one(pool)
         .await
     }
 
     pub async fn delete(pool: &SqlitePool, id: Uuid) -> sqlx::Result<bool> {
         let result = sqlx::query("DELETE FROM company_contact_methods WHERE id = ?1")
-            .bind(id.as_bytes().as_slice())
+            .bind(id.to_string())
             .execute(pool)
             .await?;
         Ok(result.rows_affected() > 0)

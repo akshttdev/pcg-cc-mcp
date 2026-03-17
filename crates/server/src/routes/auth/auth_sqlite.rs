@@ -25,12 +25,12 @@ fn is_secure_context() -> bool {
 }
 
 /// Load platform roles for a user (public alias for cross-module use)
-pub async fn load_platform_roles_pub(pool: &sqlx::SqlitePool, user_id: &[u8]) -> Vec<String> {
+pub async fn load_platform_roles_pub(pool: &sqlx::SqlitePool, user_id: &str) -> Vec<String> {
     load_platform_roles(pool, user_id).await
 }
 
 /// Load platform roles for a user
-async fn load_platform_roles(pool: &sqlx::SqlitePool, user_id: &[u8]) -> Vec<String> {
+async fn load_platform_roles(pool: &sqlx::SqlitePool, user_id: &str) -> Vec<String> {
     #[derive(FromRow)]
     struct RoleRow {
         role: String,
@@ -61,8 +61,7 @@ pub struct LoginResponse {
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct User {
-    #[sqlx(try_from = "Vec<u8>")]
-    pub id: Uuid,
+    pub id: String,
     pub username: String,
     pub email: String,
     pub password_hash: String,
@@ -70,7 +69,7 @@ pub struct User {
     pub avatar_url: Option<String>,
     pub is_active: i32,
     pub is_admin: i32,
-    pub home_organization_id: Option<Vec<u8>>,
+    pub home_organization_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -105,7 +104,8 @@ pub async fn login(
 
     // Find user by username OR email (case-insensitive)
     let user = sqlx::query_as::<_, User>(
-        "SELECT id, username, email, password_hash, full_name, avatar_url, is_active, is_admin, home_organization_id
+        "SELECT id, username, email, password_hash, full_name, avatar_url, is_active, is_admin,
+                CASE WHEN typeof(home_organization_id) = 'blob' THEN lower(substr(hex(home_organization_id),1,8)||'-'||substr(hex(home_organization_id),9,4)||'-'||substr(hex(home_organization_id),13,4)||'-'||substr(hex(home_organization_id),17,4)||'-'||substr(hex(home_organization_id),21,12)) ELSE home_organization_id END as home_organization_id
          FROM users
          WHERE (username = ? COLLATE NOCASE OR email = ? COLLATE NOCASE) AND is_active = 1",
     )
@@ -127,17 +127,17 @@ pub async fn login(
 
     // Update last login time
     sqlx::query("UPDATE users SET last_login_at = datetime('now') WHERE id = ?")
-        .bind(user.id.as_bytes().as_slice())
+        .bind(&user.id)
         .execute(pool)
         .await
         .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
     // Run onboarding for existing users who don't have Orcha yet
     // Check if user has a home_project_id
-    let has_home: bool = sqlx::query_scalar::<_, Option<Vec<u8>>>(
+    let has_home: bool = sqlx::query_scalar::<_, Option<String>>(
         "SELECT home_project_id FROM users WHERE id = ?",
     )
-    .bind(user.id.as_bytes().as_slice())
+    .bind(&user.id)
     .fetch_optional(pool)
     .await
     .ok()
@@ -146,9 +146,10 @@ pub async fn login(
     .is_some();
 
     if !has_home {
+        let user_uuid = Uuid::parse_str(&user.id).unwrap_or_else(|_| Uuid::new_v4());
         if let Err(e) = services::services::user_onboarding::UserOnboardingService::onboard_user(
             pool,
-            user.id,
+            user_uuid,
             &user.username,
         )
         .await
@@ -170,8 +171,8 @@ pub async fn login(
         "INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at, last_used_at)
          VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))",
     )
-    .bind(Uuid::new_v4().as_bytes().as_slice())
-    .bind(user.id.as_bytes().as_slice())
+    .bind(Uuid::new_v4().to_string())
+    .bind(&user.id)
     .bind(&session_token_hash)
     .bind(expires_at.to_rfc3339())
     .execute(pool)
@@ -181,8 +182,7 @@ pub async fn login(
     // Get user organizations
     #[derive(FromRow)]
     struct OrgRow {
-        #[sqlx(try_from = "Vec<u8>")]
-        id: Uuid,
+        id: String,
         name: String,
         slug: String,
         role: String,
@@ -194,7 +194,7 @@ pub async fn login(
          JOIN organization_members om ON o.id = om.organization_id
          WHERE om.user_id = ? AND o.is_active = 1",
     )
-    .bind(user.id.as_bytes().as_slice())
+    .bind(&user.id)
     .fetch_all(pool)
     .await
     .unwrap_or_default();
@@ -202,18 +202,18 @@ pub async fn login(
     let organizations = orgs
         .into_iter()
         .map(|row| UserOrganization {
-            id: row.id.to_string(),
+            id: row.id.clone(),
             name: row.name,
             slug: row.slug,
             role: row.role,
         })
         .collect();
 
-    let platform_roles = load_platform_roles(pool, user.id.as_bytes().as_slice()).await;
+    let platform_roles = load_platform_roles(pool, &user.id).await;
     let effective_admin = user.is_admin == 1 || platform_roles.iter().any(|r| r == "platform_admin");
 
     let profile = UserProfile {
-        id: user.id.to_string(),
+        id: user.id.clone(),
         username: user.username,
         email: user.email,
         full_name: user.full_name,
@@ -221,7 +221,7 @@ pub async fn login(
         is_admin: effective_admin,
         organizations,
         platform_roles,
-        home_organization_id: user.home_organization_id.and_then(|b| uuid::Uuid::from_slice(&b).ok()).map(|id| id.to_string()),
+        home_organization_id: user.home_organization_id,
     };
 
     let response = LoginResponse {
@@ -274,8 +274,7 @@ pub async fn get_current_user(
     // Find session and check if it's valid
     #[derive(FromRow)]
     struct Session {
-        #[sqlx(try_from = "Vec<u8>")]
-        user_id: Uuid,
+        user_id: String,
         expires_at: String,
     }
 
@@ -302,10 +301,11 @@ pub async fn get_current_user(
 
     // Get user
     let user = sqlx::query_as::<_, User>(
-        "SELECT id, username, email, password_hash, full_name, avatar_url, is_active, is_admin, home_organization_id
+        "SELECT id, username, email, password_hash, full_name, avatar_url, is_active, is_admin,
+                home_organization_id
          FROM users WHERE id = ?",
     )
-    .bind(session.user_id.as_bytes().as_slice())
+    .bind(&session.user_id)
     .fetch_optional(pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?
@@ -314,8 +314,7 @@ pub async fn get_current_user(
     // Get organizations
     #[derive(FromRow)]
     struct OrgRow {
-        #[sqlx(try_from = "Vec<u8>")]
-        id: Uuid,
+        id: String,
         name: String,
         slug: String,
         role: String,
@@ -327,7 +326,7 @@ pub async fn get_current_user(
          JOIN organization_members om ON o.id = om.organization_id
          WHERE om.user_id = ? AND o.is_active = 1",
     )
-    .bind(user.id.as_bytes().as_slice())
+    .bind(&user.id)
     .fetch_all(pool)
     .await
     .unwrap_or_default();
@@ -335,18 +334,18 @@ pub async fn get_current_user(
     let organizations = orgs
         .into_iter()
         .map(|row| UserOrganization {
-            id: row.id.to_string(),
+            id: row.id.clone(),
             name: row.name,
             slug: row.slug,
             role: row.role,
         })
         .collect();
 
-    let platform_roles = load_platform_roles(pool, user.id.as_bytes().as_slice()).await;
+    let platform_roles = load_platform_roles(pool, &user.id).await;
     let effective_admin = user.is_admin == 1 || platform_roles.iter().any(|r| r == "platform_admin");
 
     let profile = UserProfile {
-        id: user.id.to_string(),
+        id: user.id.clone(),
         username: user.username,
         email: user.email,
         full_name: user.full_name,
@@ -354,7 +353,7 @@ pub async fn get_current_user(
         is_admin: effective_admin,
         organizations,
         platform_roles,
-        home_organization_id: user.home_organization_id.and_then(|b| uuid::Uuid::from_slice(&b).ok()).map(|id| id.to_string()),
+        home_organization_id: user.home_organization_id,
     };
 
     // Wrap in ApiResponse
@@ -377,8 +376,7 @@ pub async fn register(
     // 1. Look up org by invite token
     #[derive(FromRow)]
     struct OrgRow {
-        #[sqlx(try_from = "Vec<u8>")]
-        id: Uuid,
+        id: String,
         name: String,
         #[allow(dead_code)]
         pending_owner_email: Option<String>,
@@ -414,11 +412,12 @@ pub async fn register(
     let user_id = Uuid::new_v4();
     let email = req.email.as_deref().unwrap_or("");
 
+    let user_id_str = user_id.to_string();
     sqlx::query(
         "INSERT INTO users (id, username, email, full_name, password_hash, is_admin, is_active)
          VALUES (?, ?, ?, ?, ?, 0, 1)",
     )
-    .bind(user_id.as_bytes().as_slice())
+    .bind(&user_id_str)
     .bind(&req.username)
     .bind(email)
     .bind(&req.full_name)
@@ -431,20 +430,20 @@ pub async fn register(
     sqlx::query(
         "UPDATE organizations SET owner_id = ?, invite_token = NULL, pending_owner_email = NULL, updated_at = datetime('now') WHERE id = ?",
     )
-    .bind(user_id.as_bytes().as_slice())
-    .bind(org.id.as_bytes().as_slice())
+    .bind(&user_id_str)
+    .bind(&org.id)
     .execute(pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to update org: {}", e)))?;
 
     // 5. Add new user as org admin member
-    let member_id = Uuid::new_v4();
+    let member_id = Uuid::new_v4().to_string();
     sqlx::query(
         "INSERT OR IGNORE INTO organization_members (id, organization_id, user_id, role) VALUES (?, ?, ?, 'admin')",
     )
-    .bind(member_id.as_bytes().as_slice())
-    .bind(org.id.as_bytes().as_slice())
-    .bind(user_id.as_bytes().as_slice())
+    .bind(&member_id)
+    .bind(&org.id)
+    .bind(&user_id_str)
     .execute(pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to add org member: {}", e)))?;
@@ -453,8 +452,8 @@ pub async fn register(
     sqlx::query(
         "UPDATE persons SET user_id = ?, updated_at = datetime('now','subsec') WHERE company_org_id = ? AND user_id IS NULL",
     )
-    .bind(user_id.as_bytes().as_slice())
-    .bind(org.id.as_bytes().as_slice())
+    .bind(&user_id_str)
+    .bind(&org.id)
     .execute(pool)
     .await
     .ok(); // non-fatal
@@ -479,8 +478,8 @@ pub async fn register(
         "INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at, last_used_at)
          VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))",
     )
-    .bind(Uuid::new_v4().as_bytes().as_slice())
-    .bind(user_id.as_bytes().as_slice())
+    .bind(Uuid::new_v4().to_string())
+    .bind(&user_id_str)
     .bind(&session_token_hash)
     .bind(expires_at.to_rfc3339())
     .execute(pool)
@@ -489,7 +488,7 @@ pub async fn register(
 
     // 9. Build response
     let organizations = vec![UserOrganization {
-        id: org.id.to_string(),
+        id: org.id.clone(),
         name: org.name,
         slug: String::new(), // slug not needed in response
         role: "admin".into(),

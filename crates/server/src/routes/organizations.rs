@@ -120,10 +120,8 @@ pub async fn list_members(
 
     #[derive(sqlx::FromRow)]
     struct MemberRow {
-        #[sqlx(try_from = "Vec<u8>")]
-        id: Uuid,
-        #[sqlx(try_from = "Vec<u8>")]
-        user_id: Uuid,
+        id: String,
+        user_id: String,
         role: String,
         joined_at: String,
         username: Option<String>,
@@ -140,7 +138,7 @@ pub async fn list_members(
            WHERE om.organization_id = ?
            ORDER BY om.joined_at ASC"#,
     )
-    .bind(id.as_bytes().as_slice())
+    .bind(id.to_string())
     .fetch_all(pool)
     .await?;
 
@@ -268,7 +266,7 @@ pub async fn generate_invite(
     )
     .bind(&token)
     .bind(&body.email)
-    .bind(id.as_bytes().as_slice())
+    .bind(id.to_string())
     .execute(pool)
     .await?;
 
@@ -356,7 +354,7 @@ pub async fn get_org_persons(
     Ok(Json(ApiResponse::success(persons)))
 }
 
-/// GET /api/data-sources?organization_id=<uuid>
+/// GET /api/data-sources?organization_id=<uuid>&all=1
 pub async fn list_data_sources(
     Query(params): Query<std::collections::HashMap<String, String>>,
     State(deployment): State<DeploymentImpl>,
@@ -382,6 +380,8 @@ pub async fn list_data_sources(
                 'metadata', metadata,
                 'status', status,
                 'source_type', source_type,
+                'folder', folder,
+                'content', content,
                 'created_at', created_at,
                 'updated_at', updated_at
             ) FROM data_sources
@@ -389,6 +389,38 @@ pub async fn list_data_sources(
             ORDER BY created_at DESC"#,
         )
         .bind(&org_id_str)
+        .fetch_all(pool)
+        .await?
+        .into_iter()
+        .filter_map(|s| serde_json::from_str(&s).ok())
+        .collect()
+    } else if params.contains_key("all") {
+        // Global list: return all non-archived data sources
+        sqlx::query_scalar::<_, String>(
+            r#"SELECT json_object(
+                'id', id,
+                'organization_id', organization_id,
+                'project_id', project_id,
+                'created_by', created_by,
+                'title', title,
+                'description', description,
+                'data_type', data_type,
+                'file_type', file_type,
+                'file_name', file_name,
+                'file_path', file_path,
+                'file_size_bytes', file_size_bytes,
+                'metadata', metadata,
+                'status', status,
+                'source_type', source_type,
+                'folder', folder,
+                'content', content,
+                'created_at', created_at,
+                'updated_at', updated_at
+            ) FROM data_sources
+            WHERE archived_at IS NULL
+            ORDER BY created_at DESC
+            LIMIT 5000"#,
+        )
         .fetch_all(pool)
         .await?
         .into_iter()
@@ -423,6 +455,8 @@ pub async fn list_org_data_sources(
             'metadata', metadata,
             'status', status,
             'source_type', source_type,
+            'folder', folder,
+            'content', content,
             'created_at', created_at,
             'updated_at', updated_at
         ) FROM data_sources
@@ -576,8 +610,8 @@ pub async fn assign_member(
     match data.assign_type.as_str() {
         "project" => {
             // Verify project belongs to this org
-            let org_id_bytes = org_id.as_bytes().to_vec();
-            let target_bytes = data.target_id.as_bytes().to_vec();
+            let org_id_bytes = org_id.to_string();
+            let target_bytes = data.target_id.to_string();
             let belongs: Option<i64> = sqlx::query_scalar(
                 "SELECT 1 FROM projects WHERE id = ? AND organization_id = ? AND deleted_at IS NULL LIMIT 1"
             )
@@ -597,11 +631,11 @@ pub async fn assign_member(
                 r#"INSERT OR IGNORE INTO project_members (id, project_id, user_id, role, granted_by)
                    VALUES (?, ?, ?, ?, ?)"#,
             )
-            .bind(member_id.as_bytes().to_vec())
+            .bind(member_id.to_string())
             .bind(&target_bytes)
-            .bind(user_id.as_bytes().to_vec())
+            .bind(user_id.to_string())
             .bind(role)
-            .bind(access_context.user_id.as_bytes().to_vec())
+            .bind(access_context.user_id.to_string())
             .execute(pool)
             .await
             .map_err(|e| ApiError::InternalError(format!("Failed to assign to project: {}", e)))?;
@@ -614,8 +648,8 @@ pub async fn assign_member(
         }
         "client" => {
             // Verify client belongs to this org
-            let org_id_bytes = org_id.as_bytes().to_vec();
-            let target_bytes = data.target_id.as_bytes().to_vec();
+            let org_id_bytes = org_id.to_string();
+            let target_bytes = data.target_id.to_string();
             let belongs: Option<i64> = sqlx::query_scalar(
                 "SELECT 1 FROM clients WHERE id = ? AND organization_id = ? AND deleted_at IS NULL LIMIT 1"
             )
@@ -635,11 +669,11 @@ pub async fn assign_member(
                 r#"INSERT OR IGNORE INTO client_members (id, client_id, user_id, role, granted_by)
                    VALUES (?, ?, ?, ?, ?)"#,
             )
-            .bind(member_id.as_bytes().to_vec())
+            .bind(member_id.to_string())
             .bind(&target_bytes)
-            .bind(user_id.as_bytes().to_vec())
+            .bind(user_id.to_string())
             .bind(role)
-            .bind(access_context.user_id.as_bytes().to_vec())
+            .bind(access_context.user_id.to_string())
             .execute(pool)
             .await
             .map_err(|e| ApiError::InternalError(format!("Failed to assign to client: {}", e)))?;
@@ -652,7 +686,7 @@ pub async fn assign_member(
         }
         "task" => {
             // Verify task belongs to a project in this org
-            let org_id_bytes = org_id.as_bytes().to_vec();
+            let org_id_bytes = org_id.to_string();
             let belongs: Option<i64> = sqlx::query_scalar(
                 r#"SELECT 1 FROM tasks t
                    JOIN projects p ON p.id = t.project_id
@@ -722,8 +756,8 @@ pub async fn get_member_assignments(
     }
     require_is_org_member(pool, org_id, user_id).await?;
 
-    let org_id_bytes = org_id.as_bytes().to_vec();
-    let user_id_bytes = user_id.as_bytes().to_vec();
+    let org_id_bytes = org_id.to_string();
+    let user_id_bytes = user_id.to_string();
 
     // Projects assigned via project_members within this org
     #[derive(sqlx::FromRow, serde::Serialize)]
@@ -857,8 +891,8 @@ pub async fn unassign_project(
     require_org_admin_access(pool, &access_context, org_id).await?;
 
     sqlx::query("DELETE FROM project_members WHERE project_id = ? AND user_id = ?")
-        .bind(project_id.as_bytes().to_vec())
-        .bind(user_id.as_bytes().to_vec())
+        .bind(project_id.to_string())
+        .bind(user_id.to_string())
         .execute(pool)
         .await
         .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -876,8 +910,8 @@ pub async fn unassign_client(
     require_org_admin_access(pool, &access_context, org_id).await?;
 
     sqlx::query("DELETE FROM client_members WHERE client_id = ? AND user_id = ?")
-        .bind(client_id.as_bytes().to_vec())
-        .bind(user_id.as_bytes().to_vec())
+        .bind(client_id.to_string())
+        .bind(user_id.to_string())
         .execute(pool)
         .await
         .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -1042,7 +1076,7 @@ pub async fn trigger_brand_research(
     sqlx::query(
         "UPDATE organization_brand_profiles SET research_status = 'queued', updated_at = datetime('now','subsec') WHERE organization_id = ?",
     )
-    .bind(org_id.as_bytes().as_slice())
+    .bind(org_id.to_string())
     .execute(pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("{e}")))?;
@@ -1064,7 +1098,7 @@ pub async fn trigger_brand_research(
             let _ = sqlx::query(
                 "UPDATE organization_brand_profiles SET research_status = 'failed', updated_at = datetime('now','subsec') WHERE organization_id = ?",
             )
-            .bind(org_id.as_bytes().as_slice())
+            .bind(org_id.to_string())
             .execute(&pool_clone)
             .await;
         }
@@ -1095,7 +1129,7 @@ pub async fn get_brand_research_status(
     let row: Option<Row> = sqlx::query_as(
         "SELECT research_status, research_summary, research_ran_at FROM organization_brand_profiles WHERE organization_id = ?",
     )
-    .bind(org_id.as_bytes().as_slice())
+    .bind(org_id.to_string())
     .fetch_optional(&deployment.db().pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("{e}")))?;
@@ -1319,7 +1353,7 @@ pub async fn get_org_knowledge(
     let brand_snap: Option<BrandSnap> = sqlx::query_as(
         "SELECT tagline, industry, market_position, brand_archetype, mission_statement, research_status, research_ran_at, research_summary FROM organization_brand_profiles WHERE organization_id = ?"
     )
-    .bind(org_id.as_bytes().as_slice())
+    .bind(org_id.to_string())
     .fetch_optional(pool)
     .await?;
 
@@ -1362,7 +1396,7 @@ fn merge_json(a: &serde_json::Value, b: &serde_json::Value) -> serde_json::Value
 // ── Upsert a single knowledge graph entry ─────────────────────────────────────
 async fn upsert_knowledge_entry(
     pool: &sqlx::SqlitePool,
-    proj_id_bytes: &[u8],
+    proj_id_bytes: &str,
     org_id_hex: &str,
     source_id: &str,
     title: &str,
@@ -1378,7 +1412,7 @@ async fn upsert_knowledge_entry(
              coverage_score=excluded.coverage_score, is_stale=0,
              last_refreshed_at=datetime('now','subsec'), updated_at=datetime('now','subsec')"#
     )
-    .bind(Uuid::new_v4().as_bytes().to_vec())
+    .bind(Uuid::new_v4().to_string())
     .bind(proj_id_bytes)
     .bind(org_id_hex)
     .bind(source_id)
@@ -1407,7 +1441,7 @@ async fn run_brand_research(
     sqlx::query(
         "UPDATE organization_brand_profiles SET research_status = 'running', research_iterations = research_iterations + 1, updated_at = datetime('now','subsec') WHERE organization_id = ?",
     )
-    .bind(org_id.as_bytes().as_slice())
+    .bind(org_id.to_string())
     .execute(pool)
     .await?;
 
@@ -1435,7 +1469,7 @@ async fn run_brand_research(
     let iter_row = sqlx::query_as::<_, IterRow>(
         "SELECT research_iterations, research_depth, research_summary, brand_gap_notes, founder_name, founding_year, estimated_team_size, geographic_focus, key_clients, tech_stack FROM organization_brand_profiles WHERE organization_id = ?"
     )
-    .bind(org_id.as_bytes().as_slice())
+    .bind(org_id.to_string())
     .fetch_optional(pool)
     .await
     .ok().flatten();
@@ -1465,7 +1499,7 @@ async fn run_brand_research(
                     "UPDATE organization_brand_profiles SET clearbit_logo_url = ?, logo_url = COALESCE(logo_url, ?) WHERE organization_id = ?"
                 )
                 .bind(&cb_url).bind(&cb_url)
-                .bind(org_id.as_bytes().as_slice())
+                .bind(org_id.to_string())
                 .execute(pool).await;
             }
         }
@@ -2179,13 +2213,13 @@ Using the new research, extend and correct the existing data. Return a JSON obje
         );
         let mut q = sqlx::query(&sql);
         for (_, val) in &updates { q = q.bind(val); }
-        q = q.bind(&summary).bind(depth).bind(org_id.as_bytes().as_slice());
+        q = q.bind(&summary).bind(depth).bind(org_id.to_string());
         q.execute(pool).await?;
     } else {
         sqlx::query(
             "UPDATE organization_brand_profiles SET research_status='done', research_summary=?, research_ran_at=datetime('now','subsec'), research_depth=?, updated_at=datetime('now','subsec') WHERE organization_id=?"
         )
-        .bind(&summary).bind(depth).bind(org_id.as_bytes().as_slice())
+        .bind(&summary).bind(depth).bind(org_id.to_string())
         .execute(pool).await?;
     }
 
@@ -2204,7 +2238,7 @@ Using the new research, extend and correct the existing data. Return a JSON obje
         }
         if let Ok(Some(snap)) = sqlx::query_as::<_, ProfileSnap>(
             "SELECT primary_color, accent_color, brand_archetype, brand_voice, industry, market_position, tagline FROM organization_brand_profiles WHERE organization_id = ?"
-        ).bind(org_id.as_bytes().as_slice()).fetch_optional(pool).await {
+        ).bind(org_id.to_string()).fetch_optional(pool).await {
             let archetype = snap.brand_archetype.as_deref().unwrap_or("Ruler");
             let voice = snap.brand_voice.as_deref().unwrap_or("authoritative");
             let industry = snap.industry.as_deref().unwrap_or("creative agency");
@@ -2266,7 +2300,7 @@ Using the new research, extend and correct the existing data. Return a JSON obje
                 )
                 .bind(serde_json::to_string(&mood_urls).unwrap_or_default())
                 .bind(photo_notes)
-                .bind(org_id.as_bytes().as_slice())
+                .bind(org_id.to_string())
                 .execute(pool).await;
                 tracing::info!("[BRAND_RESEARCH] {} mood board images generated", mood_urls.len());
             }
@@ -2289,14 +2323,14 @@ Using the new research, extend and correct the existing data. Return a JSON obje
         serde_json::to_string_pretty(&final_data).unwrap_or_default()
     );
 
-    let org_id_bytes = org_id.as_bytes().to_vec();
+    let org_id_bytes = org_id.to_string();
     sqlx::query("DELETE FROM data_sources WHERE organization_id = ? AND title = ?")
         .bind(&org_id_bytes).bind(&report_title).execute(pool).await?;
 
     sqlx::query(
         "INSERT INTO data_sources (id, organization_id, title, description, data_type, source_type, content, status, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, 'report', 'text', ?, 'ready', '{}', datetime('now','subsec'), datetime('now','subsec'))"
     )
-    .bind(Uuid::new_v4().as_bytes().to_vec())
+    .bind(Uuid::new_v4().to_string())
     .bind(&org_id_bytes)
     .bind(&report_title)
     .bind(format!("Iteration {}. Confidence {:.0}%. Depth {}/3. Covers: identity, competitive, audience, social, founder, clients, tech stack.", iteration, final_confidence * 100.0, depth))
@@ -2322,7 +2356,7 @@ Using the new research, extend and correct the existing data. Return a JSON obje
                 let _ = sqlx::query(
                     "INSERT INTO persons (id, first_name, last_name, role, notes, created_at, updated_at) VALUES (?, ?, ?, 'Founder / CEO', ?, datetime('now','subsec'), datetime('now','subsec'))"
                 )
-                .bind(person_id.as_bytes().as_slice())
+                .bind(person_id.to_string())
                 .bind(first)
                 .bind(last)
                 .bind(if bio.is_empty() { None } else { Some(bio) })
@@ -2342,7 +2376,7 @@ Using the new research, extend and correct the existing data. Return a JSON obje
     )
     .bind(org_id)
     .fetch_optional(pool).await {
-        let proj_id_bytes = proj.id.as_bytes().to_vec();
+        let proj_id_bytes = proj.id.to_string();
         let org_id_hex = hex::encode(org_id.as_bytes());
 
         // 1. Brand Intelligence (core)

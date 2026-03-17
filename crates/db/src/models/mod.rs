@@ -129,6 +129,7 @@ pub mod workflow_staging;
 pub mod workflow_trigger;
 pub mod system_settings;
 pub mod topsi_user_settings;
+pub mod cloud_file;
 
 #[cfg(test)]
 pub(crate) mod test_utils;

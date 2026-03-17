@@ -80,6 +80,7 @@ const MembersTab = lazy(() => import('./tabs/MembersTab').then(m => ({ default: 
 const SocialTab = lazy(() => import('./tabs/social'));
 const IntelligenceTab = lazy(() => import('./tabs/intelligence'));
 const IntegrationsTab = lazy(() => import('./tabs/integrations'));
+const CloudTab = lazy(() => import('./tabs/cloud'));
 
 function TabSkeleton() {
   return (
@@ -111,6 +112,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
     intelligence: '/intelligence',
     members: '/members',
     integrations: '/integrations',
+    cloud: '/cloud',
   };
 
   const setTab = (tab: string) => {
@@ -478,6 +480,10 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 <Plug className="h-4 w-4 mr-2" />
                 Integrations
               </TabsTrigger>
+              <TabsTrigger value="cloud">
+                <Database className="h-4 w-4 mr-2" />
+                Cloud
+              </TabsTrigger>
             </TabsList>
             <Link
               to={`/organizations/${orgId}/data-sources`}
@@ -563,6 +569,14 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
               <PageErrorBoundary label="Integrations">
                 <Suspense fallback={<TabSkeleton />}>
                   <IntegrationsTab orgId={orgId} />
+                </Suspense>
+              </PageErrorBoundary>
+            </TabsContent>
+
+            <TabsContent value="cloud">
+              <PageErrorBoundary label="Cloud">
+                <Suspense fallback={<TabSkeleton />}>
+                  <CloudTab orgId={orgId} />
                 </Suspense>
               </PageErrorBoundary>
             </TabsContent>

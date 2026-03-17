@@ -181,7 +181,7 @@ impl TaskServer {
                 }
             }
             "delete" => {
-                let id_bytes = source_uuid.as_bytes().to_vec();
+                let id_bytes = source_uuid.to_string();
                 match sqlx::query("DELETE FROM project_knowledge_sources WHERE id = ?")
                     .bind(&id_bytes)
                     .execute(&self.pool)

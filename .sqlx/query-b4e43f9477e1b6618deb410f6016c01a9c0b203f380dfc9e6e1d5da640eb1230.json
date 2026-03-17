@@ -1,0 +1,68 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                name,\n                slug,\n                board_type as \"board_type!: ProjectBoardType\",\n                description,\n                metadata,\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"\n              FROM project_boards\n             WHERE project_id = $1 AND board_type = 'default'",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "project_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "slug",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "board_type!: ProjectBoardType",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "description",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "metadata",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 8,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "b4e43f9477e1b6618deb410f6016c01a9c0b203f380dfc9e6e1d5da640eb1230"
+}

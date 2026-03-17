@@ -398,7 +398,7 @@ async fn create_caller_account(
         let project_row: Option<(Vec<u8>,)> = sqlx::query_as(
             "SELECT project_id FROM project_members WHERE user_id = ? ORDER BY granted_at DESC LIMIT 1"
         )
-        .bind(user_id.as_bytes().as_slice())
+        .bind(user_id.to_string())
         .fetch_optional(pool)
         .await
         .unwrap_or(None);
@@ -422,7 +422,7 @@ async fn create_caller_account(
         r#"INSERT INTO users (id, username, email, full_name, password_hash, is_admin, is_active)
            VALUES (?, ?, ?, ?, ?, 0, 1)"#,
     )
-    .bind(user_id.as_bytes().as_slice())
+    .bind(user_id.to_string())
     .bind(&username)
     .bind(&email)
     .bind(full_name)
@@ -450,7 +450,7 @@ async fn create_caller_project(
         r#"INSERT INTO projects (id, name, git_repo_path, created_at, updated_at)
            VALUES (?, ?, ?, datetime('now','subsec'), datetime('now','subsec'))"#,
     )
-    .bind(project_id.as_bytes().as_slice())
+    .bind(project_id.to_string())
     .bind(&project_name)
     .bind(&git_repo_path)
     .execute(pool)
@@ -462,9 +462,9 @@ async fn create_caller_project(
         r#"INSERT INTO project_members (id, project_id, user_id, role)
            VALUES (?, ?, ?, 'owner')"#,
     )
-    .bind(member_id.as_bytes().as_slice())
-    .bind(project_id.as_bytes().as_slice())
-    .bind(user_id.as_bytes().as_slice())
+    .bind(member_id.to_string())
+    .bind(project_id.to_string())
+    .bind(user_id.to_string())
     .execute(pool)
     .await?;
 
@@ -536,7 +536,7 @@ async fn build_pcg_team_context(pool: &sqlx::SqlitePool, user_id: Uuid) -> Strin
            ORDER BY p.updated_at DESC
            LIMIT 8"#,
     )
-    .bind(user_id.as_bytes().as_slice())
+    .bind(user_id.to_string())
     .fetch_all(pool)
     .await
     .unwrap_or_default();
@@ -559,7 +559,7 @@ async fn build_pcg_team_context(pool: &sqlx::SqlitePool, user_id: Uuid) -> Strin
            ORDER BY t.updated_at DESC
            LIMIT 12"#,
     )
-    .bind(user_id.as_bytes().as_slice())
+    .bind(user_id.to_string())
     .fetch_all(pool)
     .await
     .unwrap_or_default();
@@ -665,7 +665,7 @@ pub async fn handle_incoming_call(
             let row: Option<(Vec<u8>,)> = sqlx::query_as(
                 "SELECT project_id FROM project_members WHERE user_id = ? ORDER BY granted_at DESC LIMIT 1"
             )
-            .bind(user_id.as_bytes().as_slice())
+            .bind(user_id.to_string())
             .fetch_optional(pool)
             .await
             .ok()
@@ -683,7 +683,7 @@ pub async fn handle_incoming_call(
             let row: Option<(Vec<u8>,)> = sqlx::query_as(
                 "SELECT organization_id FROM projects WHERE id = ?"
             )
-            .bind(project_id.as_bytes().as_slice())
+            .bind(project_id.to_string())
             .fetch_optional(pool)
             .await
             .ok()
@@ -771,7 +771,7 @@ pub async fn handle_incoming_call(
                 let row: Option<(Vec<u8>,)> = sqlx::query_as(
                     "SELECT organization_id FROM projects WHERE id = ?"
                 )
-                .bind(project_id.as_bytes().as_slice())
+                .bind(project_id.to_string())
                 .fetch_optional(pool)
                 .await
                 .ok()

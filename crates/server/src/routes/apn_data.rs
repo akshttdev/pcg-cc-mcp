@@ -73,7 +73,7 @@ pub async fn trigger_sync(
 
     // Resolve username from user_id
     let username: String = sqlx::query_scalar("SELECT username FROM users WHERE id = ?")
-        .bind(access_context.user_id.as_bytes().to_vec())
+        .bind(access_context.user_id.to_string())
         .fetch_optional(&deployment.db().pool)
         .await
         .map_err(|e| ApiError::InternalError(format!("DB error: {}", e)))?

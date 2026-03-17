@@ -175,7 +175,7 @@ async fn get_user(
         WHERE id = ?
         "#,
     )
-    .bind(id.as_bytes().to_vec())
+    .bind(id.to_string())
     .fetch_optional(&pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?
@@ -252,7 +252,7 @@ async fn update_user_role(
         "#,
     )
     .bind(is_admin_i32)
-    .bind(id.as_bytes().to_vec())
+    .bind(id.to_string())
     .execute(&pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to update role: {}", e)))?;
@@ -274,7 +274,7 @@ async fn suspend_user(
         WHERE id = ?
         "#,
     )
-    .bind(id.as_bytes().to_vec())
+    .bind(id.to_string())
     .execute(&pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to suspend user: {}", e)))?;
@@ -296,7 +296,7 @@ async fn activate_user(
         WHERE id = ?
         "#,
     )
-    .bind(id.as_bytes().to_vec())
+    .bind(id.to_string())
     .execute(&pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to activate user: {}", e)))?;
@@ -318,7 +318,7 @@ async fn deactivate_user(
         WHERE id = ?
         "#,
     )
-    .bind(id.as_bytes().to_vec())
+    .bind(id.to_string())
     .execute(&pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to deactivate user: {}", e)))?;
@@ -388,7 +388,7 @@ async fn create_user(
         VALUES (?, ?, ?, ?, ?, ?, 1)
         "#,
     )
-    .bind(user_id.as_bytes().to_vec())
+    .bind(user_id.to_string())
     .bind(&req.username)
     .bind(&email)
     .bind(&req.full_name)
