@@ -177,24 +177,45 @@ async fn browse_files(
 // ── Volume resolution ─────────────────────────────────────────────────────
 
 fn resolve_volume_path(volume: &str, file_path: &str) -> Result<std::path::PathBuf, ApiError> {
-    // Prevent path traversal
-    if file_path.contains("..") {
+    // Prevent path traversal — reject .., encoded variants, and null bytes
+    if file_path.contains("..") || file_path.contains('\0') || file_path.contains("%2e%2e") || file_path.contains("%2E%2E") {
         return Err(ApiError::BadRequest("Invalid file path".into()));
     }
 
+    let stack_root = std::env::var("SOVEREIGN_STACK_ROOT")
+        .unwrap_or_else(|_| "E:/topos/sovereign_stack".to_string());
+    let org_name = std::env::var("SOVEREIGN_STACK_ORG_NAME")
+        .unwrap_or_else(|_| "Sirak Studios".to_string());
+
     let base = match volume {
         // Sovereign stack volumes (primary — APN cloud)
-        "sovereign_personal" => std::path::PathBuf::from("E:/topos/sovereign_stack/Personal"),
-        "sovereign_org" => std::path::PathBuf::from("E:/topos/sovereign_stack/Sirak Studios"),
-        "media_pipeline" => std::path::PathBuf::from("E:/topos/sovereign_stack/Sirak Studios/Media Pipeline"),
-        "sovereign" => std::path::PathBuf::from("E:/topos/sovereign_storage"),
+        "sovereign_personal" => std::path::PathBuf::from(&stack_root).join("Personal"),
+        "sovereign_org" => std::path::PathBuf::from(&stack_root).join(&org_name),
+        "media_pipeline" => std::path::PathBuf::from(&stack_root).join(&org_name).join("Media Pipeline"),
+        "sovereign" => {
+            let storage_root = std::env::var("SOVEREIGN_STORAGE_ROOT")
+                .unwrap_or_else(|_| "E:/topos/sovereign_storage".to_string());
+            std::path::PathBuf::from(storage_root)
+        }
         // Standard volumes
         "data_sources" => utils::cache_dir().join("data_sources"),
         "artifacts" => utils::cache_dir().join("artifacts"),
         _ => return Err(ApiError::BadRequest(format!("Unknown volume: {}", volume))),
     };
 
-    Ok(base.join(file_path))
+    let resolved = base.join(file_path);
+
+    // Verify the resolved path is still under the base (canonicalize when possible)
+    if let (Ok(canon_base), Ok(canon_resolved)) = (
+        std::fs::canonicalize(&base),
+        std::fs::canonicalize(&resolved),
+    ) {
+        if !canon_resolved.starts_with(&canon_base) {
+            return Err(ApiError::BadRequest("Invalid file path".into()));
+        }
+    }
+
+    Ok(resolved)
 }
 
 // ── Download ───────────────────────────────────────────────────────────────
@@ -243,7 +264,7 @@ async fn download_file(
         .header(header::CONTENT_LENGTH, file_size)
         .header(
             header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{}\"", file.file_name),
+            format!("attachment; filename=\"{}\"", file.file_name.replace('"', "_").replace('\\', "_")),
         )
         .body(Body::from_stream(stream))
         .map_err(|e| ApiError::InternalError(e.to_string()))

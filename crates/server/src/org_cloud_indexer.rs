@@ -17,23 +17,33 @@ struct Volume {
 /// Get the sovereign stack volumes for the Sirak Studios deployment.
 /// Only sovereign stack volumes are indexed — legacy Dropbox volumes are excluded.
 fn get_org_volumes() -> Vec<Volume> {
+    let stack_root = std::env::var("SOVEREIGN_STACK_ROOT")
+        .unwrap_or_else(|_| "E:/topos/sovereign_stack".to_string());
+    let org_name = std::env::var("SOVEREIGN_STACK_ORG_NAME")
+        .unwrap_or_else(|_| "Sirak Studios".to_string());
+    let storage_root = std::env::var("SOVEREIGN_STORAGE_ROOT")
+        .unwrap_or_else(|_| "E:/topos/sovereign_storage".to_string());
+
+    let stack = PathBuf::from(&stack_root);
+    let org_dir = stack.join(&org_name);
+
     vec![
         // Sovereign stack volumes (APN cloud — canonical org storage)
         Volume {
             name: "sovereign_personal",
-            base_path: PathBuf::from("E:/topos/sovereign_stack/Personal"),
+            base_path: stack.join("Personal"),
         },
         Volume {
             name: "sovereign_org",
-            base_path: PathBuf::from("E:/topos/sovereign_stack/Sirak Studios"),
+            base_path: org_dir.clone(),
         },
         Volume {
             name: "sovereign",
-            base_path: PathBuf::from("E:/topos/sovereign_storage"),
+            base_path: PathBuf::from(storage_root),
         },
         Volume {
             name: "media_pipeline",
-            base_path: PathBuf::from("E:/topos/sovereign_stack/Sirak Studios/Media Pipeline"),
+            base_path: org_dir.join("Media Pipeline"),
         },
     ]
 }

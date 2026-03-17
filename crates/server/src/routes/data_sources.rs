@@ -430,17 +430,23 @@ async fn download_data_source(
 
     let file_path = if let (Some(volume), Some(rel_path)) = (storage_volume, original_path) {
         // Prevent path traversal
-        if rel_path.contains("..") {
+        if rel_path.contains("..") || rel_path.contains('\0') {
             return Err(ApiError::BadRequest("Invalid file path".into()));
         }
-        // Cloud-indexed: resolve volume path
+        // Cloud-indexed: resolve volume path (env vars match sovereign_stack.rs defaults)
+        let stack_root = std::env::var("SOVEREIGN_STACK_ROOT")
+            .unwrap_or_else(|_| "E:/topos/sovereign_stack".to_string());
+        let org_name = std::env::var("SOVEREIGN_STACK_ORG_NAME")
+            .unwrap_or_else(|_| "Sirak Studios".to_string());
         let base = match volume {
-            // Sovereign stack volumes (primary — APN cloud)
-            "sovereign_personal" => std::path::PathBuf::from("E:/topos/sovereign_stack/Personal"),
-            "sovereign_org" => std::path::PathBuf::from("E:/topos/sovereign_stack/Sirak Studios"),
-            "media_pipeline" => std::path::PathBuf::from("E:/topos/sovereign_stack/Sirak Studios/Media Pipeline"),
-            "sovereign" => std::path::PathBuf::from("E:/topos/sovereign_storage"),
-            // Standard volumes
+            "sovereign_personal" => std::path::PathBuf::from(&stack_root).join("Personal"),
+            "sovereign_org" => std::path::PathBuf::from(&stack_root).join(&org_name),
+            "media_pipeline" => std::path::PathBuf::from(&stack_root).join(&org_name).join("Media Pipeline"),
+            "sovereign" => {
+                let storage_root = std::env::var("SOVEREIGN_STORAGE_ROOT")
+                    .unwrap_or_else(|_| "E:/topos/sovereign_storage".to_string());
+                std::path::PathBuf::from(storage_root)
+            }
             "data_sources" => utils::cache_dir().join("data_sources"),
             "artifacts" => utils::cache_dir().join("artifacts"),
             _ => return Err(ApiError::NotFound(format!("Unknown volume: {}", volume))),
