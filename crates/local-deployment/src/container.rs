@@ -1,7 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
     io,
-    os::unix::process::ExitStatusExt,
     path::{Path, PathBuf},
     sync::{
         Arc,
@@ -637,7 +636,17 @@ impl LocalContainerService {
                             tracing::error!("Failed to kill process group after exit signal: {} {}", exec_id, err);
                         }
                     }
-                    status_result = Ok(std::process::ExitStatus::from_raw(0));
+                    // Create a synthetic "success" ExitStatus
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::process::ExitStatusExt;
+                        status_result = Ok(std::process::ExitStatus::from_raw(0));
+                    }
+                    #[cfg(windows)]
+                    {
+                        use std::os::windows::process::ExitStatusExt;
+                        status_result = Ok(std::process::ExitStatus::from_raw(0));
+                    }
                 }
                 // Process exit
                 exit_status_result = &mut process_exit_rx => {

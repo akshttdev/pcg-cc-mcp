@@ -9,6 +9,8 @@ pub mod pulse_consumer;
 pub mod pulse_publisher;
 pub mod routes;
 pub mod sovereign_storage;
+pub mod sovereign_stack;
+pub mod org_cloud_indexer;
 pub mod task_scheduler;
 pub mod twilio_sms;
 

@@ -21,8 +21,8 @@ impl SoftDeleteService {
                SET deleted_at = datetime('now'), deleted_by = ?
                WHERE id = ? AND deleted_at IS NULL"#,
         )
-        .bind(deleted_by.map(|u| u.as_bytes().to_vec()))
-        .bind(project_id.as_bytes().to_vec())
+        .bind(deleted_by.map(|u| u.to_string()))
+        .bind(project_id.to_string())
         .execute(&mut *tx)
         .await?;
 
@@ -33,9 +33,9 @@ impl SoftDeleteService {
                 r#"INSERT INTO deletion_audit_log (id, table_name, record_id, deleted_by, reason)
                    VALUES (?, 'projects', ?, ?, 'soft_delete')"#,
             )
-            .bind(audit_id.as_bytes().to_vec())
-            .bind(project_id.as_bytes().to_vec())
-            .bind(deleted_by.map(|u| u.as_bytes().to_vec()))
+            .bind(audit_id.to_string())
+            .bind(project_id.to_string())
+            .bind(deleted_by.map(|u| u.to_string()))
             .execute(&mut *tx)
             .await?;
         }
@@ -57,8 +57,8 @@ impl SoftDeleteService {
                SET deleted_at = datetime('now'), deleted_by = ?
                WHERE id = ? AND deleted_at IS NULL"#,
         )
-        .bind(deleted_by.map(|u| u.as_bytes().to_vec()))
-        .bind(task_id.as_bytes().to_vec())
+        .bind(deleted_by.map(|u| u.to_string()))
+        .bind(task_id.to_string())
         .execute(&mut *tx)
         .await?;
 
@@ -68,9 +68,9 @@ impl SoftDeleteService {
                 r#"INSERT INTO deletion_audit_log (id, table_name, record_id, deleted_by, reason)
                    VALUES (?, 'tasks', ?, ?, 'soft_delete')"#,
             )
-            .bind(audit_id.as_bytes().to_vec())
-            .bind(task_id.as_bytes().to_vec())
-            .bind(deleted_by.map(|u| u.as_bytes().to_vec()))
+            .bind(audit_id.to_string())
+            .bind(task_id.to_string())
+            .bind(deleted_by.map(|u| u.to_string()))
             .execute(&mut *tx)
             .await?;
         }
@@ -98,14 +98,14 @@ impl SoftDeleteService {
                    is_active = 0
                WHERE id = ? AND deleted_at IS NULL"#,
         )
-        .bind(deleted_by.map(|u| u.as_bytes().to_vec()))
-        .bind(user_id.as_bytes().to_vec())
+        .bind(deleted_by.map(|u| u.to_string()))
+        .bind(user_id.to_string())
         .execute(&mut *tx)
         .await?;
 
         // Invalidate all sessions for this user
         sqlx::query("DELETE FROM sessions WHERE user_id = ?")
-            .bind(user_id.as_bytes().to_vec())
+            .bind(user_id.to_string())
             .execute(&mut *tx)
             .await?;
 
@@ -115,9 +115,9 @@ impl SoftDeleteService {
                 r#"INSERT INTO deletion_audit_log (id, table_name, record_id, deleted_by, reason)
                    VALUES (?, 'users', ?, ?, 'soft_delete_gdpr')"#,
             )
-            .bind(audit_id.as_bytes().to_vec())
-            .bind(user_id.as_bytes().to_vec())
-            .bind(deleted_by.map(|u| u.as_bytes().to_vec()))
+            .bind(audit_id.to_string())
+            .bind(user_id.to_string())
+            .bind(deleted_by.map(|u| u.to_string()))
             .execute(&mut *tx)
             .await?;
         }
@@ -136,7 +136,7 @@ impl SoftDeleteService {
                SET deleted_at = NULL, deleted_by = NULL
                WHERE id = ? AND deleted_at IS NOT NULL"#,
         )
-        .bind(project_id.as_bytes().to_vec())
+        .bind(project_id.to_string())
         .execute(pool)
         .await?;
         Ok(result.rows_affected())
@@ -152,7 +152,7 @@ impl SoftDeleteService {
                SET deleted_at = NULL, deleted_by = NULL
                WHERE id = ? AND deleted_at IS NOT NULL"#,
         )
-        .bind(task_id.as_bytes().to_vec())
+        .bind(task_id.to_string())
         .execute(pool)
         .await?;
         Ok(result.rows_affected())
@@ -178,7 +178,7 @@ impl TransactionHelper {
         let project: Option<(Option<i64>, i64)> = sqlx::query_as(
             "SELECT vibe_budget_limit, COALESCE(vibe_spent_amount, 0) FROM projects WHERE id = ?",
         )
-        .bind(project_id.as_bytes().to_vec())
+        .bind(project_id.to_string())
         .fetch_optional(&mut *tx)
         .await?;
 
@@ -203,7 +203,7 @@ impl TransactionHelper {
             "UPDATE projects SET vibe_spent_amount = COALESCE(vibe_spent_amount, 0) + ?, updated_at = datetime('now', 'subsec') WHERE id = ?",
         )
         .bind(amount)
-        .bind(project_id.as_bytes().to_vec())
+        .bind(project_id.to_string())
         .execute(&mut *tx)
         .await?;
 
@@ -213,10 +213,10 @@ impl TransactionHelper {
             r#"INSERT INTO vibe_transactions (id, source_type, source_id, project_id, amount_vibe, balance_after, description)
                VALUES (?, ?, ?, ?, ?, ?, ?)"#,
         )
-        .bind(tx_id.as_bytes().to_vec())
+        .bind(tx_id.to_string())
         .bind(source_type)
-        .bind(source_id.as_bytes().to_vec())
-        .bind(project_id.as_bytes().to_vec())
+        .bind(source_id.to_string())
+        .bind(project_id.to_string())
         .bind(amount)
         .bind(spent + amount)
         .bind(description)

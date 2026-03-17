@@ -675,11 +675,24 @@ impl MediaPipelineService {
                 // Symlink into batch directory for uniform access
                 let link_dest = batch_dir.join(&filename);
                 if !link_dest.exists() {
-                    tokio::fs::symlink(&path, &link_dest)
-                        .await
-                        .unwrap_or_else(|e| {
-                            tracing::warn!("Symlink failed for {}: {}", filename, e)
-                        });
+                    #[cfg(unix)]
+                    {
+                        tokio::fs::symlink(&path, &link_dest)
+                            .await
+                            .unwrap_or_else(|e| {
+                                tracing::warn!("Symlink failed for {}: {}", filename, e)
+                            });
+                    }
+                    #[cfg(windows)]
+                    {
+                        // On Windows, copy instead of symlink (symlinks require elevated privileges)
+                        tokio::fs::copy(&path, &link_dest)
+                            .await
+                            .map(|_| ())
+                            .unwrap_or_else(|e| {
+                                tracing::warn!("Copy (symlink fallback) failed for {}: {}", filename, e)
+                            });
+                    }
                 }
 
                 // Compute checksum if requested

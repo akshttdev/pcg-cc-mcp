@@ -133,7 +133,7 @@ async fn get_username_from_id(pool: &SqlitePool, user_id: &uuid::Uuid) -> Result
     let result: Option<(String,)> = sqlx::query_as(
         "SELECT username FROM users WHERE id = ?"
     )
-    .bind(user_id.as_bytes().to_vec())
+    .bind(user_id.to_string())
     .fetch_optional(pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;

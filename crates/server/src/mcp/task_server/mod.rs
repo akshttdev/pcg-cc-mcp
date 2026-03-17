@@ -74,7 +74,7 @@ impl TaskServer {
         }
         // Safety: checked self.user_id.is_none() above, so this is guaranteed Some
         let user_id = self.user_id.unwrap_or_default();
-        let user_id_bytes = user_id.as_bytes().to_vec();
+        let user_id_bytes = user_id.to_string();
 
         #[derive(sqlx::FromRow)]
         struct ProjId {

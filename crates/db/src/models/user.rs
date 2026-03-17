@@ -209,7 +209,7 @@ impl User {
             "UPDATE users SET wallet_address = ?, updated_at = datetime('now', 'subsec') WHERE id = ?",
         )
         .bind(wallet_address)
-        .bind(user_id.as_bytes().as_slice())
+        .bind(user_id.to_string())
         .execute(pool)
         .await?;
         Ok(())
@@ -223,8 +223,8 @@ impl User {
         sqlx::query(
             "UPDATE users SET home_project_id = ?, updated_at = datetime('now', 'subsec') WHERE id = ?",
         )
-        .bind(project_id.as_bytes().as_slice())
-        .bind(user_id.as_bytes().as_slice())
+        .bind(project_id.to_string())
+        .bind(user_id.to_string())
         .execute(pool)
         .await?;
         Ok(())
@@ -233,10 +233,13 @@ impl User {
 
 impl Organization {
     pub async fn find_by_id(pool: &SqlitePool, id: &str) -> Result<Option<Self>, sqlx::Error> {
+        // Handle both TEXT and BLOB UUID storage formats
+        let uuid_bytes = uuid::Uuid::parse_str(id).ok().map(|u| u.into_bytes().to_vec());
         sqlx::query_as::<_, Organization>(
-            "SELECT id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at, invite_token, pending_owner_email, created_by_org_id, address FROM organizations WHERE id = ?"
+            "SELECT CASE WHEN typeof(id)='blob' THEN lower(substr(hex(id),1,8)||'-'||substr(hex(id),9,4)||'-'||substr(hex(id),13,4)||'-'||substr(hex(id),17,4)||'-'||substr(hex(id),21,12)) ELSE id END as id, name, slug, description, avatar_url, CASE WHEN typeof(owner_id)='blob' THEN lower(substr(hex(owner_id),1,8)||'-'||substr(hex(owner_id),9,4)||'-'||substr(hex(owner_id),13,4)||'-'||substr(hex(owner_id),17,4)||'-'||substr(hex(owner_id),21,12)) ELSE owner_id END as owner_id, settings, is_active, created_at, updated_at, invite_token, pending_owner_email, created_by_org_id, address FROM organizations WHERE id = ? OR id = ?"
         )
         .bind(id)
+        .bind(uuid_bytes)
         .fetch_optional(pool)
         .await
     }
@@ -274,7 +277,7 @@ impl Organization {
                WHERE om.user_id = ? AND o.is_active = 1
                ORDER BY o.name ASC"#,
         )
-        .bind(user_id)
+        .bind(user_id.to_string())
         .fetch_all(pool)
         .await
     }
@@ -359,7 +362,7 @@ impl Organization {
         )
         .bind(&id)
         .bind(org_id)
-        .bind(user_id)
+        .bind(user_id.to_string())
         .bind(role)
         .execute(pool)
         .await?;
@@ -379,7 +382,7 @@ impl Organization {
     ) -> Result<u64, sqlx::Error> {
         let result = sqlx::query("DELETE FROM organization_members WHERE organization_id = ? AND user_id = ?")
             .bind(org_id)
-            .bind(user_id)
+            .bind(user_id.to_string())
             .execute(pool)
             .await?;
         Ok(result.rows_affected())
@@ -442,7 +445,7 @@ impl Organization {
             "SELECT role FROM organization_members WHERE organization_id = ? AND user_id = ?"
         )
         .bind(org_id)
-        .bind(user_id)
+        .bind(user_id.to_string())
         .fetch_optional(pool)
         .await?;
         Ok(result.map(|r| r.role))

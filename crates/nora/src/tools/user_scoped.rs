@@ -25,7 +25,7 @@ impl ExecutiveTools {
                     r#"INSERT INTO projects (id, name, slug, git_repo_path, created_at, updated_at)
                        VALUES (?, ?, ?, ?, datetime('now', 'subsec'), datetime('now', 'subsec'))"#,
                 )
-                .bind(project_id.as_bytes().as_slice())
+                .bind(project_id.to_string())
                 .bind(project_name)
                 .bind(&slug)
                 .bind(format!("/projects/{}", slug))
@@ -40,9 +40,9 @@ impl ExecutiveTools {
                             r#"INSERT INTO project_members (id, project_id, user_id, role, created_at)
                                VALUES (?, ?, ?, 'owner', datetime('now', 'subsec'))"#,
                         )
-                        .bind(member_id.as_bytes().as_slice())
-                        .bind(project_id.as_bytes().as_slice())
-                        .bind(user_id.as_bytes().as_slice())
+                        .bind(member_id.to_string())
+                        .bind(project_id.to_string())
+                        .bind(user_id.to_string())
                         .execute(pool)
                         .await;
 
@@ -70,7 +70,7 @@ impl ExecutiveTools {
                        WHERE pm.user_id = ?
                        ORDER BY p.name ASC"#,
                 )
-                .bind(user_id.as_bytes().as_slice())
+                .bind(user_id.to_string())
                 .fetch_all(pool)
                 .await;
 
@@ -112,7 +112,7 @@ impl ExecutiveTools {
                        WHERE LOWER(p.name) = LOWER(?) AND pm.user_id = ?"#,
                 )
                 .bind(project_name)
-                .bind(user_id.as_bytes().as_slice())
+                .bind(user_id.to_string())
                 .fetch_optional(pool)
                 .await;
 
@@ -131,7 +131,7 @@ impl ExecutiveTools {
                 let board = sqlx::query_as::<_, BoardId>(
                     "SELECT id FROM project_boards WHERE project_id = ? ORDER BY created_at ASC LIMIT 1",
                 )
-                .bind(project_id.as_bytes().as_slice())
+                .bind(project_id.to_string())
                 .fetch_optional(pool)
                 .await;
 
@@ -145,9 +145,9 @@ impl ExecutiveTools {
                     r#"INSERT INTO tasks (id, project_id, board_id, title, description, status, priority, created_at, updated_at)
                        VALUES (?, ?, ?, ?, ?, 'todo', ?, datetime('now', 'subsec'), datetime('now', 'subsec'))"#,
                 )
-                .bind(task_id.as_bytes().as_slice())
-                .bind(project_id.as_bytes().as_slice())
-                .bind(board_id.map(|b| b.as_bytes().to_vec()))
+                .bind(task_id.to_string())
+                .bind(project_id.to_string())
+                .bind(board_id.map(|b| b.to_string()))
                 .bind(title)
                 .bind(description)
                 .bind(priority)
@@ -183,7 +183,7 @@ impl ExecutiveTools {
                        WHERE LOWER(p.name) = LOWER(?) AND pm.user_id = ?"#,
                 )
                 .bind(project_name)
-                .bind(user_id.as_bytes().as_slice())
+                .bind(user_id.to_string())
                 .fetch_optional(pool)
                 .await;
 
@@ -208,7 +208,7 @@ impl ExecutiveTools {
                     sqlx::query_as::<_, TaskRow>(
                         "SELECT id, title, description, status, priority, created_at FROM tasks WHERE project_id = ? AND LOWER(status) = LOWER(?)"
                     )
-                    .bind(project_id.as_bytes().as_slice())
+                    .bind(project_id.to_string())
                     .bind(status)
                     .fetch_all(pool)
                     .await
@@ -216,7 +216,7 @@ impl ExecutiveTools {
                     sqlx::query_as::<_, TaskRow>(
                         "SELECT id, title, description, status, priority, created_at FROM tasks WHERE project_id = ?"
                     )
-                    .bind(project_id.as_bytes().as_slice())
+                    .bind(project_id.to_string())
                     .fetch_all(pool)
                     .await
                 };
@@ -264,8 +264,8 @@ impl ExecutiveTools {
                        JOIN project_members pm ON t.project_id = pm.project_id
                        WHERE t.id = ? AND pm.user_id = ?"#,
                 )
-                .bind(task_id.as_bytes().as_slice())
-                .bind(user_id.as_bytes().as_slice())
+                .bind(task_id.to_string())
+                .bind(user_id.to_string())
                 .fetch_one(pool)
                 .await
                 .map(|c| c > 0)
@@ -279,7 +279,7 @@ impl ExecutiveTools {
                     "UPDATE tasks SET status = ?, updated_at = datetime('now', 'subsec') WHERE id = ?",
                 )
                 .bind(status)
-                .bind(task_id.as_bytes().as_slice())
+                .bind(task_id.to_string())
                 .execute(pool)
                 .await;
 

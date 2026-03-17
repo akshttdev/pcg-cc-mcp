@@ -111,7 +111,7 @@ async fn list_company_persons(
            WHERE pcr.company_id = ?
            ORDER BY pcr.is_primary DESC, p.full_name ASC"#,
     )
-    .bind(id.as_bytes().as_slice())
+    .bind(id.to_string())
     .fetch_all(pool)
     .await?;
     Ok(Json(ApiResponse::success(persons)))

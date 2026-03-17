@@ -96,7 +96,7 @@ async fn create_invitation(
     ResponseJson(body): ResponseJson<CreateInvitationRequest>,
 ) -> Result<ResponseJson<ApiResponse<InvitationResponse>>, ApiError> {
     let pool = deployment.db().pool.clone();
-    let user_id_bytes = access_context.user_id.as_bytes().to_vec();
+    let user_id_bytes = access_context.user_id.to_string();
 
     // Check caller is a host
     let user_role: String = sqlx::query_scalar(
@@ -132,10 +132,10 @@ async fn create_invitation(
     let token = Uuid::new_v4().to_string().replace("-", "") + &Uuid::new_v4().to_string().replace("-", "");
 
     let invite_id = Uuid::new_v4();
-    let invite_id_bytes = invite_id.as_bytes().to_vec();
+    let invite_id_bytes = invite_id.to_string();
 
-    let project_id_bytes: Option<Vec<u8>> = body.project_id.as_ref().and_then(|s| {
-        Uuid::parse_str(s).ok().map(|u| u.as_bytes().to_vec())
+    let project_id_str: Option<String> = body.project_id.as_ref().and_then(|s| {
+        Uuid::parse_str(s).ok().map(|u| u.to_string())
     });
 
     sqlx::query(
@@ -148,7 +148,7 @@ async fn create_invitation(
     .bind(&user_id_bytes)
     .bind(&body.invitee_email)
     .bind(&body.invitee_name)
-    .bind(&project_id_bytes)
+    .bind(&project_id_str)
     .bind(body.project_role.as_deref().unwrap_or("viewer"))
     .execute(&pool)
     .await
@@ -200,7 +200,7 @@ async fn list_invitations(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<InvitationResponse>>>, ApiError> {
     let pool = deployment.db().pool.clone();
-    let user_id_bytes = access_context.user_id.as_bytes().to_vec();
+    let user_id_bytes = access_context.user_id.to_string();
 
     let base_url = std::env::var("TWILIO_WEBHOOK_BASE_URL")
         .unwrap_or_else(|_| "https://dashboard.powerclubglobal.com".into());
@@ -266,11 +266,11 @@ async fn revoke_invitation(
     Path(id): Path<String>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
     let pool = deployment.db().pool.clone();
-    let user_id_bytes = access_context.user_id.as_bytes().to_vec();
+    let user_id_bytes = access_context.user_id.to_string();
 
     let invite_id = Uuid::parse_str(&id)
         .map_err(|_| ApiError::BadRequest("Invalid invitation ID".into()))?;
-    let invite_id_bytes = invite_id.as_bytes().to_vec();
+    let invite_id_bytes = invite_id.to_string();
 
     let rows_affected = sqlx::query(
         "UPDATE user_invitations SET status = 'revoked' WHERE id = ? AND host_id = ? AND status = 'pending'",
@@ -413,7 +413,7 @@ async fn accept_invitation(
         .map_err(|e| ApiError::InternalError(format!("Failed to hash password: {}", e)))?;
 
     let new_user_id = Uuid::new_v4();
-    let new_user_id_bytes = new_user_id.as_bytes().to_vec();
+    let new_user_id_bytes = new_user_id.to_string();
 
     // Create the user as a guest, linked to the inviting host
     sqlx::query(
@@ -471,7 +471,7 @@ async fn my_spawn_point(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<SpawnPoint>>, ApiError> {
     let pool = deployment.db().pool.clone();
-    let user_id_bytes = access_context.user_id.as_bytes().to_vec();
+    let user_id_bytes = access_context.user_id.to_string();
 
     // If the user is a host, return their own space
     // If the user is a guest, return their host's space
@@ -574,7 +574,7 @@ async fn get_user_space(
 
     let uid = Uuid::parse_str(&user_id)
         .map_err(|_| ApiError::BadRequest("Invalid user ID".into()))?;
-    let uid_bytes = uid.as_bytes().to_vec();
+    let uid_bytes = uid.to_string();
 
     let spawn: Option<SpawnPoint> = sqlx::query(
         r#"SELECT

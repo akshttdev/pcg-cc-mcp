@@ -198,7 +198,7 @@ async fn add_project_member(
 
     // Check if user exists
     let user_exists: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE id = ?")
-        .bind(user_id.as_bytes().to_vec())
+        .bind(user_id.to_string())
         .fetch_one(&pool)
         .await
         .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -212,7 +212,7 @@ async fn add_project_member(
         "SELECT COUNT(*) FROM project_members WHERE project_id = ? AND user_id = ?",
     )
     .bind(&project_id)
-    .bind(user_id.as_bytes().to_vec())
+    .bind(user_id.to_string())
     .fetch_one(&pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -232,11 +232,11 @@ async fn add_project_member(
         VALUES (?, ?, ?, ?, ?)
         "#,
     )
-    .bind(member_id.as_bytes().to_vec())
+    .bind(member_id.to_string())
     .bind(&project_id)
-    .bind(user_id.as_bytes().to_vec())
+    .bind(user_id.to_string())
     .bind(role.to_string())
-    .bind(context.user_id.as_bytes().to_vec())
+    .bind(context.user_id.to_string())
     .execute(&pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to add project member: {}", e)))?;
@@ -273,7 +273,7 @@ async fn add_project_member(
         WHERE pm.id = ?
         "#,
     )
-    .bind(member_id.as_bytes().to_vec())
+    .bind(member_id.to_string())
     .fetch_one(&pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to fetch created member: {}", e)))?;
@@ -309,7 +309,7 @@ async fn remove_project_member(
     let member_role: Option<String> =
         sqlx::query_scalar("SELECT role FROM project_members WHERE project_id = ? AND user_id = ?")
             .bind(&project_id)
-            .bind(user_id.as_bytes().to_vec())
+            .bind(user_id.to_string())
             .fetch_optional(&pool)
             .await
             .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -323,7 +323,7 @@ async fn remove_project_member(
     // Remove member
     sqlx::query("DELETE FROM project_members WHERE project_id = ? AND user_id = ?")
         .bind(&project_id)
-        .bind(user_id.as_bytes().to_vec())
+        .bind(user_id.to_string())
         .execute(&pool)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to remove project member: {}", e)))?;
@@ -378,7 +378,7 @@ async fn update_member_role(
     let current_role: Option<String> =
         sqlx::query_scalar("SELECT role FROM project_members WHERE project_id = ? AND user_id = ?")
             .bind(&project_id)
-            .bind(user_id.as_bytes().to_vec())
+            .bind(user_id.to_string())
             .fetch_optional(&pool)
             .await
             .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -393,7 +393,7 @@ async fn update_member_role(
     sqlx::query("UPDATE project_members SET role = ? WHERE project_id = ? AND user_id = ?")
         .bind(role.to_string())
         .bind(&project_id)
-        .bind(user_id.as_bytes().to_vec())
+        .bind(user_id.to_string())
         .execute(&pool)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to update member role: {}", e)))?;
@@ -431,7 +431,7 @@ async fn update_member_role(
         "#,
     )
     .bind(&project_id)
-    .bind(user_id.as_bytes().to_vec())
+    .bind(user_id.to_string())
     .fetch_one(&pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to fetch updated member: {}", e)))?;
@@ -509,7 +509,7 @@ async fn list_my_projects(
         ORDER BY pm.granted_at DESC
         "#,
     )
-    .bind(context.user_id.as_bytes().to_vec())
+    .bind(context.user_id.to_string())
     .fetch_all(&pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to fetch projects: {}", e)))?;
@@ -536,13 +536,13 @@ async fn log_permission_action(
         VALUES (?, ?, ?, ?, ?, ?, ?)
         "#,
     )
-    .bind(log_id.as_bytes().to_vec())
-    .bind(user_id.as_bytes().to_vec())
+    .bind(log_id.to_string())
+    .bind(user_id.to_string())
     .bind(action)
     .bind(resource_type)
     .bind(resource_id)
     .bind(details)
-    .bind(performed_by.as_bytes().to_vec())
+    .bind(performed_by.to_string())
     .execute(pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to log permission action: {}", e)))?;

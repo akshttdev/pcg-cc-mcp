@@ -65,8 +65,8 @@ async fn create_org_invitation(
     let pool = deployment.db().pool.clone();
     let org_uuid = Uuid::parse_str(&org_id)
         .map_err(|_| ApiError::BadRequest("Invalid organization ID".into()))?;
-    let org_id_bytes = org_uuid.as_bytes().to_vec();
-    let user_id_bytes = access_context.user_id.as_bytes().to_vec();
+    let org_id_bytes = org_uuid.to_string();
+    let user_id_bytes = access_context.user_id.to_string();
 
     // Only org admins can create invitations
     #[derive(sqlx::FromRow)]
@@ -94,7 +94,7 @@ async fn create_org_invitation(
     let expires_hours = body.expires_in_hours.unwrap_or(168); // 7 days default
 
     let invite_id = Uuid::new_v4();
-    let invite_id_bytes = invite_id.as_bytes().to_vec();
+    let invite_id_bytes = invite_id.to_string();
     let invite_code = format!(
         "{}{}",
         &Uuid::new_v4().to_string().replace('-', "")[..16],
@@ -153,7 +153,7 @@ async fn list_org_invitations(
     let pool = deployment.db().pool.clone();
     let org_uuid = Uuid::parse_str(&org_id)
         .map_err(|_| ApiError::BadRequest("Invalid organization ID".into()))?;
-    let org_id_bytes = org_uuid.as_bytes().to_vec();
+    let org_id_bytes = org_uuid.to_string();
 
     let base_url = std::env::var("TWILIO_WEBHOOK_BASE_URL")
         .unwrap_or_else(|_| "https://dashboard.powerclubglobal.com".into());
@@ -218,10 +218,10 @@ async fn revoke_org_invitation(
     let pool = deployment.db().pool.clone();
     let invite_uuid = Uuid::parse_str(&id)
         .map_err(|_| ApiError::BadRequest("Invalid invitation ID".into()))?;
-    let invite_id_bytes = invite_uuid.as_bytes().to_vec();
+    let invite_id_bytes = invite_uuid.to_string();
     let org_uuid = Uuid::parse_str(&org_id)
         .map_err(|_| ApiError::BadRequest("Invalid organization ID".into()))?;
-    let org_id_bytes = org_uuid.as_bytes().to_vec();
+    let org_id_bytes = org_uuid.to_string();
 
     // Expire it immediately
     let rows_affected = sqlx::query(
@@ -297,7 +297,7 @@ async fn accept_org_invitation(
         &deployment, auth_header, cookie_header
     ).await?;
 
-    let user_id_bytes = access.user_id.as_bytes().to_vec();
+    let user_id_bytes = access.user_id.to_string();
 
     // Fetch invitation
     #[derive(sqlx::FromRow)]
@@ -345,7 +345,7 @@ async fn accept_org_invitation(
         r#"INSERT INTO organization_members (id, organization_id, user_id, role)
            VALUES (?, ?, ?, ?)"#,
     )
-    .bind(member_id.as_bytes().to_vec())
+    .bind(member_id.to_string())
     .bind(&invite.organization_id)
     .bind(&user_id_bytes)
     .bind(&invite.role)

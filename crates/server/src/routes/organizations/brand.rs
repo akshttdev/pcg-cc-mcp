@@ -1,5 +1,4 @@
 use super::*;
-
 pub async fn get_org_brand_profile(
     State(deployment): State<DeploymentImpl>,
     Extension(access_context): Extension<AccessContext>,
@@ -64,7 +63,7 @@ pub async fn trigger_brand_research(
     sqlx::query(
         "UPDATE organization_brand_profiles SET research_status = 'queued', updated_at = datetime('now','subsec') WHERE organization_id = ?",
     )
-    .bind(org_id.as_bytes().as_slice())
+    .bind(org_id.to_string())
     .execute(pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("{e}")))?;
@@ -86,7 +85,7 @@ pub async fn trigger_brand_research(
             let _ = sqlx::query(
                 "UPDATE organization_brand_profiles SET research_status = 'failed', updated_at = datetime('now','subsec') WHERE organization_id = ?",
             )
-            .bind(org_id.as_bytes().as_slice())
+            .bind(org_id.to_string())
             .execute(&pool_clone)
             .await;
         }
@@ -117,7 +116,7 @@ pub async fn get_brand_research_status(
     let row: Option<Row> = sqlx::query_as(
         "SELECT research_status, research_summary, research_ran_at FROM organization_brand_profiles WHERE organization_id = ?",
     )
-    .bind(org_id.as_bytes().as_slice())
+    .bind(org_id.to_string())
     .fetch_optional(&deployment.db().pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("{e}")))?;
@@ -293,7 +292,7 @@ fn merge_json(a: &serde_json::Value, b: &serde_json::Value) -> serde_json::Value
 // ── Upsert a single knowledge graph entry ─────────────────────────────────────
 async fn upsert_knowledge_entry(
     pool: &sqlx::SqlitePool,
-    proj_id_bytes: &[u8],
+    proj_id_bytes: &str,
     org_id_hex: &str,
     source_id: &str,
     title: &str,
@@ -309,7 +308,7 @@ async fn upsert_knowledge_entry(
              coverage_score=excluded.coverage_score, is_stale=0,
              last_refreshed_at=datetime('now','subsec'), updated_at=datetime('now','subsec')"#
     )
-    .bind(Uuid::new_v4().as_bytes().to_vec())
+    .bind(Uuid::new_v4().to_string())
     .bind(proj_id_bytes)
     .bind(org_id_hex)
     .bind(source_id)
@@ -338,7 +337,7 @@ async fn run_brand_research(
     sqlx::query(
         "UPDATE organization_brand_profiles SET research_status = 'running', research_iterations = research_iterations + 1, updated_at = datetime('now','subsec') WHERE organization_id = ?",
     )
-    .bind(org_id.as_bytes().as_slice())
+    .bind(org_id.to_string())
     .execute(pool)
     .await?;
 
@@ -366,7 +365,7 @@ async fn run_brand_research(
     let iter_row = sqlx::query_as::<_, IterRow>(
         "SELECT research_iterations, research_depth, research_summary, brand_gap_notes, founder_name, founding_year, estimated_team_size, geographic_focus, key_clients, tech_stack FROM organization_brand_profiles WHERE organization_id = ?"
     )
-    .bind(org_id.as_bytes().as_slice())
+    .bind(org_id.to_string())
     .fetch_optional(pool)
     .await
     .ok().flatten();
@@ -396,7 +395,7 @@ async fn run_brand_research(
                     "UPDATE organization_brand_profiles SET clearbit_logo_url = ?, logo_url = COALESCE(logo_url, ?) WHERE organization_id = ?"
                 )
                 .bind(&cb_url).bind(&cb_url)
-                .bind(org_id.as_bytes().as_slice())
+                .bind(org_id.to_string())
                 .execute(pool).await;
             }
         }
@@ -1110,13 +1109,13 @@ Using the new research, extend and correct the existing data. Return a JSON obje
         );
         let mut q = sqlx::query(&sql);
         for (_, val) in &updates { q = q.bind(val); }
-        q = q.bind(&summary).bind(depth).bind(org_id.as_bytes().as_slice());
+        q = q.bind(&summary).bind(depth).bind(org_id.to_string());
         q.execute(pool).await?;
     } else {
         sqlx::query(
             "UPDATE organization_brand_profiles SET research_status='done', research_summary=?, research_ran_at=datetime('now','subsec'), research_depth=?, updated_at=datetime('now','subsec') WHERE organization_id=?"
         )
-        .bind(&summary).bind(depth).bind(org_id.as_bytes().as_slice())
+        .bind(&summary).bind(depth).bind(org_id.to_string())
         .execute(pool).await?;
     }
 
@@ -1135,7 +1134,7 @@ Using the new research, extend and correct the existing data. Return a JSON obje
         }
         if let Ok(Some(snap)) = sqlx::query_as::<_, ProfileSnap>(
             "SELECT primary_color, accent_color, brand_archetype, brand_voice, industry, market_position, tagline FROM organization_brand_profiles WHERE organization_id = ?"
-        ).bind(org_id.as_bytes().as_slice()).fetch_optional(pool).await {
+        ).bind(org_id.to_string()).fetch_optional(pool).await {
             let archetype = snap.brand_archetype.as_deref().unwrap_or("Ruler");
             let voice = snap.brand_voice.as_deref().unwrap_or("authoritative");
             let industry = snap.industry.as_deref().unwrap_or("creative agency");
@@ -1197,7 +1196,7 @@ Using the new research, extend and correct the existing data. Return a JSON obje
                 )
                 .bind(serde_json::to_string(&mood_urls).unwrap_or_default())
                 .bind(photo_notes)
-                .bind(org_id.as_bytes().as_slice())
+                .bind(org_id.to_string())
                 .execute(pool).await;
                 tracing::info!("[BRAND_RESEARCH] {} mood board images generated", mood_urls.len());
             }
@@ -1220,14 +1219,14 @@ Using the new research, extend and correct the existing data. Return a JSON obje
         serde_json::to_string_pretty(&final_data).unwrap_or_default()
     );
 
-    let org_id_bytes = org_id.as_bytes().to_vec();
+    let org_id_bytes = org_id.to_string();
     sqlx::query("DELETE FROM data_sources WHERE organization_id = ? AND title = ?")
         .bind(&org_id_bytes).bind(&report_title).execute(pool).await?;
 
     sqlx::query(
         "INSERT INTO data_sources (id, organization_id, title, description, data_type, source_type, content, status, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, 'report', 'text', ?, 'ready', '{}', datetime('now','subsec'), datetime('now','subsec'))"
     )
-    .bind(Uuid::new_v4().as_bytes().to_vec())
+    .bind(Uuid::new_v4().to_string())
     .bind(&org_id_bytes)
     .bind(&report_title)
     .bind(format!("Iteration {}. Confidence {:.0}%. Depth {}/3. Covers: identity, competitive, audience, social, founder, clients, tech stack.", iteration, final_confidence * 100.0, depth))
@@ -1253,7 +1252,7 @@ Using the new research, extend and correct the existing data. Return a JSON obje
                 let _ = sqlx::query(
                     "INSERT INTO persons (id, first_name, last_name, role, notes, created_at, updated_at) VALUES (?, ?, ?, 'Founder / CEO', ?, datetime('now','subsec'), datetime('now','subsec'))"
                 )
-                .bind(person_id.as_bytes().as_slice())
+                .bind(person_id.to_string())
                 .bind(first)
                 .bind(last)
                 .bind(if bio.is_empty() { None } else { Some(bio) })
@@ -1273,7 +1272,7 @@ Using the new research, extend and correct the existing data. Return a JSON obje
     )
     .bind(org_id)
     .fetch_optional(pool).await {
-        let proj_id_bytes = proj.id.as_bytes().to_vec();
+        let proj_id_bytes = proj.id.to_string();
         let org_id_hex = hex::encode(org_id.as_bytes());
 
         // 1. Brand Intelligence (core)

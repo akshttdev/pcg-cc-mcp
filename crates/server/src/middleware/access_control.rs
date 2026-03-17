@@ -410,7 +410,7 @@ impl AccessContext {
                     "SELECT 1 FROM organization_members WHERE organization_id = ? AND user_id = ? LIMIT 1"
                 )
                 .bind(org_id)
-                .bind(&user_id_bytes)
+                .bind(&user_id_str)
                 .fetch_optional(pool)
                 .await
                 .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -429,7 +429,7 @@ impl AccessContext {
                        WHERE c.id = ? AND om.user_id = ? AND om.role = 'admin' LIMIT 1"#
                 )
                 .bind(client_id)
-                .bind(&user_id_bytes)
+                .bind(&user_id_str)
                 .fetch_optional(pool)
                 .await
                 .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -443,7 +443,7 @@ impl AccessContext {
                     "SELECT 1 FROM client_members WHERE client_id = ? AND user_id = ? LIMIT 1"
                 )
                 .bind(client_id)
-                .bind(&user_id_bytes)
+                .bind(&user_id_str)
                 .fetch_optional(pool)
                 .await
                 .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -533,7 +533,7 @@ async fn load_platform_roles(pool: &sqlx::SqlitePool, user_id: Uuid) -> Vec<Stri
     sqlx::query_as::<_, RoleRow>(
         "SELECT role FROM user_platform_roles WHERE user_id = ?"
     )
-    .bind(user_id.as_bytes().to_vec())
+    .bind(user_id.to_string())
     .fetch_all(pool)
     .await
     .unwrap_or_default()
@@ -575,7 +575,7 @@ pub async fn get_current_user(
 
             #[derive(FromRow)]
             struct UserSession {
-                id: Vec<u8>,
+                id: String,
                 is_admin: i32,
                 is_active: i32,
             }
@@ -594,7 +594,7 @@ pub async fn get_current_user(
             .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
             if let Some(user_session) = result {
-                let user_id = Uuid::from_slice(&user_session.id)
+                let user_id = Uuid::parse_str(&user_session.id)
                     .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {}", e)))?;
 
                 // Extend session expiry on activity (sliding window)
@@ -623,7 +623,7 @@ pub async fn get_current_user(
 
         #[derive(FromRow)]
         struct UserSession {
-            id: Vec<u8>,
+            id: String,
             is_admin: i32,
             is_active: i32,
         }
@@ -642,7 +642,7 @@ pub async fn get_current_user(
         .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
         if let Some(user_session) = result {
-            let user_id = Uuid::from_slice(&user_session.id)
+            let user_id = Uuid::parse_str(&user_session.id)
                 .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {}", e)))?;
 
             // Extend session expiry on activity (sliding window)
