@@ -189,7 +189,7 @@ fn resolve_volume_path(volume: &str, file_path: &str) -> Result<std::path::PathB
     }
 
     let base = match volume {
-        // Sovereign stack volumes (primary)
+        // Sovereign stack volumes (primary — APN cloud)
         "sovereign_personal" => std::path::PathBuf::from("E:/topos/sovereign_stack/Personal"),
         "sovereign_org" => std::path::PathBuf::from("E:/topos/sovereign_stack/Sirak Studios"),
         "media_pipeline" => std::path::PathBuf::from("E:/topos/sovereign_stack/Sirak Studios/Media Pipeline"),
@@ -197,10 +197,6 @@ fn resolve_volume_path(volume: &str, file_path: &str) -> Result<std::path::PathB
         // Standard volumes
         "data_sources" => utils::cache_dir().join("data_sources"),
         "artifacts" => utils::cache_dir().join("artifacts"),
-        "dropbox" => std::path::PathBuf::from("E:/topos/dropbox_ingest"),
-        // Legacy fallbacks (existing DB rows still reference these)
-        "dropbox_personal" | "sovereign_dropbox_personal" => std::path::PathBuf::from("E:/topos/Sirak Studios (sirak)"),
-        "dropbox_team" | "sovereign_dropbox_team" => std::path::PathBuf::from("E:/topos/Sirak Studios Team"),
         _ => return Err(ApiError::BadRequest(format!("Unknown volume: {}", volume))),
     };
 
@@ -375,8 +371,8 @@ async fn contribute_file(
         return Ok(Json(ApiResponse::success(existing)));
     }
 
-    // Store file
-    let upload_dir = utils::cache_dir().join("cloud_uploads").join(&org_id);
+    // Store file in sovereign stack uploads directory
+    let upload_dir = std::path::PathBuf::from("E:/topos/sovereign_stack/Sirak Studios/Uploads");
     std::fs::create_dir_all(&upload_dir)
         .map_err(|e| ApiError::InternalError(format!("Failed to create upload dir: {}", e)))?;
 
@@ -393,7 +389,7 @@ async fn contribute_file(
         .first_or_octet_stream()
         .to_string();
 
-    let relative_path = format!("cloud_uploads/{}/{}", org_id, stored_name);
+    let relative_path = format!("Uploads/{}", stored_name);
 
     let cloud_file = CloudFile::create(
         pool,
@@ -403,7 +399,7 @@ async fn contribute_file(
             task_id: task_id.clone().filter(|s| !s.is_empty()),
             file_name: filename,
             file_path: relative_path,
-            storage_volume: "data_sources".to_string(),
+            storage_volume: "sovereign_org".to_string(),
             content_hash: Some(hash),
             file_size_bytes: bytes.len() as i64,
             mime_type: Some(mime),
