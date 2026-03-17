@@ -1,8 +1,9 @@
-# Sloperation316 Branch Integration — Completed
+# Sloperation316 Branch Integration — QA Complete, Ready for Review
 
 **Date**: 2026-03-17
-**PR**: #45
+**PR**: [#45](https://github.com/KingBodhi/pcg-cc-mcp/pull/45)
 **Branch**: `integration/sloperation316`
+**Status**: All critical/security issues resolved. Ready for merge.
 
 ## What Was Integrated
 
@@ -57,3 +58,58 @@ Cherry-picked from `spleration316-database-sync`:
 ## Migration Notes
 
 - Renamed `20260408000000_org_cloud.sql` → `20260409000000_org_cloud.sql` to avoid timestamp collision with `20260408000000_dealflow_pipeline_v2.sql`
+
+## QA Review — Issues Found & Resolved
+
+### Critical (fixed)
+
+| Issue | Fix |
+|-------|-----|
+| `storage_volume` CHECK constraint missing `sovereign_personal`/`sovereign_org` | Added to `20260409000000_org_cloud.sql` CHECK constraint |
+| `browse_files` read `projects.id` as `Vec<u8>` — fails silently if TEXT | Changed to `IdRow { id: String }` with `CASE WHEN typeof(p.id) = 'blob' THEN lower(hex(p.id)) ELSE p.id END` |
+
+### Security (fixed)
+
+| Issue | Fix |
+|-------|-----|
+| Path traversal: `resolve_volume_path` only checked `..` literally | Added canonicalize verification, null byte rejection, encoded `..` check |
+| Content-Disposition header injection via malicious filenames | Sanitize `"` and `\` in `file.file_name` |
+| Hardcoded Windows paths in `org_cloud.rs`, `org_cloud_indexer.rs`, `data_sources.rs` | Replaced with `SOVEREIGN_STACK_ROOT`/`SOVEREIGN_STACK_ORG_NAME`/`SOVEREIGN_STORAGE_ROOT` env vars |
+
+### Deferred (not blocking)
+
+| Issue | Reason |
+|-------|--------|
+| `~20+ any` types in new TS code | Pre-existing pattern, not introduced by this PR — tracked in backlog |
+| `Company::find_by_id` uses `hex(id)` workaround | Blocks on DbUuid Phase C (`users.id` BLOB→TEXT migration) |
+| Business reports route changed to `ProtectedRoute` | Intentional per commit `81dd3d7f9` |
+
+## DbUuid TODO Comments
+
+Added `// TODO(dbuuid)` annotations to 16 Rust files with heaviest Uuid conversion boilerplate, pointing to `planning/2026-03-17--plan--dbuuid-migration.md`. Top hotspots:
+
+| File | Conversion count |
+|------|-----------------|
+| `topsi/platform_data.rs` | 42 |
+| `routes/tasks.rs` | 16 |
+| `routes/org_invitations.rs` | 11 |
+| `routes/crm_deals.rs` | 9 |
+| `routes/invitations.rs` | 8 |
+
+## Commit History
+
+| Hash | Message |
+|------|---------|
+| `0b4d617fe` | feat(crm): Phase 1 pipeline workflow |
+| `f9a3a6ee1` | feat(crm): People/Companies/Pipeline three-view tab |
+| `e429f7cd1` | fix(crm): People/Companies from org contacts |
+| `cc2cbee8c` | feat(pipeline): company profile links, BLOB UUID fix |
+| `47bfbc0ca` | feat: Sovereign Stack — org data hosting |
+| `097252ed0` | chore: rename org_cloud migration |
+| `661e72cf4` | feat: sovereign stack only — remove legacy volumes |
+| `7127e30ab` | feat: Intelligence page, APN Cloud branding |
+| `418cacadb` | fix: resolve build errors from cherry-pick integration |
+| `1fb03dbd5` | feat: replace window.confirm with showConfirm dialog |
+| `3cb61d165` | refactor: centralize query keys in hooks |
+| `a47994a82` | docs: add integration tracker and DbUuid migration plan |
+| `61990c363` | fix: harden org cloud — path traversal, env vars, header sanitization |

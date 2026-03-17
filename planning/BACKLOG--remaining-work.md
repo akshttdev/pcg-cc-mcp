@@ -1,6 +1,6 @@
 # Backlog — Remaining Work
 
-**Last updated:** 2026-03-17 (post PR #44 merge)
+**Last updated:** 2026-03-17 (post PR #45 — sloperation316 integration)
 **Context:** Consolidated from all completed planning docs. Items prioritized by impact and dependency.
 
 ---
@@ -53,14 +53,28 @@
 **Source:** `archive/2026-03-13--review--dogfood-e2e-qa.md` (Bug #3)
 **Resolution:** PR #41 added `loadError` state with error UI (AlertTriangle icon + "Failed to load agent reviewers" message + RefreshCw retry button). Distinguishes "no reviewers configured" from "API error".
 
-### 7. DbUuid Phase 3 — Remaining Model Conversions
-**Source:** `notes/2026-03-14--reference--dbuuid-phase3-remaining.md`
-**What:** ~107 models still use `Uuid`. Phase 1-2 complete — unblocked agent endpoints. Phase 3 removes bridge code and prevents future BLOB/TEXT mismatches.
-**Effort:** High volume, low risk per file. Batch by domain.
+### 7. DbUuid Migration — 4-Phase Plan
+**Source:** `2026-03-17--plan--dbuuid-migration.md`, `notes/2026-03-14--reference--dbuuid-phase3-remaining.md`
+**What:** Eliminate all Uuid/Vec<u8>/BLOB boilerplate. 4 phases:
+- **Phase A** (highest ROI): `AccessContext.user_id: Uuid` → `DbUuid` — eliminates ~36 conversion sites across ~18 files
+- **Phase B**: `Path<Uuid>` → `Path<String>` in route handlers — ~416 sites across ~79 files
+- **Phase C**: Migrate `users.id` BLOB → TEXT — eliminates ALL remaining `.as_bytes()` / `Vec<u8>` / `bind_uuid_blob` code
+- **Phase D**: Batch convert remaining ~104 models `Uuid` → `DbUuid`
+**Status:** Planning complete. 16 files annotated with `// TODO(dbuuid)` in PR #45. Phase A ready to start.
 
 ### ~~8. Agent "View Profile" Link~~ → RESOLVED
 **Source:** `archive/2026-03-12--tracker--sprint1-issues.md` (item 7)
 **Resolution:** PR #41 added agent profile page at `/agents/:agentId/profile` showing agent description, capabilities, status, default model, and autonomy level. AgentWatcherPanel agent names now link to the profile page. Route registered in App.tsx with ProtectedRoute wrapper.
+
+### 8b. `any` Type Cleanup in New CRM/Pipeline Frontend Code
+**Source:** PR #45 QA review
+**What:** ~20+ `: any` or `as any` casts in `client-overview.tsx`, `projects.tsx`, and other files from the pipeline-progress cherry-pick. Violates frontend TS standards.
+**Status:** NOT STARTED — deferred from PR #45 (pre-existing pattern, not a regression)
+
+### 8c. Sovereign Stack Volume Path Deduplication
+**Source:** PR #45 QA review
+**What:** `resolve_volume_path()` logic is duplicated in `org_cloud.rs` and `data_sources.rs`. Extract to a shared utility in `crates/utils/` or `crates/server/src/`.
+**Status:** NOT STARTED — both copies now use env vars, but should be unified
 
 ### 9. `http_request` Node Guardrails
 **Source:** `archive/2026-03-12--tracker--sprint1-issues.md`
