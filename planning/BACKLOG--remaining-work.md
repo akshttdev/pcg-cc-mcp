@@ -1,6 +1,6 @@
 # Backlog — Remaining Work
 
-**Last updated:** 2026-03-17
+**Last updated:** 2026-03-17 (post PR #44 merge)
 **Context:** Consolidated from all completed planning docs. Items prioritized by impact and dependency.
 
 ---
@@ -83,7 +83,7 @@
 ## P2.5 — Modularity Sprint 6 Candidates
 
 ### Modularity Sprint 6 — Hook Mutations + Remaining Debt
-**Source:** `2026-03-16--plan--modularity-sprint-5.md` (deferred 2e)
+**Source:** `archive/2026-03-16--plan--modularity-sprint-5.md` (deferred 2e)
 **What:** 6 hooks with raw `useMutation` → `useMutationWithToast`:
 - `hooks/useAgentFlows.ts` (4 mutations)
 - `hooks/useOrgOnboarding.ts` (4 mutations)
@@ -92,10 +92,13 @@
 - `hooks/useTaskMutations.ts` (3 mutations)
 - `pages/oss-library-listener.tsx` (4 mutations)
 Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~268 inline query keys
+- Over-invalidation in autonomy/bowser/collaboration mutations (broad `autonomyKeys.all` instead of targeted keys)
+- `MembersTab` raw `fetch()` → `makeRequest` migration
+**Source also:** `archive/2026-03-16--plan--modularity-sprint-4.md` (deferred items)
 **Status:** NOT STARTED
 
 ### Modularity — Large Frontend File Splits
-**Source:** `2026-03-15--plan--modularity-sprint-2.md` (remaining large files section)
+**Source:** `archive/2026-03-15--plan--modularity-sprint-2.md` (remaining large files section)
 **What:** Largest remaining frontend files:
 - `virtual-environment.tsx` (1,282 lines)
 - `TaskFormDialog.tsx` (1,240 lines) — complex form, high-traffic
@@ -104,8 +107,17 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 - `CrmDealDetailPanel.tsx` (1,202 lines) — grew in PR #36
 **Status:** NOT STARTED — candidates for future modularity sprint
 
+### Workflow UX — Deferred Polish
+**Source:** `archive/2026-03-16--plan--workflow-ux-sprint.md` (deferred items + PR #44 review)
+**What:**
+- Extract `DataSourceWorkflowRunner` from `data-source-detail.tsx` (~730 lines) — Day 2 deferral
+- `CopyWorkflowDialog` NiceModal migration (C1) — all dialogs should use `@ebay/nice-modal-react`
+- `window.confirm()` → shadcn `AlertDialog` in `WorkflowCardGrid` delete (W3)
+- Ownership filter toggle (My/Org/All) on workflow cards — badges exist but no filtering
+**Status:** NOT STARTED
+
 ### Modularity — Deferred Stretch Items
-**Source:** `2026-03-15--plan--modularity-sprint-2.md` (Day 5c)
+**Source:** `archive/2026-03-15--plan--modularity-sprint-2.md` (Day 5c)
 **What:** Hook splits deferred (below priority threshold):
 - `useConversationHistory.ts` (540 lines) → extract `flattenEntries`, `executionHelpers`, `patchWithKey`
 - `useAutonomy.ts` (478 lines) → extract `useCheckpoints`, `useApprovalGates`
@@ -165,7 +177,7 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 - Breadcrumbs: "Jungleverse" still appears as default org name in some views (#15)
 
 ### 20. User Account Onboarding (deferred from UX Sprint 2)
-**Source:** `2026-03-16--plan--ux-engagement-polish-sprint2.md`
+**Source:** `archive/2026-03-16--plan--ux-engagement-polish-sprint2.md`
 **What:** First-login walkthrough — profile setup, preferences, Topsi intro. Org onboarding (PR #39) covers org-level setup; user account onboarding covers individual user first-run experience.
 **Status:** NOT STARTED
 
@@ -274,3 +286,15 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 | Modularity Sprint 5: nora/mod.rs decomposition | 1172→718 lines, extracted config.rs, rate_limiter.rs, initialization.rs (PR #43) |
 | Modularity Sprint 5: conversation persistence | `helpers/conversations.rs` with `persist_chat_exchange`, adopted in topsi + nora chat (PR #43) |
 | Modularity Sprint 5: query key migration (8 files) | ~43 inline keys → factories, new `socialKeys`/`networkKeys` factories (PR #43) |
+| Workflow UX: Inline staging review | `RunAndReviewPanel` composite, `RunWorkflowDialog` `onRunComplete` callback (PR #44) |
+| Workflow UX: Shared workflow card grid | `WorkflowCardGrid` with ownership badges, used in BuilderTab + WorkflowsView (PR #44) |
+| Workflow UX: Copy/promote workflows | `CopyWorkflowDialog` for user ↔ org workflow copying (PR #44) |
+| Workflow UX: Node picker search + categories | Search/filter, category headers with counts (PR #44) |
+| Workflow UX: Workflow ID auto-generation | ID derived from name with lock/unlock toggle (PR #44) |
+| Workflow UX: Graph view zoom + selection | Zoom controls, node selection highlight, connection validation (PR #44) |
+| Workflow UX: Prompt templates + output schema | 3 starter templates, schema Select dropdown (PR #44) |
+| Workflow UX: Sidebar workflow sub-links | Builder/Runs/Staging sub-links with pending count badge (PR #44) |
+| Workflow UX: Real-time updates | AgentWatcher → React Query 10s polling, staging `refetchInterval` (PR #44) |
+| Workflow UX: Deleted source display | "(Deleted source)" instead of truncated UUIDs in runs (PR #44) |
+| Workflow UX: `any` type cleanup + code quality | `WorkflowRunResult` interface, `cn()`, `useEffect` fixes (PR #44) |
+| Modularity Sprint 4: billing helper deferred | Done in Sprint 5 — `helpers/billing.rs` (PR #43) |
