@@ -1,8 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   FileText, Image, Video, FileSpreadsheet, File, Download, Eye, X,
-  Search, ChevronLeft, ChevronRight, Music, FileArchive,
+  Search, ChevronLeft, ChevronRight, Music, FileArchive, Code, FileCode,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -22,14 +22,13 @@ interface CloudBrowserProps {
   orgId: string;
 }
 
+// Sovereign stack volumes only — no legacy Dropbox volumes
 const VOLUME_OPTIONS = [
   { value: '', label: 'All Volumes' },
   { value: 'sovereign_personal', label: 'Personal' },
   { value: 'sovereign_org', label: 'Organization' },
-  { value: 'data_sources', label: 'Data Sources' },
   { value: 'media_pipeline', label: 'Media Pipeline' },
   { value: 'sovereign', label: 'Sovereign Storage' },
-  { value: 'artifacts', label: 'Artifacts' },
 ];
 
 function getFileIcon(mimeType: string | null) {
@@ -39,6 +38,8 @@ function getFileIcon(mimeType: string | null) {
   if (mimeType.startsWith('audio/')) return Music;
   if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('7z') || mimeType.includes('tar') || mimeType.includes('gzip')) return FileArchive;
   if (mimeType.includes('spreadsheet') || mimeType.includes('csv')) return FileSpreadsheet;
+  if (mimeType.includes('javascript') || mimeType.includes('typescript') || mimeType.includes('x-python') || mimeType.includes('x-rust') || mimeType.includes('x-shellscript')) return FileCode;
+  if (mimeType.includes('json') || mimeType.includes('xml') || mimeType.includes('yaml') || mimeType.includes('toml') || mimeType.includes('css')) return Code;
   if (mimeType.includes('pdf') || mimeType.includes('text') || mimeType.includes('document')) return FileText;
   return File;
 }
@@ -49,7 +50,21 @@ function isPreviewable(mimeType: string | null): boolean {
     mimeType.startsWith('image/') ||
     mimeType.startsWith('video/') ||
     mimeType.startsWith('audio/') ||
-    mimeType === 'application/pdf'
+    mimeType === 'application/pdf' ||
+    mimeType.startsWith('text/') ||
+    mimeType === 'application/json' ||
+    mimeType === 'application/xml' ||
+    mimeType === 'image/svg+xml'
+  );
+}
+
+function isTextPreviewable(mimeType: string | null): boolean {
+  if (!mimeType) return false;
+  return (
+    mimeType.startsWith('text/') ||
+    mimeType === 'application/json' ||
+    mimeType === 'application/xml' ||
+    mimeType === 'application/sql'
   );
 }
 
@@ -63,11 +78,12 @@ function formatSize(bytes: number): string {
 const VOLUME_LABELS: Record<string, string> = {
   sovereign_personal: 'Personal',
   sovereign_org: 'Organization',
+  media_pipeline: 'Media',
+  sovereign: 'Sovereign',
+  // Legacy labels kept for any existing DB rows that still render
   dropbox_personal: 'Personal (legacy)',
   dropbox_team: 'Organization (legacy)',
   data_sources: 'Data Sources',
-  media_pipeline: 'Media',
-  sovereign: 'Sovereign',
   artifacts: 'Artifacts',
   dropbox: 'Dropbox',
 };
@@ -98,7 +114,6 @@ export function CloudBrowser({ orgId }: CloudBrowserProps) {
     if (isPreviewable(file.mime_type)) {
       setPreviewFile(file);
     } else {
-      // Non-previewable: trigger download
       const a = document.createElement('a');
       a.href = orgCloudApi.downloadUrl(orgId, file.id);
       a.download = file.file_name;
@@ -275,17 +290,57 @@ function FileCard({ file, orgId, onPreview }: { file: CloudFile; orgId: string; 
   );
 }
 
+function TextPreview({ url, fileName }: { url: string; fileName: string }) {
+  const [content, setContent] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(url, { signal: controller.signal, credentials: 'include' })
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to fetch');
+        return res.text();
+      })
+      .then(text => setContent(text))
+      .catch(() => setError(true));
+    return () => controller.abort();
+  }, [url]);
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center gap-2 p-8 text-muted-foreground">
+        <FileText className="h-12 w-12" />
+        <p className="text-sm">Unable to load preview</p>
+      </div>
+    );
+  }
+
+  if (content === null) {
+    return <Skeleton className="w-full h-[60vh]" />;
+  }
+
+  const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
+  const isCode = ['js', 'jsx', 'ts', 'tsx', 'rs', 'py', 'go', 'java', 'rb', 'sh', 'bash',
+    'css', 'scss', 'html', 'xml', 'json', 'yaml', 'yml', 'toml', 'sql', 'md'].includes(ext);
+
+  return (
+    <pre className={`w-full h-full min-h-[60vh] overflow-auto p-4 text-xs leading-relaxed ${
+      isCode ? 'font-mono bg-zinc-950 text-green-400' : 'font-sans bg-white dark:bg-zinc-900 text-foreground'
+    }`}>
+      {content.length > 500_000 ? content.slice(0, 500_000) + '\n\n... (truncated)' : content}
+    </pre>
+  );
+}
+
 function FilePreviewModal({ file, orgId, onClose }: { file: CloudFile; orgId: string; onClose: () => void }) {
   const previewUrl = orgCloudApi.previewUrl(orgId, file.id);
   const downloadUrl = orgCloudApi.downloadUrl(orgId, file.id);
   const mime = file.mime_type ?? '';
 
-  // Close on backdrop click
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) onClose();
   };
 
-  // Close on Escape
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') onClose();
   };
@@ -322,11 +377,19 @@ function FilePreviewModal({ file, orgId, onClose }: { file: CloudFile; orgId: st
 
         {/* Content */}
         <div className="flex-1 overflow-auto flex items-center justify-center bg-muted/30 min-h-[300px]">
-          {mime.startsWith('image/') && (
+          {mime.startsWith('image/') && mime !== 'image/svg+xml' && (
             <img
               src={previewUrl}
               alt={file.file_name}
               className="max-w-full max-h-[75vh] object-contain"
+            />
+          )}
+          {mime === 'image/svg+xml' && (
+            <iframe
+              src={previewUrl}
+              title={file.file_name}
+              className="w-full h-full min-h-[75vh] bg-white"
+              sandbox="allow-same-origin"
             />
           )}
           {mime.startsWith('video/') && (
@@ -353,6 +416,9 @@ function FilePreviewModal({ file, orgId, onClose }: { file: CloudFile; orgId: st
               title={file.file_name}
               className="w-full h-full min-h-[75vh]"
             />
+          )}
+          {isTextPreviewable(mime) && (
+            <TextPreview url={previewUrl} fileName={file.file_name} />
           )}
         </div>
       </div>

@@ -243,10 +243,10 @@ async fn upload_data_source(
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to create data source: {e}")))?;
 
-    // Store file if provided
+    // Store file if provided — write to sovereign stack
     if let Some((filename, bytes)) = file_data {
         let hash = format!("{:x}", Sha256::digest(&bytes));
-        let uploads_dir = utils::cache_dir().join("data_sources");
+        let uploads_dir = std::path::PathBuf::from("E:/topos/sovereign_stack/Sirak Studios/Uploads");
         std::fs::create_dir_all(&uploads_dir)
             .map_err(|e| ApiError::InternalError(format!("Failed to create uploads dir: {e}")))?;
 
@@ -271,13 +271,16 @@ async fn upload_data_source(
             None
         };
 
-        // Merge file info into metadata
+        // Merge file info into metadata — store sovereign volume reference
+        let relative_path = format!("Uploads/{}", stored_name);
         let mut meta: serde_json::Value = serde_json::from_str(&source.metadata).unwrap_or(serde_json::json!({}));
         if let Some(obj) = meta.as_object_mut() {
             obj.insert("file_name".into(), serde_json::json!(filename));
-            obj.insert("file_path".into(), serde_json::json!(stored_name));
+            obj.insert("file_path".into(), serde_json::json!(relative_path));
             obj.insert("file_size_bytes".into(), serde_json::json!(bytes.len()));
             obj.insert("file_hash".into(), serde_json::json!(hash));
+            obj.insert("storage_volume".into(), serde_json::json!("sovereign_org"));
+            obj.insert("original_path".into(), serde_json::json!(relative_path));
             if let Some(ref ft) = file_type {
                 obj.insert("file_mime".into(), serde_json::json!(ft));
             }
@@ -296,9 +299,9 @@ async fn upload_data_source(
             },
         ).await.map_err(|e| ApiError::InternalError(format!("{e}")))?;
 
-        // Also update legacy file columns for backwards compat
+        // Update file columns
         DataSource::set_file_info(
-            pool, &source.id, &filename, &stored_name,
+            pool, &source.id, &filename, &relative_path,
             bytes.len() as i64, &hash, file_type.as_deref(),
         ).await.map_err(|e| ApiError::InternalError(format!("Failed to update file info: {e}")))?;
 
@@ -426,9 +429,13 @@ async fn download_data_source(
     let original_path = meta.get("original_path").and_then(|v| v.as_str());
 
     let file_path = if let (Some(volume), Some(rel_path)) = (storage_volume, original_path) {
+        // Prevent path traversal
+        if rel_path.contains("..") {
+            return Err(ApiError::BadRequest("Invalid file path".into()));
+        }
         // Cloud-indexed: resolve volume path
         let base = match volume {
-            // Sovereign stack volumes (primary)
+            // Sovereign stack volumes (primary — APN cloud)
             "sovereign_personal" => std::path::PathBuf::from("E:/topos/sovereign_stack/Personal"),
             "sovereign_org" => std::path::PathBuf::from("E:/topos/sovereign_stack/Sirak Studios"),
             "media_pipeline" => std::path::PathBuf::from("E:/topos/sovereign_stack/Sirak Studios/Media Pipeline"),
@@ -436,10 +443,6 @@ async fn download_data_source(
             // Standard volumes
             "data_sources" => utils::cache_dir().join("data_sources"),
             "artifacts" => utils::cache_dir().join("artifacts"),
-            "dropbox" => std::path::PathBuf::from("E:/topos/dropbox_ingest"),
-            // Legacy fallbacks
-            "dropbox_personal" | "sovereign_dropbox_personal" => std::path::PathBuf::from("E:/topos/Sirak Studios (sirak)"),
-            "dropbox_team" | "sovereign_dropbox_team" => std::path::PathBuf::from("E:/topos/Sirak Studios Team"),
             _ => return Err(ApiError::NotFound(format!("Unknown volume: {}", volume))),
         };
         base.join(rel_path)

@@ -14,11 +14,11 @@ struct Volume {
     base_path: PathBuf,
 }
 
-/// Get the volumes associated with the Sirak Studios deployment.
-/// In production, this would be configurable per-org.
+/// Get the sovereign stack volumes for the Sirak Studios deployment.
+/// Only sovereign stack volumes are indexed — legacy Dropbox volumes are excluded.
 fn get_org_volumes() -> Vec<Volume> {
     vec![
-        // Sovereign stack volumes (primary — new files indexed here)
+        // Sovereign stack volumes (APN cloud — canonical org storage)
         Volume {
             name: "sovereign_personal",
             base_path: PathBuf::from("E:/topos/sovereign_stack/Personal"),
@@ -34,19 +34,6 @@ fn get_org_volumes() -> Vec<Volume> {
         Volume {
             name: "media_pipeline",
             base_path: PathBuf::from("E:/topos/sovereign_stack/Sirak Studios/Media Pipeline"),
-        },
-        // Legacy volumes (kept for backwards compat with existing DB rows)
-        Volume {
-            name: "dropbox_personal",
-            base_path: PathBuf::from("E:/topos/Sirak Studios (sirak)"),
-        },
-        Volume {
-            name: "dropbox_team",
-            base_path: PathBuf::from("E:/topos/Sirak Studios Team"),
-        },
-        Volume {
-            name: "dropbox",
-            base_path: PathBuf::from("E:/topos/dropbox_ingest"),
         },
     ]
 }
