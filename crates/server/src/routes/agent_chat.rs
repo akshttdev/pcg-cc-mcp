@@ -16,12 +16,8 @@ use db::models::{
     agent_conversation::{AgentConversation, AgentConversationMessage},
     agent_flow_event::AgentFlowEvent,
     agent_wallet::{AgentWallet, AgentWalletTransaction, CreateWalletTransaction},
-    project::Project,
-    vibe_deposit::{VibeDeposit, VibeWithdrawal},
-    vibe_transaction::{VibeSourceType, VibeTransaction},
 };
 use deployment::Deployment;
-use services::services::vibe_pricing::VibePricingService;
 use futures::stream::Stream;
 use nora::{
     brain::{create_client_for_agent, ConversationMessage, LLMResponse, ToolCall, ToolResult},
@@ -236,21 +232,9 @@ pub async fn agent_chat(
         pool,
     ).await;
 
-    // VIBE Balance Check — deposit ledger (if project is specified)
-    let vibe_pricing = VibePricingService::new(pool.clone());
-    if !crate::helpers::vibe_check::is_vibe_bypass_active(pool).await {
-        if let Some(project_id) = request.project_id {
-            let total_deposited = VibeDeposit::total_deposited(pool, project_id).await.unwrap_or(0);
-            let total_withdrawn = VibeWithdrawal::total_withdrawn(pool, project_id).await.unwrap_or(0);
-            let total_spent = VibeTransaction::sum_by_source(pool, VibeSourceType::Project, project_id, None)
-                .await.map(|s| s.total_vibe).unwrap_or(0);
-            let balance = total_deposited - total_withdrawn - total_spent;
-            if balance <= 0 {
-                return Err(ApiError::PaymentRequired(
-                    "Insufficient VIBE balance. Deposit VIBE tokens to your project to continue.".into(),
-                ));
-            }
-        }
+    // VIBE Balance Check
+    if let Some(project_id) = request.project_id {
+        crate::helpers::billing::ensure_vibe_balance(pool, project_id).await?;
     }
 
     // Load tools based on agent tier
@@ -386,36 +370,15 @@ pub async fn agent_chat(
     });
 
     // Record VIBE usage (if project is specified and we have token counts)
-    let mut vibe_earned: i64 = 0;
-    if let Some(project_id) = request.project_id {
-        if input_tokens > 0 || output_tokens > 0 {
-            match vibe_pricing.record_llm_usage(
-                VibeSourceType::Project,
-                project_id,
-                model.as_deref().unwrap_or("gpt-4o"),
-                input_tokens,
-                output_tokens,
-                None,  // task_id
-                None,  // task_attempt_id
-                None,  // process_id
-            ).await {
-                Ok(tx) => {
-                    vibe_earned = tx.amount_vibe;
-                    tracing::info!(
-                        "[VIBE] Recorded {} VIBE usage for project {} (tx: {})",
-                        tx.amount_vibe, project_id, tx.id
-                    );
-                    // Update project spent amount
-                    if let Err(e) = Project::adjust_vibe_spent(pool, &project_id.to_string(), tx.amount_vibe).await {
-                        tracing::error!("[VIBE] Failed to update project spent amount: {}", e);
-                    }
-                }
-                Err(e) => {
-                    tracing::error!("[VIBE] Failed to record usage: {}", e);
-                }
-            }
-        }
-    }
+    let vibe_earned = if let Some(project_id) = request.project_id {
+        crate::helpers::billing::record_llm_vibe_usage(
+            pool, project_id, model.as_deref().unwrap_or("gpt-4o"),
+            input_tokens, output_tokens,
+            None, None, None, "AgentChat",
+        ).await
+    } else {
+        0
+    };
 
     // Credit agent's wallet with earned VIBE
     if vibe_earned > 0 {

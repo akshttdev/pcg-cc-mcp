@@ -17,6 +17,7 @@ import {
   automationsApi,
 } from '@/lib/api';
 import type { WorkflowDefinition } from '@/lib/api';
+import { workflowKeys } from '@/lib/query-keys';
 import { WorkflowEditor as WorkflowEditorComponent } from '@/components/workflows/WorkflowEditor';
 
 // ── Pipeline Types & Constants ───────────────────────────────────────────────
@@ -136,7 +137,7 @@ export function PipelineNodeCard({ node, isLast }: { node: PipelineNode; isLast:
 export function EditableWorkflowsView({ orgId }: { orgId: string }) {
   const queryClient = useQueryClient();
   const { data: workflows = [], isLoading } = useQuery({
-    queryKey: ['workflowDefinitions'],
+    queryKey: workflowKeys.definitions(),
     queryFn: () => workflowsApi.listDefinitions(),
   });
 
@@ -161,7 +162,7 @@ export function EditableWorkflowsView({ orgId }: { orgId: string }) {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workflowDefinitions'] });
+      queryClient.invalidateQueries({ queryKey: workflowKeys.definitions() });
       setEditorOpen(false);
       setEditingWorkflow(null);
     },
@@ -170,7 +171,7 @@ export function EditableWorkflowsView({ orgId }: { orgId: string }) {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => workflowsApi.deleteDefinition(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workflowDefinitions'] });
+      queryClient.invalidateQueries({ queryKey: workflowKeys.definitions() });
     },
   });
 

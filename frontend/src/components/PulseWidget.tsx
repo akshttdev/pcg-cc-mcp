@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { pulseApi } from '@/lib/api';
+import { pulseKeys } from '@/lib/query-keys';
 
 // --- Types ---
 
@@ -135,7 +136,7 @@ export function PulseWidget({ className, projectId }: PulseWidgetProps) {
     isLoading: statsLoading,
     error: statsError,
   } = useQuery({
-    queryKey: ['pulse', 'stats', projectId],
+    queryKey: pulseKeys.stats(projectId!),
     queryFn: () => pulseApi.getStats(projectId!),
     refetchInterval: 30000,
     enabled: !!projectId,
@@ -145,7 +146,7 @@ export function PulseWidget({ className, projectId }: PulseWidgetProps) {
     data: projectContent,
     isLoading: projectContentLoading,
   } = useQuery({
-    queryKey: ['pulse', 'content', 'latest', projectId],
+    queryKey: pulseKeys.contentLatest(projectId!),
     queryFn: () => pulseApi.getLatestContent(projectId!, 8),
     refetchInterval: 15000,
     enabled: !!projectId,
@@ -157,7 +158,7 @@ export function PulseWidget({ className, projectId }: PulseWidgetProps) {
     isLoading: projectsLoading,
     error: projectsError,
   } = useQuery({
-    queryKey: ['pulse', 'projects'],
+    queryKey: pulseKeys.projects(),
     queryFn: () => pulseApi.listProjects(),
     refetchInterval: 30000,
     enabled: !projectId,
@@ -167,7 +168,7 @@ export function PulseWidget({ className, projectId }: PulseWidgetProps) {
     data: legacyContent,
     isLoading: legacyContentLoading,
   } = useQuery({
-    queryKey: ['pulse', 'content', 'legacy'],
+    queryKey: pulseKeys.contentLegacy(),
     queryFn: () => pulseApi.getLatestContent('_all', 8),
     refetchInterval: 15000,
     enabled: !projectId,
@@ -182,7 +183,7 @@ export function PulseWidget({ className, projectId }: PulseWidgetProps) {
       return pulseApi.collectAll();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pulse'] });
+      queryClient.invalidateQueries({ queryKey: pulseKeys.all() });
     },
   });
 

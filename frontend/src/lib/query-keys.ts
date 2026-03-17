@@ -209,6 +209,7 @@ export const entityKeys = {
   companyContactMethods: (id: string) => ['company-contact-methods', id] as const,
   person: (id: string) => ['person', id] as const,
   researchPasses: (personId: string) => ['research-passes', personId] as const,
+  personReports: (personId: string) => ['person-reports', personId] as const,
   leads: (orgFilter?: string, typeFilter?: string, search?: string) =>
     ['persons', 'leads', orgFilter, typeFilter, search] as const,
   allDirectory: () => ['allProjectsDirectory'] as const,
@@ -226,6 +227,9 @@ export const pulseKeys = {
   alerts: (projectId: string) => ['pulse', 'alerts', projectId] as const,
   alertRules: (projectId: string) => ['pulse', 'alert-rules', projectId] as const,
   tracking: (projectId: string) => ['pulse', 'tracking', projectId] as const,
+  projects: () => ['pulse', 'projects'] as const,
+  contentLatest: (projectId: string) => ['pulse', 'content', 'latest', projectId] as const,
+  contentLegacy: () => ['pulse', 'content', 'legacy'] as const,
 };
 
 // ── Communications ─────────────────────────────────────────────────────────
@@ -337,6 +341,26 @@ export const bowserKeys = {
   allowlist: (projectId: string) => ['bowser', 'allowlist', projectId] as const,
 };
 
+// ── TopiClips ─────────────────────────────────────────────────────────────
+
+export const topiclipsKeys = {
+  all: ['topiclips'] as const,
+  gallery: (projectId: string) => ['topiclips', 'gallery', projectId] as const,
+  symbols: () => ['topiclips', 'symbols'] as const,
+  timeline: (sessionId: string) => ['topiclips', 'timeline', sessionId] as const,
+};
+
+// ── Topsi ──────────────────────────────────────────────────────────────────
+
+export const topsiKeys = {
+  all: ['topsi'] as const,
+  status: () => ['topsi', 'status'] as const,
+  topology: () => ['topsi', 'topology'] as const,
+  issues: () => ['topsi', 'issues'] as const,
+  projects: () => ['topsi', 'projects'] as const,
+  recommendations: (projectId?: string) => ['topsi', 'recommendations', projectId ?? 'all'] as const,
+};
+
 // ── Collaboration ───────────────────────────────────────────────────────────
 
 export const collaborationKeys = {
@@ -346,6 +370,23 @@ export const collaborationKeys = {
   handoffs: (executionId: string) => ['collaboration', executionId, 'handoffs'] as const,
   injections: (executionId: string) => ['collaboration', executionId, 'injections'] as const,
   pendingInjections: (executionId: string) => ['collaboration', executionId, 'pending-injections'] as const,
+};
+
+// ── Social ──────────────────────────────────────────────────────────────────
+
+export const socialKeys = {
+  accounts: (projectId?: string | null) => ['social-accounts', projectId] as const,
+  posts: (projectId?: string | null) => ['social-posts', projectId] as const,
+  mentions: (projectId?: string | null) => ['social-mentions', projectId] as const,
+  inboxStats: (projectId?: string | null) => ['social-inbox-stats', projectId] as const,
+};
+
+// ── Network ─────────────────────────────────────────────────────────────────
+
+export const networkKeys = {
+  apnIdentity: () => ['apn-identity'] as const,
+  pythiaHealth: () => ['pythia-health'] as const,
+  pythiaEconomics: () => ['pythia-economics'] as const,
 };
 
 // ── Unified export ─────────────────────────────────────────────────────────
@@ -376,5 +417,9 @@ export const queryKeys = {
   knowledge: knowledgeKeys,
   autonomy: autonomyKeys,
   bowser: bowserKeys,
+  topiclips: topiclipsKeys,
+  topsi: topsiKeys,
   collaboration: collaborationKeys,
+  social: socialKeys,
+  network: networkKeys,
 } as const;

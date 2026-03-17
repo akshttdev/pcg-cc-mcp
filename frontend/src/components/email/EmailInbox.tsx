@@ -42,6 +42,7 @@ import {
   EmailMessageRecord,
   EmailInboxStats,
 } from '@/lib/api';
+import { commsKeys } from '@/lib/query-keys';
 
 interface EmailInboxProps {
   projectId: string;
@@ -55,13 +56,13 @@ export function EmailInbox({ projectId, accountId }: EmailInboxProps) {
   const [selectedMessage, setSelectedMessage] = useState<EmailMessageRecord | null>(null);
 
   const { data: stats, isLoading: statsLoading } = useQuery<EmailInboxStats>({
-    queryKey: ['email-inbox-stats', projectId],
+    queryKey: commsKeys.emailInboxStats(projectId),
     queryFn: () => emailMessagesApi.getInboxStats(projectId),
     enabled: !!projectId,
   });
 
   const { data: messages = [], isLoading: messagesLoading, refetch } = useQuery<EmailMessageRecord[]>({
-    queryKey: ['email-messages', projectId, accountId, filter],
+    queryKey: commsKeys.emailMessages(projectId, accountId, filter),
     queryFn: () =>
       emailMessagesApi.listMessages({
         project_id: projectId,
@@ -77,24 +78,24 @@ export function EmailInbox({ projectId, accountId }: EmailInboxProps) {
   const markAsReadMutation = useMutation({
     mutationFn: emailMessagesApi.markAsRead,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['email-messages'] });
-      queryClient.invalidateQueries({ queryKey: ['email-inbox-stats'] });
+      queryClient.invalidateQueries({ queryKey: commsKeys.emailMessagesAll() });
+      queryClient.invalidateQueries({ queryKey: commsKeys.emailInboxStats(projectId) });
     },
   });
 
   const toggleStarMutation = useMutation({
     mutationFn: emailMessagesApi.toggleStar,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['email-messages'] });
-      queryClient.invalidateQueries({ queryKey: ['email-inbox-stats'] });
+      queryClient.invalidateQueries({ queryKey: commsKeys.emailMessagesAll() });
+      queryClient.invalidateQueries({ queryKey: commsKeys.emailInboxStats(projectId) });
     },
   });
 
   const moveToTrashMutation = useMutation({
     mutationFn: emailMessagesApi.moveToTrash,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['email-messages'] });
-      queryClient.invalidateQueries({ queryKey: ['email-inbox-stats'] });
+      queryClient.invalidateQueries({ queryKey: commsKeys.emailMessagesAll() });
+      queryClient.invalidateQueries({ queryKey: commsKeys.emailInboxStats(projectId) });
       setSelectedMessage(null);
     },
   });
