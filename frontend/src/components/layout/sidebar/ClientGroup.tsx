@@ -102,20 +102,12 @@ export function ClientGroup({
             expandedProjects={expandedProjects}
             onToggleProject={onToggleProject}
             queryClient={queryClient}
+            orgId={organizationId}
+            clientId={client.id}
           />
 
           {/* Client context quick links */}
           <div className="pt-1 mt-1 border-t border-border/40 space-y-0.5">
-            <Link
-              to={`/organizations/${organizationId}/clients/${client.id}`}
-              className={cn(
-                'flex items-center gap-1.5 px-2 py-1 text-[10px] rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors text-muted-foreground',
-                location.pathname === `/organizations/${organizationId}/clients/${client.id}` && 'bg-primary/10 text-foreground font-medium'
-              )}
-            >
-              <UserCircle className="h-3 w-3 shrink-0" />
-              <span>Client Overview</span>
-            </Link>
             {client.crm_person_id && (
               <Link
                 to={`/people/${client.crm_person_id}`}

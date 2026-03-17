@@ -12,6 +12,7 @@ use serde_json::json;
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use db::db_uuid::DbUuid;
+// TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 
 use crate::agent::access_control::{AccessScope, UserContext};
@@ -57,7 +58,7 @@ impl PlatformDataService {
 
         let user_uuid = Uuid::parse_str(&user_context.user_id)
             .map_err(|_| TopsiError::AccessDenied("Invalid user_id".to_string()))?;
-        let user_id_bytes = user_uuid.as_bytes().to_vec();
+        let user_id_bytes = user_uuid.to_string();
 
         let member: Option<i64> = sqlx::query_scalar(
             "SELECT 1 FROM organization_members WHERE organization_id = ? AND user_id = ? LIMIT 1",
@@ -202,11 +203,11 @@ impl PlatformDataService {
             r#"INSERT INTO project_members (id, project_id, user_id, role, granted_by)
                VALUES (?, ?, ?, ?, ?)"#
         )
-        .bind(member_id.as_bytes().to_vec())
-        .bind(project.id.as_bytes().to_vec())
-        .bind(user_uuid.as_bytes().to_vec())
+        .bind(member_id.to_string())
+        .bind(project.id.to_string())
+        .bind(user_uuid.to_string())
         .bind("owner")
-        .bind(user_uuid.as_bytes().to_vec())
+        .bind(user_uuid.to_string())
         .execute(&self.pool)
         .await
         .map_err(|e| TopsiError::ToolError(format!("Failed to add project member: {}", e)))?;
@@ -284,8 +285,8 @@ impl PlatformDataService {
         "#)
         .bind(new_name)
         .bind(org_uuid.is_some() as i32)
-        .bind(org_uuid.map(|u| u.as_bytes().to_vec()))
-        .bind(project_uuid.as_bytes().to_vec())
+        .bind(org_uuid.map(|u| u.to_string()))
+        .bind(project_uuid.to_string())
         .execute(&self.pool)
         .await
         .map_err(|e| TopsiError::ToolError(format!("Failed to update project: {}", e)))?;
@@ -417,7 +418,7 @@ impl PlatformDataService {
                 Project::find_all(&self.pool).await.unwrap_or_default()
             } else {
                 let user_uuid = Uuid::parse_str(&user_context.user_id).unwrap_or_default();
-                let user_id_bytes = user_uuid.as_bytes().to_vec();
+                let user_id_bytes = user_uuid.to_string();
                 let project_ids: Vec<String> = sqlx::query_scalar(
                     r#"SELECT DISTINCT project_id FROM project_members WHERE user_id = ?"#
                 )
@@ -485,11 +486,11 @@ impl PlatformDataService {
                             r#"INSERT INTO project_members (id, project_id, user_id, role, granted_by)
                                VALUES (?, ?, ?, ?, ?)"#
                         )
-                        .bind(member_id.as_bytes().to_vec())
+                        .bind(member_id.to_string())
                         .bind(&project.id)
-                        .bind(auto_user_uuid.as_bytes().to_vec())
+                        .bind(auto_user_uuid.to_string())
                         .bind("owner")
-                        .bind(auto_user_uuid.as_bytes().to_vec())
+                        .bind(auto_user_uuid.to_string())
                         .execute(&self.pool)
                         .await {
                             tracing::error!("Failed to add project member for auto-created project: {}", e);

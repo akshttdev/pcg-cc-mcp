@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { attemptsApi } from '@/lib/api';
 import { useTaskViewManager } from '@/hooks/useTaskViewManager';
+import { taskKeys } from '@/lib/query-keys';
 import type { TaskAttempt } from 'shared/types';
 import type { ExecutorProfileId } from 'shared/types';
 
@@ -26,7 +27,7 @@ export function useAttemptCreation(taskId: string) {
     onSuccess: (newAttempt: TaskAttempt) => {
       // Optimistically add to cache to prevent UI flicker
       queryClient.setQueryData(
-        ['taskAttempts', taskId],
+        taskKeys.attempts(taskId),
         (old: TaskAttempt[] = []) => [newAttempt, ...old]
       );
 

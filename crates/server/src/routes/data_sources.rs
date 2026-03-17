@@ -17,19 +17,6 @@ use crate::{DeploymentImpl, error::ApiError};
 
 // ── List endpoints ──────────────────────────────────────────────────────────
 
-// TODO: unused — comment out to suppress warning
-// /// GET /api/organizations/:org_id/data-sources
-// async fn list_by_organization(
-//     Path(org_id): Path<Uuid>,
-//     State(deployment): State<DeploymentImpl>,
-// ) -> Result<Json<ApiResponse<Vec<DataSource>>>, ApiError> {
-//     let pool = &deployment.db().pool;
-//     let sources = DataSource::find_by_organization_all(pool, &org_id.to_string())
-//         .await
-//         .map_err(|e| ApiError::InternalError(format!("Failed to list data sources: {e}")))?;
-//     Ok(Json(ApiResponse::success(sources)))
-// }
-
 /// GET /api/projects/:project_id/data-sources
 async fn list_by_project(
     Path(project_id): Path<Uuid>,
@@ -256,10 +243,10 @@ async fn upload_data_source(
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to create data source: {e}")))?;
 
-    // Store file if provided
+    // Store file if provided — write to sovereign stack
     if let Some((filename, bytes)) = file_data {
         let hash = format!("{:x}", Sha256::digest(&bytes));
-        let uploads_dir = utils::cache_dir().join("data_sources");
+        let uploads_dir = std::path::PathBuf::from("E:/topos/sovereign_stack/Sirak Studios/Uploads");
         std::fs::create_dir_all(&uploads_dir)
             .map_err(|e| ApiError::InternalError(format!("Failed to create uploads dir: {e}")))?;
 
@@ -284,13 +271,16 @@ async fn upload_data_source(
             None
         };
 
-        // Merge file info into metadata
+        // Merge file info into metadata — store sovereign volume reference
+        let relative_path = format!("Uploads/{}", stored_name);
         let mut meta: serde_json::Value = serde_json::from_str(&source.metadata).unwrap_or(serde_json::json!({}));
         if let Some(obj) = meta.as_object_mut() {
             obj.insert("file_name".into(), serde_json::json!(filename));
-            obj.insert("file_path".into(), serde_json::json!(stored_name));
+            obj.insert("file_path".into(), serde_json::json!(relative_path));
             obj.insert("file_size_bytes".into(), serde_json::json!(bytes.len()));
             obj.insert("file_hash".into(), serde_json::json!(hash));
+            obj.insert("storage_volume".into(), serde_json::json!("sovereign_org"));
+            obj.insert("original_path".into(), serde_json::json!(relative_path));
             if let Some(ref ft) = file_type {
                 obj.insert("file_mime".into(), serde_json::json!(ft));
             }
@@ -309,9 +299,9 @@ async fn upload_data_source(
             },
         ).await.map_err(|e| ApiError::InternalError(format!("{e}")))?;
 
-        // Also update legacy file columns for backwards compat
+        // Update file columns
         DataSource::set_file_info(
-            pool, &source.id, &filename, &stored_name,
+            pool, &source.id, &filename, &relative_path,
             bytes.len() as i64, &hash, file_type.as_deref(),
         ).await.map_err(|e| ApiError::InternalError(format!("Failed to update file info: {e}")))?;
 
@@ -433,13 +423,43 @@ async fn download_data_source(
 
     // For file uploads, read from disk
     let meta: serde_json::Value = serde_json::from_str(&source.metadata).unwrap_or(serde_json::json!({}));
-    let stored_name = meta.get("file_path")
-        .and_then(|v| v.as_str())
-        .or(source.file_path.as_deref())
-        .ok_or_else(|| ApiError::NotFound("File not stored locally".to_string()))?;
 
-    let uploads_dir = utils::cache_dir().join("data_sources");
-    let file_path = uploads_dir.join(stored_name);
+    // Check if this is a cloud-indexed file with a storage_volume
+    let storage_volume = meta.get("storage_volume").and_then(|v| v.as_str());
+    let original_path = meta.get("original_path").and_then(|v| v.as_str());
+
+    let file_path = if let (Some(volume), Some(rel_path)) = (storage_volume, original_path) {
+        // Prevent path traversal
+        if rel_path.contains("..") || rel_path.contains('\0') {
+            return Err(ApiError::BadRequest("Invalid file path".into()));
+        }
+        // Cloud-indexed: resolve volume path (env vars match sovereign_stack.rs defaults)
+        let stack_root = std::env::var("SOVEREIGN_STACK_ROOT")
+            .unwrap_or_else(|_| "E:/topos/sovereign_stack".to_string());
+        let org_name = std::env::var("SOVEREIGN_STACK_ORG_NAME")
+            .unwrap_or_else(|_| "Sirak Studios".to_string());
+        let base = match volume {
+            "sovereign_personal" => std::path::PathBuf::from(&stack_root).join("Personal"),
+            "sovereign_org" => std::path::PathBuf::from(&stack_root).join(&org_name),
+            "media_pipeline" => std::path::PathBuf::from(&stack_root).join(&org_name).join("Media Pipeline"),
+            "sovereign" => {
+                let storage_root = std::env::var("SOVEREIGN_STORAGE_ROOT")
+                    .unwrap_or_else(|_| "E:/topos/sovereign_storage".to_string());
+                std::path::PathBuf::from(storage_root)
+            }
+            "data_sources" => utils::cache_dir().join("data_sources"),
+            "artifacts" => utils::cache_dir().join("artifacts"),
+            _ => return Err(ApiError::NotFound(format!("Unknown volume: {}", volume))),
+        };
+        base.join(rel_path)
+    } else {
+        // Legacy: look in cache_dir/data_sources
+        let stored_name = meta.get("file_path")
+            .and_then(|v| v.as_str())
+            .or(source.file_path.as_deref())
+            .ok_or_else(|| ApiError::NotFound("File not stored locally".to_string()))?;
+        utils::cache_dir().join("data_sources").join(stored_name)
+    };
 
     if !file_path.exists() {
         return Err(ApiError::NotFound("File not found on disk".to_string()));
@@ -453,8 +473,8 @@ async fn download_data_source(
         .or(source.file_name.as_deref())
         .unwrap_or(&source.title);
 
-    let mime = meta.get("file_mime")
-        .and_then(|v| v.as_str())
+    let mime = source.file_type.as_deref()
+        .or_else(|| meta.get("file_mime").and_then(|v| v.as_str()))
         .unwrap_or("application/octet-stream");
 
     Ok(Response::builder()

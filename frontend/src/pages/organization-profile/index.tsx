@@ -81,6 +81,8 @@ const MembersTab = lazy(() => import('./tabs/MembersTab').then(m => ({ default: 
 const SocialTab = lazy(() => import('./tabs/social'));
 const IntelligenceTab = lazy(() => import('./tabs/intelligence'));
 const IntegrationsTab = lazy(() => import('./tabs/integrations'));
+const OrgWikiTab = lazy(() => import('./tabs/WikiTab').then(m => ({ default: m.OrgWikiTab })));
+const CloudTab = lazy(() => import('./tabs/cloud'));
 
 function TabSkeleton() {
   return (
@@ -110,8 +112,10 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
     projects: '/projects',
     social: '/social',
     intelligence: '/intelligence',
+    wiki: '/wiki',
     members: '/members',
     integrations: '/integrations',
+    cloud: '/cloud',
   };
 
   const setTab = (tab: string) => {
@@ -428,6 +432,15 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                     Set Up Brand
                   </Button>
                 )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs gap-1.5 border-indigo-700/60 text-indigo-400 hover:bg-indigo-950/40"
+                  onClick={() => setTab('wiki')}
+                >
+                  <Brain className="h-3.5 w-3.5" />
+                  Intel
+                </Button>
               </div>
             </div>
 
@@ -471,6 +484,10 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 <Brain className="h-4 w-4 mr-2" />
                 Intelligence
               </TabsTrigger>
+              <TabsTrigger value="wiki">
+                <BookOpen className="h-4 w-4 mr-2" />
+                Wiki
+              </TabsTrigger>
               <TabsTrigger value="members">
                 <Users className="h-4 w-4 mr-2" />
                 Members
@@ -478,6 +495,10 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
               <TabsTrigger value="integrations">
                 <Plug className="h-4 w-4 mr-2" />
                 Integrations
+              </TabsTrigger>
+              <TabsTrigger value="cloud">
+                <Database className="h-4 w-4 mr-2" />
+                Cloud
               </TabsTrigger>
             </TabsList>
             <Link
@@ -552,6 +573,14 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
               </PageErrorBoundary>
             </TabsContent>
 
+            <TabsContent value="wiki">
+              <PageErrorBoundary label="Wiki">
+                <Suspense fallback={<TabSkeleton />}>
+                  <OrgWikiTab orgId={orgId} orgName={org.name} />
+                </Suspense>
+              </PageErrorBoundary>
+            </TabsContent>
+
             <TabsContent value="members">
               <PageErrorBoundary label="Members">
                 <Suspense fallback={<TabSkeleton />}>
@@ -564,6 +593,14 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
               <PageErrorBoundary label="Integrations">
                 <Suspense fallback={<TabSkeleton />}>
                   <IntegrationsTab orgId={orgId} />
+                </Suspense>
+              </PageErrorBoundary>
+            </TabsContent>
+
+            <TabsContent value="cloud">
+              <PageErrorBoundary label="Cloud">
+                <Suspense fallback={<TabSkeleton />}>
+                  <CloudTab orgId={orgId} />
                 </Suspense>
               </PageErrorBoundary>
             </TabsContent>

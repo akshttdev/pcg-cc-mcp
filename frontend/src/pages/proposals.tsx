@@ -116,7 +116,7 @@ function ProposalCard({
             {proposal.lead_id && (
               <button
                 onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => { e.stopPropagation(); navigate(`/persons/${proposal.lead_id}`); }}
+                onClick={(e) => { e.stopPropagation(); navigate(`/people/${proposal.lead_id}`); }}
                 className="text-muted-foreground hover:text-foreground transition-colors shrink-0 opacity-0 group-hover:opacity-100"
                 title="View profile"
               >

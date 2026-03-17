@@ -70,6 +70,7 @@ export const crmKeys = {
   dealsByContact: (contactId: string) => ['crm', 'deals', 'contact', contactId] as const,
 
   // Activities
+  activitiesAll: () => ['crm', 'activities'] as const,
   activities: (projectId: string) => ['crm', 'activities', projectId] as const,
   activitiesByContact: (contactId: string) =>
     ['crm', 'activities', 'contact', contactId] as const,
@@ -89,6 +90,7 @@ export const projectKeys = {
   list: (filter?: string) => ['projects', filter] as const,
   detail: (projectId: string) => ['project', projectId] as const,
   crm: () => ['projects', 'crm'] as const,
+  byClient: (clientId?: string) => ['projects', 'byClient', clientId] as const,
 };
 
 // ── Organizations ──────────────────────────────────────────────────────────
@@ -98,6 +100,7 @@ export const organizationKeys = {
   admin: () => ['organizations-admin'] as const,
   detail: (orgId?: string) => ['organization', orgId] as const,
   clients: (orgId?: string) => ['org-clients', orgId] as const,
+  orgClients: (orgId?: string) => ['organizations', orgId, 'clients'] as const,
   clientsSettings: (orgId?: string | null) => ['clients', orgId] as const,
   members: (orgId: string) => ['org-members', orgId] as const,
   orgData: (orgId: string) => ['org', orgId] as const,
@@ -389,6 +392,108 @@ export const networkKeys = {
   pythiaEconomics: () => ['pythia-economics'] as const,
 };
 
+// ── Org Cloud ─────────────────────────────────────────────────────────────
+
+export const orgCloudKeys = {
+  all: (orgId: string) => ['org-cloud', orgId] as const,
+  browse: (orgId: string, params?: Record<string, unknown>) => ['org-cloud', orgId, params] as const,
+  stats: (orgId: string) => ['org-cloud-stats', orgId] as const,
+  settings: (orgId: string) => ['org-cloud-settings', orgId] as const,
+  contributions: (orgId: string) => ['org-cloud-contributions', orgId] as const,
+};
+
+// ── Agent Flows ───────────────────────────────────────────────────────────
+
+export const agentFlowKeys = {
+  all: ['agentFlows'] as const,
+  detailAll: ['agentFlow'] as const,
+  list: (taskId?: string, status?: string) => ['agentFlows', taskId, status] as const,
+  detail: (flowId?: string) => ['agentFlow', flowId] as const,
+  awaitingApproval: () => ['agentFlows', 'awaiting-approval'] as const,
+  events: (flowId?: string, since?: string, eventType?: string) =>
+    ['agentFlowEvents', flowId, since, eventType] as const,
+  byTasks: (taskIds: string[]) => ['agentFlows', 'byTasks', [...taskIds].sort().join(',')] as const,
+};
+
+// ── Task Card Data ────────────────────────────────────────────────────────
+
+export const taskCardKeys = {
+  artifacts: (taskId?: string) => ['taskArtifacts', taskId] as const,
+  workflowEvents: (taskId?: string) => ['taskWorkflowEvents', taskId] as const,
+  batchArtifacts: (taskIds: string[]) => ['tasksArtifacts', [...taskIds].sort().join(',')] as const,
+  batchWorkflowEvents: (taskIds: string[]) => ['tasksWorkflowEvents', [...taskIds].sort().join(',')] as const,
+};
+
+// ── Project Capacity ──────────────────────────────────────────────────────
+
+export const capacityKeys = {
+  project: (projectId?: string) => ['projectCapacity', projectId] as const,
+  activeSlots: (projectId?: string) => ['activeSlots', projectId] as const,
+  activeExecutions: () => ['activeExecutions'] as const,
+};
+
+// ── Project Access ────────────────────────────────────────────────────────
+
+export const projectAccessKeys = {
+  access: (projectId?: string) => ['project-access', projectId] as const,
+};
+
+// ── Execution Processes ───────────────────────────────────────────────────
+
+export const executionProcessKeys = {
+  list: (attemptId?: string) => ['executionProcesses', attemptId] as const,
+  details: (processId: string) => ['processDetails', processId] as const,
+};
+
+// ── Branch & Git ──────────────────────────────────────────────────────────
+
+export const branchKeys = {
+  status: (attemptId?: string) => ['branchStatus', attemptId] as const,
+  attemptBranch: (attemptId?: string) => ['attemptBranch', attemptId] as const,
+  projectBranches: (projectId?: string) => ['projectBranches', projectId] as const,
+};
+
+// ── Mission Control ───────────────────────────────────────────────────────
+
+export const missionControlKeys = {
+  dashboard: () => ['missionControl', 'dashboard'] as const,
+  artifacts: (executionId?: string) => ['missionControl', 'artifacts', executionId] as const,
+  plan: (executionId?: string) => ['missionControl', 'plan', executionId] as const,
+  activePlans: () => ['missionControl', 'activePlans'] as const,
+};
+
+// ── System Metrics ────────────────────────────────────────────────────────
+
+export const systemMetricsKeys = {
+  basic: () => ['system-metrics'] as const,
+  detailed: () => ['system-metrics-detailed'] as const,
+};
+
+// ── Project Boards ────────────────────────────────────────────────────────
+
+export const projectBoardKeys = {
+  boards: (projectId?: string) => ['projectBoards', projectId] as const,
+  tasks: (projectId?: string) => ['projectTasks', projectId] as const,
+};
+
+// ── Org Persons ───────────────────────────────────────────────────────────
+
+export const orgPersonKeys = {
+  list: (orgId?: string) => ['org-persons', orgId] as const,
+};
+
+// ── Workflow Templates ────────────────────────────────────────────────────
+
+export const workflowTemplateKeys = {
+  all: () => ['workflow-templates'] as const,
+};
+
+// ── Orcha ─────────────────────────────────────────────────────────────────
+
+export const orchaKeys = {
+  status: () => ['orcha-status'] as const,
+};
+
 // ── Unified export ─────────────────────────────────────────────────────────
 
 export const queryKeys = {
@@ -422,4 +527,17 @@ export const queryKeys = {
   collaboration: collaborationKeys,
   social: socialKeys,
   network: networkKeys,
+  orgCloud: orgCloudKeys,
+  agentFlows: agentFlowKeys,
+  taskCard: taskCardKeys,
+  capacity: capacityKeys,
+  projectAccess: projectAccessKeys,
+  executionProcesses: executionProcessKeys,
+  branches: branchKeys,
+  missionControl: missionControlKeys,
+  systemMetrics: systemMetricsKeys,
+  projectBoards: projectBoardKeys,
+  orgPersons: orgPersonKeys,
+  workflowTemplates: workflowTemplateKeys,
+  orcha: orchaKeys,
 } as const;

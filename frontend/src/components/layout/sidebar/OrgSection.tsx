@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
@@ -249,7 +249,7 @@ export function OrgSection({
 }
 
 // ============================================================================
-// SidebarOrgGroups — separates orgs into active (has content) vs empty
+// SidebarOrgGroups — renders all orgs as collapsible sections
 // ============================================================================
 
 export function SidebarOrgGroups({
@@ -271,9 +271,7 @@ export function SidebarOrgGroups({
   onToggleProject: (id: string) => void;
   queryClient: QueryClient;
 }) {
-  const [showOtherOrgs, setShowOtherOrgs] = useState(false);
-
-  // Derive activeOrgId: from URL orgId, from which org contains the active project, or from home org
+  // Derive activeOrgId for highlight purposes only
   const allOrgs = useMemo(
     () => [...sidebarTree.owned_orgs, ...sidebarTree.member_orgs],
     [sidebarTree.owned_orgs, sidebarTree.member_orgs]
@@ -288,22 +286,16 @@ export function SidebarOrgGroups({
         }
       }
     }
-    // Fall back to home org when no URL context
     if (homeOrgId) return homeOrgId;
     return undefined;
   }, [orgId, projectId, homeOrgId, allOrgs]);
 
-  // Only show the active org expanded; all others go into "Other Organizations"
-  const activeOrg = activeOrgId ? allOrgs.find((o) => o.id === activeOrgId) : undefined;
-  const otherOrgs = allOrgs.filter((o) => o.id !== activeOrgId);
-
   return (
     <>
-      {/* Active organization — fully expanded */}
-      {activeOrg && (
+      {allOrgs.map((org) => (
         <OrgSection
-          key={activeOrg.id || activeOrg.slug}
-          org={activeOrg}
+          key={org.id || org.slug}
+          org={org}
           projectId={projectId}
           activeOrgId={activeOrgId}
           isAdmin={isAdmin}
@@ -311,40 +303,7 @@ export function SidebarOrgGroups({
           onToggleProject={onToggleProject}
           queryClient={queryClient}
         />
-      )}
-
-      {/* Other organizations — collapsed name-only list */}
-      {otherOrgs.length > 0 && (
-        <Collapsible open={showOtherOrgs} onOpenChange={setShowOtherOrgs}>
-          <CollapsibleTrigger asChild>
-            <Button
-              variant="ghost"
-              className="w-full justify-between px-2 py-1.5 h-auto text-[10px] font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground"
-            >
-              <span>Other Organizations ({otherOrgs.length})</span>
-              {showOtherOrgs ? (
-                <ChevronDown className="h-3 w-3" />
-              ) : (
-                <ChevronRight className="h-3 w-3" />
-              )}
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="pl-2">
-            <div className="space-y-0.5 py-0.5">
-              {otherOrgs.map((org) => (
-                <Link
-                  key={org.id || org.slug}
-                  to={org.id ? `/organizations/${org.id}` : '#'}
-                  className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors"
-                >
-                  <Building2 className="h-3 w-3 text-muted-foreground shrink-0" />
-                  <span className="truncate">{org.name}</span>
-                </Link>
-              ))}
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
-      )}
+      ))}
     </>
   );
 }

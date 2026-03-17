@@ -148,7 +148,7 @@ async fn list_projects(pool: &SqlitePool) -> Result<()> {
 
 async fn verify_project(pool: &SqlitePool, project_id: &Uuid) -> Result<String> {
     let row = sqlx::query("SELECT id, name FROM projects WHERE id = ?")
-        .bind(project_id.as_bytes().as_slice())
+        .bind(project_id.to_string())
         .fetch_optional(pool)
         .await?
         .context("Project not found")?;

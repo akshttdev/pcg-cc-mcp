@@ -29,6 +29,7 @@ use tokio::sync::{Mutex, broadcast};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{info, warn};
+// TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 use chrono::Utc;
 
@@ -735,7 +736,7 @@ async fn detect_and_link_attendees(
              WHERE om.user_id = ? \
              ORDER BY om.created_at ASC LIMIT 1"
         )
-        .bind(person_uuid.as_bytes().as_slice())
+        .bind(person_uuid.to_string())
         .fetch_optional(pool)
         .await
         .unwrap_or(None)
@@ -753,7 +754,7 @@ async fn detect_and_link_attendees(
              AND organization_id = ?"
         )
         .bind(session_id)
-        .bind(attendee_org_uuid.as_bytes().as_slice())
+        .bind(attendee_org_uuid.to_string())
         .fetch_one(pool)
         .await
         .unwrap_or(0);
@@ -792,7 +793,7 @@ async fn detect_and_link_attendees(
              AND organization_id = ?"
         )
         .bind(session_id)
-        .bind(attendee_org_uuid.as_bytes().as_slice())
+        .bind(attendee_org_uuid.to_string())
         .execute(pool)
         .await;
 

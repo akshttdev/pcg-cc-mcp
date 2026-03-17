@@ -7,6 +7,7 @@ use axum::{
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+// TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
@@ -194,14 +195,13 @@ impl AccessContext {
         }
 
         // 1. Try direct project_members check
-        let project_uuid = Uuid::parse_str(project_id)
-            .map_err(|e| ApiError::InternalError(format!("Invalid project UUID: {}", e)))?;
-        let project_id_bytes = project_uuid.as_bytes().to_vec();
+        // NOTE: project_members.project_id is TEXT, users.id is BLOB.
+        // Bind project_id as string, user_id as bytes.
         let user_id_bytes = self.user_id.as_bytes().to_vec();
 
         let member: Option<ProjectMember> =
             sqlx::query_as("SELECT * FROM project_members WHERE project_id = ? AND user_id = ?")
-                .bind(&project_id_bytes)
+                .bind(project_id)
                 .bind(&user_id_bytes)
                 .fetch_optional(pool)
                 .await
@@ -222,16 +222,17 @@ impl AccessContext {
         }
 
         // 2. Check organization membership
+        // NOTE: projects.id, organization_id, client_id are all TEXT columns.
         #[derive(sqlx::FromRow)]
         struct ProjectOrgClient {
-            organization_id: Option<Vec<u8>>,
-            client_id: Option<Vec<u8>>,
+            organization_id: Option<String>,
+            client_id: Option<String>,
         }
 
         let project_info: Option<ProjectOrgClient> = sqlx::query_as(
             "SELECT organization_id, client_id FROM projects WHERE id = ?"
         )
-        .bind(&project_id_bytes)
+        .bind(project_id)
         .fetch_optional(pool)
         .await
         .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -244,11 +245,12 @@ impl AccessContext {
 
             // 2a. Check org membership — org admins get Admin access,
             // regular org members get role-based access.
-            if let Some(ref org_id_bytes) = info.organization_id {
+            // NOTE: organization_members.organization_id is TEXT; user_id is BLOB.
+            if let Some(ref org_id) = info.organization_id {
                 let org_role: Option<RoleRow> = sqlx::query_as(
                     "SELECT role FROM organization_members WHERE organization_id = ? AND user_id = ?"
                 )
-                .bind(org_id_bytes)
+                .bind(org_id)
                 .bind(&user_id_bytes)
                 .fetch_optional(pool)
                 .await
@@ -275,13 +277,14 @@ impl AccessContext {
 
             // 2b. Org admin cascade: if the project belongs to a client that
             // belongs to the user's org, org admins also get access.
-            if let Some(ref client_id_bytes) = info.client_id {
+            // NOTE: clients.id and client_members.client_id are TEXT; clients.organization_id is TEXT.
+            if let Some(ref client_id) = info.client_id {
                 let org_admin_via_client: Option<RoleRow> = sqlx::query_as(
                     r#"SELECT om.role FROM organization_members om
                        JOIN clients c ON c.organization_id = om.organization_id
                        WHERE c.id = ? AND om.user_id = ? AND om.role = 'admin'"#
                 )
-                .bind(client_id_bytes)
+                .bind(client_id)
                 .bind(&user_id_bytes)
                 .fetch_optional(pool)
                 .await
@@ -305,7 +308,7 @@ impl AccessContext {
                 let client_role: Option<RoleRow> = sqlx::query_as(
                     "SELECT role FROM client_members WHERE client_id = ? AND user_id = ?"
                 )
-                .bind(client_id_bytes)
+                .bind(client_id)
                 .bind(&user_id_bytes)
                 .fetch_optional(pool)
                 .await
@@ -369,16 +372,14 @@ impl AccessContext {
             return Ok("full");
         }
 
-        let project_uuid = Uuid::parse_str(project_id)
-            .map_err(|e| ApiError::InternalError(format!("Invalid project UUID: {}", e)))?;
-        let project_id_bytes = project_uuid.as_bytes().to_vec();
+        // NOTE: project_members.project_id and projects.id are TEXT; user_id columns are BLOB.
         let user_id_bytes = self.user_id.as_bytes().to_vec();
 
         // Check direct project membership
         let direct: Option<i64> = sqlx::query_scalar(
             "SELECT 1 FROM project_members WHERE project_id = ? AND user_id = ? LIMIT 1"
         )
-        .bind(&project_id_bytes)
+        .bind(project_id)
         .bind(&user_id_bytes)
         .fetch_optional(pool)
         .await
@@ -391,14 +392,14 @@ impl AccessContext {
         // Check org/client membership
         #[derive(sqlx::FromRow)]
         struct ProjectParent {
-            organization_id: Option<Vec<u8>>,
-            client_id: Option<Vec<u8>>,
+            organization_id: Option<String>,
+            client_id: Option<String>,
         }
 
         let parent: Option<ProjectParent> = sqlx::query_as(
             "SELECT organization_id, client_id FROM projects WHERE id = ?"
         )
-        .bind(&project_id_bytes)
+        .bind(project_id)
         .fetch_optional(pool)
         .await
         .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -422,6 +423,7 @@ impl AccessContext {
 
             if let Some(ref client_id) = p.client_id {
                 // Org admin cascade: org admin of the client's parent org
+                // NOTE: clients.id, clients.organization_id, client_members.client_id are TEXT.
                 let org_admin_via_client: Option<i64> = sqlx::query_scalar(
                     r#"SELECT 1 FROM organization_members om
                        JOIN clients c ON c.organization_id = om.organization_id
@@ -532,7 +534,7 @@ async fn load_platform_roles(pool: &sqlx::SqlitePool, user_id: Uuid) -> Vec<Stri
     sqlx::query_as::<_, RoleRow>(
         "SELECT role FROM user_platform_roles WHERE user_id = ?"
     )
-    .bind(user_id.as_bytes().to_vec())
+    .bind(user_id.to_string())
     .fetch_all(pool)
     .await
     .unwrap_or_default()
@@ -574,7 +576,7 @@ pub async fn get_current_user(
 
             #[derive(FromRow)]
             struct UserSession {
-                id: Vec<u8>,
+                id: String,
                 is_admin: i32,
                 is_active: i32,
             }
@@ -593,7 +595,7 @@ pub async fn get_current_user(
             .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
             if let Some(user_session) = result {
-                let user_id = Uuid::from_slice(&user_session.id)
+                let user_id = Uuid::parse_str(&user_session.id)
                     .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {}", e)))?;
 
                 // Extend session expiry on activity (sliding window)
@@ -622,7 +624,7 @@ pub async fn get_current_user(
 
         #[derive(FromRow)]
         struct UserSession {
-            id: Vec<u8>,
+            id: String,
             is_admin: i32,
             is_active: i32,
         }
@@ -641,7 +643,7 @@ pub async fn get_current_user(
         .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
         if let Some(user_session) = result {
-            let user_id = Uuid::from_slice(&user_session.id)
+            let user_id = Uuid::parse_str(&user_session.id)
                 .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {}", e)))?;
 
             // Extend session expiry on activity (sliding window)

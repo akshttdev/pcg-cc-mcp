@@ -45,6 +45,13 @@ pub struct CrmDeal {
     pub custom_fields: Option<String>,
     pub lost_reason: Option<String>,
     pub win_reason: Option<String>,
+    pub proposal_text: Option<String>,
+    pub proposal_status: String,
+    pub deck_url: Option<String>,
+    pub invoice_id: Option<String>,
+    pub won_at: Option<DateTime<Utc>>,
+    pub lost_at: Option<DateTime<Utc>>,
+    pub expedited: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -72,6 +79,7 @@ pub struct UpdateCrmDeal {
     pub crm_contact_id: Option<DbUuid>,
     pub crm_pipeline_id: Option<DbUuid>,
     pub crm_stage_id: Option<DbUuid>,
+    pub project_id: Option<String>,
     pub position: Option<i32>,
     pub name: Option<String>,
     pub description: Option<String>,
@@ -84,6 +92,34 @@ pub struct UpdateCrmDeal {
     pub custom_fields: Option<serde_json::Value>,
     pub lost_reason: Option<String>,
     pub win_reason: Option<String>,
+    pub proposal_text: Option<String>,
+    pub proposal_status: Option<String>,
+    pub deck_url: Option<String>,
+    pub invoice_id: Option<String>,
+}
+
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct DealTranscript {
+    pub id: DbUuid,
+    pub deal_id: DbUuid,
+    pub intake_item_id: Option<DbUuid>,
+    pub call_log_id: Option<String>,
+    pub transcript_text: Option<String>,
+    pub summary: Option<String>,
+    pub matched_at: String,
+    pub matched_by: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub struct LinkTranscriptRequest {
+    pub intake_item_id: Option<String>,
+    pub call_log_id: Option<String>,
+    pub transcript_text: Option<String>,
+    pub summary: Option<String>,
+    pub matched_by: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -124,6 +160,8 @@ pub struct CrmDealWithContact {
     pub review_task_assignee: Option<String>,
     // Company intelligence
     pub company_intelligence_status: Option<String>,
+    pub company_intelligence_summary: Option<String>,
+    pub company_id: Option<DbUuid>,
 }
 
 /// Kanban board data structure - deals grouped by stage
@@ -304,18 +342,23 @@ impl CrmDeal {
                 crm_contact_id = COALESCE(?2, crm_contact_id),
                 crm_pipeline_id = COALESCE(?3, crm_pipeline_id),
                 crm_stage_id = COALESCE(?4, crm_stage_id),
-                position = COALESCE(?5, position),
-                name = COALESCE(?6, name),
-                description = COALESCE(?7, description),
-                amount = COALESCE(?8, amount),
-                currency = COALESCE(?9, currency),
-                expected_close_date = COALESCE(?10, expected_close_date),
-                owner_user_id = COALESCE(?11, owner_user_id),
-                assigned_agent_id = COALESCE(?12, assigned_agent_id),
-                tags = COALESCE(?13, tags),
-                custom_fields = COALESCE(?14, custom_fields),
-                lost_reason = COALESCE(?15, lost_reason),
-                win_reason = COALESCE(?16, win_reason),
+                project_id = COALESCE(?5, project_id),
+                position = COALESCE(?6, position),
+                name = COALESCE(?7, name),
+                description = COALESCE(?8, description),
+                amount = COALESCE(?9, amount),
+                currency = COALESCE(?10, currency),
+                expected_close_date = COALESCE(?11, expected_close_date),
+                owner_user_id = COALESCE(?12, owner_user_id),
+                assigned_agent_id = COALESCE(?13, assigned_agent_id),
+                tags = COALESCE(?14, tags),
+                custom_fields = COALESCE(?15, custom_fields),
+                lost_reason = COALESCE(?16, lost_reason),
+                win_reason = COALESCE(?17, win_reason),
+                proposal_text = COALESCE(?18, proposal_text),
+                proposal_status = COALESCE(?19, proposal_status),
+                deck_url = COALESCE(?20, deck_url),
+                invoice_id = COALESCE(?21, invoice_id),
                 last_activity_at = datetime('now', 'subsec'),
                 updated_at = datetime('now', 'subsec')
             WHERE id = ?1
@@ -326,6 +369,7 @@ impl CrmDeal {
         .bind(data.crm_contact_id)
         .bind(data.crm_pipeline_id)
         .bind(data.crm_stage_id)
+        .bind(&data.project_id)
         .bind(data.position)
         .bind(&data.name)
         .bind(&data.description)
@@ -338,6 +382,10 @@ impl CrmDeal {
         .bind(custom_fields)
         .bind(&data.lost_reason)
         .bind(&data.win_reason)
+        .bind(&data.proposal_text)
+        .bind(&data.proposal_status)
+        .bind(&data.deck_url)
+        .bind(&data.invoice_id)
         .fetch_optional(pool)
         .await?
         .ok_or(CrmDealError::NotFound)
@@ -541,14 +589,14 @@ impl CrmDeal {
                 .flatten();
 
         let task_total: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE project_id = ?")
+            sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE project_id = ? AND deleted_at IS NULL")
                 .bind(project_id)
                 .fetch_one(pool)
                 .await
                 .unwrap_or(0);
 
         let task_done: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = 'done'",
+            "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = 'done' AND deleted_at IS NULL",
         )
         .bind(project_id)
         .fetch_one(pool)
@@ -700,28 +748,32 @@ impl CrmDeal {
         )
     }
 
-    /// Look up company intelligence status by company name
-    async fn fetch_company_intel_status(
+    /// Look up company intelligence status, summary and id by company name
+    pub async fn fetch_company_intel_status(
         pool: &SqlitePool,
         company_name: Option<&str>,
-    ) -> Option<String> {
-        let company_name = company_name?;
+    ) -> (Option<String>, Option<DbUuid>, Option<String>) {
+        let Some(company_name) = company_name else { return (None, None, None) };
         if company_name.is_empty() {
-            return None;
+            return (None, None, None);
         }
         #[derive(sqlx::FromRow)]
         struct Row {
+            id: DbUuid,
             intelligence_status: Option<String>,
+            intelligence_summary: Option<String>,
         }
-        sqlx::query_as::<_, Row>(
-            "SELECT intelligence_status FROM companies WHERE name = ? COLLATE NOCASE LIMIT 1",
+        if let Ok(Some(row)) = sqlx::query_as::<_, Row>(
+            "SELECT id, intelligence_status, intelligence_summary FROM companies WHERE name = ? COLLATE NOCASE LIMIT 1",
         )
         .bind(company_name)
         .fetch_optional(pool)
         .await
-        .ok()
-        .flatten()
-        .and_then(|r| r.intelligence_status)
+        {
+            (row.intelligence_status, Some(row.id), row.intelligence_summary)
+        } else {
+            (None, None, None)
+        }
     }
 
     pub async fn get_kanban_data(
@@ -779,6 +831,10 @@ impl CrmDeal {
                     review_task_id, review_task_status, review_task_assignee,
                 ) = Self::fetch_intel_data(pool, &deal.id, person_id.as_ref()).await;
 
+                let (company_intel_status, company_id_val, company_intel_summary) = Self::fetch_company_intel_status(
+                    pool,
+                    contact_info.as_ref().and_then(|c| c.company_name.as_deref()),
+                ).await;
                 deals_with_contacts.push(CrmDealWithContact {
                     contact_name: contact_info.as_ref().and_then(|c| c.full_name.clone()),
                     contact_email: contact_info.as_ref().and_then(|c| c.email.clone()),
@@ -799,10 +855,9 @@ impl CrmDeal {
                     review_task_id,
                     review_task_status,
                     review_task_assignee,
-                    company_intelligence_status: Self::fetch_company_intel_status(
-                        pool,
-                        contact_info.as_ref().and_then(|c| c.company_name.as_deref()),
-                    ).await,
+                    company_intelligence_status: company_intel_status,
+                    company_intelligence_summary: company_intel_summary,
+                    company_id: company_id_val,
                     deal,
                 });
             }
@@ -925,6 +980,10 @@ impl CrmDeal {
                     review_task_id, review_task_status, review_task_assignee,
                 ) = Self::fetch_intel_data(pool, &deal.id, person_id.as_ref()).await;
 
+                let (company_intel_status, company_id_val, company_intel_summary) = Self::fetch_company_intel_status(
+                    pool,
+                    contact_info.as_ref().and_then(|c| c.company_name.as_deref()),
+                ).await;
                 deals_with_contacts.push(CrmDealWithContact {
                     contact_name: contact_info.as_ref().and_then(|c| c.full_name.clone()),
                     contact_email: contact_info.as_ref().and_then(|c| c.email.clone()),
@@ -945,10 +1004,9 @@ impl CrmDeal {
                     review_task_id,
                     review_task_status,
                     review_task_assignee,
-                    company_intelligence_status: Self::fetch_company_intel_status(
-                        pool,
-                        contact_info.as_ref().and_then(|c| c.company_name.as_deref()),
-                    ).await,
+                    company_intelligence_status: company_intel_status,
+                    company_intelligence_summary: company_intel_summary,
+                    company_id: company_id_val,
                     deal,
                 });
             }

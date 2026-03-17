@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { resolveApiUrl } from '@/lib/api';
+import { projectAccessKeys } from '@/lib/query-keys';
 
 export interface ProjectAccess {
   has_access: boolean;
@@ -34,7 +35,7 @@ async function fetchProjectAccess(projectId: string): Promise<ProjectAccess> {
 
 export function useProjectAccess(projectId: string | undefined) {
   return useQuery({
-    queryKey: ['project-access', projectId],
+    queryKey: projectAccessKeys.access(projectId),
     queryFn: () => fetchProjectAccess(projectId!),
     enabled: !!projectId,
     staleTime: 60_000,

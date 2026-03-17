@@ -48,8 +48,12 @@ function parseMetadata(raw: string): Record<string, any> {
 }
 
 function getFolderContext(source: DataSourceRecord): string {
+  // Use the folder column (slash-delimited) as the canonical source
+  if (source.folder) {
+    return source.folder.split('/').map((p: string) => p.trim()).filter(Boolean).join(' > ');
+  }
   const meta = parseMetadata(source.metadata);
-  return meta.folder_context || meta.dropbox_path?.split('/').slice(1, -1).join(' > ') || '';
+  return meta.folder_context || '';
 }
 
 function buildFolderTree(sources: DataSourceRecord[]): FolderNode {
@@ -476,7 +480,11 @@ export default function DataSourcesPage() {
     staleTime: 30_000,
   });
 
-  const sources = sourcesQuery.data || [];
+  // Exclude personal data from org data sources — personal data lives in /intelligence
+  const sources = useMemo(() => {
+    const all = sourcesQuery.data || [];
+    return all.filter((s: DataSourceRecord) => !s.folder?.startsWith('Personal/'));
+  }, [sourcesQuery.data]);
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => dataSourcesApi.delete(id),

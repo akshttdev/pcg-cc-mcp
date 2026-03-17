@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { organizationsApi, type OrganizationData } from '@/lib/api';
+import { showConfirm } from '@/lib/modals';
 
 export function OrganizationsSettings() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -197,8 +198,8 @@ export function OrganizationsSettings() {
                         <DropdownMenuContent align="end">
                           {org.is_active ? (
                             <DropdownMenuItem
-                              onClick={() => {
-                                if (window.confirm(`Deactivate "${org.name}"? It will be hidden from the sidebar.`)) {
+                              onClick={async () => {
+                                if (await showConfirm({ title: 'Deactivate Organization', message: `Deactivate "${org.name}"? It will be hidden from the sidebar.`, variant: 'destructive', confirmText: 'Deactivate' })) {
                                   deactivateMutation.mutate(org.id);
                                 }
                               }}
@@ -217,8 +218,8 @@ export function OrganizationsSettings() {
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive"
-                            onClick={() => {
-                              if (window.confirm(`Delete "${org.name}"? This will permanently deactivate the organization.`)) {
+                            onClick={async () => {
+                              if (await showConfirm({ title: 'Delete Organization', message: `Delete "${org.name}"? This will permanently deactivate the organization.`, variant: 'destructive', confirmText: 'Delete' })) {
                                 deleteMutation.mutate(org.id);
                               }
                             }}

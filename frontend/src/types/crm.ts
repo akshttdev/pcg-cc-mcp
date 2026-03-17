@@ -132,6 +132,16 @@ export interface CrmDealWithContact {
   review_task_assignee?: string;
   // Company intelligence
   company_intelligence_status?: string;
+  company_intelligence_summary?: string;
+  company_id?: string;
+  // Dealflow pipeline artifacts
+  proposal_text?: string;
+  proposal_status?: string;  // 'draft' | 'approved' | 'sent'
+  deck_url?: string;
+  invoice_id?: string;
+  won_at?: string;
+  lost_at?: string;
+  expedited?: number;
 }
 
 // Kanban board data structure
@@ -178,6 +188,37 @@ export interface UpdateCrmDeal {
   custom_fields?: Record<string, unknown>;
   lost_reason?: string;
   win_reason?: string;
+  proposal_text?: string;
+  proposal_status?: string;
+  deck_url?: string;
+  invoice_id?: string;
+}
+
+export interface DealTranscript {
+  id: string;
+  deal_id: string;
+  intake_item_id?: string;
+  call_log_id?: string;
+  transcript_text?: string;
+  summary?: string;
+  matched_at: string;
+  matched_by?: string;
+  created_at: string;
+}
+
+export interface MarkWonResult {
+  deal_id: string;
+  client_id: string;
+  project_id: string;
+  project_name: string;
+  tasks_created: number;
+}
+
+export interface SendInvoiceResult {
+  invoice_id: string;
+  invoice_number: string;
+  amount_usd: number;
+  status: string;
 }
 
 export interface MoveDealRequest {

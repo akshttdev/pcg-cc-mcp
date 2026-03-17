@@ -54,7 +54,7 @@ const AIUsagePage           = lazy(() => import('@/pages/ai-usage').then(m => ({
 const AgentExecutionsPage   = lazy(() => import('@/pages/agent-executions').then(m => ({ default: m.AgentExecutionsPage })));
 const OAuthCallbackPage     = lazy(() => import('@/pages/oauth/OAuthCallbackPage').then(m => ({ default: m.OAuthCallbackPage })));
 const PeoplePage            = lazy(() => import('@/pages/people').then(m => ({ default: m.PeoplePage })));
-const PersonDetailPage      = lazy(() => import('@/pages/person-detail').then(m => ({ default: m.PersonDetailPage })));
+// const PersonDetailPage      = lazy(() => import('@/pages/person-detail').then(m => ({ default: m.PersonDetailPage })));
 const ProposalsPage         = lazy(() => import('@/pages/proposals').then(m => ({ default: m.ProposalsPage })));
 const CompaniesPage         = lazy(() => import('@/pages/companies').then(m => ({ default: m.CompaniesPage })));
 const CompanyProfilePage    = lazy(() => import('@/pages/company-profile').then(m => ({ default: m.CompanyProfilePage })));
@@ -63,6 +63,7 @@ const InvoicesPage          = lazy(() => import('@/pages/invoices').then(m => ({
 const ProjectDeliverablesPage = lazy(() => import('@/pages/project-deliverables').then(m => ({ default: m.ProjectDeliverablesPage })));
 const OrgDeliverablesPage = lazy(() => import('@/pages/org-deliverables').then(m => ({ default: m.OrgDeliverablesPage })));
 const DataSourcesPage      = lazy(() => import('@/pages/data-sources'));
+const IntelligencePage     = lazy(() => import('@/pages/intelligence'));
 const DataSourceDetailPage = lazy(() => import('@/pages/data-source-detail').then(m => ({ default: m.DataSourceDetailPage })));
 const DiscordPage             = lazy(() => import('@/pages/discord').then(m => ({ default: m.DiscordPage })));
 const SiteDirectoryPage       = lazy(() => import('@/pages/site-directory').then(m => ({ default: m.SiteDirectoryPage })));
@@ -95,6 +96,7 @@ const CallIntakePage      = lazy(() => import('@/pages/call-intake'));
 const BusinessReportsPage = lazy(() => import('@/pages/business-reports'));
 const ReportDetailPage    = lazy(() => import('@/pages/business-reports').then(m => ({ default: m.ReportDetail })));
 const PersonProfilePage   = lazy(() => import('@/pages/person-profile').then(m => ({ default: m.PersonProfilePage })));
+const PersonIntelPage     = lazy(() => import('@/pages/person-intel').then(m => ({ default: m.PersonIntelPage })));
 const LeadsPage           = lazy(() => import('@/pages/leads').then(m => ({ default: m.LeadsPage })));
 
 const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
@@ -113,6 +115,11 @@ function HomeRedirect() {
 function StagingRedirect() {
   const { runId } = useParams();
   return <Navigate to={`/workflows?tab=staging&run=${runId}`} replace />;
+}
+
+function PersonsRedirect({ suffix = '' }: { suffix?: string }) {
+  const { personId } = useParams<{ personId: string }>();
+  return <Navigate to={`/people/${personId}${suffix}`} replace />;
 }
 
 function App() {
@@ -291,6 +298,10 @@ function App() {
             path="/organizations/:orgId/integrations"
             element={<ProtectedRoute><OrganizationProfilePage defaultTab="integrations" /></ProtectedRoute>}
           />
+          <Route
+            path="/organizations/:orgId/wiki"
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="wiki" /></ProtectedRoute>}
+          />
           {/* Organization - Clients and Data Sources */}
           <Route
             path="/organizations/:orgId/clients/:clientId"
@@ -313,6 +324,7 @@ function App() {
             path="/projects/:projectId/knowledge"
             element={<ProtectedRoute><KnowledgePage /></ProtectedRoute>}
           />
+          <Route path="/intelligence" element={<ProtectedRoute><IntelligencePage /></ProtectedRoute>} />
           <Route path="/my-tasks" element={<ProtectedRoute><MyTasksPage /></ProtectedRoute>} />
           <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
           <Route path="/agents/:agentId/profile" element={<ProtectedRoute><AgentProfilePage /></ProtectedRoute>} />
@@ -343,7 +355,11 @@ function App() {
           />
           <Route
             path="/people/:personId"
-            element={<RoleRoute minRole="platform_member"><PersonDetailPage /></RoleRoute>}
+            element={<RoleRoute minRole="platform_member"><PersonProfilePage /></RoleRoute>}
+          />
+          <Route
+            path="/people/:personId/intel"
+            element={<RoleRoute minRole="platform_member"><PersonIntelPage /></RoleRoute>}
           />
           <Route
             path="/proposals"
@@ -398,8 +414,9 @@ function App() {
           <Route path="/calendar" element={<ProtectedRoute><CalendarPage /></ProtectedRoute>} />
           <Route path="/call-intake" element={<AdminRoute><CallIntakePage /></AdminRoute>} />
           <Route path="/business-reports" element={<AdminRoute><BusinessReportsPage /></AdminRoute>} />
-          <Route path="/business-reports/:id" element={<AdminRoute><ReportDetailPage /></AdminRoute>} />
-          <Route path="/persons/:personId" element={<ProtectedRoute><PersonProfilePage /></ProtectedRoute>} />
+          <Route path="/business-reports/:id" element={<ProtectedRoute><ReportDetailPage /></ProtectedRoute>} />
+          <Route path="/persons/:personId" element={<PersonsRedirect />} />
+          <Route path="/persons/:personId/intel" element={<PersonsRedirect suffix="/intel" />} />
           <Route path="/leads" element={<AdminRoute><LeadsPage /></AdminRoute>} />
           <Route
             path="/oauth/:provider/callback"

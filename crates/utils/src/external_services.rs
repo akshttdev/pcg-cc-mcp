@@ -411,38 +411,48 @@ fn find_python() -> Option<String> {
 /// Kill any existing apn_node processes to prevent accumulation.
 /// Uses PID file first, then falls back to pkill for orphans.
 pub fn kill_existing_apn_nodes() {
-    // 1. Try PID file
-    if let Ok(pid_str) = std::fs::read_to_string("/tmp/apn_node.pid") {
-        if let Ok(pid) = pid_str.trim().parse::<i32>() {
-            unsafe {
-                libc::kill(pid, libc::SIGTERM);
+    #[cfg(unix)]
+    {
+        // 1. Try PID file
+        if let Ok(pid_str) = std::fs::read_to_string(&std::env::temp_dir().join("apn_node.pid").to_string_lossy().to_string()) {
+            if let Ok(pid) = pid_str.trim().parse::<i32>() {
+                unsafe {
+                    libc::kill(pid, libc::SIGTERM);
+                }
+                info!("[APN] Sent SIGTERM to previous node (PID {})", pid);
             }
-            info!("[APN] Sent SIGTERM to previous node (PID {})", pid);
+            let _ = std::fs::remove_file(&std::env::temp_dir().join("apn_node.pid").to_string_lossy().to_string());
         }
-        let _ = std::fs::remove_file("/tmp/apn_node.pid");
-    }
 
-    // 2. Kill any other orphaned apn_node processes (not us)
-    let our_pid = std::process::id();
-    if let Ok(output) = Command::new("pgrep").arg("-f").arg("apn_node").output() {
-        if let Ok(pids) = String::from_utf8(output.stdout) {
-            let mut killed = 0u32;
-            for line in pids.lines() {
-                if let Ok(pid) = line.trim().parse::<u32>() {
-                    if pid != our_pid {
-                        unsafe {
-                            libc::kill(pid as i32, libc::SIGTERM);
+        // 2. Kill any other orphaned apn_node processes (not us)
+        let our_pid = std::process::id();
+        if let Ok(output) = Command::new("pgrep").arg("-f").arg("apn_node").output() {
+            if let Ok(pids) = String::from_utf8(output.stdout) {
+                let mut killed = 0u32;
+                for line in pids.lines() {
+                    if let Ok(pid) = line.trim().parse::<u32>() {
+                        if pid != our_pid {
+                            unsafe {
+                                libc::kill(pid as i32, libc::SIGTERM);
+                            }
+                            killed += 1;
                         }
-                        killed += 1;
                     }
                 }
-            }
-            if killed > 0 {
-                info!("[APN] Cleaned up {} orphaned apn_node process(es)", killed);
-                // Give them a moment to exit
-                std::thread::sleep(std::time::Duration::from_millis(500));
+                if killed > 0 {
+                    info!("[APN] Cleaned up {} orphaned apn_node process(es)", killed);
+                    // Give them a moment to exit
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                }
             }
         }
+    }
+    #[cfg(not(unix))]
+    {
+        // On Windows, use taskkill as fallback
+        let _ = Command::new("taskkill")
+            .args(["/F", "/IM", "apn_node.exe"])
+            .output();
     }
 }
 
@@ -470,7 +480,7 @@ async fn start_apn_node(binary_path: &str, config: &ExternalServicesConfig) -> b
     }
 
     // Log to /tmp so we can tail for verification
-    let log_file = std::fs::File::create("/tmp/apn_node.log").ok();
+    let log_file = std::fs::File::create(&std::env::temp_dir().join("apn_node.log").to_string_lossy().to_string()).ok();
 
     match cmd
         .stdout(log_file.as_ref().map_or(Stdio::null(), |f| Stdio::from(f.try_clone().unwrap())))
@@ -478,14 +488,14 @@ async fn start_apn_node(binary_path: &str, config: &ExternalServicesConfig) -> b
             std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open("/tmp/apn_node.log")
+                .open(&std::env::temp_dir().join("apn_node.log").to_string_lossy().to_string())
                 .unwrap_or_else(|_| std::fs::File::create("/dev/null").unwrap()),
         ))
         .spawn()
     {
         Ok(child) => {
             // Write PID for clean shutdown
-            if let Err(e) = std::fs::write("/tmp/apn_node.pid", child.id().to_string()) {
+            if let Err(e) = std::fs::write(&std::env::temp_dir().join("apn_node.pid").to_string_lossy().to_string(), child.id().to_string()) {
                 warn!("[APN] Failed to write PID file: {}", e);
             }
 
@@ -533,20 +543,20 @@ async fn start_apn_bridge(script_path: &str, config: &ExternalServicesConfig) ->
         .env("APN_BRIDGE_PORT", config.apn_bridge_port.to_string())
         .env("APN_RELAY_URL", &config.apn_relay_url)
         .stdout(Stdio::from(
-            std::fs::File::create("/tmp/apn_bridge.log")
-                .unwrap_or_else(|_| std::fs::File::create("/dev/null").unwrap()),
+            std::fs::File::create(std::env::temp_dir().join("apn_bridge.log"))
+                .unwrap_or_else(|_| std::fs::File::create(std::env::temp_dir().join("apn_bridge_null.log")).unwrap()),
         ))
         .stderr(Stdio::from(
             std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open("/tmp/apn_bridge.log")
-                .unwrap_or_else(|_| std::fs::File::create("/dev/null").unwrap()),
+                .open(std::env::temp_dir().join("apn_bridge.log"))
+                .unwrap_or_else(|_| std::fs::File::create(std::env::temp_dir().join("apn_bridge_null.log")).unwrap()),
         ))
         .spawn()
     {
         Ok(child) => {
-            if let Err(e) = std::fs::write("/tmp/apn_bridge.pid", child.id().to_string()) {
+            if let Err(e) = std::fs::write(std::env::temp_dir().join("apn_bridge.pid"), child.id().to_string()) {
                 warn!("[APN] Failed to write bridge PID file: {}", e);
             }
 
@@ -572,7 +582,7 @@ async fn start_apn_bridge(script_path: &str, config: &ExternalServicesConfig) ->
 /// Checks the node log for relay connection confirmation.
 async fn verify_apn_network_sync(_config: &ExternalServicesConfig) -> bool {
     // Check node log for relay connection indicators
-    if let Ok(log) = std::fs::read_to_string("/tmp/apn_node.log") {
+    if let Ok(log) = std::fs::read_to_string(&std::env::temp_dir().join("apn_node.log").to_string_lossy().to_string()) {
         let connected = log.contains("Relay connected")
             || log.contains("NATS connected")
             || log.contains("relay_connected")

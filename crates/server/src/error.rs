@@ -316,6 +316,26 @@ impl From<anyhow::Error> for ApiError {
     }
 }
 
+impl From<db::models::call_log::CallLogError> for ApiError {
+    fn from(err: db::models::call_log::CallLogError) -> Self {
+        use db::models::call_log::CallLogError;
+        match err {
+            CallLogError::Database(e) => ApiError::Database(e),
+            CallLogError::NotFound => ApiError::NotFound("Call log not found".into()),
+        }
+    }
+}
+
+impl From<db::models::sms_message::SmsMessageError> for ApiError {
+    fn from(err: db::models::sms_message::SmsMessageError) -> Self {
+        use db::models::sms_message::SmsMessageError;
+        match err {
+            SmsMessageError::Database(e) => ApiError::Database(e),
+            SmsMessageError::NotFound => ApiError::NotFound("SMS message not found".into()),
+        }
+    }
+}
+
 impl From<db::models::company::CompanyError> for ApiError {
     fn from(err: db::models::company::CompanyError) -> Self {
         use db::models::company::CompanyError;

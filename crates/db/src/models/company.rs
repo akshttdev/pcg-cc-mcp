@@ -120,10 +120,15 @@ pub struct UpdateCompany {
 
 impl Company {
     pub async fn find_by_id(pool: &SqlitePool, id: &DbUuid) -> Result<Option<Self>, CompanyError> {
-        let row = sqlx::query_as::<_, Self>("SELECT * FROM companies WHERE id = ?")
-            .bind(id)
-            .fetch_optional(pool)
-            .await?;
+        // Companies store id as BLOB; DbUuid encodes as TEXT so direct `= ?` misses.
+        // Use hex(id) comparison which works for both BLOB and TEXT storage.
+        let hex_no_dashes = id.to_string().replace('-', "");
+        let row = sqlx::query_as::<_, Self>(
+            "SELECT * FROM companies WHERE lower(hex(id)) = lower(?)",
+        )
+        .bind(&hex_no_dashes)
+        .fetch_optional(pool)
+        .await?;
         Ok(row)
     }
 
@@ -323,14 +328,16 @@ impl Company {
         if let Some(v) = input.organization_id   { qb.push(", organization_id = ").push_bind(v); }
         if let Some(v) = input.intelligence_summary { qb.push(", intelligence_summary = ").push_bind(v); }
         if let Some(v) = input.intelligence_status  { qb.push(", intelligence_status = ").push_bind(v); }
-        qb.push(" WHERE id = ").push_bind(id.to_string());
+        let hex_no_dashes = id.to_string().replace('-', "");
+        qb.push(" WHERE lower(hex(id)) = lower(?)").push_bind(hex_no_dashes);
         qb.build().execute(pool).await?;
         Ok(Self::find_by_id(pool, id).await?)
     }
 
     pub async fn delete(pool: &SqlitePool, id: &DbUuid) -> Result<bool, CompanyError> {
-        let r = sqlx::query("DELETE FROM companies WHERE id = ?")
-            .bind(id)
+        let hex_no_dashes = id.to_string().replace('-', "");
+        let r = sqlx::query("DELETE FROM companies WHERE lower(hex(id)) = lower(?)")
+            .bind(&hex_no_dashes)
             .execute(pool)
             .await?;
         Ok(r.rows_affected() > 0)

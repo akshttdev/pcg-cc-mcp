@@ -63,7 +63,7 @@ pub async fn get_orcha_status(
     let access_ctx = get_current_user(&state, auth_header, cookie_header).await?;
 
     // Resolve username from the users table
-    let user_id_bytes = access_ctx.user_id.as_bytes().to_vec();
+    let user_id_bytes = access_ctx.user_id.to_string();
     let username: String = sqlx::query_scalar(
         "SELECT username FROM users WHERE id = ?"
     )

@@ -1,12 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { agentFlowsApi, type AgentFlow } from '@/lib/api';
+import { agentFlowKeys } from '@/lib/query-keys';
 
 /**
  * Fetch all agent flows, optionally filtered by task_id or status
  */
 export function useAgentFlows(params?: { taskId?: string; status?: string }) {
   return useQuery({
-    queryKey: ['agentFlows', params?.taskId, params?.status],
+    queryKey: agentFlowKeys.list(params?.taskId, params?.status),
     queryFn: () => agentFlowsApi.list({
       task_id: params?.taskId,
       status: params?.status,
@@ -20,7 +21,7 @@ export function useAgentFlows(params?: { taskId?: string; status?: string }) {
  */
 export function useAgentFlow(flowId: string | undefined) {
   return useQuery({
-    queryKey: ['agentFlow', flowId],
+    queryKey: agentFlowKeys.detail(flowId),
     queryFn: () => agentFlowsApi.getById(flowId!),
     enabled: !!flowId,
     staleTime: 30 * 1000,
@@ -32,7 +33,7 @@ export function useAgentFlow(flowId: string | undefined) {
  */
 export function useAgentFlowsAwaitingApproval() {
   return useQuery({
-    queryKey: ['agentFlows', 'awaiting-approval'],
+    queryKey: agentFlowKeys.awaitingApproval(),
     queryFn: () => agentFlowsApi.listAwaitingApproval(),
     staleTime: 15 * 1000, // 15 seconds for approval queue
   });
@@ -46,7 +47,7 @@ export function useAgentFlowEvents(
   params?: { since?: string; eventType?: string }
 ) {
   return useQuery({
-    queryKey: ['agentFlowEvents', flowId, params?.since, params?.eventType],
+    queryKey: agentFlowKeys.events(flowId, params?.since, params?.eventType),
     queryFn: () => agentFlowsApi.getEvents(flowId!, {
       since: params?.since,
       event_type: params?.eventType,
@@ -62,7 +63,7 @@ export function useAgentFlowEvents(
  */
 export function useTaskAgentFlowMap(taskIds: string[]) {
   const { data: flows = [], ...rest } = useQuery({
-    queryKey: ['agentFlows', 'byTasks', [...taskIds].sort().join(',')],
+    queryKey: agentFlowKeys.byTasks(taskIds),
     queryFn: async () => {
       // Fetch all flows (we could optimize this with a batch endpoint)
       const allFlows = await agentFlowsApi.list();
@@ -92,8 +93,8 @@ export function useAgentFlowMutations() {
   const queryClient = useQueryClient();
 
   const invalidateFlows = () => {
-    queryClient.invalidateQueries({ queryKey: ['agentFlows'] });
-    queryClient.invalidateQueries({ queryKey: ['agentFlow'] });
+    queryClient.invalidateQueries({ queryKey: agentFlowKeys.all });
+    queryClient.invalidateQueries({ queryKey: agentFlowKeys.detailAll });
   };
 
   const approveMutation = useMutation({

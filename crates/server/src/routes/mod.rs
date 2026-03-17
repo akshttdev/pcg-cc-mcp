@@ -121,6 +121,8 @@ pub mod graph;
 pub mod invite_dispatch;
 pub mod meet;
 pub mod nora_classifier;
+pub mod communications;
+pub mod org_cloud;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -196,6 +198,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(deliverables::router(&deployment))
         .merge(command_center::router(&deployment))
         .merge(intelligence::router(&deployment))
+        .merge(communications::router(&deployment))
         .merge(data_sources::router(&deployment))
         .merge(data_source_workflows::router(&deployment))
         .merge(workflow_staging::router(&deployment))
@@ -210,6 +213,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(nora::nora_routes())
         .merge(topsi::topsi_routes())
         .merge(nora_classifier::router(&deployment))
+        .merge(org_cloud::router(&deployment))
         .layer(middleware::from_fn_with_state(
             deployment.clone(),
             app_middleware::require_auth,
