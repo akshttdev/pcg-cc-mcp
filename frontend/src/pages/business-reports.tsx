@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { reportsApi, personsApi, companiesApi, type BusinessReportRecord, type PersonRecord, type CompanyRecord } from '@/lib/api';
+import { businessKeys } from '@/lib/query-keys';
 import { InlineEdit } from '@/components/ui/inline-edit';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -331,7 +332,7 @@ export function ReportDetail() {
   const queryClient = useQueryClient();
 
   const { data: report, isLoading } = useQuery({
-    queryKey: ['report', id],
+    queryKey: businessKeys.report(id!),
     queryFn: () => reportsApi.get(id!),
     enabled: !!id,
     refetchInterval: (q) => {
@@ -351,7 +352,7 @@ export function ReportDetail() {
     mutationFn: () => reportsApi.approve(id!),
     onSuccess: (result) => {
       queryClient.setQueryData(['report', id], result.report);
-      queryClient.invalidateQueries({ queryKey: ['business-reports'] });
+      queryClient.invalidateQueries({ queryKey: businessKeys.reports() });
       toast.success('Report approved and proposal generated');
     },
     onError: () => toast.error('Failed to approve report'),
@@ -361,7 +362,7 @@ export function ReportDetail() {
     mutationFn: (notes: string) => reportsApi.requestRevision(id!, notes),
     onSuccess: (updated) => {
       queryClient.setQueryData(['report', id], updated);
-      queryClient.invalidateQueries({ queryKey: ['business-reports'] });
+      queryClient.invalidateQueries({ queryKey: businessKeys.reports() });
       toast.success('Revision requested');
     },
     onError: () => toast.error('Failed to request revision'),
@@ -725,7 +726,7 @@ export function ReportDetail() {
 
 export default function BusinessReportsPage() {
   const { data: reports = [], isLoading, refetch, isFetching } = useQuery({
-    queryKey: ['business-reports'],
+    queryKey: businessKeys.reports(),
     queryFn: reportsApi.list,
     refetchInterval: 30000,
   });

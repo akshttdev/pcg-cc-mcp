@@ -20,6 +20,7 @@ import {
 import { X, Calendar, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { proposalsApi, type PersonRecord } from '@/lib/api';
+import { businessKeys } from '@/lib/query-keys';
 
 interface InviteeEntry {
   person: PersonRecord;
@@ -123,8 +124,8 @@ export function ScheduleMeetingDialog({ open, onClose, proposalId, defaultInvite
         toast.success(`Meeting scheduled — ${sent} invite${sent !== 1 ? 's' : ''} sent`);
       }
 
-      queryClient.invalidateQueries({ queryKey: ['proposals'] });
-      queryClient.invalidateQueries({ queryKey: ['scheduled-meetings', proposalId] });
+      queryClient.invalidateQueries({ queryKey: businessKeys.proposals() });
+      queryClient.invalidateQueries({ queryKey: businessKeys.meetings(proposalId) });
       handleClose();
     } catch {
       toast.error('Failed to schedule meeting');

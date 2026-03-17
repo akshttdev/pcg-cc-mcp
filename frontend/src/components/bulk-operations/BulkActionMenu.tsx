@@ -26,6 +26,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { ChevronDown, GitPullRequest, Tag as TagIcon, Trash2 } from 'lucide-react';
 import { useBulkSelectionStore } from '@/stores/useBulkSelectionStore';
+import { taskKeys } from '@/lib/query-keys';
 import { useTagStore } from '@/stores/useTagStore';
 import { tasksApi } from '@/lib/api';
 import { toast } from 'sonner';
@@ -87,7 +88,7 @@ export function BulkActionMenu({
     setIsProcessing(false);
     setDialogType(null);
 
-    queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    queryClient.invalidateQueries({ queryKey: taskKeys.all });
 
     if (results.failed === 0) {
       toast.success(
@@ -133,7 +134,7 @@ export function BulkActionMenu({
     setIsProcessing(false);
     setDialogType(null);
 
-    queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    queryClient.invalidateQueries({ queryKey: taskKeys.all });
 
     if (results.failed === 0) {
       toast.success(

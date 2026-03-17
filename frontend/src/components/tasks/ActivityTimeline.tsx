@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { activityApi } from '@/lib/api';
+import { taskKeys } from '@/lib/query-keys';
 import type { ActivityLog, ActorType } from 'shared/types';
 import { format } from 'date-fns';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -283,7 +284,7 @@ function MetadataDisplay({ meta }: { meta: ParsedMetadata }) {
 
 export function ActivityTimeline({ taskId }: ActivityTimelineProps) {
   const { data: activities = [], isLoading, error } = useQuery({
-    queryKey: ['taskActivity', taskId],
+    queryKey: taskKeys.activity(taskId),
     queryFn: () => activityApi.getAll(taskId),
     refetchInterval: 10000,
   });

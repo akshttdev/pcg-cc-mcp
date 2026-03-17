@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { knowledgeApi } from '@/lib/api';
+import { knowledgeKeys } from '@/lib/query-keys';
 import type { ProjectKnowledgeSource, ProjectKnowledgeResponse } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -60,12 +61,12 @@ function SourceCard({
 
   const refreshMutation = useMutation({
     mutationFn: () => knowledgeApi.refreshSource(projectId, source.id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['projectKnowledge', projectId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: knowledgeKeys.project(projectId!) }),
   });
 
   const staleMutation = useMutation({
     mutationFn: () => knowledgeApi.markStale(projectId, source.id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['projectKnowledge', projectId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: knowledgeKeys.project(projectId!) }),
   });
 
   return (
@@ -169,7 +170,7 @@ export function KnowledgePage() {
   const [viewingSource, setViewingSource] = useState<ProjectKnowledgeSource | null>(null);
 
   const { data, isLoading, error } = useQuery<ProjectKnowledgeResponse>({
-    queryKey: ['projectKnowledge', projectId],
+    queryKey: knowledgeKeys.project(projectId!),
     queryFn: () => knowledgeApi.getProjectKnowledge(projectId!),
     enabled: !!projectId,
   });

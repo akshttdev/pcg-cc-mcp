@@ -12,6 +12,7 @@ import {
   SortAsc, SortDesc, FolderOpen, LayoutGrid, Loader2,
 } from 'lucide-react';
 import { dataSourcesApi, workflowsApi, type DataSourceRecord } from '@/lib/api';
+import { dataSourceKeys, workflowKeys } from '@/lib/query-keys';
 import { toast } from 'sonner';
 import {
   Select,
@@ -470,7 +471,7 @@ export default function DataSourcesPage() {
 
   // Fetch sources
   const sourcesQuery = useQuery({
-    queryKey: ['dataSources', effectiveOrgId, effectiveProjectId],
+    queryKey: dataSourceKeys.list(effectiveOrgId, effectiveProjectId),
     queryFn: async () => {
       if (effectiveOrgId) return dataSourcesApi.listByOrganization(effectiveOrgId);
       if (effectiveProjectId) return dataSourcesApi.listByProject(effectiveProjectId);
@@ -490,7 +491,7 @@ export default function DataSourcesPage() {
     mutationFn: (id: string) => dataSourcesApi.delete(id),
     onSuccess: () => {
       toast.success('Deleted');
-      queryClient.invalidateQueries({ queryKey: ['dataSources'] });
+      queryClient.invalidateQueries({ queryKey: dataSourceKeys.all });
       setSelectedSource(null);
     },
     onError: () => toast.error('Failed to delete'),
@@ -538,7 +539,7 @@ export default function DataSourcesPage() {
     return sortDir === 'asc' ? <SortAsc className="h-3 w-3 ml-1" /> : <SortDesc className="h-3 w-3 ml-1" />;
   }
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['dataSources'] });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: dataSourceKeys.all });
 
   // Stats
   const totalSize = sources.reduce((acc: number, s: DataSourceRecord) => acc + (s.file_size_bytes || 0), 0);
@@ -890,7 +891,7 @@ function RunWorkflowFromSourceDialog({ source, onClose }: {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState('');
 
   const { data: allWorkflows = [] } = useQuery({
-    queryKey: ['workflowDefinitions'],
+    queryKey: workflowKeys.definitions(),
     queryFn: () => workflowsApi.listDefinitions(),
     enabled: !!source,
   });

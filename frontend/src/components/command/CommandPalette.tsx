@@ -13,6 +13,7 @@ import { FolderOpen, Plus, Settings, Clock, Star, FileText } from 'lucide-react'
 import { useCommandStore } from '@/stores/useCommandStore';
 import { useQuery } from '@tanstack/react-query';
 import { tasksApi } from '@/lib/api';
+import { taskKeys } from '@/lib/query-keys';
 import { useProjectList } from '@/hooks/queries';
 import { useProject } from '@/contexts/project-context';
 import { openTaskForm } from '@/lib/openTaskForm';
@@ -39,7 +40,7 @@ export function CommandPalette() {
 
   // Fetch tasks for current project
   const { data: tasks = [] } = useQuery({
-    queryKey: ['tasks', projectId],
+    queryKey: taskKeys.list(projectId!),
     queryFn: () => (projectId ? tasksApi.getAll(projectId) : Promise.resolve([])),
     enabled: !!projectId,
   });

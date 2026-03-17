@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { commentsApi } from '@/lib/api';
+import { taskKeys } from '@/lib/query-keys';
 import type { TaskComment, AuthorType, CommentType } from 'shared/types';
 import { format } from 'date-fns';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -41,7 +42,7 @@ export function TaskCommentThread({ taskId, currentUserId = 'current-user' }: Ta
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
 
   const { data: comments = [], isLoading, error } = useQuery({
-    queryKey: ['taskComments', taskId],
+    queryKey: taskKeys.comments(taskId),
     queryFn: () => commentsApi.getAll(taskId),
     refetchInterval: 10000, // Refresh every 10 seconds
   });
@@ -49,7 +50,7 @@ export function TaskCommentThread({ taskId, currentUserId = 'current-user' }: Ta
   const deleteMutation = useMutation({
     mutationFn: (commentId: string) => commentsApi.delete(commentId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['taskComments', taskId] });
+      queryClient.invalidateQueries({ queryKey: taskKeys.comments(taskId) });
       toast.success('Comment deleted');
     },
     onError: () => {

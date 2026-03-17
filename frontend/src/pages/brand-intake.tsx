@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/select';
 import { CheckCircle2, Loader2, Palette, Building2, Globe, Users, Zap, Megaphone, Lightbulb } from 'lucide-react';
 import { intakeApi } from '@/lib/api';
+import { reviewKeys } from '@/lib/query-keys';
 
 const VOICE_OPTIONS = ['formal', 'casual', 'playful', 'authoritative', 'bold', 'sophisticated'];
 const ARCHETYPE_OPTIONS = ['Hero', 'Creator', 'Sage', 'Outlaw', 'Explorer', 'Ruler', 'Caregiver', 'Innocent', 'Jester', 'Lover', 'Magician', 'Regular Guy'];
@@ -121,7 +122,7 @@ export function BrandIntakePage() {
   const [submitted, setSubmitted] = useState(false);
 
   const { data: context, isLoading, error } = useQuery({
-    queryKey: ['intake', token],
+    queryKey: reviewKeys.intake(token!),
     queryFn: () => intakeApi.getContext(token!),
     enabled: !!token,
     retry: false,

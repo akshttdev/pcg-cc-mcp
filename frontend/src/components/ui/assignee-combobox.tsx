@@ -16,6 +16,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { usersApi, agentsApi, type UserListItem } from '@/lib/api';
+import { userKeys, agentKeys } from '@/lib/query-keys';
 import type { AgentWithParsedFields } from 'shared/types';
 import { useQuery } from '@tanstack/react-query';
 import { useDebouncedValue } from '@/hooks';
@@ -38,7 +39,7 @@ export function UserCombobox({
   const debouncedSearch = useDebouncedValue(search, 300);
 
   const { data: users = [], isLoading } = useQuery({
-    queryKey: ['users-search', debouncedSearch],
+    queryKey: userKeys.search(debouncedSearch),
     queryFn: () =>
       usersApi.list({
         search: debouncedSearch || undefined,
@@ -157,7 +158,7 @@ export function AgentCombobox({
   const [search, setSearch] = React.useState('');
 
   const { data: agents = [], isLoading } = useQuery({
-    queryKey: ['agents-list'],
+    queryKey: agentKeys.list(),
     queryFn: () => agentsApi.listActive(),
     enabled: open,
     staleTime: 60000,

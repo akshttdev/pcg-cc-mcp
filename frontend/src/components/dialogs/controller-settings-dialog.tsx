@@ -22,6 +22,7 @@ import {
 import { Slider } from '@/components/ui/slider';
 import { Loader2, Bot, Sparkles } from 'lucide-react';
 import { projectControllersApi, type ProjectControllerConfig, type UpdateControllerConfig } from '@/lib/api';
+import { controllerKeys } from '@/lib/query-keys';
 import { toast } from 'sonner';
 
 interface ControllerSettingsDialogProps {
@@ -79,7 +80,7 @@ export function ControllerSettingsDialog({
     mutationFn: (data: UpdateControllerConfig) =>
       projectControllersApi.updateConfig(projectId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['project-controller-config', projectId] });
+      queryClient.invalidateQueries({ queryKey: controllerKeys.config(projectId) });
       toast.success('Controller settings have been saved successfully.');
       onOpenChange(false);
     },

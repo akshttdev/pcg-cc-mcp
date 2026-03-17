@@ -28,7 +28,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { dataSourcesApi, workflowsApi, DATA_TYPE_OPTIONS, SOURCE_TYPE_OPTIONS } from '@/lib/api';
-import { dataSourceKeys } from '@/lib/query-keys';
+import { dataSourceKeys, workflowKeys } from '@/lib/query-keys';
 import { StagingReviewPanel } from '@/components/workflows/StagingReviewPanel';
 import { RunAndReviewPanel } from '@/components/workflows/RunAndReviewPanel';
 
@@ -83,7 +83,7 @@ export function DataSourceDetailPage() {
   });
 
   const { data: availableModels } = useQuery({
-    queryKey: ['workflowModels'],
+    queryKey: workflowKeys.models(),
     queryFn: () => workflowsApi.listAvailableModels(),
     staleTime: 60 * 60 * 1000,
   });

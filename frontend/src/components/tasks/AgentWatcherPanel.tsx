@@ -10,6 +10,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { agentWatchersApi, agentsApi } from '@/lib/api';
+import { agentWatcherKeys } from '@/lib/query-keys';
 import type { AgentWithParsedFields } from 'shared/types';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -35,13 +36,13 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
   const [removing, setRemoving] = useState<Set<string>>(new Set());
 
   const { data: watchers = [], error: loadError, refetch: refetchWatchers } = useQuery({
-    queryKey: ['agent-watchers', taskId],
+    queryKey: agentWatcherKeys.watchers(taskId),
     queryFn: () => agentWatchersApi.list(taskId),
     refetchInterval: WATCHER_POLL_INTERVAL,
   });
 
   const { data: availableAgents = [] } = useQuery({
-    queryKey: ['available-agents-for-watchers'],
+    queryKey: agentWatcherKeys.availableAgents(),
     queryFn: () => agentsApi.listActive(),
     enabled: pickerOpen,
   });
@@ -71,7 +72,7 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
   const addMutation = useMutation({
     mutationFn: (agentId: string) => agentWatchersApi.add(taskId, agentId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['agent-watchers', taskId] });
+      queryClient.invalidateQueries({ queryKey: agentWatcherKeys.watchers(taskId) });
       handlePickerOpenChange(false);
     },
     onError: () => toast.error('Failed to add agent reviewer'),
@@ -82,7 +83,7 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
     setRemoving((prev) => new Set(prev).add(agentId));
     try {
       await agentWatchersApi.remove(taskId, agentId);
-      queryClient.invalidateQueries({ queryKey: ['agent-watchers', taskId] });
+      queryClient.invalidateQueries({ queryKey: agentWatcherKeys.watchers(taskId) });
     } catch {
       toast.error('Failed to remove agent reviewer');
     } finally {

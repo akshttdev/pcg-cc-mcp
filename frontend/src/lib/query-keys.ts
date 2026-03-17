@@ -156,6 +156,7 @@ export const workflowKeys = {
 
 export const dataSourceKeys = {
   all: ['dataSources'] as const,
+  list: (orgId?: string, projectId?: string) => ['dataSources', orgId, projectId] as const,
   detail: (id: string) => ['dataSource', id] as const,
   workflows: (id: string) => ['dataSourceWorkflows', id] as const,
   artifacts: (id: string) => ['dataSourceArtifacts', id] as const,
@@ -257,10 +258,12 @@ export const commsKeys = {
 
 export const tokenUsageKeys = {
   today: () => ['token-usage', 'today'] as const,
+  todaySummary: () => ['token-usage-today'] as const,
   daily: (days: number) => ['token-usage', 'daily', days] as const,
   byProvider: (days: number) => ['token-usage', 'by-provider', days] as const,
   byModel: (days: number) => ['token-usage', 'by-model', days] as const,
   byProject: (days: number) => ['token-usage', 'by-project', days] as const,
+  byProjectSummary: () => ['token-usage-by-project'] as const,
   byAgent: (days: number) => ['token-usage', 'by-agent', days] as const,
 };
 
@@ -494,6 +497,13 @@ export const orchaKeys = {
   status: () => ['orcha-status'] as const,
 };
 
+// ── Agent Watchers ───────────────────────────────────────────────────────
+
+export const agentWatcherKeys = {
+  watchers: (taskId: string) => ['agent-watchers', taskId] as const,
+  availableAgents: () => ['available-agents-for-watchers'] as const,
+};
+
 // ── Unified export ─────────────────────────────────────────────────────────
 
 export const queryKeys = {
@@ -540,4 +550,5 @@ export const queryKeys = {
   orgPersons: orgPersonKeys,
   workflowTemplates: workflowTemplateKeys,
   orcha: orchaKeys,
+  agentWatchers: agentWatcherKeys,
 } as const;
