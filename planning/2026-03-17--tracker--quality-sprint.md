@@ -2,7 +2,7 @@
 
 **Branch**: `refactor/quality-sprint-dialogs-modularity`
 **Started**: 2026-03-17
-**Status**: In Progress (Days 1-6 complete)
+**Status**: In Progress (Days 1-8 complete)
 
 ## Sprint Progress
 
@@ -13,9 +13,9 @@
 | 3 | C: Query key factories in pages & components | Done | `d71d2905b` | 42 files, 152 insertions |
 | 4 | C: useMutationWithToast conversions | Done | `29dbd88aa` + `3de498af1` | 19 mutations converted |
 | 5 | D: MeetingMode.tsx split | Done | `bf84f5a48` | 1207→4 files (types 65, Setup 252, Notes 173, index 886) |
-| 6 | D: NoraAssistant + project-tasks splits | Done | — | See Day 6 section below |
-| 7 | C+B: More mutations + settings dialog extractions | Pending | — | |
-| 8 | C+B: Post-sloperation316 org-profile + showConfirm adoption | Available | — | sloperation316 merged (#45) |
+| 6 | D: NoraAssistant + project-tasks splits | Done | `c5f446fb3` | See Day 6 section below |
+| 7 | C: Mutation audit — all safe-zone converted | Done | (no commit needed) | All targets already converted in Day 4; settings dialogs tightly coupled, left inline |
+| 8 | C: Query keys in org-profile + sidebar | Done | — | 32 files, ~75 inline keys replaced |
 
 ## Branch History Note
 
@@ -42,7 +42,7 @@ Full verification performed on branch `refactor/quality-sprint-dialogs-modularit
 | Metric | Before | Current | Target |
 |--------|--------|---------|--------|
 | `window.confirm()` calls | 5 | **0** | 0 |
-| Inline query keys (est.) | ~318 | **~165** | ~100 |
+| Inline query keys (est.) | ~318 | **~90** | ~100 |
 | Raw `useMutation` (files) | ~60 | **~45** | ~35 |
 | Files >900 lines | 15 | **12** | 12 |
 | NiceModal registrations | 21 | 21 | 24 |
@@ -106,13 +106,42 @@ Barrel export updated in `components/nora/index.ts`. Also fixed `any` → `unkno
 
 Lazy import in `App.tsx` unchanged (`@/pages/project-tasks` now resolves to directory index).
 
-## Remaining Work
+## Day 7 Assessment
 
-### Day 7: More mutations + settings dialog NiceModal extractions
-- Additional mutation conversions in safe-zone components
-- Extract 3 inline dialogs from settings pages to NiceModal
+All safe-zone mutation conversions completed in Day 4. Settings dialog extraction evaluated but deferred — the 6 dialogs in AgentSettings/ProjectsSettings/WalletSettings are tightly coupled to parent state (mutations, form values, validation). Extracting to NiceModal would increase complexity without benefit.
 
-### Day 8: Post-sloperation316 cleanup (NOW AVAILABLE)
-- Query keys in org-profile + sidebar (sloperation316 merged)
-- showConfirm adoption for remaining NiceModal.show('confirm') calls
-- Cloud tab query key integration
+## Day 8: Query Keys in Org-Profile + Sidebar
+
+**Sidebar** (5 files, 12 inline keys → 0):
+- `Sidebar.tsx`: `sidebarKeys.tree()`, `projectKeys.all`, `sidebarKeys.stagingPendingCount()`
+- `ProjectFolder.tsx`: `sidebarKeys.projectBoards()`, `sidebarKeys.tree()` (x2)
+- `ProjectList.tsx`, `OrgSection.tsx`, `ClientGroup.tsx`: `sidebarKeys.tree()`
+
+**Org-Profile** (27 files, ~63 inline keys replaced):
+- `index.tsx`, `BrandIdentityCard.tsx`, `ContactDetailModal.tsx`, `MemberAssignments.tsx`
+- `ContactsTab.tsx`, `OverviewTab.tsx`, `WikiTab.tsx`
+- Cloud tabs (5 files): `orgCloudKeys.*`
+- Integration tabs (3 files): `discordKeys`, `integrationKeys.*`
+- Intelligence tabs (6 files): `dataSourceKeys.*`, `knowledgeKeys.*`, `pulseKeys.*`, `workflowKeys.*`
+- Social tabs (5 files): `socialKeys.*`
+
+**New factories added to query-keys.ts** (22 lines):
+- `organizationKeys`: `memberAssignments`, `projectsList`, `deals`, `dealsEnriched`, `activitiesOrg`, `workflowRuns`
+- `discordKeys`: `activeSessions`
+- `integrationKeys`: `githubTokenStatus`, `emailAccountsOrg`, `qbStatusOrg` (new factory object)
+- `pulseKeys`: `alertsOrg`, `contentOrg`
+- `dataSourceKeys`: `project`, `recentArtifacts`
+- `entityKeys`: `companiesAll`
+- `workflowKeys`: `systemAutomations`
+
+**Skipped** (key string mismatch — need separate cleanup):
+- `['brandProfile', orgId]` in social views (different from `['orgBrandProfile', orgId]`)
+- `['workflowTemplates']` (factory returns `['workflow-templates']`, different string)
+- `['social-mentions-ov', ...]` (no factory, one-off key)
+
+## Remaining Inline Keys (~90)
+
+Inline keys remaining after sprint are in files outside the sprint scope:
+- Deal detail tabs, workflow editor pages, misc components
+- Keys with string mismatches (noted above)
+- These can be addressed in a follow-up sprint

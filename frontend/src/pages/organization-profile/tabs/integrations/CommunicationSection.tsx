@@ -3,10 +3,11 @@ import { Link } from 'react-router-dom';
 import { MessageSquare, Radio, ExternalLink } from 'lucide-react';
 import { IntegrationCard } from '../../components/IntegrationCard';
 import { discordApi, type DiscordSessionSummary } from '@/lib/api';
+import { discordKeys } from '@/lib/query-keys';
 
 export function CommunicationSection() {
   const { data: discordSessions = [] } = useQuery<DiscordSessionSummary[]>({
-    queryKey: ['discord-active-sessions'],
+    queryKey: discordKeys.activeSessions(),
     queryFn: () => discordApi.activeSessions(),
     staleTime: 30_000,
   });

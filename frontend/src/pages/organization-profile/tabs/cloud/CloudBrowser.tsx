@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { orgCloudApi, type CloudFile, type CloudBrowseParams } from '@/lib/api/org-cloud';
+import { orgCloudKeys } from '@/lib/query-keys';
 
 interface CloudBrowserProps {
   orgId: string;
@@ -94,7 +95,7 @@ export function CloudBrowser({ orgId }: CloudBrowserProps) {
   const [previewFile, setPreviewFile] = useState<CloudFile | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['org-cloud', orgId, params],
+    queryKey: orgCloudKeys.browse(orgId, params as Record<string, unknown>),
     queryFn: () => orgCloudApi.browse(orgId, params),
     enabled: !!orgId,
     staleTime: 30_000,

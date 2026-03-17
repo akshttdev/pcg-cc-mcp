@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { orgCloudApi } from '@/lib/api/org-cloud';
+import { orgCloudKeys } from '@/lib/query-keys';
 import { CloudBrowser } from './CloudBrowser';
 import { CloudUpload } from './CloudUpload';
 import { CloudActivity } from './CloudActivity';
@@ -20,7 +21,7 @@ export default function CloudTab({ orgId }: CloudTabProps) {
   const queryClient = useQueryClient();
 
   const { data: stats } = useQuery({
-    queryKey: ['org-cloud-stats', orgId],
+    queryKey: orgCloudKeys.stats(orgId),
     queryFn: () => orgCloudApi.getStats(orgId),
     enabled: !!orgId,
     staleTime: 60_000,
@@ -30,8 +31,8 @@ export default function CloudTab({ orgId }: CloudTabProps) {
     mutationFn: () => orgCloudApi.triggerIndex(orgId),
     onSuccess: (data) => {
       toast.success(`Indexed ${data.indexed_count} files`);
-      queryClient.invalidateQueries({ queryKey: ['org-cloud', orgId] });
-      queryClient.invalidateQueries({ queryKey: ['org-cloud-stats', orgId] });
+      queryClient.invalidateQueries({ queryKey: orgCloudKeys.all(orgId) });
+      queryClient.invalidateQueries({ queryKey: orgCloudKeys.stats(orgId) });
     },
     onError: () => toast.error('Failed to index files'),
   });

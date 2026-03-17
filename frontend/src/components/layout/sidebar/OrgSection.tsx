@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { QueryClient } from '@tanstack/react-query';
+import { sidebarKeys } from '@/lib/query-keys';
 import { organizationsApi } from '@/lib/api';
 import type {
   SidebarTree,
@@ -166,7 +167,7 @@ export function OrgSection({
                       organization_id: org.id,
                     }) as ProjectFormDialogResult;
                     if (result === 'saved') {
-                      queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
+                      queryClient.invalidateQueries({ queryKey: sidebarKeys.tree() });
                     }
                   } catch {
                     // dialog dismissed
@@ -216,7 +217,7 @@ export function OrgSection({
                     }) as CreateNameDialogResult;
                     const slug = result.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
                     await organizationsApi.createClient(org.id, { name: result.name, slug });
-                    queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
+                    queryClient.invalidateQueries({ queryKey: sidebarKeys.tree() });
                   } catch {
                     // dialog dismissed
                   }

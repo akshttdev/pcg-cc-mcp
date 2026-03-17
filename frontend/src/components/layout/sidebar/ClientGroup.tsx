@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { QueryClient } from '@tanstack/react-query';
+import { sidebarKeys } from '@/lib/query-keys';
 import type { SidebarClient as SidebarClientType } from '@/lib/api';
 import NiceModal from '@ebay/nice-modal-react';
 import type { ProjectFormDialogResult } from '@/components/dialogs';
@@ -139,7 +140,7 @@ export function ClientGroup({
                     client_id: client.id,
                   }) as ProjectFormDialogResult;
                   if (result === 'saved') {
-                    queryClient?.invalidateQueries({ queryKey: ['sidebarTree'] });
+                    queryClient?.invalidateQueries({ queryKey: sidebarKeys.tree() });
                   }
                 } catch {
                   // dialog dismissed

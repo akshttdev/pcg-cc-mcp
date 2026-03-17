@@ -21,16 +21,17 @@ import {
   resolveApiUrl,
   type ClientData,
 } from '@/lib/api';
+import { organizationKeys, sidebarKeys } from '@/lib/query-keys';
 
 export function MemberAssignments({ orgId, userId }: { orgId: string; userId: string }) {
   const queryClient = useQueryClient();
   const { data: assignments, isLoading } = useQuery({
-    queryKey: ['member-assignments', orgId, userId],
+    queryKey: organizationKeys.memberAssignments(orgId, userId),
     queryFn: () => organizationsApi.getMemberAssignments(orgId, userId),
   });
 
   const { data: orgClients = [] } = useQuery<ClientData[]>({
-    queryKey: ['orgClients', orgId],
+    queryKey: organizationKeys.orgClients(orgId),
     queryFn: () => organizationsApi.getClients(orgId),
   });
 
@@ -39,7 +40,7 @@ export function MemberAssignments({ orgId, userId }: { orgId: string; userId: st
   const [assignRole, setAssignRole] = useState('editor');
 
   const { data: orgProjects = [] } = useQuery<any[]>({
-    queryKey: ['org-projects-list', orgId],
+    queryKey: organizationKeys.projectsList(orgId),
     queryFn: async () => {
       const res = await fetch(resolveApiUrl(`/api/projects?organization_id=${orgId}`), { credentials: 'include' });
       if (!res.ok) return [];
@@ -51,8 +52,8 @@ export function MemberAssignments({ orgId, userId }: { orgId: string; userId: st
   const assignMutation = useMutation({
     mutationFn: () => organizationsApi.assignMember(orgId, userId, assignType, assignTargetId, assignRole),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['member-assignments', orgId, userId] });
-      queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
+      queryClient.invalidateQueries({ queryKey: organizationKeys.memberAssignments(orgId, userId) });
+      queryClient.invalidateQueries({ queryKey: sidebarKeys.tree() });
       setAssignType('');
       setAssignTargetId('');
     },
@@ -61,16 +62,16 @@ export function MemberAssignments({ orgId, userId }: { orgId: string; userId: st
   const unassignProjectMutation = useMutation({
     mutationFn: (projectId: string) => organizationsApi.unassignProject(orgId, userId, projectId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['member-assignments', orgId, userId] });
-      queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
+      queryClient.invalidateQueries({ queryKey: organizationKeys.memberAssignments(orgId, userId) });
+      queryClient.invalidateQueries({ queryKey: sidebarKeys.tree() });
     },
   });
 
   const unassignClientMutation = useMutation({
     mutationFn: (clientId: string) => organizationsApi.unassignClient(orgId, userId, clientId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['member-assignments', orgId, userId] });
-      queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
+      queryClient.invalidateQueries({ queryKey: organizationKeys.memberAssignments(orgId, userId) });
+      queryClient.invalidateQueries({ queryKey: sidebarKeys.tree() });
     },
   });
 

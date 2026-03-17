@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { useQuery, type QueryClient } from '@tanstack/react-query';
+import { sidebarKeys } from '@/lib/query-keys';
 import { projectsApi } from '@/lib/api';
 import type { SidebarProject as SidebarProjectType } from '@/lib/api';
 import type { Project, ProjectBoard } from 'shared/types';
@@ -71,7 +72,7 @@ export function ProjectFolder({
     data: boardsData = [],
     isLoading: isBoardsLoading,
   } = useQuery<ProjectBoard[], Error>({
-    queryKey: ['projectBoardsSidebar', project.id],
+    queryKey: sidebarKeys.projectBoards(project.id),
     queryFn: () => projectsApi.listBoards(project.id),
     enabled: isExpanded,
     staleTime: 5 * 60 * 1000,
@@ -254,7 +255,7 @@ export function SortableSidebarProjectFolder({
     isLoading: isBoardsLoading,
     error: boardsError,
   } = useQuery<ProjectBoard[], Error>({
-    queryKey: ['projectBoardsSidebar', project.id],
+    queryKey: sidebarKeys.projectBoards(project.id),
     queryFn: () => projectsApi.listBoards(project.id),
     enabled: shouldFetchBoards,
     staleTime: 5 * 60 * 1000,
@@ -290,7 +291,7 @@ export function SortableSidebarProjectFolder({
       }) as CreateNameDialogResult;
       if (result.name === project.name) return;
       await projectsApi.update(project.id, { name: result.name });
-      queryClient?.invalidateQueries({ queryKey: ['sidebarTree'] });
+      queryClient?.invalidateQueries({ queryKey: sidebarKeys.tree() });
     } catch {
       // dialog dismissed
     }
@@ -300,7 +301,7 @@ export function SortableSidebarProjectFolder({
     if (!await showConfirm({ title: 'Delete Project', message: `Delete "${project.name}"?${hasChildren ? ' Child projects will be ungrouped.' : ''}`, variant: 'destructive', confirmText: 'Delete' })) return;
     try {
       await projectsApi.delete(project.id);
-      queryClient?.invalidateQueries({ queryKey: ['sidebarTree'] });
+      queryClient?.invalidateQueries({ queryKey: sidebarKeys.tree() });
     } catch (err) {
       console.error('Failed to delete project:', err);
     }

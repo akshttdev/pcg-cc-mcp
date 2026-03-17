@@ -4,6 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Globe, Inbox } from 'lucide-react';
 import { socialApi, type SocialMentionRecord } from '@/lib/api';
+import { socialKeys } from '@/lib/query-keys';
 import {
   PLATFORM_ICONS,
   PLATFORM_COLORS,
@@ -20,7 +21,7 @@ export function SocialInboxView({ projectEntries }: { projectEntries: { id: stri
 
   const mentionQueries = useQueries({
     queries: projectEntries.map(e => ({
-      queryKey: ['social-mentions', e.id],
+      queryKey: socialKeys.mentions(e.id),
       queryFn: () => socialApi.listMentions(e.id, { limit: 50 }),
       staleTime: 30_000,
     })),
@@ -60,7 +61,7 @@ export function SocialInboxView({ projectEntries }: { projectEntries: { id: stri
     mutationFn: ({ id, data }: { id: string; data: Parameters<typeof socialApi.updateMention>[1] }) =>
       socialApi.updateMention(id, data),
     onSuccess: () => {
-      projectEntries.forEach(e => queryClient.invalidateQueries({ queryKey: ['social-mentions', e.id] }));
+      projectEntries.forEach(e => queryClient.invalidateQueries({ queryKey: socialKeys.mentions(e.id) }));
     },
   });
 

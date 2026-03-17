@@ -26,6 +26,7 @@ import {
   type CrmActivityRecord,
   type WorkflowRun,
 } from '@/lib/api';
+import { taskKeys, organizationKeys } from '@/lib/query-keys';
 import { useOrgOnboarding } from '@/hooks/useOrgOnboarding';
 import { OnboardingCarousel, type OnboardingSegment } from '@/components/onboarding/OnboardingCarousel';
 import { formatDate, formatCurrency } from '../helpers';
@@ -77,7 +78,7 @@ export function OverviewTab({
   // Aggregate tasks across all projects
   const taskQueries = useQueries({
     queries: projectEntries.map((entry) => ({
-      queryKey: ['tasks', entry.id],
+      queryKey: taskKeys.list(entry.id),
       queryFn: () => tasksApi.getAll(entry.id),
       staleTime: 60_000,
       enabled: projectEntries.length > 0,
@@ -92,7 +93,7 @@ export function OverviewTab({
   // Aggregate activities across all projects
   const activityQueries = useQueries({
     queries: projectEntries.map((entry) => ({
-      queryKey: ['crm-activities-org', entry.id],
+      queryKey: organizationKeys.activitiesOrg(entry.id),
       queryFn: () => crmActivitiesApi.listActivities({ organization_id: entry.id, limit: 10 }),
       staleTime: 60_000,
       enabled: projectEntries.length > 0,
@@ -101,7 +102,7 @@ export function OverviewTab({
 
   // Fetch recent workflow runs for the organization
   const { data: recentWorkflowRuns = [] } = useQuery({
-    queryKey: ['workflow-runs', orgId],
+    queryKey: organizationKeys.workflowRuns(orgId),
     queryFn: () => workflowsApi.listRecentRuns({ organization_id: orgId, limit: 10 }),
     staleTime: 60_000,
   });

@@ -2,6 +2,7 @@ import { projectsApi } from '@/lib/api';
 import type { SidebarProject as SidebarProjectType } from '@/lib/api';
 import { useProjectOrderStore } from '@/stores/useProjectOrderStore';
 import type { QueryClient } from '@tanstack/react-query';
+import { sidebarKeys } from '@/lib/query-keys';
 import {
   DndContext,
   closestCenter,
@@ -68,7 +69,7 @@ export function SortableProjectList({
       const projectDragId = String(active.id);
       try {
         await projectsApi.setParent(projectDragId, parentId);
-        queryClient?.invalidateQueries({ queryKey: ['sidebarTree'] });
+        queryClient?.invalidateQueries({ queryKey: sidebarKeys.tree() });
       } catch (err) {
         console.error('Failed to reparent project:', err);
       }

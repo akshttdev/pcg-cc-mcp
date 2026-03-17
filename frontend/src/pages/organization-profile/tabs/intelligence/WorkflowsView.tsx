@@ -420,7 +420,7 @@ export function LegacyPipelinesView({ orgId: _orgId }: { orgId: string }) {
 
 export function SystemAutomationsSection() {
   const { data: automations = [] } = useQuery({
-    queryKey: ['system-automations'],
+    queryKey: workflowKeys.systemAutomations(),
     queryFn: () => automationsApi.list(),
     staleTime: 5 * 60_000,
   });
@@ -459,7 +459,7 @@ export function SystemAutomationsSection() {
 
 export function WorkflowsIntelView({ orgId }: { orgId: string }) {
   const { data: automations = [] } = useQuery({
-    queryKey: ['system-automations'],
+    queryKey: workflowKeys.systemAutomations(),
     queryFn: () => automationsApi.list(),
     staleTime: 5 * 60_000,
   });
