@@ -63,6 +63,7 @@ const InvoicesPage          = lazy(() => import('@/pages/invoices').then(m => ({
 const ProjectDeliverablesPage = lazy(() => import('@/pages/project-deliverables').then(m => ({ default: m.ProjectDeliverablesPage })));
 const OrgDeliverablesPage = lazy(() => import('@/pages/org-deliverables').then(m => ({ default: m.OrgDeliverablesPage })));
 const DataSourcesPage      = lazy(() => import('@/pages/data-sources'));
+const IntelligencePage     = lazy(() => import('@/pages/intelligence'));
 const DataSourceDetailPage = lazy(() => import('@/pages/data-source-detail').then(m => ({ default: m.DataSourceDetailPage })));
 const DiscordPage             = lazy(() => import('@/pages/discord').then(m => ({ default: m.DiscordPage })));
 const SiteDirectoryPage       = lazy(() => import('@/pages/site-directory').then(m => ({ default: m.SiteDirectoryPage })));
@@ -323,6 +324,7 @@ function App() {
             path="/projects/:projectId/knowledge"
             element={<ProtectedRoute><KnowledgePage /></ProtectedRoute>}
           />
+          <Route path="/intelligence" element={<ProtectedRoute><IntelligencePage /></ProtectedRoute>} />
           <Route path="/my-tasks" element={<ProtectedRoute><MyTasksPage /></ProtectedRoute>} />
           <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
           <Route path="/agents/:agentId/profile" element={<ProtectedRoute><AgentProfilePage /></ProtectedRoute>} />

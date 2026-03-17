@@ -10,7 +10,7 @@
 //!   SOVEREIGN_STACK_ENABLED          - true/false (default: false)
 //!   SOVEREIGN_STACK_ORG_NAME         - org directory name (default: "Sirak Studios")
 //!   SOVEREIGN_STACK_ROOT             - root path (default: "E:/topos/sovereign_stack")
-//!   SOVEREIGN_STACK_DROPBOX_ROOT     - Dropbox sync root on C: (default: "C:/Users/sirak/Sirak Studios Dropbox")
+//!   SOVEREIGN_STACK_DROPBOX_ROOT     - Dropbox sync root on E: (default: "E:/topos/Sirak Studios Dropbox")
 //!   SOVEREIGN_STACK_DROPBOX_PERSONAL - personal subdir (default: "Sirak Studios (sirak)")
 //!   SOVEREIGN_STACK_DROPBOX_TEAM     - team subdir (default: "Sirak Studios Team")
 //!   SOVEREIGN_STACK_SCAN_INTERVAL    - seconds between scans (default: 300)
@@ -55,7 +55,7 @@ impl SovereignStackConfig {
 
         let dropbox_root = PathBuf::from(
             std::env::var("SOVEREIGN_STACK_DROPBOX_ROOT")
-                .unwrap_or_else(|_| "C:/Users/sirak/Sirak Studios Dropbox".to_string()),
+                .unwrap_or_else(|_| "E:/topos/Sirak Studios Dropbox".to_string()),
         );
 
         let dropbox_personal = std::env::var("SOVEREIGN_STACK_DROPBOX_PERSONAL")

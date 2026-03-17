@@ -1,9 +1,9 @@
-# Unregister Sovereign Stack from Windows File Explorer Navigation Pane
+# Unregister APN Cloud from Windows File Explorer Navigation Pane
 # Run as: powershell -ExecutionPolicy Bypass -File scripts/unregister_sovereign_stack.ps1
 
 $CLSID = "{B3E49587-7262-0631-A680-2FDE729BF2B2}"
 
-Write-Host "Unregistering Sovereign Stack from File Explorer sidebar..."
+Write-Host "Unregistering APN Cloud from File Explorer sidebar..."
 
 # Remove CLSID
 $CLSIDPath = "HKCU:\Software\Classes\CLSID\$CLSID"
@@ -34,5 +34,5 @@ if (Test-Path $HideDesktopPath) {
 }
 
 Write-Host ""
-Write-Host "Done! Sovereign Stack has been unregistered."
+Write-Host "Done! APN Cloud has been unregistered."
 Write-Host "Restart File Explorer (or log out/in) for changes to take effect."
