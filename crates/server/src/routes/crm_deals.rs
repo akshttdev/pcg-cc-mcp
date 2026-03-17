@@ -408,6 +408,23 @@ async fn create_deal(
     .execute(pool)
     .await?;
 
+    // Auto-trigger stage-entry hooks if deal starts in Intel stage
+    if let Some(ref stage_id) = deal.crm_stage_id {
+        if let Ok(stage) = db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, stage_id).await {
+            let sn = stage.name.to_lowercase();
+            let st = stage.stage_type.as_deref().unwrap_or("").to_lowercase();
+            if sn == "intel" || st == "intel" {
+                let pool_bg = pool.clone();
+                let deal_id = deal.id.clone();
+                let contact_id = deal.crm_contact_id.clone();
+                tokio::spawn(async move {
+                    trigger_who_is_research(&pool_bg, deal_id, contact_id).await;
+                });
+                tracing::info!("Scout auto-triggered for new deal {} in Intel stage", deal.id);
+            }
+        }
+    }
+
     Ok(Json(ApiResponse::success(deal)))
 }
 
@@ -543,6 +560,30 @@ async fn move_deal_stage(
         });
     }
 
+    // "Proposal" stage → Astra Pass 2 + Cash chain: deep research then auto-generate proposal
+    if stage_name_lower == "proposal" || stage_type_lower == "proposal" {
+        if deal.proposal_text.is_none() || deal.proposal_text.as_deref() == Some("") {
+            let pool_bg = pool.clone();
+            let deal_id = deal.id.clone();
+            tokio::spawn(async move {
+                trigger_deep_research_pass2(&pool_bg, deal_id).await;
+            });
+            tracing::info!("Astra Pass 2 + Cash chain auto-triggered for deal {} entering Proposal stage", deal.id);
+        }
+    }
+
+    // "Polish" stage → Lux: auto-generate deck if proposal exists and no deck yet
+    if stage_name_lower == "polish" || stage_type_lower == "polish" {
+        if deal.deck_url.is_none() && deal.proposal_text.is_some() {
+            let pool_bg = pool.clone();
+            let deal_id = deal.id.clone();
+            tokio::spawn(async move {
+                generate_deck_background(&pool_bg, deal_id).await;
+            });
+            tracing::info!("Lux auto-triggered for deal {} entering Polish stage", deal.id);
+        }
+    }
+
     // Stages that need a human review task before advancing
     let review_stages = [
         ("intel", "Review Phase I intelligence (Scout): person profile & company overview"),
@@ -556,7 +597,7 @@ async fn move_deal_stage(
 
     for (stage_key, task_desc) in &review_stages {
         if stage_name_lower == *stage_key || stage_type_lower == *stage_key {
-            create_review_task_if_needed(pool, &deal, task_desc).await;
+            create_review_task_if_needed(pool, &deal, task_desc, stage_key).await;
             break;
         }
     }
@@ -927,23 +968,45 @@ pub async fn generate_phase1_business_report(
     .await;
 }
 
-/// Create a review task for a deal if none exists
-async fn create_review_task_if_needed(pool: &sqlx::SqlitePool, deal: &CrmDeal, description: &str) {
-    let existing_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM tasks WHERE crm_deal_id = ? AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL",
+/// Create a review task for a deal stage if none exists for this specific stage.
+/// Also cancels review tasks from previous stages.
+async fn create_review_task_if_needed(pool: &sqlx::SqlitePool, deal: &CrmDeal, description: &str, stage_name: &str) {
+    // Cancel review tasks from previous stages
+    let current_prefix = format!("Review & approve: {} —", stage_name);
+    let _ = sqlx::query(
+        "UPDATE tasks SET status = 'cancelled', updated_at = datetime('now','subsec') WHERE crm_deal_id = ? AND title LIKE 'Review & approve:%' AND title NOT LIKE ? AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL",
     )
     .bind(&deal.id)
+    .bind(format!("{}%", current_prefix))
+    .execute(pool)
+    .await;
+
+    // Check if a review task already exists for THIS stage
+    let existing_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM tasks WHERE crm_deal_id = ? AND title LIKE ? AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL",
+    )
+    .bind(&deal.id)
+    .bind(format!("{}%", current_prefix))
     .fetch_one(pool)
     .await
     .unwrap_or(0);
 
     if existing_count == 0 {
         let task_id = DbUuid::new();
-        let task_title = format!("Review & approve: {}", deal.name);
+        let task_title = format!("Review & approve: {} — {}", stage_name, deal.name);
+        // Default assignee: first admin user (so tasks show up in My Tasks)
+        let default_assignee: Option<String> = sqlx::query_scalar::<_, String>(
+            "SELECT hex(id) FROM users WHERE is_admin = 1 LIMIT 1"
+        ).fetch_optional(pool).await.ok().flatten()
+        .map(|hex| {
+            let h = hex.to_lowercase();
+            format!("{}-{}-{}-{}-{}", &h[..8], &h[8..12], &h[12..16], &h[16..20], &h[20..])
+        });
+
         let _ = sqlx::query(
             r#"
-            INSERT INTO tasks (id, title, description, status, crm_deal_id, project_id, created_at, updated_at)
-            VALUES (?, ?, ?, 'todo', ?, ?, datetime('now','subsec'), datetime('now','subsec'))
+            INSERT INTO tasks (id, title, description, status, crm_deal_id, project_id, assignee_id, created_at, updated_at)
+            VALUES (?, ?, ?, 'todo', ?, ?, ?, datetime('now','subsec'), datetime('now','subsec'))
             "#,
         )
         .bind(&task_id)
@@ -951,8 +1014,56 @@ async fn create_review_task_if_needed(pool: &sqlx::SqlitePool, deal: &CrmDeal, d
         .bind(description)
         .bind(&deal.id)
         .bind(&deal.project_id)
+        .bind(&default_assignee)
         .execute(pool)
         .await;
+
+        // F8: BA Operator Assignment — assign review task to org-specific operator
+        if stage_name == "business analysis" {
+            if let Some(ref org_id) = deal.organization_id {
+                // Look up organization name
+                #[derive(sqlx::FromRow)]
+                struct OrgNameRow { name: String }
+                let org_name = sqlx::query_as::<_, OrgNameRow>(
+                    "SELECT name FROM organizations WHERE id = ? LIMIT 1"
+                )
+                .bind(org_id)
+                .fetch_optional(pool)
+                .await
+                .ok()
+                .flatten()
+                .map(|r| r.name);
+
+                let assignee_username = match org_name.as_deref() {
+                    Some(n) if n.contains("Sirak") => Some("Sirak"),
+                    Some(n) if n.contains("PowerClub") || n.contains("PCG") => Some("Bodhi"),
+                    _ => None,
+                };
+
+                if let Some(username) = assignee_username {
+                    #[derive(sqlx::FromRow)]
+                    struct UserIdRow { id: DbUuid }
+                    if let Some(user) = sqlx::query_as::<_, UserIdRow>(
+                        "SELECT id FROM users WHERE username = ? LIMIT 1"
+                    )
+                    .bind(username)
+                    .fetch_optional(pool)
+                    .await
+                    .ok()
+                    .flatten()
+                    {
+                        let _ = sqlx::query(
+                            "UPDATE tasks SET assignee_id = ?, updated_at = datetime('now','subsec') WHERE id = ?"
+                        )
+                        .bind(user.id.to_string())
+                        .bind(&task_id)
+                        .execute(pool)
+                        .await;
+                        tracing::info!("BA review task assigned to {} for deal {}", username, deal.id);
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1090,11 +1201,17 @@ async fn advance_deal(
     let current_stage_id = deal.crm_stage_id.clone()
         .ok_or_else(|| ApiError::BadRequest("Deal has no stage assigned".to_string()))?;
 
-    // Validate: active review tasks for this deal must be done
+    // Validate: active review tasks for the CURRENT stage must be done
+    let current_stage = db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, &current_stage_id).await
+        .map_err(|_| ApiError::NotFound("Current stage not found".to_string()))?;
+    let current_stage_name_lower = current_stage.name.to_lowercase();
+    let review_prefix = format!("Review & approve: {}%", current_stage_name_lower);
+
     let pending_tasks: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM tasks WHERE crm_deal_id = ? AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL",
+        "SELECT COUNT(*) FROM tasks WHERE crm_deal_id = ? AND (title LIKE ? OR (title LIKE 'Review & approve:%' AND title NOT LIKE 'Review & approve: %')) AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL",
     )
     .bind(&id)
+    .bind(&review_prefix)
     .fetch_one(pool)
     .await
     .unwrap_or(0);
@@ -1105,10 +1222,66 @@ async fn advance_deal(
         ));
     }
 
-    // Find next stage by position + 1 within the same pipeline
-    let current_stage = db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, &current_stage_id).await
-        .map_err(|_| ApiError::NotFound("Current stage not found".to_string()))?;
+    // F7: Intel Completeness Gate — require operator context + person/company intel before advancing from Intel→BA
+    if current_stage_name_lower == "intel" {
+        // Check deal.description is not empty (operator context)
+        let desc = deal.description.as_deref().unwrap_or("");
+        if desc.trim().is_empty() {
+            return Err(ApiError::BadRequest(
+                "Cannot advance from Intel: deal description (operator context) is required. Add notes about the lead before advancing.".to_string(),
+            ));
+        }
 
+        // Check person intelligence_status via crm_contact_id
+        let person_intel_status: Option<String> = if let Some(ref cid) = deal.crm_contact_id {
+            #[derive(sqlx::FromRow)]
+            struct PIS { intelligence_status: Option<String> }
+            sqlx::query_as::<_, PIS>(
+                "SELECT intelligence_status FROM persons WHERE crm_contact_id = ? LIMIT 1"
+            )
+            .bind(cid)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|r| r.intelligence_status)
+        } else {
+            None
+        };
+
+        if !matches!(person_intel_status.as_deref(), Some("done") | Some("complete")) {
+            return Err(ApiError::BadRequest(
+                format!("Cannot advance from Intel: person intelligence is '{}'. Wait for Scout research to finish.",
+                    person_intel_status.as_deref().unwrap_or("missing"))
+            ));
+        }
+
+        // Check company intelligence_status via person.company_name
+        let company_intel_status: Option<String> = if let Some(ref cid) = deal.crm_contact_id {
+            #[derive(sqlx::FromRow)]
+            struct CIS { intelligence_status: Option<String> }
+            sqlx::query_as::<_, CIS>(
+                "SELECT co.intelligence_status FROM companies co JOIN persons p ON lower(p.company_name) = lower(co.name) WHERE p.crm_contact_id = ? LIMIT 1"
+            )
+            .bind(cid)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|r| r.intelligence_status)
+        } else {
+            None
+        };
+
+        if !matches!(company_intel_status.as_deref(), Some("done") | Some("complete")) {
+            return Err(ApiError::BadRequest(
+                format!("Cannot advance from Intel: company intelligence is '{}'. Wait for company research to finish.",
+                    company_intel_status.as_deref().unwrap_or("missing"))
+            ));
+        }
+    }
+
+    // Find next stage by position + 1 within the same pipeline
     let next_position = current_stage.position + 1;
 
     #[derive(sqlx::FromRow)]
@@ -1206,7 +1379,7 @@ async fn advance_deal(
     ];
     for (stage_key, task_desc) in &review_stages {
         if new_stage_name == *stage_key || new_stage_type == *stage_key {
-            create_review_task_if_needed(pool, &deal, task_desc).await;
+            create_review_task_if_needed(pool, &deal, task_desc, stage_key).await;
             break;
         }
     }
@@ -1390,62 +1563,60 @@ async fn get_metrics(
     })))
 }
 
-// ── POST /crm/deals/:id/generate-proposal (Cash) ────────────────────────────
-async fn generate_proposal(
-    State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
-) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
-    let pool = &deployment.db().pool;
-    let id = DbUuid::from(id);
-    let deal = CrmDeal::find_by_id(pool, &id).await?;
+// ── LLM helper: OpenAI-first with Anthropic fallback ─────────────────────────
+/// Calls an LLM with a system prompt and user message.
+/// Tries OpenAI (gpt-4o) first, falls back to Anthropic (claude-opus-4-6).
+async fn call_llm(system_prompt: &str, user_message: &str) -> Result<String, ApiError> {
+    let http = reqwest::Client::new();
 
-    // Gather context: business report, person intel, company intel, transcripts
-    let report_summary: Option<String> = {
-        #[derive(sqlx::FromRow)] struct BizReport { executive_summary: Option<String> }
-        sqlx::query_as::<_, BizReport>("SELECT executive_summary FROM business_reports WHERE crm_deal_id = ? ORDER BY created_at DESC LIMIT 1")
-            .bind(&id).fetch_optional(pool).await.ok().flatten().and_then(|r| r.executive_summary)
-    };
-    let person_intel: Option<String> = if let Some(ref cid) = deal.crm_contact_id {
-        #[derive(sqlx::FromRow)] struct PersonIntel { intelligence_summary: Option<String>, full_name: Option<String>, company_name: Option<String> }
-        sqlx::query_as::<_, PersonIntel>("SELECT intelligence_summary, full_name, company_name FROM persons WHERE crm_contact_id = ? LIMIT 1")
-            .bind(cid).fetch_optional(pool).await.ok().flatten()
-            .map(|p| format!("**Contact:** {}\n**Company:** {}\n\n{}", p.full_name.unwrap_or_default(), p.company_name.unwrap_or_default(), p.intelligence_summary.unwrap_or_default()))
-    } else { None };
-    let transcripts: Vec<String> = {
-        #[derive(sqlx::FromRow)] struct TranscriptRow { summary: Option<String> }
-        sqlx::query_as::<_, TranscriptRow>("SELECT summary FROM deal_transcripts WHERE deal_id = ? ORDER BY created_at ASC")
-            .bind(&id).fetch_all(pool).await.unwrap_or_default()
-            .into_iter().filter_map(|t| t.summary).collect()
-    };
+    // Try OpenAI first
+    if let Ok(openai_key) = std::env::var("OPENAI_API_KEY") {
+        let body = serde_json::json!({
+            "model": "gpt-4o",
+            "max_tokens": 4096,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ]
+        });
+        match http
+            .post("https://api.openai.com/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", openai_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                if let Ok(val) = resp.json::<serde_json::Value>().await {
+                    if let Some(text) = val["choices"][0]["message"]["content"].as_str() {
+                        tracing::info!("[LLM] OpenAI gpt-4o response received");
+                        return Ok(text.to_string());
+                    }
+                }
+            }
+            Ok(resp) => {
+                tracing::warn!("[LLM] OpenAI returned {}, falling back to Anthropic", resp.status());
+            }
+            Err(e) => {
+                tracing::warn!("[LLM] OpenAI request failed: {}, falling back to Anthropic", e);
+            }
+        }
+    }
 
+    // Fallback to Anthropic
     let api_key = std::env::var("ANTHROPIC_API_KEY")
         .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
-        .map_err(|_| ApiError::BadRequest("ANTHROPIC_API_KEY not set".into()))?;
-
-    let mut context_parts = Vec::new();
-    if let Some(ref bi) = report_summary { context_parts.push(format!("## Business Intelligence\n{}", bi)); }
-    if let Some(ref pi) = person_intel { context_parts.push(format!("## Contact Profile\n{}", pi)); }
-    if !transcripts.is_empty() { context_parts.push(format!("## Discovery Transcript Summaries\n{}", transcripts.join("\n\n"))); }
-    if let Some(ref desc) = deal.description { context_parts.push(format!("## Deal Notes\n{}", desc)); }
-
-    let context = if context_parts.is_empty() {
-        format!("Deal name: {}", deal.name)
-    } else {
-        context_parts.join("\n\n---\n\n")
-    };
-
-    let cash_system = "You are Cash, a razor-sharp sales strategist and proposal architect. You transform business intelligence into irresistible, tailored proposals. You know exactly what clients need before they do — and you price it precisely. Every word earns its place. Write proposals in clear, compelling markdown: executive summary, client situation, proposed solution, deliverables list (as a JSON block at the end), timeline, investment, and next steps. British English optional. Be bold, specific, and value-driven.";
-    let user_prompt = format!("Write a professional proposal for the following deal.\n\n{}", context);
+        .map_err(|_| ApiError::BadRequest("No LLM API key configured (tried OPENAI_API_KEY, ANTHROPIC_API_KEY)".into()))?;
 
     let body = serde_json::json!({
         "model": "claude-opus-4-6",
         "max_tokens": 4096,
-        "system": cash_system,
-        "messages": [{"role": "user", "content": user_prompt}]
+        "system": system_prompt,
+        "messages": [{"role": "user", "content": user_message}]
     });
 
-    let http_client = reqwest::Client::new();
-    let resp = http_client
+    let resp = http
         .post("https://api.anthropic.com/v1/messages")
         .header("x-api-key", &api_key)
         .header("anthropic-version", "2023-06-01")
@@ -1453,23 +1624,256 @@ async fn generate_proposal(
         .json(&body)
         .send()
         .await
-        .map_err(|e| ApiError::BadRequest(format!("Claude API error: {}", e)))?;
+        .map_err(|e| ApiError::BadRequest(format!("LLM API error: {}", e)))?;
 
     let val: serde_json::Value = resp.json().await
-        .map_err(|e| ApiError::BadRequest(format!("Claude response parse error: {}", e)))?;
-    let proposal_text = val["content"].as_array()
+        .map_err(|e| ApiError::BadRequest(format!("LLM response parse error: {}", e)))?;
+
+    let text = val["content"].as_array()
         .and_then(|a| a.iter().find(|c| c["type"] == "text"))
         .and_then(|c| c["text"].as_str())
-        .unwrap_or("Proposal generation failed")
+        .unwrap_or("LLM generation failed")
         .to_string();
 
-    let updated = CrmDeal::update(pool, &id, db::models::crm_deal::UpdateCrmDeal {
-        proposal_text: Some(proposal_text),
-        proposal_status: Some("draft".to_string()),
-        ..Default::default()
-    }).await?;
+    tracing::info!("[LLM] Anthropic claude-opus-4-6 response received");
+    Ok(text)
+}
 
+// ── F12: Astra Pass 2 — enhance business report with discovery context, then chain Cash ──
+async fn trigger_deep_research_pass2(pool: &sqlx::SqlitePool, deal_id: DbUuid) {
+    // 1. Fetch deal
+    let deal = match CrmDeal::find_by_id(pool, &deal_id).await {
+        Ok(d) => d,
+        Err(e) => { tracing::error!("Astra Pass 2: failed to fetch deal {}: {}", deal_id, e); return; }
+    };
+
+    // 2. Fetch existing business report
+    #[derive(sqlx::FromRow)]
+    struct ReportRow {
+        id: String,
+        executive_summary: Option<String>,
+        #[allow(dead_code)]
+        company_overview: Option<String>,
+        #[allow(dead_code)]
+        individual_profiles: Option<String>,
+        research_depth: Option<i32>,
+    }
+    let report = sqlx::query_as::<_, ReportRow>(
+        "SELECT id, executive_summary, company_overview, individual_profiles, COALESCE(research_depth, 1) as research_depth FROM business_reports WHERE crm_deal_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1"
+    )
+    .bind(&deal_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    // 3. Fetch discovery transcripts
+    #[derive(sqlx::FromRow)]
+    struct TransRow { summary: Option<String>, transcript_text: Option<String> }
+    let transcripts: Vec<TransRow> = sqlx::query_as::<_, TransRow>(
+        "SELECT summary, transcript_text FROM deal_transcripts WHERE deal_id = ? ORDER BY created_at ASC"
+    )
+    .bind(&deal_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    // 4. Fetch person + company intel
+    let person_intel: Option<String> = if let Some(ref cid) = deal.crm_contact_id {
+        #[derive(sqlx::FromRow)]
+        struct PI { intelligence_summary: Option<String>, full_name: Option<String> }
+        sqlx::query_as::<_, PI>("SELECT intelligence_summary, full_name FROM persons WHERE crm_contact_id = ? LIMIT 1")
+            .bind(cid).fetch_optional(pool).await.ok().flatten()
+            .and_then(|p| p.intelligence_summary.map(|s| format!("**{}**\n{}", p.full_name.unwrap_or_default(), s)))
+    } else { None };
+
+    let company_intel: Option<String> = if let Some(ref cid) = deal.crm_contact_id {
+        #[derive(sqlx::FromRow)]
+        struct CI { intelligence_summary: Option<String>, name: Option<String> }
+        sqlx::query_as::<_, CI>(
+            "SELECT c.intelligence_summary, c.name FROM companies c JOIN persons p ON lower(p.company_name) = lower(c.name) WHERE p.crm_contact_id = ? LIMIT 1"
+        ).bind(cid).fetch_optional(pool).await.ok().flatten()
+        .and_then(|c| c.intelligence_summary.map(|s| format!("**{}**\n{}", c.name.unwrap_or_default(), s)))
+    } else { None };
+
+    // 5. Build Astra prompt
+    let existing_report_text = report.as_ref()
+        .and_then(|r| r.executive_summary.clone())
+        .unwrap_or_else(|| "No existing report.".to_string());
+
+    let discovery_text = if transcripts.is_empty() {
+        "No discovery transcripts available.".to_string()
+    } else {
+        transcripts.iter().enumerate().map(|(i, t)| {
+            let content = t.summary.as_deref()
+                .or(t.transcript_text.as_deref())
+                .unwrap_or("(empty)");
+            format!("### Transcript {}\n{}", i + 1, content)
+        }).collect::<Vec<_>>().join("\n\n")
+    };
+
+    let mut context_parts = vec![
+        format!("## Existing Business Report\n{}", existing_report_text),
+        format!("## Discovery Transcripts\n{}", discovery_text),
+    ];
+    if let Some(ref pi) = person_intel { context_parts.push(format!("## Person Intelligence\n{}", pi)); }
+    if let Some(ref ci) = company_intel { context_parts.push(format!("## Company Intelligence\n{}", ci)); }
+    if let Some(ref desc) = deal.description { context_parts.push(format!("## Deal Notes\n{}", desc)); }
+
+    let astra_system = "You are Astra, a business intelligence analyst at PowerClub Global. Your task is to enhance an existing business analysis report with new discovery context from client conversations. Synthesize all available intelligence into a comprehensive, actionable business report. Include: Executive Summary, Client Pain Points, Opportunities, Recommended Services (with estimated value ranges), Competitive Landscape, and Strategic Recommendations. Be specific and data-driven.";
+    let user_msg = format!("Enhance this business report with the discovery context below. Deal: {}\n\n{}", deal.name, context_parts.join("\n\n---\n\n"));
+
+    // 6. Call LLM
+    match call_llm(astra_system, &user_msg).await {
+        Ok(enhanced_report) => {
+            // Update existing report or create one
+            if let Some(ref r) = report {
+                let new_depth = r.research_depth.unwrap_or(1) + 1;
+                let _ = sqlx::query(
+                    "UPDATE business_reports SET executive_summary = ?, research_depth = ?, status = 'enhanced', updated_at = datetime('now','subsec') WHERE id = ?"
+                )
+                .bind(&enhanced_report)
+                .bind(new_depth)
+                .bind(&r.id)
+                .execute(pool)
+                .await;
+                tracing::info!("Astra Pass 2 enhanced report {} for deal {} (depth {})", r.id, deal_id, new_depth);
+            } else {
+                // No existing report — create one
+                let report_id = uuid::Uuid::new_v4();
+                let deal_uuid = uuid::Uuid::parse_str(deal_id.as_str()).ok();
+                let _ = sqlx::query(
+                    r#"INSERT INTO business_reports
+                       (id, crm_deal_id, report_type, title, status, executive_summary, research_depth,
+                        company_overview, individual_profiles, pain_points, opportunities, recommended_services, next_steps,
+                        competitor_analysis, intake_item_ids, call_log_ids)
+                       VALUES (?, ?, 'phase2_analysis', ?, 'enhanced', ?, 2, '', '[]', '[]', '[]', '[]', '[]', '[]', '[]', '[]')"#
+                )
+                .bind(report_id)
+                .bind(deal_uuid)
+                .bind(format!("Phase 2 Business Analysis: {}", deal.name))
+                .bind(&enhanced_report)
+                .execute(pool)
+                .await;
+                tracing::info!("Astra Pass 2 created new report {} for deal {}", report_id, deal_id);
+            }
+        }
+        Err(e) => {
+            tracing::error!("Astra Pass 2 LLM call failed for deal {}: {}", deal_id, e);
+        }
+    }
+
+    // 7. Chain Cash — generate proposal after Astra completes
+    generate_proposal_background(pool, deal_id).await;
+}
+
+// ── Background helper: generate proposal (Cash) ─────────────────────────────
+async fn generate_proposal_background(pool: &sqlx::SqlitePool, deal_id: DbUuid) {
+    let result = generate_proposal_core(pool, &deal_id).await;
+    match result {
+        Ok(_) => tracing::info!("Cash auto-generated proposal for deal {}", deal_id),
+        Err(e) => tracing::warn!("Cash auto-generation failed for deal {}: {}", deal_id, e),
+    }
+}
+
+async fn generate_proposal_core(pool: &sqlx::SqlitePool, id: &DbUuid) -> Result<CrmDeal, ApiError> {
+    let deal = CrmDeal::find_by_id(pool, id).await?;
+
+    // Gather context: business report, person intel, company intel, transcripts
+    let report_summary: Option<String> = {
+        #[derive(sqlx::FromRow)] struct BizReport { executive_summary: Option<String> }
+        sqlx::query_as::<_, BizReport>("SELECT executive_summary FROM business_reports WHERE crm_deal_id = ? ORDER BY created_at DESC LIMIT 1")
+            .bind(id).fetch_optional(pool).await.ok().flatten().and_then(|r| r.executive_summary)
+    };
+    let person_intel: Option<String> = if let Some(ref cid) = deal.crm_contact_id {
+        #[derive(sqlx::FromRow)] struct PersonIntel { intelligence_summary: Option<String>, full_name: Option<String>, company_name: Option<String> }
+        sqlx::query_as::<_, PersonIntel>("SELECT intelligence_summary, full_name, company_name FROM persons WHERE crm_contact_id = ? LIMIT 1")
+            .bind(cid).fetch_optional(pool).await.ok().flatten()
+            .map(|p| format!("**Contact:** {}\n**Company:** {}\n\n{}", p.full_name.unwrap_or_default(), p.company_name.unwrap_or_default(), p.intelligence_summary.unwrap_or_default()))
+    } else { None };
+    // Company intelligence from the companies table
+    let company_intel: Option<String> = if let Some(ref cid) = deal.crm_contact_id {
+        #[derive(sqlx::FromRow)] struct CI { intelligence_summary: Option<String>, name: Option<String> }
+        sqlx::query_as::<_, CI>(
+            "SELECT c.intelligence_summary, c.name FROM companies c JOIN persons p ON lower(p.company_name) = lower(c.name) WHERE p.crm_contact_id = ? LIMIT 1"
+        ).bind(cid).fetch_optional(pool).await.ok().flatten()
+        .and_then(|c| c.intelligence_summary.map(|s| format!("**Company: {}**\n\n{}", c.name.unwrap_or_default(), s)))
+    } else { None };
+    let transcripts: Vec<String> = {
+        #[derive(sqlx::FromRow)] struct TranscriptRow { summary: Option<String> }
+        sqlx::query_as::<_, TranscriptRow>("SELECT summary FROM deal_transcripts WHERE deal_id = ? ORDER BY created_at ASC")
+            .bind(id).fetch_all(pool).await.unwrap_or_default()
+            .into_iter().filter_map(|t| t.summary).collect()
+    };
+
+    let mut context_parts = Vec::new();
+    if let Some(ref bi) = report_summary { context_parts.push(format!("## Business Intelligence Report\n{}", bi)); }
+    if let Some(ref ci) = company_intel { context_parts.push(format!("## Company Intelligence\n{}", ci)); }
+    if let Some(ref pi) = person_intel { context_parts.push(format!("## Contact Profile\n{}", pi)); }
+    if !transcripts.is_empty() { context_parts.push(format!("## Discovery Transcript Summaries\n{}", transcripts.join("\n\n"))); }
+    if let Some(ref desc) = deal.description { context_parts.push(format!("## Deal Notes\n{}", desc)); }
+    // F13: Do NOT feed deal.amount to Cash — Cash should determine pricing independently
+
+    let context = if context_parts.is_empty() {
+        format!("Deal: {}\nClient company: {}", deal.name, deal.name.split('—').last().unwrap_or(&deal.name).trim())
+    } else {
+        context_parts.join("\n\n---\n\n")
+    };
+
+    let cash_system = "You are Cash, a razor-sharp sales strategist and proposal architect at PowerClub Global, a creative production and brand strategy agency. You transform business intelligence into irresistible, tailored proposals. Every word earns its place. Write proposals in clear, compelling markdown with these sections: Executive Summary, Client Situation, Proposed Solution, Deliverables, Timeline, Investment, and Next Steps. IMPORTANT: At the very end, include a JSON block with the deliverables list using this exact format:\n\n```json\n[{\"title\": \"Deliverable Name\", \"description\": \"Brief description\"}]\n```\n\nBe bold, specific, and value-driven. British English optional.";
+    let user_prompt = format!("Write a professional proposal for the following deal.\n\n{}", context);
+
+    let proposal_text = call_llm(cash_system, &user_prompt).await?;
+
+    sqlx::query("UPDATE crm_deals SET proposal_text = ?, proposal_status = 'draft', updated_at = datetime('now','subsec') WHERE id = ?")
+        .bind(&proposal_text)
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("Failed to save proposal: {}", e)))?;
+
+    // F13: Parse ```json block for estimated_value fields and update deal.amount
+    if let Some(start) = proposal_text.find("```json") {
+        let after = &proposal_text[start + 7..];
+        if let Some(end) = after.find("```") {
+            let json_str = after[..end].trim();
+            if let Ok(deliverables) = serde_json::from_str::<serde_json::Value>(json_str) {
+                let items = deliverables.as_array().cloned()
+                    .or_else(|| deliverables.get("deliverables").and_then(|d| d.as_array()).cloned())
+                    .unwrap_or_default();
+                let total_value: f64 = items.iter()
+                    .filter_map(|item| {
+                        item.get("estimated_value")
+                            .and_then(|v| v.as_f64())
+                    })
+                    .sum();
+                if total_value > 0.0 {
+                    let _ = sqlx::query(
+                        "UPDATE crm_deals SET amount = ?, updated_at = datetime('now','subsec') WHERE id = ?"
+                    )
+                    .bind(total_value)
+                    .bind(id)
+                    .execute(pool)
+                    .await;
+                    tracing::info!("Cash set deal.amount to ${:.0} from deliverable estimated_values for deal {}", total_value, id);
+                }
+            }
+        }
+    }
+
+    let updated = CrmDeal::find_by_id(pool, id).await?;
     tracing::info!("Cash generated proposal for deal {}", id);
+    Ok(updated)
+}
+
+// ── POST /crm/deals/:id/generate-proposal (Cash HTTP handler) ───────────────
+async fn generate_proposal(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let id = DbUuid::from(id);
+    let updated = generate_proposal_core(pool, &id).await?;
     Ok(Json(ApiResponse::success(updated)))
 }
 
@@ -1480,31 +1884,83 @@ async fn approve_proposal(
 ) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
-    let updated = CrmDeal::update(pool, &id, db::models::crm_deal::UpdateCrmDeal {
-        proposal_status: Some("approved".to_string()),
-        ..Default::default()
-    }).await?;
+    sqlx::query("UPDATE crm_deals SET proposal_status = 'approved', updated_at = datetime('now','subsec') WHERE id = ?")
+        .bind(&id)
+        .execute(pool)
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("Failed to approve: {}", e)))?;
+
+    // F2: Parse deliverables from proposal ```json block and INSERT INTO deliverables
+    let deal = CrmDeal::find_by_id(pool, &id).await?;
+    let mut deliverable_count = 0i32;
+    if let Some(ref proposal_text) = deal.proposal_text {
+        if let Some(start) = proposal_text.find("```json") {
+            let after = &proposal_text[start + 7..];
+            if let Some(end) = after.find("```") {
+                let json_str = after[..end].trim();
+                if let Ok(deliverables_val) = serde_json::from_str::<serde_json::Value>(json_str) {
+                    let items = deliverables_val.as_array().cloned()
+                        .or_else(|| deliverables_val.get("deliverables").and_then(|d| d.as_array()).cloned())
+                        .unwrap_or_default();
+
+                    for item in &items {
+                        let title = item["title"].as_str()
+                            .or_else(|| item["name"].as_str())
+                            .unwrap_or("Deliverable");
+                        let desc = item["description"].as_str().unwrap_or("");
+                        let deliverable_id = DbUuid::new();
+                        let _ = sqlx::query(
+                            "INSERT INTO deliverables (id, crm_deal_id, project_id, title, description, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'pending', datetime('now','subsec'), datetime('now','subsec'))"
+                        )
+                        .bind(&deliverable_id)
+                        .bind(&id)
+                        .bind(&deal.project_id)
+                        .bind(title)
+                        .bind(desc)
+                        .execute(pool)
+                        .await;
+                        deliverable_count += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    // Log activity
+    if deliverable_count > 0 {
+        let _ = sqlx::query(
+            "INSERT INTO crm_activities (id, organization_id, crm_contact_id, crm_deal_id, activity_type, subject, activity_at) VALUES (?, ?, ?, ?, 'deliverables_created', ?, datetime('now','subsec'))"
+        )
+        .bind(DbUuid::new())
+        .bind(&deal.organization_id)
+        .bind(&deal.crm_contact_id)
+        .bind(&id)
+        .bind(format!("Proposal approved: {} deliverables created", deliverable_count))
+        .execute(pool)
+        .await;
+        tracing::info!("Proposal approved for deal {}: {} deliverables created", id, deliverable_count);
+    }
+
+    let updated = CrmDeal::find_by_id(pool, &id).await?;
     Ok(Json(ApiResponse::success(updated)))
 }
 
 // ── POST /crm/deals/:id/generate-deck (Lux) ─────────────────────────────────
-async fn generate_deck(
-    State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
-) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
-    let pool = &deployment.db().pool;
-    let id = DbUuid::from(id);
-    let deal = CrmDeal::find_by_id(pool, &id).await?;
+// ── Background helper: generate deck (Lux) ──────────────────────────────────
+async fn generate_deck_background(pool: &sqlx::SqlitePool, deal_id: DbUuid) {
+    match generate_deck_core(pool, &deal_id).await {
+        Ok(_) => tracing::info!("Lux auto-generated deck for deal {}", deal_id),
+        Err(e) => tracing::warn!("Lux auto-generation failed for deal {}: {}", deal_id, e),
+    }
+}
+
+async fn generate_deck_core(pool: &sqlx::SqlitePool, id: &DbUuid) -> Result<CrmDeal, ApiError> {
+    let deal = CrmDeal::find_by_id(pool, id).await?;
 
     if deal.proposal_text.is_none() {
         return Err(ApiError::BadRequest("Generate proposal first before generating deck".into()));
     }
 
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
-        .map_err(|_| ApiError::BadRequest("ANTHROPIC_API_KEY not set".into()))?;
-
-    // Fetch org brand profile for styling context
     let brand_context: Option<String> = if let Some(ref org_id) = deal.organization_id {
         #[derive(sqlx::FromRow)] struct BrandRow { primary_color: Option<String>, brand_voice: Option<String>, tagline: Option<String> }
         sqlx::query_as::<_, BrandRow>("SELECT primary_color, brand_voice, tagline FROM organization_brand_profiles WHERE organization_id = ? LIMIT 1")
@@ -1520,38 +1976,11 @@ async fn generate_deck(
         None => format!("Create a sales deck for this proposal:\n\n{}", proposal),
     };
 
-    let body = serde_json::json!({
-        "model": "claude-opus-4-6",
-        "max_tokens": 4096,
-        "system": lux_system,
-        "messages": [{"role": "user", "content": user_prompt}]
-    });
+    let deck_script = call_llm(lux_system, &user_prompt).await?;
 
-    let http_client = reqwest::Client::new();
-    let resp = http_client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", &api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("content-type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| ApiError::BadRequest(format!("Claude API error: {}", e)))?;
-
-    let val: serde_json::Value = resp.json().await
-        .map_err(|e| ApiError::BadRequest(format!("Claude response parse error: {}", e)))?;
-    let deck_script = val["content"].as_array()
-        .and_then(|a| a.iter().find(|c| c["type"] == "text"))
-        .and_then(|c| c["text"].as_str())
-        .unwrap_or("Deck generation failed")
-        .to_string();
-
-    // Store deck script as a knowledge source artifact and set deck_url to a local ref
     let deck_id = uuid::Uuid::new_v4();
     let deck_url = format!("/api/crm/deals/{}/deck/{}", id, deck_id);
 
-    // Persist deck content as a business_reports supplemental record or just as deck_url
-    // For now store script in deck_url (as a data URI-style marker) and log the content
     let _ = sqlx::query(
         "INSERT OR IGNORE INTO project_knowledge_sources (id, owner_type, owner_id, source_type, source_id, source_title, source_summary, coverage_score, is_active, created_at, updated_at) VALUES (?, 'deal', ?, 'deck_script', ?, ?, ?, 0.8, 1, datetime('now','subsec'), datetime('now','subsec'))"
     )
@@ -1562,16 +1991,26 @@ async fn generate_deck(
     .bind(deck_script.chars().take(500).collect::<String>())
     .execute(pool).await;
 
-    // Store full deck script in custom_fields for now (until dedicated deck table)
     let deck_data = serde_json::json!({ "deck_id": deck_id.to_string(), "script": deck_script });
     let _ = sqlx::query("UPDATE crm_deals SET custom_fields = ?, deck_url = ?, updated_at = datetime('now','subsec') WHERE id = ?")
         .bind(deck_data.to_string())
         .bind(&deck_url)
-        .bind(&id)
+        .bind(id)
         .execute(pool).await;
 
-    let updated = CrmDeal::find_by_id(pool, &id).await?;
+    let updated = CrmDeal::find_by_id(pool, id).await?;
     tracing::info!("Lux generated deck for deal {}", id);
+    Ok(updated)
+}
+
+// ── POST /crm/deals/:id/generate-deck (Lux HTTP handler) ────────────────────
+async fn generate_deck(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let id = DbUuid::from(id);
+    let updated = generate_deck_core(pool, &id).await?;
     Ok(Json(ApiResponse::success(updated)))
 }
 
@@ -1707,7 +2146,7 @@ async fn mark_deal_won(
 
     // ── Create Project ───────────────────────────────────────────────────────
     let project_id = DbUuid::new();
-    let project_name = format!("{} — {}", deal.name, company_name);
+    let project_name = format!("{} Project", company_name);
     let _ = sqlx::query(
         "INSERT INTO projects (id, name, git_repo_path, client_id, organization_id, created_at, updated_at) VALUES (?, ?, '', ?, ?, datetime('now','subsec'), datetime('now','subsec'))"
     )
@@ -1721,37 +2160,73 @@ async fn mark_deal_won(
     let _ = sqlx::query("UPDATE crm_deals SET project_id = ?, updated_at = datetime('now','subsec') WHERE id = ?")
         .bind(&project_id).bind(&id).execute(pool).await;
 
-    // ── Parse deliverables from proposal and create Tasks ───────────────────
-    let mut task_count = 0i32;
-    if let Some(ref proposal_text) = deal.proposal_text {
-        // Extract deliverables JSON block from proposal: ```json ... ```
-        if let Some(start) = proposal_text.find("```json") {
-            let after = &proposal_text[start + 7..];
-            if let Some(end) = after.find("```") {
-                let json_str = after[..end].trim();
-                if let Ok(deliverables) = serde_json::from_str::<serde_json::Value>(json_str) {
-                    let items = deliverables.as_array().cloned()
-                        .or_else(|| deliverables.get("deliverables").and_then(|d| d.as_array()).cloned())
-                        .unwrap_or_default();
+    // ── F3: Move deliverables to the new project ────────────────────────────
+    let _ = sqlx::query(
+        "UPDATE deliverables SET project_id = ?, updated_at = datetime('now','subsec') WHERE crm_deal_id = ?"
+    )
+    .bind(&project_id)
+    .bind(&id)
+    .execute(pool)
+    .await;
 
-                    for item in items {
-                        let title = item["title"].as_str()
-                            .or_else(|| item["name"].as_str())
-                            .or_else(|| item.as_str())
-                            .unwrap_or("Deliverable");
-                        let desc = item["description"].as_str().unwrap_or("");
-                        let task_id = DbUuid::new();
-                        let _ = sqlx::query(
-                            "INSERT INTO tasks (id, project_id, crm_deal_id, title, description, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'todo', datetime('now','subsec'), datetime('now','subsec'))"
-                        )
-                        .bind(&task_id).bind(&project_id).bind(&id)
-                        .bind(title).bind(desc)
-                        .execute(pool).await;
-                        task_count += 1;
-                    }
-                }
-            }
-        }
+    // ── F3: Create tasks from deliverables table (not JSON re-parsing) ──────
+    #[derive(sqlx::FromRow)]
+    struct DeliverableRow { #[allow(dead_code)] id: DbUuid, title: String, description: Option<String> }
+    let deliverables: Vec<DeliverableRow> = sqlx::query_as::<_, DeliverableRow>(
+        "SELECT id, title, description FROM deliverables WHERE crm_deal_id = ? ORDER BY created_at ASC"
+    )
+    .bind(&id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    let mut task_count = deliverables.len() as i32;
+    for deliv in &deliverables {
+        let task_id = DbUuid::new();
+        let _ = sqlx::query(
+            "INSERT INTO tasks (id, project_id, crm_deal_id, title, description, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'todo', datetime('now','subsec'), datetime('now','subsec'))"
+        )
+        .bind(&task_id).bind(&project_id).bind(&id)
+        .bind(&deliv.title).bind(&deliv.description)
+        .execute(pool).await;
+    }
+
+    // Fallback: if no deliverables exist, create a default setup task
+    if task_count == 0 {
+        let task_id = DbUuid::new();
+        let _ = sqlx::query(
+            "INSERT INTO tasks (id, project_id, crm_deal_id, title, description, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'todo', datetime('now','subsec'), datetime('now','subsec'))"
+        )
+        .bind(&task_id).bind(&project_id).bind(&id)
+        .bind("Project Setup & Kickoff")
+        .bind(format!("Initial project setup for {}. Review proposal and create specific deliverables.", company_name))
+        .execute(pool).await;
+        task_count = 1;
+    }
+
+    // ── F3: VIBE transaction for deal value ─────────────────────────────────
+    if let Some(amount) = deal.amount {
+        let vibe_amount = amount * 100.0; // 1 USD = 100 VIBE
+        let tx_id = DbUuid::new();
+        let _ = sqlx::query(
+            "INSERT INTO vibe_transactions (id, amount, transaction_type, description, created_at) VALUES (?, ?, 'deal_won', ?, datetime('now','subsec'))"
+        )
+        .bind(&tx_id)
+        .bind(vibe_amount)
+        .bind(format!("Deal won: {} — ${:.2}", deal.name, amount))
+        .execute(pool)
+        .await;
+        tracing::info!("VIBE transaction {} created: {} VIBE for deal {}", tx_id, vibe_amount, id);
+    }
+
+    // F3: Person invitation — log for now (full invite system to be wired later)
+    if let Some(ref ci) = contact_info {
+        tracing::info!(
+            "Won deal {}: person invitation pending for {} ({}) — wire invite system later",
+            id,
+            ci.full_name.as_deref().unwrap_or("unknown"),
+            ci.email.as_deref().unwrap_or("no-email")
+        );
     }
 
     // Log Won activity

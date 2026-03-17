@@ -13,7 +13,7 @@
  *   /meeting-note <text>     — add timestamped note to transcript
  */
 
-import { Client, Events, GatewayIntentBits } from 'discord.js';
+import { Client, Events, GatewayIntentBits, ChannelType } from 'discord.js';
 import {
   joinVoiceChannel,
   createAudioPlayer,
@@ -84,7 +84,12 @@ function checkRateLimit(guildId, userId) {
 
 async function runBot(token, agentName) {
   const client = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildVoiceStates,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.MessageContent,
+    ],
   });
 
   client.once(Events.ClientReady, async (c) => {
@@ -96,6 +101,17 @@ async function runBot(token, agentName) {
   client.on(Events.InteractionCreate, (interaction) => {
     handleInteraction(interaction, agentName).catch((e) =>
       console.error(`[${agentName}] Unhandled interaction error:`, e)
+    );
+  });
+
+  // ── Text channel message handler ────────────────────────────────────────────
+  // When the bot has an active voice session in a guild, it reads text messages.
+  // Messages in the voice channel's text chat OR @mentioning the bot get a full
+  // agent response (text reply + TTS in voice). Other guild messages are silently
+  // added to the context buffer so the agent has awareness.
+  client.on(Events.MessageCreate, (message) => {
+    handleTextMessage(message, agentName, client).catch((e) =>
+      console.error(`[${agentName}] Text message handler error:`, e.message)
     );
   });
 
@@ -326,8 +342,8 @@ async function handleJoin(interaction, agentName) {
 
   // Announce arrival with TTS greeting
   const greetings = {
-    nora: `Hello, I'm Nora — PowerClub Global's Executive AI Agent. I'm in the channel and listening. Just say my name to speak with me.`,
-    topsi: `Hi there, I'm Topsi, PowerClub Global's technical AI agent. I'm listening — just say my name to get my attention.`,
+    nora: `Hello, I'm Nora — PowerClub Global's Executive AI Agent. I'm in the channel and listening. Say my name to speak with me, or type in the chat — I can read both.`,
+    topsi: `Hi there, I'm Topsi, PowerClub Global's technical AI agent. I'm listening — say my name or type in the chat.`,
   };
   const greeting = greetings[agentName.toLowerCase()] ?? `Hello, I'm ${agentName} and I'm listening.`;
   playTts(session, greeting).catch(() => {});
@@ -360,7 +376,7 @@ async function handleJoin(interaction, agentName) {
 
   await interaction.editReply(
     `**${agentName}** has joined **#${voiceChannel.name}** and is listening.\n` +
-    `Say my name to speak with me directly.\n` +
+    `Say my name to speak with me, or type in the text chat — I can read both.\n` +
     `_Session ID: \`${meetingId.slice(0, 8)}\`_`
   );
 }
@@ -671,6 +687,124 @@ function saveSessionAsKnowledgeSource(session) {
     console.log(`[${session.agentName}] Session saved to knowledge graph (org: ${orgRow?.org_hex ?? 'none'})`);
   } catch (e) {
     console.warn(`[${session.agentName}] Knowledge source save failed:`, e.message);
+  }
+}
+
+// ─── Text channel message handler ─────────────────────────────────────────────
+
+async function handleTextMessage(message, agentName, client) {
+  // Ignore bots (including self), DMs, and system messages
+  if (message.author.bot) return;
+  if (!message.guildId) return;
+
+  // Find active session for this guild + agent
+  const sessionKey = `${message.guildId}:${agentName}`;
+  const session = sessions.get(sessionKey);
+  if (!session) return;
+
+  const displayName = message.member?.displayName ?? message.author.username;
+  const text = message.content?.trim();
+  if (!text) return;
+
+  // Determine if this message should get a response:
+  // 1. Posted in the voice channel's text chat (same channel ID as voice channel)
+  // 2. @mentions the bot
+  // 3. Posted in a text channel whose name matches the voice channel name
+  const isMentioned = message.mentions.has(client.user);
+  const isVoiceTextChat = message.channelId === session.channelId;
+  const isMatchingTextChannel =
+    message.channel.type === ChannelType.GuildText &&
+    message.channel.name === session.channelName;
+  const shouldRespond = isVoiceTextChat || isMentioned || isMatchingTextChannel;
+
+  // Strip the bot mention from the message text for cleaner agent input
+  const cleanText = isMentioned
+    ? text.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim() || text
+    : text;
+
+  // Always push to context buffer (gives Nora awareness of chat)
+  session.contextBuffer.push(`${displayName} (text)`, cleanText);
+
+  if (!shouldRespond) {
+    // Silent context — log but don't respond
+    console.log(`[${agentName}] [text-context] [${displayName}]: ${cleanText.slice(0, 80)}`);
+    return;
+  }
+
+  console.log(`[${agentName}] [text-addressed] [${displayName}]: ${cleanText.slice(0, 100)}`);
+
+  // Build participant context
+  const others = [...session.participants.entries()]
+    .map(([, name]) => name);
+  const participantCtx = others.length
+    ? `Channel participants: ${others.join(', ')}. Text message from: ${displayName}.`
+    : `Text message from: ${displayName}.`;
+
+  // Persist user message as a meeting segment
+  const elapsedMs = Date.now() - session.startedAt;
+  session.segmentCount++;
+  db.prepare(
+    `INSERT INTO meeting_segments
+       (id, meeting_session_id, segment_index, speaker_label, text, confidence,
+        start_time_ms, end_time_ms, is_topsi_addressed, metadata)
+     VALUES (?, ?, ?, ?, ?, 1.0, ?, ?, 1, ?)`
+  ).run(
+    randomUUID(),
+    session.meetingId,
+    session.segmentCount,
+    displayName,
+    `[TEXT] ${cleanText}`,
+    elapsedMs,
+    elapsedMs,
+    JSON.stringify({ source: 'text_chat', discord_user_id: message.author.id, channel_id: message.channelId })
+  );
+
+  // Call agent
+  let agentResponse = null;
+  try {
+    agentResponse = await callAgent(
+      SERVER_PORT,
+      agentName,
+      cleanText,
+      session.projectId,
+      session.meetingId,
+      participantCtx
+    );
+  } catch (e) {
+    console.warn(`[${agentName}] Agent call failed (text):`, e.message);
+  }
+
+  if (agentResponse) {
+    // Reply in text channel
+    const reply = agentResponse.length > 1900
+      ? agentResponse.slice(0, 1900) + '...'
+      : agentResponse;
+    await message.reply(reply).catch((e) =>
+      console.warn(`[${agentName}] Failed to reply in text:`, e.message)
+    );
+
+    // Also speak via TTS in voice
+    playTts(session, agentResponse).catch((e) =>
+      console.warn(`[${agentName}] TTS playback failed (text trigger):`, e.message)
+    );
+
+    // Persist agent response segment
+    session.segmentCount++;
+    db.prepare(
+      `INSERT INTO meeting_segments
+         (id, meeting_session_id, segment_index, speaker_label, text, confidence,
+          start_time_ms, end_time_ms, is_topsi_addressed, metadata)
+       VALUES (?, ?, ?, ?, ?, 1.0, ?, ?, 0, ?)`
+    ).run(
+      randomUUID(),
+      session.meetingId,
+      session.segmentCount,
+      agentName,
+      agentResponse,
+      Date.now() - session.startedAt,
+      Date.now() - session.startedAt,
+      JSON.stringify({ is_agent_response: true, source: 'text_chat_reply' })
+    );
   }
 }
 

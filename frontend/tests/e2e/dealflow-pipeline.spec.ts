@@ -280,7 +280,7 @@ test.describe('UI Enhancement Checks', () => {
     console.log('✅ Person profile link would go to /persons/', res.data.person_id);
   });
 
-  test('person profile link navigates to /persons/:id (UI)', async ({ page }) => {
+  test('person profile link navigates to /people/:id (UI)', async ({ page }) => {
     await loginAndGoto(page, `/organizations/${ORG_ID}/crm/acquisition`);
     await page.waitForSelector('[class*="inline-grid"]', { timeout: 20000 });
     await page.waitForTimeout(2000);
@@ -291,20 +291,21 @@ test.describe('UI Enhancement Checks', () => {
     await page.waitForSelector('[role="dialog"]', { timeout: 10000 });
     await page.waitForTimeout(800);
 
-    // Overview tab should have person profile link — look inside the dialog
+    // Overview or Intel tab should have person profile link — /people/ (consolidated route)
     const dialog = page.locator('[role="dialog"]');
-    const personLink = dialog.locator('a[href*="/persons/"]').first();
-    if (await personLink.count() > 0) {
-      const href = await personLink.getAttribute('href');
-      expect(href).toContain('/persons/');
+    // Check both /people/ and /persons/ (redirect exists) — prefer /people/
+    const peopleLink = dialog.locator('a[href*="/people/"]').first();
+    if (await peopleLink.count() > 0) {
+      const href = await peopleLink.getAttribute('href');
+      expect(href).toContain('/people/');
       console.log('✅ Person profile link correct:', href);
     } else {
       // Click Intel tab inside the dialog and look there
       await dialog.locator('[role="tablist"] button, [role="tab"]').filter({ hasText: /^Intel$/ }).first().click();
       await page.waitForTimeout(500);
-      const intelPersonLink = dialog.locator('a[href*="/persons/"]').first();
-      const href = await intelPersonLink.getAttribute('href');
-      expect(href).toContain('/persons/');
+      const intelPeopleLink = dialog.locator('a[href*="/people/"]').first();
+      const href = await intelPeopleLink.getAttribute('href');
+      expect(href).toContain('/people/');
       console.log('✅ Person profile link in Intel tab:', href);
     }
   });

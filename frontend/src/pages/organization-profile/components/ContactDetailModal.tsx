@@ -43,12 +43,14 @@ export function ContactDetailModal({
   open,
   onClose,
   personId,
+  companyId,
 }: {
   contact: CrmContactRecord;
   orgId: string;
   open: boolean;
   onClose: () => void;
   personId?: string;
+  companyId?: string;
 }) {
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
@@ -210,7 +212,13 @@ export function ContactDetailModal({
                 {contact.company_name && (
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Building2 className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{contact.company_name}</span>
+                    {companyId ? (
+                      <Link to={`/companies/${companyId}`} onClick={onClose} className="truncate hover:text-primary transition-colors">
+                        {contact.company_name}
+                      </Link>
+                    ) : (
+                      <span className="truncate">{contact.company_name}</span>
+                    )}
                   </div>
                 )}
                 {contact.job_title && (

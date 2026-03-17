@@ -679,6 +679,7 @@ export function ContactsTab({ orgId }: { orgId: string }) {
           open={!!selectedContactId}
           onClose={() => setSelectedContactId(null)}
           personId={dealPersonMap.get(selectedContact.id)?.person_id}
+          companyId={dealPersonMap.get(selectedContact.id)?.company_id}
         />
       )}
     </div>

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
-import { Loader2, Presentation, Wand2, Receipt, Trophy, ExternalLink } from 'lucide-react';
+import { Loader2, Presentation, Wand2, Receipt, Trophy, ExternalLink, Share2, Copy, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { crmDealsApi } from '@/lib/api/crm';
 import type { CrmDealWithContact } from '@/types/crm';
@@ -15,6 +15,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
   const qc = useQueryClient();
   const [invoiceSending, setInvoiceSending] = useState(false);
   const [markingWon, setMarkingWon] = useState(false);
+  const [reviewLinkCopied, setReviewLinkCopied] = useState(false);
 
   const generateDeck = useMutation({
     mutationFn: () => crmDealsApi.generateDeck(deal.id),
@@ -100,6 +101,25 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
                 {deckScript}
               </div>
             )}
+            {/* Internal Review Link */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-xs border-indigo-500/40 text-indigo-400 hover:bg-indigo-950/30"
+                onClick={() => {
+                  const url = `${window.location.origin}/api/crm/deals/${deal.id}/deck/${deal.deck_url?.split('/').pop() ?? ''}`;
+                  navigator.clipboard.writeText(url);
+                  setReviewLinkCopied(true);
+                  toast.success('Internal review link copied');
+                  setTimeout(() => setReviewLinkCopied(false), 3000);
+                }}
+              >
+                {reviewLinkCopied ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Share2 className="h-3.5 w-3.5" />}
+                {reviewLinkCopied ? 'Copied!' : 'Share for Review'}
+              </Button>
+              <span className="text-[10px] text-muted-foreground">Internal team review only</span>
+            </div>
           </div>
         )}
       </div>

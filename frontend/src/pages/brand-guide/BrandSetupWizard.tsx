@@ -14,9 +14,14 @@ interface BrandSetupWizardProps {
   orgName: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Override API calls for company brand profiles (defaults to org API) */
+  apiOverride?: {
+    upsert: (data: Partial<OrgBrandProfile>) => Promise<OrgBrandProfile>;
+    invalidateKey: string[];
+  };
 }
 
-export function BrandSetupWizard({ orgId, orgName, open, onOpenChange }: BrandSetupWizardProps) {
+export function BrandSetupWizard({ orgId, orgName, open, onOpenChange, apiOverride }: BrandSetupWizardProps) {
   const queryClient = useQueryClient();
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
@@ -37,9 +42,9 @@ export function BrandSetupWizard({ orgId, orgName, open, onOpenChange }: BrandSe
 
   const upsertMutation = useMutation({
     mutationFn: (data: Partial<OrgBrandProfile>) =>
-      organizationsApi.upsertBrandProfile(orgId, data),
+      apiOverride ? apiOverride.upsert(data) : organizationsApi.upsertBrandProfile(orgId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orgBrandProfile', orgId] });
+      queryClient.invalidateQueries({ queryKey: apiOverride?.invalidateKey ?? ['orgBrandProfile', orgId] });
       toast.success('Brand profile created');
       onOpenChange(false);
     },

@@ -7,11 +7,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
-  PhoneIncoming, RefreshCw, Play, FileText,
+  PhoneIncoming, RefreshCw, Play, FileText, Briefcase,
   CheckCircle, XCircle, Clock, Loader2, Upload,
   ChevronDown, ChevronRight, Plus, User, Building2, Brain,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { callIntakeApi, reportsApi } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface CallIntakeItem {
   id: string;
@@ -59,6 +61,7 @@ function parseJson<T>(str: string, fallback: T): T {
 
 export default function CallIntakePage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [items, setItems] = useState<CallIntakeItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -306,6 +309,32 @@ export default function CallIntakePage() {
                         <Button size="sm" variant="ghost" className="text-gray-400 hover:text-white h-7 px-2 text-xs gap-1"
                           onClick={() => navigate(`/business-reports/${item.report_id}`)}>
                           <FileText className="w-3 h-3" /> Report
+                        </Button>
+                      )}
+                      {item.person_id && !item.crm_deal_id && item.status === 'processed' && (
+                        <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white h-7 px-3 text-xs gap-1"
+                          onClick={async () => {
+                            try {
+                              const dealName = [item.from_name, item.company_name].filter(Boolean).join(' — ') || 'New Deal';
+                              const res = await fetch('/api/crm/deals', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('session_id') ?? ''}` },
+                                credentials: 'include',
+                                body: JSON.stringify({
+                                  organization_id: user?.home_organization_id ?? (user as any)?.organizations?.[0]?.id,
+                                  crm_contact_id: null,
+                                  name: dealName,
+                                  description: item.call_summary ?? item.subject ?? '',
+                                }),
+                              });
+                              if (res.ok) {
+                                toast.success('Deal created — check the Pipeline');
+                              } else {
+                                toast.error('Failed to create deal');
+                              }
+                            } catch { toast.error('Failed to create deal'); }
+                          }}>
+                          <Briefcase className="w-3 h-3" /> Create Deal
                         </Button>
                       )}
                       {item.status === 'pending' && (
