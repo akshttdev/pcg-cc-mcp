@@ -21,7 +21,7 @@ import {
   knowledgeApi,
 } from '@/lib/api';
 import { organizationKeys, knowledgeKeys } from '@/lib/query-keys';
-import type { ProjectKnowledgeResponse } from '@/lib/api';
+import type { ProjectKnowledgeResponse, ProjectKnowledgeSource } from '@/lib/api';
 import { DataSourcesIntelView } from './ArtifactsView';
 import { DataSourcesView } from './DataSourcesView';
 import { ArtifactsIntelView, ArtifactsView } from './ArtifactsView';
@@ -77,6 +77,7 @@ export function KnowledgeTab({
     let totalCoverage = 0;
     let coverageCount = 0;
     const sourcesByProject: { projectName: string; projectId: string; data: ProjectKnowledgeResponse }[] = [];
+    const byType: Record<string, { source: ProjectKnowledgeSource; projectName: string; projectId: string }[]> = {};
 
     knowledgeQueries.forEach((q, i) => {
       if (!q.data) return;
@@ -90,12 +91,18 @@ export function KnowledgeTab({
       if (q.data.total_sources > 0) {
         sourcesByProject.push({ projectName: entry.name, projectId: entry.id, data: q.data });
       }
+      for (const [type, sources] of Object.entries(q.data.sources_by_type)) {
+        if (!byType[type]) byType[type] = [];
+        for (const source of sources) {
+          byType[type].push({ source, projectName: entry.name, projectId: entry.id });
+        }
+      }
     });
 
     const orgEntryCount = orgKnowledge?.knowledge_entries?.length ?? 0;
     totalSources += orgEntryCount;
     const avgCompleteness = coverageCount > 0 ? Math.round((totalCoverage / coverageCount) * 100) : 0;
-    return { totalSources, staleSources, avgCompleteness, sourcesByProject };
+    return { totalSources, staleSources, avgCompleteness, sourcesByProject, byType };
   }, [knowledgeQueries, projectEntries, orgKnowledge]);
 
   // Deep view: "datasources" shows the new data sources table; others filter knowledge by type
@@ -143,14 +150,14 @@ export function KnowledgeTab({
     }
 
     if (view === 'topology') {
-      return <TopologyView projectEntries={projectEntries} aggregated={aggregated as any} isLoading={isLoading} loadedCount={loadedCount} />;
+      return <TopologyView projectEntries={projectEntries} aggregated={aggregated} isLoading={isLoading} loadedCount={loadedCount} />;
     }
 
     // Generic fallback for other knowledge source types (e.g. conversations)
     const typeKey =
       view === 'conversations' ? 'conversation'
       : null;
-    const items = typeKey ? ((aggregated as any).byType?.[typeKey] || []) : [];
+    const items = typeKey ? (aggregated.byType[typeKey] || []) : [];
     const meta = typeKey ? SOURCE_TYPE_META[typeKey] : null;
     const Icon = meta?.icon ?? BookOpen;
 
@@ -173,7 +180,7 @@ export function KnowledgeTab({
           </div>
         ) : (
           <div className="space-y-2">
-            {items.map(({ source, projectName, projectId }: { source: any; projectName: string; projectId: string }) => (
+            {items.map(({ source, projectName, projectId }) => (
               <Card key={source.id} className="bg-card/80 backdrop-blur-sm border-border/50">
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -261,8 +268,8 @@ export function KnowledgeTab({
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-2">
-              {orgKnowledge.knowledge_entries.map((entry: any) => (
-                <Badge key={entry.source_id} variant="secondary" className="text-xs gap-1 cursor-default" title={entry.source_summary || entry.source_title}>
+              {orgKnowledge.knowledge_entries.map((entry) => (
+                <Badge key={entry.id} variant="secondary" className="text-xs gap-1 cursor-default" title={entry.source_summary || entry.source_title}>
                   <Brain className="h-3 w-3" />
                   {entry.source_title}
                   {entry.coverage_score != null && (

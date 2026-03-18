@@ -287,7 +287,7 @@ export const dataSourcesApi = {
 
   getWorkflows: async (dataSourceId: string) => {
     const response = await makeRequest(`/api/data-sources/${dataSourceId}/workflows`);
-    return handleApiResponse<any>(response);
+    return handleApiResponse<WorkflowDefinition[]>(response);
   },
 
   runWorkflow: async (dataSourceId: string, workflowId: string, model?: string, force?: boolean) => {
@@ -686,7 +686,7 @@ export const stagingApi = {
     return handleApiResponse<WorkflowStagingRecord>(response);
   },
 
-  update: async (id: string, data: { status?: string; record_data?: any }): Promise<WorkflowStagingRecord> => {
+  update: async (id: string, data: { status?: string; record_data?: unknown }): Promise<WorkflowStagingRecord> => {
     const response = await makeRequest(`/api/workflow-staging/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },

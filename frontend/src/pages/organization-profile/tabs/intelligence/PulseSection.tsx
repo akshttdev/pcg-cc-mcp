@@ -7,9 +7,22 @@ import {
   AlertTriangle,
   Radio,
 } from 'lucide-react';
-import { pulseApi } from '@/lib/api';
+import { pulseApi, PulseAlert, PulseContentItem } from '@/lib/api';
 import { pulseKeys } from '@/lib/query-keys';
 import { formatDate } from '../../helpers';
+
+interface AggregatedAlert extends PulseAlert {
+  _projectName: string;
+  rule_name?: string;
+  triggered_at?: string;
+  acknowledged_at?: string;
+}
+
+interface AggregatedContentItem extends PulseContentItem {
+  _projectName: string;
+  content_preview?: string;
+  source_name?: string;
+}
 
 // ── Pulse View (deep view for pulse) ─────────────────────────────────────────
 
@@ -33,19 +46,19 @@ export function PulseView({ projectEntries }: { projectEntries: { id: string; na
   });
 
   const aggregated = useMemo(() => {
-    const allAlerts: any[] = [];
-    const allContent: any[] = [];
+    const allAlerts: AggregatedAlert[] = [];
+    const allContent: AggregatedContentItem[] = [];
 
     alertQueries.forEach((q, i) => {
       if (!q.data) return;
       const entry = projectEntries[i];
-      (q.data as any[]).forEach((a: any) => allAlerts.push({ ...a, _projectName: entry.name }));
+      (q.data as PulseAlert[]).forEach((a) => allAlerts.push({ ...a, _projectName: entry.name }));
     });
 
     contentQueries.forEach((q, i) => {
       if (!q.data?.items) return;
       const entry = projectEntries[i];
-      q.data.items.forEach((c: any) => allContent.push({ ...c, _projectName: entry.name }));
+      q.data.items.forEach((c) => allContent.push({ ...c, _projectName: entry.name }));
     });
 
     allAlerts.sort((a, b) => new Date(b.triggered_at || b.created_at).getTime() - new Date(a.triggered_at || a.created_at).getTime());
@@ -106,7 +119,7 @@ export function PulseView({ projectEntries }: { projectEntries: { id: string; na
             ) : (
               <ScrollArea className="h-[300px]">
                 <div className="space-y-2 pr-3">
-                  {aggregated.alerts.map((alert: any) => (
+                  {aggregated.alerts.map((alert) => (
                     <div
                       key={alert.id}
                       className={`p-3 rounded-lg border border-border/50 ${!alert.acknowledged_at ? 'bg-amber-50/30 dark:bg-amber-950/20' : ''}`}
@@ -152,7 +165,7 @@ export function PulseView({ projectEntries }: { projectEntries: { id: string; na
             ) : (
               <ScrollArea className="h-[300px]">
                 <div className="space-y-2 pr-3">
-                  {aggregated.content.map((item: any) => (
+                  {aggregated.content.map((item) => (
                     <div key={item.id} className="p-3 rounded-lg border border-border/50">
                       <p className="text-sm font-medium line-clamp-2">{item.title || item.content_preview || 'Signal'}</p>
                       <div className="flex items-center gap-2 mt-1">
@@ -198,19 +211,19 @@ export function PulseSection({ projectEntries }: { projectEntries: { id: string;
   });
 
   const aggregated = useMemo(() => {
-    const allAlerts: any[] = [];
-    const allContent: any[] = [];
+    const allAlerts: AggregatedAlert[] = [];
+    const allContent: AggregatedContentItem[] = [];
 
     alertQueries.forEach((q, i) => {
       if (!q.data) return;
       const entry = projectEntries[i];
-      q.data.forEach((a: any) => allAlerts.push({ ...a, _projectName: entry.name }));
+      q.data.forEach((a) => allAlerts.push({ ...a, _projectName: entry.name }));
     });
 
     contentQueries.forEach((q, i) => {
       if (!q.data?.items) return;
       const entry = projectEntries[i];
-      q.data.items.forEach((c: any) => allContent.push({ ...c, _projectName: entry.name }));
+      q.data.items.forEach((c) => allContent.push({ ...c, _projectName: entry.name }));
     });
 
     allAlerts.sort((a, b) => new Date(b.triggered_at || b.created_at).getTime() - new Date(a.triggered_at || a.created_at).getTime());
@@ -266,7 +279,7 @@ export function PulseSection({ projectEntries }: { projectEntries: { id: string;
             ) : (
               <ScrollArea className="h-[300px]">
                 <div className="space-y-2 pr-3">
-                  {aggregated.alerts.map((alert: any) => (
+                  {aggregated.alerts.map((alert) => (
                     <div
                       key={alert.id}
                       className={`p-3 rounded-lg border border-border/50 ${!alert.acknowledged_at ? 'bg-amber-50/30 dark:bg-amber-950/20' : ''}`}
@@ -312,7 +325,7 @@ export function PulseSection({ projectEntries }: { projectEntries: { id: string;
             ) : (
               <ScrollArea className="h-[300px]">
                 <div className="space-y-2 pr-3">
-                  {aggregated.content.map((item: any) => (
+                  {aggregated.content.map((item) => (
                     <div key={item.id} className="p-3 rounded-lg border border-border/50">
                       <p className="text-sm font-medium line-clamp-2">{item.title || item.content_preview || 'Signal'}</p>
                       <div className="flex items-center gap-2 mt-1">

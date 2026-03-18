@@ -32,13 +32,21 @@ import { dataSourceKeys, workflowKeys } from '@/lib/query-keys';
 import { StagingReviewPanel } from '@/components/workflows/StagingReviewPanel';
 import { RunAndReviewPanel } from '@/components/workflows/RunAndReviewPanel';
 
+interface DataSourceArtifact {
+  id: string;
+  title?: string;
+  name?: string;
+  type?: string;
+  content?: unknown;
+  created_at?: string;
+}
+
 interface WorkflowRunStep {
   name: string;
   status: string;
   output?: string;
   error?: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  result?: any;
+  result?: unknown;
 }
 
 interface WorkflowRunResult {
@@ -159,7 +167,7 @@ export function DataSourceDetailPage() {
     }
   };
 
-  const renderJsonContent = (content: any) => {
+  const renderJsonContent = (content: unknown) => {
     if (typeof content === 'string') {
       try {
         const parsed = JSON.parse(content);
@@ -171,7 +179,7 @@ export function DataSourceDetailPage() {
     return renderStructuredData(content);
   };
 
-  const renderStructuredData = (data: any, depth = 0): JSX.Element => {
+  const renderStructuredData = (data: unknown, depth = 0): JSX.Element => {
     if (data === null || data === undefined) {
       return <span className="text-muted-foreground italic">null</span>;
     }
@@ -372,7 +380,7 @@ export function DataSourceDetailPage() {
                     <SelectValue placeholder="Select workflow" />
                   </SelectTrigger>
                   <SelectContent>
-                    {workflows.map((wf: any) => (
+                    {workflows.map((wf) => (
                       <SelectItem key={wf.id} value={wf.id}>
                         {wf.name}
                       </SelectItem>
@@ -429,7 +437,7 @@ export function DataSourceDetailPage() {
                 )}
                 {Array.isArray(workflows) && workflows.length > 1
                   ? 'Run'
-                  : `Run ${workflows?.find((w: any) => w.id === effectiveWorkflowId)?.name ?? 'Analysis'}`}
+                  : `Run ${workflows?.find((w) => w.id === effectiveWorkflowId)?.name ?? 'Analysis'}`}
               </Button>
             </div>
           </div>
@@ -533,7 +541,7 @@ export function DataSourceDetailPage() {
                           </Badge>
                         </div>
                       </div>
-                      {step.result && (
+                      {step.result != null && (
                         isExpanded ? (
                           <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
                         ) : (
@@ -541,7 +549,7 @@ export function DataSourceDetailPage() {
                         )
                       )}
                     </button>
-                    {isExpanded && step.result && (
+                    {isExpanded && step.result != null && (
                       <div className="ml-8 mb-2 p-3 rounded-md bg-muted/30 border">
                         {renderJsonContent(step.result)}
                       </div>
@@ -558,7 +566,7 @@ export function DataSourceDetailPage() {
             <div className="py-4">
               {(() => {
                 const selectedWf = Array.isArray(workflows)
-                  ? workflows.find((w: any) => w.id === effectiveWorkflowId)
+                  ? workflows.find((w) => w.id === effectiveWorkflowId)
                   : null;
                 if (selectedWf) {
                   return (
@@ -568,10 +576,10 @@ export function DataSourceDetailPage() {
                         {' '}&mdash; {selectedWf.nodes?.length ?? 0} node{(selectedWf.nodes?.length ?? 0) !== 1 ? 's' : ''}
                       </p>
                       <div className="space-y-1.5">
-                        {(selectedWf.nodes ?? []).map((node: any, idx: number) => {
-                          const inputs = (selectedWf.connections ?? []).filter((c: any) => c.target === node.id);
-                          const inputNames = inputs.map((c: any) => {
-                            const src = (selectedWf.nodes ?? []).find((n: any) => n.id === c.source);
+                        {(selectedWf.nodes ?? []).map((node, idx: number) => {
+                          const inputs = (selectedWf.connections ?? []).filter((c) => c.target === node.id);
+                          const inputNames = inputs.map((c) => {
+                            const src = (selectedWf.nodes ?? []).find((n) => n.id === c.source);
                             return src?.name ?? c.source;
                           });
                           return (
@@ -615,7 +623,7 @@ export function DataSourceDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {artifacts.map((artifact: any) => {
+            {(artifacts as DataSourceArtifact[]).map((artifact) => {
               const isExpanded = expandedArtifacts.has(artifact.id);
               return (
                 <div key={artifact.id} className="border rounded-md">

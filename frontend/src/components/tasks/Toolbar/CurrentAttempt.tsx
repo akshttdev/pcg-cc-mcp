@@ -181,8 +181,9 @@ function CurrentAttempt({
       setError(null); // Clear any previous errors on success
       setPushSuccess(true);
       setTimeout(() => setPushSuccess(false), 2000);
-    } catch (error: any) {
-      setError(error.message || 'Failed to push changes');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to push changes';
+      setError(message);
     } finally {
       setPushing(false);
     }

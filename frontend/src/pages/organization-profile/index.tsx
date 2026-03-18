@@ -55,6 +55,8 @@ import {
   resolveApiUrl,
   type ClientData,
   type OrgBrandProfile,
+  type SidebarProject,
+  type SidebarClient,
 } from '@/lib/api';
 import { organizationKeys, sidebarKeys } from '@/lib/query-keys';
 import { useOrganizationById, useCrmContacts } from '@/hooks/queries';
@@ -267,11 +269,11 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
 
   const allProjects = useMemo(() => {
     if (!sidebarOrg) return [];
-    const collectProjects = (projects: any[]): any[] =>
-      projects.flatMap((p: any) => [p, ...collectProjects(p.children || [])]);
+    const collectProjects = (projects: SidebarProject[]): SidebarProject[] =>
+      projects.flatMap((p) => [p, ...collectProjects(p.children || [])]);
     return [
       ...collectProjects(sidebarOrg.internal_projects || []),
-      ...(sidebarOrg.clients || []).flatMap((c: any) => collectProjects(c.projects || [])),
+      ...(sidebarOrg.clients || []).flatMap((c: SidebarClient) => collectProjects(c.projects || [])),
     ];
   }, [sidebarOrg]);
 
@@ -349,10 +351,10 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 ) : org.description ? (
                   <p className="text-sm text-muted-foreground mt-0.5 truncate">{org.description}</p>
                 ) : null}
-                {(org as any).address && (
+                {org.address && (
                   <p className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
                     <MapPin className="h-3 w-3 shrink-0" />
-                    {(org as any).address}
+                    {org.address}
                   </p>
                 )}
                 {brandProfile && (
