@@ -146,6 +146,47 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 
 ---
 
+## P3 — Developer Experience & Testing Infrastructure
+
+### 13. Onboarding Dialog Bypass for Test Environments
+**Source:** PR #47 smoke testing (2026-03-18)
+**What:** Fresh sessions trigger 4 sequential modals (safety notice → agent/editor config → GitHub connect → feedback opt-in) before the app is usable. Blocks all automated E2E and Playwright smoke testing.
+**Rationale:** Every smoke test run requires manually dismissing 4 dialogs. This makes automated QA impractical and wastes ~30s per test session. Critical for CI/CD pipeline.
+**Proposal:** Persist onboarding completion in `users` table (e.g., `onboarding_completed_at`). Skip for admin users. Add `SKIP_ONBOARDING=1` env var for test environments. Alternatively, add a `?skip_onboarding=1` URL param that sets a session flag.
+**Status:** NOT STARTED
+
+### 14. SSE Connections Should Not Fire Before Authentication
+**Source:** PR #47 smoke testing (2026-03-18)
+**What:** `useAgentDirectory` SSE connection (`/api/events/agent-directory`) fires on the login page before the user is authenticated, causing console errors (`The connection to ... was interrupted`).
+**Rationale:** Unnecessary network requests on unauthenticated pages. Creates noisy console errors that obscure real issues during debugging. The SSE hook should check auth state before connecting.
+**Proposal:** Guard SSE hooks with `isAuthenticated` check from AuthContext. Only establish SSE connections after successful login.
+**Status:** NOT STARTED
+
+### 15. Seed Database Refresh for Smoke Testing
+**Source:** PR #47 smoke testing (2026-03-18)
+**What:** Seed DB (`dev_assets_seed/duck_kanban.db`) lacks CRM deals, communications, and org cloud data. Smoke testing these features requires creating data manually via the UI or API, which is slow and fragile.
+**Rationale:** Every QA pass on CRM/comms features starts from zero. A richer seed with sample pipelines, deals, contacts, and comms would make smoke testing 10x faster.
+**Proposal:** Add seed data generation script or extend existing seed with: 1 pipeline per org with 3-5 deals across stages, 5-10 CRM contacts, sample call/SMS records. Run as part of `flox activate` or `npm run seed:dev`.
+**Status:** NOT STARTED
+
+## P3.5 — CRM UX Polish
+
+### 16. CRM Deal Card — Explain "Research Needed" Badge
+**Source:** PR #47 smoke testing (2026-03-18)
+**What:** New deals immediately show an orange "Research needed" badge and "5%" confidence score with no explanation of what triggers research or what the percentage represents.
+**Rationale:** Users creating simple deals to track prospects don't expect AI research status. The badge implies action is needed but provides no path to take that action. Confidence score has no tooltip or explanation.
+**Proposal:** Add tooltip on hover explaining the badge ("AI research has not been run for this deal. Click to start."). Show confidence explanation ("Based on available data about this prospect"). Consider making research opt-in rather than defaulting to "needed".
+**Status:** NOT STARTED
+
+### 17. Pipeline Aggregate Should Show Currency
+**Source:** PR #47 smoke testing (2026-03-18)
+**What:** Pipeline header shows "$50,000" but the deal form supports multiple currencies (USD, EUR, etc.). If deals have mixed currencies, the aggregate sum would be misleading.
+**Rationale:** Financial data accuracy is critical for CRM. Mixing currencies in a sum is a data integrity issue.
+**Proposal:** Either: (a) normalize all values to pipeline's base currency with conversion, (b) show aggregate per currency, or (c) only show aggregate when all deals share the same currency — otherwise show "Mixed currencies".
+**Status:** NOT STARTED
+
+---
+
 ## Active Branch Conflict Notes (2026-03-18)
 
 ### `sloperation316-pipeline-progress` — Updated from main (2026-03-18)
