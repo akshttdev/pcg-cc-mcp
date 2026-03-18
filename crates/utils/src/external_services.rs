@@ -582,7 +582,7 @@ async fn start_apn_bridge(script_path: &str, config: &ExternalServicesConfig) ->
 /// Checks the node log for relay connection confirmation.
 async fn verify_apn_network_sync(_config: &ExternalServicesConfig) -> bool {
     // Check node log for relay connection indicators
-    if let Ok(log) = std::fs::read_to_string(&std::env::temp_dir().join("apn_node.log").to_string_lossy().to_string()) {
+    if let Ok(log) = std::fs::read_to_string(std::env::temp_dir().join("apn_node.log")) {
         let connected = log.contains("Relay connected")
             || log.contains("NATS connected")
             || log.contains("relay_connected")
