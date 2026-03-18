@@ -18,6 +18,7 @@ pub struct WorkflowTrigger {
     pub model_override: Option<String>,
     pub auto_approve: bool,
     // Webhook-specific
+    #[serde(skip_serializing)]
     pub webhook_secret: Option<String>,
     pub webhook_url: Option<String>,
     // Rate limiting
@@ -251,7 +252,7 @@ impl WorkflowTrigger {
         match &self.last_triggered_at {
             Some(last) => {
                 let now = chrono::Utc::now();
-                if let Ok(last_time) = chrono::NaiveDateTime::parse_from_str(last, "%Y-%m-%d %H:%M:%S")
+                if let Ok(last_time) = chrono::NaiveDateTime::parse_from_str(last, "%Y-%m-%d %H:%M:%S%.f")
                     .or_else(|_| chrono::NaiveDateTime::parse_from_str(last, "%Y-%m-%dT%H:%M:%S%.f"))
                 {
                     let last_utc = last_time.and_utc();
@@ -329,7 +330,7 @@ impl WorkflowTrigger {
             // Check if enough time has passed since last trigger
             match &trigger.last_triggered_at {
                 Some(last) => {
-                    if let Ok(last_time) = chrono::NaiveDateTime::parse_from_str(last, "%Y-%m-%d %H:%M:%S")
+                    if let Ok(last_time) = chrono::NaiveDateTime::parse_from_str(last, "%Y-%m-%d %H:%M:%S%.f")
                         .or_else(|_| chrono::NaiveDateTime::parse_from_str(last, "%Y-%m-%dT%H:%M:%S%.f"))
                     {
                         let last_utc = last_time.and_utc();

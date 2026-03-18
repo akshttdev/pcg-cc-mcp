@@ -15,7 +15,8 @@ use tracing::{error, info, warn};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use axum::Extension;
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 use deployment::Deployment;
 
 #[derive(Debug, Deserialize)]
@@ -178,7 +179,11 @@ async fn webhook_trigger_handler(
 
     // Validate HMAC-SHA256 signature
     let secret = trigger.webhook_secret.as_deref().unwrap_or_default();
-    if !secret.is_empty() {
+    if secret.is_empty() {
+        warn!("Webhook trigger {} has no secret configured, rejecting request", trigger_id);
+        return Err(ApiError::Unauthorized("Webhook trigger has no secret configured".to_string()));
+    }
+    {
         let sig_header = headers
             .get("x-webhook-signature")
             .and_then(|v| v.to_str().ok())
@@ -240,6 +245,7 @@ async fn webhook_trigger_handler(
     let trigger_auto_approve = trigger.auto_approve;
     let max_retries = trigger.max_retries;
     let bg_trigger_id = trigger_id.clone();
+    let trigger_org_id = trigger.filter_organization_id.clone();
 
     tokio::spawn(async move {
         let start = std::time::Instant::now();
@@ -247,6 +253,7 @@ async fn webhook_trigger_handler(
         let result = execute_webhook_trigger(
             &bg_pool, &bg_deployment, &workflow_id, &content,
             model_override, trigger_auto_approve, &bg_trigger_id, &exec_id,
+            trigger_org_id.clone(),
         ).await;
 
         let duration_ms = start.elapsed().as_millis() as i64;
@@ -289,6 +296,7 @@ async fn execute_webhook_trigger(
     auto_approve: bool,
     trigger_id: &str,
     execution_id: &str,
+    organization_id: Option<String>,
 ) -> Result<i64, String> {
     use db::models::workflow_run::{WorkflowRun, CreateWorkflowRun};
     use super::data_source_workflows::load_workflow;
@@ -310,7 +318,8 @@ async fn execute_webhook_trigger(
         workflow_id: workflow.id.clone(),
         workflow_name: workflow.name.clone(),
         data_source_id: None,
-        organization_id: None,
+        organization_id: organization_id.as_deref()
+            .and_then(|id| Uuid::parse_str(id).ok()),
         project_id: None,
         model_used: if model.is_empty() { None } else { Some(model.clone()) },
         content_hash: None,
@@ -353,10 +362,45 @@ async fn execute_webhook_trigger(
 
 /// GET /api/workflows/triggers/:id/executions — List execution history for a trigger
 async fn list_trigger_executions(
+    Extension(access): Extension<AccessContext>,
     Path(id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Vec<TriggerExecution>>>, ApiError> {
     let pool = &deployment.db().pool;
+
+    // Authorization: load trigger and verify caller has access
+    let trigger = WorkflowTrigger::find_by_id(pool, &id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to find trigger: {e}")))?
+        .ok_or_else(|| ApiError::NotFound("Trigger not found".to_string()))?;
+
+    // Non-admin users can only view executions for triggers scoped to their organization
+    if !access.is_admin {
+        if let Some(ref trigger_org_id) = trigger.filter_organization_id {
+            // Look up user's home org to compare
+            let user_org: Option<(Option<String>,)> = sqlx::query_as(
+                "SELECT home_organization_id FROM users WHERE id = ?1"
+            )
+            .bind(access.user_id.to_string())
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| ApiError::InternalError(format!("Failed to look up user org: {e}")))?;
+
+            let user_home_org = user_org.and_then(|row| row.0);
+            if user_home_org.as_deref() != Some(trigger_org_id.as_str()) {
+                return Err(ApiError::Forbidden(
+                    "You do not have access to this trigger's executions".to_string(),
+                ));
+            }
+        }
+        // If trigger has no filter_organization_id, only admins should see it
+        else {
+            return Err(ApiError::Forbidden(
+                "Admin access required to view unscoped trigger executions".to_string(),
+            ));
+        }
+    }
+
     let executions = TriggerExecution::find_by_trigger(pool, &id, 50)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to list executions: {e}")))?;
