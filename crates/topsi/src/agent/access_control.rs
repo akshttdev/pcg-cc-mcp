@@ -288,7 +288,11 @@ impl AccessControl {
             }
 
             if project_ids.len() == 1 {
-                let pid = *project_ids.iter().next().unwrap();
+                // Safe: len() == 1 guarantees at least one element
+                let pid = match project_ids.iter().next() {
+                    Some(id) => *id,
+                    None => return AccessScope::None,
+                };
                 self.log_access_check(&context.user_id, "get_scope", Some(pid), true, "single_project").await;
                 return AccessScope::SingleProject(pid);
             }

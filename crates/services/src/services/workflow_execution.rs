@@ -8,11 +8,40 @@ use db::models::crm_deal::{CrmDeal, UpdateCrmDeal};
 use db::models::company::{Company, UpdateCompany};
 use db::models::notification::{Notification, CreateNotification};
 use db::models::task::{Task, CreateTask, Priority};
+use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use db::db_uuid::DbUuid;
 use uuid::Uuid;
+
+// ── Pre-compiled regexes for text extraction ────────────────────────────────
+
+static EMAIL_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}").unwrap()
+});
+
+static DOLLAR_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\$[\d,]+(?:\.\d+)?(?:\s*[KkMmBb])?").unwrap()
+});
+
+static DATE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\d{4}-\d{2}-\d{2}").unwrap()
+});
+
+static AT_COMPANY_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\bat\s+([A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+){0,4})").unwrap()
+});
+
+static LABEL_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^([A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+){0,4})\s*(?::\s+\S|–\s+\S|-\s+\S)").unwrap()
+});
+
+static NAME_ROLE_EMAIL_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"(?m)^[\s\-\*]*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+),\s*((?:CEO|CTO|CFO|COO|VP|Director|Manager|Head|Lead|President|Founder|Partner|Principal|Senior|Chief|SVP|EVP|CMO|CIO|CISO|CRO)\b[^()\n]*?)\s*\(([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})\)"
+    ).unwrap()
+});
 
 use crate::services::workflow_llm::WorkflowLLMService;
 
@@ -243,9 +272,8 @@ pub fn default_owner_type() -> String { "system".to_string() }
 
 /// Extract all email addresses from text using regex
 pub fn extract_emails_from_text(text: &str) -> Vec<String> {
-    let re = Regex::new(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}").unwrap();
     let mut emails: Vec<String> = Vec::new();
-    for cap in re.find_iter(text) {
+    for cap in EMAIL_RE.find_iter(text) {
         let email = cap.as_str().to_string();
         if !emails.contains(&email) {
             emails.push(email);
@@ -257,7 +285,7 @@ pub fn extract_emails_from_text(text: &str) -> Vec<String> {
 /// Extract dollar amounts and nearby context from text.
 /// Returns (amount_str, nearby_context_line) pairs.
 pub fn extract_dollar_amounts_from_text(text: &str) -> Vec<(String, String)> {
-    let re = Regex::new(r"\$[\d,]+(?:\.\d+)?(?:\s*[KkMmBb])?").unwrap();
+    let re = &*DOLLAR_RE;
     let mut results: Vec<(String, String)> = Vec::new();
     for line in text.lines() {
         for cap in re.find_iter(line) {
@@ -273,7 +301,7 @@ pub fn extract_dollar_amounts_from_text(text: &str) -> Vec<(String, String)> {
 /// Try to find a date near some context text. Looks for YYYY-MM-DD patterns.
 pub fn extract_date_near_text(text: &str, context_line: &str) -> Option<String> {
     // First try the specific context line
-    let date_re = Regex::new(r"\d{4}-\d{2}-\d{2}").unwrap();
+    let date_re = &*DATE_RE;
     if let Some(m) = date_re.find(context_line) {
         return Some(m.as_str().to_string());
     }
@@ -348,7 +376,7 @@ pub fn extract_company_names_from_text(text: &str) -> Vec<String> {
 
     // Look for "CEO of CompanyName", "VP at CompanyName", "works at CompanyName", etc.
     // Only match "at CompanyName" (not "of") to avoid picking up job title fragments like "of Business Development"
-    let at_re = Regex::new(r"\bat\s+([A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+){0,4})").unwrap();
+    let at_re = &*AT_COMPANY_RE;
     for cap in at_re.captures_iter(text) {
         if let Some(m) = cap.get(1) {
             let candidate = m.as_str().trim().to_string();
@@ -374,7 +402,7 @@ pub fn extract_company_names_from_text(text: &str) -> Vec<String> {
 
     // Look for "CompanyName: Series B" or "CompanyName - description" patterns
     // (lines starting with a capitalized name followed by colon or dash)
-    let label_re = Regex::new(r"^([A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+){0,4})\s*(?::\s+\S|–\s+\S|-\s+\S)").unwrap();
+    let label_re = &*LABEL_RE;
     for line in text.lines() {
         let trimmed = line.trim().trim_start_matches('-').trim().trim_start_matches('*').trim();
         if let Some(cap) = label_re.captures(trimmed) {
@@ -493,10 +521,7 @@ pub fn extract_contacts_from_text(text: &str) -> Vec<ExtractedContact> {
     // Fallback 2: look for "Name, Role of/at Company (email)" patterns
     // e.g. "Sarah Kim, CEO of NovaBridge Analytics (sarah.kim@novabridge.ai)"
     if contacts.is_empty() {
-        let name_role_email_re = Regex::new(
-            r"(?m)^[\s\-\*]*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+),\s*((?:CEO|CTO|CFO|COO|VP|Director|Manager|Head|Lead|President|Founder|Partner|Principal|Senior|Chief|SVP|EVP|CMO|CIO|CISO|CRO)\b[^()\n]*?)\s*\(([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})\)"
-        ).unwrap();
-        for cap in name_role_email_re.captures_iter(text) {
+        for cap in NAME_ROLE_EMAIL_RE.captures_iter(text) {
             let name = cap[1].trim().to_string();
             let role_str = cap[2].trim().to_string();
             let email = cap[3].trim().to_string();

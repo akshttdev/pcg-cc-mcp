@@ -191,7 +191,7 @@ async fn get_sound(Path(sound): Path<SoundFile>) -> Result<Response, ApiError> {
             http::HeaderValue::from_static("audio/wav"),
         )
         .body(Body::from(sound.data.into_owned()))
-        .unwrap();
+        .map_err(|e| ApiError::InternalError(format!("Failed to build response: {}", e)))?;
     Ok(response)
 }
 
@@ -355,23 +355,27 @@ fn set_mcp_servers_in_config_path(
     // Navigate/create the nested structure (all parts except the last)
     for part in &path[..path.len() - 1] {
         if current.get(part).is_none() {
-            current
-                .as_object_mut()
-                .unwrap()
-                .insert(part.to_string(), serde_json::json!({}));
+            if let Some(obj) = current.as_object_mut() {
+                obj.insert(part.to_string(), serde_json::json!({}));
+            }
         }
-        current = current.get_mut(part).unwrap();
+        current = match current.get_mut(part) {
+            Some(v) => v,
+            None => return Err("Failed to navigate config path".into()),
+        };
         if !current.is_object() {
             *current = serde_json::json!({});
         }
     }
 
     // Set the final attribute
-    let final_attr = path.last().unwrap();
-    current
-        .as_object_mut()
-        .unwrap()
-        .insert(final_attr.to_string(), serde_json::to_value(servers)?);
+    let final_attr = path.last()
+        .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> { "Empty config path".into() })?;
+    if let Some(obj) = current.as_object_mut() {
+        obj.insert(final_attr.to_string(), serde_json::to_value(servers)?);
+    } else {
+        return Err("Config path target is not an object".into());
+    }
 
     Ok(())
 }

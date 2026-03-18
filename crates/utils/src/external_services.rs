@@ -337,11 +337,13 @@ async fn start_comfyui(comfy_dir: &str) -> bool {
 
     // Try to find Python in common locations
     let python = find_python();
-    if python.is_none() {
-        warn!("[EXTERNAL] Python not found for ComfyUI");
-        return false;
-    }
-    let python = python.unwrap();
+    let python = match python {
+        Some(p) => p,
+        None => {
+            warn!("[EXTERNAL] Python not found for ComfyUI");
+            return false;
+        }
+    };
 
     // Start ComfyUI in background
     match Command::new(&python)
@@ -483,14 +485,18 @@ async fn start_apn_node(binary_path: &str, config: &ExternalServicesConfig) -> b
     let log_file = std::fs::File::create(&std::env::temp_dir().join("apn_node.log").to_string_lossy().to_string()).ok();
 
     match cmd
-        .stdout(log_file.as_ref().map_or(Stdio::null(), |f| Stdio::from(f.try_clone().unwrap())))
-        .stderr(Stdio::from(
-            std::fs::OpenOptions::new()
+        .stdout(log_file.as_ref().and_then(|f| f.try_clone().ok()).map_or(Stdio::null(), Stdio::from))
+        .stderr({
+            let stderr_file = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
                 .open(&std::env::temp_dir().join("apn_node.log").to_string_lossy().to_string())
-                .unwrap_or_else(|_| std::fs::File::create("/dev/null").unwrap()),
-        ))
+                .or_else(|_| std::fs::File::create("/dev/null"));
+            match stderr_file {
+                Ok(f) => Stdio::from(f),
+                Err(_) => Stdio::null(),
+            }
+        })
         .spawn()
     {
         Ok(child) => {
@@ -525,11 +531,13 @@ async fn start_apn_bridge(script_path: &str, config: &ExternalServicesConfig) ->
     }
 
     let python = find_python();
-    if python.is_none() {
-        warn!("[APN] Python not found for APN bridge");
-        return false;
-    }
-    let python = python.unwrap();
+    let python = match python {
+        Some(p) => p,
+        None => {
+            warn!("[APN] Python not found for APN bridge");
+            return false;
+        }
+    };
 
     // Get the directory containing the script for proper imports
     let script_dir = std::path::Path::new(script_path)
@@ -542,17 +550,18 @@ async fn start_apn_bridge(script_path: &str, config: &ExternalServicesConfig) ->
         .current_dir(&script_dir)
         .env("APN_BRIDGE_PORT", config.apn_bridge_port.to_string())
         .env("APN_RELAY_URL", &config.apn_relay_url)
-        .stdout(Stdio::from(
-            std::fs::File::create(std::env::temp_dir().join("apn_bridge.log"))
-                .unwrap_or_else(|_| std::fs::File::create(std::env::temp_dir().join("apn_bridge_null.log")).unwrap()),
-        ))
-        .stderr(Stdio::from(
-            std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(std::env::temp_dir().join("apn_bridge.log"))
-                .unwrap_or_else(|_| std::fs::File::create(std::env::temp_dir().join("apn_bridge_null.log")).unwrap()),
-        ))
+        .stdout(match std::fs::File::create(std::env::temp_dir().join("apn_bridge.log")) {
+            Ok(f) => Stdio::from(f),
+            Err(_) => Stdio::null(),
+        })
+        .stderr(match std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(std::env::temp_dir().join("apn_bridge.log"))
+        {
+            Ok(f) => Stdio::from(f),
+            Err(_) => Stdio::null(),
+        })
         .spawn()
     {
         Ok(child) => {
