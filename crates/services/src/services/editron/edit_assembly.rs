@@ -95,7 +95,7 @@ impl MusicAnalysis {
             .min_by(|a, b| {
                 let diff_a = (time - *a).abs();
                 let diff_b = (time - *b).abs();
-                diff_a.partial_cmp(&diff_b).unwrap()
+                diff_a.partial_cmp(&diff_b).unwrap_or(std::cmp::Ordering::Equal)
             })
             .copied()
             .unwrap_or(time)
@@ -107,7 +107,7 @@ impl MusicAnalysis {
             .min_by(|a, b| {
                 let diff_a = (time - *a).abs();
                 let diff_b = (time - *b).abs();
-                diff_a.partial_cmp(&diff_b).unwrap()
+                diff_a.partial_cmp(&diff_b).unwrap_or(std::cmp::Ordering::Equal)
             })
             .copied()
             .unwrap_or(time)
@@ -401,10 +401,10 @@ impl AssembledEdit {
     /// Sort clips by timeline position
     pub fn sort_clips(&mut self) {
         self.video_clips.sort_by(|a, b| {
-            a.timeline_in.partial_cmp(&b.timeline_in).unwrap()
+            a.timeline_in.partial_cmp(&b.timeline_in).unwrap_or(std::cmp::Ordering::Equal)
         });
         self.audio_clips.sort_by(|a, b| {
-            a.timeline_in.partial_cmp(&b.timeline_in).unwrap()
+            a.timeline_in.partial_cmp(&b.timeline_in).unwrap_or(std::cmp::Ordering::Equal)
         });
     }
 }
@@ -735,7 +735,7 @@ impl EditAssemblyEngine {
             .collect();
 
         // Sort by score descending
-        candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         candidates.first().map(|(idx, _)| *idx)
     }

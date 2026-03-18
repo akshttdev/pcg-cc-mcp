@@ -192,9 +192,8 @@ impl LocalContainerService {
     fn should_finalize(ctx: &ExecutionContext) -> bool {
         ctx.execution_process
             .executor_action()
-            .unwrap()
-            .next_action
-            .is_none()
+            .map(|a| a.next_action.is_none())
+            .unwrap_or(true)
             && (!matches!(
                 ctx.execution_process.run_reason,
                 ExecutionProcessRunReason::DevServer
@@ -1048,7 +1047,7 @@ impl LocalContainerService {
 
         // Record which paths were sent with full content
         {
-            let mut guard = full_sent.write().unwrap();
+            let mut guard = full_sent.write().unwrap_or_else(|e| e.into_inner());
             for d in &initial_diffs {
                 if !d.content_omitted {
                     let p = GitService::diff_path(d);
@@ -1218,13 +1217,13 @@ impl LocalContainerService {
             // version of this path earlier in the stream, skip sending a
             // degrading replacement.
             if diff.content_omitted {
-                if full_sent_paths.read().unwrap().contains(&file_path) {
+                if full_sent_paths.read().unwrap_or_else(|e| e.into_inner()).contains(&file_path) {
                     continue;
                 }
             } else {
                 // Track that we have sent a full-content version
                 {
-                    let mut guard = full_sent_paths.write().unwrap();
+                    let mut guard = full_sent_paths.write().unwrap_or_else(|e| e.into_inner());
                     guard.insert(file_path.clone());
                 }
             }
@@ -1307,7 +1306,7 @@ impl ContainerService for LocalContainerService {
         // Copy task images from cache to worktree
         if let Err(e) = self
             .image_service
-            .copy_images_by_task_to_worktree(&worktree_path, Uuid::parse_str(&task.id).unwrap())
+            .copy_images_by_task_to_worktree(&worktree_path, Uuid::parse_str(&task.id).unwrap_or_default())
             .await
         {
             tracing::warn!("Failed to copy task images to worktree: {}", e);
@@ -1620,7 +1619,7 @@ impl ContainerService for LocalContainerService {
                 )
                 .await
                 {
-                    Ok(Some(session)) if session.summary.is_some() => session.summary.unwrap(),
+                    Ok(Some(session)) if session.summary.is_some() => session.summary.unwrap_or_default(),
                     Ok(_) => {
                         tracing::debug!(
                             "No summary found for execution process {}, using default message",
@@ -1883,7 +1882,7 @@ impl LocalContainerService {
         let mut prompt = draft.prompt.clone();
         if let Some(image_ids) = &draft.image_ids {
             // Associate to task
-            let _ = TaskImage::associate_many_dedup(&self.db.pool, Uuid::parse_str(&ctx.task.id).unwrap(), image_ids).await;
+            let _ = TaskImage::associate_many_dedup(&self.db.pool, Uuid::parse_str(&ctx.task.id).unwrap_or_default(), image_ids).await;
 
             // Copy to worktree and canonicalize
             let worktree_path = std::path::PathBuf::from(&container_ref);
@@ -2005,7 +2004,7 @@ impl LocalContainerService {
         let provider = infer_provider(model);
 
         // Try to find and update the pending zero-amount transaction
-        match VibeTransaction::find_by_task_pending(&self.db.pool, Uuid::parse_str(&ctx.task.id).unwrap()).await {
+        match VibeTransaction::find_by_task_pending(&self.db.pool, Uuid::parse_str(&ctx.task.id).unwrap_or_default()).await {
             Ok(Some(pending_tx)) => {
                 // Use VibePricingService to calculate cost
                 let pricing_service = VibePricingService::new(self.db.pool.clone());
@@ -2052,11 +2051,11 @@ impl LocalContainerService {
                 // We need a source_id; use the task's project_id as a fallback
                 if let Err(e) = pricing_service.record_llm_usage(
                     db::models::vibe_transaction::VibeSourceType::Project,
-                    Uuid::parse_str(&ctx.task.project_id).unwrap(),
+                    Uuid::parse_str(&ctx.task.project_id).unwrap_or_default(),
                     model,
                     input_tokens,
                     output_tokens,
-                    Some(Uuid::parse_str(&ctx.task.id).unwrap()),
+                    Some(Uuid::parse_str(&ctx.task.id).unwrap_or_default()),
                     Some(ctx.task_attempt.id),
                     Some(ctx.execution_process.id),
                 ).await {
@@ -2076,7 +2075,7 @@ impl LocalContainerService {
         let flow = AgentFlow::create(
             &self.db.pool,
             CreateAgentFlow {
-                task_id: Uuid::parse_str(&ctx.task.id).unwrap(),
+                task_id: Uuid::parse_str(&ctx.task.id).unwrap_or_default(),
                 flow_type: FlowType::Custom,
                 planner_agent_id: None,
                 executor_agent_id: None,
@@ -2136,7 +2135,7 @@ impl LocalContainerService {
             Some(id) => id,
             None => {
                 // Fallback: try to find by task_id
-                match AgentFlow::find_by_task(&self.db.pool, Uuid::parse_str(&ctx.task.id).unwrap()).await {
+                match AgentFlow::find_by_task(&self.db.pool, Uuid::parse_str(&ctx.task.id).unwrap_or_default()).await {
                     Ok(flows) => {
                         if let Some(flow) = flows.into_iter().find(|f| {
                             f.status != db::models::agent_flow::FlowStatus::Completed

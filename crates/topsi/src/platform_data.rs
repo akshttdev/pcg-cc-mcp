@@ -605,21 +605,21 @@ impl PlatformDataService {
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
-        let execution_result = if agent_name.is_some() && auto_execute {
+        let execution_result = if let (Some(agent), true) = (agent_name, auto_execute) {
             if let Some(bridge) = &self.execution_bridge {
-                let agent_lower = agent_name.unwrap().to_lowercase();
+                let agent_lower = agent.to_lowercase();
                 let executor_name = match agent_lower.as_str() {
                     "claude" | "claude_code" => "CLAUDE_CODE",
                     "gemini" => "GEMINI",
                     "amp" => "AMP",
                     "codex" | "openai" => "CODEX",
-                    _ => agent_name.unwrap(),
+                    _ => agent,
                 };
                 let base_branch = "main".to_string();
 
                 tracing::info!(
                     "[TOPSI] Auto-executing task {} with agent {} (executor: {})",
-                    task.id, agent_name.unwrap(), executor_name
+                    task.id, agent, executor_name
                 );
 
                 match bridge.start_task_attempt(task_id, executor_name, &base_branch).await {
@@ -653,7 +653,9 @@ impl PlatformDataService {
         });
 
         if let Some(exec) = execution_result {
-            response.as_object_mut().unwrap().insert("execution".to_string(), exec);
+            if let Some(obj) = response.as_object_mut() {
+                obj.insert("execution".to_string(), exec);
+            }
         }
 
         Ok(response)

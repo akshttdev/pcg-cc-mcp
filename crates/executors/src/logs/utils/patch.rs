@@ -47,7 +47,7 @@ impl ConversationPatch {
             value: PatchType::NormalizedEntry(entry),
         };
 
-        from_value(json!([patch_entry])).unwrap()
+        from_value(json!([patch_entry])).unwrap_or_default()
     }
 
     /// Create an ADD patch for a new string at the given index
@@ -58,7 +58,7 @@ impl ConversationPatch {
             value: PatchType::Stdout(entry),
         };
 
-        from_value(json!([patch_entry])).unwrap()
+        from_value(json!([patch_entry])).unwrap_or_default()
     }
 
     /// Create an ADD patch for a new string at the given index
@@ -69,7 +69,7 @@ impl ConversationPatch {
             value: PatchType::Stderr(entry),
         };
 
-        from_value(json!([patch_entry])).unwrap()
+        from_value(json!([patch_entry])).unwrap_or_default()
     }
 
     /// Create an ADD patch for a new diff at the given index
@@ -80,7 +80,7 @@ impl ConversationPatch {
             value: PatchType::Diff(diff),
         };
 
-        from_value(json!([patch_entry])).unwrap()
+        from_value(json!([patch_entry])).unwrap_or_default()
     }
 
     /// Create an ADD patch for a new diff at the given index
@@ -91,7 +91,7 @@ impl ConversationPatch {
             value: PatchType::Diff(diff),
         };
 
-        from_value(json!([patch_entry])).unwrap()
+        from_value(json!([patch_entry])).unwrap_or_default()
     }
 
     /// Create a REMOVE patch for removing a diff
@@ -100,7 +100,7 @@ impl ConversationPatch {
             "op": PatchOperation::Remove,
             "path": format!("/entries/{entry_index}"),
         }]))
-        .unwrap()
+        .unwrap_or_default()
     }
 
     /// Create a REPLACE patch for updating an existing conversation entry at the given index
@@ -111,7 +111,7 @@ impl ConversationPatch {
             value: PatchType::NormalizedEntry(entry),
         };
 
-        from_value(json!([patch_entry])).unwrap()
+        from_value(json!([patch_entry])).unwrap_or_default()
     }
 }
 
