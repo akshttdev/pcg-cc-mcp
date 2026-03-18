@@ -19,7 +19,7 @@ import {
   Settings,
   Activity,
 } from 'lucide-react';
-import { resolveApiUrl } from '@/lib/api';
+import { makeRequest, handleApiResponse } from '@/lib/api/client';
 import { MeshPanel } from '@/components/mesh';
 import { networkKeys, settingsKeys } from '@/lib/query-keys';
 
@@ -60,10 +60,8 @@ const KNOWN_SOFTWARE = [
 ];
 
 async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(resolveApiUrl(url));
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const json = await res.json();
-  return json.data ?? json;
+  const response = await makeRequest(url);
+  return handleApiResponse<T>(response);
 }
 
 export function NetworkSettings() {
@@ -87,8 +85,8 @@ export function NetworkSettings() {
   const { data: capabilities } = useQuery<Capabilities>({
     queryKey: settingsKeys.apnCapabilities(),
     queryFn: async () => {
-      const res = await fetch(resolveApiUrl('/api/mesh/stats'));
-      if (!res.ok) throw new Error('Failed to fetch');
+      const meshRes = await makeRequest('/api/mesh/stats');
+      if (!meshRes.ok) throw new Error('Failed to fetch');
       // Also try APN Core directly for capabilities
       try {
         const capsRes = await fetch('http://localhost:8000/api/capabilities');
@@ -96,7 +94,7 @@ export function NetworkSettings() {
           const data = await capsRes.json();
           return data.capabilities || data;
         }
-      } catch {}
+      } catch { /* APN Core may not be running */ }
       return { agents: [], software: {}, contribution: [] };
     },
     refetchInterval: 60000,
@@ -110,6 +108,7 @@ export function NetworkSettings() {
   });
 
   // Mutation to update capabilities
+  // NOTE: This calls APN Core directly (localhost:8000), not our backend, so raw fetch is intentional
   const updateCapsMutation = useMutationWithToast({
     mutationFn: async (caps: Partial<Capabilities>) => {
       const res = await fetch('http://localhost:8000/api/capabilities', {

@@ -112,7 +112,7 @@ RUN chmod +x /app/scripts/chatterbox_server.py
 COPY --from=builder /app/dev_assets /app/dev_assets_seed
 
 # Copy entrypoint script
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Create necessary directories and set permissions

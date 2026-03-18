@@ -20,7 +20,7 @@ export async function addExtractNode(
   const nameInput = page.getByText("Node Name", { exact: true }).locator("..").getByRole("textbox");
   await nameInput.fill(name);
 
-  const promptTextarea = page.getByRole("textbox", { name: /extraction instructions|Analyze the following/ });
+  const promptTextarea = page.getByRole("textbox", { name: /Describe what to extract|extraction instructions|Analyze the following/ });
   await expect(promptTextarea).toBeVisible({ timeout: t(5_000) });
   await promptTextarea.fill(prompt);
 

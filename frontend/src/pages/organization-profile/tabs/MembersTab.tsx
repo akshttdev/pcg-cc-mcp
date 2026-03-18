@@ -33,7 +33,7 @@ import {
   Copy,
   X,
 } from 'lucide-react';
-import { organizationsApi, resolveApiUrl } from '@/lib/api';
+import { organizationsApi, makeRequest, handleApiResponse } from '@/lib/api';
 import type { OrgMember } from '../types';
 import { formatDate } from '../helpers';
 import { MemberAssignments } from '../components/MemberAssignments';
@@ -48,10 +48,12 @@ export function MembersTab({ orgId, orgName }: { orgId: string; orgName: string 
   const { data: allUsers = [] } = useQuery<{ id: string; username: string; full_name?: string }[]>({
     queryKey: userKeys.allUsers(),
     queryFn: async () => {
-      const res = await fetch(resolveApiUrl('/api/users'), { credentials: 'include' });
-      if (!res.ok) return [];
-      const data = await res.json();
-      return data.data || [];
+      try {
+        const response = await makeRequest('/api/users');
+        return await handleApiResponse<any[]>(response);
+      } catch {
+        return [];
+      }
     },
   });
 

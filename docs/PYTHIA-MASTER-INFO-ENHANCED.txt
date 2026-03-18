@@ -1,0 +1,76 @@
+═══════════════════════════════════════════════════════════════════
+              🌟 PYTHIA MASTER NODE CONNECTION INFO
+                    (Enhanced with Resource Reporting)
+═══════════════════════════════════════════════════════════════════
+
+MASTER NODE IDENTITY:
+  Name:       Pythia Master Node (Enhanced)
+  Node ID:    apn_814d37f4
+  Wallet:     0x814d37f4ab0c7ef2d9c7aa5f3de9fc5c0f79b3b576b77f84edc9e773eed71c92
+  LibP2P ID:  12D3KooWGaopz8uKs5ikXxD4yy5wQDn5yue2Q38T81pMtLbxMVvt
+
+RECOVERY PHRASE:
+  slush index float shaft flight citizen swear chunk correct veteran eyebrow blind
+
+BOOTSTRAP MULTIADDR:
+  /ip4/192.168.1.77/tcp/4001/p2p/12D3KooWGaopz8uKs5ikXxD4yy5wQDn5yue2Q38T81pMtLbxMVvt
+
+  (Use public IP if connecting from external network)
+
+───────────────────────────────────────────────────────────────────
+
+FOR ALL PEER DEVICES TO CONNECT:
+
+./target/release/apn_node \
+  --port 4002 \
+  --relay nats://nonlocal.info:4222 \
+  --bootstrap /ip4/192.168.1.77/tcp/4001/p2p/12D3KooWGaopz8uKs5ikXxD4yy5wQDn5yue2Q38T81pMtLbxMVvt \
+  --heartbeat-interval 30
+
+───────────────────────────────────────────────────────────────────
+
+SYSTEM RESOURCES (Pythia Master):
+  CPU:     AMD Ryzen 9 5900X (24 cores)
+  RAM:     32GB (21.9GB available)
+  Storage: 3.1TB available
+  GPU:     NVIDIA GeForce RTX 3080 Ti (12GB)
+
+═══════════════════════════════════════════════════════════════════
+
+FEATURES ENABLED:
+  ✅ Resource reporting (CPU, RAM, GPU, Storage)
+  ✅ Heartbeat broadcasts (30s interval)
+  ✅ NATS relay for NAT traversal (nats://nonlocal.info:4222)
+  ✅ libp2p mesh networking
+  ✅ Peer discovery via NATS and mDNS
+  ✅ Automatic capacity sharing
+
+MONITORING:
+  tail -f /tmp/apn_node.log           # View live logs
+  ./check-network-capacity.sh         # Check network capacity
+
+CONTROL:
+  kill $(cat /tmp/apn_node.pid)       # Stop node
+
+═══════════════════════════════════════════════════════════════════
+
+QUICK SETUP FOR OTHER DEVICES:
+
+1. Clone repository:
+   git clone https://github.com/KingBodhi/pcg-cc-mcp.git
+   cd pcg-cc-mcp
+
+2. Pull latest changes:
+   git checkout new
+   git pull origin new
+
+3. Run setup script:
+   chmod +x setup-peer-node.sh
+   ./setup-peer-node.sh
+
+   (Script will prompt for bootstrap address and device name)
+
+═══════════════════════════════════════════════════════════════════
+
+Last Updated: 2026-02-04 14:47 UTC
+Status: MASTER NODE REBUILT ✅

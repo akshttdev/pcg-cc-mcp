@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import {
   Dialog,
   DialogContent,
@@ -23,7 +23,6 @@ import { Slider } from '@/components/ui/slider';
 import { Loader2, Bot, Sparkles } from 'lucide-react';
 import { projectControllersApi, type ProjectControllerConfig, type UpdateControllerConfig } from '@/lib/api';
 import { controllerKeys } from '@/lib/query-keys';
-import { toast } from 'sonner';
 
 interface ControllerSettingsDialogProps {
   open: boolean;
@@ -53,8 +52,6 @@ export function ControllerSettingsDialog({
   projectId,
   config,
 }: ControllerSettingsDialogProps) {
-  const queryClient = useQueryClient();
-
   // Form state
   const [name, setName] = useState(config?.name || 'Controller');
   const [personality, setPersonality] = useState(config?.personality || 'professional');
@@ -76,18 +73,13 @@ export function ControllerSettingsDialog({
   }, [config]);
 
   // Update mutation
-  const updateMutation = useMutation({
+  const updateMutation = useMutationWithToast({
     mutationFn: (data: UpdateControllerConfig) =>
       projectControllersApi.updateConfig(projectId, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: controllerKeys.config(projectId) });
-      toast.success('Controller settings have been saved successfully.');
-      onOpenChange(false);
-    },
-    onError: (error) => {
-      toast.error('Failed to update controller settings.');
-      console.error('Failed to update controller:', error);
-    },
+    successMessage: 'Controller settings have been saved successfully.',
+    errorMessage: 'Failed to update controller settings.',
+    invalidateKeys: [controllerKeys.config(projectId)],
+    onSuccess: () => onOpenChange(false),
   });
 
   const handleSave = () => {

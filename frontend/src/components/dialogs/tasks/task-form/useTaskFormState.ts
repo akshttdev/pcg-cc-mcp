@@ -1,18 +1,18 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { templatesApi, imagesApi, projectsApi, attemptsApi } from '@/lib/api';
+import { imagesApi } from '@/lib/api';
 import { useTaskMutations } from '@/hooks/useTaskMutations';
 import { useUserSystem } from '@/components/config-provider';
 import type {
   TaskStatus,
-  TaskTemplate,
   ImageResponse,
-  GitBranch,
   ExecutorProfileId,
   Priority,
-  ProjectBoard,
 } from 'shared/types';
 import type { useModal } from '@ebay/nice-modal-react';
 import type { TaskFormDialogProps, TaskFormState } from './types';
+import { buildCreateTaskPayload } from './buildTaskPayload';
+import { useBoardLoader } from './useBoardLoader';
+import { useBranchLoader } from './useBranchLoader';
 
 export function useTaskFormState({
   props,
@@ -50,21 +50,14 @@ export function useTaskFormState({
   const [dueDate, setDueDate] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmittingAndStart, setIsSubmittingAndStart] = useState(false);
-  const [templates, setTemplates] = useState<TaskTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [showDiscardWarning, setShowDiscardWarning] = useState(false);
   const [images, setImages] = useState<ImageResponse[]>([]);
   const [newlyUploadedImageIds, setNewlyUploadedImageIds] = useState<
     string[]
   >([]);
-  const [branches, setBranches] = useState<GitBranch[]>([]);
-  const [selectedBranch, setSelectedBranch] = useState<string>('');
   const [selectedExecutorProfile, setSelectedExecutorProfile] =
     useState<ExecutorProfileId | null>(null);
-  const [boards, setBoards] = useState<ProjectBoard[]>([]);
-  const [boardsLoading, setBoardsLoading] = useState(false);
-  const [boardsError, setBoardsError] = useState<string | null>(null);
-  const [selectedBoardId, setSelectedBoardId] = useState<string | null>(null);
   const [quickstartExpanded, setQuickstartExpanded] =
     useState<boolean>(false);
   const [completionCriteria, setCompletionCriteria] = useState('');
@@ -79,6 +72,34 @@ export function useTaskFormState({
     () => system.config?.github?.username || 'current-user',
     [system.config?.github?.username]
   );
+
+  // Board loading via extracted hook
+  const {
+    boards,
+    boardsLoading,
+    boardsError,
+    selectedBoardId,
+    setSelectedBoardId,
+  } = useBoardLoader({
+    projectId,
+    isEditMode,
+    modalVisible: modal.visible,
+    initialBoardId,
+  });
+
+  // Branch/template loading via extracted hook
+  const {
+    templates,
+    branches,
+    selectedBranch,
+    setSelectedBranch,
+  } = useBranchLoader({
+    projectId,
+    isEditMode,
+    modalVisible: modal.visible,
+    initialBaseBranch,
+    parentTaskAttemptId,
+  });
 
   // Check if there's any content that would be lost
   const hasUnsavedChanges = useCallback(() => {
@@ -170,102 +191,6 @@ export function useTaskFormState({
     return () =>
       window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [modal.visible, hasUnsavedChanges]); // hasUnsavedChanges is memoised with title/descr deps
-
-  // Track the projectId that boards were loaded for to prevent stale validation
-  const [boardsProjectId, setBoardsProjectId] = useState<string | undefined>(undefined);
-
-  useEffect(() => {
-    if (!projectId || !modal.visible) {
-      setBoards([]);
-      setBoardsError(null);
-      setBoardsLoading(false);
-      setBoardsProjectId(undefined);
-      return;
-    }
-
-    let cancelled = false;
-    const loadBoards = async () => {
-      setBoardsLoading(true);
-      setBoardsError(null);
-      try {
-        const results = await projectsApi.listBoards(projectId);
-        if (!cancelled) {
-          setBoards(results);
-          setBoardsProjectId(projectId); // Track which project these boards belong to
-        }
-      } catch (error) {
-        console.error('Failed to load boards', error);
-        if (!cancelled) {
-          setBoardsError(
-            error instanceof Error ? error.message : 'Failed to load boards'
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setBoardsLoading(false);
-        }
-      }
-    };
-
-    loadBoards();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId, modal.visible]);
-
-  useEffect(() => {
-    // Only validate if boards are loaded for the CURRENT project
-    if (!selectedBoardId) return;
-    if (!boards.length) return;
-    if (boardsProjectId !== projectId) return; // Don't validate against stale boards
-
-    const exists = boards.some((board) => board.id === selectedBoardId);
-    if (!exists) {
-      // Only reset if the board genuinely doesn't exist (not due to stale data)
-      setSelectedBoardId(null);
-    }
-  }, [boards, selectedBoardId, boardsProjectId, projectId]);
-
-  useEffect(() => {
-    console.log('[TaskFormDialog] Board selection effect running:', {
-      isEditMode,
-      modalVisible: modal.visible,
-      boardsLoading,
-      boardsLength: boards.length,
-      boardsProjectId,
-      projectId,
-      selectedBoardId,
-      initialBoardId,
-    });
-
-    if (isEditMode) return;
-    if (!modal.visible) return;
-    if (boardsLoading) return;
-    if (!boards.length) return;
-    // Ensure boards are loaded for the current project before selecting
-    if (boardsProjectId !== projectId) return;
-
-    if (selectedBoardId && boards.some((board) => board.id === selectedBoardId)) {
-      console.log('[TaskFormDialog] Board already selected and valid:', selectedBoardId);
-      return;
-    }
-
-    // If initialBoardId is provided and exists in the boards list, use it
-    if (initialBoardId && boards.some((board) => board.id === initialBoardId)) {
-      console.log('[TaskFormDialog] Setting board from initialBoardId:', initialBoardId);
-      setSelectedBoardId(initialBoardId);
-      return;
-    }
-
-    // Fallback: prefer the default board, then first available
-    const preferred =
-      boards.find((board) => board.board_type === 'default') || boards[0];
-    if (preferred) {
-      console.log('[TaskFormDialog] Falling back to preferred board:', preferred.id, preferred.name);
-      setSelectedBoardId(preferred.id);
-    }
-  }, [boards, boardsLoading, isEditMode, selectedBoardId, modal.visible, initialBoardId, boardsProjectId, projectId]);
 
   useEffect(() => {
     // Only run form reset when modal is visible
@@ -403,70 +328,8 @@ export function useTaskFormState({
     initialBoardId,
     modal.visible,
     system.config?.executor_profile,
-  ]);
-
-  // Fetch templates and branches when dialog opens in create mode
-  useEffect(() => {
-    if (modal.visible && !isEditMode && projectId) {
-      // Fetch templates and branches
-      Promise.all([
-        templatesApi.listByProject(projectId),
-        templatesApi.listGlobal(),
-        projectsApi.getBranches(projectId),
-      ])
-        .then(([projectTemplates, globalTemplates, projectBranches]) => {
-          // Combine templates with project templates first
-          setTemplates([...projectTemplates, ...globalTemplates]);
-
-          // Set branches and default to initialBaseBranch if provided, otherwise current branch
-          setBranches(projectBranches);
-
-          if (
-            initialBaseBranch &&
-            projectBranches.some((b) => b.name === initialBaseBranch)
-          ) {
-            // Use initialBaseBranch if it exists in the project branches (for spinoff)
-            setSelectedBranch(initialBaseBranch);
-          } else {
-            // Default behavior: use current branch or first available
-            const currentBranch = projectBranches.find((b) => b.is_current);
-            const defaultBranch = currentBranch || projectBranches[0];
-            if (defaultBranch) {
-              setSelectedBranch(defaultBranch.name);
-            }
-          }
-        })
-        .catch(console.error);
-    }
-  }, [modal.visible, isEditMode, projectId, initialBaseBranch]);
-
-  // Fetch parent base branch when parentTaskAttemptId is provided
-  useEffect(() => {
-    if (
-      modal.visible &&
-      !isEditMode &&
-      parentTaskAttemptId &&
-      !initialBaseBranch &&
-      branches.length > 0
-    ) {
-      attemptsApi
-        .get(parentTaskAttemptId)
-        .then((attempt) => {
-          const parentBranch = attempt.branch || attempt.base_branch;
-          if (parentBranch && branches.some((b) => b.name === parentBranch)) {
-            setSelectedBranch(parentBranch);
-          }
-        })
-        .catch(() => {
-          // Silently fail, will use current branch fallback
-        });
-    }
-  }, [
-    modal.visible,
-    isEditMode,
-    parentTaskAttemptId,
-    initialBaseBranch,
-    branches,
+    setSelectedBoardId,
+    setSelectedBranch,
   ]);
 
   // Handle template selection
@@ -521,21 +384,21 @@ export function useTaskFormState({
           : undefined;
     }
 
-    const assignedMcps = assignedMcpsInput
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean);
-    const tags = tagsInput
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean);
-    const dueDateIso = dueDate ? new Date(dueDate).toISOString() : null;
-
     // Close modal FIRST before any async operations
     modal.hide();
     setIsSubmitting(false);
 
     if (isEditMode && task) {
+      const assignedMcps = assignedMcpsInput
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+      const tags = tagsInput
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+      const dueDateIso = dueDate ? new Date(dueDate).toISOString() : null;
+
       updateTask.mutate({
         taskId: task.id,
         data: {
@@ -559,33 +422,25 @@ export function useTaskFormState({
         },
       });
     } else {
-      const createdBy = createdByFallback;
-      createTask.mutate({
-        project_id: projectId,
+      const payload = buildCreateTaskPayload({
         title,
-        description: description || null,
-        parent_task_attempt: parentTaskAttemptId || null,
-        image_ids: imageIds || null,
-        board_id: selectedBoardId ?? undefined,
+        description,
+        projectId,
         priority,
-        assignee_id: assigneeId.trim() || null,
-        assigned_agent: assignedAgent.trim() || null,
-        agent_id: null,
-        assigned_mcps: assignedMcps.length ? assignedMcps : null,
-        created_by: createdBy,
-        requires_approval: requiresApproval,
-        parent_task_id: null,
-        tags: tags.length ? tags : null,
-        due_date: dueDateIso,
-        assignee_type: null,
-        screenshot: null,
-        custom_properties: null,
-        scheduled_start: null,
-        scheduled_end: null,
-        completion_criteria: completionCriteria || null,
-        output_format: outputFormat || null,
-        collaborators: null,
+        assigneeId,
+        assignedAgent,
+        assignedMcpsInput,
+        tagsInput,
+        requiresApproval,
+        dueDate,
+        completionCriteria,
+        outputFormat,
+        selectedBoardId,
+        parentTaskAttemptId,
+        createdBy: createdByFallback,
+        imageIds,
       });
+      createTask.mutate(payload);
     }
   }, [
     title,
@@ -629,17 +484,6 @@ export function useTaskFormState({
         ? newlyUploadedImageIds
         : undefined;
 
-    const assignedMcps = assignedMcpsInput
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean);
-    const tags = tagsInput
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean);
-    const dueDateIso = dueDate ? new Date(dueDate).toISOString() : null;
-    const createdBy = createdByFallback;
-
     // Use selected executor profile or fallback to config default
     const finalExecutorProfile =
       selectedExecutorProfile || system.config?.executor_profile;
@@ -653,33 +497,27 @@ export function useTaskFormState({
     modal.hide();
     setIsSubmittingAndStart(false);
 
+    const payload = buildCreateTaskPayload({
+      title,
+      description,
+      projectId,
+      priority,
+      assigneeId,
+      assignedAgent,
+      assignedMcpsInput,
+      tagsInput,
+      requiresApproval,
+      dueDate,
+      completionCriteria,
+      outputFormat,
+      selectedBoardId,
+      parentTaskAttemptId,
+      createdBy: createdByFallback,
+      imageIds,
+    });
+
     createAndStart.mutate({
-      task: {
-        project_id: projectId,
-        title,
-        description: description || null,
-        parent_task_attempt: parentTaskAttemptId || null,
-        image_ids: imageIds || null,
-        board_id: selectedBoardId ?? undefined,
-        priority,
-        assignee_id: assigneeId.trim() || null,
-        assigned_agent: assignedAgent.trim() || null,
-        agent_id: null,
-        assigned_mcps: assignedMcps.length ? assignedMcps : null,
-        created_by: createdBy,
-        requires_approval: requiresApproval,
-        parent_task_id: null,
-        tags: tags.length ? tags : null,
-        due_date: dueDateIso,
-        assignee_type: null,
-        screenshot: null,
-        custom_properties: null,
-        scheduled_start: null,
-        scheduled_end: null,
-        completion_criteria: completionCriteria || null,
-        output_format: outputFormat || null,
-        collaborators: null,
-      },
+      task: payload,
       executor_profile_id: finalExecutorProfile,
       base_branch: selectedBranch,
     });

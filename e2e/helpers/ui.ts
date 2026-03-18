@@ -3,11 +3,23 @@ import { t } from "./timing";
 import { login } from "./auth";
 
 /**
- * Open the Feedback dialog. Uses data-testid="feedback-button" which works
- * in both expanded and collapsed sidebar modes.
+ * Open the Feedback dialog. The feedback button lives inside the "More" popover
+ * in the sidebar, so we need to open the popover first.
  */
 export async function openFeedbackDialog(page: Page) {
-  await page.locator('[data-testid="feedback-button"]').click();
+  const feedbackBtn = page.locator('[data-testid="feedback-button"]');
+
+  // If the button is already visible (sidebar expanded with direct links), click directly
+  if (await feedbackBtn.isVisible().catch(() => false)) {
+    await feedbackBtn.click();
+  } else {
+    // Open the "More" popover in the sidebar first
+    const moreBtn = page.getByRole("button", { name: "More" });
+    await moreBtn.click();
+    await expect(feedbackBtn).toBeVisible({ timeout: t(3_000) });
+    await feedbackBtn.click();
+  }
+
   await expect(
     page.getByRole("heading", { name: "Submit Feedback" })
   ).toBeVisible({ timeout: t(5_000) });

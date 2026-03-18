@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import {
   Card,
   CardContent,
@@ -50,7 +51,6 @@ interface EmailInboxProps {
 }
 
 export function EmailInbox({ projectId, accountId }: EmailInboxProps) {
-  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'unread' | 'starred' | 'needs_response'>('all');
   const [selectedMessage, setSelectedMessage] = useState<EmailMessageRecord | null>(null);
@@ -75,27 +75,28 @@ export function EmailInbox({ projectId, accountId }: EmailInboxProps) {
     enabled: !!projectId,
   });
 
-  const markAsReadMutation = useMutation({
+  const emailInvalidateKeys = [commsKeys.emailMessagesAll(), commsKeys.emailInboxStats(projectId)] as const;
+
+  const markAsReadMutation = useMutationWithToast({
     mutationFn: emailMessagesApi.markAsRead,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: commsKeys.emailMessagesAll() });
-      queryClient.invalidateQueries({ queryKey: commsKeys.emailInboxStats(projectId) });
-    },
+    successMessage: 'Marked as read',
+    errorMessage: 'Failed to mark as read',
+    invalidateKeys: emailInvalidateKeys,
   });
 
-  const toggleStarMutation = useMutation({
+  const toggleStarMutation = useMutationWithToast({
     mutationFn: emailMessagesApi.toggleStar,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: commsKeys.emailMessagesAll() });
-      queryClient.invalidateQueries({ queryKey: commsKeys.emailInboxStats(projectId) });
-    },
+    successMessage: 'Star toggled',
+    errorMessage: 'Failed to toggle star',
+    invalidateKeys: emailInvalidateKeys,
   });
 
-  const moveToTrashMutation = useMutation({
+  const moveToTrashMutation = useMutationWithToast({
     mutationFn: emailMessagesApi.moveToTrash,
+    successMessage: 'Moved to trash',
+    errorMessage: 'Failed to move to trash',
+    invalidateKeys: emailInvalidateKeys,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: commsKeys.emailMessagesAll() });
-      queryClient.invalidateQueries({ queryKey: commsKeys.emailInboxStats(projectId) });
       setSelectedMessage(null);
     },
   });

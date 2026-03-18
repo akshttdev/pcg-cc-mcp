@@ -5,7 +5,7 @@ import { AlertTriangle } from 'lucide-react';
 import { Loader } from '@/components/ui/loader';
 import { projectsApi, tasksApi, agentsApi, usersApi, resolveApiUrl } from '@/lib/api';
 import type { UserListItem } from '@/lib/api';
-import type { AgentChatRequest } from 'shared/types';
+import type { AgentChatRequest, AgentWithParsedFields } from 'shared/types';
 import { openTaskForm } from '@/lib/openTaskForm';
 import { useViewStore } from '@/stores/useViewStore';
 import { useBulkSelectionStore } from '@/stores/useBulkSelectionStore';
@@ -18,7 +18,7 @@ import { applyFilters } from '@/utils/filterUtils';
 
 import { useSearch } from '@/contexts/search-context';
 import { useQuery } from '@tanstack/react-query';
-import { userKeys } from '@/lib/query-keys';
+import { userKeys, agentKeys } from '@/lib/query-keys';
 import { useTaskViewManager } from '@/hooks/useTaskViewManager';
 import {
   useKeyCreate,
@@ -151,6 +151,19 @@ export function ProjectTasks() {
     usersData?.forEach(u => map.set(u.id, u));
     return map;
   }, [usersData]);
+
+  // Fetch agents for collaborator badge display
+  const { data: agentsData } = useQuery({
+    queryKey: agentKeys.all,
+    queryFn: () => agentsApi.list(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const agentsMap = useMemo(() => {
+    const map = new Map<string, AgentWithParsedFields>();
+    agentsData?.forEach(a => map.set(a.id, a));
+    return map;
+  }, [agentsData]);
 
   // Stream tasks for this project
   const {
@@ -591,6 +604,7 @@ export function ProjectTasks() {
             showArchived={showArchived}
             useEnhancedCards={useEnhancedCards}
             usersMap={usersMap}
+            agentsMap={agentsMap}
             agentFlowMap={agentFlowMap}
             onCreateTask={handleCreateNewTask}
             onEditTask={handleEditTask}

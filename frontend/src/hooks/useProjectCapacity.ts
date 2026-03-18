@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { resolveApiUrl } from '@/lib/api';
+import { makeRequest, handleApiResponse } from '@/lib/api/client';
 import { capacityKeys } from '@/lib/query-keys';
 
 export interface ProjectCapacity {
@@ -36,30 +36,18 @@ export interface ActiveExecutionsResponse {
 }
 
 async function fetchProjectCapacity(projectId: string): Promise<ProjectCapacity> {
-  const response = await fetch(resolveApiUrl(`/api/projects/${projectId}/capacity`));
-  if (!response.ok) {
-    throw new Error('Failed to fetch project capacity');
-  }
-  const json = await response.json();
-  return json.data;
+  const response = await makeRequest(`/api/projects/${projectId}/capacity`);
+  return handleApiResponse<ProjectCapacity>(response);
 }
 
 async function fetchActiveSlots(projectId: string): Promise<ExecutionSlot[]> {
-  const response = await fetch(resolveApiUrl(`/api/projects/${projectId}/slots`));
-  if (!response.ok) {
-    throw new Error('Failed to fetch active slots');
-  }
-  const json = await response.json();
-  return json.data;
+  const response = await makeRequest(`/api/projects/${projectId}/slots`);
+  return handleApiResponse<ExecutionSlot[]>(response);
 }
 
 async function fetchActiveExecutions(): Promise<ActiveExecutionsResponse> {
-  const response = await fetch(resolveApiUrl('/api/execution/active'));
-  if (!response.ok) {
-    throw new Error('Failed to fetch active executions');
-  }
-  const json = await response.json();
-  return json.data;
+  const response = await makeRequest('/api/execution/active');
+  return handleApiResponse<ActiveExecutionsResponse>(response);
 }
 
 /**

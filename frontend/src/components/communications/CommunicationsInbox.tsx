@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import {
   Card,
   CardContent,
@@ -44,7 +45,6 @@ interface CommunicationsInboxProps {
 }
 
 export function CommunicationsInbox({ projectId }: CommunicationsInboxProps) {
-  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'calls' | 'sms'>('calls');
   const [selectedCall, setSelectedCall] = useState<CallLogRecord | null>(null);
   const [selectedSms, setSelectedSms] = useState<SmsMessageRecord | null>(null);
@@ -75,19 +75,18 @@ export function CommunicationsInbox({ projectId }: CommunicationsInboxProps) {
     enabled: !!projectId,
   });
 
-  const markSmsReadMutation = useMutation({
+  const markSmsReadMutation = useMutationWithToast({
     mutationFn: communicationsApi.markSmsRead,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: commsKeys.smsAll() });
-      queryClient.invalidateQueries({ queryKey: commsKeys.smsStatsAll() });
-    },
+    successMessage: 'Marked as read',
+    errorMessage: 'Failed to mark as read',
+    invalidateKeys: [commsKeys.smsAll(), commsKeys.smsStatsAll()],
   });
 
-  const toggleSmsStarMutation = useMutation({
+  const toggleSmsStarMutation = useMutationWithToast({
     mutationFn: communicationsApi.toggleSmsStar,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: commsKeys.smsAll() });
-    },
+    successMessage: 'Star toggled',
+    errorMessage: 'Failed to toggle star',
+    invalidateKeys: [commsKeys.smsAll()],
   });
 
   const handleOpenSms = (sms: SmsMessageRecord) => {

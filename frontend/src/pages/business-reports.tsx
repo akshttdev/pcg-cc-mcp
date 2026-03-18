@@ -344,7 +344,7 @@ export function ReportDetail() {
   const patchMut = useMutation({
     mutationFn: (data: Partial<BusinessReportRecord>) => reportsApi.patch(id!, data),
     onSuccess: (updated) => {
-      queryClient.setQueryData(['report', id], updated);
+      queryClient.setQueryData(businessKeys.report(id!), updated);
     },
   });
 
@@ -354,7 +354,7 @@ export function ReportDetail() {
     errorMessage: 'Failed to approve report',
     invalidateKeys: [businessKeys.reports()],
     onSuccess: (result) => {
-      queryClient.setQueryData(['report', id], result.report);
+      queryClient.setQueryData(businessKeys.report(id!), result.report);
     },
   });
 
@@ -364,7 +364,7 @@ export function ReportDetail() {
     errorMessage: 'Failed to request revision',
     invalidateKeys: [businessKeys.reports()],
     onSuccess: (updated) => {
-      queryClient.setQueryData(['report', id], updated);
+      queryClient.setQueryData(businessKeys.report(id!), updated);
     },
   });
 

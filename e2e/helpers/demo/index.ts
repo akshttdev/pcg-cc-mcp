@@ -16,6 +16,10 @@ export {
   simulateDevAgentWork,
   simulateQaVerdict,
   createPrForTask,
+  postDevAgentSummaryComment,
+  postQaReviewComment,
+  fetchPrComments,
+  getPrUrl,
 } from "./simulation";
 export { cleanupDemoBranches, cleanupDemoPr } from "./cleanup";
 
