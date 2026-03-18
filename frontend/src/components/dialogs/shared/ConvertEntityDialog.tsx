@@ -19,6 +19,7 @@ import {
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { entityConversionApi, organizationsApi } from '@/lib/api';
+import { organizationKeys, sidebarKeys } from '@/lib/query-keys';
 import type { EntityType } from '@/lib/api';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, AlertTriangle } from 'lucide-react';
@@ -55,7 +56,7 @@ export const ConvertEntityDialog = NiceModal.create(
       (sourceType === 'organization' && (targetType === 'client' || targetType === 'project'));
 
     const { data: organizations = [] } = useQuery({
-      queryKey: ['organizations'],
+      queryKey: organizationKeys.all,
       queryFn: () => organizationsApi.getAll(),
       enabled: needsParent,
     });
@@ -73,8 +74,8 @@ export const ConvertEntityDialog = NiceModal.create(
           target_parent_id: needsParent ? targetParentId || undefined : undefined,
         });
 
-        queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
-        queryClient.invalidateQueries({ queryKey: ['organizations'] });
+        queryClient.invalidateQueries({ queryKey: sidebarKeys.tree() });
+        queryClient.invalidateQueries({ queryKey: organizationKeys.all });
 
         modal.resolve(result);
         modal.hide();

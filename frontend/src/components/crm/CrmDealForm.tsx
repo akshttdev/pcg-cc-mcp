@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select';
 import { Loader2 } from 'lucide-react';
 import { crmApi } from '@/lib/api';
+import { crmKeys } from '@/lib/query-keys';
 import type { CrmDealWithContact, CrmPipelineStage, CreateCrmDeal, UpdateCrmDeal } from '@/types/crm';
 
 interface CrmDealFormProps {
@@ -73,7 +74,7 @@ export function CrmDealForm({
 
   // Fetch contacts for the dropdown
   const { data: contacts = [] } = useQuery({
-    queryKey: ['crm', 'contacts', organizationId],
+    queryKey: crmKeys.contacts(organizationId),
     queryFn: () => crmApi.listContacts(organizationId, { limit: 100 }),
     enabled: open && !!organizationId,
   });

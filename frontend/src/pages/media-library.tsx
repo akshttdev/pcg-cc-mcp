@@ -1,12 +1,13 @@
 import { useCallback, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import { mediaApi, type MediaAsset } from '@/lib/api';
+import { mediaKeys } from '@/lib/query-keys';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Loader } from '@/components/ui/loader';
-import { toast } from 'sonner';
 import { Upload, Search, Trash2, Image as ImageIcon } from 'lucide-react';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -190,7 +191,6 @@ function AssetDetailPanel({ asset, onClose }: { asset: MediaAsset; onClose: () =
 
 export function MediaLibraryPage() {
   const { projectId } = useParams<{ projectId: string }>();
-  const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [search, setSearch] = useState('');
@@ -209,25 +209,23 @@ export function MediaLibraryPage() {
     refetchInterval: 10000, // poll for analysis updates
   });
 
-  const uploadMutation = useMutation({
+  const uploadMutation = useMutationWithToast({
     mutationFn: (file: File) => {
       const fd = new FormData();
       fd.append('file', file);
       return mediaApi.upload(projectId!, fd);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['media', projectId] });
-      toast.success('Uploaded — AI analysis started.');
-    },
-    onError: () => {
-      toast.error('Upload failed');
-    },
+    successMessage: 'Uploaded — AI analysis started.',
+    errorMessage: 'Upload failed',
+    invalidateKeys: [mediaKeys.library(projectId!)],
   });
 
-  const deleteMutation = useMutation({
+  const deleteMutation = useMutationWithToast({
     mutationFn: (id: string) => mediaApi.delete(id),
+    successMessage: 'Asset deleted',
+    errorMessage: 'Failed to delete asset',
+    invalidateKeys: [mediaKeys.library(projectId!)],
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['media', projectId] });
       if (selectedAsset) setSelectedAsset(null);
     },
   });

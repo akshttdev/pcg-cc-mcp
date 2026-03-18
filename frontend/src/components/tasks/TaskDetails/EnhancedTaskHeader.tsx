@@ -39,6 +39,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { tasksApi } from '@/lib/api';
+import { taskKeys } from '@/lib/query-keys';
 import { toast } from 'sonner';
 import type { TaskWithAttemptStatus, TaskStatus } from 'shared/types';
 import type { TaskCardMode } from '../EnhancedTaskCard';
@@ -247,7 +248,7 @@ export function EnhancedTaskHeader({
             setUpdatingStatus(true);
             try {
               await tasksApi.update(task.id, { status: newStatus as TaskStatus });
-              queryClient.invalidateQueries({ queryKey: ['tasks'] });
+              queryClient.invalidateQueries({ queryKey: taskKeys.all });
               toast.success(`Status changed to ${statusConfig[newStatus]?.label || newStatus}`);
               onStatusChange?.(newStatus);
             } catch (err) {

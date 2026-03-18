@@ -5,6 +5,7 @@ import { Coins, TrendingUp, Clock, AlertTriangle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { resolveApiUrl } from '@/lib/api';
+import { tokenUsageKeys } from '@/lib/query-keys';
 
 interface TokenUsageSummary {
   total_input_tokens: number;
@@ -69,7 +70,7 @@ export function TokenUsageWidget({
     data: todayUsage,
     isLoading: loadingToday,
   } = useQuery({
-    queryKey: ['token-usage-today'],
+    queryKey: tokenUsageKeys.todaySummary(),
     queryFn: fetchTodayUsage,
     refetchInterval: 30000, // Refresh every 30 seconds
   });
@@ -78,7 +79,7 @@ export function TokenUsageWidget({
     data: projectUsage,
     isLoading: loadingProjects,
   } = useQuery({
-    queryKey: ['token-usage-by-project'],
+    queryKey: tokenUsageKeys.byProjectSummary(),
     queryFn: fetchUsageByProject,
     refetchInterval: 30000,
   });

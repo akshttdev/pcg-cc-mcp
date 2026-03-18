@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { commentsApi, activityApi } from '@/lib/api';
+import { taskKeys } from '@/lib/query-keys';
 import type { CreateTaskComment, CommentType, TaskComment } from 'shared/types';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -38,8 +39,8 @@ export function CommentInput({
   const createMutation = useMutation({
     mutationFn: (newComment: CreateTaskComment) => commentsApi.create(newComment),
     onSuccess: async (comment: TaskComment) => {
-      queryClient.invalidateQueries({ queryKey: ['taskComments', taskId] });
-      queryClient.invalidateQueries({ queryKey: ['taskActivity', taskId] });
+      queryClient.invalidateQueries({ queryKey: taskKeys.comments(taskId) });
+      queryClient.invalidateQueries({ queryKey: taskKeys.activity(taskId) });
       setContent('');
       setCommentType('comment');
       toast.success('Comment posted');

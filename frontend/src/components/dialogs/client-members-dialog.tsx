@@ -29,6 +29,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Shield, Trash2, UserPlus, Eye, Pencil } from 'lucide-react';
 import type { UserListItem } from 'shared/types';
 import { resolveApiUrl } from '@/lib/api';
+import { userKeys } from '@/lib/query-keys';
 
 interface ClientMembersDialogProps {
   open: boolean;
@@ -115,13 +116,13 @@ export function ClientMembersDialog({
   const [selectedRole, setSelectedRole] = useState<string>('viewer');
 
   const { data: members = [], isLoading } = useQuery({
-    queryKey: ['client-members', clientId],
+    queryKey: userKeys.clientMembers(clientId),
     queryFn: () => api.listClientMembers(clientId),
     enabled: open,
   });
 
   const { data: allUsers = [] } = useQuery({
-    queryKey: ['users'],
+    queryKey: userKeys.all,
     queryFn: api.listUsers,
     enabled: open,
   });
@@ -134,7 +135,7 @@ export function ClientMembersDialog({
     mutationFn: ({ userId, role }: { userId: string; role: string }) =>
       api.addClientMember(clientId, userId, role),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['client-members', clientId] });
+      queryClient.invalidateQueries({ queryKey: userKeys.clientMembers(clientId) });
       setSelectedUserId('');
       setSelectedRole('viewer');
     },
@@ -143,7 +144,7 @@ export function ClientMembersDialog({
   const removeMutation = useMutation({
     mutationFn: (userId: string) => api.removeClientMember(clientId, userId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['client-members', clientId] });
+      queryClient.invalidateQueries({ queryKey: userKeys.clientMembers(clientId) });
     },
   });
 

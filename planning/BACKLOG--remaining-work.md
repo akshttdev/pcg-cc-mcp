@@ -1,6 +1,6 @@
 # Backlog — Remaining Work
 
-**Last updated:** 2026-03-17 (post PR #45 — sloperation316 integration)
+**Last updated:** 2026-03-18 (post PR #46 review — quality sprint)
 **Context:** Consolidated from all completed planning docs. Items prioritized by impact and dependency.
 
 ---
@@ -97,19 +97,21 @@
 ## P2.5 — Modularity Sprint 6 Candidates
 
 ### Modularity Sprint 6 — Hook Mutations + Remaining Debt
-**Source:** `archive/2026-03-16--plan--modularity-sprint-5.md` (deferred 2e)
-**What:** 6 hooks with raw `useMutation` → `useMutationWithToast`:
+**Source:** `archive/2026-03-16--plan--modularity-sprint-5.md` (deferred 2e), PR #46 review
+**What:** Remaining raw `useMutation` → `useMutationWithToast`:
+- ~~`hooks/useOrgOnboarding.ts` (4 mutations)~~ → Done (PR #46)
+- ~~`hooks/useWorkflowTemplates.ts` (1 mutation)~~ → Done (PR #46)
+- ~~`hooks/useCrmActivities.ts` (2 mutations)~~ → Done (PR #46)
 - `hooks/useAgentFlows.ts` (4 mutations)
-- `hooks/useOrgOnboarding.ts` (4 mutations)
-- `hooks/useWorkflowTemplates.ts` (1 mutation)
-- `hooks/useCrmActivities.ts` (2 mutations)
-- `hooks/useTaskMutations.ts` (3 mutations)
+- `hooks/useTaskMutations.ts` (3 mutations) — complex: async activity logging side effects
 - `pages/oss-library-listener.tsx` (4 mutations)
-Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~268 inline query keys
+- `pages/data-sources.tsx:910` `RunWorkflowFromSourceDialog.runMutation` — conditional toast logic
+Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~90 inline query keys (down from ~318)
 - Over-invalidation in autonomy/bowser/collaboration mutations (broad `autonomyKeys.all` instead of targeted keys)
 - `MembersTab` raw `fetch()` → `makeRequest` migration
+- Query key string mismatches: `['brandProfile', orgId]` vs factory `['orgBrandProfile', orgId]`, `['workflowTemplates']` vs factory `['workflow-templates']` — need coordinated rename
 **Source also:** `archive/2026-03-16--plan--modularity-sprint-4.md` (deferred items)
-**Status:** NOT STARTED
+**Status:** PARTIALLY DONE (PR #46 converted 19 mutations, centralized ~228 keys, ~90 inline keys remain)
 
 ### Modularity — Large Frontend File Splits
 **Source:** `archive/2026-03-15--plan--modularity-sprint-2.md` (remaining large files section)
@@ -117,18 +119,18 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 - `virtual-environment.tsx` (1,282 lines)
 - `TaskFormDialog.tsx` (1,240 lines) — complex form, high-traffic
 - `company-profile.tsx` (1,218 lines) — similar pattern to project-detail split
-- `MeetingMode.tsx` (1,207 lines) — Topsi meeting component
+- ~~`MeetingMode.tsx` (1,207 lines)~~ → Done (PR #46, split to `meeting-mode/`)
 - `CrmDealDetailPanel.tsx` (1,202 lines) — grew in PR #36
-**Status:** NOT STARTED — candidates for future modularity sprint
+**Status:** PARTIALLY DONE (PR #46 split 3 files: MeetingMode, NoraAssistant, project-tasks). 7 files >900 lines remain (10 including preserved originals pending deletion).
 
 ### Workflow UX — Deferred Polish
 **Source:** `archive/2026-03-16--plan--workflow-ux-sprint.md` (deferred items + PR #44 review)
 **What:**
 - Extract `DataSourceWorkflowRunner` from `data-source-detail.tsx` (~730 lines) — Day 2 deferral
-- `CopyWorkflowDialog` NiceModal migration (C1) — all dialogs should use `@ebay/nice-modal-react`
-- `window.confirm()` → shadcn `AlertDialog` in `WorkflowCardGrid` delete (W3)
+- ~~`CopyWorkflowDialog` NiceModal migration~~ → Already on NiceModal (PR #46 converted its mutation)
+- ~~`window.confirm()` → shadcn `AlertDialog`~~ → All `window.confirm()` calls eliminated (PR #46 Day 1)
 - Ownership filter toggle (My/Org/All) on workflow cards — badges exist but no filtering
-**Status:** NOT STARTED
+**Status:** PARTIALLY DONE (PR #46 resolved confirm/mutation items)
 
 ### Modularity — Deferred Stretch Items
 **Source:** `archive/2026-03-15--plan--modularity-sprint-2.md` (Day 5c)
@@ -141,6 +143,30 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 **Source:** PR #37 QA review
 **What:** 3 independent `formatRelativeDate` implementations remain in EmailInbox, CommunicationsInbox, WorkflowRunsPanel. Different logic in each (today/yesterday vs "Xm ago" format). Could centralize with a configurable formatter.
 **Status:** NOT STARTED — not a regression, just incomplete DRY
+
+---
+
+## Active Branch Conflict Notes (2026-03-18)
+
+### `sloperation316-pipeline-progress` — Updated from main (2026-03-18)
+PR #45 merged `integration/sloperation316` (a separate integration branch) — NOT this branch. Pipeline-progress has 77 files of unmerged work (CRM pipeline automation, company profiles, brand guides, e2e tests).
+**Status**: Merged `origin/main` — no conflicts. Ready to merge to main when pipeline features are approved.
+
+### `sloperation316-vibe-integration` — Updated from main (2026-03-18)
+Superset of pipeline-progress (Dockerfile fix + VIBE tokenomics plan). Merged `origin/main` with 17 conflicts resolved:
+- `company.rs`: kept main's `hex()` UUID lookup
+- `crm_deals.rs`: kept vibe's `call_llm()`, Astra Pass 2, `generate_*_core()` pattern
+- `App.tsx`: kept `org_viewer` for `/people` routes (consistent with CRM)
+- Frontend: kept vibe's pipeline features, fixed `personsApi.get()` and `tasksApi.getAll()` method names
+**Note**: If PR #46 merges to main before these branches, they'll need another merge from main to pick up query key factories, mutation conversions, and file splits.
+
+### `refactor/dev-velocity-sprint` — Zero conflict with PR #46
+Planning file only. Focus: DbUuid (Rust), unwrap elimination (Rust), `any` types (different TS files), route authz (Rust).
+
+### Pre-existing DB/Server Issues (found during e2e setup)
+1. **Seed DB BLOB→TEXT**: `users` table still has BLOB UUIDs. Runtime fix: `UPDATE users SET id = lower(substr(hex(id),...))`. Seed needs regeneration.
+2. **Onboarding warning**: `table projects has no column named slug` — `user_onboarding.rs` references a column missing from seed schema. Non-blocking.
+3. **Migration checksum mismatch**: `20260409000000_org_cloud.sql` was modified after being applied to seed. Fresh seed + `sqlx migrate run` required.
 
 ---
 

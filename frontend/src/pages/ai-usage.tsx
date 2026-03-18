@@ -32,6 +32,7 @@ import {
   Bot,
 } from 'lucide-react';
 import { tokenUsageApi } from '@/lib/api';
+import { tokenUsageKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
 
 type Tab = 'overview' | 'providers' | 'models' | 'projects' | 'agents';
@@ -56,32 +57,32 @@ export function AIUsagePage() {
   const [days, setDays] = useState<number>(7);
 
   const { isLoading: todayLoading, refetch: refetchToday } = useQuery({
-    queryKey: ['token-usage', 'today'],
+    queryKey: tokenUsageKeys.today(),
     queryFn: () => tokenUsageApi.getToday(),
   });
 
   const { data: dailyUsage, isLoading: dailyLoading, refetch: refetchDaily } = useQuery({
-    queryKey: ['token-usage', 'daily', days],
+    queryKey: tokenUsageKeys.daily(days),
     queryFn: () => tokenUsageApi.getDaily(days),
   });
 
   const { data: providerUsage, isLoading: providerLoading, refetch: refetchProvider } = useQuery({
-    queryKey: ['token-usage', 'by-provider', days],
+    queryKey: tokenUsageKeys.byProvider(days),
     queryFn: () => tokenUsageApi.getByProvider(days),
   });
 
   const { data: modelUsage, isLoading: modelLoading, refetch: refetchModel } = useQuery({
-    queryKey: ['token-usage', 'by-model', days],
+    queryKey: tokenUsageKeys.byModel(days),
     queryFn: () => tokenUsageApi.getByModel(days),
   });
 
   const { data: projectUsage, isLoading: projectLoading, refetch: refetchProject } = useQuery({
-    queryKey: ['token-usage', 'by-project', days],
+    queryKey: tokenUsageKeys.byProject(days),
     queryFn: () => tokenUsageApi.getByProject(days),
   });
 
   const { data: agentUsage, isLoading: agentLoading, refetch: refetchAgent } = useQuery({
-    queryKey: ['token-usage', 'by-agent', days],
+    queryKey: tokenUsageKeys.byAgent(days),
     queryFn: () => tokenUsageApi.getByAgent(days),
   });
 

@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { proposalsApi, type DealType } from '@/lib/api';
+import { businessKeys } from '@/lib/query-keys';
 
 interface Props {
   open: boolean;
@@ -68,9 +69,9 @@ export function ProposalCreateModal({
         organization_id: defaultOrgId,
       });
       toast.success('Proposal created');
-      queryClient.invalidateQueries({ queryKey: ['proposals'] });
+      queryClient.invalidateQueries({ queryKey: businessKeys.proposals() });
       if (defaultCompanyId) {
-        queryClient.invalidateQueries({ queryKey: ['company-proposals', defaultCompanyId] });
+        queryClient.invalidateQueries({ queryKey: businessKeys.companyProposals(defaultCompanyId!) });
       }
       handleClose();
     } catch {

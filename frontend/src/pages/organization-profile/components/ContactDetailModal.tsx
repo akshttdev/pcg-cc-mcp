@@ -36,6 +36,7 @@ import {
   type CrmContactRecord,
   type CrmActivityRecord,
 } from '@/lib/api';
+import { crmKeys } from '@/lib/query-keys';
 
 export function ContactDetailModal({
   contact,
@@ -67,14 +68,14 @@ export function ContactDetailModal({
   const stageInfo = LIFECYCLE_STAGE_INFO[contact.lifecycle_stage as LifecycleStage];
 
   const { data: deals = [] } = useQuery({
-    queryKey: ['contact-deals', contact.id],
+    queryKey: crmKeys.contactDeals(contact.id),
     queryFn: () => crmDealsApi.listDeals({ contact_id: contact.id }),
     enabled: open,
     staleTime: 30_000,
   });
 
   const { data: activities = [] } = useQuery<CrmActivityRecord[]>({
-    queryKey: ['contact-activities', contact.id],
+    queryKey: crmKeys.contactActivities(contact.id),
     queryFn: () => crmActivitiesApi.listActivities({ organization_id: orgId, contact_id: contact.id }),
     enabled: open,
     staleTime: 30_000,
@@ -83,7 +84,7 @@ export function ContactDetailModal({
   const updateMutation = useMutation({
     mutationFn: () => crmApi.updateContact(contact.id, editData),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['crm-contacts'] });
+      queryClient.invalidateQueries({ queryKey: crmKeys.contactsAll() });
       setIsEditing(false);
       toast.success('Contact updated');
     },
@@ -93,7 +94,7 @@ export function ContactDetailModal({
   const deleteMutation = useMutation({
     mutationFn: () => crmApi.deleteContact(contact.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['crm-contacts'] });
+      queryClient.invalidateQueries({ queryKey: crmKeys.contactsAll() });
       onClose();
       toast.success('Contact deleted');
     },

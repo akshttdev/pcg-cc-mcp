@@ -8,6 +8,7 @@ import {
   Radio,
 } from 'lucide-react';
 import { pulseApi } from '@/lib/api';
+import { pulseKeys } from '@/lib/query-keys';
 import { formatDate } from '../../helpers';
 
 // ── Pulse View (deep view for pulse) ─────────────────────────────────────────
@@ -15,7 +16,7 @@ import { formatDate } from '../../helpers';
 export function PulseView({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
   const alertQueries = useQueries({
     queries: projectEntries.map((entry) => ({
-      queryKey: ['pulse-alerts-org', entry.id],
+      queryKey: pulseKeys.alertsOrg(entry.id),
       queryFn: () => pulseApi.getAlerts(entry.id, 20),
       staleTime: 60_000,
       enabled: projectEntries.length > 0,
@@ -24,7 +25,7 @@ export function PulseView({ projectEntries }: { projectEntries: { id: string; na
 
   const contentQueries = useQueries({
     queries: projectEntries.map((entry) => ({
-      queryKey: ['pulse-content-org', entry.id],
+      queryKey: pulseKeys.contentOrg(entry.id),
       queryFn: () => pulseApi.getLatestContent(entry.id, 10),
       staleTime: 60_000,
       enabled: projectEntries.length > 0,
@@ -180,7 +181,7 @@ export function PulseView({ projectEntries }: { projectEntries: { id: string; na
 export function PulseSection({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
   const alertQueries = useQueries({
     queries: projectEntries.map((entry) => ({
-      queryKey: ['pulse-alerts-org', entry.id],
+      queryKey: pulseKeys.alertsOrg(entry.id),
       queryFn: () => pulseApi.getAlerts(entry.id, 20),
       staleTime: 60_000,
       enabled: projectEntries.length > 0,
@@ -189,7 +190,7 @@ export function PulseSection({ projectEntries }: { projectEntries: { id: string;
 
   const contentQueries = useQueries({
     queries: projectEntries.map((entry) => ({
-      queryKey: ['pulse-content-org', entry.id],
+      queryKey: pulseKeys.contentOrg(entry.id),
       queryFn: () => pulseApi.getLatestContent(entry.id, 10),
       staleTime: 60_000,
       enabled: projectEntries.length > 0,

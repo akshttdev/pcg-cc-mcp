@@ -4,12 +4,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { BarChart2, TrendingUp, Globe } from 'lucide-react';
 import { socialApi, type SocialPostRecord } from '@/lib/api';
+import { socialKeys } from '@/lib/query-keys';
 import { PLATFORM_ICONS, PLATFORM_COLORS } from '../../constants';
 
 export function SocialAnalyticsView({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
   const postQueries = useQueries({
     queries: projectEntries.map(e => ({
-      queryKey: ['social-posts', e.id],
+      queryKey: socialKeys.posts(e.id),
       queryFn: () => socialApi.listPostsFiltered({ projectId: e.id, status: 'published', limit: 100 }),
       staleTime: 120_000,
     })),

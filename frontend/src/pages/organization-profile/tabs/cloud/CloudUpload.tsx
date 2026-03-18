@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { orgCloudApi } from '@/lib/api/org-cloud';
+import { orgCloudKeys } from '@/lib/query-keys';
 
 interface CloudUploadProps {
   orgId: string;
@@ -31,8 +32,8 @@ export function CloudUpload({ orgId }: CloudUploadProps) {
       return orgCloudApi.contribute(orgId, formData);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['org-cloud', orgId] });
-      queryClient.invalidateQueries({ queryKey: ['org-cloud-stats', orgId] });
+      queryClient.invalidateQueries({ queryKey: orgCloudKeys.all(orgId) });
+      queryClient.invalidateQueries({ queryKey: orgCloudKeys.stats(orgId) });
     },
   });
 

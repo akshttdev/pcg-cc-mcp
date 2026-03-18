@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { agentKeys, taskKeys } from '@/lib/query-keys';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Loader } from '@/components/ui/loader';
@@ -53,12 +54,12 @@ export function AgentExecutionsPage() {
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
 
   const { data: agents = [], isLoading: agentsLoading } = useQuery({
-    queryKey: ['agents'],
+    queryKey: agentKeys.all,
     queryFn: () => agentsApi.list(),
   });
 
   const { data: recentAttempts = [], isLoading: attemptsLoading, isError: attemptsError, refetch } = useQuery({
-    queryKey: ['task-attempts-all'],
+    queryKey: taskKeys.attemptsAll(),
     queryFn: () => taskAttemptsApi.list(),
     refetchInterval: 10_000,
   });

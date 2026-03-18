@@ -19,6 +19,7 @@ import { Badge } from '@/components/ui/badge';
 import { useOrganization } from '@/contexts/organization-context';
 import { useQuery } from '@tanstack/react-query';
 import { projectsApi } from '@/lib/api';
+import { entityKeys } from '@/lib/query-keys';
 import {
   Select,
   SelectContent,
@@ -324,7 +325,7 @@ export function SiteDirectoryPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
 
   const { data: allProjects = [] } = useQuery({
-    queryKey: ['allProjectsDirectory'],
+    queryKey: entityKeys.allDirectory(),
     queryFn: () => projectsApi.getAll(),
     staleTime: 60_000,
   });

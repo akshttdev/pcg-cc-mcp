@@ -60,6 +60,7 @@ import {
   DATA_TYPE_OPTIONS,
 } from '@/lib/api';
 import { formatDate } from '@/lib/formatters';
+import { dataSourceKeys } from '@/lib/query-keys';
 
 // ── Add Data Source Dialog ────────────────────────────────────────────────────
 
@@ -125,7 +126,7 @@ function AddDataSourceDialog({
       } as any);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['dataSources', orgId] });
+      queryClient.invalidateQueries({ queryKey: dataSourceKeys.list(orgId) });
       onOpenChange(false);
       resetForm();
     },
@@ -135,7 +136,7 @@ function AddDataSourceDialog({
     mutationFn: (data: UpdateDataSourceRequest) =>
       dataSourcesApi.update(editingSource!.id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['dataSources', orgId] });
+      queryClient.invalidateQueries({ queryKey: dataSourceKeys.list(orgId) });
       onOpenChange(false);
     },
   });
@@ -359,7 +360,7 @@ export function DataSourcesView({
   const [search, setSearch] = useState('');
 
   const { data: sources = [], isLoading } = useQuery({
-    queryKey: ['dataSources', orgId],
+    queryKey: dataSourceKeys.list(orgId),
     queryFn: () => dataSourcesApi.listByOrganization(orgId),
     staleTime: 30_000,
   });
@@ -367,7 +368,7 @@ export function DataSourcesView({
   const deleteMutation = useMutation({
     mutationFn: (id: string) => dataSourcesApi.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['dataSources', orgId] });
+      queryClient.invalidateQueries({ queryKey: dataSourceKeys.list(orgId) });
       setDeleteTarget(null);
     },
   });

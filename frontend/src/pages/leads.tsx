@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { personsApi, type PersonRecord } from '@/lib/api';
+import { entityKeys } from '@/lib/query-keys';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -119,7 +120,7 @@ export function LeadsPage() {
   const [typeFilter, setTypeFilter] = useState<string | undefined>('lead');
 
   const { data: persons = [], isLoading, refetch, isFetching } = useQuery({
-    queryKey: ['persons', 'leads', orgFilter, typeFilter, search],
+    queryKey: entityKeys.leads(orgFilter, typeFilter, search),
     queryFn: () => personsApi.list({
       person_type: typeFilter,
       organization_id: orgFilter,

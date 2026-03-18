@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { useProjectList } from '@/hooks/queries';
 import { cn } from '@/lib/utils';
+import { taskKeys } from '@/lib/query-keys';
 import type { TaskWithAttemptStatus } from 'shared/types';
 
 interface GlobalTask extends TaskWithAttemptStatus {
@@ -50,7 +51,7 @@ export function GlobalTasksPage() {
   const { data: projects = [], isLoading: projectsLoading } = useProjectList();
 
   const { data: allTasks = [], isLoading: tasksLoading } = useQuery<GlobalTask[]>({
-    queryKey: ['global-tasks', projects.map(p => p.id)],
+    queryKey: taskKeys.global(projects.map(p => p.id)),
     queryFn: async () => {
       const taskPromises = projects.map(async (project) => {
         try {

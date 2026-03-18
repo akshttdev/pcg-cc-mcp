@@ -16,6 +16,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { socialApi, type SocialPostRecord } from '@/lib/api';
+import { socialKeys } from '@/lib/query-keys';
 import { PLATFORM_ICONS, PLATFORM_COLORS, PLATFORM_BG, STATUS_COLORS } from '../../constants';
 import { formatDate, buildMonthGrid, buildWeekDays, isSameDay, MONTH_NAMES, DAY_NAMES } from '../../helpers';
 import { formatCompactNumber } from '@/lib/formatters';
@@ -35,7 +36,7 @@ export function SocialContentView({ projectEntries }: { projectEntries: { id: st
 
   const postQueries = useQueries({
     queries: projectEntries.map(e => ({
-      queryKey: ['social-posts', e.id],
+      queryKey: socialKeys.posts(e.id),
       queryFn: () => socialApi.listPostsFiltered({ projectId: e.id, limit: 100 }),
       staleTime: 60_000,
     })),

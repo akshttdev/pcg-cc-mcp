@@ -29,6 +29,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Shield, User, Edit, Trash2, UserPlus, Eye, Pencil } from 'lucide-react';
 import type { ProjectMemberItem, UserListItem } from 'shared/types';
 import { resolveApiUrl } from '@/lib/api';
+import { userKeys } from '@/lib/query-keys';
 
 interface ProjectMembersDialogProps {
   open: boolean;
@@ -112,14 +113,14 @@ export function ProjectMembersDialog({
 
   // Fetch project members
   const { data: members = [], isLoading } = useQuery({
-    queryKey: ['project-members', projectId],
+    queryKey: userKeys.projectMembers(projectId),
     queryFn: () => api.listProjectMembers(projectId),
     enabled: open,
   });
 
   // Fetch all users for adding new members
   const { data: allUsers = [] } = useQuery({
-    queryKey: ['users'],
+    queryKey: userKeys.all,
     queryFn: api.listUsers,
     enabled: open,
   });
@@ -134,7 +135,7 @@ export function ProjectMembersDialog({
     mutationFn: ({ userId, role }: { userId: string; role: string }) =>
       api.addProjectMember(projectId, userId, role),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['project-members', projectId] });
+      queryClient.invalidateQueries({ queryKey: userKeys.projectMembers(projectId) });
       setSelectedUserId('');
       setSelectedRole('viewer');
     },
@@ -145,7 +146,7 @@ export function ProjectMembersDialog({
     mutationFn: ({ userId, role }: { userId: string; role: string }) =>
       api.updateMemberRole(projectId, userId, role),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['project-members', projectId] });
+      queryClient.invalidateQueries({ queryKey: userKeys.projectMembers(projectId) });
       setEditingMember(null);
     },
   });
@@ -154,7 +155,7 @@ export function ProjectMembersDialog({
   const removeMutation = useMutation({
     mutationFn: (userId: string) => api.removeMember(projectId, userId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['project-members', projectId] });
+      queryClient.invalidateQueries({ queryKey: userKeys.projectMembers(projectId) });
     },
   });
 

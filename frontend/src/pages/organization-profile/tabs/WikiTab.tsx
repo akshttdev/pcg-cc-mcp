@@ -6,19 +6,20 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BookOpen, Brain, Pencil, Save, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { organizationsApi, type OrgBrandProfile } from '@/lib/api';
+import { organizationKeys } from '@/lib/query-keys';
 import { Link } from 'react-router-dom';
 
 export function OrgWikiTab({ orgId, orgName }: { orgId: string; orgName: string }) {
   const qc = useQueryClient();
 
   const { data: org } = useQuery({
-    queryKey: ['org', orgId],
+    queryKey: organizationKeys.orgData(orgId),
     queryFn: () => organizationsApi.getById(orgId),
     enabled: !!orgId,
   });
 
   const { data: profile } = useQuery<OrgBrandProfile | null>({
-    queryKey: ['orgBrandProfile', orgId],
+    queryKey: organizationKeys.brandProfile(orgId),
     queryFn: () => organizationsApi.getBrandProfile(orgId),
     enabled: !!orgId,
     staleTime: 5 * 60_000,
@@ -37,8 +38,8 @@ export function OrgWikiTab({ orgId, orgName }: { orgId: string; orgName: string 
     setSaving(true);
     try {
       await organizationsApi.update(orgId, { description: desc });
-      qc.invalidateQueries({ queryKey: ['org', orgId] });
-      qc.invalidateQueries({ queryKey: ['organization', orgId] });
+      qc.invalidateQueries({ queryKey: organizationKeys.orgData(orgId) });
+      qc.invalidateQueries({ queryKey: organizationKeys.detail(orgId) });
       toast.success('Wiki updated');
       setEditing(false);
     } catch {

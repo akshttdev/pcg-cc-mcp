@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -66,7 +67,6 @@ async function fetchJson<T>(url: string): Promise<T> {
 }
 
 export function NetworkSettings() {
-  const queryClient = useQueryClient();
   const [newAgent, setNewAgent] = useState('');
 
   // Fetch APN Core identity
@@ -110,7 +110,7 @@ export function NetworkSettings() {
   });
 
   // Mutation to update capabilities
-  const updateCapsMutation = useMutation({
+  const updateCapsMutation = useMutationWithToast({
     mutationFn: async (caps: Partial<Capabilities>) => {
       const res = await fetch('http://localhost:8000/api/capabilities', {
         method: 'POST',
@@ -120,9 +120,8 @@ export function NetworkSettings() {
       if (!res.ok) throw new Error('Failed to update capabilities');
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: settingsKeys.apnCapabilities() });
-    },
+    errorMessage: 'Failed to update capabilities',
+    invalidateKeys: [settingsKeys.apnCapabilities()],
   });
 
   const toggleAgent = useCallback((agentId: string) => {

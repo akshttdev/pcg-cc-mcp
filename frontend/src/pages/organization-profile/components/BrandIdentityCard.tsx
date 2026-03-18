@@ -44,6 +44,7 @@ import {
   organizationsApi,
   type OrgBrandProfile,
 } from '@/lib/api';
+import { organizationKeys } from '@/lib/query-keys';
 import { parseJsonArray } from '../helpers';
 import {
   BRAND_VOICE_OPTIONS,
@@ -55,7 +56,7 @@ import {
 export function BrandIdentityCard({ orgId, orgName }: { orgId: string; orgName: string }) {
   const qc = useQueryClient();
   const { data: profile, isLoading } = useQuery<OrgBrandProfile | null>({
-    queryKey: ['orgBrandProfile', orgId],
+    queryKey: organizationKeys.brandProfile(orgId),
     queryFn: () => organizationsApi.getBrandProfile(orgId),
     staleTime: 5 * 60_000,
   });

@@ -57,6 +57,7 @@ import {
   type CreateAgentExecutionConfig,
   type UpdateAgentExecutionConfig,
 } from '@/lib/api';
+import { agentKeys } from '@/lib/query-keys';
 
 interface AgentExecutionConfigPanelProps {
   agentId: string;
@@ -99,7 +100,7 @@ export function AgentExecutionConfigPanel({
     data: profiles = [],
     isLoading: profilesLoading,
   } = useQuery<AgentExecutionProfile[]>({
-    queryKey: ['execution-profiles'],
+    queryKey: agentKeys.executionProfiles(),
     queryFn: agentExecutionConfigApi.listProfiles,
   });
 
@@ -109,7 +110,7 @@ export function AgentExecutionConfigPanel({
     isLoading: configLoading,
     error: configError,
   } = useQuery({
-    queryKey: ['agent-execution-config', agentId],
+    queryKey: agentKeys.executionConfig(agentId),
     queryFn: () => agentExecutionConfigApi.getAgentConfig(agentId),
   });
 
@@ -179,7 +180,7 @@ export function AgentExecutionConfigPanel({
     mutationFn: (data: CreateAgentExecutionConfig) =>
       agentExecutionConfigApi.createAgentConfig(agentId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['agent-execution-config', agentId] });
+      queryClient.invalidateQueries({ queryKey: agentKeys.executionConfig(agentId) });
       toast.success('Execution config created');
       setHasChanges(false);
     },
@@ -193,7 +194,7 @@ export function AgentExecutionConfigPanel({
     mutationFn: (data: UpdateAgentExecutionConfig) =>
       agentExecutionConfigApi.updateAgentConfig(agentId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['agent-execution-config', agentId] });
+      queryClient.invalidateQueries({ queryKey: agentKeys.executionConfig(agentId) });
       toast.success('Execution config updated');
       setHasChanges(false);
     },

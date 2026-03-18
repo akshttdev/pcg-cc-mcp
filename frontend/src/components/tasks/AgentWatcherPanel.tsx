@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Bot, Plus, RefreshCw, X, Eye, Search } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,9 +10,10 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { agentWatchersApi, agentsApi } from '@/lib/api';
+import { agentWatcherKeys } from '@/lib/query-keys';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import type { AgentWithParsedFields } from 'shared/types';
 import { cn } from '@/lib/utils';
-import { toast } from 'sonner';
 
 const WATCHER_POLL_INTERVAL = 10_000;
 
@@ -29,19 +30,18 @@ interface AgentWatcherPanelProps {
 }
 
 export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
-  const queryClient = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [removing, setRemoving] = useState<Set<string>>(new Set());
 
   const { data: watchers = [], error: loadError, refetch: refetchWatchers } = useQuery({
-    queryKey: ['agent-watchers', taskId],
+    queryKey: agentWatcherKeys.watchers(taskId),
     queryFn: () => agentWatchersApi.list(taskId),
     refetchInterval: WATCHER_POLL_INTERVAL,
   });
 
   const { data: availableAgents = [] } = useQuery({
-    queryKey: ['available-agents-for-watchers'],
+    queryKey: agentWatcherKeys.availableAgents(),
     queryFn: () => agentsApi.listActive(),
     enabled: pickerOpen,
   });
@@ -68,23 +68,24 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
     );
   }, [availableAgents, watcherIds, searchQuery]);
 
-  const addMutation = useMutation({
+  const addMutation = useMutationWithToast({
     mutationFn: (agentId: string) => agentWatchersApi.add(taskId, agentId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['agent-watchers', taskId] });
-      handlePickerOpenChange(false);
-    },
-    onError: () => toast.error('Failed to add agent reviewer'),
+    errorMessage: 'Failed to add agent reviewer',
+    invalidateKeys: [agentWatcherKeys.watchers(taskId)],
+    onSuccess: () => handlePickerOpenChange(false),
+  });
+
+  const removeMutation = useMutationWithToast({
+    mutationFn: (agentId: string) => agentWatchersApi.remove(taskId, agentId),
+    errorMessage: 'Failed to remove agent reviewer',
+    invalidateKeys: [agentWatcherKeys.watchers(taskId)],
   });
 
   const handleRemove = async (agentId: string) => {
     if (removing.has(agentId)) return;
     setRemoving((prev) => new Set(prev).add(agentId));
     try {
-      await agentWatchersApi.remove(taskId, agentId);
-      queryClient.invalidateQueries({ queryKey: ['agent-watchers', taskId] });
-    } catch {
-      toast.error('Failed to remove agent reviewer');
+      await removeMutation.mutateAsync(agentId);
     } finally {
       setRemoving((prev) => {
         const next = new Set(prev);

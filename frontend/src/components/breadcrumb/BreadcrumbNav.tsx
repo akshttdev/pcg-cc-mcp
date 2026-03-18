@@ -4,6 +4,7 @@ import { useProject } from '@/contexts/project-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { tasksApi, organizationsApi, dataSourcesApi, personsApi, companiesApi } from '@/lib/api';
+import { sidebarKeys, taskKeys, dataSourceKeys, entityKeys, organizationKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
 import {
   Popover,
@@ -43,14 +44,14 @@ export function BreadcrumbNav({ onToggleFullscreen, isFullscreen }: BreadcrumbNa
 
   // Fetch sidebar tree for org/project switching
   const { data: sidebarTree, isLoading: isSidebarLoading } = useQuery({
-    queryKey: ['sidebarTree'],
+    queryKey: sidebarKeys.tree(),
     queryFn: () => organizationsApi.getSidebarTree(),
     staleTime: 5 * 60 * 1000,
   });
 
   // Fetch task if taskId is present
   const { data: task } = useQuery({
-    queryKey: ['task', taskId],
+    queryKey: taskKeys.detail(taskId!),
     queryFn: async () => {
       if (!taskId || !projectId) return null;
       const tasks = await tasksApi.getAll(projectId);
@@ -61,7 +62,7 @@ export function BreadcrumbNav({ onToggleFullscreen, isFullscreen }: BreadcrumbNa
 
   // Fetch data source if dataSourceId is present
   const { data: dataSource } = useQuery({
-    queryKey: ['dataSource', dataSourceId],
+    queryKey: dataSourceKeys.detail(dataSourceId!),
     queryFn: () => dataSourcesApi.get(dataSourceId!),
     enabled: !!dataSourceId,
     staleTime: 5 * 60 * 1000,
@@ -69,7 +70,7 @@ export function BreadcrumbNav({ onToggleFullscreen, isFullscreen }: BreadcrumbNa
 
   // Fetch person if personId is present
   const { data: person } = useQuery({
-    queryKey: ['person', personId],
+    queryKey: entityKeys.person(personId!),
     queryFn: () => personsApi.get(personId!),
     enabled: !!personId,
     staleTime: 5 * 60 * 1000,
@@ -77,7 +78,7 @@ export function BreadcrumbNav({ onToggleFullscreen, isFullscreen }: BreadcrumbNa
 
   // Fetch company if companyId is present
   const { data: company } = useQuery({
-    queryKey: ['company', companyId],
+    queryKey: entityKeys.company(companyId!),
     queryFn: () => companiesApi.get(companyId!),
     enabled: !!companyId,
     staleTime: 5 * 60 * 1000,
@@ -85,7 +86,7 @@ export function BreadcrumbNav({ onToggleFullscreen, isFullscreen }: BreadcrumbNa
 
   // Fetch client name from org members if clientId is present
   const { data: clientData } = useQuery({
-    queryKey: ['org-clients', orgId],
+    queryKey: organizationKeys.clients(orgId),
     queryFn: () => organizationsApi.getClients(orgId!),
     enabled: !!clientId && !!orgId,
     staleTime: 5 * 60 * 1000,

@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +13,7 @@ import {
   SortAsc, SortDesc, FolderOpen, LayoutGrid, Loader2,
 } from 'lucide-react';
 import { dataSourcesApi, workflowsApi, type DataSourceRecord } from '@/lib/api';
+import { dataSourceKeys, workflowKeys } from '@/lib/query-keys';
 import { toast } from 'sonner';
 import {
   Select,
@@ -470,7 +472,7 @@ export default function DataSourcesPage() {
 
   // Fetch sources
   const sourcesQuery = useQuery({
-    queryKey: ['dataSources', effectiveOrgId, effectiveProjectId],
+    queryKey: dataSourceKeys.list(effectiveOrgId, effectiveProjectId),
     queryFn: async () => {
       if (effectiveOrgId) return dataSourcesApi.listByOrganization(effectiveOrgId);
       if (effectiveProjectId) return dataSourcesApi.listByProject(effectiveProjectId);
@@ -486,14 +488,12 @@ export default function DataSourcesPage() {
     return all.filter((s: DataSourceRecord) => !s.folder?.startsWith('Personal/'));
   }, [sourcesQuery.data]);
 
-  const deleteMutation = useMutation({
+  const deleteMutation = useMutationWithToast({
     mutationFn: (id: string) => dataSourcesApi.delete(id),
-    onSuccess: () => {
-      toast.success('Deleted');
-      queryClient.invalidateQueries({ queryKey: ['dataSources'] });
-      setSelectedSource(null);
-    },
-    onError: () => toast.error('Failed to delete'),
+    successMessage: 'Deleted',
+    errorMessage: 'Failed to delete',
+    invalidateKeys: [dataSourceKeys.all],
+    onSuccess: () => setSelectedSource(null),
   });
 
   // Build folder tree
@@ -538,7 +538,7 @@ export default function DataSourcesPage() {
     return sortDir === 'asc' ? <SortAsc className="h-3 w-3 ml-1" /> : <SortDesc className="h-3 w-3 ml-1" />;
   }
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['dataSources'] });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: dataSourceKeys.all });
 
   // Stats
   const totalSize = sources.reduce((acc: number, s: DataSourceRecord) => acc + (s.file_size_bytes || 0), 0);
@@ -890,7 +890,7 @@ function RunWorkflowFromSourceDialog({ source, onClose }: {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState('');
 
   const { data: allWorkflows = [] } = useQuery({
-    queryKey: ['workflowDefinitions'],
+    queryKey: workflowKeys.definitions(),
     queryFn: () => workflowsApi.listDefinitions(),
     enabled: !!source,
   });

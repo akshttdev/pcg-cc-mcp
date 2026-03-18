@@ -8,6 +8,7 @@ import {
   socialApi,
   type SocialAccountRecord,
 } from '@/lib/api';
+import { socialKeys } from '@/lib/query-keys';
 import { PLATFORM_ICONS, PLATFORM_COLORS, PLATFORM_BG } from '../../constants';
 import { formatCompactNumber } from '@/lib/formatters';
 
@@ -27,7 +28,7 @@ export function SocialAccountsView({
 
   const accountQueries = useQueries({
     queries: projectEntries.map(e => ({
-      queryKey: ['social-accounts', e.id],
+      queryKey: socialKeys.accounts(e.id),
       queryFn: () => socialApi.listAccounts(e.id),
       staleTime: 60_000,
     })),
@@ -46,7 +47,7 @@ export function SocialAccountsView({
     mutationFn: (id: string) => socialApi.deleteAccount(id),
     onSuccess: () => {
       accountQueries.forEach((_, i) => {
-        queryClient.invalidateQueries({ queryKey: ['social-accounts', projectEntries[i].id] });
+        queryClient.invalidateQueries({ queryKey: socialKeys.accounts(projectEntries[i].id) });
       });
     },
   });

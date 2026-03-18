@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { MeetingMode } from '@/components/topsi/MeetingMode';
+import { MeetingMode } from '@/components/topsi/meeting-mode';
 import { MeetingHistory } from '@/components/topsi/MeetingHistory';
 import { AgentIntegrationsTab } from '@/components/email';
 

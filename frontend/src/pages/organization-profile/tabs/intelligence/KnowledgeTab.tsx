@@ -20,6 +20,7 @@ import {
   organizationsApi,
   knowledgeApi,
 } from '@/lib/api';
+import { organizationKeys, knowledgeKeys } from '@/lib/query-keys';
 import type { ProjectKnowledgeResponse } from '@/lib/api';
 import { DataSourcesIntelView } from './ArtifactsView';
 import { DataSourcesView } from './DataSourcesView';
@@ -52,7 +53,7 @@ export function KnowledgeTab({
 }) {
   // Org-level knowledge (brand research, intelligence)
   const { data: orgKnowledge } = useQuery({
-    queryKey: ['orgKnowledge', orgId],
+    queryKey: organizationKeys.knowledge(orgId),
     queryFn: () => organizationsApi.getKnowledge(orgId),
     staleTime: 60_000,
     enabled: !!orgId,
@@ -60,7 +61,7 @@ export function KnowledgeTab({
 
   const knowledgeQueries = useQueries({
     queries: projectEntries.map((entry) => ({
-      queryKey: ['projectKnowledge', entry.id],
+      queryKey: knowledgeKeys.project(entry.id),
       queryFn: () => knowledgeApi.getProjectKnowledge(entry.id),
       staleTime: 60_000,
       enabled: projectEntries.length > 0,

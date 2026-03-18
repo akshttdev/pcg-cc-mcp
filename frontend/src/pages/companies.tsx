@@ -18,6 +18,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { toast } from 'sonner';
 import { companiesApi, type CompanyRecord } from '@/lib/api';
+import { entityKeys } from '@/lib/query-keys';
 
 // ── Intelligence status badge ─────────────────────────────────────────────────
 
@@ -95,7 +96,7 @@ function CreateCompanyDialog({
         });
       }
 
-      queryClient.invalidateQueries({ queryKey: ['companies'] });
+      queryClient.invalidateQueries({ queryKey: entityKeys.companies() });
       toast.success('Company created');
       resetForm();
       onClose();
@@ -251,7 +252,7 @@ export function CompaniesPage() {
   const [search, setSearch] = useState('');
 
   const { data: companies = [], isLoading } = useQuery({
-    queryKey: ['companies'],
+    queryKey: entityKeys.companies(),
     queryFn: () => companiesApi.list({ limit: 200 }),
   });
 
