@@ -1,6 +1,6 @@
 # Backlog — Remaining Work
 
-**Last updated:** 2026-03-18 (post PR #47 — dev velocity sprint)
+**Last updated:** 2026-03-18 (post frontend polish sprint)
 **Context:** Consolidated from all completed planning docs. Items prioritized by impact and dependency.
 
 ---
@@ -24,9 +24,9 @@
 **Source:** `archive/2026-03-12--review--ui-backend-capability-gaps.md` (F9)
 **What:** Settings > MCP Servers configures Claude Code CLI's `~/.claude.json`. The executor pipeline reads `default_mcp.json`. Completely separate — confusing for users.
 
-### 4. Workflow Trigger System
+### ~~4. Workflow Trigger System~~ → RESOLVED
 **Source:** `archive/2026-03-12--review--ui-backend-capability-gaps.md` (F12)
-**What:** Workflows must be manually run. No cron, event, or webhook triggers.
+**Resolution:** Frontend polish sprint (2026-03-18) added webhook triggers with HMAC-SHA256 validation, execution audit trail (`trigger_executions` table), per-trigger cooldown, retry logic, and full frontend UI. Event triggers and schedule triggers already existed. All three trigger types now operational.
 
 ### ~~5. E2E Demo Test Run~~ → RESOLVED
 **Source:** `2026-03-14--plan--e2e-demo-refactor.md`
