@@ -624,10 +624,10 @@ const WelcomeWizard = NiceModal.create(() => {
   // Step tracking — start at the first incomplete step
   const getInitialStep = (): number => {
     if (!config) return 0;
-    if (!config.onboarding_acknowledged) return 0;
-    if (!config.github_login_acknowledged) return 1;
-    if (!config.telemetry_acknowledged) return 2;
-    return 0;
+    if (!config.onboarding_acknowledged) return 0; // Agent/Editor not done
+    if (!config.github_login_acknowledged) return 1; // GitHub not done
+    if (!config.telemetry_acknowledged) return 2; // Privacy not done
+    return 0; // All complete — wizard shouldn't open, but default to start
   };
 
   const [currentStep, setCurrentStep] = useState(getInitialStep);

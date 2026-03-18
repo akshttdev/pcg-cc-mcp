@@ -38,8 +38,12 @@ export function SetupProgress() {
   // Don't show if all steps are complete
   if (allComplete || !config) return null;
 
-  const handleOpenWizard = () => {
-    NiceModal.show('welcome-wizard');
+  const handleOpenWizard = async () => {
+    try {
+      await NiceModal.show('welcome-wizard');
+    } catch {
+      // User dismissed wizard — partial state persists
+    }
   };
 
   return (
