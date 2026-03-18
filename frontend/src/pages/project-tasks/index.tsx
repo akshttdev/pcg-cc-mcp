@@ -54,17 +54,9 @@ import { useHotkeysContext } from 'react-hotkeys-hook';
 
 import { ProjectTasksToolbar } from './ProjectTasksToolbar';
 import { TaskViewRenderer } from './TaskViewRenderer';
-import { useTaskKeyboardNav } from './useTaskKeyboardNav';
+import { useTaskKeyboardNav, TASK_STATUSES } from './useTaskKeyboardNav';
 
 type Task = TaskWithArchive;
-
-const TASK_STATUSES = [
-  'todo',
-  'inprogress',
-  'inreview',
-  'done',
-  'cancelled',
-] as const;
 
 export function ProjectTasks() {
   const { t } = useTranslation(['tasks', 'common']);

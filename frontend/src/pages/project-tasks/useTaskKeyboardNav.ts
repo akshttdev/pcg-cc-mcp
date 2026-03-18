@@ -3,7 +3,7 @@ import type { TaskWithArchive } from '@/lib/api';
 
 type Task = TaskWithArchive;
 
-const TASK_STATUSES = [
+export const TASK_STATUSES = [
   'todo',
   'inprogress',
   'inreview',

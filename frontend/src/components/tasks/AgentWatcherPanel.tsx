@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Bot, Plus, RefreshCw, X, Eye, Search } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,6 @@ import { agentWatcherKeys } from '@/lib/query-keys';
 import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import type { AgentWithParsedFields } from 'shared/types';
 import { cn } from '@/lib/utils';
-import { toast } from 'sonner';
 
 const WATCHER_POLL_INTERVAL = 10_000;
 
@@ -31,7 +30,6 @@ interface AgentWatcherPanelProps {
 }
 
 export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
-  const queryClient = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [removing, setRemoving] = useState<Set<string>>(new Set());
@@ -77,14 +75,17 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
     onSuccess: () => handlePickerOpenChange(false),
   });
 
+  const removeMutation = useMutationWithToast({
+    mutationFn: (agentId: string) => agentWatchersApi.remove(taskId, agentId),
+    errorMessage: 'Failed to remove agent reviewer',
+    invalidateKeys: [agentWatcherKeys.watchers(taskId)],
+  });
+
   const handleRemove = async (agentId: string) => {
     if (removing.has(agentId)) return;
     setRemoving((prev) => new Set(prev).add(agentId));
     try {
-      await agentWatchersApi.remove(taskId, agentId);
-      queryClient.invalidateQueries({ queryKey: agentWatcherKeys.watchers(taskId) });
-    } catch {
-      toast.error('Failed to remove agent reviewer');
+      await removeMutation.mutateAsync(agentId);
     } finally {
       setRemoving((prev) => {
         const next = new Set(prev);
