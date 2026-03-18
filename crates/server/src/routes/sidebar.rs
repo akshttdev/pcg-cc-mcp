@@ -235,7 +235,6 @@ pub async fn get_sidebar_tree(
 ) -> Result<Json<ApiResponse<SidebarTree>>, ApiError> {
     let pool = &deployment.db().pool;
     let user_id = &access_context.user_id;
-    let user_id_str = user_id.to_string();
     // organization_members.user_id is stored as BLOB (raw bytes), not TEXT UUID
     let user_id_bytes = db::bind_uuid_blob(user_id)
         .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {e}")))?;

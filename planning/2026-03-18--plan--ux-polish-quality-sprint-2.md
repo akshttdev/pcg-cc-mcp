@@ -2,7 +2,8 @@
 
 **Date**: 2026-03-18
 **Branch**: `refactor/ux-polish-quality-sprint-2` (from main `556d7032a`)
-**Status**: Planning
+**Status**: Complete
+**PR**: #48
 
 ## Context
 
@@ -161,3 +162,37 @@ Post-PR #47 (dev velocity sprint), the codebase has strong backend foundations b
 - **sloperation316-pipeline-progress**: Avoid `crm_deals.rs` advanced actions, company profiles, brand guides. Our work is in non-CRM routes, org-profile types, onboarding components.
 - **sloperation316-vibe-integration**: Avoid VIBE tokenomics, Dockerfile changes. Our VIBELAND work was already done in PR #47.
 - **feature/blob-to-text-scoped**: Avoid DB migration files. Our Path<Uuid> work is route-level only.
+
+---
+
+## Results (2026-03-18)
+
+### Final Metrics
+
+| Metric | Before | Target | Actual |
+|--------|--------|--------|--------|
+| Onboarding modals | 4 sequential blocking | 1 wizard, skippable | **1 wizard** |
+| `: any` (frontend) | 107 | ~10 | **29** (remaining: RJSF, DiffCard, dynamic) |
+| `Path<Uuid>` non-CRM | 311 | ~190 | **84** (exceeded 2.5x) |
+| Inline query keys | 89 | ~20 | **15** (exceeded) |
+| Files >900 lines | 8 | 5 | **6** (2 dead files deleted) |
+| SSE pre-auth errors | Yes | Fixed | **Fixed** |
+| Dead code files | 2 monoliths (2,205 lines) | Deleted | **Deleted** |
+| Orphaned CRM routes | 7 project-level | Removed | **Commented out** |
+| Rust warnings (server+db) | 9 unused imports | 0 | **0** |
+
+### Deliverables
+
+- **WelcomeWizard**: Single stepped dialog (Agent/Editor → GitHub → Privacy). Safety disclaimer is inline collapsible.
+- **SetupProgress**: Sidebar indicator shows incomplete steps with return-to-wizard button.
+- **VITE_SKIP_ONBOARDING=1**: Env var bypass for E2E testing.
+- **SSE auth guard**: `useAgentDirectory` hook accepts `enabled` option (default true).
+- **Query key factory**: 16 new factory functions, fixed `brandProfile`/`orgBrandProfile` and `workflowTemplates`/`workflow-templates` mismatches.
+- **Path<Uuid> → Path<String>**: 227 conversions across 33 route files.
+- **Type safety**: 78 `: any` eliminated, 9 `catch(e: any)` → `catch(e: unknown)` with type guards.
+- **Dead code**: 2 monolith files deleted (2,205 lines), 7 orphaned CRM routes commented out.
+- **Rust cleanup**: 9 unused import/variable warnings fixed in server+db crates.
+
+### Files Changed
+
+111 files changed, 2,106 insertions(+), 2,943 deletions(-) (net -837 lines)

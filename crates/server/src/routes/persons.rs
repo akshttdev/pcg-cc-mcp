@@ -7,7 +7,7 @@
 use axum::{
     Router,
     extract::{Path, Query, State},
-    routing::{delete, get, patch, post},
+    routing::{delete, get, patch},
     Json,
 };
 use deployment::Deployment;
