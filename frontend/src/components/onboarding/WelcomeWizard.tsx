@@ -319,8 +319,7 @@ interface GitHubStepProps {
 }
 
 function GitHubStep({ onConnected }: GitHubStepProps) {
-  const { config, loading, githubTokenInvalid, reloadSystem } =
-    useUserSystem();
+  const { config, loading, githubTokenInvalid, reloadSystem } = useUserSystem();
   const [fetching, setFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deviceState, setDeviceState] =
@@ -347,8 +346,7 @@ function GitHubStep({ onConnected }: GitHubStepProps) {
       setDeviceState(data);
       setPolling(true);
     } catch (e: unknown) {
-      const message =
-        e instanceof Error ? e.message : 'Network error';
+      const message = e instanceof Error ? e.message : 'Network error';
       console.error(e);
       setError(message);
     } finally {
@@ -378,8 +376,7 @@ function GitHubStep({ onConnected }: GitHubStepProps) {
               break;
           }
         } catch (e: unknown) {
-          const message =
-            e instanceof Error ? e.message : 'Login failed.';
+          const message = e instanceof Error ? e.message : 'Login failed.';
           if (message === 'expired_token') {
             setError('Device code expired. Please try again.');
           } else {
@@ -653,8 +650,7 @@ const WelcomeWizard = NiceModal.create(() => {
   const [analyticsEnabled, setAnalyticsEnabled] = useState(false);
 
   const isAgentEditorValid =
-    editorType !== EditorType.CUSTOM ||
-    customCommand.trim() !== '';
+    editorType !== EditorType.CUSTOM || customCommand.trim() !== '';
 
   const handleNext = () => {
     if (currentStep < TOTAL_STEPS - 1) {
@@ -764,7 +760,9 @@ const WelcomeWizard = NiceModal.create(() => {
             {currentStep < TOTAL_STEPS - 1 ? (
               <Button
                 onClick={handleNext}
-                disabled={currentStepId === 'agent-editor' && !isAgentEditorValid}
+                disabled={
+                  currentStepId === 'agent-editor' && !isAgentEditorValid
+                }
               >
                 Next
                 <ChevronRight className="h-4 w-4 ml-1" />

@@ -11,9 +11,7 @@ import { TopsiWidget } from '@/components/topsi';
 import { useTaskViewManager } from '@/hooks/useTaskViewManager';
 import { usePreviousPath } from '@/hooks/usePreviousPath';
 import { usePageTitle } from '@/hooks/usePageTitle';
-import {
-  useUserSystem,
-} from '@/components/config-provider';
+import { useUserSystem } from '@/components/config-provider';
 import { ThemeProvider } from '@/components/theme-provider';
 import { SearchProvider } from '@/contexts/search-context';
 import { ShortcutsHelp } from '@/components/shortcuts-help';
@@ -42,7 +40,12 @@ export function AppShell() {
   const { isFullscreen, toggleFullscreen } = useTaskViewManager();
   const location = useLocation();
   const isVirtualEnv = location.pathname.startsWith('/virtual-environment');
-  const { sidebarCollapsed, toggleSidebar, setSidebarCollapsed, contentFullscreen } = useViewStore();
+  const {
+    sidebarCollapsed,
+    toggleSidebar,
+    setSidebarCollapsed,
+    contentFullscreen,
+  } = useViewStore();
 
   // On mobile, toggle sidebar means show/hide the overlay sidebar
   // We reuse sidebarCollapsed: collapsed=true means hidden on mobile
@@ -159,7 +162,10 @@ export function AppShell() {
             <div className="h-screen flex flex-col bg-background">
               <WebviewContextMenu />
               {showNavbar && <Navbar onToggleSidebar={handleToggleSidebar} />}
-              <BreadcrumbNav onToggleFullscreen={toggleFullscreen} isFullscreen={isFullscreen} />
+              <BreadcrumbNav
+                onToggleFullscreen={toggleFullscreen}
+                isFullscreen={isFullscreen}
+              />
 
               <div className="flex-1 flex min-h-0 relative">
                 {/* Mobile/tablet backdrop overlay when sidebar is open */}
@@ -172,13 +178,16 @@ export function AppShell() {
 
                 {/* Sidebar: hidden on small screens when collapsed, overlay when open; always visible on lg+ */}
                 {!showNavbar ? null : (
-                  <div className={`
+                  <div
+                    className={`
                     lg:relative lg:flex lg:shrink-0
-                    ${sidebarCollapsed
-                      ? 'hidden lg:flex'
-                      : 'absolute top-0 left-0 bottom-0 z-50 lg:relative lg:z-auto flex'
+                    ${
+                      sidebarCollapsed
+                        ? 'hidden lg:flex'
+                        : 'absolute top-0 left-0 bottom-0 z-50 lg:relative lg:z-auto flex'
                     }
-                  `}>
+                  `}
+                  >
                     <Sidebar className="shrink-0 bg-background h-full" />
                   </div>
                 )}
