@@ -35,7 +35,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { organizationsApi } from '@/lib/api';
-import { organizationKeys } from '@/lib/query-keys';
+import { crmKeys, organizationKeys } from '@/lib/query-keys';
 import { crmDealsApi } from '@/lib/api/crm';
 import type { CrmDealWithContact } from '@/types/crm';
 
@@ -130,13 +130,13 @@ export function OverviewTab({ deal, stageColor, onConvert, orgId }: OverviewTabP
 
   const saveContext = useMutation({
     mutationFn: () => crmDealsApi.updateDeal(deal.id, { description: contextText }),
-    onSuccess: () => { toast.success('Context saved'); setEditingContext(false); qc.invalidateQueries({ queryKey: ['crm-kanban'] }); },
+    onSuccess: () => { toast.success('Context saved'); setEditingContext(false); qc.invalidateQueries({ queryKey: crmKeys.kanbanLegacy() }); },
     onError: () => toast.error('Failed to save'),
   });
 
   const toggleExpedite = useMutation({
     mutationFn: () => crmDealsApi.updateDeal(deal.id, { expedited: deal.expedited ? 0 : 1 } as any),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['crm-kanban'] }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: crmKeys.kanbanLegacy() }); },
   });
 
   // Parse call scheduling from custom_fields

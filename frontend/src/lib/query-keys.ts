@@ -234,6 +234,7 @@ export const entityKeys = {
   companyContacts: (id: string) => ['company-contacts', id] as const,
   companyIntel: (id: string) => ['company-intel', id] as const,
   companyContactMethods: (id: string) => ['company-contact-methods', id] as const,
+  companyBrandProfile: (id: string) => ['companyBrandProfile', id] as const,
   person: (id: string) => ['person', id] as const,
   researchPasses: (personId: string) => ['research-passes', personId] as const,
   personReports: (personId: string) => ['person-reports', personId] as const,

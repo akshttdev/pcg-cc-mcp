@@ -989,11 +989,12 @@ pub async fn generate_phase1_business_report(
     });
 
     let title = format!("Phase 1 Business Analysis: {} / {}", contact_name, company_display);
+    // Uses uuid::Uuid for BLOB-column binding (business_reports.id/crm_deal_id are BLOB)
     let person_uuid = person_intel.as_ref().and_then(|p| uuid::Uuid::parse_str(p.id.as_str()).ok());
     let company_uuid = company_intel.as_ref().and_then(|c| uuid::Uuid::parse_str(c.id.as_str()).ok());
     let deal_uuid = uuid::Uuid::parse_str(deal_id.as_str()).ok();
 
-    let report_id = uuid::Uuid::new_v4();
+    let report_id = DbUuid::new().to_uuid();
     let individual_profiles_json = individual_profile
         .map(|p| serde_json::json!([{"name": contact_name, "profile": p}]).to_string())
         .unwrap_or_else(|| "[]".to_string());

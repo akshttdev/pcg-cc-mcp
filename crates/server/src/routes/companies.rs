@@ -95,8 +95,8 @@ async fn list_company_proposals(
     Query(q): Query<ListCompanyProposalsQuery>,
 ) -> Result<Json<ApiResponse<Vec<Proposal>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
-    let proposals = Proposal::list_by_company(pool, id, q.limit).await?;
+    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
+    let proposals = Proposal::list_by_company(pool, id.to_uuid(), q.limit).await?;
     Ok(Json(ApiResponse::success(proposals)))
 }
 
@@ -128,8 +128,8 @@ async fn list_contact_methods(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<CompanyContactMethod>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
-    let methods = CompanyContactMethod::list_for_company(pool, id).await?;
+    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
+    let methods = CompanyContactMethod::list_for_company(pool, id.to_uuid()).await?;
     Ok(Json(ApiResponse::success(methods)))
 }
 
@@ -140,8 +140,8 @@ async fn add_contact_method(
     Json(data): Json<CreateCompanyContactMethod>,
 ) -> Result<Json<ApiResponse<CompanyContactMethod>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
-    let method = CompanyContactMethod::create(pool, id, data).await?;
+    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
+    let method = CompanyContactMethod::create(pool, id.to_uuid(), data).await?;
     Ok(Json(ApiResponse::success(method)))
 }
 
@@ -151,8 +151,8 @@ async fn delete_contact_method(
     Path((_id, method_id)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    let method_id = Uuid::parse_str(&method_id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", method_id)))?;
-    let deleted = CompanyContactMethod::delete(pool, method_id).await?;
+    let method_id = DbUuid::parse(&method_id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", method_id)))?;
+    let deleted = CompanyContactMethod::delete(pool, method_id.to_uuid()).await?;
     if !deleted {
         return Err(ApiError::NotFound("Contact method not found".into()));
     }
@@ -174,8 +174,8 @@ async fn trigger_company_research(
     Path(company_id): Path<String>,
 ) -> Result<Json<ApiResponse<CompanyResearchResponse>>, ApiError> {
     let pool = &deployment.db().pool;
-    let company_id = Uuid::parse_str(&company_id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", company_id)))?;
-    let db_company_id = DbUuid::from(company_id);
+    let db_company_id = DbUuid::parse(&company_id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", company_id)))?;
+    let company_id = db_company_id.to_uuid();
     let company = Company::find_by_id(pool, &db_company_id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Company not found".into()))?;

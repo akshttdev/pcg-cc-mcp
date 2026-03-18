@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { companiesApi, type OrgBrandProfile, resolveApiUrl } from '@/lib/api';
+import { entityKeys } from '@/lib/query-keys';
 import { Loader2, ArrowLeft, Printer, Palette, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -29,13 +30,13 @@ export function CompanyBrandGuidePage() {
   const [wizardOpen, setWizardOpen] = useState(false);
 
   const { data: company, isLoading: companyLoading } = useQuery({
-    queryKey: ['company', companyId],
+    queryKey: entityKeys.company(companyId!),
     queryFn: () => companiesApi.get(companyId!),
     enabled: !!companyId,
   });
 
   const { data: profile, isLoading: profileLoading } = useQuery<OrgBrandProfile | null>({
-    queryKey: ['companyBrandProfile', companyId],
+    queryKey: entityKeys.companyBrandProfile(companyId!),
     queryFn: () => companiesApi.getBrandProfile(companyId!),
     enabled: !!companyId,
   });
