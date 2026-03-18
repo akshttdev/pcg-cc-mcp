@@ -2,6 +2,7 @@
 
 **Date**: 2026-03-18
 **Branch**: `refactor/frontend-polish-sprint`
+**Worktree**: `/Users/mediamonsters/topos/pcg-cc-mcp` (root)
 **Base**: `main` (post-PR #46 + PR #45)
 **Status**: In Progress
 

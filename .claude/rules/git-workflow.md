@@ -1,5 +1,13 @@
 # Git & PR Workflow Standards
 
+## Worktree Safety
+
+- **ALWAYS confirm the current worktree before making any changes.** Run `git worktree list` and `pwd` to verify you are in the correct worktree for the task.
+- Planning docs are the **source of truth** for which worktree a task uses. Every planning doc MUST include a `Worktree` field in the header (see Planning section below).
+- Before starting work in a session, read the planning doc and confirm the worktree path matches your current directory.
+- **NEVER switch worktrees without explicit user approval.** If you suspect you're in the wrong worktree, stop and ask.
+- When multiple worktrees exist, be aware that staged/unstaged changes in one worktree are invisible to others — do not assume files staged by another process belong to your task.
+
 ## Commits
 
 - Always include PR number (`#N`) in commit messages when working on a PR
@@ -13,6 +21,22 @@
 - Planning file format: `YYYY-MM-DD--<type>--<topic>.md` (types: plan, review, tracker, analysis, release, reference)
 - PR descriptions must include a test plan with checkboxes
 - Never push or merge to main without explicit user approval
+
+## Planning Doc Worktree Requirements
+
+Every planning doc MUST include a **Worktree** field in the header metadata, immediately after **Branch**:
+
+```markdown
+**Date**: 2026-03-18
+**Branch**: `refactor/my-feature`
+**Worktree**: `/Users/mediamonsters/topos/pcg-cc-mcp` (root)
+**Base**: `main`
+```
+
+- For root worktree: `(root)` suffix
+- For agent/isolated worktrees: full path, e.g., `.claude/worktrees/main-worktree`
+- At the start of any session continuing a plan, **read the planning doc first** and confirm you are in the documented worktree before making changes
+- If the worktree no longer exists or has changed, update the planning doc and confirm with the user
 
 ## Branch Hygiene
 

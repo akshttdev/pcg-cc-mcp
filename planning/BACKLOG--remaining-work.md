@@ -27,6 +27,7 @@
 ### ~~4. Workflow Trigger System~~ → RESOLVED
 **Source:** `archive/2026-03-12--review--ui-backend-capability-gaps.md` (F12)
 **Resolution:** Frontend polish sprint (2026-03-18) added webhook triggers with HMAC-SHA256 validation, execution audit trail (`trigger_executions` table), per-trigger cooldown, retry logic, and full frontend UI. Event triggers and schedule triggers already existed. All three trigger types now operational.
+**Known issues (from PR #49 review):** Webhook route behind `require_auth` (P1), retry logic dead code (P2), cooldown race condition (P2). See P1/P2 sections below.
 
 ### ~~5. E2E Demo Test Run~~ → RESOLVED
 **Source:** `2026-03-14--plan--e2e-demo-refactor.md`
@@ -157,7 +158,127 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 
 ---
 
+## P1 — PR #49 Review: Critical Deferred Issues
+
+### Webhook Route Behind `require_auth` Middleware
+**Source:** PR #49 backend review (2026-03-18)
+**File:** `crates/server/src/routes/workflow_triggers.rs`
+**What:** `execute_webhook_trigger` is registered under the authenticated router (`/api/webhooks/:trigger_id`). External systems sending webhooks will get 401 because they don't have session cookies. The HMAC secret validation is the intended auth mechanism for webhooks — the route needs to bypass session auth.
+**Recommendation:** Move the webhook endpoint to a separate unauthenticated router prefix (e.g., `/webhooks/:trigger_id` without `/api/` prefix, or add it before the `require_auth` middleware layer). Keep HMAC validation as the sole auth mechanism for this endpoint.
+**Status:** NOT STARTED — CRITICAL for webhook functionality
+
+---
+
+## P2 — PR #49 Review: Medium Priority Deferred Issues
+
+### Webhook Retry Logic is Dead Code
+**Source:** PR #49 backend review (2026-03-18)
+**File:** `crates/db/src/models/workflow_trigger.rs`
+**What:** `max_retries`, `retry_count`, and `next_retry_at` fields are stored in the DB but never read or acted upon. No background worker checks `next_retry_at` to re-execute failed triggers.
+**Recommendation:** Either (a) implement a retry worker in `spawn_workflow_schedule_loop` that checks for triggers past `next_retry_at` with `retry_count < max_retries`, or (b) remove the fields if retry isn't needed yet.
+**Status:** NOT STARTED
+
+### Webhook Cooldown Race Condition
+**Source:** PR #49 backend review (2026-03-18)
+**File:** `crates/db/src/models/workflow_trigger.rs` — `is_past_cooldown()`
+**What:** Cooldown check reads `last_triggered_at`, then the caller updates it — but under concurrent requests, two webhooks could both pass the cooldown check before either updates the timestamp.
+**Recommendation:** Use a database-level atomic check-and-update (e.g., `UPDATE ... WHERE last_triggered_at < ? RETURNING *`) or add a per-trigger mutex/advisory lock.
+**Status:** NOT STARTED
+
+### `webhook_url` Stored as Relative Path
+**Source:** PR #49 backend review (2026-03-18)
+**File:** `crates/db/src/models/workflow_trigger.rs`
+**What:** `webhook_url` field stores a relative path (like `/webhooks/abc123`) rather than a full URL. Without the server hostname, the stored URL is not useful for display or documentation.
+**Recommendation:** Either store the full URL (constructed from `HOST`/`BACKEND_PORT` at creation time) or construct it dynamically in the API response.
+**Status:** NOT STARTED — low impact
+
+### `useResolvedAgent` O(n) Scan Per Card
+**Source:** PR #49 frontend review (2026-03-18)
+**File:** `frontend/src/components/tasks/task-card-parts/useResolvedAgent.ts`
+**What:** When `agentsMap` doesn't have a direct hit, the hook does `Array.from(agentsMap.values()).find()` — O(n) per card per render. With many agents and cards, this adds up.
+**Recommendation:** Build a secondary `Map<string, Agent>` keyed by `short_name` at the page level (alongside `agentsMap`), pass it as an optional prop. Falls back to O(n) scan only if secondary map not provided.
+**Status:** NOT STARTED — low impact unless agent count grows
+
+### WorkflowTriggersPanel Toggle Toast Not Descriptive
+**Source:** PR #49 frontend review (2026-03-18)
+**File:** `frontend/src/components/workflows/WorkflowTriggersPanel.tsx`
+**What:** Enable/disable trigger toggle shows generic success toast without indicating what changed (enabled vs disabled).
+**Recommendation:** Use conditional toast message: `Trigger ${enabled ? 'enabled' : 'disabled'}`.
+**Status:** NOT STARTED — trivial fix
+
+### `useBranchLoader` Swallows Errors Silently
+**Source:** PR #49 frontend review (2026-03-18)
+**File:** `frontend/src/components/dialogs/tasks/task-form/useBranchLoader.ts`
+**What:** Catch block after branch fetch is empty — errors are silently ignored.
+**Recommendation:** Add `console.error` in catch block, or surface error state to the form.
+**Status:** NOT STARTED — low impact
+
+### `useTopsiVoice` Exports Unused Functions
+**Source:** PR #49 frontend review (2026-03-18)
+**File:** `frontend/src/components/topsi/hooks/useTopsiVoice.ts`
+**What:** `startRecording` and `stopRecording` are exported but never called by any consumer.
+**Recommendation:** Remove from the return object, or verify they're needed for future voice controls.
+**Status:** NOT STARTED — dead code
+
+### `useMoveDeal` Missing Error Toast
+**Source:** PR #49 frontend review (2026-03-18)
+**File:** `frontend/src/hooks/useMoveDeal.ts`
+**What:** Mutation lacks `onError` handler — failed deal moves show no user feedback.
+**Recommendation:** Convert to `useMutationWithToast` or add `onError` with toast.
+**Status:** NOT STARTED — low impact
+
+### `workflowKeys` Mixed Naming Convention
+**Source:** PR #49 frontend review (2026-03-18)
+**File:** `frontend/src/lib/query-keys.ts`
+**What:** `workflowKeys` uses mixed casing — some keys use camelCase, others use kebab-case strings internally. Inconsistent but not buggy (keys match between factory and usage).
+**Recommendation:** Standardize to camelCase in a future query key sweep.
+**Status:** NOT STARTED — cosmetic
+
+### NetworkSettings Wasted API Call
+**Source:** PR #49 frontend review (2026-03-18)
+**File:** `frontend/src/pages/settings/NetworkSettings.tsx`
+**What:** Fetches `/api/mesh/stats` on mount even when the mesh stats panel isn't visible.
+**Recommendation:** Gate the query with `enabled: isPanelExpanded` or lazy-load the stats section.
+**Status:** NOT STARTED — low impact
+
+---
+
 ## P2.7 — E2E Test Infrastructure Issues
+
+### E2E: Removed Assertions Without Replacement (PR #49)
+**Source:** PR #49 e2e review (2026-03-18)
+**Files:** `e2e/demos/bug-report-lifecycle.spec.ts`, `e2e/demos/manual-qa-trigger.spec.ts`
+**What:** PR removed `waitForToast` assertions for task state transitions and `page.reload()` before watcher badge assertions. These were removed to fix test failures, but no equivalent assertions replaced them — the tests now skip verification of those behaviors.
+**Recommendation:** Re-add assertions using a more resilient pattern (e.g., `page.waitForSelector` for toast elements, or poll-based checks for badge appearance without hard reload).
+**Status:** NOT STARTED — reduces test coverage
+
+### E2E: `DEMO_PR_NUMBER` Used Without Null Guard
+**Source:** PR #49 e2e review (2026-03-18)
+**File:** `e2e/demos/bug-report-lifecycle.spec.ts`
+**What:** `DEMO_PR_NUMBER` is set from `createPrForTask()` which can throw. If it throws and is caught, downstream usage of `DEMO_PR_NUMBER` would be undefined, causing cryptic failures.
+**Recommendation:** Add `if (!DEMO_PR_NUMBER) test.skip('PR creation failed')` guard after the try/catch block.
+**Status:** NOT STARTED
+
+### E2E: Conditional Visual Checks Are No-Op
+**Source:** PR #49 e2e review (2026-03-18)
+**Files:** Multiple demo specs
+**What:** Several visual checks are wrapped in `if (element) { expect... }` — if the element isn't found, the assertion silently passes. These are no-op assertions that give false confidence.
+**Recommendation:** Either make the assertions unconditional (fail if element missing) or use `test.fixme()` to mark as known incomplete.
+**Status:** NOT STARTED — reduces test value
+
+### E2E: Fragile Title-Based Button Selectors
+**Source:** PR #49 e2e review (2026-03-18)
+**Files:** Workflow demo specs
+**What:** Button selectors use `[title="..."]` which breaks if button text/title changes. Also `addExtractNode` matches placeholder strings instead of `data-testid`.
+**Recommendation:** Add `data-testid` attributes to workflow editor buttons and use those in selectors.
+**Status:** NOT STARTED — fragile but functional
+
+### E2E: `timing.ts` Pace Detection Doesn't Detect `demos` Project
+**Source:** PR #49 e2e review (2026-03-18)
+**File:** `e2e/helpers/timing.ts`
+**What:** Pace detection logic checks for `--project=` arg but may not correctly identify the `demos` project, causing demo tests to run at default (fast) pace instead of demo pace.
+**Recommendation:** Verify pace detection logic handles `--project=demos` correctly. Add a test or log output.
+**Status:** NOT STARTED
 
 ### E2E: GITHUB_TOKEN Required for Agent Simulation Tests
 **Source:** Frontend polish sprint QA (2026-03-18)
