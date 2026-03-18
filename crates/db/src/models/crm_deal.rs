@@ -199,7 +199,14 @@ impl CrmDeal {
         } else {
             0
         };
-        let stage_name = "qualification".to_string();
+        let stage_name = if let Some(ref stage_id) = data.crm_stage_id {
+            match CrmPipelineStage::find_by_id(pool, stage_id).await {
+                Ok(stage) => stage.name,
+                Err(_) => "qualification".to_string(),
+            }
+        } else {
+            "qualification".to_string()
+        };
 
         // Calculate next position in stage
         let position = if let Some(ref stage_id) = data.crm_stage_id {

@@ -180,35 +180,26 @@ async fn trigger_company_research(
         .await?
         .ok_or_else(|| ApiError::NotFound("Company not found".into()))?;
 
-    // Mark as running immediately
+    // Mark as running — use string binding for TEXT-stored IDs
     sqlx::query(
-        "UPDATE companies SET intelligence_status = 'running', updated_at = datetime('now','subsec') WHERE id = ?",
+        "UPDATE companies SET intelligence_status = 'running', updated_at = datetime('now','subsec') WHERE CAST(id AS TEXT) = ?",
     )
-    .bind(company_id)
+    .bind(company_id.to_string())
     .execute(pool)
     .await?;
 
     let name = company.name.clone();
-    let website = company.website.clone();
     let pool_clone = pool.clone();
 
     tokio::spawn(async move {
-        let result = run_company_research(&pool_clone, company_id, &name, website.as_deref()).await;
-        if let Err(e) = result {
-            tracing::error!("Company research failed for {}: {}", name, e);
-            let _ = sqlx::query(
-                "UPDATE companies SET intelligence_status = 'failed', updated_at = datetime('now','subsec') WHERE id = ?",
-            )
-            .bind(company_id)
-            .execute(&pool_clone)
-            .await;
-        }
+        // Use direct research with OpenAI-first fallback
+        crate::routes::intelligence::run_company_research_direct(&pool_clone, company_id, &name, None).await;
     });
 
     Ok(Json(ApiResponse::success(CompanyResearchResponse {
         company_id,
         status: "running".into(),
-        message: format!("Research started for {} — Scout is gathering brand intelligence.", company.name),
+        message: format!("Research started for {} — Scout is gathering intelligence.", company.name),
     })))
 }
 
@@ -375,6 +366,148 @@ fn extract_text_from_response(resp: &serde_json::Value) -> String {
     resp.to_string()
 }
 
+// ── Company Brand Profile ────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct CompanyBrandProfile {
+    pub id: DbUuid,
+    pub company_id: DbUuid,
+    pub tagline: Option<String>,
+    pub primary_color: String,
+    pub secondary_color: String,
+    pub accent_color: Option<String>,
+    pub typography_heading: Option<String>,
+    pub typography_body: Option<String>,
+    pub logo_url: Option<String>,
+    pub industry: Option<String>,
+    pub market_position: Option<String>,
+    pub unique_value_proposition: Option<String>,
+    pub mission_statement: Option<String>,
+    pub vision_statement: Option<String>,
+    pub brand_values: Option<String>,
+    pub brand_voice: Option<String>,
+    pub brand_archetype: Option<String>,
+    pub target_audience: Option<String>,
+    pub icp_description: Option<String>,
+    pub competitor_brands: Option<String>,
+    pub differentiators: Option<String>,
+    pub content_pillars: Option<String>,
+    pub content_tone: Option<String>,
+    pub website_url: Option<String>,
+    pub social_instagram: Option<String>,
+    pub social_twitter: Option<String>,
+    pub social_linkedin: Option<String>,
+    pub research_status: String,
+    pub research_summary: Option<String>,
+    pub founder_name: Option<String>,
+    pub founding_year: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// GET /api/companies/:id/brand-profile
+async fn get_company_brand_profile(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<Option<CompanyBrandProfile>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let profile = sqlx::query_as::<_, CompanyBrandProfile>(
+        "SELECT * FROM company_brand_profiles WHERE company_id = ?",
+    )
+    .bind(&id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| ApiError::BadRequest(format!("DB error: {}", e)))?;
+    Ok(Json(ApiResponse::success(profile)))
+}
+
+/// PUT /api/companies/:id/brand-profile — upsert
+async fn upsert_company_brand_profile(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<ApiResponse<CompanyBrandProfile>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+
+    // Upsert: insert or update on conflict
+    sqlx::query(
+        "INSERT INTO company_brand_profiles (id, company_id, tagline, primary_color, secondary_color, accent_color, typography_heading, typography_body, logo_url, industry, market_position, unique_value_proposition, mission_statement, vision_statement, brand_values, brand_voice, brand_archetype, target_audience, icp_description, competitor_brands, differentiators, content_pillars, content_tone, website_url, social_instagram, social_twitter, social_linkedin, founder_name, founding_year)
+         VALUES (randomblob(16), ?, ?, COALESCE(?, '#2563EB'), COALESCE(?, '#EC4899'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(company_id) DO UPDATE SET
+           tagline = COALESCE(excluded.tagline, tagline),
+           primary_color = COALESCE(NULLIF(excluded.primary_color, '#2563EB'), primary_color),
+           secondary_color = COALESCE(NULLIF(excluded.secondary_color, '#EC4899'), secondary_color),
+           accent_color = COALESCE(excluded.accent_color, accent_color),
+           typography_heading = COALESCE(excluded.typography_heading, typography_heading),
+           typography_body = COALESCE(excluded.typography_body, typography_body),
+           logo_url = COALESCE(excluded.logo_url, logo_url),
+           industry = COALESCE(excluded.industry, industry),
+           market_position = COALESCE(excluded.market_position, market_position),
+           unique_value_proposition = COALESCE(excluded.unique_value_proposition, unique_value_proposition),
+           mission_statement = COALESCE(excluded.mission_statement, mission_statement),
+           vision_statement = COALESCE(excluded.vision_statement, vision_statement),
+           brand_values = COALESCE(excluded.brand_values, brand_values),
+           brand_voice = COALESCE(excluded.brand_voice, brand_voice),
+           brand_archetype = COALESCE(excluded.brand_archetype, brand_archetype),
+           target_audience = COALESCE(excluded.target_audience, target_audience),
+           icp_description = COALESCE(excluded.icp_description, icp_description),
+           competitor_brands = COALESCE(excluded.competitor_brands, competitor_brands),
+           differentiators = COALESCE(excluded.differentiators, differentiators),
+           content_pillars = COALESCE(excluded.content_pillars, content_pillars),
+           content_tone = COALESCE(excluded.content_tone, content_tone),
+           website_url = COALESCE(excluded.website_url, website_url),
+           social_instagram = COALESCE(excluded.social_instagram, social_instagram),
+           social_twitter = COALESCE(excluded.social_twitter, social_twitter),
+           social_linkedin = COALESCE(excluded.social_linkedin, social_linkedin),
+           founder_name = COALESCE(excluded.founder_name, founder_name),
+           founding_year = COALESCE(excluded.founding_year, founding_year),
+           updated_at = datetime('now','subsec')",
+    )
+    .bind(&id)
+    .bind(body["tagline"].as_str())
+    .bind(body["primary_color"].as_str())
+    .bind(body["secondary_color"].as_str())
+    .bind(body["accent_color"].as_str())
+    .bind(body["typography_heading"].as_str())
+    .bind(body["typography_body"].as_str())
+    .bind(body["logo_url"].as_str())
+    .bind(body["industry"].as_str())
+    .bind(body["market_position"].as_str())
+    .bind(body["unique_value_proposition"].as_str())
+    .bind(body["mission_statement"].as_str())
+    .bind(body["vision_statement"].as_str())
+    .bind(body["brand_values"].as_str())
+    .bind(body["brand_voice"].as_str())
+    .bind(body["brand_archetype"].as_str())
+    .bind(body["target_audience"].as_str())
+    .bind(body["icp_description"].as_str())
+    .bind(body["competitor_brands"].as_str())
+    .bind(body["differentiators"].as_str())
+    .bind(body["content_pillars"].as_str())
+    .bind(body["content_tone"].as_str())
+    .bind(body["website_url"].as_str())
+    .bind(body["social_instagram"].as_str())
+    .bind(body["social_twitter"].as_str())
+    .bind(body["social_linkedin"].as_str())
+    .bind(body["founder_name"].as_str())
+    .bind(body["founding_year"].as_str())
+    .execute(pool)
+    .await
+    .map_err(|e| ApiError::BadRequest(format!("DB error: {}", e)))?;
+
+    let profile = sqlx::query_as::<_, CompanyBrandProfile>(
+        "SELECT * FROM company_brand_profiles WHERE company_id = ?",
+    )
+    .bind(&id)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| ApiError::BadRequest(format!("DB error: {}", e)))?;
+
+    Ok(Json(ApiResponse::success(profile)))
+}
+
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/companies", get(list_companies).post(create_company))
@@ -392,5 +525,9 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route(
             "/companies/{id}/contact-methods/{method_id}",
             delete(delete_contact_method),
+        )
+        .route(
+            "/companies/{id}/brand-profile",
+            get(get_company_brand_profile).put(upsert_company_brand_profile),
         )
 }

@@ -270,78 +270,102 @@ async fn run_research_direct(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use serde_json::json;
 
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
-        .map_err(|_| "ANTHROPIC_API_KEY not set")?;
-
     let system = "You are Scout, Social Intelligence Analyst for Power Club Global. \
         Your specialty is finding and structuring online presence data about individuals. \
-        When asked to research a person, use web search to gather their: \
-        current role, company, LinkedIn/social profiles, recent activity, and public bio. \
-        Always return valid JSON with keys: summary, social_profiles, company_description, confidence.";
+        Research the person thoroughly based on your knowledge. Return their: \
+        current role, company details, social profiles, recent activity, and public bio. \
+        Return a detailed intelligence summary as plain text (not JSON).";
 
     let prompt = format!(
         "Research this contact for PCG: Name={}, Company={}, Email={}, Title={}. \
-        Search the web for their LinkedIn, Instagram, and other social profiles. \
-        Search for their company's website, Google My Business listing, phone, email, and social media accounts. \
-        Return ONLY this JSON (no markdown): \
-        {{\"summary\":\"...\", \
-        \"social_profiles\":[{{\"platform\":\"linkedin\",\"handle\":\"...\",\"url\":\"...\",\"followers\":0}}], \
-        \"company_description\":\"...\", \
-        \"company_website\":\"...\", \
-        \"company_phone\":\"...\", \
-        \"company_email\":\"...\", \
-        \"company_instagram\":\"...\", \
-        \"company_linkedin\":\"...\", \
-        \"company_twitter\":\"...\", \
-        \"gmb_rating\":4.5, \
-        \"gmb_review_count\":42, \
-        \"deal_potential\":\"high\", \
-        \"recommended_approach\":\"...\", \
-        \"confidence\":0.8}}",
+        Provide a comprehensive intelligence brief about this person and their company. \
+        Include: professional background, notable achievements, social media presence, \
+        company overview, competitive positioning, and any publicly available information. \
+        Write as a structured intelligence report, not JSON.",
         person.full_name,
         person.company_name.as_deref().unwrap_or("unknown"),
         person.email.as_deref().unwrap_or("unknown"),
         person.job_title.as_deref().unwrap_or("unknown"),
-
     );
 
-    let body = json!({
-        "model": "claude-sonnet-4-6",
-        "max_tokens": 2048,
-
-        "system": system,
-        "tools": [{
-            "type": "web_search_20250305",
-            "name": "web_search",
-            "max_uses": 5
-
-        }],
-        "messages": [{"role": "user", "content": prompt}]
-    });
-
     let client = reqwest::Client::new();
-    let resp = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", &api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("anthropic-beta", "web-search-2025-03-05")
-        .header("content-type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("HTTP error: {}", e))?;
+    let mut response_text = String::new();
 
-    let response: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| format!("JSON parse error: {}", e))?;
+    // Try OpenAI first
+    if let Ok(openai_key) = std::env::var("OPENAI_API_KEY") {
+        let body = json!({
+            "model": "gpt-4o",
+            "max_tokens": 2048,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt}
+            ]
+        });
+        match client
+            .post("https://api.openai.com/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", openai_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                if let Ok(val) = resp.json::<serde_json::Value>().await {
+                    if let Some(text) = val["choices"][0]["message"]["content"].as_str() {
+                        response_text = text.to_string();
+                        tracing::info!("[Scout] OpenAI response for {}: {} chars", person.full_name, response_text.len());
+                    }
+                }
+            }
+            Ok(resp) => {
+                tracing::warn!("[Scout] OpenAI returned {}, falling back to Anthropic", resp.status());
+            }
+            Err(e) => {
+                tracing::warn!("[Scout] OpenAI failed: {}, falling back to Anthropic", e);
+            }
+        }
+    }
 
-    let response_text = extract_text_from_anthropic_response(&response);
+    // Fallback to Anthropic if OpenAI didn't produce a result
+    if response_text.is_empty() {
+        let api_key = std::env::var("ANTHROPIC_API_KEY")
+            .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
+            .map_err(|_| "No LLM API key configured (OPENAI_API_KEY or ANTHROPIC_API_KEY)")?;
 
-    // Check for rate limit errors in the direct response — reset status to idle for retry
-    if response_text.contains("rate_limit_error") || response_text.contains("rate limit") {
-        tracing::warn!("Direct research hit rate limit for person {}, resetting to idle for retry", person.id);
+        let body = json!({
+            "model": "claude-sonnet-4-6",
+            "max_tokens": 2048,
+            "system": system,
+            "tools": [{
+                "type": "web_search_20250305",
+                "name": "web_search",
+                "max_uses": 5
+            }],
+            "messages": [{"role": "user", "content": prompt}]
+        });
+
+        let resp = client
+            .post("https://api.anthropic.com/v1/messages")
+            .header("x-api-key", &api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("anthropic-beta", "web-search-2025-03-05")
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("HTTP error: {}", e))?;
+
+        let response: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("JSON parse error: {}", e))?;
+
+        response_text = extract_text_from_anthropic_response(&response);
+    }
+
+    // Check for error responses — reset status to idle for retry
+    if response_text.contains("rate_limit_error") || response_text.contains("rate limit") || response_text.contains("credit balance") {
+        tracing::warn!("Research hit API limit for person {}, resetting to idle for retry", person.id);
         let _ = sqlx::query(
             "UPDATE persons SET intelligence_status = 'idle', updated_at = datetime('now','subsec') WHERE id = ?",
         )
@@ -587,10 +611,11 @@ pub async fn trigger_company_research(
         .await?
         .ok_or_else(|| ApiError::NotFound("Company not found".into()))?;
 
+    // Use string binding to match TEXT-stored company IDs
     sqlx::query(
-        "UPDATE companies SET intelligence_status = 'queued', updated_at = datetime('now','subsec') WHERE id = ?",
+        "UPDATE companies SET intelligence_status = 'queued', updated_at = datetime('now','subsec') WHERE CAST(id AS TEXT) = ?",
     )
-    .bind(company_id)
+    .bind(company_id.to_string())
     .execute(&pool)
     .await?;
 
@@ -599,7 +624,8 @@ pub async fn trigger_company_research(
     let pool2 = pool.clone();
 
     tokio::spawn(async move {
-        run_company_research(&pool2, company_id, &company_name, project_id).await;
+        // Use direct research (OpenAI-first) instead of Nora agent routing
+        run_company_research_direct(&pool2, company_id, &company_name, project_id).await;
     });
 
     Ok(Json(ApiResponse::success(CompanyResearchJobResponse {
@@ -666,74 +692,107 @@ pub async fn run_company_research_direct(
     company_name: &str,
     project_id: Option<Uuid>,
 ) {
+    tracing::info!("[Scout] Starting direct company research for {} (id: {})", company_name, company_id);
     let client = reqwest::Client::new();
-    let api_key = match std::env::var("ANTHROPIC_API_KEY") {
-        Ok(k) => k,
-        Err(_) => {
-            write_company_intel_results(pool, company_id, "No API key configured", 0.0).await;
-            return;
-        }
-    };
 
     let prompt = format!(
-        "Research the company '{}'. Search the web for: \
+        "Research the company '{}'. Provide a comprehensive company intelligence brief including: \
         1) Company overview and background, \
-        2) Website and contact information (phone, email, address), \
-        3) Social media presence (Instagram, LinkedIn, Twitter, Facebook handles/URLs), \
-        4) Google My Business listing (rating, number of reviews, address), \
-        5) Leadership and key personnel, \
-        6) Business model and services/products, \
-        7) Recent news or developments, \
-        8) Market opportunity and positioning. \
-        Return ONLY a valid JSON object with keys: \
-        {{\"summary\":\"...\", \"description\":\"...\", \"website\":\"...\", \
-        \"phone\":\"...\", \"email\":\"...\", \"address\":\"...\", \
-        \"instagram\":\"...\", \"linkedin\":\"...\", \"twitter\":\"...\", \"facebook\":\"...\", \
-        \"gmb_rating\":4.5, \"gmb_review_count\":42, \
-        \"industry\":\"...\", \"key_personnel\":[\"...\"], \
-        \"business_model\":\"...\", \"market_opportunity\":\"...\", \
-        \"recent_news\":[\"...\"], \"confidence\":0.8}}",
+        2) Website and contact information, \
+        3) Social media presence, \
+        4) Leadership and key personnel, \
+        5) Business model and services/products, \
+        6) Market positioning and competitive landscape, \
+        7) Key opportunities for a creative agency partnership. \
+        Write as a structured intelligence report.",
         company_name
     );
 
-    let body = serde_json::json!({
-        "model": "claude-opus-4-6",
-        "max_tokens": 3000,
-        "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 6}],
-        "messages": [{"role": "user", "content": prompt}]
-    });
+    let system = "You are Scout, a business intelligence analyst. Research companies thoroughly and produce comprehensive intelligence briefs.";
 
-    let resp = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", &api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("anthropic-beta", "web-search-2025-03-05")
-        .header("content-type", "application/json")
-        .json(&body)
-        .send()
-        .await;
+    // Try OpenAI first
+    let mut response_text = String::new();
+    if let Ok(openai_key) = std::env::var("OPENAI_API_KEY") {
+        let body = serde_json::json!({
+            "model": "gpt-4o",
+            "max_tokens": 3000,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt}
+            ]
+        });
+        match client
+            .post("https://api.openai.com/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", openai_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                if let Ok(val) = resp.json::<serde_json::Value>().await {
+                    if let Some(text) = val["choices"][0]["message"]["content"].as_str() {
+                        response_text = text.to_string();
+                        tracing::info!("[Scout] OpenAI company research for {}: {} chars", company_name, response_text.len());
+                    }
+                }
+            }
+            _ => { tracing::warn!("[Scout] OpenAI failed for company {}, trying Anthropic", company_name); }
+        }
+    }
 
-    let (summary, parsed, confidence) = match resp {
-        Ok(r) if r.status().is_success() => {
-            let val: serde_json::Value = r.json().await.unwrap_or_default();
-            let text = extract_text_from_anthropic_response(&val);
-            let parsed = parse_research_json(&text);
-            let conf = parsed.get("confidence").and_then(|c| c.as_f64()).unwrap_or_else(|| {
-                if text.len() > 300 { 0.75 } else { 0.3 }
-            }).clamp(0.0, 1.0);
-            let summary = parsed.get("summary").and_then(|s| s.as_str()).unwrap_or(&text[..text.len().min(600)]).to_string();
-            (summary, parsed, conf)
+    // Fallback to Anthropic
+    if response_text.is_empty() {
+        let api_key = match std::env::var("ANTHROPIC_API_KEY") {
+            Ok(k) => k,
+            Err(_) => {
+                write_company_intel_results(pool, company_id, "No LLM API key configured", 0.0).await;
+                return;
+            }
+        };
+
+        let body = serde_json::json!({
+            "model": "claude-opus-4-6",
+            "max_tokens": 3000,
+            "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 6}],
+            "messages": [{"role": "user", "content": prompt}]
+        });
+
+        let resp = client
+            .post("https://api.anthropic.com/v1/messages")
+            .header("x-api-key", &api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("anthropic-beta", "web-search-2025-03-05")
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await;
+
+        match resp {
+            Ok(r) if r.status().is_success() => {
+                let val: serde_json::Value = r.json().await.unwrap_or_default();
+                response_text = extract_text_from_anthropic_response(&val);
+            }
+            Ok(r) => {
+                let text = r.text().await.unwrap_or_default();
+                tracing::error!("Company research Anthropic error: {}", &text[..text.len().min(200)]);
+            }
+            Err(e) => {
+                tracing::error!("Company research HTTP error: {}", e);
+            }
         }
-        Ok(r) => {
-            let status = r.status();
-            let text = r.text().await.unwrap_or_default();
-            tracing::error!("Company research API error {}: {}", status, &text[..text.len().min(200)]);
-            (format!("Research unavailable for {}", company_name), serde_json::Value::Object(Default::default()), 0.1)
-        }
-        Err(e) => {
-            tracing::error!("Company research HTTP error: {}", e);
-            (format!("Research unavailable for {}", company_name), serde_json::Value::Object(Default::default()), 0.1)
-        }
+    }
+
+    let parsed = parse_research_json(&response_text);
+    let confidence = parsed.get("confidence").and_then(|c| c.as_f64()).unwrap_or_else(|| {
+        if response_text.len() > 300 { 0.75 } else { 0.3 }
+    }).clamp(0.0, 1.0);
+    let summary = if response_text.len() > 50 {
+        parsed.get("summary").and_then(|s| s.as_str())
+            .unwrap_or(&response_text[..response_text.len().min(2000)])
+            .to_string()
+    } else {
+        format!("Research unavailable for {}", company_name)
     };
 
     // Update company record with found data
@@ -752,14 +811,14 @@ pub async fn run_company_research_direct(
          description = COALESCE(NULLIF(?, ''), description), \
          industry = COALESCE(NULLIF(?, ''), industry), \
          updated_at = datetime('now','subsec') \
-         WHERE id = ?",
+         WHERE CAST(id AS TEXT) = ?",
     )
     .bind(&summary)
     .bind(confidence)
     .bind(website)
     .bind(description)
     .bind(industry)
-    .bind(company_id)
+    .bind(company_id.to_string())
     .execute(pool)
     .await;
 
@@ -820,11 +879,11 @@ async fn write_company_intel_results(
          intelligence_confidence = ?, \
          intelligence_last_run_at = datetime('now','subsec'), \
          updated_at = datetime('now','subsec') \
-         WHERE id = ?",
+         WHERE CAST(id AS TEXT) = ?",
     )
     .bind(summary)
     .bind(confidence)
-    .bind(company_id)
+    .bind(company_id.to_string())
     .execute(pool)
     .await;
 }

@@ -242,7 +242,9 @@ impl Company {
             }
         })?;
 
-        Self::find_by_id(pool, &id).await?.ok_or(CompanyError::NotFound)
+        // Use find_by_name instead of find_by_id to avoid BLOB/TEXT hex mismatch.
+        // The name was just inserted and slug UNIQUE constraint prevents duplicates.
+        Self::find_by_name(pool, &input.name).await?.ok_or(CompanyError::NotFound)
     }
 
     /// Find or create a company by name. Used when provisioning orgs or
