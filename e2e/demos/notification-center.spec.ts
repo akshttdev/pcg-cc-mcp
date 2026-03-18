@@ -63,7 +63,8 @@ test.describe("Notification Center Demo", () => {
   test("Step 3: Open notification dropdown", async ({ page }) => {
     await openNotifications(page);
 
-    await expect(page.getByText("Recent activity across your projects")).toBeVisible({
+    // Verify the notification panel is open by checking for the heading
+    await expect(page.getByText("Notifications").first()).toBeVisible({
       timeout: t(3_000),
     });
   });

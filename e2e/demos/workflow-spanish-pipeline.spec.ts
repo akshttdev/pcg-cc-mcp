@@ -119,8 +119,10 @@ test.describe("Spanish Workflow → CRM Pipeline Demo", () => {
     });
 
     await page.getByRole("button", { name: "New Workflow" }).click();
-    await expect(page.getByText("Workflow ID")).toBeVisible({ timeout: t(5_000) });
+    await expect(page.getByText("ID:", { exact: false })).toBeVisible({ timeout: t(5_000) });
 
+    // Unlock the ID field (locked by default since UX sprint PR #44)
+    await page.getByRole("button", { name: /unlock to edit id/i }).click();
     await page.getByRole("textbox", { name: "my_workflow" }).fill(WORKFLOW_ID);
     await page.getByRole("textbox", { name: "My Workflow" }).fill(WORKFLOW_NAME);
     await page

@@ -26,4 +26,13 @@
 - Run `/qa-review` before requesting merge to main
 - For frontend changes: run `/playwright-smoke` on affected pages
 - For backend changes: run `cargo test --workspace` inside flox
+- Run E2E demo tests: `FRONTEND_PORT=<port> npx playwright test e2e/demos/ --reporter=list`
+- Playwright config auto-loads `.env` (GITHUB_TOKEN, etc.) — no need to export manually
 - Reference: existing E2E tests in `e2e/`
+
+## Tracking Failures
+
+- Never skip or ignore test failures without tracking them
+- Pre-existing failures that can't be fixed in the current sprint go in `planning/BACKLOG--remaining-work.md` with resolution recommendations
+- Include actionable fix suggestions (not just "this is broken")
+- Categorize: code bug vs env dependency vs seed data vs infrastructure

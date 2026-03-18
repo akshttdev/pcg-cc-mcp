@@ -146,7 +146,50 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 
 ---
 
+## P2.7 — E2E Test Infrastructure Issues
+
+### E2E: GITHUB_TOKEN Required for Agent Simulation Tests
+**Source:** Frontend polish sprint QA (2026-03-18)
+**Tests affected:** `bug-report-lifecycle.spec.ts` Step 4, `manual-qa-trigger.spec.ts` Step 3
+**What:** `simulateDevAgentWork()` and `createPrForTask()` in `e2e/helpers/demo/simulation.ts` call `ghApi()` which requires `GITHUB_TOKEN` env var. Tests fail immediately with "GITHUB_TOKEN env var required for demo simulation".
+**Recommendation:** Either: (a) set `GITHUB_TOKEN` in `.env.test` for CI, (b) add mock mode to `simulation.ts` that fakes GitHub API responses for local testing, or (c) skip these steps gracefully with `test.skip(!process.env.GITHUB_TOKEN, "GITHUB_TOKEN required")`.
+**Status:** NOT STARTED
+
+### E2E: Pipeline Intelligence Expects 8 Stages, Seed Has 7
+**Source:** Frontend polish sprint QA (2026-03-18)
+**Tests affected:** `pipeline-intelligence-workflow.spec.ts` Part 1
+**What:** Test asserts `stageList.length >= 8` but seed DB only provides 7 pipeline stages.
+**Recommendation:** Either: (a) update seed DB to include all 8 expected stages, or (b) update test to match actual seed data (7 stages), or (c) add a test setup step that creates the missing stage via API.
+**Status:** NOT STARTED
+
+### E2E: Workflow CRM/Spanish Pipeline Demos Need LLM Backend
+**Source:** Frontend polish sprint QA (2026-03-18)
+**Tests affected:** `workflow-crm-pipeline.spec.ts` Part 3+, `workflow-spanish-pipeline.spec.ts` Part 3+
+**What:** Workflow execution requires PCG Router (LLM backend) to produce staged records. Parts 1-2 (build workflow + create data source) pass, but Part 3+ (run workflow, verify staged output) times out without an active LLM backend.
+**Recommendation:** These tests are integration-level and require full stack. Tag with `@requires-llm` annotation and skip in CI unless LLM backend is available. Add `test.skip(!process.env.LLM_BACKEND_URL, "LLM backend required")` guard.
+**Status:** NOT STARTED
+
+---
+
 ## P3 — Developer Experience & Testing Infrastructure
+
+### Error Messages Should Include Actionable Steps (Role-Scoped)
+**Source:** Frontend polish sprint QA (2026-03-18) — user feedback
+**What:** When operations fail (e.g., workflow run, API calls), error messages should:
+1. Include actionable steps the user can take to fix the issue
+2. Scope detail level by user role: platform-level users see system details (ports, services, config), end users see only user-facing guidance without platform internals
+3. Never leak infrastructure details (server ports, internal service names, file paths) to non-platform users
+**Examples:**
+- Workflow run failure → Platform user: "Workflow execution failed: LLM backend not reachable at PCG Router. Check service status or configure alternative model." End user: "Workflow could not complete. Please try again or contact your administrator."
+- Missing config → Platform user: "GITHUB_TOKEN not configured. Set in .env or environment." End user: "Integration not configured. Contact your administrator."
+**Recommendation:** Create an `AppError` utility that accepts error detail + user role, returns appropriate message. Add `isSystemError` flag for errors that should only show technical details to admins.
+**Status:** NOT STARTED
+
+### E2E: Missing Env Vars Should Warn, Not Silently Fail
+**Source:** Frontend polish sprint QA (2026-03-18) — user feedback
+**What:** When essential env vars (GITHUB_TOKEN, LLM_BACKEND_URL, etc.) are missing, tests throw cryptic errors deep in execution instead of warning upfront. The `simulation.ts` helper throws at line 15 but only after 3 prior steps pass, wasting test time.
+**Recommendation:** Add a pre-flight env check to `e2e/helpers/index.ts` or `playwright.config.ts` globalSetup that logs warnings for optional env vars and fails fast for required ones. Pattern: `console.warn("⚠️ GITHUB_TOKEN not set — agent simulation tests will be skipped")`.
+**Status:** NOT STARTED
 
 ### 13. Onboarding Dialog Bypass for Test Environments
 **Source:** PR #47 smoke testing (2026-03-18)

@@ -39,9 +39,17 @@ export async function navigateToTaskDetail(page: Page, taskPath: string) {
 
 /** Open the notification dropdown. Skips if already open. */
 export async function openNotifications(page: Page) {
-  const activity = page.getByText("Activity", { exact: true });
-  if (await activity.isVisible().catch(() => false)) return;
+  // Check if notification panel is already open by looking for the Notifications heading
+  const heading = page.getByText("Notifications").first();
+  const menu = page.locator('[role="menu"]').filter({ hasText: "Notifications" });
+  if (await menu.isVisible().catch(() => false)) return;
 
+  // Click the notification bell button
   await page.getByRole("button", { name: /notification/i }).click();
-  await expect(activity).toBeVisible({ timeout: t(5_000) });
+
+  // Wait for the dropdown menu to appear with the Activity tab
+  // Use role-based selector since the tab text includes the count badge
+  await expect(
+    page.getByRole("button", { name: /^Activity/i })
+  ).toBeVisible({ timeout: t(5_000) });
 }

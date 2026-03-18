@@ -35,6 +35,8 @@ paths:
 - Invalidate related queries on mutation success: `queryClient.invalidateQueries({ queryKey: [...] })`
 - Use optimistic updates via `queryClient.setQueryData()` for responsive UI
 - Always handle `error` state in the component render — never show blank on failure
+- **Query keys**: Always use factories from `lib/query-keys.ts` — never inline string arrays. Mismatched keys cause silent cache invalidation bugs (mutations invalidate one key, queries use another → stale UI).
+- **Mutations**: Prefer `useMutationWithToast` over raw `useMutation` for standard CRUD operations. Use raw `useMutation` only for complex cases (optimistic updates, conditional toasts, `setQueryData`).
 
 ## API Client
 
@@ -64,6 +66,8 @@ paths:
 - All `useEffect` with async operations must have cleanup (AbortController or return fn)
 - All WebSocket/SSE hooks must clean up connections in the useEffect return function
 - Never silently swallow errors — at minimum `console.error()`, preferably toast via `sonner`
+- **Role-scoped error messages**: Platform/admin users see system details (service names, config); end users see actionable guidance without platform internals. Never leak infrastructure details (ports, file paths, internal service names) to non-admin users.
+- **Actionable errors**: Error messages should tell the user what they can do about it, not just what went wrong. "Workflow failed" → "Workflow failed: model unavailable. Try selecting a different model or contact your administrator."
 
 ## Styling
 

@@ -1,4 +1,20 @@
 import { defineConfig, devices } from "@playwright/test";
+import * as fs from "fs";
+import * as path from "path";
+
+// Load .env from project root so GITHUB_TOKEN and other vars are available to tests
+const envPath = path.resolve(__dirname, ".env");
+if (fs.existsSync(envPath)) {
+  for (const line of fs.readFileSync(envPath, "utf-8").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eqIdx = trimmed.indexOf("=");
+    if (eqIdx < 0) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    const val = trimmed.slice(eqIdx + 1).trim();
+    if (!process.env[key]) process.env[key] = val; // don't override explicit env
+  }
+}
 
 /**
  * Playwright E2E configuration for ORCHA dashboard health checks.

@@ -330,10 +330,35 @@ dc6bbdbd5 docs: add sprint planning file
 - **Inline query keys**: Target was ~30 remaining, achieved ~47 — the remaining ones are in complex components (Nora, MeetingMode) that touch sloperation zones.
 - **File splits**: Only 1 of 2 planned splits done (Day 6 skipped due to sloperation overlap). Still 4 files >900 lines.
 
+### E2E Test Results (2026-03-18, post-rebase)
+
+**29 passed, 3 failed, 10 skipped (serial deps)** — all failures are env/infrastructure, not code bugs.
+
+| Test | Result | Notes |
+|------|--------|-------|
+| bug-report-lifecycle Steps 1-8 | ALL PASS | Full lifecycle with agent simulation + QA verdict |
+| manual-qa-trigger Steps 1-8 | ALL PASS | Full QA trigger lifecycle with PR linking |
+| notification-center Steps 1-7 | ALL PASS | Full lifecycle including mark-read and deep-link |
+| pipeline-intelligence Part 1 | FAIL | Seed DB has 7 stages, test expects ≥8 |
+| workflow-crm-pipeline Parts 1-2 | PASS | Build workflow + create data source |
+| workflow-crm-pipeline Part 3+ | FAIL | LLM backend (PCG Router) required for execution |
+| workflow-spanish-pipeline Parts 1-4 | PASS | Build workflow + create source + run + approve |
+| workflow-spanish-pipeline Part 5 | FAIL | Timeout verifying CRM contacts (LLM-dependent) |
+
+**Fixes applied this session:**
+- `e2e/helpers/ui.ts`: `openFeedbackDialog` — click sidebar "More" button before feedback button
+- `e2e/helpers/navigation.ts`: `openNotifications` — use `getByRole("button", { name: /^Activity/i })` for count-badge tolerance
+- `e2e/helpers/workflow-builder.ts`: `addExtractNode` prompt textarea — updated accessible name pattern
+- `e2e/demos/workflow-crm-pipeline.spec.ts`: Unlock ID field before filling, "ID:" assertion
+- `e2e/demos/workflow-spanish-pipeline.spec.ts`: Same unlock + ID assertion fixes
+- `e2e/demos/notification-center.spec.ts`: Updated stale "Recent activity" assertion to "Notifications"
+
+**All failures tracked in `BACKLOG--remaining-work.md` § P2.7**
+
 ### Remaining Work (for backlog)
 - ~47 inline query keys in Nora/meeting/complex pages
 - ~59 raw fetch() calls (mostly in Nora, Topsi meeting mode, conference components)
 - 4 files >900 lines: TopsiWidget (616, done), MeetingMode, NoraAssistant, CompanyProfile
-- Playwright MCP smoke tests not run (blocked by disk space during QA)
-- E2E test suite not run (same)
+- E2E env var pre-flight check (warn on missing GITHUB_TOKEN, LLM_BACKEND_URL)
+- Pipeline seed data: add 8th stage for pipeline-intelligence tests
 - `trigger_executions` table migration needs `cargo sqlx prepare` after first real deployment
