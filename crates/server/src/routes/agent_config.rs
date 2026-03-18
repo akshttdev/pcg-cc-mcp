@@ -109,7 +109,9 @@ async fn create_agent_execution_config(
     Path(agent_id): Path<String>,
     Json(mut data): Json<CreateAgentExecutionConfig>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    // Ensure agent_id matches path
+    // Validate UUID format and ensure agent_id matches path
+    let _valid = Uuid::parse_str(&agent_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid agent UUID".to_string()))?;
     data.agent_id = agent_id.into();
 
     let config = AgentExecutionConfig::create(&deployment.db().pool, data)
