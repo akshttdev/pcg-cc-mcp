@@ -13,6 +13,8 @@ env:
   SQLX_OFFLINE: "true"
   CMAKE_POLICY_VERSION_MINIMUM: "3.5"
   CARGO_TERM_COLOR: always
+  # Disable sccache wrapper (configured in .cargo/config.toml but not installed in CI)
+  RUSTC_WRAPPER: ""
 
 jobs:
   build:
