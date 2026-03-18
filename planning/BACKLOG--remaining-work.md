@@ -27,7 +27,7 @@
 ### ~~4. Workflow Trigger System~~ → RESOLVED
 **Source:** `archive/2026-03-12--review--ui-backend-capability-gaps.md` (F12)
 **Resolution:** Frontend polish sprint (2026-03-18) added webhook triggers with HMAC-SHA256 validation, execution audit trail (`trigger_executions` table), per-trigger cooldown, retry logic, and full frontend UI. Event triggers and schedule triggers already existed. All three trigger types now operational.
-**Known issues (from PR #49 review):** Webhook route behind `require_auth` (P1), retry logic dead code (P2), cooldown race condition (P2). See P1/P2 sections below.
+**Known issues (from PR #49 review):** ~~Webhook route behind `require_auth` (P1)~~ FIXED, retry logic dead code (P2), cooldown race condition (P2). See P2 section below.
 
 ### ~~5. E2E Demo Test Run~~ → RESOLVED
 **Source:** `2026-03-14--plan--e2e-demo-refactor.md`
@@ -160,12 +160,9 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 
 ## P1 — PR #49 Review: Critical Deferred Issues
 
-### Webhook Route Behind `require_auth` Middleware
+### ~~Webhook Route Behind `require_auth` Middleware~~ → RESOLVED
 **Source:** PR #49 backend review (2026-03-18)
-**File:** `crates/server/src/routes/workflow_triggers.rs`
-**What:** `execute_webhook_trigger` is registered under the authenticated router (`/api/webhooks/:trigger_id`). External systems sending webhooks will get 401 because they don't have session cookies. The HMAC secret validation is the intended auth mechanism for webhooks — the route needs to bypass session auth.
-**Recommendation:** Move the webhook endpoint to a separate unauthenticated router prefix (e.g., `/webhooks/:trigger_id` without `/api/` prefix, or add it before the `require_auth` middleware layer). Keep HMAC validation as the sole auth mechanism for this endpoint.
-**Status:** NOT STARTED — CRITICAL for webhook functionality
+**Resolution:** Split `workflow_triggers::router()` into authenticated `router()` (CRUD) + public `public_router()` (webhook handler). Webhook endpoint now registered in `base_routes` (before `require_auth` layer). HMAC-SHA256 is the sole auth mechanism for webhooks.
 
 ---
 
@@ -199,33 +196,17 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 **Recommendation:** Build a secondary `Map<string, Agent>` keyed by `short_name` at the page level (alongside `agentsMap`), pass it as an optional prop. Falls back to O(n) scan only if secondary map not provided.
 **Status:** NOT STARTED — low impact unless agent count grows
 
-### WorkflowTriggersPanel Toggle Toast Not Descriptive
-**Source:** PR #49 frontend review (2026-03-18)
-**File:** `frontend/src/components/workflows/WorkflowTriggersPanel.tsx`
-**What:** Enable/disable trigger toggle shows generic success toast without indicating what changed (enabled vs disabled).
-**Recommendation:** Use conditional toast message: `Trigger ${enabled ? 'enabled' : 'disabled'}`.
-**Status:** NOT STARTED — trivial fix
+### ~~WorkflowTriggersPanel Toggle Toast Not Descriptive~~ → RESOLVED
+**Resolution:** Changed `successMessage` to `(result) => \`Trigger ${result.enabled ? 'enabled' : 'disabled'}\``.
 
-### `useBranchLoader` Swallows Errors Silently
-**Source:** PR #49 frontend review (2026-03-18)
-**File:** `frontend/src/components/dialogs/tasks/task-form/useBranchLoader.ts`
-**What:** Catch block after branch fetch is empty — errors are silently ignored.
-**Recommendation:** Add `console.error` in catch block, or surface error state to the form.
-**Status:** NOT STARTED — low impact
+### ~~`useBranchLoader` Swallows Errors Silently~~ → RESOLVED
+**Resolution:** Added `console.error` to empty catch block.
 
-### `useTopsiVoice` Exports Unused Functions
-**Source:** PR #49 frontend review (2026-03-18)
-**File:** `frontend/src/components/topsi/hooks/useTopsiVoice.ts`
-**What:** `startRecording` and `stopRecording` are exported but never called by any consumer.
-**Recommendation:** Remove from the return object, or verify they're needed for future voice controls.
-**Status:** NOT STARTED — dead code
+### ~~`useTopsiVoice` Exports Unused Functions~~ → RESOLVED
+**Resolution:** Removed `startRecording`/`stopRecording` from `TopsiVoiceActions` interface and return object. Functions remain internal for use by `handlePushToTalkStart`.
 
-### `useMoveDeal` Missing Error Toast
-**Source:** PR #49 frontend review (2026-03-18)
-**File:** `frontend/src/hooks/useMoveDeal.ts`
-**What:** Mutation lacks `onError` handler — failed deal moves show no user feedback.
-**Recommendation:** Convert to `useMutationWithToast` or add `onError` with toast.
-**Status:** NOT STARTED — low impact
+### ~~`useMoveDeal` Missing Error Toast~~ → RESOLVED
+**Resolution:** Added `toast.error('Failed to move deal')` + `console.error` in `onError` handler. Kept raw `useMutation` for optimistic update pattern.
 
 ### `workflowKeys` Mixed Naming Convention
 **Source:** PR #49 frontend review (2026-03-18)
@@ -252,12 +233,8 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 **Recommendation:** Re-add assertions using a more resilient pattern (e.g., `page.waitForSelector` for toast elements, or poll-based checks for badge appearance without hard reload).
 **Status:** NOT STARTED — reduces test coverage
 
-### E2E: `DEMO_PR_NUMBER` Used Without Null Guard
-**Source:** PR #49 e2e review (2026-03-18)
-**File:** `e2e/demos/bug-report-lifecycle.spec.ts`
-**What:** `DEMO_PR_NUMBER` is set from `createPrForTask()` which can throw. If it throws and is caught, downstream usage of `DEMO_PR_NUMBER` would be undefined, causing cryptic failures.
-**Recommendation:** Add `if (!DEMO_PR_NUMBER) test.skip('PR creation failed')` guard after the try/catch block.
-**Status:** NOT STARTED
+### ~~E2E: `DEMO_PR_NUMBER` Used Without Null Guard~~ → RESOLVED
+**Resolution:** Added `test.skip(!DEMO_PR_NUMBER, "Skipping — Step 4 did not create a PR")` guard at top of Step 6.
 
 ### E2E: Conditional Visual Checks Are No-Op
 **Source:** PR #49 e2e review (2026-03-18)
