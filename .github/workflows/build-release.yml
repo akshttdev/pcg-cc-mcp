@@ -85,8 +85,8 @@ jobs:
 
       - name: Build release binaries
         run: |
-          cargo build --release --target ${{ matrix.target }} --bin server
-          cargo build --release --target ${{ matrix.target }} --bin orcha
+          cargo build --release --locked --target ${{ matrix.target }} --bin server
+          cargo build --release --locked --target ${{ matrix.target }} --bin orcha
         env:
           OPENSSL_DIR: ${{ runner.os == 'macOS' && '/opt/homebrew/opt/openssl@3' || '' }}
 
