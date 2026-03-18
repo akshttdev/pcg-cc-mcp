@@ -156,3 +156,4 @@ Runtime:
 - `FRONTEND_PORT`: Frontend dev port (default: 3000)
 - `HOST`: Backend host (default: 127.0.0.1)
 - `DISABLE_WORKTREE_ORPHAN_CLEANUP`: Debug flag for worktrees
+- `VITE_SKIP_ONBOARDING`: Set to `1` to bypass all onboarding dialogs (for E2E testing)

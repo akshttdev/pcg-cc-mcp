@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use services::services::ralph::{RalphService, StartRalphRequest};
 use ts_rs::TS;
 use uuid::Uuid;
+use db::db_uuid::DbUuid;
 
 use crate::DeploymentImpl;
 
@@ -90,26 +91,29 @@ async fn get_execution_profile(
 /// Get execution config for an agent
 async fn get_agent_execution_config(
     State(deployment): State<DeploymentImpl>,
-    Path(agent_id): Path<Uuid>,
+    Path(agent_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let config = AgentExecutionConfig::find_by_agent_id(&deployment.db().pool, agent_id)
+    let config = AgentExecutionConfig::find_by_agent_id(&deployment.db().pool, &agent_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    let agent_uuid = DbUuid::parse(&agent_id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid agent ID".to_string()))?.to_uuid();
     match config {
         Some(c) => Ok(Json(AgentConfigResponse::Found(c))),
-        None => Ok(Json(AgentConfigResponse::NotConfigured { agent_id })),
+        None => Ok(Json(AgentConfigResponse::NotConfigured { agent_id: agent_uuid })),
     }
 }
 
 /// Create execution config for an agent
 async fn create_agent_execution_config(
     State(deployment): State<DeploymentImpl>,
-    Path(agent_id): Path<Uuid>,
+    Path(agent_id): Path<String>,
     Json(mut data): Json<CreateAgentExecutionConfig>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    // Ensure agent_id matches path
-    data.agent_id = agent_id;
+    // Validate UUID format and ensure agent_id matches path
+    let _valid = DbUuid::parse(&agent_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid agent UUID".to_string()))?;
+    data.agent_id = agent_id.into();
 
     let config = AgentExecutionConfig::create(&deployment.db().pool, data)
         .await
@@ -121,11 +125,11 @@ async fn create_agent_execution_config(
 /// Update execution config for an agent
 async fn update_agent_execution_config(
     State(deployment): State<DeploymentImpl>,
-    Path(agent_id): Path<Uuid>,
+    Path(agent_id): Path<String>,
     Json(data): Json<UpdateAgentExecutionConfig>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // Find existing config
-    let existing = AgentExecutionConfig::find_by_agent_id(&deployment.db().pool, agent_id)
+    let existing = AgentExecutionConfig::find_by_agent_id(&deployment.db().pool, &agent_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or((StatusCode::NOT_FOUND, "Config not found".to_string()))?;
@@ -268,11 +272,11 @@ pub enum RalphByAttemptResponse {
 /// Resolve Ralph config for a task (preview what would be used)
 async fn resolve_task_ralph_config(
     State(deployment): State<DeploymentImpl>,
-    Path(task_id): Path<Uuid>,
+    Path(task_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     use db::models::task::Task;
 
-    let task = Task::find_by_id(&deployment.db().pool, &task_id.to_string())
+    let task = Task::find_by_id(&deployment.db().pool, &task_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or((StatusCode::NOT_FOUND, "Task not found".to_string()))?;

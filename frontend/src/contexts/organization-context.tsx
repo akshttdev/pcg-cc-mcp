@@ -38,7 +38,7 @@ export function OrganizationProvider({ children }: OrganizationProviderProps) {
   // Effective org mirrors sidebar logic: URL org → home org → first org
   const effectiveOrgId = useMemo(() => {
     if (orgId) return orgId;
-    return (user as any)?.home_organization_id ?? (user as any)?.organizations?.[0]?.id;
+    return user?.home_organization_id ?? user?.organizations?.[0]?.id;
   }, [orgId, user]);
 
   const { data: organizations = [], isLoading: isOrgsLoading } = useQuery({

@@ -32,8 +32,8 @@ export function ProposalTab({ deal }: ProposalTabProps) {
     mutationFn: () => crmDealsApi.generateProposal(deal.id),
     onSuccess: () => {
       toast.success('Cash generated your proposal');
-      qc.invalidateQueries({ queryKey: crmKeys.kanbanAll() });
-      qc.invalidateQueries({ queryKey: crmKeys.deal(deal.id) });
+      qc.invalidateQueries({ queryKey: crmKeys.kanbanLegacy() });
+      qc.invalidateQueries({ queryKey: crmKeys.dealLegacy(deal.id) });
     },
     onError: () => toast.error('Proposal generation failed'),
   });
@@ -42,7 +42,7 @@ export function ProposalTab({ deal }: ProposalTabProps) {
     mutationFn: () => crmDealsApi.approveProposal(deal.id),
     onSuccess: () => {
       toast.success('Proposal approved — ready for Polish');
-      qc.invalidateQueries({ queryKey: crmKeys.kanbanAll() });
+      qc.invalidateQueries({ queryKey: crmKeys.kanbanLegacy() });
     },
     onError: () => toast.error('Failed to approve proposal'),
   });
@@ -52,7 +52,7 @@ export function ProposalTab({ deal }: ProposalTabProps) {
     onSuccess: () => {
       toast.success('Proposal saved');
       setEditing(false);
-      qc.invalidateQueries({ queryKey: crmKeys.kanbanAll() });
+      qc.invalidateQueries({ queryKey: crmKeys.kanbanLegacy() });
     },
     onError: () => toast.error('Failed to save proposal'),
   });

@@ -85,9 +85,10 @@ export function McpSettings() {
         const configJson = JSON.stringify(fullConfig, null, 2);
         setMcpServers(configJson);
         setMcpConfigPath(result.config_path);
-      } catch (err: any) {
-        if (err?.message && err.message.includes('does not support MCP')) {
-          setMcpError(err.message);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        if (message.includes('does not support MCP')) {
+          setMcpError(message);
         } else {
           console.error('Error loading MCP servers:', err);
         }

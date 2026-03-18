@@ -6,6 +6,11 @@ import {
   CoordinationStats,
 } from '@/types/nora';
 
+interface AgentDirectoryOptions {
+  /** When false, skips all connections (use for pre-auth contexts). Defaults to true. */
+  enabled?: boolean;
+}
+
 interface AgentDirectoryState {
   agents: AgentCoordinationState[];
   stats: CoordinationStats | null;
@@ -16,7 +21,8 @@ interface AgentDirectoryState {
   refresh: () => Promise<void>;
 }
 
-export function useAgentDirectory(): AgentDirectoryState {
+export function useAgentDirectory(options?: AgentDirectoryOptions): AgentDirectoryState {
+  const enabled = options?.enabled ?? true;
   const [agents, setAgents] = useState<AgentCoordinationState[]>([]);
   const [stats, setStats] = useState<CoordinationStats | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
@@ -143,6 +149,9 @@ export function useAgentDirectory(): AgentDirectoryState {
   }, [handleEvent]);
 
   useEffect(() => {
+    // Guard: don't connect when disabled (e.g., before auth)
+    if (!enabled) return;
+
     void refresh();
     if (useSseFallback) {
       setupEventSource();
@@ -164,7 +173,7 @@ export function useAgentDirectory(): AgentDirectoryState {
         window.clearTimeout(sseReconnectTimeout.current);
       }
     };
-  }, [refresh, setupEventSource, setupWebSocket, useSseFallback]);
+  }, [enabled, refresh, setupEventSource, setupWebSocket, useSseFallback]);
 
   return {
     agents,

@@ -49,8 +49,10 @@ export class ApiError<E = unknown> extends Error {
 }
 
 export const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
+const getOrchaPort = (): number =>
+  (window as unknown as Record<string, number>).__ORCHA_BACKEND_PORT__ || 58297;
 export const API_BASE = isTauri
-  ? `http://localhost:${(window as any).__ORCHA_BACKEND_PORT__ || 58297}`
+  ? `http://localhost:${getOrchaPort()}`
   : '';
 
 /**
@@ -67,7 +69,7 @@ export function resolveApiUrl(path: string): string {
  */
 export function resolveWsUrl(path: string): string {
   if (isTauri) {
-    const port = (window as any).__ORCHA_BACKEND_PORT__ || 58297;
+    const port = getOrchaPort();
     return `ws://localhost:${port}${path}`;
   }
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';

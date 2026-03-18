@@ -66,7 +66,7 @@ export function PrivacySettings() {
         <CardContent className="space-y-4">
           <div>
             <Label htmlFor="visibility">Who can see your profile</Label>
-            <Select value={profileVisibility} onValueChange={(v: any) => setProfileVisibility(v)}>
+            <Select value={profileVisibility} onValueChange={(v: string) => setProfileVisibility(v as 'public' | 'team' | 'private')}>
               <SelectTrigger className="mt-1.5">
                 <SelectValue />
               </SelectTrigger>

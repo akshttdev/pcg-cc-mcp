@@ -24,6 +24,7 @@ use services::services::{
 };
 use utils::{path::expand_tilde, response::ApiResponse};
 use uuid::Uuid;
+use db::db_uuid::DbUuid;
 
 use crate::{
     DeploymentImpl,
@@ -99,10 +100,10 @@ pub async fn get_projects(
 
 /// GET /api/projects/by-client/:client_id — projects for a given client
 pub async fn get_projects_by_client(
-    Path(client_id): Path<Uuid>,
+    Path(client_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<Project>>>, ApiError> {
-    let projects = Project::find_by_client(&deployment.db().pool, &client_id.to_string()).await?;
+    let projects = Project::find_by_client(&deployment.db().pool, &client_id).await?;
     Ok(ResponseJson(ApiResponse::success(projects)))
 }
 
@@ -140,7 +141,7 @@ pub async fn list_project_pods(
     Extension(project): Extension<Project>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<ProjectPod>>>, ApiError> {
-    let project_uuid = Uuid::parse_str(&project.id).map_err(|_| ApiError::InternalError("Invalid project id".into()))?;
+    let project_uuid = DbUuid::parse(&project.id).map_err(|_| ApiError::InternalError("Invalid project id".into()))?.to_uuid();
     let pods = ProjectPod::find_by_project(&deployment.db().pool, project_uuid).await?;
     Ok(ResponseJson(ApiResponse::success(pods)))
 }
@@ -150,7 +151,7 @@ pub async fn create_project_pod(
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<CreatePodPayload>,
 ) -> Result<ResponseJson<ApiResponse<ProjectPod>>, ApiError> {
-    let project_uuid = Uuid::parse_str(&project.id).map_err(|_| ApiError::InternalError("Invalid project id".into()))?;
+    let project_uuid = DbUuid::parse(&project.id).map_err(|_| ApiError::InternalError("Invalid project id".into()))?.to_uuid();
     let pod = ProjectPod::create(
         &deployment.db().pool,
         Uuid::new_v4(),
@@ -168,13 +169,14 @@ pub async fn create_project_pod(
 }
 
 pub async fn update_project_pod(
-    Path(pod_id): Path<Uuid>,
+    Path(pod_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<UpdatePodPayload>,
 ) -> Result<ResponseJson<ApiResponse<ProjectPod>>, ApiError> {
+    let pod_uuid = DbUuid::parse(&pod_id).map_err(|_| ApiError::BadRequest("Invalid pod ID".into()))?.to_uuid();
     let pod = ProjectPod::update(
         &deployment.db().pool,
-        pod_id,
+        pod_uuid,
         &UpdateProjectPod {
             title: payload.title,
             description: payload.description,
@@ -188,10 +190,11 @@ pub async fn update_project_pod(
 }
 
 pub async fn delete_project_pod(
-    Path(pod_id): Path<Uuid>,
+    Path(pod_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
-    let deleted = ProjectPod::delete(&deployment.db().pool, pod_id).await?;
+    let pod_uuid = DbUuid::parse(&pod_id).map_err(|_| ApiError::BadRequest("Invalid pod ID".into()))?.to_uuid();
+    let deleted = ProjectPod::delete(&deployment.db().pool, pod_uuid).await?;
     if deleted == 0 {
         return Err(ApiError::NotFound("Pod not found".to_string()));
     }
@@ -232,7 +235,7 @@ pub async fn list_project_assets(
     Extension(project): Extension<Project>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<ProjectAsset>>>, ApiError> {
-    let project_uuid = Uuid::parse_str(&project.id).map_err(|_| ApiError::InternalError("Invalid project id".into()))?;
+    let project_uuid = DbUuid::parse(&project.id).map_err(|_| ApiError::InternalError("Invalid project id".into()))?.to_uuid();
     let assets = ProjectAsset::find_by_project(&deployment.db().pool, project_uuid).await?;
     Ok(ResponseJson(ApiResponse::success(assets)))
 }
@@ -268,7 +271,7 @@ pub async fn create_project_asset(
         }
     }
 
-    let project_uuid = Uuid::parse_str(&project.id).map_err(|_| ApiError::InternalError("Invalid project id".into()))?;
+    let project_uuid = DbUuid::parse(&project.id).map_err(|_| ApiError::InternalError("Invalid project id".into()))?.to_uuid();
     let asset = ProjectAsset::create(
         &deployment.db().pool,
         Uuid::new_v4(),
@@ -293,7 +296,7 @@ pub async fn create_project_asset(
 }
 
 pub async fn update_project_asset(
-    Path(asset_id): Path<Uuid>,
+    Path(asset_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<UpdateAssetPayload>,
 ) -> Result<ResponseJson<ApiResponse<ProjectAsset>>, ApiError> {
@@ -310,7 +313,8 @@ pub async fn update_project_asset(
         metadata,
     } = payload;
 
-    let existing_asset = ProjectAsset::find_by_id(&deployment.db().pool, asset_id)
+    let asset_uuid = DbUuid::parse(&asset_id).map_err(|_| ApiError::BadRequest("Invalid asset ID".into()))?.to_uuid();
+    let existing_asset = ProjectAsset::find_by_id(&deployment.db().pool, asset_uuid)
         .await?
         .ok_or_else(|| ApiError::NotFound("Asset not found".to_string()))?;
 
@@ -328,7 +332,7 @@ pub async fn update_project_asset(
 
     let asset = ProjectAsset::update(
         &deployment.db().pool,
-        asset_id,
+        asset_uuid,
         &UpdateProjectAsset {
             pod_id,
             board_id,
@@ -348,10 +352,11 @@ pub async fn update_project_asset(
 }
 
 pub async fn delete_project_asset(
-    Path(asset_id): Path<Uuid>,
+    Path(asset_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
-    let deleted = ProjectAsset::delete(&deployment.db().pool, asset_id).await?;
+    let asset_uuid = DbUuid::parse(&asset_id).map_err(|_| ApiError::BadRequest("Invalid asset ID".into()))?.to_uuid();
+    let deleted = ProjectAsset::delete(&deployment.db().pool, asset_uuid).await?;
     if deleted == 0 {
         return Err(ApiError::NotFound("Asset not found".to_string()));
     }
@@ -622,7 +627,7 @@ pub async fn update_project(
                 None
             } else {
                 // Validate it's a valid UUID format
-                Uuid::parse_str(&org_id_str).map_err(|_| StatusCode::BAD_REQUEST)?;
+                DbUuid::parse(&org_id_str).map_err(|_| StatusCode::BAD_REQUEST)?.to_uuid();
                 Some(org_id_str)
             }
         }
@@ -634,7 +639,7 @@ pub async fn update_project(
                 None
             } else {
                 // Validate it's a valid UUID format
-                Uuid::parse_str(&client_id_str).map_err(|_| StatusCode::BAD_REQUEST)?;
+                DbUuid::parse(&client_id_str).map_err(|_| StatusCode::BAD_REQUEST)?.to_uuid();
                 Some(client_id_str)
             }
         }
@@ -936,7 +941,7 @@ pub async fn get_brand_profile(
     Extension(project): Extension<Project>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Option<BrandProfile>>>, ApiError> {
-    let project_uuid = Uuid::parse_str(&project.id).map_err(|_| ApiError::InternalError("Invalid project id".into()))?;
+    let project_uuid = DbUuid::parse(&project.id).map_err(|_| ApiError::InternalError("Invalid project id".into()))?.to_uuid();
     let profile = BrandProfile::find_by_project(&deployment.db().pool, project_uuid).await?;
     Ok(ResponseJson(ApiResponse::success(profile)))
 }
@@ -946,7 +951,7 @@ pub async fn upsert_brand_profile(
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<UpsertBrandProfile>,
 ) -> Result<ResponseJson<ApiResponse<BrandProfile>>, ApiError> {
-    let project_uuid = Uuid::parse_str(&project.id).map_err(|_| ApiError::InternalError("Invalid project id".into()))?;
+    let project_uuid = DbUuid::parse(&project.id).map_err(|_| ApiError::InternalError("Invalid project id".into()))?.to_uuid();
     let profile = BrandProfile::upsert(&deployment.db().pool, project_uuid, &payload).await?;
     Ok(ResponseJson(ApiResponse::success(profile)))
 }

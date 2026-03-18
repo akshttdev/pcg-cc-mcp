@@ -8,7 +8,7 @@ import {
   socialApi,
   type SocialAccountRecord,
 } from '@/lib/api';
-import { organizationKeys, socialKeys } from '@/lib/query-keys';
+import { socialKeys, organizationKeys } from '@/lib/query-keys';
 import { PLATFORM_ICONS, PLATFORM_COLORS, PLATFORM_BG } from '../../constants';
 import { formatCompactNumber } from '@/lib/formatters';
 

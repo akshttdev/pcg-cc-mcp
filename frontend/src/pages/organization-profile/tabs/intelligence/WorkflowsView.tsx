@@ -21,6 +21,38 @@ import { WorkflowEditor as WorkflowEditorComponent } from '@/components/workflow
 import { WorkflowCardGrid } from '@/components/workflows/WorkflowCardGrid';
 import { RunWorkflowDialog } from '@/pages/workflows/components/RunWorkflowDialog';
 
+// ── Automation & Template Types ───────────────────────────────────────────────
+
+interface SystemAutomation {
+  id: string;
+  name: string;
+  description?: string;
+  schedule?: string;
+}
+
+interface TemplateTask {
+  title: string;
+  task_type?: string;
+  agent_role?: string;
+  requires_approval?: boolean;
+  tags?: string[];
+}
+
+interface TemplatePhase {
+  name: string;
+  description?: string;
+  is_recurring?: boolean;
+  tasks: TemplateTask[];
+}
+
+interface WorkflowTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  client_type?: string;
+  phases?: TemplatePhase[];
+}
+
 // ── Pipeline Types & Constants ───────────────────────────────────────────────
 
 export interface PipelineNode {
@@ -272,12 +304,12 @@ export function PipelineView({ pipeline }: { pipeline: PipelineBlueprint }) {
 
 // ── Template Pipeline View ───────────────────────────────────────────────────
 
-export function TemplatePipelineView({ template }: { template: any }) {
+export function TemplatePipelineView({ template }: { template: WorkflowTemplate }) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">{template.description}</p>
       <div className="space-y-6">
-        {(template.phases ?? []).map((phase: any, pi: number) => (
+        {(template.phases ?? []).map((phase: TemplatePhase, pi: number) => (
           <div key={phase.name}>
             <div className="flex items-center gap-2 mb-3">
               <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-medium shrink-0">{pi + 1}</div>
@@ -289,7 +321,7 @@ export function TemplatePipelineView({ template }: { template: any }) {
             </div>
             <div className="overflow-x-auto pb-1 pl-8">
               <div className="flex items-start gap-0 min-w-max">
-                {(phase.tasks ?? []).map((task: any, ti: number) => {
+                {(phase.tasks ?? []).map((task: TemplateTask, ti: number) => {
                   const agentKey = task.task_type === 'human_review' ? 'human' : (task.agent_role ?? '');
                   const colorClass = AGENT_COLORS[agentKey] ?? (task.task_type === 'human_review' ? AGENT_COLORS.human : 'bg-muted/50 border-border text-muted-foreground');
                   const isLast = ti === phase.tasks.length - 1;
@@ -306,9 +338,9 @@ export function TemplatePipelineView({ template }: { template: any }) {
                         {task.task_type === 'human_review' && (
                           <div className="text-[10px] opacity-60">Human Review</div>
                         )}
-                        {task.tags?.length > 0 && (
+                        {(task.tags?.length ?? 0) > 0 && (
                           <div className="flex flex-wrap gap-0.5 mt-1.5">
-                            {task.tags.slice(0, 2).map((t: string) => (
+                            {task.tags!.slice(0, 2).map((t: string) => (
                               <span key={t} className="text-[9px] bg-black/20 rounded px-1">{t}</span>
                             ))}
                           </div>
@@ -347,8 +379,8 @@ export function LegacyPipelinesView({ orgId: _orgId }: { orgId: string }) {
         .then((res) => res?.data ?? []),
   });
 
-  const allPipelines: Array<{ id: string; name: string; category: string; source: 'template' | 'static'; data: any }> = [
-    ...(templates as any[]).map((t: any) => ({
+  const allPipelines: Array<{ id: string; name: string; category: string; source: 'template' | 'static'; data: WorkflowTemplate | PipelineBlueprint }> = [
+    ...(templates as WorkflowTemplate[]).map((t: WorkflowTemplate) => ({
       id: t.id,
       name: t.name,
       category: t.client_type === 'foundation_build' ? 'Client Engagement' : 'Client Engagement',
@@ -400,7 +432,7 @@ export function LegacyPipelinesView({ orgId: _orgId }: { orgId: string }) {
             </div>
             {selectedPipeline.source === 'static'
               ? <PipelineView pipeline={selectedPipeline.data as PipelineBlueprint} />
-              : <TemplatePipelineView template={selectedPipeline.data} />
+              : <TemplatePipelineView template={selectedPipeline.data as WorkflowTemplate} />
             }
           </div>
         ) : (
@@ -433,7 +465,7 @@ export function SystemAutomationsSection() {
         System Automations ({automations.length} active)
       </p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {automations.map((a: any) => (
+        {(automations as SystemAutomation[]).map((a) => (
           <Card key={a.id} className="bg-card/80 border-border/50">
             <CardContent className="pt-4 pb-4">
               <div className="flex items-start gap-2">
@@ -483,7 +515,7 @@ export function WorkflowsIntelView({ orgId }: { orgId: string }) {
         <div>
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">System Automations ({automations.length} active)</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {automations.map((a: any) => (
+            {(automations as SystemAutomation[]).map((a) => (
               <Card key={a.id} className="bg-card/80 border-border/50">
                 <CardContent className="pt-4 pb-4">
                   <div className="flex items-start gap-2">

@@ -18,6 +18,7 @@ import {
   workflowsApi,
   knowledgeApi,
   type ExecutionArtifact,
+  type DataSourceRecord,
 } from '@/lib/api';
 import { dataSourceKeys, knowledgeKeys } from '@/lib/query-keys';
 
@@ -45,14 +46,14 @@ export function ArtifactsView({ orgId }: { orgId: string }) {
     try { return JSON.parse(content); } catch { return content; }
   };
 
-  const renderValue = (val: any): React.ReactNode => {
+  const renderValue = (val: unknown): React.ReactNode => {
     if (val === null || val === undefined) return <span className="text-muted-foreground italic">null</span>;
     if (typeof val === 'string') return <span className="text-sm">{val}</span>;
     if (typeof val === 'number' || typeof val === 'boolean') return <span className="text-sm font-mono">{String(val)}</span>;
     if (Array.isArray(val)) {
       return (
         <div className="ml-3 space-y-1">
-          {val.map((item, i) => (
+          {val.map((item: unknown, i: number) => (
             <div key={i} className="text-sm border-l-2 border-border/50 pl-2">
               {typeof item === 'object' ? renderValue(item) : String(item)}
             </div>
@@ -63,7 +64,7 @@ export function ArtifactsView({ orgId }: { orgId: string }) {
     if (typeof val === 'object') {
       return (
         <div className="ml-3 space-y-1">
-          {Object.entries(val).map(([k, v]) => (
+          {Object.entries(val as Record<string, unknown>).map(([k, v]) => (
             <div key={k}>
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{k.replace(/_/g, ' ')}: </span>
               {typeof v === 'object' && v !== null ? renderValue(v) : <span className="text-sm">{String(v ?? '')}</span>}
@@ -173,18 +174,18 @@ export function DataSourcesIntelView({ orgId, projectEntries }: { orgId: string;
 
   const sources = useMemo(() => {
     const projSources = projSourceQueries.flatMap(q => q.data || []);
-    const all = [...orgSources, ...projSources];
+    const all: DataSourceRecord[] = [...orgSources, ...projSources];
     const seen = new Set<string>();
     return all.filter(s => {
-      if (seen.has((s as any).id)) return false;
-      seen.add((s as any).id);
+      if (seen.has(s.id)) return false;
+      seen.add(s.id);
       return true;
     });
   }, [orgSources, projSourceQueries]);
 
   const typeCount = useMemo(() => {
     const counts: Record<string, number> = {};
-    sources.forEach((s: any) => { counts[s.data_type] = (counts[s.data_type] || 0) + 1; });
+    sources.forEach((s) => { counts[s.data_type] = (counts[s.data_type] || 0) + 1; });
     return counts;
   }, [sources]);
 
@@ -254,7 +255,7 @@ export function ArtifactsIntelView({ projectEntries }: { projectEntries: { id: s
     knowledgeQueries.forEach((q, i) => {
       if (!q.data) return;
       const entry = projectEntries[i];
-      ((q.data as any).sources_by_type?.artifact || []).forEach((src: any) => {
+      (q.data.sources_by_type?.artifact || []).forEach((src) => {
         all.push({ title: src.source_title, summary: src.source_summary, projectName: entry.name, projectId: entry.id });
       });
     });

@@ -1561,7 +1561,7 @@ async fn send_deal_invoice(
     let amount_usd = deal.amount.unwrap_or(0.0);
     let amount_vibe = (amount_usd * 100.0) as i64;
 
-    let client_name = body["client_name"].as_str().unwrap_or(&deal.name);
+    let _client_name = body["client_name"].as_str().unwrap_or(&deal.name);
     let notes = body["notes"].as_str().unwrap_or("Proposal invoice");
     let due_days = body["due_days"].as_i64().unwrap_or(14);
 

@@ -154,13 +154,13 @@ async fn list_users(
 /// GET /api/users/:id - Get user details
 async fn get_user(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<ResponseJson<ApiResponse<UserDetail>>, ApiError> {
     let pool = deployment.db().pool.clone();
 
     let user = sqlx::query_as::<_, UserDetail>(
         r#"
-        SELECT 
+        SELECT
             id,
             username,
             email,
@@ -175,7 +175,7 @@ async fn get_user(
         WHERE id = ?
         "#,
     )
-    .bind(id.to_string())
+    .bind(&id)
     .fetch_optional(&pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?
@@ -187,7 +187,7 @@ async fn get_user(
 /// PATCH /api/users/:id - Update user details
 async fn update_user(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     ResponseJson(req): ResponseJson<UpdateUserRequest>,
 ) -> Result<ResponseJson<ApiResponse<UserDetail>>, ApiError> {
     let pool = deployment.db().pool.clone();
@@ -223,7 +223,7 @@ async fn update_user(
     for param in params {
         query_builder = query_builder.bind(param);
     }
-    query_builder = query_builder.bind(id);
+    query_builder = query_builder.bind(id.clone());
 
     query_builder
         .execute(&pool)
@@ -237,7 +237,7 @@ async fn update_user(
 /// PATCH /api/users/:id/role - Update user role (admin only)
 async fn update_user_role(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     ResponseJson(req): ResponseJson<UpdateRoleRequest>,
 ) -> Result<ResponseJson<ApiResponse<UserDetail>>, ApiError> {
     let pool = deployment.db().pool.clone();
@@ -246,13 +246,13 @@ async fn update_user_role(
 
     sqlx::query(
         r#"
-        UPDATE users 
+        UPDATE users
         SET is_admin = ?, updated_at = datetime('now')
         WHERE id = ?
         "#,
     )
     .bind(is_admin_i32)
-    .bind(id.to_string())
+    .bind(&id)
     .execute(&pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to update role: {}", e)))?;
@@ -263,18 +263,18 @@ async fn update_user_role(
 /// PATCH /api/users/:id/suspend - Suspend user (admin only)
 async fn suspend_user(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<ResponseJson<ApiResponse<UserDetail>>, ApiError> {
     let pool = deployment.db().pool.clone();
 
     sqlx::query(
         r#"
-        UPDATE users 
+        UPDATE users
         SET is_active = 0, updated_at = datetime('now')
         WHERE id = ?
         "#,
     )
-    .bind(id.to_string())
+    .bind(&id)
     .execute(&pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to suspend user: {}", e)))?;
@@ -285,18 +285,18 @@ async fn suspend_user(
 /// PATCH /api/users/:id/activate - Activate user (admin only)
 async fn activate_user(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<ResponseJson<ApiResponse<UserDetail>>, ApiError> {
     let pool = deployment.db().pool.clone();
 
     sqlx::query(
         r#"
-        UPDATE users 
+        UPDATE users
         SET is_active = 1, updated_at = datetime('now')
         WHERE id = ?
         "#,
     )
-    .bind(id.to_string())
+    .bind(&id)
     .execute(&pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to activate user: {}", e)))?;
@@ -307,18 +307,18 @@ async fn activate_user(
 /// DELETE /api/users/:id - Deactivate user (soft delete)
 async fn deactivate_user(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let pool = deployment.db().pool.clone();
 
     sqlx::query(
         r#"
-        UPDATE users 
+        UPDATE users
         SET is_active = 0, updated_at = datetime('now')
         WHERE id = ?
         "#,
     )
-    .bind(id.to_string())
+    .bind(&id)
     .execute(&pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to deactivate user: {}", e)))?;

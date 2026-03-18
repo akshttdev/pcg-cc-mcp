@@ -24,9 +24,39 @@ import {
 } from '@/lib/api';
 import { organizationKeys, sidebarKeys } from '@/lib/query-keys';
 
+interface ProjectAssignment {
+  project_id: string;
+  project_name: string;
+  role: string;
+}
+
+interface ClientAssignment {
+  client_id: string;
+  client_name: string;
+  role: string;
+}
+
+interface TaskAssignment {
+  task_id: string;
+  title: string;
+  project_name: string;
+}
+
+interface MemberAssignmentsData {
+  projects: ProjectAssignment[];
+  clients: ClientAssignment[];
+  tasks: TaskAssignment[];
+  watched_tasks: TaskAssignment[];
+}
+
+interface OrgProject {
+  id: string;
+  name: string;
+}
+
 export function MemberAssignments({ orgId, userId }: { orgId: string; userId: string }) {
   const queryClient = useQueryClient();
-  const { data: assignments, isLoading } = useQuery({
+  const { data: assignments, isLoading } = useQuery<MemberAssignmentsData>({
     queryKey: organizationKeys.memberAssignments(orgId, userId),
     queryFn: () => organizationsApi.getMemberAssignments(orgId, userId),
   });
@@ -40,7 +70,7 @@ export function MemberAssignments({ orgId, userId }: { orgId: string; userId: st
   const [assignTargetId, setAssignTargetId] = useState('');
   const [assignRole, setAssignRole] = useState('editor');
 
-  const { data: orgProjects = [] } = useQuery<any[]>({
+  const { data: orgProjects = [] } = useQuery<OrgProject[]>({
     queryKey: organizationKeys.projectsList(orgId),
     queryFn: async () => {
       try {
@@ -91,7 +121,7 @@ export function MemberAssignments({ orgId, userId }: { orgId: string; userId: st
         <div>
           <p className="text-xs font-medium text-muted-foreground mb-1">Projects</p>
           <div className="flex flex-wrap gap-1">
-            {projectAssignments.map((p: any) => (
+            {projectAssignments.map((p: ProjectAssignment) => (
               <Badge key={p.project_id} variant="secondary" className="text-xs gap-1">
                 <FolderOpen className="h-3 w-3" />
                 {p.project_name} ({p.role})
@@ -107,7 +137,7 @@ export function MemberAssignments({ orgId, userId }: { orgId: string; userId: st
         <div>
           <p className="text-xs font-medium text-muted-foreground mb-1">Clients</p>
           <div className="flex flex-wrap gap-1">
-            {clientAssignments.map((c: any) => (
+            {clientAssignments.map((c: ClientAssignment) => (
               <Badge key={c.client_id} variant="secondary" className="text-xs gap-1">
                 <Briefcase className="h-3 w-3" />
                 {c.client_name} ({c.role})
@@ -123,7 +153,7 @@ export function MemberAssignments({ orgId, userId }: { orgId: string; userId: st
         <div>
           <p className="text-xs font-medium text-muted-foreground mb-1">Tasks (assignee)</p>
           <div className="flex flex-wrap gap-1">
-            {taskAssignments.map((t: any) => (
+            {taskAssignments.map((t: TaskAssignment) => (
               <Badge key={t.task_id} variant="outline" className="text-xs">
                 {t.title} <span className="text-muted-foreground ml-1">({t.project_name})</span>
               </Badge>
@@ -135,7 +165,7 @@ export function MemberAssignments({ orgId, userId }: { orgId: string; userId: st
         <div>
           <p className="text-xs font-medium text-muted-foreground mb-1">Tasks (watching)</p>
           <div className="flex flex-wrap gap-1">
-            {watchedTasks.map((t: any) => (
+            {watchedTasks.map((t: TaskAssignment) => (
               <Badge key={t.task_id} variant="outline" className="text-xs">
                 <Eye className="h-3 w-3 mr-1" />
                 {t.title} <span className="text-muted-foreground ml-1">({t.project_name})</span>
@@ -165,8 +195,8 @@ export function MemberAssignments({ orgId, userId }: { orgId: string; userId: st
               </SelectTrigger>
               <SelectContent>
                 {orgProjects
-                  .filter((p: any) => !projectAssignments.some((a: any) => a.project_id === p.id))
-                  .map((p: any) => (
+                  .filter((p: OrgProject) => !projectAssignments.some((a: ProjectAssignment) => a.project_id === p.id))
+                  .map((p: OrgProject) => (
                     <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                   ))}
               </SelectContent>
@@ -190,8 +220,8 @@ export function MemberAssignments({ orgId, userId }: { orgId: string; userId: st
             </SelectTrigger>
             <SelectContent>
               {orgClients
-                .filter((c: any) => !clientAssignments.some((a: any) => a.client_id === c.id))
-                .map((c: any) => (
+                .filter((c: ClientData) => !clientAssignments.some((a: ClientAssignment) => a.client_id === c.id))
+                .map((c: ClientData) => (
                   <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                 ))}
             </SelectContent>

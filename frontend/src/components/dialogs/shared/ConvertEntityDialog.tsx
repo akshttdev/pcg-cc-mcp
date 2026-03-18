@@ -86,8 +86,9 @@ export const ConvertEntityDialog = NiceModal.create(
         } else if (result.new_type === 'project') {
           navigate(`/projects/${result.new_id}`);
         }
-      } catch (err: any) {
-        setError(err?.message || 'Conversion failed');
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Conversion failed';
+        setError(message);
       } finally {
         setIsConverting(false);
       }

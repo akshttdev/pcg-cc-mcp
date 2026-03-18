@@ -11,7 +11,6 @@ use rmcp::{
     tool,
 };
 use serde_json::Value;
-use uuid::Uuid;
 
 use super::TaskServer;
 use super::helpers::*;

@@ -52,14 +52,13 @@ async fn require_org_access(
 
 /// POST /api/organizations/:org_id/board-shares — create a board share (org admin only)
 pub async fn create_board_share(
-    Path(org_id): Path<Uuid>,
+    Path(org_id): Path<String>,
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Json(data): Json<CreateBoardShare>,
 ) -> Result<Json<ApiResponse<BoardShare>>, ApiError> {
     let pool = &deployment.db().pool;
-    let org_id_str = org_id.to_string();
-    require_org_admin(pool, &access_context, &org_id_str).await?;
+    require_org_admin(pool, &access_context, &org_id).await?;
 
     // Verify the board exists and belongs to a project in this org
     let board = ProjectBoard::find_by_id(pool, &data.board_id)
@@ -79,56 +78,54 @@ pub async fn create_board_share(
     .await?;
 
     match proj {
-        Some(p) if p.organization_id.as_deref() == Some(org_id_str.as_str()) => {}
+        Some(p) if p.organization_id.as_deref() == Some(org_id.as_str()) => {}
         _ => return Err(ApiError::Forbidden("Board does not belong to a project in this organization".into())),
     }
 
     // Cannot share with self
-    if data.target_organization_id == org_id_str {
+    if data.target_organization_id == org_id {
         return Err(ApiError::BadRequest("Cannot share a board with the same organization".into()));
     }
 
     let id = Uuid::new_v4().to_string();
-    let share = BoardShare::create(pool, &id, &data, &org_id_str, &access_context.user_id.to_string()).await?;
+    let share = BoardShare::create(pool, &id, &data, &org_id, &access_context.user_id.to_string()).await?;
     Ok(Json(ApiResponse::success(share)))
 }
 
 /// GET /api/organizations/:org_id/board-shares — list shares FROM this org
 pub async fn list_org_shares(
-    Path(org_id): Path<Uuid>,
+    Path(org_id): Path<String>,
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Vec<BoardShare>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let org_id_str = org_id.to_string();
-    require_org_access(pool, &access_context, &org_id_str).await?;
+    require_org_access(pool, &access_context, &org_id).await?;
 
-    let shares = BoardShare::find_by_source_org(pool, &org_id_str).await?;
+    let shares = BoardShare::find_by_source_org(pool, &org_id).await?;
     Ok(Json(ApiResponse::success(shares)))
 }
 
 /// GET /api/organizations/:org_id/shared-boards — list boards shared TO this org
 pub async fn list_shared_boards(
-    Path(org_id): Path<Uuid>,
+    Path(org_id): Path<String>,
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Vec<BoardShare>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let org_id_str = org_id.to_string();
-    require_org_access(pool, &access_context, &org_id_str).await?;
+    require_org_access(pool, &access_context, &org_id).await?;
 
-    let shares = BoardShare::find_by_target_org(pool, &org_id_str).await?;
+    let shares = BoardShare::find_by_target_org(pool, &org_id).await?;
     Ok(Json(ApiResponse::success(shares)))
 }
 
 /// GET /api/board-shares/:id — share details
 pub async fn get_board_share(
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<BoardShare>>, ApiError> {
     let pool = &deployment.db().pool;
-    let share = BoardShare::find_by_id(pool, &id.to_string())
+    let share = BoardShare::find_by_id(pool, &id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Board share not found".into()))?;
 
@@ -144,37 +141,37 @@ pub async fn get_board_share(
 
 /// PUT /api/board-shares/:id — update permission/type/active
 pub async fn update_board_share(
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Json(data): Json<UpdateBoardShare>,
 ) -> Result<Json<ApiResponse<BoardShare>>, ApiError> {
     let pool = &deployment.db().pool;
-    let existing = BoardShare::find_by_id(pool, &id.to_string())
+    let existing = BoardShare::find_by_id(pool, &id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Board share not found".into()))?;
 
     // Must be admin of source org to manage shares
     require_org_admin(pool, &access_context, &existing.source_organization_id).await?;
 
-    let share = BoardShare::update(pool, &id.to_string(), &data).await?;
+    let share = BoardShare::update(pool, &id, &data).await?;
     Ok(Json(ApiResponse::success(share)))
 }
 
 /// DELETE /api/board-shares/:id — remove share
 pub async fn delete_board_share(
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    let existing = BoardShare::find_by_id(pool, &id.to_string())
+    let existing = BoardShare::find_by_id(pool, &id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Board share not found".into()))?;
 
     require_org_admin(pool, &access_context, &existing.source_organization_id).await?;
 
-    BoardShare::delete(pool, &id.to_string()).await?;
+    BoardShare::delete(pool, &id).await?;
     Ok(Json(ApiResponse::success(())))
 }
 

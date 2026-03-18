@@ -89,7 +89,7 @@ export function TopologyIntelView({ projectEntries }: { projectEntries: { id: st
     knowledgeQueries.forEach((q, i) => {
       if (!q.data) return;
       const entry = projectEntries[i];
-      ((q.data as any).sources_by_type?.topology_snapshot || []).forEach((src: any) => {
+      (q.data.sources_by_type?.topology_snapshot || []).forEach((src) => {
         all.push({ title: src.source_title, summary: src.source_summary, coverage: src.coverage_score, projectName: entry.name, projectId: entry.id, isStale: src.is_stale || false });
       });
     });

@@ -1,3 +1,4 @@
+import type { LucideIcon } from 'lucide-react';
 import {
   Database,
   FileSearch,
@@ -24,9 +25,9 @@ export interface NodeTypeDefinition {
   type: string;
   label: string;
   description: string;
-  icon: any;
+  icon: LucideIcon;
   color: string;
-  defaultParameters: Record<string, any>;
+  defaultParameters: Record<string, unknown>;
 }
 
 export const NODE_TYPES: NodeTypeDefinition[] = [

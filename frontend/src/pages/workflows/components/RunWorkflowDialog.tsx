@@ -5,7 +5,6 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { workflowKeys } from '@/lib/query-keys';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +24,7 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Play, Search, Loader2, FileText, Upload, Database } from 'lucide-react';
 import { dataSourcesApi, workflowsApi, DATA_TYPE_OPTIONS } from '@/lib/api';
+import { workflowKeys } from '@/lib/query-keys';
 import type { WorkflowDefinition } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -45,7 +45,7 @@ export function RunWorkflowDialog({ workflow, onClose, onRunComplete }: RunWorkf
   const [searchFilter, setSearchFilter] = useState('');
   const [dataTypeFilter, setDataTypeFilter] = useState<string>('__all__');
   const { data: dataSources = [] } = useQuery({
-    queryKey: ['orgDataSources', orgId],
+    queryKey: workflowKeys.orgDataSources(orgId!),
     queryFn: () => dataSourcesApi.listByOrganization(orgId!),
     enabled: !!workflow && !!orgId,
   });

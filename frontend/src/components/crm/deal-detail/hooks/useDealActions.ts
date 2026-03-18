@@ -28,7 +28,7 @@ export function useDealActions() {
     try {
       await crmDealsApi.advanceDeal(dealId);
       toast.success('Deal advanced to next stage');
-      queryClient.invalidateQueries({ queryKey: crmKeys.kanbanAll() });
+      queryClient.invalidateQueries({ queryKey: crmKeys.kanbanLegacyFlat() });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to advance deal');
     } finally {

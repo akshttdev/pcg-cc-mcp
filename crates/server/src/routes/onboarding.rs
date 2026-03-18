@@ -18,7 +18,7 @@ use db::models::project_onboarding::{
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use uuid::Uuid;
+use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 
@@ -46,8 +46,9 @@ pub struct OnboardingWithSegments {
 /// Get onboarding for a project
 async fn get_project_onboarding(
     State(deployment): State<DeploymentImpl>,
-    Path(project_id): Path<Uuid>,
+    Path(project_id): Path<String>,
 ) -> Result<Json<Option<OnboardingWithSegments>>, ApiError> {
+    let project_id = DbUuid::parse(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let pool = &deployment.db().pool;
     let onboarding = ProjectOnboarding::find_by_project(pool, project_id).await?;
 
@@ -66,9 +67,10 @@ async fn get_project_onboarding(
 /// Start onboarding for a project
 async fn start_project_onboarding(
     State(deployment): State<DeploymentImpl>,
-    Path(project_id): Path<Uuid>,
+    Path(project_id): Path<String>,
     Json(payload): Json<StartOnboardingRequest>,
 ) -> Result<Json<OnboardingWithSegments>, ApiError> {
+    let project_id = DbUuid::parse(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let pool = &deployment.db().pool;
 
     // Check if onboarding already exists
@@ -105,9 +107,10 @@ pub struct StartOnboardingRequest {
 /// Update onboarding status/phase
 async fn update_onboarding(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(payload): Json<UpdateProjectOnboarding>,
 ) -> Result<Json<ProjectOnboarding>, ApiError> {
+    let id = DbUuid::parse(&id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let pool = &deployment.db().pool;
     let onboarding = ProjectOnboarding::update(pool, id, &payload)
         .await?
@@ -119,8 +122,9 @@ async fn update_onboarding(
 /// List all segments for an onboarding
 async fn list_segments(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<Vec<OnboardingSegment>>, ApiError> {
+    let id = DbUuid::parse(&id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let pool = &deployment.db().pool;
     let segments = OnboardingSegment::list_by_onboarding(pool, id).await?;
     Ok(Json(segments))
@@ -129,8 +133,9 @@ async fn list_segments(
 /// Get a single segment
 async fn get_segment(
     State(deployment): State<DeploymentImpl>,
-    Path(segment_id): Path<Uuid>,
+    Path(segment_id): Path<String>,
 ) -> Result<Json<OnboardingSegment>, ApiError> {
+    let segment_id = DbUuid::parse(&segment_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let pool = &deployment.db().pool;
     let segment = OnboardingSegment::find_by_id(pool, segment_id)
         .await?
@@ -142,9 +147,10 @@ async fn get_segment(
 /// Update a segment
 async fn update_segment(
     State(deployment): State<DeploymentImpl>,
-    Path(segment_id): Path<Uuid>,
+    Path(segment_id): Path<String>,
     Json(payload): Json<UpdateOnboardingSegment>,
 ) -> Result<Json<OnboardingSegment>, ApiError> {
+    let segment_id = DbUuid::parse(&segment_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let pool = &deployment.db().pool;
     let segment = OnboardingSegment::update(pool, segment_id, &payload)
         .await?
@@ -156,8 +162,9 @@ async fn update_segment(
 /// Start a segment (set to in_progress)
 async fn start_segment(
     State(deployment): State<DeploymentImpl>,
-    Path(segment_id): Path<Uuid>,
+    Path(segment_id): Path<String>,
 ) -> Result<Json<OnboardingSegment>, ApiError> {
+    let segment_id = DbUuid::parse(&segment_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let pool = &deployment.db().pool;
     let update = UpdateOnboardingSegment {
         status: Some(SegmentStatus::InProgress),
@@ -186,9 +193,10 @@ pub struct CompleteSegmentRequest {
 
 async fn complete_segment(
     State(deployment): State<DeploymentImpl>,
-    Path(segment_id): Path<Uuid>,
+    Path(segment_id): Path<String>,
     Json(payload): Json<CompleteSegmentRequest>,
 ) -> Result<Json<OnboardingSegment>, ApiError> {
+    let segment_id = DbUuid::parse(&segment_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let pool = &deployment.db().pool;
     let status = if payload.skip {
         SegmentStatus::Skipped

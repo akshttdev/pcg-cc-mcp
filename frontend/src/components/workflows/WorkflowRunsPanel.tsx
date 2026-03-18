@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { workflowsApi, dataSourcesApi } from '@/lib/api';
-import { workflowKeys } from '@/lib/query-keys';
+import { workflowKeys, dataSourceKeys } from '@/lib/query-keys';
 import type { WorkflowRun } from '@/lib/api';
 import { StagingReviewPanel } from './StagingReviewPanel';
 
@@ -96,7 +96,7 @@ export function WorkflowRunsPanel({
   );
 
   const { data: dataSourceNames = {} } = useQuery({
-    queryKey: ['data-source-names', dataSourceIds],
+    queryKey: dataSourceKeys.names(dataSourceIds),
     queryFn: async () => {
       const results: Record<string, string> = {};
       await Promise.all(

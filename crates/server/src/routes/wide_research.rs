@@ -12,6 +12,7 @@ use deployment::Deployment;
 use serde::Deserialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
+use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 
@@ -163,8 +164,9 @@ async fn create_session(
 
 async fn get_session(
     State(deployment): State<DeploymentImpl>,
-    Path(session_id): Path<Uuid>,
+    Path(session_id): Path<String>,
 ) -> Result<Json<ApiResponse<SessionWithSubagents>>, ApiError> {
+    let session_id = DbUuid::parse(&session_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let pool = &deployment.db().pool;
 
     let session = WideResearchSession::find_by_id(pool, session_id)
@@ -183,8 +185,9 @@ async fn get_session(
 
 async fn delete_session(
     State(deployment): State<DeploymentImpl>,
-    Path(session_id): Path<Uuid>,
+    Path(session_id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
+    let session_id = DbUuid::parse(&session_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let pool = &deployment.db().pool;
 
     // Verify session exists
@@ -202,17 +205,19 @@ async fn delete_session(
 
 async fn list_subagents(
     State(deployment): State<DeploymentImpl>,
-    Path(session_id): Path<Uuid>,
+    Path(session_id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<WideResearchSubagent>>>, ApiError> {
+    let session_id = DbUuid::parse(&session_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let subagents = WideResearchSession::get_subagents(&deployment.db().pool, session_id).await?;
     Ok(Json(ApiResponse::success(subagents)))
 }
 
 async fn get_next_pending(
     State(deployment): State<DeploymentImpl>,
-    Path(session_id): Path<Uuid>,
+    Path(session_id): Path<String>,
     Query(query): Query<LimitQuery>,
 ) -> Result<Json<ApiResponse<Vec<WideResearchSubagent>>>, ApiError> {
+    let session_id = DbUuid::parse(&session_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let limit = query.limit.unwrap_or(10);
     let subagents =
         WideResearchSession::get_next_pending_subagents(&deployment.db().pool, session_id, limit)
@@ -227,9 +232,11 @@ pub struct LimitQuery {
 
 async fn start_subagent(
     State(deployment): State<DeploymentImpl>,
-    Path((session_id, subagent_id)): Path<(Uuid, Uuid)>,
+    Path((session_id, subagent_id)): Path<(String, String)>,
     Json(payload): Json<StartSubagentPayload>,
 ) -> Result<Json<ApiResponse<WideResearchSubagent>>, ApiError> {
+    let session_id = DbUuid::parse(&session_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let subagent_id = DbUuid::parse(&subagent_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let pool = &deployment.db().pool;
 
     // Update session status to in_progress if still spawning
@@ -249,9 +256,11 @@ async fn start_subagent(
 
 async fn complete_subagent(
     State(deployment): State<DeploymentImpl>,
-    Path((session_id, subagent_id)): Path<(Uuid, Uuid)>,
+    Path((session_id, subagent_id)): Path<(String, String)>,
     Json(payload): Json<CompleteSubagentPayload>,
 ) -> Result<Json<ApiResponse<WideResearchSubagent>>, ApiError> {
+    let session_id = DbUuid::parse(&session_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let subagent_id = DbUuid::parse(&subagent_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let pool = &deployment.db().pool;
 
     let subagent =
@@ -265,9 +274,11 @@ async fn complete_subagent(
 
 async fn fail_subagent(
     State(deployment): State<DeploymentImpl>,
-    Path((session_id, subagent_id)): Path<(Uuid, Uuid)>,
+    Path((session_id, subagent_id)): Path<(String, String)>,
     Json(payload): Json<FailSubagentPayload>,
 ) -> Result<Json<ApiResponse<WideResearchSubagent>>, ApiError> {
+    let session_id = DbUuid::parse(&session_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let subagent_id = DbUuid::parse(&subagent_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let pool = &deployment.db().pool;
 
     let subagent = WideResearchSubagent::fail(pool, subagent_id, &payload.error_message).await?;
@@ -285,9 +296,10 @@ pub struct UpdateStatusPayload {
 
 async fn update_session_status(
     State(deployment): State<DeploymentImpl>,
-    Path(session_id): Path<Uuid>,
+    Path(session_id): Path<String>,
     Json(payload): Json<UpdateStatusPayload>,
 ) -> Result<Json<ApiResponse<WideResearchSession>>, ApiError> {
+    let session_id = DbUuid::parse(&session_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let session =
         WideResearchSession::update_status(&deployment.db().pool, session_id, payload.status)
             .await?;
@@ -296,9 +308,10 @@ async fn update_session_status(
 
 async fn set_aggregated_result(
     State(deployment): State<DeploymentImpl>,
-    Path(session_id): Path<Uuid>,
+    Path(session_id): Path<String>,
     Json(payload): Json<SetAggregatedResultPayload>,
 ) -> Result<Json<ApiResponse<WideResearchSession>>, ApiError> {
+    let session_id = DbUuid::parse(&session_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let session =
         WideResearchSession::set_aggregated_result(&deployment.db().pool, session_id, payload.artifact_id)
             .await?;

@@ -30,7 +30,7 @@ import {
   type ProjectControllerConversation,
 } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { projectKeys, taskKeys, controllerKeys } from '@/lib/query-keys';
+import { controllerKeys, projectKeys, taskKeys } from '@/lib/query-keys';
 import { ControllerSettingsDialog } from '@/components/dialogs/controller-settings-dialog';
 import type { Project, TaskWithAttemptStatus } from 'shared/types';
 

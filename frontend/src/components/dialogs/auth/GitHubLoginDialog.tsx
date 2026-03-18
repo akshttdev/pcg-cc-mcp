@@ -39,9 +39,10 @@ const GitHubLoginDialog = NiceModal.create(() => {
       const data = await githubAuthApi.start();
       setDeviceState(data);
       setPolling(true);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
-      setError(e?.message || 'Network error');
+      const message = e instanceof Error ? e.message : 'Network error';
+      setError(message);
     } finally {
       setFetching(false);
     }
@@ -67,14 +68,15 @@ const GitHubLoginDialog = NiceModal.create(() => {
             case DevicePollStatus.SLOW_DOWN:
               timer = setTimeout(poll, (deviceState.interval + 5) * 1000);
           }
-        } catch (e: any) {
-          if (e?.message === 'expired_token') {
+        } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : 'Login failed.';
+          if (message === 'expired_token') {
             setPolling(false);
             setError('Device code expired. Please try again.');
             setDeviceState(null);
           } else {
             setPolling(false);
-            setError(e?.message || 'Login failed.');
+            setError(message);
             setDeviceState(null);
           }
         }

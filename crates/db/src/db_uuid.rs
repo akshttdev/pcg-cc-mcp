@@ -67,6 +67,15 @@ impl DbUuid {
         Ok(Self(parsed.hyphenated().to_string()))
     }
 
+    /// Convert to a `uuid::Uuid`.
+    ///
+    /// This is infallible when the `DbUuid` was created via [`DbUuid::parse`] or
+    /// [`DbUuid::new`]. Panics only if the inner string is not a valid UUID
+    /// (should never happen for properly-constructed instances).
+    pub fn to_uuid(&self) -> uuid::Uuid {
+        uuid::Uuid::parse_str(&self.0).expect("DbUuid contains invalid UUID string")
+    }
+
     /// Borrow the inner string slice.
     pub fn as_str(&self) -> &str {
         &self.0
@@ -122,6 +131,12 @@ impl From<DbUuid> for String {
 impl From<uuid::Uuid> for DbUuid {
     fn from(u: uuid::Uuid) -> Self {
         Self(u.hyphenated().to_string())
+    }
+}
+
+impl From<DbUuid> for uuid::Uuid {
+    fn from(u: DbUuid) -> Self {
+        u.to_uuid()
     }
 }
 

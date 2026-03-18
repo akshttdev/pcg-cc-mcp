@@ -21,7 +21,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
     mutationFn: () => crmDealsApi.generateDeck(deal.id),
     onSuccess: () => {
       toast.success('Lux generated your deck script');
-      qc.invalidateQueries({ queryKey: crmKeys.kanbanAll() });
+      qc.invalidateQueries({ queryKey: crmKeys.kanbanLegacy() });
     },
     onError: (e: Error) => toast.error(e.message ?? 'Deck generation failed'),
   });
@@ -30,7 +30,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
     mutationFn: () => crmDealsApi.sendInvoice(deal.id, { due_days: 14 }),
     onSuccess: (res) => {
       toast.success(`Invoice ${res.invoice_number} sent ($${res.amount_usd.toFixed(0)})`);
-      qc.invalidateQueries({ queryKey: crmKeys.kanbanAll() });
+      qc.invalidateQueries({ queryKey: crmKeys.kanbanLegacy() });
       setInvoiceSending(false);
     },
     onError: () => { toast.error('Failed to send invoice'); setInvoiceSending(false); },
@@ -40,7 +40,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
     mutationFn: () => crmDealsApi.markWon(deal.id),
     onSuccess: (res) => {
       toast.success(`🏆 Deal Won! Project "${res.project_name}" created with ${res.tasks_created} tasks.`);
-      qc.invalidateQueries({ queryKey: crmKeys.kanbanAll() });
+      qc.invalidateQueries({ queryKey: crmKeys.kanbanLegacy() });
       setMarkingWon(false);
       onMarkWon?.();
     },

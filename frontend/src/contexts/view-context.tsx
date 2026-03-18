@@ -6,6 +6,7 @@
  */
 import { createContext, useContext, useState, useEffect, useRef, useMemo, type ReactNode } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import type { PlatformRole } from '@/lib/auth-api';
 import { useOrganization } from '@/contexts/organization-context';
 import {
   type EffectiveRole,
@@ -40,7 +41,7 @@ const ViewContext = createContext<ViewContextValue | undefined>(undefined);
 /** Compute the natural role from auth state (mirrors useEffectiveRole logic but without the override). */
 function computeNaturalRoleFromAuth(
   user: { is_admin: boolean } | null,
-  hasRole: (role: any) => boolean,
+  hasRole: (role: PlatformRole) => boolean,
   orgRole: 'admin' | 'member' | 'viewer' | null,
 ): EffectiveRole {
   if (!user) return 'authenticated';
