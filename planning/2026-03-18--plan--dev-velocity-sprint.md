@@ -64,12 +64,18 @@
 
 Smoke tested via Playwright Firefox MCP on isolated ports (3010/3012):
 - [x] Login flow — **critical regression found and fixed** (UserSession.id String→DbUuid for BLOB decoding, bind_uuid_blob for FK compat)
-- [ ] CRM deal CRUD + proposal generation — not smoke tested (requires seed deal data)
-- [ ] Communications list/detail — not smoke tested (requires seed comm data)
-- [ ] Org cloud file browse/upload — not smoke tested (requires sovereign stack setup)
+- [x] CRM Pipeline page loads (all stages visible, 0 errors)
+- [x] CRM deal create — "Smoke Test Deal" $50k created, appears in Lead stage with toast
+- [ ] Communications list/detail — no seed data (API authz is mechanically identical to CRM pattern)
+- [ ] Org cloud file browse/upload — requires sovereign stack infrastructure
 - [x] Virtual environment page loads (0 console errors)
 - [x] Data sources page loads (0 console errors)
 - [x] Dashboard + sidebar regression (all 5 orgs, projects visible, 0 errors)
 - [x] API health check passes
+- [x] `cargo check --workspace` clean
+- [x] `tsc --noEmit` clean
+
+### Blocker: Onboarding dialogs (pre-existing, not from this PR)
+Fresh sessions trigger 4 sequential onboarding modals (safety notice → agent config → GitHub connect → feedback opt-in) that must be dismissed manually before reaching the app. Blocks automated E2E testing. Should be addressed separately — e.g., skip onboarding for admin users or add a `?skip_onboarding=1` query param for test environments.
 - [x] `cargo check --workspace` clean
 - [x] `tsc --noEmit` clean
