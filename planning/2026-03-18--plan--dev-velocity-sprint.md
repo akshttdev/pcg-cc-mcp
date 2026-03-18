@@ -75,7 +75,19 @@ Smoke tested via Playwright Firefox MCP on isolated ports (3010/3012):
 - [x] `cargo check --workspace` clean
 - [x] `tsc --noEmit` clean
 
+### Untested areas (and risk assessment)
+
+| Area | Why untested | Risk | Rationale |
+|------|-------------|------|-----------|
+| Communications (10 handlers) | No call/SMS seed data; comms come from external integrations (Twilio) | Low | Authz pattern identical to CRM deals: same `require_viewer`/`require_editor` on `project_id` |
+| Org cloud file ops (10 handlers) | Requires sovereign stack infrastructure (volume mounts, env vars) | Low | `org_cloud.rs` already had proper authz before this PR; our changes were util extraction (same logic) + FK migration (data-level) |
+| CRM advanced actions (generate_proposal, generate_deck, mark_deal_won) | Require external Claude API keys and complex deal state | Low | Authz is via `require_deal_org_access()` — same helper verified working via deal create/view |
+
 ### Blocker: Onboarding dialogs (pre-existing, not from this PR)
 Fresh sessions trigger 4 sequential onboarding modals (safety notice → agent config → GitHub connect → feedback opt-in) that must be dismissed manually before reaching the app. Blocks automated E2E testing. Should be addressed separately — e.g., skip onboarding for admin users or add a `?skip_onboarding=1` query param for test environments.
-- [x] `cargo check --workspace` clean
-- [x] `tsc --noEmit` clean
+
+### UX gaps noted during smoke testing (all pre-existing)
+1. **SSE errors on login page** — `useAgentDirectory` SSE fires before auth, causing console errors
+2. **CRM deal "Research needed" badge** — appears immediately on new deals with no explanation of what triggers research or what the 5% confidence means
+3. **Pipeline $ aggregate** — no currency normalization if deals use different currencies
+4. **Duplicate "Add Deal" buttons** — both empty-state CTA and `+ Add deal` visible in empty stages
