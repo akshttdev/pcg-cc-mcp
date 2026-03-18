@@ -7,6 +7,7 @@ import {
   ROLE_LEVEL,
   mapOrgRole,
 } from '@/lib/roles';
+import type { PlatformRole } from '@/lib/auth-api';
 
 // Re-export for consumers that import from here
 export type { EffectiveRole } from '@/lib/roles';
@@ -41,7 +42,7 @@ export interface EffectiveRoleInfo {
 /** Compute the natural (non-overridden) effective role from auth state. */
 export function computeNaturalRole(
   user: { is_admin: boolean; platform_roles?: string[] } | null,
-  hasRole: (role: any) => boolean,
+  hasRole: (role: PlatformRole) => boolean,
   orgRole: 'admin' | 'member' | 'viewer' | null,
 ): EffectiveRole {
   if (!user) return 'authenticated';

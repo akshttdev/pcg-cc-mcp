@@ -21,7 +21,7 @@ export function RunsTab() {
   });
 
   const runDsIds = useMemo(
-    () => [...new Set(recentRuns.map((r: any) => r.data_source_id).filter(Boolean))] as string[],
+    () => [...new Set(recentRuns.map((r) => r.data_source_id).filter(Boolean))] as string[],
     [recentRuns],
   );
   const { data: dsNames = {} } = useQuery({
@@ -68,7 +68,7 @@ export function RunsTab() {
         </div>
       ) : (
         <div className="space-y-2">
-          {recentRuns.map((run: any) => (
+          {recentRuns.map((run) => (
             <Card
               key={run.id}
               className={`border-l-4 ${run.status === 'completed' ? 'border-l-green-500' : run.status === 'failed' ? 'border-l-red-500' : 'border-l-yellow-500'}`}
@@ -92,14 +92,14 @@ export function RunsTab() {
                   </div>
                   <div className="flex items-center gap-4 text-xs text-muted-foreground">
                     {run.duration_ms && <span>{formatDurationShort(run.duration_ms)}</span>}
-                    {run.total_cost_micros != null && <span>${(run.total_cost_micros / 1_000_000).toFixed(4)}</span>}
-                    {run.records_staged != null && (
-                      <span className={run.records_staged > 0 ? 'text-foreground font-medium' : ''}>
-                        {run.records_staged} records
+                    {run.total_estimated_cost_micros != null && <span>${(run.total_estimated_cost_micros / 1_000_000).toFixed(4)}</span>}
+                    {run.total_records_staged != null && (
+                      <span className={run.total_records_staged > 0 ? 'text-foreground font-medium' : ''}>
+                        {run.total_records_staged} records
                       </span>
                     )}
                     <span>{new Date(run.started_at).toLocaleString()}</span>
-                    {run.records_staged > 0 && (
+                    {(run.total_records_staged ?? 0) > 0 && (
                       <Button
                         size="sm"
                         variant="outline"

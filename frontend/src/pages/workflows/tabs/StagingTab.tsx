@@ -92,7 +92,7 @@ export function StagingTab() {
 
   const runNameMap = useMemo(() => {
     const m: Record<string, string> = {};
-    for (const r of recentRuns as any[]) {
+    for (const r of recentRuns) {
       if (r.id && r.workflow_name) m[r.id] = r.workflow_name;
     }
     return m;
@@ -164,7 +164,7 @@ export function StagingTab() {
 
   // Per-record mutations for table view actions
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { status?: string; record_data?: any } }) =>
+    mutationFn: ({ id, data }: { id: string; data: { status?: string; record_data?: unknown } }) =>
       stagingApi.update(id, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: workflowKeys.stagingPending() }),
   });
