@@ -69,9 +69,10 @@ pub struct IntelligenceStatusResponse {
 
 pub async fn trigger_research(
     State(d): State<DeploymentImpl>,
-    Path(person_id): Path<Uuid>,
+    Path(person_id): Path<String>,
     Json(body): Json<ResearchRequest>,
 ) -> Result<Json<ApiResponse<ResearchJobResponse>>, ApiError> {
+    let person_id = Uuid::parse_str(&person_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
     let pool = &d.db().pool;
 
 
@@ -140,8 +141,9 @@ pub async fn trigger_research(
 /// GET /api/persons/:id/intelligence-status
 pub async fn get_intelligence_status(
     State(d): State<DeploymentImpl>,
-    Path(person_id): Path<Uuid>,
+    Path(person_id): Path<String>,
 ) -> Result<Json<ApiResponse<IntelligenceStatusResponse>>, ApiError> {
+    let person_id = Uuid::parse_str(&person_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
     let pool = &d.db().pool;
 
     #[derive(sqlx::FromRow)]
@@ -573,9 +575,10 @@ pub struct CompanyIntelligenceStatusResponse {
 /// POST /api/companies/:id/research
 pub async fn trigger_company_research(
     State(d): State<DeploymentImpl>,
-    Path(company_id): Path<Uuid>,
+    Path(company_id): Path<String>,
     Json(body): Json<CompanyResearchRequest>,
 ) -> Result<Json<ApiResponse<CompanyResearchJobResponse>>, ApiError> {
+    let company_id = Uuid::parse_str(&company_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
     use db::models::company::Company;
     let pool = d.db().pool.clone();
     let company_db_id = DbUuid::from(company_id);
@@ -609,8 +612,9 @@ pub async fn trigger_company_research(
 /// GET /api/companies/:id/intelligence-status
 pub async fn get_company_intelligence_status(
     State(d): State<DeploymentImpl>,
-    Path(company_id): Path<Uuid>,
+    Path(company_id): Path<String>,
 ) -> Result<Json<ApiResponse<CompanyIntelligenceStatusResponse>>, ApiError> {
+    let company_id = Uuid::parse_str(&company_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
     #[derive(sqlx::FromRow)]
     struct Row {
         intelligence_status: String,
@@ -900,8 +904,9 @@ pub struct NextPassRequest {
 /// GET /api/persons/:id/research-passes — list all research passes in order
 pub async fn list_research_passes(
     State(d): State<DeploymentImpl>,
-    Path(person_id): Path<Uuid>,
+    Path(person_id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<PersonResearchPass>>>, ApiError> {
+    let person_id = Uuid::parse_str(&person_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
     let passes = PersonResearchPass::list_for_person(&d.db().pool, person_id).await?;
     Ok(Json(ApiResponse::success(passes)))
 }
@@ -910,9 +915,10 @@ pub async fn list_research_passes(
 /// Triggers the next logical research pass, building on all prior passes.
 pub async fn trigger_next_research_pass(
     State(d): State<DeploymentImpl>,
-    Path(person_id): Path<Uuid>,
+    Path(person_id): Path<String>,
     Json(body): Json<NextPassRequest>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
+    let person_id = Uuid::parse_str(&person_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
     let pool = &d.db().pool;
 
     let person = Person::find_by_id(pool, person_id)
@@ -975,8 +981,9 @@ pub async fn trigger_next_research_pass(
 /// GET /api/persons/:id/reports
 pub async fn list_person_reports(
     State(d): State<DeploymentImpl>,
-    Path(person_id): Path<Uuid>,
+    Path(person_id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<BusinessReport>>>, ApiError> {
+    let person_id = Uuid::parse_str(&person_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
     let reports = BusinessReport::list_by_person(&d.db().pool, person_id).await?;
     Ok(Json(ApiResponse::success(reports)))
 }

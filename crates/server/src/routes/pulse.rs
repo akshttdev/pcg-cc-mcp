@@ -93,10 +93,10 @@ pub struct LegacyContentQuery {
 
 async fn list_sources(
     State(deployment): State<DeploymentImpl>,
-    Path(project_id): Path<Uuid>,
+    Path(project_id): Path<String>,
 ) -> Result<ResponseJson<ApiResponse<Vec<PulseSource>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let sources = PulseSource::find_by_project(pool, &project_id.to_string()).await.map_err(|e| {
+    let sources = PulseSource::find_by_project(pool, &project_id).await.map_err(|e| {
         ApiError::InternalError(format!("Failed to fetch sources: {}", e))
     })?;
     Ok(ResponseJson(ApiResponse::success(sources)))
@@ -104,10 +104,10 @@ async fn list_sources(
 
 async fn create_source(
     State(deployment): State<DeploymentImpl>,
-    Path(project_id): Path<Uuid>,
+    Path(project_id): Path<String>,
     ResponseJson(mut data): ResponseJson<CreatePulseSource>,
 ) -> Result<ResponseJson<ApiResponse<PulseSource>>, ApiError> {
-    data.project_id = project_id.to_string();
+    data.project_id = project_id;
     let pool = &deployment.db().pool;
     let source = PulseSource::create(pool, &data).await.map_err(|e| {
         ApiError::InternalError(format!("Failed to create source: {}", e))
@@ -117,7 +117,7 @@ async fn create_source(
 
 async fn update_source(
     State(deployment): State<DeploymentImpl>,
-    Path((_project_id, source_id)): Path<(Uuid, String)>,
+    Path((_project_id, source_id)): Path<(String, String)>,
     ResponseJson(data): ResponseJson<UpdatePulseSource>,
 ) -> Result<ResponseJson<ApiResponse<PulseSource>>, ApiError> {
     let pool = &deployment.db().pool;
@@ -129,7 +129,7 @@ async fn update_source(
 
 async fn delete_source(
     State(deployment): State<DeploymentImpl>,
-    Path((_project_id, source_id)): Path<(Uuid, String)>,
+    Path((_project_id, source_id)): Path<(String, String)>,
 ) -> Result<ResponseJson<ApiResponse<serde_json::Value>>, ApiError> {
     let pool = &deployment.db().pool;
     PulseSource::delete(pool, &source_id).await.map_err(|e| {
@@ -144,9 +144,10 @@ async fn delete_source(
 
 async fn list_content(
     State(deployment): State<DeploymentImpl>,
-    Path(project_id): Path<Uuid>,
+    Path(project_id): Path<String>,
     Query(query): Query<ContentQueryParams>,
 ) -> Result<ResponseJson<ApiResponse<PulseContentResponse>>, ApiError> {
+    let project_id = Uuid::parse_str(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
     let pool = &deployment.db().pool;
     let limit = query.limit.unwrap_or(50);
     let items = PulseContentItem::search(
@@ -166,9 +167,10 @@ async fn list_content(
 
 async fn get_latest_content(
     State(deployment): State<DeploymentImpl>,
-    Path(project_id): Path<Uuid>,
+    Path(project_id): Path<String>,
     Query(query): Query<LimitQuery>,
 ) -> Result<ResponseJson<ApiResponse<PulseContentResponse>>, ApiError> {
+    let project_id = Uuid::parse_str(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
     let pool = &deployment.db().pool;
     let limit = query.limit.unwrap_or(20);
     let items = PulseContentItem::find_latest(pool, project_id, limit)
@@ -181,7 +183,7 @@ async fn get_latest_content(
 
 async fn get_content_item(
     State(deployment): State<DeploymentImpl>,
-    Path((_project_id, content_id)): Path<(Uuid, String)>,
+    Path((_project_id, content_id)): Path<(String, String)>,
 ) -> Result<ResponseJson<ApiResponse<PulseContentItem>>, ApiError> {
     let pool = &deployment.db().pool;
     let item = PulseContentItem::find_by_id(pool, &content_id)
@@ -193,7 +195,7 @@ async fn get_content_item(
 
 async fn content_action(
     State(deployment): State<DeploymentImpl>,
-    Path((_project_id, content_id)): Path<(Uuid, String)>,
+    Path((_project_id, content_id)): Path<(String, String)>,
     ResponseJson(action): ResponseJson<ContentActionRequest>,
 ) -> Result<ResponseJson<ApiResponse<PulseContentItem>>, ApiError> {
     let pool = &deployment.db().pool;
@@ -256,9 +258,10 @@ async fn content_action(
 
 async fn list_alerts(
     State(deployment): State<DeploymentImpl>,
-    Path(project_id): Path<Uuid>,
+    Path(project_id): Path<String>,
     Query(query): Query<LimitQuery>,
 ) -> Result<ResponseJson<ApiResponse<Vec<PulseAlert>>>, ApiError> {
+    let project_id = Uuid::parse_str(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
     let pool = &deployment.db().pool;
     let limit = query.limit.unwrap_or(50);
     let alerts = PulseAlert::find_by_project(pool, project_id, limit)
@@ -269,8 +272,9 @@ async fn list_alerts(
 
 async fn list_alert_rules(
     State(deployment): State<DeploymentImpl>,
-    Path(project_id): Path<Uuid>,
+    Path(project_id): Path<String>,
 ) -> Result<ResponseJson<ApiResponse<Vec<PulseAlertRule>>>, ApiError> {
+    let project_id = Uuid::parse_str(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
     let pool = &deployment.db().pool;
     let rules = PulseAlertRule::find_by_project(pool, project_id)
         .await
@@ -280,9 +284,10 @@ async fn list_alert_rules(
 
 async fn create_alert_rule(
     State(deployment): State<DeploymentImpl>,
-    Path(project_id): Path<Uuid>,
+    Path(project_id): Path<String>,
     ResponseJson(mut data): ResponseJson<CreatePulseAlertRule>,
 ) -> Result<ResponseJson<ApiResponse<PulseAlertRule>>, ApiError> {
+    let project_id = Uuid::parse_str(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
     data.project_id = project_id;
     let pool = &deployment.db().pool;
     let rule = PulseAlertRule::create(pool, &data)
@@ -293,7 +298,7 @@ async fn create_alert_rule(
 
 async fn update_alert_rule(
     State(deployment): State<DeploymentImpl>,
-    Path((_project_id, rule_id)): Path<(Uuid, String)>,
+    Path((_project_id, rule_id)): Path<(String, String)>,
     ResponseJson(data): ResponseJson<UpdatePulseAlertRule>,
 ) -> Result<ResponseJson<ApiResponse<PulseAlertRule>>, ApiError> {
     let pool = &deployment.db().pool;
@@ -305,7 +310,7 @@ async fn update_alert_rule(
 
 async fn delete_alert_rule(
     State(deployment): State<DeploymentImpl>,
-    Path((_project_id, rule_id)): Path<(Uuid, String)>,
+    Path((_project_id, rule_id)): Path<(String, String)>,
 ) -> Result<ResponseJson<ApiResponse<serde_json::Value>>, ApiError> {
     let pool = &deployment.db().pool;
     PulseAlertRule::delete(pool, &rule_id)
@@ -320,12 +325,12 @@ async fn delete_alert_rule(
 
 async fn trigger_collection(
     State(_deployment): State<DeploymentImpl>,
-    Path(project_id): Path<Uuid>,
+    Path(project_id): Path<String>,
 ) -> Result<ResponseJson<ApiResponse<serde_json::Value>>, ApiError> {
     // Publish collect command via NATS for real-time delivery
     if let Some(publisher) = pulse_publisher::get_publisher() {
         publisher
-            .publish_collect_command("_", &project_id.to_string(), None)
+            .publish_collect_command("_", &project_id, None)
             .await;
     }
 
@@ -345,9 +350,10 @@ async fn trigger_collection(
 
 async fn list_runs(
     State(deployment): State<DeploymentImpl>,
-    Path(project_id): Path<Uuid>,
+    Path(project_id): Path<String>,
     Query(query): Query<LimitQuery>,
 ) -> Result<ResponseJson<ApiResponse<Vec<PulseCollectionRun>>>, ApiError> {
+    let project_id = Uuid::parse_str(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
     let pool = &deployment.db().pool;
     let limit = query.limit.unwrap_or(50);
     let runs = PulseCollectionRun::find_by_project(pool, project_id, limit)
@@ -362,8 +368,9 @@ async fn list_runs(
 
 async fn get_tracking_config(
     State(deployment): State<DeploymentImpl>,
-    Path(project_id): Path<Uuid>,
+    Path(project_id): Path<String>,
 ) -> Result<ResponseJson<ApiResponse<Option<PulseTrackingConfig>>>, ApiError> {
+    let project_id = Uuid::parse_str(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
     let pool = &deployment.db().pool;
     let config = PulseTrackingConfig::find_by_project(pool, project_id)
         .await
@@ -373,9 +380,10 @@ async fn get_tracking_config(
 
 async fn update_tracking_config(
     State(deployment): State<DeploymentImpl>,
-    Path(project_id): Path<Uuid>,
+    Path(project_id): Path<String>,
     ResponseJson(data): ResponseJson<UpdatePulseTrackingConfig>,
 ) -> Result<ResponseJson<ApiResponse<PulseTrackingConfig>>, ApiError> {
+    let project_id = Uuid::parse_str(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
     let pool = &deployment.db().pool;
     let config = PulseTrackingConfig::upsert(pool, project_id, None, &data)
         .await
@@ -389,7 +397,7 @@ async fn update_tracking_config(
 
 async fn engine_status(
     State(_deployment): State<DeploymentImpl>,
-    Path(_project_id): Path<Uuid>,
+    Path(_project_id): Path<String>,
 ) -> Result<ResponseJson<ApiResponse<serde_json::Value>>, ApiError> {
     let url = format!("{}/health", pulse_api_url());
     let client = reqwest::Client::new();
@@ -413,22 +421,23 @@ async fn engine_status(
 
 async fn dashboard_stats(
     State(deployment): State<DeploymentImpl>,
-    Path(project_id): Path<Uuid>,
+    Path(project_id): Path<String>,
 ) -> Result<ResponseJson<ApiResponse<PulseDashboardStats>>, ApiError> {
+    let project_uuid = Uuid::parse_str(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
     let pool = &deployment.db().pool;
 
-    let total_content = PulseContentItem::count_by_project(pool, project_id)
+    let total_content = PulseContentItem::count_by_project(pool, project_uuid)
         .await
         .unwrap_or(0);
 
     // Try project-scoped sources first; if empty, fall back to organization-scoped
-    let mut sources = PulseSource::find_by_project(pool, &project_id.to_string())
+    let mut sources = PulseSource::find_by_project(pool, &project_id)
         .await
         .unwrap_or_default();
 
     if sources.is_empty() {
         // Look up the project's organization_id and query org-scoped sources
-        if let Ok(Some(project)) = db::models::project::Project::find_by_id(pool, &project_id.to_string()).await {
+        if let Ok(Some(project)) = db::models::project::Project::find_by_id(pool, &project_id).await {
             if let Some(ref org_id) = project.organization_id {
                 sources = PulseSource::find_by_organization(pool, org_id)
                     .await
@@ -440,7 +449,7 @@ async fn dashboard_stats(
     let total_sources = sources.len();
     let active_sources = sources.iter().filter(|s| s.status == "active" && s.enabled).count();
 
-    let unacknowledged_alerts = PulseAlert::count_unacknowledged(pool, project_id)
+    let unacknowledged_alerts = PulseAlert::count_unacknowledged(pool, project_uuid)
         .await
         .unwrap_or(0);
 
@@ -522,8 +531,10 @@ async fn legacy_get_latest_content(
 /// Clients receive `pulse_content` events whenever new content arrives.
 async fn stream_pulse_content(
     State(deployment): State<DeploymentImpl>,
-    Path(project_id): Path<Uuid>,
+    Path(project_id): Path<String>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    // Parse project_id to Uuid for model calls; default to nil UUID on parse failure
+    let project_id = Uuid::parse_str(&project_id).unwrap_or_default();
     let pool = deployment.db().pool.clone();
 
     let stream = stream::unfold(

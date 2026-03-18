@@ -421,11 +421,12 @@ async fn create_listing(
 async fn update_listing(
     State(deployment): State<DeploymentImpl>,
     Extension(_access): Extension<AccessContext>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(body): Json<UpdateListing>,
 ) -> Result<Json<ApiResponse<MarketplaceListing>>, ApiError> {
     let pool = &deployment.db().pool;
-    let listing = MarketplaceListing::update(pool, id, body)
+    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let listing = MarketplaceListing::update(pool, id_uuid, body)
         .await?
         .ok_or_else(|| ApiError::NotFound("Listing not found".to_string()))?;
     Ok(Json(ApiResponse::success(listing)))
@@ -434,10 +435,11 @@ async fn update_listing(
 async fn deactivate_listing(
     State(deployment): State<DeploymentImpl>,
     Extension(_access): Extension<AccessContext>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<bool>>, ApiError> {
     let pool = &deployment.db().pool;
-    let deleted = MarketplaceListing::delete(pool, id).await?;
+    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let deleted = MarketplaceListing::delete(pool, id_uuid).await?;
     Ok(Json(ApiResponse::success(deleted)))
 }
 
@@ -470,10 +472,11 @@ async fn list_subscriptions(
 async fn get_subscription(
     State(deployment): State<DeploymentImpl>,
     Extension(_access): Extension<AccessContext>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<SubscriptionView>>, ApiError> {
     let pool = &deployment.db().pool;
-    let sub = MarketplaceSubscription::find_by_id(pool, id)
+    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let sub = MarketplaceSubscription::find_by_id(pool, id_uuid)
         .await?
         .ok_or_else(|| ApiError::NotFound("Subscription not found".to_string()))?;
     Ok(Json(ApiResponse::success(sub.into())))
@@ -482,7 +485,7 @@ async fn get_subscription(
 async fn topup_subscription(
     State(deployment): State<DeploymentImpl>,
     Extension(_access): Extension<AccessContext>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(body): Json<TopUpRequest>,
 ) -> Result<Json<ApiResponse<SubscriptionView>>, ApiError> {
     if body.vibe_amount <= 0.0 {
@@ -491,8 +494,9 @@ async fn topup_subscription(
         ));
     }
     let pool = &deployment.db().pool;
-    MarketplaceSubscription::add_budget(pool, id, body.vibe_amount).await?;
-    let sub = MarketplaceSubscription::find_by_id(pool, id)
+    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    MarketplaceSubscription::add_budget(pool, id_uuid, body.vibe_amount).await?;
+    let sub = MarketplaceSubscription::find_by_id(pool, id_uuid)
         .await?
         .ok_or_else(|| ApiError::NotFound("Subscription not found".to_string()))?;
     Ok(Json(ApiResponse::success(sub.into())))

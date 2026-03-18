@@ -42,9 +42,10 @@ pub struct SearchQuery {
 /// GET /projects/{project_id}/media
 async fn list_assets(
     State(d): State<DeploymentImpl>,
-    Path(project_id): Path<Uuid>,
+    Path(project_id): Path<String>,
     Query(q): Query<ListQuery>,
 ) -> Result<Json<ApiResponse<Vec<MediaAsset>>>, ApiError> {
+    let project_id = Uuid::parse_str(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
     let limit = q.limit.unwrap_or(100);
     let assets = MediaAsset::find_by_project(&d.db().pool, project_id, limit).await?;
     Ok(Json(ApiResponse::success(assets)))
@@ -53,9 +54,10 @@ async fn list_assets(
 /// GET /projects/{project_id}/media/search?q=
 async fn search_assets(
     State(d): State<DeploymentImpl>,
-    Path(project_id): Path<Uuid>,
+    Path(project_id): Path<String>,
     Query(q): Query<SearchQuery>,
 ) -> Result<Json<ApiResponse<Vec<MediaAsset>>>, ApiError> {
+    let project_id = Uuid::parse_str(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
     let query_str = q.q.unwrap_or_default();
     let limit = q.limit.unwrap_or(50);
 
@@ -71,9 +73,10 @@ async fn search_assets(
 /// POST /projects/{project_id}/media — multipart upload
 async fn upload_asset(
     State(d): State<DeploymentImpl>,
-    Path(project_id): Path<Uuid>,
+    Path(project_id): Path<String>,
     mut multipart: Multipart,
 ) -> Result<Json<ApiResponse<MediaAsset>>, ApiError> {
+    let project_id = Uuid::parse_str(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
     let media_root = std::env::var("MEDIA_ROOT")
         .unwrap_or_else(|_| "/home/pythia/pcg-cc-mcp/dev_assets/media".into());
 
@@ -161,8 +164,9 @@ async fn upload_asset(
 /// GET /media/{id}
 async fn get_asset(
     State(d): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<MediaAsset>>, ApiError> {
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
     MediaAsset::find_by_id(&d.db().pool, id)
         .await?
         .map(|a| Json(ApiResponse::success(a)))
@@ -172,8 +176,9 @@ async fn get_asset(
 /// DELETE /media/{id}
 async fn delete_asset(
     State(d): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
     let deleted = MediaAsset::delete(&d.db().pool, id).await?;
     if deleted {
         Ok(Json(ApiResponse::success(())))
@@ -185,8 +190,9 @@ async fn delete_asset(
 /// POST /media/{id}/analyze — re-trigger analysis
 async fn retrigger_analysis(
     State(d): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<MediaAsset>>, ApiError> {
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
     let asset = MediaAsset::find_by_id(&d.db().pool, id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Asset not found".into()))?;
@@ -509,9 +515,10 @@ pub struct ImportDirBody {
 /// Idempotent — skips files already indexed by file_path.
 async fn import_directory(
     State(d): State<DeploymentImpl>,
-    Path(project_id): Path<Uuid>,
+    Path(project_id): Path<String>,
     Json(body): Json<ImportDirBody>,
 ) -> Result<Json<ApiResponse<ImportResult>>, ApiError> {
+    let project_id = Uuid::parse_str(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
     let pool = &d.db().pool;
     let dir = PathBuf::from(&body.path);
 

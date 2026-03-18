@@ -94,10 +94,11 @@ async fn create_library(
 
 async fn patch_library(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(body): Json<PatchOssLibrary>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let pool = &deployment.db().pool;
+    let id_uuid = Uuid::parse_str(&id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid ID".to_string()))?;
 
     sqlx::query(
         "UPDATE oss_libraries
@@ -112,12 +113,12 @@ async fn patch_library(
     .bind(&body.notes)
     .bind(body.check_interval_secs)
     .bind(body.is_active)
-    .bind(id)
+    .bind(id_uuid)
     .execute(pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let updated = OssLibrary::get(pool, id)
+    let updated = OssLibrary::get(pool, id_uuid)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Library not found".into()))?;
@@ -127,10 +128,11 @@ async fn patch_library(
 
 async fn delete_library(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let id_uuid = Uuid::parse_str(&id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid ID".to_string()))?;
     let result = sqlx::query("DELETE FROM oss_libraries WHERE id = ?")
-        .bind(id)
+        .bind(id_uuid)
         .execute(&deployment.db().pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -144,11 +146,12 @@ async fn delete_library(
 /// Trigger an immediate check for a single library without waiting for the scheduler.
 async fn check_library_now(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let pool = deployment.db().pool.clone();
+    let id_uuid = Uuid::parse_str(&id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid ID".to_string()))?;
 
-    let lib = OssLibrary::get(&pool, id)
+    let lib = OssLibrary::get(&pool, id_uuid)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Library not found".into()))?;
@@ -165,9 +168,10 @@ async fn check_library_now(
 
 async fn list_updates_for_library(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let updates = OssLibraryUpdate::list_for_library(&deployment.db().pool, id)
+    let id_uuid = Uuid::parse_str(&id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid ID".to_string()))?;
+    let updates = OssLibraryUpdate::list_for_library(&deployment.db().pool, id_uuid)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(updates))
@@ -184,12 +188,13 @@ async fn recent_updates(
 
 async fn dismiss_update(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let id_uuid = Uuid::parse_str(&id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid ID".to_string()))?;
     sqlx::query(
         "UPDATE oss_library_updates SET recommendation_status = 'dismissed' WHERE id = ?",
     )
-    .bind(id)
+    .bind(id_uuid)
     .execute(&deployment.db().pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

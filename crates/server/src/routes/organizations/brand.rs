@@ -3,10 +3,11 @@ use super::*;
 pub async fn get_org_brand_profile(
     State(deployment): State<DeploymentImpl>,
     Extension(access_context): Extension<AccessContext>,
-    Path(org_id): Path<Uuid>,
+    Path(org_id): Path<String>,
 ) -> Result<Json<ApiResponse<Option<OrgBrandProfile>>>, ApiError> {
     let _ = access_context;
-    let profile = OrgBrandProfile::find_by_org(&deployment.db().pool, org_id).await?;
+    let org_uuid = Uuid::parse_str(&org_id).map_err(|_| ApiError::BadRequest("Invalid org ID".into()))?;
+    let profile = OrgBrandProfile::find_by_org(&deployment.db().pool, org_uuid).await?;
     Ok(Json(ApiResponse::success(profile)))
 }
 
@@ -14,11 +15,12 @@ pub async fn get_org_brand_profile(
 pub async fn upsert_org_brand_profile(
     State(deployment): State<DeploymentImpl>,
     Extension(access_context): Extension<AccessContext>,
-    Path(org_id): Path<Uuid>,
+    Path(org_id): Path<String>,
     Json(body): Json<UpsertOrgBrandProfile>,
 ) -> Result<Json<ApiResponse<OrgBrandProfile>>, ApiError> {
     let _ = access_context;
-    let profile = OrgBrandProfile::upsert(&deployment.db().pool, org_id, &body).await?;
+    let org_uuid = Uuid::parse_str(&org_id).map_err(|_| ApiError::BadRequest("Invalid org ID".into()))?;
+    let profile = OrgBrandProfile::upsert(&deployment.db().pool, org_uuid, &body).await?;
     Ok(Json(ApiResponse::success(profile)))
 }
 
@@ -44,19 +46,20 @@ pub struct BrandResearchStatusResponse {
 pub async fn trigger_brand_research(
     State(deployment): State<DeploymentImpl>,
     Extension(access_context): Extension<AccessContext>,
-    Path(org_id): Path<Uuid>,
+    Path(org_id): Path<String>,
 ) -> Result<Json<ApiResponse<BrandResearchJobResponse>>, ApiError> {
     let _ = access_context;
     let pool = &deployment.db().pool;
+    let org_uuid = Uuid::parse_str(&org_id).map_err(|_| ApiError::BadRequest("Invalid org ID".into()))?;
 
     // Fetch org name + existing brand profile
-    let org: Option<Organization> = Organization::find_by_id(pool, &org_id.to_string()).await
+    let org: Option<Organization> = Organization::find_by_id(pool, &org_id).await
         .map_err(|e| ApiError::InternalError(format!("DB error: {e}")))?;
 
     let org = org.ok_or_else(|| ApiError::NotFound("Organization not found".into()))?;
 
     // Get existing brand profile for context
-    let profile = OrgBrandProfile::find_by_org(pool, org_id)
+    let profile = OrgBrandProfile::find_by_org(pool, org_uuid)
         .await
         .map_err(|e| ApiError::InternalError(format!("{e}")))?;
 
@@ -64,7 +67,7 @@ pub async fn trigger_brand_research(
     sqlx::query(
         "UPDATE organization_brand_profiles SET research_status = 'queued', updated_at = datetime('now','subsec') WHERE organization_id = ?",
     )
-    .bind(org_id.to_string())
+    .bind(&org_id)
     .execute(pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("{e}")))?;
@@ -80,20 +83,20 @@ pub async fn trigger_brand_research(
 
     tokio::spawn(async move {
         if let Err(e) = run_brand_research(
-            &pool_clone, org_id, &org_name, &website, &instagram, &linkedin, &twitter, &competitors
+            &pool_clone, org_uuid, &org_name, &website, &instagram, &linkedin, &twitter, &competitors
         ).await {
-            tracing::error!("[BRAND_RESEARCH] Failed for org {}: {}", org_id, e);
+            tracing::error!("[BRAND_RESEARCH] Failed for org {}: {}", org_uuid, e);
             let _ = sqlx::query(
                 "UPDATE organization_brand_profiles SET research_status = 'failed', updated_at = datetime('now','subsec') WHERE organization_id = ?",
             )
-            .bind(org_id.to_string())
+            .bind(org_uuid.to_string())
             .execute(&pool_clone)
             .await;
         }
     });
 
     Ok(Json(ApiResponse::success(BrandResearchJobResponse {
-        org_id,
+        org_id: org_uuid,
         status: "queued".into(),
         message: format!("Brand research queued for {} — Scout is gathering online presence data via Exa.", org.name),
     })))
@@ -103,9 +106,10 @@ pub async fn trigger_brand_research(
 pub async fn get_brand_research_status(
     State(deployment): State<DeploymentImpl>,
     Extension(access_context): Extension<AccessContext>,
-    Path(org_id): Path<Uuid>,
+    Path(org_id): Path<String>,
 ) -> Result<Json<ApiResponse<BrandResearchStatusResponse>>, ApiError> {
     let _ = access_context;
+    let org_uuid = Uuid::parse_str(&org_id).map_err(|_| ApiError::BadRequest("Invalid org ID".into()))?;
 
     #[derive(sqlx::FromRow)]
     struct Row {
@@ -117,7 +121,7 @@ pub async fn get_brand_research_status(
     let row: Option<Row> = sqlx::query_as(
         "SELECT research_status, research_summary, research_ran_at FROM organization_brand_profiles WHERE organization_id = ?",
     )
-    .bind(org_id.to_string())
+    .bind(&org_id)
     .fetch_optional(&deployment.db().pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("{e}")))?;
@@ -127,7 +131,7 @@ pub async fn get_brand_research_status(
         .unwrap_or_else(|| ("idle".into(), None, None));
 
     Ok(Json(ApiResponse::success(BrandResearchStatusResponse {
-        org_id,
+        org_id: org_uuid,
         status,
         summary,
         ran_at,
@@ -137,7 +141,7 @@ pub async fn get_brand_research_status(
 /// POST /api/organizations/:id/seed-brand-project
 /// Creates a brand project + deliverable set for this org if not already present.
 pub async fn seed_brand_project(
-    Path(org_id): Path<Uuid>,
+    Path(org_id): Path<String>,
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
@@ -145,12 +149,12 @@ pub async fn seed_brand_project(
 
     let pool = &deployment.db().pool;
 
-    let org = Organization::find_by_id(pool, &org_id.to_string())
+    let org = Organization::find_by_id(pool, &org_id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Organization not found".into()))?;
 
     if !access_context.is_admin {
-        let role = Organization::get_user_role(pool, &org_id.to_string(), access_context.user_id.as_str()).await?;
+        let role = Organization::get_user_role(pool, &org_id, access_context.user_id.as_str()).await?;
         if role.is_none() {
             return Err(ApiError::Forbidden("Not a member of this organization".into()));
         }
@@ -163,7 +167,7 @@ pub async fn seed_brand_project(
     let existing: Option<ProjRow> = sqlx::query_as(
         "SELECT id, name FROM projects WHERE organization_id = ? AND project_status != 'archived' ORDER BY created_at ASC LIMIT 1"
     )
-    .bind(org_id)
+    .bind(&org_id)
     .fetch_optional(pool)
     .await?;
 
@@ -179,7 +183,7 @@ pub async fn seed_brand_project(
         )
         .bind(proj_id)
         .bind(&proj_name)
-        .bind(org_id)
+        .bind(&org_id)
         .bind(access_context.user_id.as_str())
         .bind(org.slug.to_lowercase().replace(' ', "-") + "-brand")
         .execute(pool)

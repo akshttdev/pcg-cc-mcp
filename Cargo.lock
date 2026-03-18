@@ -11657,6 +11657,7 @@ dependencies = [
  "serde_json",
  "shellexpand",
  "similar",
+ "thiserror 2.0.18",
  "tokio",
  "tokio-stream",
  "tokio-util",

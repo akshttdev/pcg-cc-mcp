@@ -99,10 +99,10 @@ pub async fn get_projects(
 
 /// GET /api/projects/by-client/:client_id — projects for a given client
 pub async fn get_projects_by_client(
-    Path(client_id): Path<Uuid>,
+    Path(client_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<Project>>>, ApiError> {
-    let projects = Project::find_by_client(&deployment.db().pool, &client_id.to_string()).await?;
+    let projects = Project::find_by_client(&deployment.db().pool, &client_id).await?;
     Ok(ResponseJson(ApiResponse::success(projects)))
 }
 
@@ -168,13 +168,14 @@ pub async fn create_project_pod(
 }
 
 pub async fn update_project_pod(
-    Path(pod_id): Path<Uuid>,
+    Path(pod_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<UpdatePodPayload>,
 ) -> Result<ResponseJson<ApiResponse<ProjectPod>>, ApiError> {
+    let pod_uuid = Uuid::parse_str(&pod_id).map_err(|_| ApiError::BadRequest("Invalid pod ID".into()))?;
     let pod = ProjectPod::update(
         &deployment.db().pool,
-        pod_id,
+        pod_uuid,
         &UpdateProjectPod {
             title: payload.title,
             description: payload.description,
@@ -188,10 +189,11 @@ pub async fn update_project_pod(
 }
 
 pub async fn delete_project_pod(
-    Path(pod_id): Path<Uuid>,
+    Path(pod_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
-    let deleted = ProjectPod::delete(&deployment.db().pool, pod_id).await?;
+    let pod_uuid = Uuid::parse_str(&pod_id).map_err(|_| ApiError::BadRequest("Invalid pod ID".into()))?;
+    let deleted = ProjectPod::delete(&deployment.db().pool, pod_uuid).await?;
     if deleted == 0 {
         return Err(ApiError::NotFound("Pod not found".to_string()));
     }
@@ -293,7 +295,7 @@ pub async fn create_project_asset(
 }
 
 pub async fn update_project_asset(
-    Path(asset_id): Path<Uuid>,
+    Path(asset_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<UpdateAssetPayload>,
 ) -> Result<ResponseJson<ApiResponse<ProjectAsset>>, ApiError> {
@@ -310,7 +312,8 @@ pub async fn update_project_asset(
         metadata,
     } = payload;
 
-    let existing_asset = ProjectAsset::find_by_id(&deployment.db().pool, asset_id)
+    let asset_uuid = Uuid::parse_str(&asset_id).map_err(|_| ApiError::BadRequest("Invalid asset ID".into()))?;
+    let existing_asset = ProjectAsset::find_by_id(&deployment.db().pool, asset_uuid)
         .await?
         .ok_or_else(|| ApiError::NotFound("Asset not found".to_string()))?;
 
@@ -328,7 +331,7 @@ pub async fn update_project_asset(
 
     let asset = ProjectAsset::update(
         &deployment.db().pool,
-        asset_id,
+        asset_uuid,
         &UpdateProjectAsset {
             pod_id,
             board_id,
@@ -348,10 +351,11 @@ pub async fn update_project_asset(
 }
 
 pub async fn delete_project_asset(
-    Path(asset_id): Path<Uuid>,
+    Path(asset_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
-    let deleted = ProjectAsset::delete(&deployment.db().pool, asset_id).await?;
+    let asset_uuid = Uuid::parse_str(&asset_id).map_err(|_| ApiError::BadRequest("Invalid asset ID".into()))?;
+    let deleted = ProjectAsset::delete(&deployment.db().pool, asset_uuid).await?;
     if deleted == 0 {
         return Err(ApiError::NotFound("Asset not found".to_string()));
     }

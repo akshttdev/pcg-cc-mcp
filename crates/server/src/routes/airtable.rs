@@ -226,8 +226,9 @@ async fn list_connections(
 /// Get a single Airtable base connection by ID
 async fn get_connection(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<AirtableConnectionWithBase>>, StatusCode> {
+    let id = Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let pool = &deployment.db().pool;
     let config = deployment.config().read().await;
 
@@ -308,9 +309,10 @@ async fn create_connection(
 /// Update an Airtable base connection
 async fn update_connection(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(payload): Json<UpdateAirtableBase>,
 ) -> Result<Json<ApiResponse<AirtableBase>>, StatusCode> {
+    let id = Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let pool = &deployment.db().pool;
 
     match AirtableBase::update(pool, id, payload).await {
@@ -331,8 +333,9 @@ async fn update_connection(
 /// Delete an Airtable base connection
 async fn delete_connection(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, StatusCode> {
+    let id = Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let pool = &deployment.db().pool;
 
     match AirtableBase::delete(pool, id).await {
@@ -350,8 +353,9 @@ async fn delete_connection(
 /// Get tables in a connected Airtable base
 async fn get_base_tables(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<AirtableTable>>>, StatusCode> {
+    let id = Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let pool = &deployment.db().pool;
     let config = deployment.config().read().await;
 
@@ -390,9 +394,10 @@ async fn get_base_tables(
 /// Get records from a table in a connected Airtable base
 async fn get_table_records(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Query(query): Query<AirtableTableQuery>,
 ) -> Result<Json<ApiResponse<Vec<AirtableRecord>>>, StatusCode> {
+    let id = Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let pool = &deployment.db().pool;
     let config = deployment.config().read().await;
 
@@ -443,9 +448,10 @@ async fn get_table_records(
 /// Import records from an Airtable table as PCG tasks
 async fn import_records_from_table(
     State(deployment): State<DeploymentImpl>,
-    Path(connection_id): Path<Uuid>,
+    Path(connection_id): Path<String>,
     Json(payload): Json<AirtableImportRequest>,
 ) -> Result<Json<ApiResponse<AirtableImportResult>>, StatusCode> {
+    let connection_id = Uuid::parse_str(&connection_id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let pool = &deployment.db().pool;
     let config = deployment.config().read().await;
 
@@ -636,8 +642,9 @@ async fn import_records_from_table(
 /// Get the Airtable link for a task
 async fn get_task_link(
     State(deployment): State<DeploymentImpl>,
-    Path(task_id): Path<Uuid>,
+    Path(task_id): Path<String>,
 ) -> Result<Json<ApiResponse<Option<AirtableRecordLink>>>, StatusCode> {
+    let task_id = Uuid::parse_str(&task_id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let pool = &deployment.db().pool;
 
     match AirtableRecordLink::find_by_task_id(pool, task_id).await {
@@ -652,9 +659,10 @@ async fn get_task_link(
 /// Push a PCG task to Airtable as a new record
 async fn push_task_to_airtable(
     State(deployment): State<DeploymentImpl>,
-    Path(task_id): Path<Uuid>,
+    Path(task_id): Path<String>,
     Json(payload): Json<AirtablePushTaskRequest>,
 ) -> Result<Json<ApiResponse<AirtableRecordLink>>, StatusCode> {
+    let task_id = Uuid::parse_str(&task_id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let pool = &deployment.db().pool;
     let config = deployment.config().read().await;
 
@@ -759,8 +767,9 @@ async fn push_task_to_airtable(
 /// Sync execution deliverables to Airtable as a comment or field update
 async fn sync_deliverables_to_airtable(
     State(deployment): State<DeploymentImpl>,
-    Path(task_id): Path<Uuid>,
+    Path(task_id): Path<String>,
 ) -> Result<Json<ApiResponse<AirtableRecordLink>>, StatusCode> {
+    let task_id = Uuid::parse_str(&task_id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let pool = &deployment.db().pool;
     let config = deployment.config().read().await;
 
