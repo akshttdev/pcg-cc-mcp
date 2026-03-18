@@ -1,7 +1,23 @@
 import { lazy, Suspense, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { organizationsApi, projectsApi, type CrmContactRecord, type OrgBrandProfile } from '@/lib/api';
+import { organizationsApi, projectsApi, type CrmContactRecord, type OrgBrandProfile, type ClientData } from '@/lib/api';
+import type { Project } from 'shared/types';
+
+/** Extended client data as returned by the API (superset of ClientData) */
+interface ClientOverviewData extends ClientData {
+  crm_person_id?: string;
+  crm_confidence?: number;
+}
+
+interface MemberRecord {
+  id?: string;
+  user_id?: string;
+  full_name?: string;
+  username?: string;
+  email?: string;
+  role?: string;
+}
 import {
   Users, Layers,
   Brain, FolderKanban, Package, ExternalLink, Globe,
@@ -21,7 +37,7 @@ import { useCrmContacts } from '@/hooks/queries';
 import { PersonIntelPage } from './person-intel';
 
 // ── Lazy-load scoped tab components ──────────────────────────────────────────
-const SocialTab = lazy(() => import('./organization-profile/tabs/social').then(m => ({ default: m.default ?? (m as any).SocialTab })));
+const SocialTab = lazy(() => import('./organization-profile/tabs/social').then(m => ({ default: m.default ?? (m as Record<string, unknown>).SocialTab as React.ComponentType<{ projectEntries: Array<{ id: string; name: string }>; orgId: string }> })));
 const KnowledgeTab = lazy(() =>
   import('./organization-profile/tabs/intelligence/KnowledgeTab').then(m => ({ default: m.KnowledgeTab }))
 );
@@ -69,7 +85,7 @@ function hashId(id: string): number {
 
 // ── Projects tab ──────────────────────────────────────────────────────────────
 function ProjectsTab({ projects, isProjectsLoading, orgId, clientId }: {
-  projects: any[]; isProjectsLoading: boolean; orgId: string; clientId: string;
+  projects: Project[]; isProjectsLoading: boolean; orgId: string; clientId: string;
 }) {
   if (isProjectsLoading) return (
     <div className="flex items-center gap-2 text-sm text-muted-foreground py-8">
@@ -84,7 +100,7 @@ function ProjectsTab({ projects, isProjectsLoading, orgId, clientId }: {
   );
   return (
     <div className="space-y-8">
-      {projects.map((project: any) => (
+      {projects.map((project) => (
         <ClientProjectPanel
           key={project.id}
           projectId={project.id}
@@ -96,9 +112,9 @@ function ProjectsTab({ projects, isProjectsLoading, orgId, clientId }: {
 }
 
 // ── Overview tab ──────────────────────────────────────────────────────────────
-function OverviewTab({ client, projects, orgId }: { client: any; projects: any[]; orgId: string }) {
-  const activeProjects = projects.filter((p: any) => p.project_status !== 'archived');
-  const completedProjects = projects.filter((p: any) => p.project_status === 'archived');
+function OverviewTab({ client, projects, orgId }: { client: ClientOverviewData; projects: Project[]; orgId: string }) {
+  const activeProjects = projects.filter((p) => (p as Project & { project_status?: string }).project_status !== 'archived');
+  const completedProjects = projects.filter((p) => (p as Project & { project_status?: string }).project_status === 'archived');
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -173,7 +189,7 @@ function OverviewTab({ client, projects, orgId }: { client: any; projects: any[]
         <div>
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Active Projects</p>
           <div className="space-y-1.5">
-            {activeProjects.slice(0, 4).map((p: any) => (
+            {activeProjects.slice(0, 4).map((p) => (
               <Link key={p.id} to={`/projects/${p.id}/tasks`}
                 className="flex items-center gap-2 px-3 py-2 rounded-md border border-border/60 hover:bg-accent/60 transition-colors text-sm"
               >
@@ -237,7 +253,7 @@ function ClientContactsTab({ orgId, clientName }: { orgId: string; clientName: s
 
 // ── Members tab (client-specific, deduplicated) ───────────────────────────────
 function ClientMembersTab({ clientId, orgId }: { clientId: string; orgId: string }) {
-  const { data: members = [], isLoading } = useQuery<any[]>({
+  const { data: members = [], isLoading } = useQuery<MemberRecord[]>({
     queryKey: ['client-members', clientId],
     queryFn: async () => {
       const res = await fetch(`/api/clients/${clientId}/members`, { credentials: 'include' });
@@ -247,17 +263,17 @@ function ClientMembersTab({ clientId, orgId }: { clientId: string; orgId: string
     staleTime: 30_000,
   });
 
-  const { data: orgMembers = [] } = useQuery<any[]>({
+  const { data: orgMembers = [] } = useQuery<MemberRecord[]>({
     queryKey: ['org-members', orgId],
     queryFn: () => organizationsApi.getMembers(orgId),
     staleTime: 60_000,
   });
 
-  const orgMemberMap = new Map((orgMembers as any[]).map((m: any) => [m.user_id ?? m.id, m]));
+  const orgMemberMap = new Map(orgMembers.map((m) => [m.user_id ?? m.id, m]));
 
   // Deduplicate by user_id
   const seen = new Set<string>();
-  const uniqueMembers = (members as any[]).filter((m: any) => {
+  const uniqueMembers = members.filter((m) => {
     const id = m.user_id ?? m.id;
     if (!id || seen.has(id)) return false;
     seen.add(id);
@@ -273,10 +289,10 @@ function ClientMembersTab({ clientId, orgId }: { clientId: string; orgId: string
   );
   return (
     <div className="space-y-2">
-      {uniqueMembers.map((m: any) => {
+      {uniqueMembers.map((m) => {
         const uid = m.user_id ?? m.id;
         const orgM = orgMemberMap.get(uid);
-        const name = orgM?.full_name ?? m.full_name ?? m.username ?? uid;
+        const name = orgM?.full_name ?? m.full_name ?? m.username ?? uid ?? '';
         const email = orgM?.email ?? m.email;
         return (
           <div key={uid} className="flex items-center gap-3 p-3 rounded-lg border bg-card">
@@ -314,7 +330,7 @@ function PipelineTab({ orgId, clientId }: { orgId: string; clientId: string }) {
 }
 
 // ── Social placeholder ────────────────────────────────────────────────────────
-function SocialPlaceholderTab({ projects, orgId }: { projects: any[]; orgId: string }) {
+function SocialPlaceholderTab({ projects, orgId }: { projects: Project[]; orgId: string }) {
   if (projects.length === 0) return (
     <div className="text-center py-12 text-muted-foreground">
       <Share2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
@@ -324,7 +340,7 @@ function SocialPlaceholderTab({ projects, orgId }: { projects: any[]; orgId: str
   return (
     <Suspense fallback={<TabSkeleton />}>
       <SocialTab
-        projectEntries={projects.map((p: any) => ({ id: p.id, name: p.name }))}
+        projectEntries={projects.map((p) => ({ id: p.id, name: p.name }))}
         orgId={orgId}
       />
     </Suspense>
@@ -372,8 +388,8 @@ export function ClientOverview() {
     staleTime: 5 * 60_000,
   });
 
-  const client = clients.find((c: any) => c.id === clientId) as any;
-  const allProjects = projects as any[];
+  const client = clients.find((c) => c.id === clientId) as ClientOverviewData | undefined;
+  const allProjects = projects;
 
   // Brand colors: use org brand profile if available, otherwise hash-derived palette
   const palette = CLIENT_PALETTES[hashId(clientId ?? '') % CLIENT_PALETTES.length];
@@ -492,7 +508,7 @@ export function ClientOverview() {
             <Suspense fallback={<TabSkeleton />}>
               <KnowledgeTab
                 orgId={orgId!}
-                projectEntries={allProjects.map((p: any) => ({ id: p.id, name: p.name }))}
+                projectEntries={allProjects.map((p) => ({ id: p.id, name: p.name }))}
               />
             </Suspense>
           )}

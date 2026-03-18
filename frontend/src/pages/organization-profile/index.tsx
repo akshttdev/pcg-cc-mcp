@@ -546,7 +546,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 <Suspense fallback={<TabSkeleton />}>
                   <ProjectsTab
                     orgId={orgId}
-                    sidebarOrg={sidebarOrg}
+                    sidebarOrg={sidebarOrg ?? null}
                     clientFilter={clientFilter}
                     onClearClientFilter={clearClientFilter}
                   />

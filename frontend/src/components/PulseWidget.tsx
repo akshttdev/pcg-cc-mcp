@@ -20,16 +20,7 @@ import {
 import { cn } from '@/lib/utils';
 import { pulseApi } from '@/lib/api';
 import { pulseKeys } from '@/lib/query-keys';
-
-// --- Types ---
-
-interface PulseProject {
-  name: string;
-  description: string | null;
-  adapters: number;
-  active_sources: string[];
-  scheduler_running: boolean;
-}
+import type { PulseProject } from '@/lib/api/pulse';
 
 // --- Helpers ---
 
@@ -175,12 +166,13 @@ export function PulseWidget({ className, projectId }: PulseWidgetProps) {
   });
 
   const collectMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (projectId) {
-        return pulseApi.triggerCollection(projectId);
+        await pulseApi.triggerCollection(projectId);
+        return;
       }
       // Legacy: global collection
-      return pulseApi.collectAll();
+      await pulseApi.collectAll();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: pulseKeys.all() });

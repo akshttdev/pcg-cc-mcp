@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { pulseApi } from '@/lib/api';
+import type { PulseContentItem, PulseSource as PulseSourceApi, PulseAlertRule as PulseAlertRuleApi, PulseAlert as PulseAlertApi } from '@/lib/api/pulse';
 import { pulseKeys } from '@/lib/query-keys';
 import { MobileLayout } from '@/components/mobile';
 import { useMobile } from '@/hooks/useMobile';
@@ -22,6 +23,11 @@ import {
 } from 'lucide-react';
 
 type Tab = 'overview' | 'content' | 'sources' | 'alerts' | 'config';
+
+// Use API types directly — aliases for local convenience
+type PulseSource = PulseSourceApi;
+type PulseAlertRule = PulseAlertRuleApi;
+type PulseAlert = PulseAlertApi;
 
 export default function PulsePage() {
   const { isMobile } = useMobile();
@@ -202,7 +208,7 @@ export default function PulsePage() {
             <CardContent>
               {contentData?.items?.length ? (
                 <div className="space-y-3">
-                  {contentData.items.slice(0, 5).map((item: any) => (
+                  {contentData.items.slice(0, 5).map((item: PulseContentItem) => (
                     <div key={item.id} className="flex items-start gap-3 p-3 rounded-lg border">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
@@ -213,7 +219,7 @@ export default function PulsePage() {
                         </div>
                         <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                           <Badge variant="outline" className="text-xs">{item.source_id}</Badge>
-                          <span>{timeAgo(item.collected_at)}</span>
+                          <span>{item.collected_at ? timeAgo(item.collected_at) : ''}</span>
                           {item.relevance_score != null && (
                             <Badge variant={item.relevance_score > 0.7 ? 'default' : 'secondary'} className="text-xs">
                               {Math.round(item.relevance_score * 100)}%
@@ -238,7 +244,7 @@ export default function PulsePage() {
           {contentLoading ? (
             <p className="text-sm text-muted-foreground">Loading content...</p>
           ) : contentData?.items?.length ? (
-            contentData.items.map((item: any) => (
+            contentData.items.map((item: PulseContentItem) => (
               <div key={item.id} className="flex items-start gap-3 p-4 rounded-lg border">
                 <div className="flex-1 min-w-0">
                   <a href={item.url} target="_blank" rel="noopener noreferrer" className="font-medium text-sm hover:underline">
@@ -248,7 +254,7 @@ export default function PulsePage() {
                   <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
                     <Badge variant="outline">{item.source_type}</Badge>
                     <span>{item.source_id}</span>
-                    <span>{timeAgo(item.collected_at)}</span>
+                    <span>{item.collected_at ? timeAgo(item.collected_at) : ''}</span>
                     {item.author && <span>by {item.author}</span>}
                   </div>
                 </div>
@@ -286,7 +292,7 @@ export default function PulsePage() {
       {activeTab === 'sources' && (
         <div className="space-y-3">
           {sources?.length ? (
-            sources.map((source: any) => (
+            sources.map((source: PulseSource) => (
               <Card key={source.id}>
                 <CardContent className="p-4 flex items-center gap-4">
                   <Radio className={`w-5 h-5 ${source.status === 'active' ? 'text-green-500' : 'text-red-500'}`} />
@@ -312,7 +318,7 @@ export default function PulsePage() {
               <CardHeader><CardTitle className="text-lg">Alert Rules</CardTitle></CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {alertRules.map((rule: any) => (
+                  {alertRules.map((rule: PulseAlertRule) => (
                     <div key={rule.id} className="flex items-center gap-3 p-3 rounded-lg border">
                       <div className="flex-1">
                         <div className="font-medium text-sm">{rule.name}</div>
@@ -331,7 +337,7 @@ export default function PulsePage() {
             <CardContent>
               {alerts?.length ? (
                 <div className="space-y-2">
-                  {alerts.map((alert: any) => (
+                  {alerts.map((alert: PulseAlert) => (
                     <div key={alert.id} className="flex items-center gap-3 p-3 rounded-lg border">
                       <AlertTriangle className={`w-4 h-4 ${alert.priority === 'high' || alert.priority === 'critical' ? 'text-red-500' : 'text-yellow-500'}`} />
                       <div className="flex-1">

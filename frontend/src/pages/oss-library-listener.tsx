@@ -62,13 +62,13 @@ interface OssLibraryUpdate {
 // ── API helpers ───────────────────────────────────────────────────────────────
 
 const ossApi = {
-  listLibraries: () => apiClient.get<OssLibrary[]>('/oss-libraries').then((r: any) => r.data),
+  listLibraries: () => apiClient.get<OssLibrary[]>('/oss-libraries').then((r) => r.data),
   createLibrary: (body: { name: string; github_owner: string; github_repo: string; notes?: string }) =>
-    apiClient.post<OssLibrary>('/oss-libraries', body).then((r: any) => r.data),
+    apiClient.post<OssLibrary>('/oss-libraries', body).then((r) => r.data),
   deleteLibrary: (id: string) => apiClient.delete(`/oss-libraries/${id}`),
   checkNow: (id: string) => apiClient.post(`/oss-libraries/${id}/check`),
-  listUpdates: (id: string) => apiClient.get<OssLibraryUpdate[]>(`/oss-libraries/${id}/updates`).then((r: any) => r.data),
-  recentUpdates: () => apiClient.get<OssLibraryUpdate[]>('/oss-updates/recent').then((r: any) => r.data),
+  listUpdates: (id: string) => apiClient.get<OssLibraryUpdate[]>(`/oss-libraries/${id}/updates`).then((r) => r.data),
+  recentUpdates: () => apiClient.get<OssLibraryUpdate[]>('/oss-updates/recent').then((r) => r.data),
   dismiss: (id: string) => apiClient.patch(`/oss-updates/${id}/dismiss`),
 };
 
@@ -227,7 +227,7 @@ function LibraryCard({ lib }: { lib: OssLibrary }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ossKeys.libraries() }),
   });
 
-  const pendingUpdates = updates.filter((u: any) => u.recommendation_status !== 'dismissed');
+  const pendingUpdates = updates.filter((u) => u.recommendation_status !== 'dismissed');
   const hasNew = lib.latest_version && lib.latest_version !== lib.tracked_version;
 
   return (
@@ -293,7 +293,7 @@ function LibraryCard({ lib }: { lib: OssLibrary }) {
         </div>
       ) : (
         <div className="divide-y">
-          {pendingUpdates.map((u: any) => (
+          {pendingUpdates.map((u) => (
             <UpdateRow key={u.id} update={u} />
           ))}
         </div>
@@ -383,7 +383,7 @@ export function OssLibraryListenerPage() {
   });
 
   const pendingCount = libraries.filter(
-    (l: any) => l.latest_version && l.latest_version !== l.tracked_version
+    (l) => l.latest_version && l.latest_version !== l.tracked_version
   ).length;
 
   if (isLoading) {
@@ -437,7 +437,7 @@ export function OssLibraryListenerPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {libraries.map((lib: any) => (
+          {libraries.map((lib) => (
             <LibraryCard key={lib.id} lib={lib} />
           ))}
         </div>

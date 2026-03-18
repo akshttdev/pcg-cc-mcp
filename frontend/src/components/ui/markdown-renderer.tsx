@@ -85,7 +85,7 @@ function LinkOverride({
   );
 }
 
-function InlineCodeOverride({ children, className, ...props }: any) {
+function InlineCodeOverride({ children, className, ...props }: React.HTMLAttributes<HTMLElement> & { children?: React.ReactNode }) {
   // Only highlight inline code, not fenced code blocks
   const hasLanguage =
     typeof className === 'string' && /\blanguage-/.test(className);
@@ -123,63 +123,63 @@ function MarkdownRenderer({
       a: { component: LinkOverride },
       code: { component: InlineCodeOverride },
       strong: {
-        component: ({ children, ...props }: any) => (
+        component: ({ children, ...props }: React.HTMLAttributes<HTMLElement> & { children?: React.ReactNode }) => (
           <span {...props} className="">
             {children}
           </span>
         ),
       },
       em: {
-        component: ({ children, ...props }: any) => (
+        component: ({ children, ...props }: React.HTMLAttributes<HTMLElement> & { children?: React.ReactNode }) => (
           <em {...props} className="italic">
             {children}
           </em>
         ),
       },
       p: {
-        component: ({ children, ...props }: any) => (
+        component: ({ children, ...props }: React.HTMLAttributes<HTMLParagraphElement> & { children?: React.ReactNode }) => (
           <p {...props} className="leading-tight">
             {children}
           </p>
         ),
       },
       h1: {
-        component: ({ children, ...props }: any) => (
+        component: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement> & { children?: React.ReactNode }) => (
           <h1 {...props} className="text-lg leading-tight font-medium">
             {children}
           </h1>
         ),
       },
       h2: {
-        component: ({ children, ...props }: any) => (
+        component: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement> & { children?: React.ReactNode }) => (
           <h2 {...props} className="text-baseleading-tight font-medium">
             {children}
           </h2>
         ),
       },
       h3: {
-        component: ({ children, ...props }: any) => (
+        component: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement> & { children?: React.ReactNode }) => (
           <h3 {...props} className="text-sm leading-tight">
             {children}
           </h3>
         ),
       },
       ul: {
-        component: ({ children, ...props }: any) => (
+        component: ({ children, ...props }: React.HTMLAttributes<HTMLUListElement> & { children?: React.ReactNode }) => (
           <ul {...props} className="list-disc list-outside space-y-1 ps-6">
             {children}
           </ul>
         ),
       },
       ol: {
-        component: ({ children, ...props }: any) => (
+        component: ({ children, ...props }: React.OlHTMLAttributes<HTMLOListElement> & { children?: React.ReactNode }) => (
           <ol {...props} className="list-decimal list-outside space-y-1 ps-6">
             {children}
           </ol>
         ),
       },
       li: {
-        component: ({ children, ...props }: any) => (
+        component: ({ children, ...props }: React.LiHTMLAttributes<HTMLLIElement> & { children?: React.ReactNode }) => (
           <li {...props} className="leading-tight">
             {children}
           </li>

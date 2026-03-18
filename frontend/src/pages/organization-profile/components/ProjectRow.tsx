@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { FolderOpen, ExternalLink, ChevronDown, ChevronRight } from 'lucide-react';
+import type { SidebarProject } from '@/lib/api';
 
-export function ProjectRow({ project, folderName, depth = 0 }: { project: any; folderName?: string; depth?: number }) {
+export function ProjectRow({ project, folderName, depth = 0 }: { project: SidebarProject; folderName?: string; depth?: number }) {
   const hasChildren = project.children && project.children.length > 0;
   const [expanded, setExpanded] = useState(false);
 
@@ -34,7 +35,7 @@ export function ProjectRow({ project, folderName, depth = 0 }: { project: any; f
       </div>
       {hasChildren && expanded && (
         <div className="pl-4 border-l border-border/50 ml-3 mt-0.5 space-y-0.5">
-          {project.children.map((child: any) => (
+          {project.children.map((child) => (
             <ProjectRow key={child.id} project={child} depth={depth + 1} />
           ))}
         </div>
