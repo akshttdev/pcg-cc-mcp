@@ -84,9 +84,10 @@ async fn list_persons(
 /// GET /api/persons/:id
 async fn get_person(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<PersonWithSocials>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
 
     let person = Person::find_by_id(pool, id)
         .await?
@@ -117,10 +118,11 @@ async fn create_person(
 /// PATCH /api/persons/:id
 async fn update_person(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(data): Json<UpdatePerson>,
 ) -> Result<Json<ApiResponse<Person>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
 
     let person = Person::update(pool, id, data)
         .await?
@@ -132,9 +134,10 @@ async fn update_person(
 /// DELETE /api/persons/:id
 async fn delete_person(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<bool>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     let deleted = Person::delete(pool, id).await?;
     if !deleted {
         return Err(ApiError::NotFound(format!("Person {} not found", id)));
@@ -149,9 +152,10 @@ async fn delete_person(
 /// GET /api/persons/:id/social-profiles
 async fn list_social_profiles(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<PersonSocialProfile>>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     let profiles = PersonSocialProfile::list_for_person(pool, id).await?;
     Ok(Json(ApiResponse::success(profiles)))
 }
@@ -160,10 +164,11 @@ async fn list_social_profiles(
 /// Upserts (creates or updates) a social profile for the given platform.
 async fn upsert_social_profile(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(data): Json<UpsertPersonSocialProfile>,
 ) -> Result<Json<ApiResponse<PersonSocialProfile>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
 
     // Ensure person exists
     if Person::find_by_id(pool, id).await?.is_none() {
@@ -177,9 +182,10 @@ async fn upsert_social_profile(
 /// DELETE /api/persons/:id/social-profiles/:platform
 async fn delete_social_profile(
     State(deployment): State<DeploymentImpl>,
-    Path((id, platform)): Path<(Uuid, String)>,
+    Path((id, platform)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<bool>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     let deleted = PersonSocialProfile::delete(pool, id, &platform).await?;
     if !deleted {
         return Err(ApiError::NotFound(format!(
@@ -197,9 +203,10 @@ async fn delete_social_profile(
 /// GET /api/persons/:id/invoices
 async fn list_person_invoices(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<Invoice>>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     let invoices = Invoice::list_for_person(pool, id).await?;
     Ok(Json(ApiResponse::success(invoices)))
 }
@@ -241,9 +248,10 @@ async fn create_invoice(
 /// GET /api/invoices/:id
 async fn get_invoice(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Invoice>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     let invoice = Invoice::find_by_id(pool, id)
         .await?
         .ok_or_else(|| ApiError::NotFound(format!("Invoice {} not found", id)))?;
@@ -253,10 +261,11 @@ async fn get_invoice(
 /// PATCH /api/invoices/:id
 async fn update_invoice(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(mut data): Json<UpdateInvoice>,
 ) -> Result<Json<ApiResponse<Invoice>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     // Auto-recompute VIBE if USD changed
     if data.amount_vibe.is_none() {
         if let Some(usd) = data.amount_usd {
@@ -272,10 +281,11 @@ async fn update_invoice(
 /// PATCH /api/invoices/:id/status
 async fn move_invoice_status(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(body): Json<MoveInvoiceStatusBody>,
 ) -> Result<Json<ApiResponse<Invoice>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     let sql = match body.status.as_str() {
         "paid" | "partial" =>
             "UPDATE invoices SET status = ?, paid_at = datetime('now','subsec'), updated_at = datetime('now','subsec') WHERE id = ?",
@@ -292,9 +302,10 @@ async fn move_invoice_status(
 /// DELETE /api/invoices/:id
 async fn delete_invoice(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     let deleted = Invoice::delete(pool, id).await?;
     if deleted {
         Ok(Json(ApiResponse::success(())))
@@ -310,9 +321,10 @@ async fn delete_invoice(
 /// GET /api/persons/:id/companies
 async fn list_person_companies(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<PersonCompanyRole>>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     let roles = PersonCompanyRole::list_for_person(pool, id).await?;
     Ok(Json(ApiResponse::success(roles)))
 }
@@ -320,10 +332,11 @@ async fn list_person_companies(
 /// POST /api/persons/:id/companies
 async fn add_person_company(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(data): Json<UpsertPersonCompanyRole>,
 ) -> Result<Json<ApiResponse<PersonCompanyRole>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     if Person::find_by_id(pool, id).await?.is_none() {
         return Err(ApiError::NotFound(format!("Person {} not found", id)));
     }
@@ -334,10 +347,12 @@ async fn add_person_company(
 /// PATCH /api/persons/:id/companies/:company_id
 async fn patch_person_company(
     State(deployment): State<DeploymentImpl>,
-    Path((id, company_id)): Path<(Uuid, Uuid)>,
+    Path((id, company_id)): Path<(String, String)>,
     Json(data): Json<PatchPersonCompanyRole>,
 ) -> Result<Json<ApiResponse<PersonCompanyRole>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
+    let company_id = Uuid::parse_str(&company_id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", company_id)))?;
     let role = PersonCompanyRole::patch(pool, id, company_id, data)
         .await?
         .ok_or_else(|| ApiError::NotFound("Association not found".into()))?;
@@ -347,9 +362,11 @@ async fn patch_person_company(
 /// DELETE /api/persons/:id/companies/:company_id
 async fn delete_person_company(
     State(deployment): State<DeploymentImpl>,
-    Path((id, company_id)): Path<(Uuid, Uuid)>,
+    Path((id, company_id)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
+    let company_id = Uuid::parse_str(&company_id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", company_id)))?;
     let deleted = PersonCompanyRole::delete(pool, id, company_id).await?;
     if !deleted {
         return Err(ApiError::NotFound("Association not found".into()));
@@ -364,9 +381,10 @@ async fn delete_person_company(
 /// GET /api/persons/:id/organizations
 async fn list_person_orgs(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<PersonOrgContact>>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     let orgs = PersonOrgContact::list_for_person(pool, id).await?;
     Ok(Json(ApiResponse::success(orgs)))
 }
@@ -374,10 +392,11 @@ async fn list_person_orgs(
 /// POST /api/persons/:id/organizations
 async fn add_person_org(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(data): Json<UpsertPersonOrgContact>,
 ) -> Result<Json<ApiResponse<PersonOrgContact>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     if Person::find_by_id(pool, id).await?.is_none() {
         return Err(ApiError::NotFound(format!("Person {} not found", id)));
     }
@@ -388,9 +407,11 @@ async fn add_person_org(
 /// DELETE /api/persons/:id/organizations/:org_id
 async fn delete_person_org(
     State(deployment): State<DeploymentImpl>,
-    Path((id, org_id)): Path<(Uuid, Uuid)>,
+    Path((id, org_id)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
+    let org_id = Uuid::parse_str(&org_id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", org_id)))?;
     let deleted = PersonOrgContact::delete(pool, id, org_id).await?;
     if !deleted {
         return Err(ApiError::NotFound("Association not found".into()));
@@ -403,19 +424,21 @@ async fn delete_person_org(
 // ---------------------------------------------------------------------------
 
 pub async fn list_person_notes(
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Vec<PersonNote>>>, ApiError> {
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     let notes = PersonNote::list_for_person(&deployment.db().pool, id, None).await
         .map_err(|e| ApiError::InternalError(e.to_string()))?;
     Ok(Json(ApiResponse::success(notes)))
 }
 
 pub async fn create_person_note(
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     State(deployment): State<DeploymentImpl>,
     Json(mut body): Json<CreatePersonNote>,
 ) -> Result<Json<ApiResponse<PersonNote>>, ApiError> {
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     body.person_id = id;
     let note = PersonNote::create(&deployment.db().pool, body).await
         .map_err(|e| ApiError::InternalError(e.to_string()))?;
@@ -423,10 +446,11 @@ pub async fn create_person_note(
 }
 
 pub async fn update_person_note(
-    Path(note_id): Path<Uuid>,
+    Path(note_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
     Json(body): Json<UpdatePersonNote>,
 ) -> Result<Json<ApiResponse<PersonNote>>, ApiError> {
+    let note_id = Uuid::parse_str(&note_id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", note_id)))?;
     let note = PersonNote::update(&deployment.db().pool, note_id, body).await
         .map_err(|e| ApiError::InternalError(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound("Note not found".into()))?;
@@ -434,9 +458,10 @@ pub async fn update_person_note(
 }
 
 pub async fn delete_person_note(
-    Path(note_id): Path<Uuid>,
+    Path(note_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
+    let note_id = Uuid::parse_str(&note_id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", note_id)))?;
     PersonNote::delete(&deployment.db().pool, note_id).await
         .map_err(|e| ApiError::InternalError(e.to_string()))?;
     Ok(Json(ApiResponse::success(())))

@@ -63,10 +63,11 @@ async fn list_calls(
 async fn get_call_stats(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-    Path(project_id): Path<Uuid>,
+    Path(project_id): Path<String>,
 ) -> Result<Json<ApiResponse<CallStats>>, ApiError> {
     let pool = &deployment.db().pool;
-    access_context.require_viewer(pool, &project_id.to_string()).await?;
+    access_context.require_viewer(pool, &project_id).await?;
+    let project_id = Uuid::parse_str(&project_id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", project_id)))?;
     let stats = CallLog::get_stats(pool, project_id).await?;
     Ok(Json(ApiResponse::success(stats)))
 }
@@ -75,9 +76,10 @@ async fn get_call_stats(
 async fn get_call(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<CallLog>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     let call = CallLog::find_by_id(pool, id).await?;
     access_context.require_viewer(pool, &call.project_id.to_string()).await?;
     Ok(Json(ApiResponse::success(call)))
@@ -87,10 +89,11 @@ async fn get_call(
 async fn update_call(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(update): Json<UpdateCallLog>,
 ) -> Result<Json<ApiResponse<CallLog>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     // Load existing call to get project_id, then verify editor access
     let existing = CallLog::find_by_id(pool, id).await?;
     access_context.require_editor(pool, &existing.project_id.to_string()).await?;
@@ -141,10 +144,11 @@ async fn list_sms(
 async fn get_sms_stats(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-    Path(project_id): Path<Uuid>,
+    Path(project_id): Path<String>,
 ) -> Result<Json<ApiResponse<SmsStats>>, ApiError> {
     let pool = &deployment.db().pool;
-    access_context.require_viewer(pool, &project_id.to_string()).await?;
+    access_context.require_viewer(pool, &project_id).await?;
+    let project_id = Uuid::parse_str(&project_id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", project_id)))?;
     let stats = SmsMessage::get_stats(pool, project_id).await?;
     Ok(Json(ApiResponse::success(stats)))
 }
@@ -153,9 +157,10 @@ async fn get_sms_stats(
 async fn get_sms(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<SmsMessage>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     let msg = SmsMessage::find_by_id(pool, id).await?;
     access_context.require_viewer(pool, &msg.project_id.to_string()).await?;
     Ok(Json(ApiResponse::success(msg)))
@@ -165,10 +170,11 @@ async fn get_sms(
 async fn update_sms(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(update): Json<UpdateSmsMessage>,
 ) -> Result<Json<ApiResponse<SmsMessage>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     // Load existing SMS to get project_id, then verify editor access
     let existing = SmsMessage::find_by_id(pool, id).await?;
     access_context.require_editor(pool, &existing.project_id.to_string()).await?;
@@ -180,9 +186,10 @@ async fn update_sms(
 async fn mark_sms_read(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     let existing = SmsMessage::find_by_id(pool, id).await?;
     access_context.require_editor(pool, &existing.project_id.to_string()).await?;
     SmsMessage::mark_as_read(pool, id).await?;
@@ -193,9 +200,10 @@ async fn mark_sms_read(
 async fn toggle_sms_star(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<SmsMessage>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     let existing = SmsMessage::find_by_id(pool, id).await?;
     access_context.require_editor(pool, &existing.project_id.to_string()).await?;
     let msg = SmsMessage::toggle_star(pool, id).await?;

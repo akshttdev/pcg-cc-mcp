@@ -88,7 +88,7 @@ async fn list_pipelines(
 /// GET /crm/pipelines/:id - Get pipeline with stages
 async fn get_pipeline(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<CrmPipelineWithStages>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
@@ -109,7 +109,7 @@ async fn create_pipeline(
 /// PATCH /crm/pipelines/:id - Update pipeline
 async fn update_pipeline(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(data): Json<UpdateCrmPipeline>,
 ) -> Result<Json<ApiResponse<CrmPipeline>>, ApiError> {
     let pool = &deployment.db().pool;
@@ -121,7 +121,7 @@ async fn update_pipeline(
 /// DELETE /crm/pipelines/:id - Delete pipeline
 async fn delete_pipeline(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
@@ -132,7 +132,7 @@ async fn delete_pipeline(
 /// GET /crm/pipelines/:id/stages - Get stages for a pipeline
 async fn list_stages(
     State(deployment): State<DeploymentImpl>,
-    Path(pipeline_id): Path<Uuid>,
+    Path(pipeline_id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<CrmPipelineStage>>>, ApiError> {
     let pool = &deployment.db().pool;
     let pipeline_id = DbUuid::from(pipeline_id);
@@ -143,7 +143,7 @@ async fn list_stages(
 /// POST /crm/pipelines/:id/stages - Add stage to pipeline
 async fn create_stage(
     State(deployment): State<DeploymentImpl>,
-    Path(pipeline_id): Path<Uuid>,
+    Path(pipeline_id): Path<String>,
     Json(mut data): Json<CreateCrmPipelineStage>,
 ) -> Result<Json<ApiResponse<CrmPipelineStage>>, ApiError> {
     let pool = &deployment.db().pool;
@@ -155,7 +155,7 @@ async fn create_stage(
 /// PATCH /crm/pipelines/:pipeline_id/stages/:stage_id - Update stage
 async fn update_stage(
     State(deployment): State<DeploymentImpl>,
-    Path((_pipeline_id, stage_id)): Path<(Uuid, Uuid)>,
+    Path((_pipeline_id, stage_id)): Path<(String, String)>,
     Json(data): Json<UpdateCrmPipelineStage>,
 ) -> Result<Json<ApiResponse<CrmPipelineStage>>, ApiError> {
     let pool = &deployment.db().pool;
@@ -167,7 +167,7 @@ async fn update_stage(
 /// DELETE /crm/pipelines/:pipeline_id/stages/:stage_id - Delete stage
 async fn delete_stage(
     State(deployment): State<DeploymentImpl>,
-    Path((_pipeline_id, stage_id)): Path<(Uuid, Uuid)>,
+    Path((_pipeline_id, stage_id)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
     let stage_id = DbUuid::from(stage_id);
@@ -178,7 +178,7 @@ async fn delete_stage(
 /// POST /crm/pipelines/:id/stages/reorder - Reorder stages
 async fn reorder_stages(
     State(deployment): State<DeploymentImpl>,
-    Path(pipeline_id): Path<Uuid>,
+    Path(pipeline_id): Path<String>,
     Json(data): Json<ReorderStagesRequest>,
 ) -> Result<Json<ApiResponse<Vec<CrmPipelineStage>>>, ApiError> {
     let pool = &deployment.db().pool;
@@ -195,7 +195,7 @@ pub struct ListOrgPipelinesQuery {
 /// GET /organizations/:org_id/crm/pipelines - List pipelines across all org projects
 async fn list_org_pipelines(
     State(deployment): State<DeploymentImpl>,
-    Path(org_id): Path<Uuid>,
+    Path(org_id): Path<String>,
     Query(query): Query<ListOrgPipelinesQuery>,
 ) -> Result<Json<ApiResponse<Vec<CrmPipeline>>>, ApiError> {
     let pool = &deployment.db().pool;
@@ -224,7 +224,7 @@ async fn list_org_pipelines(
 /// GET /organizations/:org_id/crm/pipelines/:pipeline_id - Get pipeline with stages (org-scoped)
 async fn get_org_pipeline(
     State(deployment): State<DeploymentImpl>,
-    Path((_org_id, pipeline_id)): Path<(Uuid, Uuid)>,
+    Path((_org_id, pipeline_id)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<CrmPipelineWithStages>>, ApiError> {
     let pool = &deployment.db().pool;
     let pipeline_id = DbUuid::from(pipeline_id);
@@ -235,7 +235,7 @@ async fn get_org_pipeline(
 /// GET /organizations/:org_id/crm/pipelines/:pipeline_id/kanban - Kanban data aggregated across org
 async fn get_org_kanban(
     State(deployment): State<DeploymentImpl>,
-    Path((org_id, pipeline_id)): Path<(Uuid, Uuid)>,
+    Path((org_id, pipeline_id)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<db::models::crm_deal::KanbanBoardData>>, ApiError> {
     let pool = &deployment.db().pool;
     let org_id = DbUuid::from(org_id);

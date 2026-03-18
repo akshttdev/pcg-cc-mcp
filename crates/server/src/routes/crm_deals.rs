@@ -11,7 +11,6 @@ use axum::{
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
-// TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 
 use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
@@ -216,7 +215,7 @@ async fn list_enriched_deals(
 async fn get_kanban_data(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-    Path(pipeline_id): Path<Uuid>,
+    Path(pipeline_id): Path<String>,
 ) -> Result<Json<ApiResponse<KanbanBoardData>>, ApiError> {
     let pool = &deployment.db().pool;
     let pipeline_id = DbUuid::from(pipeline_id);
@@ -236,7 +235,7 @@ async fn get_kanban_data(
 async fn get_deal(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
@@ -248,7 +247,7 @@ async fn get_deal(
 async fn get_deal_rich(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<CrmDealRich>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
@@ -484,7 +483,7 @@ async fn create_deal(
 async fn update_deal(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(mut data): Json<UpdateCrmDeal>,
 ) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
     // Sanitize amount — reject Infinity/NaN
@@ -505,7 +504,7 @@ async fn update_deal(
 async fn move_deal_stage(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(data): Json<MoveDealRequest>,
 ) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
     let pool = &deployment.db().pool;
@@ -1033,7 +1032,7 @@ async fn create_review_task_if_needed(pool: &sqlx::SqlitePool, deal: &CrmDeal, d
 async fn advance_deal(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
@@ -1191,7 +1190,7 @@ async fn advance_deal(
 async fn list_org_deals(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-    Path(org_id): Path<Uuid>,
+    Path(org_id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<CrmDeal>>>, ApiError> {
     let pool = &deployment.db().pool;
     let org_id = DbUuid::from(org_id);
@@ -1205,7 +1204,7 @@ async fn list_org_deals(
 async fn delete_deal(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
@@ -1353,7 +1352,7 @@ async fn get_metrics(
 async fn generate_proposal(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
@@ -1437,7 +1436,7 @@ async fn generate_proposal(
 async fn approve_proposal(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
@@ -1454,7 +1453,7 @@ async fn approve_proposal(
 async fn generate_deck(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
@@ -1543,7 +1542,7 @@ async fn generate_deck(
 async fn send_deal_invoice(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
     let pool = &deployment.db().pool;
@@ -1601,7 +1600,7 @@ async fn send_deal_invoice(
 async fn mark_deal_won(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
     let pool = &deployment.db().pool;
@@ -1746,7 +1745,7 @@ async fn mark_deal_won(
 async fn list_deal_transcripts(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<db::models::crm_deal::DealTranscript>>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
@@ -1765,7 +1764,7 @@ async fn list_deal_transcripts(
 async fn link_deal_transcript(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(body): Json<db::models::crm_deal::LinkTranscriptRequest>,
 ) -> Result<Json<ApiResponse<db::models::crm_deal::DealTranscript>>, ApiError> {
     let pool = &deployment.db().pool;
