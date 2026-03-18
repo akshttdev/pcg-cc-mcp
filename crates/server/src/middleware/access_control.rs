@@ -574,9 +574,10 @@ pub async fn get_current_user(
         if let Some(session_id) = extract_session_from_cookies(cookies) {
             let session_token_hash = db::services::AuthService::hash_session_token(&session_id);
 
+            // users.id is a BLOB column — use DbUuid which decodes both BLOB and TEXT
             #[derive(FromRow)]
             struct UserSession {
-                id: String,
+                id: DbUuid,
                 is_admin: i32,
                 is_active: i32,
             }
@@ -595,8 +596,7 @@ pub async fn get_current_user(
             .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
             if let Some(user_session) = result {
-                let user_id = DbUuid::parse(&user_session.id)
-                    .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {}", e)))?;
+                let user_id = user_session.id;
 
                 // Extend session expiry on activity (sliding window)
                 let new_expiry = (chrono::Utc::now() + chrono::Duration::days(7)).to_rfc3339();
@@ -622,9 +622,10 @@ pub async fn get_current_user(
     if let Some(token) = auth_header.and_then(|h| h.strip_prefix("Bearer ")) {
         let token_hash = db::services::AuthService::hash_session_token(token);
 
+        // users.id is a BLOB column — use DbUuid which decodes both BLOB and TEXT
         #[derive(FromRow)]
         struct UserSession {
-            id: String,
+            id: DbUuid,
             is_admin: i32,
             is_active: i32,
         }
@@ -643,8 +644,7 @@ pub async fn get_current_user(
         .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
         if let Some(user_session) = result {
-            let user_id = DbUuid::parse(&user_session.id)
-                .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {}", e)))?;
+            let user_id = user_session.id;
 
             // Extend session expiry on activity (sliding window)
             let new_expiry = (chrono::Utc::now() + chrono::Duration::days(7)).to_rfc3339();
