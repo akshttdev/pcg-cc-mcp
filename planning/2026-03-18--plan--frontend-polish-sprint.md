@@ -4,7 +4,8 @@
 **Branch**: `refactor/frontend-polish-sprint`
 **Worktree**: `/Users/mediamonsters/topos/pcg-cc-mcp` (root)
 **Base**: `main` (post-PR #46 + PR #45)
-**Status**: In Progress
+**Status**: COMPLETE — ready to merge (PR #49)
+**Merge recommendation**: APPROVE with squash merge. See PR comment for full details.
 
 ## Progress Tracker
 
@@ -25,8 +26,18 @@
 | -- | **PR #47 rebase** | DONE | rebased, 3 cherry-picks dropped |
 | -- | E2E demo enhancements + error messaging | DONE | `20666b2ed`, `1879489af` |
 | -- | **PR #48 merge** | DONE | `b65d2add8` (11 conflicts resolved) |
-| -- | Agent name badges on task cards + task-card-parts extraction | DONE | pending commit |
-| -- | Task card hooks extraction (useResolvedAssignee, useResolvedAgent, useScrollIntoView) | DONE | pending commit |
+| -- | Agent name badges on task cards + task-card-parts extraction | DONE | `ea3ad4690` |
+| -- | Task card hooks extraction | DONE | `ea3ad4690` (same commit) |
+| -- | PR review: 3-agent review (backend, frontend, e2e) | DONE | `74a8f2d81`, `d0038292d` |
+| -- | PR review: fix critical + low-effort issues (6 fixes) | DONE | `75da9b9b3` |
+| -- | Backlog update + worktree safety rules | DONE | `8eea98199`, `18136d19c` |
+
+## Final Validation
+
+- **tsc --noEmit**: zero errors
+- **lint**: 244 problems — all pre-existing (identical count on main)
+- **cargo check --workspace**: compiles cleanly (18 pre-existing warnings)
+- **PR review**: 8 critical/low-effort issues fixed, 10 medium deferred to backlog
 
 ---
 
