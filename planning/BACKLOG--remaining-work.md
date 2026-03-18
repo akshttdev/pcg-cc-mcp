@@ -94,6 +94,21 @@
 
 ---
 
+## P2.5 — Code Quality Infrastructure
+
+### Lint-Staged + Import Sort + Prettier Pre-Commit
+**Source:** PR #49 wrap-up (2026-03-18)
+**What:** Full setup for auto-formatting on every commit:
+- `lint-staged` + `eslint --fix` + `prettier --write` on staged `.ts`/`.tsx` files
+- `eslint-plugin-simple-import-sort` added (auto-sorts imports on `--fix`)
+- `.githooks/pre-commit` hook with `git config core.hooksPath .githooks`
+- `eslint --fix` already run across entire codebase (658 files, import reordering)
+- `--max-warnings` threshold needs updating after import sort warnings cleared
+**Stash:** `git stash list` → "lint-staged + import-sort setup + eslint --fix" on `refactor/frontend-polish-sprint`. Apply with `git stash pop` on the target branch.
+**Status:** STASHED — ready to apply on a new branch
+
+---
+
 ## P2.5 — Modularity Sprint 6 Candidates
 
 ### Modularity Sprint 6 — Hook Mutations + Remaining Debt
