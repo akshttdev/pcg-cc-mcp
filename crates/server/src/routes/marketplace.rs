@@ -505,11 +505,12 @@ async fn topup_subscription(
 async fn list_requests(
     State(deployment): State<DeploymentImpl>,
     Extension(_access): Extension<AccessContext>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Query(q): Query<HistoryQuery>,
 ) -> Result<Json<ApiResponse<Vec<GatewayRequest>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let requests = GatewayRequest::list_for_subscription(pool, id, q.limit).await?;
+    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let requests = GatewayRequest::list_for_subscription(pool, id_uuid, q.limit).await?;
     Ok(Json(ApiResponse::success(requests)))
 }
 

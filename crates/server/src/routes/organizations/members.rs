@@ -557,11 +557,13 @@ pub async fn assign_member(
 
 /// POST /api/organizations/:id/members/:uid/watch — add user as task watcher
 pub async fn watch_task_for_member(
-    Path((org_id, user_id)): Path<(Uuid, Uuid)>,
+    Path((org_id, user_id)): Path<(String, String)>,
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Json(data): Json<WatchTaskRequest>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
+    let org_id = Uuid::parse_str(&org_id).map_err(|e| ApiError::BadRequest(format!("Invalid org UUID: {}", e)))?;
+    let user_id = Uuid::parse_str(&user_id).map_err(|e| ApiError::BadRequest(format!("Invalid user UUID: {}", e)))?;
     let pool = &deployment.db().pool;
     require_org_admin_access(pool, &access_context, org_id).await?;
     require_is_org_member(pool, org_id, user_id).await?;
@@ -579,10 +581,12 @@ pub async fn watch_task_for_member(
 
 /// GET /api/organizations/:id/members/:uid/assignments — get all assignments for a member
 pub async fn get_member_assignments(
-    Path((org_id, user_id)): Path<(Uuid, Uuid)>,
+    Path((org_id, user_id)): Path<(String, String)>,
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
+    let org_id = Uuid::parse_str(&org_id).map_err(|e| ApiError::BadRequest(format!("Invalid org UUID: {}", e)))?;
+    let user_id = Uuid::parse_str(&user_id).map_err(|e| ApiError::BadRequest(format!("Invalid user UUID: {}", e)))?;
     let pool = &deployment.db().pool;
 
     // Any org member can view assignments; admins can view anyone's
@@ -718,10 +722,13 @@ pub async fn get_member_assignments(
 
 /// DELETE /api/organizations/:id/members/:uid/assignments/project/:pid
 pub async fn unassign_project(
-    Path((org_id, user_id, project_id)): Path<(Uuid, Uuid, Uuid)>,
+    Path((org_id, user_id, project_id)): Path<(String, String, String)>,
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
+    let org_id = Uuid::parse_str(&org_id).map_err(|e| ApiError::BadRequest(format!("Invalid org UUID: {}", e)))?;
+    let user_id = Uuid::parse_str(&user_id).map_err(|e| ApiError::BadRequest(format!("Invalid user UUID: {}", e)))?;
+    let project_id = Uuid::parse_str(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid project UUID: {}", e)))?;
     let pool = &deployment.db().pool;
     require_org_admin_access(pool, &access_context, org_id).await?;
 
@@ -737,10 +744,13 @@ pub async fn unassign_project(
 
 /// DELETE /api/organizations/:id/members/:uid/assignments/client/:cid
 pub async fn unassign_client(
-    Path((org_id, user_id, client_id)): Path<(Uuid, Uuid, Uuid)>,
+    Path((org_id, user_id, client_id)): Path<(String, String, String)>,
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
+    let org_id = Uuid::parse_str(&org_id).map_err(|e| ApiError::BadRequest(format!("Invalid org UUID: {}", e)))?;
+    let user_id = Uuid::parse_str(&user_id).map_err(|e| ApiError::BadRequest(format!("Invalid user UUID: {}", e)))?;
+    let client_id = Uuid::parse_str(&client_id).map_err(|e| ApiError::BadRequest(format!("Invalid client UUID: {}", e)))?;
     let pool = &deployment.db().pool;
     require_org_admin_access(pool, &access_context, org_id).await?;
 
