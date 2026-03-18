@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useMemo } from 'react';
+import { useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
@@ -10,9 +10,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { KanbanCard } from '@/components/ui/shadcn-io/kanban';
 import {
-  AlertTriangle,
-  ArrowDown,
-  ArrowUp,
+  Bot,
   CheckCircle,
   Copy,
   Edit,
@@ -20,8 +18,6 @@ import {
   MoreHorizontal,
   Trash2,
   XCircle,
-  Bot,
-  User,
   Terminal,
   FileText,
   Image,
@@ -30,12 +26,19 @@ import {
   Play,
   Clapperboard,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { AgentFlowBadges } from './AgentFlowBadges';
 import { ExecutionSummaryInline } from './ExecutionSummaryInline';
 import { TagChips } from '@/components/ui/tag-chips';
+import {
+  PriorityBadge,
+  CollaboratorAvatars,
+  useResolvedAssignee,
+  useResolvedAgent,
+  useScrollIntoView,
+} from './task-card-parts';
 import type { TaskWithAttemptStatus, ExecutionArtifact, ArtifactType, AgentFlowEvent } from 'shared/types';
 import type { AgentFlow, UserListItem } from '@/lib/api';
+import type { AgentWithParsedFields } from 'shared/types';
 
 
 const VIDEO_EDIT_TYPES: ArtifactType[] = ['video_edit_session', 'render_deliverable'];
@@ -71,6 +74,7 @@ interface EnhancedTaskCardProps {
   defaultMode?: TaskCardMode;
   showSessionLayer?: boolean;
   usersMap?: Map<string, UserListItem>;
+  agentsMap?: Map<string, AgentWithParsedFields>;
 }
 
 // Derive card mode from task or primary artifact
@@ -110,38 +114,6 @@ const modeIcons: Record<TaskCardMode, React.ReactNode> = {
   media: <Video className="h-3 w-3" />,
   compact: <Code className="h-3 w-3" />,
 };
-
-function PriorityBadge({ priority }: { priority: string }) {
-  switch (priority) {
-    case 'critical':
-      return (
-        <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-400 border border-red-200 dark:border-red-800" title="Critical">
-          <AlertTriangle className="h-2.5 w-2.5" />
-          <span>Critical</span>
-        </span>
-      );
-    case 'high':
-      return (
-        <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] font-medium bg-orange-100 text-orange-700 dark:bg-orange-950/50 dark:text-orange-400 border border-orange-200 dark:border-orange-800" title="High">
-          <ArrowUp className="h-2.5 w-2.5" />
-          <span>High</span>
-        </span>
-      );
-    case 'low':
-      return (
-        <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700" title="Low">
-          <ArrowDown className="h-2.5 w-2.5" />
-          <span>Low</span>
-        </span>
-      );
-    default:
-      return (
-        <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200 dark:border-blue-800" title="Medium">
-          <span>Medium</span>
-        </span>
-      );
-  }
-}
 
 // Artifact preview component
 function ArtifactPreview({
@@ -264,23 +236,14 @@ export function EnhancedTaskCard({
   workflowEvents = [],
   defaultMode,
   usersMap,
+  agentsMap,
 }: EnhancedTaskCardProps) {
   const cardMode = deriveCardMode(task, primaryArtifact, defaultMode);
   const isAgentActive = task.has_in_progress_attempt;
 
-  // Extract agent name from workflow events or task
-  const agentName = useMemo(() => {
-    if (task.assigned_agent) return task.assigned_agent;
-    for (const event of workflowEvents) {
-      try {
-        const data = JSON.parse(event.event_data || '{}');
-        if (data.agent_name) return data.agent_name;
-      } catch {
-        // Skip
-      }
-    }
-    return undefined;
-  }, [task.assigned_agent, workflowEvents]);
+  const localRef = useScrollIntoView(isOpen);
+  const assignee = useResolvedAssignee(task.assignee_id, usersMap);
+  const resolvedAgent = useResolvedAgent(task.assigned_agent, agentsMap, workflowEvents);
 
   const handleClick = useCallback(() => {
     if (selectionMode && onToggleSelection) {
@@ -289,20 +252,6 @@ export function EnhancedTaskCard({
       onViewDetails(task);
     }
   }, [task, onViewDetails, selectionMode, onToggleSelection]);
-
-  const localRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!isOpen || !localRef.current) return;
-    const el = localRef.current;
-    requestAnimationFrame(() => {
-      el.scrollIntoView({
-        block: 'center',
-        inline: 'nearest',
-        behavior: 'smooth',
-      });
-    });
-  }, [isOpen]);
 
   return (
     <KanbanCard
@@ -319,7 +268,6 @@ export function EnhancedTaskCard({
       <div className="flex flex-col gap-1.5 min-w-0">
         {/* Title row */}
         <div className="flex items-start gap-2 min-w-0">
-          {/* Checkbox for selection mode */}
           {selectionMode && (
             <div
               className="pt-0.5"
@@ -386,30 +334,21 @@ export function EnhancedTaskCard({
         {/* Meta row: priority + assignee */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center flex-wrap gap-1">
-            {/* Priority Badge */}
             <PriorityBadge priority={task.priority} />
           </div>
-          {/* Assignee */}
-          {task.assignee_id && (() => {
-            const assignee = usersMap?.get(task.assignee_id);
-            const displayName = assignee?.full_name || assignee?.username || assignee?.email || task.assignee_id;
-            const initials = assignee?.full_name
-              ? assignee.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-              : (assignee?.username?.[0] || displayName[0] || '?').toUpperCase();
-            return (
-              <div className="flex items-center gap-1.5 shrink-0">
-                <div
-                  className="h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300 border border-violet-200 dark:border-violet-800"
-                  title={displayName}
-                >
-                  {initials}
-                </div>
-                <span className="text-xs text-muted-foreground truncate max-w-[80px]">
-                  {assignee?.full_name || assignee?.username || assignee?.email || 'Unassigned'}
-                </span>
+          {assignee && (
+            <div className="flex items-center gap-1.5 shrink-0">
+              <div
+                className="h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300 border border-violet-200 dark:border-violet-800"
+                title={assignee.displayName}
+              >
+                {assignee.initials}
               </div>
-            );
-          })()}
+              <span className="text-xs text-muted-foreground truncate max-w-[80px]">
+                {assignee.displayName}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Tag chips */}
@@ -417,51 +356,27 @@ export function EnhancedTaskCard({
 
         {/* Status indicators row */}
         <div className="flex items-center flex-wrap gap-1">
-          {/* In Progress Spinner */}
           {task.has_in_progress_attempt && (
             <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
           )}
-          {/* Merged Indicator */}
           {task.has_merged_attempt && (
             <CheckCircle className="h-3 w-3 text-green-500" />
           )}
-          {/* Failed Indicator */}
           {task.last_attempt_failed && !task.has_merged_attempt && (
             <XCircle className="h-3 w-3 text-destructive" />
           )}
-          {/* Agent Flow Status */}
           {agentFlow && (
             <AgentFlowBadges flow={agentFlow} compact />
           )}
-          {/* Execution Summary */}
           {task.last_execution_summary && (
             <ExecutionSummaryInline summary={task.last_execution_summary} compact />
           )}
-          {/* Collaborator Avatars */}
           {task.collaborators && task.collaborators.length > 0 && (
-            <div className="flex -space-x-1" title={task.collaborators.map(c => `${c.actor_id} (${c.actor_type})`).join(', ')}>
-              {task.collaborators.slice(0, 3).map((collaborator, idx) => (
-                <div
-                  key={`${collaborator.actor_id}-${idx}`}
-                  className={cn(
-                    "h-4 w-4 rounded-full flex items-center justify-center text-[8px] font-medium border border-background",
-                    collaborator.actor_type === 'agent'
-                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
-                      : 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                  )}
-                >
-                  {collaborator.actor_type === 'agent'
-                    ? <Bot className="h-2.5 w-2.5" />
-                    : <User className="h-2.5 w-2.5" />
-                  }
-                </div>
-              ))}
-              {task.collaborators.length > 3 && (
-                <div className="h-4 w-4 rounded-full flex items-center justify-center text-[8px] font-medium border border-background bg-muted text-muted-foreground">
-                  +{task.collaborators.length - 3}
-                </div>
-              )}
-            </div>
+            <CollaboratorAvatars
+              collaborators={task.collaborators}
+              usersMap={usersMap}
+              agentsMap={agentsMap}
+            />
           )}
         </div>
       </div>
@@ -488,14 +403,14 @@ export function EnhancedTaskCard({
         </div>
       )}
 
-      {/* Agent working indicator - simple status, not a full terminal */}
+      {/* Agent working indicator */}
       {(isAgentActive || workflowEvents.length > 0) && !selectionMode && (
         <div className="flex items-center gap-2 mt-2 text-xs">
           {isAgentActive ? (
             <>
               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
               <span className="text-muted-foreground">
-                {agentName || 'Agent'} working...
+                {resolvedAgent?.displayName || 'Agent'} working...
               </span>
             </>
           ) : (
