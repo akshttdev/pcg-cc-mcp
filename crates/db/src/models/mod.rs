@@ -127,6 +127,7 @@ pub mod entity_graph;
 pub mod workflow_run;
 pub mod workflow_staging;
 pub mod workflow_trigger;
+pub mod trigger_execution;
 pub mod system_settings;
 pub mod topsi_user_settings;
 pub mod cloud_file;

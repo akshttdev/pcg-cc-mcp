@@ -28,7 +28,11 @@ import {
   Loader2,
   Clock,
   Activity,
+  Globe,
+  Copy,
+  AlertTriangle,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
   triggersApi,
@@ -44,6 +48,7 @@ const TRIGGER_TYPE_OPTIONS = [
   { value: 'data_source_created', label: 'Data Source Created' },
   { value: 'data_source_updated', label: 'Data Source Updated' },
   { value: 'schedule' as const, label: 'Schedule (Recurring)' },
+  { value: 'webhook' as const, label: 'Webhook (External)' },
 ] as const;
 
 const SCHEDULE_INTERVAL_OPTIONS = [
@@ -80,6 +85,8 @@ export function WorkflowTriggersPanel({
   const [newModelOverride, setNewModelOverride] = useState('');
   const [newAutoApprove, setNewAutoApprove] = useState(false);
   const [newScheduleInterval, setNewScheduleInterval] = useState('hourly');
+  const [newCooldownSeconds, setNewCooldownSeconds] = useState(0);
+  const [newMaxRetries, setNewMaxRetries] = useState(0);
 
   const { data: triggers = [], isLoading } = useQuery({
     queryKey: workflowKeys.triggers(workflowId),
@@ -129,20 +136,25 @@ export function WorkflowTriggersPanel({
     setNewModelOverride('');
     setNewAutoApprove(false);
     setNewScheduleInterval('hourly');
+    setNewCooldownSeconds(0);
+    setNewMaxRetries(0);
   }
 
   function handleCreate() {
     const isSchedule = newTriggerType === 'schedule';
+    const isWebhook = newTriggerType === 'webhook';
     const data: CreateWorkflowTrigger = {
       workflow_id: workflowId,
       name: newName,
       trigger_type: newTriggerType,
-      filter_data_source_types: isSchedule ? undefined : (newDataSourceTypes.length > 0 ? newDataSourceTypes : undefined),
+      filter_data_source_types: (isSchedule || isWebhook) ? undefined : (newDataSourceTypes.length > 0 ? newDataSourceTypes : undefined),
       filter_organization_id: newOrgId || undefined,
       filter_project_id: newProjectId || undefined,
       filter_tags: isSchedule ? [JSON.stringify({ interval: newScheduleInterval })] : (newTags ? newTags.split(',').map((t) => t.trim()).filter(Boolean) : undefined),
       model_override: newModelOverride || undefined,
       auto_approve: newAutoApprove,
+      cooldown_seconds: newCooldownSeconds > 0 ? newCooldownSeconds : undefined,
+      max_retries: newMaxRetries > 0 ? newMaxRetries : undefined,
     };
     createMutation.mutate(data);
   }
@@ -315,6 +327,61 @@ export function WorkflowTriggersPanel({
                       )}
                     </div>
 
+                    {/* Webhook URL + secret */}
+                    {trigger.trigger_type === 'webhook' && trigger.webhook_url && (
+                      <div className="mt-2 space-y-1.5">
+                        <div className="flex items-center gap-1.5 text-[11px]">
+                          <Globe className="h-3 w-3 text-muted-foreground shrink-0" />
+                          <code className="bg-muted px-1.5 py-0.5 rounded text-[10px] truncate flex-1">
+                            {trigger.webhook_url}
+                          </code>
+                          <button
+                            type="button"
+                            className="text-muted-foreground hover:text-foreground"
+                            onClick={() => {
+                              navigator.clipboard.writeText(
+                                `${window.location.origin}${trigger.webhook_url}`
+                              );
+                              toast.success('Webhook URL copied');
+                            }}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </button>
+                        </div>
+                        {trigger.webhook_secret && (
+                          <div className="flex items-center gap-1.5 text-[11px]">
+                            <span className="text-muted-foreground shrink-0">Secret:</span>
+                            <code className="bg-muted px-1.5 py-0.5 rounded text-[10px] truncate flex-1">
+                              {trigger.webhook_secret.slice(0, 8)}...
+                            </code>
+                            <button
+                              type="button"
+                              className="text-muted-foreground hover:text-foreground"
+                              onClick={() => {
+                                navigator.clipboard.writeText(trigger.webhook_secret ?? '');
+                                toast.success('Webhook secret copied');
+                              }}
+                            >
+                              <Copy className="h-3 w-3" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Error state */}
+                    {trigger.last_error && (
+                      <div className="mt-2 flex items-start gap-1.5 text-[11px] text-destructive">
+                        <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+                        <span className="truncate">{trigger.last_error}</span>
+                        {trigger.retry_count > 0 && (
+                          <Badge variant="destructive" className="text-[9px] shrink-0">
+                            {trigger.retry_count} retries
+                          </Badge>
+                        )}
+                      </div>
+                    )}
+
                     {/* Stats row */}
                     <div className="mt-2 flex items-center gap-4 text-[11px] text-muted-foreground">
                       <span className="flex items-center gap-1">
@@ -325,6 +392,11 @@ export function WorkflowTriggersPanel({
                         <Clock className="h-3 w-3" />
                         Last: {formatRelativeTime(trigger.last_triggered_at)}
                       </span>
+                      {trigger.cooldown_seconds > 0 && (
+                        <span className="text-muted-foreground">
+                          Cooldown: {trigger.cooldown_seconds}s
+                        </span>
+                      )}
                     </div>
                   </div>
                 );
@@ -361,7 +433,18 @@ export function WorkflowTriggersPanel({
                     </Select>
                   </div>
 
-                  {newTriggerType === 'schedule' ? (
+                  {newTriggerType === 'webhook' ? (
+                    <div className="rounded-md border border-blue-500/20 bg-blue-500/5 p-3">
+                      <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">
+                        Webhook triggers accept external HTTP POST requests.
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        After creation, you'll receive a unique URL and HMAC secret.
+                        External systems POST data to that URL, which fires this workflow
+                        with the request body as content.
+                      </p>
+                    </div>
+                  ) : newTriggerType === 'schedule' ? (
                     <div>
                       <Label className="text-xs">Schedule Interval</Label>
                       <Select value={newScheduleInterval} onValueChange={setNewScheduleInterval}>
@@ -466,6 +549,36 @@ export function WorkflowTriggersPanel({
                     <Label htmlFor="auto-approve" className="text-xs cursor-pointer">
                       Auto-approve valid (non-duplicate) records
                     </Label>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs">
+                        Cooldown (seconds){' '}
+                        <span className="text-muted-foreground">(0 = none)</span>
+                      </Label>
+                      <Input
+                        className="h-8 text-sm mt-1"
+                        type="number"
+                        min={0}
+                        value={newCooldownSeconds}
+                        onChange={(e) => setNewCooldownSeconds(Number(e.target.value))}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">
+                        Max Retries{' '}
+                        <span className="text-muted-foreground">(0 = none)</span>
+                      </Label>
+                      <Input
+                        className="h-8 text-sm mt-1"
+                        type="number"
+                        min={0}
+                        max={10}
+                        value={newMaxRetries}
+                        onChange={(e) => setNewMaxRetries(Number(e.target.value))}
+                      />
+                    </div>
                   </div>
 
                   <div className="flex justify-end gap-2 pt-1">

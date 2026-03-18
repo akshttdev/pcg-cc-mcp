@@ -17,6 +17,18 @@ pub struct WorkflowTrigger {
     pub filter_tags: Option<String>,
     pub model_override: Option<String>,
     pub auto_approve: bool,
+    // Webhook-specific
+    pub webhook_secret: Option<String>,
+    pub webhook_url: Option<String>,
+    // Rate limiting
+    pub cooldown_seconds: i64,
+    // Retry config
+    pub max_retries: i64,
+    // Error tracking
+    pub last_error: Option<String>,
+    pub retry_count: i64,
+    pub next_retry_at: Option<String>,
+    // Metadata
     pub last_triggered_at: Option<String>,
     pub trigger_count: i64,
     pub created_at: String,
@@ -35,6 +47,8 @@ pub struct CreateWorkflowTrigger {
     pub filter_tags: Option<Vec<String>>,
     pub model_override: Option<String>,
     pub auto_approve: Option<bool>,
+    pub cooldown_seconds: Option<i64>,
+    pub max_retries: Option<i64>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -49,6 +63,8 @@ pub struct UpdateWorkflowTrigger {
     pub filter_tags: Option<Vec<String>>,
     pub model_override: Option<String>,
     pub auto_approve: Option<bool>,
+    pub cooldown_seconds: Option<i64>,
+    pub max_retries: Option<i64>,
 }
 
 impl WorkflowTrigger {
@@ -60,13 +76,25 @@ impl WorkflowTrigger {
         let filter_tags = input.filter_tags
             .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".to_string()));
         let auto_approve = input.auto_approve.unwrap_or(false);
+        let cooldown_seconds = input.cooldown_seconds.unwrap_or(0);
+        let max_retries = input.max_retries.unwrap_or(0);
+
+        // Generate webhook secret and URL for webhook triggers
+        let (webhook_secret, webhook_url) = if trigger_type == "webhook" {
+            let secret = Uuid::new_v4().to_string().replace('-', "");
+            let url = format!("/api/webhooks/triggers/{}", id);
+            (Some(secret), Some(url))
+        } else {
+            (None, None)
+        };
 
         sqlx::query_as::<_, Self>(
             r#"INSERT INTO workflow_triggers
                (id, workflow_id, name, enabled, trigger_type,
                 filter_data_source_types, filter_organization_id, filter_project_id,
-                filter_tags, model_override, auto_approve)
-               VALUES (?1, ?2, ?3, 0, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                filter_tags, model_override, auto_approve,
+                webhook_secret, webhook_url, cooldown_seconds, max_retries)
+               VALUES (?1, ?2, ?3, 0, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
                RETURNING *"#,
         )
         .bind(&id)
@@ -79,6 +107,10 @@ impl WorkflowTrigger {
         .bind(&filter_tags)
         .bind(&input.model_override)
         .bind(auto_approve)
+        .bind(&webhook_secret)
+        .bind(&webhook_url)
+        .bind(cooldown_seconds)
+        .bind(max_retries)
         .fetch_one(pool)
         .await
     }
@@ -155,6 +187,14 @@ impl WorkflowTrigger {
             sets.push("auto_approve = ?");
             binds.push(Some(if auto { "1".to_string() } else { "0".to_string() }));
         }
+        if let Some(cooldown) = input.cooldown_seconds {
+            sets.push("cooldown_seconds = ?");
+            binds.push(Some(cooldown.to_string()));
+        }
+        if let Some(retries) = input.max_retries {
+            sets.push("max_retries = ?");
+            binds.push(Some(retries.to_string()));
+        }
 
         if sets.is_empty() {
             return Self::find_by_id(pool, id).await;
@@ -195,6 +235,59 @@ impl WorkflowTrigger {
     pub async fn increment_trigger_count(pool: &SqlitePool, id: &str) -> Result<(), sqlx::Error> {
         sqlx::query(
             "UPDATE workflow_triggers SET trigger_count = trigger_count + 1, last_triggered_at = datetime('now', 'subsec'), updated_at = datetime('now', 'subsec') WHERE id = ?1",
+        )
+        .bind(id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Check if a trigger is within its cooldown period.
+    /// Returns true if the trigger can fire (not in cooldown).
+    pub fn is_past_cooldown(&self) -> bool {
+        if self.cooldown_seconds <= 0 {
+            return true;
+        }
+        match &self.last_triggered_at {
+            Some(last) => {
+                let now = chrono::Utc::now();
+                if let Ok(last_time) = chrono::NaiveDateTime::parse_from_str(last, "%Y-%m-%d %H:%M:%S")
+                    .or_else(|_| chrono::NaiveDateTime::parse_from_str(last, "%Y-%m-%dT%H:%M:%S%.f"))
+                {
+                    let last_utc = last_time.and_utc();
+                    let elapsed = now.signed_duration_since(last_utc).num_seconds();
+                    elapsed >= self.cooldown_seconds
+                } else {
+                    true
+                }
+            }
+            None => true,
+        }
+    }
+
+    /// Record an error on this trigger and optionally schedule a retry.
+    pub async fn record_error(pool: &SqlitePool, id: &str, error: &str) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"UPDATE workflow_triggers
+               SET last_error = ?2,
+                   retry_count = retry_count + 1,
+                   updated_at = datetime('now', 'subsec')
+               WHERE id = ?1"#,
+        )
+        .bind(id)
+        .bind(error)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Clear error state after a successful execution.
+    pub async fn clear_error(pool: &SqlitePool, id: &str) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"UPDATE workflow_triggers
+               SET last_error = NULL, retry_count = 0, next_retry_at = NULL,
+                   updated_at = datetime('now', 'subsec')
+               WHERE id = ?1"#,
         )
         .bind(id)
         .execute(pool)

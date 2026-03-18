@@ -518,17 +518,43 @@ export interface WorkflowTrigger {
   workflow_id: string;
   name: string;
   enabled: boolean;
-  trigger_type: 'data_source_created' | 'data_source_updated' | 'schedule';
+  trigger_type: 'data_source_created' | 'data_source_updated' | 'schedule' | 'webhook';
   filter_data_source_types: string | null;  // JSON array
   filter_organization_id: string | null;
   filter_project_id: string | null;
   filter_tags: string | null;  // JSON array
   model_override: string | null;
   auto_approve: boolean;
+  // Webhook-specific
+  webhook_secret: string | null;
+  webhook_url: string | null;
+  // Rate limiting & retry
+  cooldown_seconds: number;
+  max_retries: number;
+  last_error: string | null;
+  retry_count: number;
+  next_retry_at: string | null;
+  // Metadata
   last_triggered_at: string | null;
   trigger_count: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface TriggerExecution {
+  id: string;
+  trigger_id: string;
+  workflow_run_id: string | null;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'retrying';
+  started_at: string;
+  completed_at: string | null;
+  duration_ms: number | null;
+  error: string | null;
+  records_staged: number;
+  source_type: string | null;
+  source_id: string | null;
+  metadata: string | null;
+  created_at: string;
 }
 
 export interface CreateWorkflowTrigger {
@@ -541,6 +567,8 @@ export interface CreateWorkflowTrigger {
   filter_tags?: string[];
   model_override?: string;
   auto_approve?: boolean;
+  cooldown_seconds?: number;
+  max_retries?: number;
 }
 
 export interface UpdateWorkflowTrigger {
@@ -553,6 +581,8 @@ export interface UpdateWorkflowTrigger {
   filter_tags?: string[];
   model_override?: string;
   auto_approve?: boolean;
+  cooldown_seconds?: number;
+  max_retries?: number;
 }
 
 export const triggersApi = {
@@ -603,6 +633,11 @@ export const triggersApi = {
       body: JSON.stringify({ data_source_id: dataSourceId }),
     });
     return handleApiResponse<WorkflowTrigger[]>(response);
+  },
+
+  listExecutions: async (triggerId: string): Promise<TriggerExecution[]> => {
+    const response = await makeRequest(`/api/workflows/triggers/${triggerId}/executions`);
+    return handleApiResponse<TriggerExecution[]>(response);
   },
 };
 
