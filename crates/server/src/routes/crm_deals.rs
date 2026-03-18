@@ -3,6 +3,7 @@
 //! Handles deal CRUD operations and Kanban board data.
 
 use axum::{
+    Extension,
     extract::{Path, Query, State},
     routing::{get, patch, post, delete},
     Json, Router,
@@ -13,11 +14,12 @@ use utils::response::ApiResponse;
 // TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 use db::db_uuid::DbUuid;
 use db::models::crm_deal::{
     CrmDeal, CreateCrmDeal, KanbanBoardData, UpdateCrmDeal, CrmDealWithContact,
 };
+use db::models::user::Organization;
 
 #[derive(Debug, Serialize)]
 pub struct DealTask {
@@ -65,12 +67,63 @@ pub struct MoveDealRequest {
     pub position: i32,
 }
 
+/// Verify the user has access to a deal's organization.
+/// Loads the deal, checks its organization_id, then verifies org membership.
+async fn require_deal_org_access(
+    access: &AccessContext,
+    pool: &sqlx::SqlitePool,
+    deal_id: &DbUuid,
+) -> Result<CrmDeal, ApiError> {
+    let deal = CrmDeal::find_by_id(pool, deal_id).await
+        .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+    if access.is_admin {
+        return Ok(deal);
+    }
+    if let Some(ref org_id) = deal.organization_id {
+        let role = Organization::get_user_role(pool, org_id.as_str(), access.user_id.as_str()).await
+            .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+        if role.is_none() {
+            return Err(ApiError::Forbidden("Not a member of this deal's organization".into()));
+        }
+    }
+    Ok(deal)
+}
+
+/// Check that the user is a member of the given organization.
+async fn require_org_membership(
+    access: &AccessContext,
+    pool: &sqlx::SqlitePool,
+    org_id: &str,
+) -> Result<(), ApiError> {
+    if access.is_admin {
+        return Ok(());
+    }
+    let role = Organization::get_user_role(pool, org_id, access.user_id.as_str()).await
+        .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+    if role.is_none() {
+        return Err(ApiError::Forbidden("Not a member of this organization".into()));
+    }
+    Ok(())
+}
+
 /// GET /crm/deals - List deals with optional filters
 async fn list_deals(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Query(query): Query<ListDealsQuery>,
 ) -> Result<Json<ApiResponse<Vec<CrmDeal>>>, ApiError> {
     let pool = &deployment.db().pool;
+
+    // Org authorization: check membership on the organization_id filter (or pipeline's org)
+    if let Some(org_id) = &query.organization_id {
+        require_org_membership(&access_context, pool, &org_id.to_string()).await?;
+    } else if let Some(pipeline_id) = &query.pipeline_id {
+        let pipeline = db::models::crm_pipeline::CrmPipeline::find_by_id(pool, &DbUuid::from(*pipeline_id)).await
+            .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+        if let Some(ref org_id) = pipeline.organization_id {
+            require_org_membership(&access_context, pool, org_id.as_str()).await?;
+        }
+    }
 
     let deals = if let Some(pipeline_id) = query.pipeline_id {
         CrmDeal::find_by_pipeline(pool, &DbUuid::from(pipeline_id)).await?
@@ -92,11 +145,13 @@ async fn list_deals(
 
 /// GET /crm/deals/enriched?organization_id=... - List enriched deals (with person_id, contact info) for an org
 async fn list_enriched_deals(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Query(query): Query<ListDealsQuery>,
 ) -> Result<Json<ApiResponse<Vec<CrmDealWithContact>>>, ApiError> {
     let pool = &deployment.db().pool;
     let org_id = query.organization_id.ok_or_else(|| ApiError::BadRequest("organization_id required".into()))?;
+    require_org_membership(&access_context, pool, &org_id.to_string()).await?;
     let raw_deals = CrmDeal::find_by_organization(pool, &DbUuid::from(org_id)).await?;
     let mut enriched: Vec<CrmDealWithContact> = Vec::with_capacity(raw_deals.len());
     for deal in raw_deals {
@@ -159,28 +214,39 @@ async fn list_enriched_deals(
 
 /// GET /crm/deals/kanban/:pipeline_id - Get Kanban board data
 async fn get_kanban_data(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(pipeline_id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<KanbanBoardData>>, ApiError> {
     let pool = &deployment.db().pool;
     let pipeline_id = DbUuid::from(pipeline_id);
+
+    // Org authorization: load pipeline to get its org_id
+    let pipeline = db::models::crm_pipeline::CrmPipeline::find_by_id(pool, &pipeline_id).await
+        .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+    if let Some(ref org_id) = pipeline.organization_id {
+        require_org_membership(&access_context, pool, org_id.as_str()).await?;
+    }
+
     let kanban_data = CrmDeal::get_kanban_data(pool, &pipeline_id).await?;
     Ok(Json(ApiResponse::success(kanban_data)))
 }
 
 /// GET /crm/deals/:id - Get single deal
 async fn get_deal(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
-    let deal = CrmDeal::find_by_id(pool, &id).await?;
+    let deal = require_deal_org_access(&access_context, pool, &id).await?;
     Ok(Json(ApiResponse::success(deal)))
 }
 
 /// GET /crm/deals/:id/rich - Get deal with all enriched data for detail panel
 async fn get_deal_rich(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<CrmDealRich>>, ApiError> {
@@ -188,7 +254,7 @@ async fn get_deal_rich(
     let id = DbUuid::from(id);
 
     // Build CrmDealWithContact inline (mirrors kanban enrichment)
-    let deal = CrmDeal::find_by_id(pool, &id).await?;
+    let deal = require_deal_org_access(&access_context, pool, &id).await?;
 
     let contact_info = if let Some(ref contact_id) = deal.crm_contact_id {
         db::models::crm_contact::CrmContact::find_by_id(pool, contact_id).await.ok()
@@ -378,6 +444,7 @@ async fn get_deal_rich(
 
 /// POST /crm/deals - Create deal
 async fn create_deal(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Json(mut data): Json<CreateCrmDeal>,
 ) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
@@ -388,6 +455,7 @@ async fn create_deal(
         }
     }
     let pool = &deployment.db().pool;
+    require_org_membership(&access_context, pool, data.organization_id.as_str()).await?;
     let deal = CrmDeal::create(pool, data).await?;
 
     // Log deal creation activity
@@ -414,6 +482,7 @@ async fn create_deal(
 
 /// PATCH /crm/deals/:id - Update deal
 async fn update_deal(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
     Json(mut data): Json<UpdateCrmDeal>,
@@ -426,6 +495,7 @@ async fn update_deal(
     }
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
+    require_deal_org_access(&access_context, pool, &id).await?;
     let deal = CrmDeal::update(pool, &id, data).await?;
     Ok(Json(ApiResponse::success(deal)))
 }
@@ -433,12 +503,14 @@ async fn update_deal(
 /// PATCH /crm/deals/:id/stage - Move deal to new stage (drag-drop)
 /// When a Sales pipeline deal moves to a Won stage, auto-create a Delivery pipeline deal
 async fn move_deal_stage(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
     Json(data): Json<MoveDealRequest>,
 ) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
+    require_deal_org_access(&access_context, pool, &id).await?;
     let stage_id = DbUuid::from(data.stage_id);
 
     // Check if the target stage is a "won" stage
@@ -958,19 +1030,15 @@ async fn create_review_task_if_needed(pool: &sqlx::SqlitePool, deal: &CrmDeal, d
 }
 
 /// POST /crm/deals/:id/advance - Advance deal to next stage after review approval
-///
-/// Auth: This handler is behind the `require_auth` middleware layer applied to all
-/// `protected_routes` in `routes/mod.rs`, which rejects unauthenticated requests
-/// with 401. Per-deal ownership checks are not performed here (consistent with all
-/// other CRM deal handlers: create, update, move_deal_stage, delete).
 async fn advance_deal(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
 
-    let deal = CrmDeal::find_by_id(pool, &id).await?;
+    let deal = require_deal_org_access(&access_context, pool, &id).await?;
     let current_stage_id = deal.crm_stage_id.clone()
         .ok_or_else(|| ApiError::BadRequest("Deal has no stage assigned".to_string()))?;
 
@@ -1121,11 +1189,13 @@ async fn advance_deal(
 
 /// GET /organizations/:org_id/crm/deals - List deals for an organization
 async fn list_org_deals(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(org_id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<Vec<CrmDeal>>>, ApiError> {
     let pool = &deployment.db().pool;
     let org_id = DbUuid::from(org_id);
+    require_org_membership(&access_context, pool, org_id.as_str()).await?;
     let deals = CrmDeal::find_by_organization(pool, &org_id).await?;
     Ok(Json(ApiResponse::success(deals)))
 }
@@ -1133,11 +1203,13 @@ async fn list_org_deals(
 
 /// DELETE /crm/deals/:id - Delete deal
 async fn delete_deal(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
+    require_deal_org_access(&access_context, pool, &id).await?;
     CrmDeal::delete(pool, &id).await?;
     Ok(Json(ApiResponse::success(())))
 }
@@ -1180,12 +1252,14 @@ pub struct MonthlySummary {
 
 /// GET /crm/deals/metrics - Pipeline metrics
 async fn get_metrics(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Query(query): Query<MetricsQuery>,
 ) -> Result<Json<ApiResponse<PipelineMetrics>>, ApiError> {
     let pool = &deployment.db().pool;
+    require_org_membership(&access_context, pool, &query.organization_id.to_string()).await?;
 
-    // Get all deals for the project (optionally filtered by pipeline)
+    // Get all deals for the organization (optionally filtered by pipeline)
     let deals = if let Some(pipeline_id) = query.pipeline_id {
         CrmDeal::find_by_pipeline(pool, &DbUuid::from(pipeline_id)).await?
     } else {
@@ -1275,13 +1349,15 @@ async fn get_metrics(
 }
 
 // ── POST /crm/deals/:id/generate-proposal (Cash) ────────────────────────────
+// Authorization protects against costly unauthorized AI generation operations
 async fn generate_proposal(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
-    let deal = CrmDeal::find_by_id(pool, &id).await?;
+    let deal = require_deal_org_access(&access_context, pool, &id).await?;
 
     // Gather context: business report, person intel, company intel, transcripts
     let report_summary: Option<String> = {
@@ -1359,11 +1435,13 @@ async fn generate_proposal(
 
 // ── POST /crm/deals/:id/approve-proposal ────────────────────────────────────
 async fn approve_proposal(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
+    require_deal_org_access(&access_context, pool, &id).await?;
     let updated = CrmDeal::update(pool, &id, db::models::crm_deal::UpdateCrmDeal {
         proposal_status: Some("approved".to_string()),
         ..Default::default()
@@ -1372,13 +1450,15 @@ async fn approve_proposal(
 }
 
 // ── POST /crm/deals/:id/generate-deck (Lux) ─────────────────────────────────
+// Authorization protects against costly unauthorized AI generation operations
 async fn generate_deck(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
-    let deal = CrmDeal::find_by_id(pool, &id).await?;
+    let deal = require_deal_org_access(&access_context, pool, &id).await?;
 
     if deal.proposal_text.is_none() {
         return Err(ApiError::BadRequest("Generate proposal first before generating deck".into()));
@@ -1461,13 +1541,14 @@ async fn generate_deck(
 
 // ── POST /crm/deals/:id/send-invoice ────────────────────────────────────────
 async fn send_deal_invoice(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
-    let deal = CrmDeal::find_by_id(pool, &id).await?;
+    let deal = require_deal_org_access(&access_context, pool, &id).await?;
 
     // Check if invoice already sent
     if deal.invoice_id.is_some() {
@@ -1516,14 +1597,16 @@ async fn send_deal_invoice(
 
 // ── POST /crm/deals/:id/mark-won ─────────────────────────────────────────────
 /// Won automation chain: set won_at, move to Won stage, create client + project + tasks
+// Authorization protects against destructive unauthorized operations (creates client, project, tasks)
 async fn mark_deal_won(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
-    let deal = CrmDeal::find_by_id(pool, &id).await?;
+    let deal = require_deal_org_access(&access_context, pool, &id).await?;
 
     let win_reason = body["win_reason"].as_str().map(|s| s.to_string());
 
@@ -1661,11 +1744,13 @@ async fn mark_deal_won(
 
 // ── GET /crm/deals/:id/transcripts ──────────────────────────────────────────
 async fn list_deal_transcripts(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<Vec<db::models::crm_deal::DealTranscript>>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
+    require_deal_org_access(&access_context, pool, &id).await?;
     let transcripts = sqlx::query_as::<_, db::models::crm_deal::DealTranscript>(
         "SELECT * FROM deal_transcripts WHERE deal_id = ? ORDER BY created_at ASC"
     )
@@ -1678,12 +1763,14 @@ async fn list_deal_transcripts(
 
 // ── POST /crm/deals/:id/transcripts ─────────────────────────────────────────
 async fn link_deal_transcript(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
     Json(body): Json<db::models::crm_deal::LinkTranscriptRequest>,
 ) -> Result<Json<ApiResponse<db::models::crm_deal::DealTranscript>>, ApiError> {
     let pool = &deployment.db().pool;
     let deal_id = DbUuid::from(id);
+    require_deal_org_access(&access_context, pool, &deal_id).await?;
     let transcript_id = DbUuid::new();
     let matched_by = body.matched_by.as_deref().unwrap_or("manual");
 
