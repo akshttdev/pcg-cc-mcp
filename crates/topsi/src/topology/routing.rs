@@ -95,7 +95,11 @@ impl RoutePlanner {
 
         for agent in &agents {
             if let Some(path) = TopologyEngine::find_shortest_path(graph, agent.id, task_node.id) {
-                if best_path.is_none() || path.total_weight < best_path.as_ref().unwrap().total_weight {
+                let is_better = match &best_path {
+                    None => true,
+                    Some(bp) => path.total_weight < bp.total_weight,
+                };
+                if is_better {
                     best_path = Some(path);
                     best_agent_id = Some(agent.id);
                 }
@@ -110,8 +114,9 @@ impl RoutePlanner {
         // Build execution plan
         let steps = Self::path_to_steps(graph, &path)?;
 
-        // Find alternatives
-        let alternatives = Self::find_alternatives(graph, best_agent_id.unwrap(), task_node.id, &path);
+        // Find alternatives (best_agent_id is guaranteed Some when best_path is Some)
+        let agent_id = best_agent_id.ok_or_else(|| TopsiError::RoutingError("No agent selected".to_string()))?;
+        let alternatives = Self::find_alternatives(graph, agent_id, task_node.id, &path);
 
         Ok(ExecutionPlan {
             route_id: Uuid::new_v4(),
@@ -159,7 +164,11 @@ impl RoutePlanner {
         for agent in &agents {
             for target in &target_nodes {
                 if let Some(path) = TopologyEngine::find_shortest_path(graph, agent.id, target.id) {
-                    if best_path.is_none() || path.total_weight < best_path.as_ref().unwrap().total_weight {
+                    let is_better = match &best_path {
+                        None => true,
+                        Some(bp) => path.total_weight < bp.total_weight,
+                    };
+                    if is_better {
                         best_path = Some(path);
                         from_id = Some(agent.id);
                         to_id = Some(target.id);
@@ -174,7 +183,9 @@ impl RoutePlanner {
         )))?;
 
         let steps = Self::path_to_steps(graph, &path)?;
-        let alternatives = Self::find_alternatives(graph, from_id.unwrap(), to_id.unwrap(), &path);
+        let from = from_id.ok_or_else(|| TopsiError::RoutingError("No source node selected".to_string()))?;
+        let to = to_id.ok_or_else(|| TopsiError::RoutingError("No target node selected".to_string()))?;
+        let alternatives = Self::find_alternatives(graph, from, to, &path);
 
         Ok(ExecutionPlan {
             route_id: Uuid::new_v4(),
@@ -263,9 +274,10 @@ impl RoutePlanner {
         }
 
         // Return the best matching agent (highest weight)
+        // matching_agents is guaranteed non-empty (checked above), so indexing [0] is safe as fallback
         let best = matching_agents.iter()
-            .max_by(|a, b| a.weight.partial_cmp(&b.weight).unwrap())
-            .unwrap();
+            .max_by(|a, b| a.weight.partial_cmp(&b.weight).unwrap_or(std::cmp::Ordering::Equal))
+            .unwrap_or(&matching_agents[0]);
 
         let steps = vec![RouteStep {
             node_id: best.id,
@@ -429,7 +441,10 @@ impl RoutePlanner {
         }
 
         let from = original_route.path[0];
-        let to = *original_route.path.last().unwrap();
+        let to = match original_route.path.last() {
+            Some(id) => *id,
+            None => return Err(TopsiError::RoutingError("Route has no destination".to_string())),
+        };
 
         let path = TopologyEngine::find_shortest_path(&graph, from, to)
             .ok_or(TopsiError::NoPathFound { from, to })?;

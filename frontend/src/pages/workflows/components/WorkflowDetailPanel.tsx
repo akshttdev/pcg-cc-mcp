@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Play, Pencil, Zap, ArrowRight, Database } from 'lucide-react';
 import { workflowsApi, dataSourcesApi, stagingApi } from '@/lib/api';
-import type { WorkflowDefinition, WorkflowStagingRecord } from '@/lib/api';
+import type { WorkflowDefinition, WorkflowStagingRecord, WorkflowRun, WorkflowNode } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface WorkflowDetailPanelProps {
@@ -39,7 +39,7 @@ export function WorkflowDetailPanel({
 
   // Resolve data source names for runs that have data_source_id
   const dsIds = useMemo(
-    () => [...new Set(recentRuns.map((r: any) => r.data_source_id).filter(Boolean))] as string[],
+    () => [...new Set(recentRuns.map((r: WorkflowRun) => r.data_source_id).filter(Boolean))] as string[],
     [recentRuns],
   );
   const { data: dsNames = {} } = useQuery({
@@ -64,7 +64,7 @@ export function WorkflowDetailPanel({
 
   // Filter pending records to this workflow's runs
   const workflowPending = useMemo(() => {
-    const runIds = new Set(recentRuns.map((r: any) => r.id));
+    const runIds = new Set(recentRuns.map((r: WorkflowRun) => r.id));
     return pendingRecords.filter((r) => runIds.has(r.workflow_run_id));
   }, [pendingRecords, recentRuns]);
 
@@ -85,13 +85,13 @@ export function WorkflowDetailPanel({
   };
 
   const nodeCount = workflow.nodes?.length ?? 0;
-  const outputNodes = (workflow.nodes ?? []).filter((n: any) =>
+  const outputNodes = (workflow.nodes ?? []).filter((n: WorkflowNode) =>
     ['output_crm_contacts', 'output_crm_companies', 'output_crm_deals', 'output_tasks'].includes(n.type)
   );
 
   const totalRuns = recentRuns.length;
-  const successRuns = recentRuns.filter((r: any) => r.status === 'completed').length;
-  const totalRecordsStaged = recentRuns.reduce((sum: number, r: any) => sum + (r.records_staged || 0), 0);
+  const successRuns = recentRuns.filter((r: WorkflowRun) => r.status === 'completed').length;
+  const totalRecordsStaged = recentRuns.reduce((sum: number, r: WorkflowRun) => sum + (r.total_records_staged || 0), 0);
 
   return (
     <Card className="border-primary/30 bg-card/80">
@@ -149,7 +149,7 @@ export function WorkflowDetailPanel({
         {outputNodes.length > 0 && (
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">Outputs:</span>
-            {outputNodes.map((node: any) => {
+            {outputNodes.map((node: WorkflowNode) => {
               const outputLabels: Record<string, string> = {
                 output_crm_contacts: 'Contacts',
                 output_crm_companies: 'Companies',
@@ -191,7 +191,7 @@ export function WorkflowDetailPanel({
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Pipeline</p>
               <div className="flex flex-wrap items-center gap-1.5">
-                {(workflow.nodes ?? []).map((node: any, idx: number) => (
+                {(workflow.nodes ?? []).map((node: WorkflowNode, idx: number) => (
                     <div key={node.id} className="flex items-center gap-1.5">
                       {idx > 0 && <ArrowRight className="h-3 w-3 text-muted-foreground" />}
                       <Badge variant="outline" className="text-[10px]">
@@ -208,14 +208,15 @@ export function WorkflowDetailPanel({
               {recentRuns.length === 0 ? (
                 <p className="text-xs text-muted-foreground py-4 text-center">No runs yet. Click "Run" to execute this workflow.</p>
               ) : (
-                recentRuns.map((run: any) => (
+                recentRuns.map((run: WorkflowRun) => (
                   <div
                     key={run.id}
                     className={`flex items-center justify-between p-2 rounded-md border text-xs cursor-pointer hover:bg-muted/50 ${
                       run.status === 'completed' ? 'border-l-2 border-l-green-500' : run.status === 'failed' ? 'border-l-2 border-l-red-500' : 'border-l-2 border-l-yellow-500'
                     }`}
                     onClick={() => {
-                      if (run.records_staged > 0) navigate(`/workflows?tab=staging&run=${run.id}`);
+                      // API returns `total_records_staged` (not `records_staged`) per WorkflowRun type in shared/types.ts
+                      if ((run.total_records_staged ?? 0) > 0) navigate(`/workflows?tab=staging&run=${run.id}`);
                     }}
                   >
                     <div className="flex items-center gap-2">
@@ -223,8 +224,8 @@ export function WorkflowDetailPanel({
                         {run.status}
                       </Badge>
                       <span className="text-muted-foreground">{formatDurationShort(run.duration_ms)}</span>
-                      {run.records_staged > 0 && (
-                        <span>{run.records_staged} records</span>
+                      {(run.total_records_staged ?? 0) > 0 && (
+                        <span>{run.total_records_staged} records</span>
                       )}
                       {run.data_source_id && dsNames[run.data_source_id] && (
                         <span className="text-muted-foreground flex items-center gap-0.5">

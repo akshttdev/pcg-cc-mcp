@@ -46,7 +46,7 @@ pub async fn list_organizations(
     let orgs = if access_context.is_admin {
         Organization::find_all(&deployment.db().pool).await?
     } else {
-        Organization::find_by_user(&deployment.db().pool, access_context.user_id).await?
+        Organization::find_by_user(&deployment.db().pool, access_context.user_id.as_str()).await?
     };
     Ok(Json(ApiResponse::success(orgs)))
 }
@@ -63,7 +63,7 @@ pub async fn get_organization(
 
     // Check user has access (is admin or org member)
     if !access_context.is_admin {
-        let role = Organization::get_user_role(&deployment.db().pool, &id.to_string(), access_context.user_id).await?;
+        let role = Organization::get_user_role(&deployment.db().pool, &id.to_string(), access_context.user_id.as_str()).await?;
         if role.is_none() {
             return Err(ApiError::Forbidden("Not a member of this organization".into()));
         }
@@ -82,7 +82,7 @@ pub async fn create_organization(
     let org = Organization::create(
         &deployment.db().pool,
         &id,
-        &access_context.user_id.to_string(),
+        access_context.user_id.as_str(),
         &data,
     )
     .await?;
@@ -91,7 +91,7 @@ pub async fn create_organization(
     Organization::add_member(
         &deployment.db().pool,
         &org.id,
-        access_context.user_id,
+        access_context.user_id.as_str(),
         "admin",
     )
     .await?;
@@ -108,7 +108,7 @@ pub async fn update_organization(
 ) -> Result<Json<ApiResponse<Organization>>, ApiError> {
     // Only org admins or system admins can update
     if !access_context.is_admin {
-        let role = Organization::get_user_role(&deployment.db().pool, &id.to_string(), access_context.user_id).await?;
+        let role = Organization::get_user_role(&deployment.db().pool, &id.to_string(), access_context.user_id.as_str()).await?;
         match role.as_deref() {
             Some("admin") => {}
             _ => return Err(ApiError::Forbidden("Only org admins can update organizations".into())),
@@ -152,7 +152,7 @@ pub async fn delete_organization(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     if !access_context.is_admin {
-        let role = Organization::get_user_role(&deployment.db().pool, &id.to_string(), access_context.user_id).await?;
+        let role = Organization::get_user_role(&deployment.db().pool, &id.to_string(), access_context.user_id.as_str()).await?;
         match role.as_deref() {
             Some("admin") => {}
             _ => return Err(ApiError::Forbidden("Only org admins can delete organizations".into())),

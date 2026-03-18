@@ -69,7 +69,7 @@ async fn import_wallet(
     }
 
     // Set wallet address on user
-    User::set_wallet_address(pool, access_ctx.user_id, addr)
+    User::set_wallet_address(pool, access_ctx.user_id.as_str(), addr)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to save wallet address: {}", e)))?;
 

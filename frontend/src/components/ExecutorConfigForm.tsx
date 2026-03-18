@@ -19,11 +19,18 @@ type ExecutorType =
   | 'OPENCODE'
   | 'QWEN_CODE';
 
+// RJSF's generic system uses `any` extensively — IChangeEvent, ValidatorType, etc.
+// Using Record<string, unknown> causes type incompatibilities with RJSF internals.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface ExecutorConfigFormProps {
   executor: ExecutorType;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   value: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onSubmit?: (formData: any) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onChange?: (formData: any) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onSave?: (formData: any) => Promise<void>;
   disabled?: boolean;
   isSaving?: boolean;
@@ -56,14 +63,18 @@ export function ExecutorConfigForm({
     setValidationErrors([]);
   }, [value, executor]);
 
-  const handleChange = ({ formData: newFormData }: any) => {
-    setFormData(newFormData);
-    if (onChange) {
-      onChange(newFormData);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleChange = ({ formData: newFormData }: { formData?: any }) => {
+    if (newFormData !== undefined) {
+      setFormData(newFormData);
+      if (onChange) {
+        onChange(newFormData);
+      }
     }
   };
 
-  const handleSubmit = async ({ formData: submitData }: any) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleSubmit = async ({ formData: submitData }: { formData?: any }) => {
     setValidationErrors([]);
     if (onSave) {
       await onSave(submitData);

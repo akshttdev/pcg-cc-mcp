@@ -489,7 +489,7 @@ pub async fn create_project(
     {
         Ok(project) => {
             // Set owner_id on the project (TEXT column — bind as string)
-            let user_id = db::DbUuid::from(access_context.user_id);
+            let user_id = access_context.user_id.clone();
             let user_id_blob = db::bind_uuid_blob(&user_id)
                 .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {e}")))?;
             let _ = sqlx::query(

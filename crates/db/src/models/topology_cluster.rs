@@ -187,11 +187,11 @@ impl TopologyCluster {
         data: &CreateTopologyCluster,
     ) -> Result<Self, sqlx::Error> {
         let id = Uuid::new_v4();
-        let node_ids_json = serde_json::to_string(&data.node_ids).unwrap();
+        let node_ids_json = serde_json::to_string(&data.node_ids).unwrap_or_else(|_| "[]".to_string());
         let metadata_json = data
             .metadata
             .as_ref()
-            .map(|m| serde_json::to_string(m).unwrap());
+            .map(|m| serde_json::to_string(m).unwrap_or_else(|_| "{}".to_string()));
 
         sqlx::query_as!(
             TopologyCluster,
@@ -230,11 +230,11 @@ impl TopologyCluster {
         let node_ids_json = data
             .node_ids
             .as_ref()
-            .map(|n| serde_json::to_string(n).unwrap());
+            .map(|n| serde_json::to_string(n).unwrap_or_else(|_| "[]".to_string()));
         let metadata_json = data
             .metadata
             .as_ref()
-            .map(|m| serde_json::to_string(m).unwrap());
+            .map(|m| serde_json::to_string(m).unwrap_or_else(|_| "{}".to_string()));
 
         sqlx::query_as!(
             TopologyCluster,
@@ -274,7 +274,7 @@ impl TopologyCluster {
         if !node_ids.contains(&node_id) {
             node_ids.push(node_id);
         }
-        let node_ids_json = serde_json::to_string(&node_ids).unwrap();
+        let node_ids_json = serde_json::to_string(&node_ids).unwrap_or_else(|_| "[]".to_string());
 
         sqlx::query_as!(
             TopologyCluster,
@@ -307,7 +307,7 @@ impl TopologyCluster {
         let cluster = Self::find_by_id(pool, id).await?.ok_or(sqlx::Error::RowNotFound)?;
         let mut node_ids: Vec<Uuid> = serde_json::from_str(&cluster.node_ids).unwrap_or_default();
         node_ids.retain(|n| *n != node_id);
-        let node_ids_json = serde_json::to_string(&node_ids).unwrap();
+        let node_ids_json = serde_json::to_string(&node_ids).unwrap_or_else(|_| "[]".to_string());
 
         sqlx::query_as!(
             TopologyCluster,

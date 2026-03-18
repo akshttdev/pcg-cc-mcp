@@ -178,15 +178,15 @@ impl CustomFieldDefinition {
         let options_json = payload
             .options
             .as_ref()
-            .map(|value| serde_json::to_string(value).unwrap());
+            .map(|value| serde_json::to_string(value).unwrap_or_else(|_| "{}".to_string()));
         let default_value_json = payload
             .default_value
             .as_ref()
-            .map(|value| serde_json::to_string(value).unwrap());
+            .map(|value| serde_json::to_string(value).unwrap_or_else(|_| "null".to_string()));
         let metadata_json = payload
             .metadata
             .as_ref()
-            .map(|value| serde_json::to_string(value).unwrap());
+            .map(|value| serde_json::to_string(value).unwrap_or_else(|_| "{}".to_string()));
         sqlx::query_as!(
             CustomFieldDefinitionInternal,
             r#"INSERT INTO custom_field_definitions
@@ -245,13 +245,13 @@ impl CustomFieldDefinition {
 
         let options_json = options
             .as_ref()
-            .map(|value| serde_json::to_string(value).unwrap());
+            .map(|value| serde_json::to_string(value).unwrap_or_else(|_| "{}".to_string()));
         let default_value_json = default_value
             .as_ref()
-            .map(|value| serde_json::to_string(value).unwrap());
+            .map(|value| serde_json::to_string(value).unwrap_or_else(|_| "null".to_string()));
         let metadata_json = metadata
             .as_ref()
-            .map(|value| serde_json::to_string(value).unwrap());
+            .map(|value| serde_json::to_string(value).unwrap_or_else(|_| "{}".to_string()));
 
         sqlx::query_as!(
             CustomFieldDefinitionInternal,

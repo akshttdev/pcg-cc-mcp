@@ -75,7 +75,7 @@ pub async fn require_orcha_auth(
     };
 
     // Get username from user_id
-    let username = match get_username_from_id(&deployment.db().pool, &access_context.user_id).await {
+    let username = match get_username_from_id(&deployment.db().pool, access_context.user_id.as_str()).await {
         Ok(u) => u,
         Err(e) => {
             tracing::error!("Failed to get username: {}", e);
@@ -129,11 +129,11 @@ pub async fn require_orcha_auth(
 }
 
 /// Get username from user ID
-async fn get_username_from_id(pool: &SqlitePool, user_id: &uuid::Uuid) -> Result<String, ApiError> {
+async fn get_username_from_id(pool: &SqlitePool, user_id: &str) -> Result<String, ApiError> {
     let result: Option<(String,)> = sqlx::query_as(
         "SELECT username FROM users WHERE id = ?"
     )
-    .bind(user_id.to_string())
+    .bind(user_id)
     .fetch_optional(pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;

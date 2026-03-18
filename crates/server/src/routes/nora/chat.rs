@@ -32,7 +32,7 @@ pub async fn chat_with_nora(
             let home: Option<Vec<u8>> = sqlx::query_scalar(
                 "SELECT home_project_id FROM users WHERE id = ?",
             )
-            .bind(access_ctx.user_id.as_bytes().as_slice())
+            .bind(access_ctx.user_id.as_str())
             .fetch_optional(&pool)
             .await
             .ok()
@@ -164,7 +164,7 @@ pub async fn chat_with_nora_stream(
             let home: Option<Vec<u8>> = sqlx::query_scalar(
                 "SELECT home_project_id FROM users WHERE id = ?",
             )
-            .bind(access_ctx.user_id.as_bytes().as_slice())
+            .bind(access_ctx.user_id.as_str())
             .fetch_optional(&pool)
             .await
             .ok()

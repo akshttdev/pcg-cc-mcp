@@ -491,12 +491,12 @@ impl Agent {
     /// Create a new agent
     pub async fn create(pool: &SqlitePool, data: &CreateAgent) -> Result<Self, sqlx::Error> {
         let id = DbUuid::new();
-        let personality_json = data.personality.as_ref().map(|p| serde_json::to_string(p).unwrap());
-        let capabilities_json = data.capabilities.as_ref().map(|c| serde_json::to_string(c).unwrap());
-        let tools_json = data.tools.as_ref().map(|t| serde_json::to_string(t).unwrap());
-        let functions_json = data.functions.as_ref().map(|f| serde_json::to_string(f).unwrap());
-        let fallback_models_json = data.fallback_models.as_ref().map(|f| serde_json::to_string(f).unwrap());
-        let model_config_json = data.model_config.as_ref().map(|m| serde_json::to_string(m).unwrap());
+        let personality_json = data.personality.as_ref().map(|p| serde_json::to_string(p).unwrap_or_else(|_| "{}".to_string()));
+        let capabilities_json = data.capabilities.as_ref().map(|c| serde_json::to_string(c).unwrap_or_else(|_| "[]".to_string()));
+        let tools_json = data.tools.as_ref().map(|t| serde_json::to_string(t).unwrap_or_else(|_| "[]".to_string()));
+        let functions_json = data.functions.as_ref().map(|f| serde_json::to_string(f).unwrap_or_else(|_| "[]".to_string()));
+        let fallback_models_json = data.fallback_models.as_ref().map(|f| serde_json::to_string(f).unwrap_or_else(|_| "[]".to_string()));
+        let model_config_json = data.model_config.as_ref().map(|m| serde_json::to_string(m).unwrap_or_else(|_| "{}".to_string()));
         let status = data.status.clone().unwrap_or_default();
         let autonomy_level = data.autonomy_level.clone().unwrap_or_default();
 
@@ -580,12 +580,12 @@ impl Agent {
 
     /// Update an existing agent
     pub async fn update(pool: &SqlitePool, id: &str, data: &UpdateAgent) -> Result<Self, sqlx::Error> {
-        let personality_json = data.personality.as_ref().map(|p| serde_json::to_string(p).unwrap());
-        let capabilities_json = data.capabilities.as_ref().map(|c| serde_json::to_string(c).unwrap());
-        let tools_json = data.tools.as_ref().map(|t| serde_json::to_string(t).unwrap());
-        let functions_json = data.functions.as_ref().map(|f| serde_json::to_string(f).unwrap());
-        let fallback_models_json = data.fallback_models.as_ref().map(|f| serde_json::to_string(f).unwrap());
-        let model_config_json = data.model_config.as_ref().map(|m| serde_json::to_string(m).unwrap());
+        let personality_json = data.personality.as_ref().map(|p| serde_json::to_string(p).unwrap_or_else(|_| "{}".to_string()));
+        let capabilities_json = data.capabilities.as_ref().map(|c| serde_json::to_string(c).unwrap_or_else(|_| "[]".to_string()));
+        let tools_json = data.tools.as_ref().map(|t| serde_json::to_string(t).unwrap_or_else(|_| "[]".to_string()));
+        let functions_json = data.functions.as_ref().map(|f| serde_json::to_string(f).unwrap_or_else(|_| "[]".to_string()));
+        let fallback_models_json = data.fallback_models.as_ref().map(|f| serde_json::to_string(f).unwrap_or_else(|_| "[]".to_string()));
+        let model_config_json = data.model_config.as_ref().map(|m| serde_json::to_string(m).unwrap_or_else(|_| "{}".to_string()));
 
         sqlx::query_as!(
             Agent,

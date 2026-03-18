@@ -162,11 +162,13 @@ async fn main() -> Result<(), VibeKanbanError> {
     }
 
     // Start Sovereign Stack scraper service (Dropbox C: → sovereign stack E:)
+    let sovereign_stack_shutdown = tokio_util::sync::CancellationToken::new();
     match server::sovereign_stack::SovereignStackConfig::from_env() {
         Ok(config) if config.enabled => {
             let mut service = server::sovereign_stack::SovereignStackService::new(config);
+            let shutdown_token = sovereign_stack_shutdown.clone();
             tokio::spawn(async move {
-                if let Err(e) = service.start().await {
+                if let Err(e) = service.start(shutdown_token).await {
                     tracing::error!("Failed to start sovereign stack scraper: {}", e);
                 }
             });

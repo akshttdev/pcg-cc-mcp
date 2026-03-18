@@ -288,7 +288,7 @@ fn create_watchkill_script(command: &str) -> String {
     // Hack: we concatenate so that Claude doesn't trigger the watchkill when reading this file
     // during development, since it contains the stop phrase
     let claude_plan_stop_indicator = concat!("Approval ", "request timed out");
-    let cmd = shlex::try_quote(command).unwrap().to_string();
+    let cmd = shlex::try_quote(command).unwrap_or_else(|_| command.into()).to_string();
 
     format!(
         r#"#!/usr/bin/env bash

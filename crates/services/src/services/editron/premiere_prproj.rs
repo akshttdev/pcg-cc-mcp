@@ -139,9 +139,11 @@ impl PrprojRecutEngine {
                     uuid_re.captures(block),
                     name_re.captures(block),
                 ) {
-                    let uuid = uuid_cap.get(1).unwrap().as_str().to_string();
-                    let name = name_cap.get(1).unwrap().as_str().to_string();
-                    self.clip_uuid_map.insert(name, uuid);
+                    if let (Some(uuid_match), Some(name_match)) = (uuid_cap.get(1), name_cap.get(1)) {
+                        let uuid = uuid_match.as_str().to_string();
+                        let name = name_match.as_str().to_string();
+                        self.clip_uuid_map.insert(name, uuid);
+                    }
                 }
 
                 pos = abs_end;
@@ -166,11 +168,13 @@ impl PrprojRecutEngine {
                 let block = &self.xml[abs_start..abs_end];
 
                 if let Some(vcti_cap) = vcti_re.captures(block) {
-                    let vcti_id = vcti_cap.get(1).unwrap().as_str().to_string();
+                    let Some(vcti_match) = vcti_cap.get(1) else { pos = abs_end; continue; };
+                    let vcti_id = vcti_match.as_str().to_string();
 
                     // Find SubClip reference
                     if let Some(sc_cap) = subclip_ref_re.captures(block) {
-                        let subclip_id = sc_cap.get(1).unwrap().as_str();
+                        let Some(sc_match) = sc_cap.get(1) else { pos = abs_end; continue; };
+                        let subclip_id = sc_match.as_str();
 
                         // Find the SubClip definition to get name and clip ref
                         let sc_pattern = format!("ObjectID=\"{}\"", subclip_id);
@@ -181,16 +185,20 @@ impl PrprojRecutEngine {
                             let sc_block = &self.xml[sc_pos..sc_block_end.min(self.xml.len())];
 
                             if let Some(name_cap) = name_re.captures(sc_block) {
-                                self.vcti_to_name.insert(
-                                    vcti_id.clone(),
-                                    name_cap.get(1).unwrap().as_str().to_string(),
-                                );
+                                if let Some(name_match) = name_cap.get(1) {
+                                    self.vcti_to_name.insert(
+                                        vcti_id.clone(),
+                                        name_match.as_str().to_string(),
+                                    );
+                                }
                             }
                             if let Some(clip_cap) = clip_ref_re.captures(sc_block) {
-                                self.vcti_to_clip_id.insert(
-                                    vcti_id.clone(),
-                                    clip_cap.get(1).unwrap().as_str().to_string(),
-                                );
+                                if let Some(clip_match) = clip_cap.get(1) {
+                                    self.vcti_to_clip_id.insert(
+                                        vcti_id.clone(),
+                                        clip_match.as_str().to_string(),
+                                    );
+                                }
                             }
                         }
                     }

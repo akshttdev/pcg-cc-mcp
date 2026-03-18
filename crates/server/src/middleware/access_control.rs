@@ -4,11 +4,10 @@ use axum::{
     middleware::Next,
     response::Response,
 };
+use db::{DbUuid, bind_uuid_blob};
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-// TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
-use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 
@@ -82,7 +81,7 @@ pub struct ProjectMember {
 
 #[derive(Debug, Clone)]
 pub struct AccessContext {
-    pub user_id: Uuid,
+    pub user_id: DbUuid,
     pub is_admin: bool,
     pub is_active: bool,
     pub platform_roles: Vec<String>,
@@ -195,9 +194,9 @@ impl AccessContext {
         }
 
         // 1. Try direct project_members check
-        // NOTE: project_members.project_id is TEXT, users.id is BLOB.
-        // Bind project_id as string, user_id as bytes.
-        let user_id_bytes = self.user_id.as_bytes().to_vec();
+        // NOTE: project_members.project_id is TEXT, user_id is BLOB.
+        let user_id_bytes = bind_uuid_blob(&self.user_id)
+            .map_err(|e| ApiError::InternalError(format!("Invalid user UUID: {}", e)))?;
 
         let member: Option<ProjectMember> =
             sqlx::query_as("SELECT * FROM project_members WHERE project_id = ? AND user_id = ?")
@@ -339,7 +338,7 @@ impl AccessContext {
             "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND assignee_id = ? AND deleted_at IS NULL"
         )
         .bind(project_id)
-        .bind(self.user_id.to_string())
+        .bind(self.user_id.as_str())
         .fetch_one(pool)
         .await
         .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -373,7 +372,8 @@ impl AccessContext {
         }
 
         // NOTE: project_members.project_id and projects.id are TEXT; user_id columns are BLOB.
-        let user_id_bytes = self.user_id.as_bytes().to_vec();
+        let user_id_bytes = bind_uuid_blob(&self.user_id)
+            .map_err(|e| ApiError::InternalError(format!("Invalid user UUID: {}", e)))?;
 
         // Check direct project membership
         let direct: Option<i64> = sqlx::query_scalar(
@@ -472,7 +472,7 @@ impl AccessContext {
         let permission = db::models::board_share::BoardShare::check_user_share_access(
             pool,
             board_id,
-            self.user_id,
+            self.user_id.as_str(),
         )
         .await
         .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -525,7 +525,7 @@ impl AccessContext {
 }
 
 /// Load platform roles for a user from user_platform_roles table
-async fn load_platform_roles(pool: &sqlx::SqlitePool, user_id: Uuid) -> Vec<String> {
+async fn load_platform_roles(pool: &sqlx::SqlitePool, user_id: &str) -> Vec<String> {
     #[derive(FromRow)]
     struct RoleRow {
         role: String,
@@ -534,7 +534,7 @@ async fn load_platform_roles(pool: &sqlx::SqlitePool, user_id: Uuid) -> Vec<Stri
     sqlx::query_as::<_, RoleRow>(
         "SELECT role FROM user_platform_roles WHERE user_id = ?"
     )
-    .bind(user_id.to_string())
+    .bind(user_id)
     .fetch_all(pool)
     .await
     .unwrap_or_default()
@@ -546,11 +546,11 @@ async fn load_platform_roles(pool: &sqlx::SqlitePool, user_id: Uuid) -> Vec<Stri
 /// Build AccessContext from a verified session, loading platform roles
 async fn build_access_context(
     pool: &sqlx::SqlitePool,
-    user_id: Uuid,
+    user_id: DbUuid,
     is_admin: bool,
     is_active: bool,
 ) -> AccessContext {
-    let platform_roles = load_platform_roles(pool, user_id).await;
+    let platform_roles = load_platform_roles(pool, user_id.as_str()).await;
     // is_admin is true if either the users.is_admin flag OR platform_admin role exists
     let effective_admin = is_admin || platform_roles.iter().any(|r| r == "platform_admin");
     AccessContext {
@@ -574,9 +574,10 @@ pub async fn get_current_user(
         if let Some(session_id) = extract_session_from_cookies(cookies) {
             let session_token_hash = db::services::AuthService::hash_session_token(&session_id);
 
+            // users.id is a BLOB column — use DbUuid which decodes both BLOB and TEXT
             #[derive(FromRow)]
             struct UserSession {
-                id: String,
+                id: DbUuid,
                 is_admin: i32,
                 is_active: i32,
             }
@@ -595,8 +596,7 @@ pub async fn get_current_user(
             .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
             if let Some(user_session) = result {
-                let user_id = Uuid::parse_str(&user_session.id)
-                    .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {}", e)))?;
+                let user_id = user_session.id;
 
                 // Extend session expiry on activity (sliding window)
                 let new_expiry = (chrono::Utc::now() + chrono::Duration::days(7)).to_rfc3339();
@@ -622,9 +622,10 @@ pub async fn get_current_user(
     if let Some(token) = auth_header.and_then(|h| h.strip_prefix("Bearer ")) {
         let token_hash = db::services::AuthService::hash_session_token(token);
 
+        // users.id is a BLOB column — use DbUuid which decodes both BLOB and TEXT
         #[derive(FromRow)]
         struct UserSession {
-            id: String,
+            id: DbUuid,
             is_admin: i32,
             is_active: i32,
         }
@@ -643,8 +644,7 @@ pub async fn get_current_user(
         .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
         if let Some(user_session) = result {
-            let user_id = Uuid::parse_str(&user_session.id)
-                .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {}", e)))?;
+            let user_id = user_session.id;
 
             // Extend session expiry on activity (sliding window)
             let new_expiry = (chrono::Utc::now() + chrono::Duration::days(7)).to_rfc3339();

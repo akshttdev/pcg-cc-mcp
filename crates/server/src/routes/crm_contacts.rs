@@ -142,7 +142,7 @@ async fn search_contacts(
 /// GET /crm/contacts/stats/:organization_id - Get contact statistics by org
 async fn get_contact_stats(
     State(deployment): State<DeploymentImpl>,
-    Path(organization_id): Path<Uuid>,
+    Path(organization_id): Path<String>,
 ) -> Result<Json<ApiResponse<ContactStats>>, ApiError> {
     let pool = &deployment.db().pool;
     let organization_id = DbUuid::from(organization_id);
@@ -202,7 +202,7 @@ async fn get_contact_stats(
 /// GET /crm/contacts/:id - Get single contact
 async fn get_contact(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<CrmContact>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
@@ -213,7 +213,7 @@ async fn get_contact(
 /// GET /crm/contacts/by-email/:organization_id/:email - Get contact by email (org-scoped)
 async fn get_contact_by_email(
     State(deployment): State<DeploymentImpl>,
-    Path((organization_id, email)): Path<(Uuid, String)>,
+    Path((organization_id, email)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<Option<CrmContact>>>, ApiError> {
     let pool = &deployment.db().pool;
     let organization_id = DbUuid::from(organization_id);
@@ -225,7 +225,7 @@ async fn get_contact_by_email(
 /// PATCH /crm/contacts/:id - Update contact
 async fn update_contact(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(update): Json<UpdateCrmContact>,
 ) -> Result<Json<ApiResponse<CrmContact>>, ApiError> {
     let pool = &deployment.db().pool;
@@ -237,7 +237,7 @@ async fn update_contact(
 /// POST /crm/contacts/:id/activity - Record activity
 async fn record_activity(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
@@ -248,7 +248,7 @@ async fn record_activity(
 /// POST /crm/contacts/:id/contacted - Record contact made
 async fn record_contacted(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
@@ -259,7 +259,7 @@ async fn record_contacted(
 /// POST /crm/contacts/:id/replied - Record reply received
 async fn record_replied(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
@@ -270,7 +270,7 @@ async fn record_replied(
 /// POST /crm/contacts/:id/lead-score - Update lead score
 async fn update_lead_score(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(request): Json<UpdateLeadScoreRequest>,
 ) -> Result<Json<ApiResponse<CrmContact>>, ApiError> {
     let pool = &deployment.db().pool;
@@ -283,7 +283,7 @@ async fn update_lead_score(
 /// DELETE /crm/contacts/:id - Delete contact
 async fn delete_contact(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);

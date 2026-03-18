@@ -668,7 +668,7 @@ impl DeploymentTools {
         let result = registrar.check_availability(domain).await
             .map_err(|e| format!("Check failed: {:?}", e))?;
 
-        Ok(serde_json::to_value(result).unwrap())
+        serde_json::to_value(result).map_err(|e| format!("Serialization failed: {}", e))
     }
 
     async fn execute_create_dns_record(&self, params: serde_json::Value) -> Result<serde_json::Value, String> {
@@ -697,7 +697,7 @@ impl DeploymentTools {
         let result = cloudflare.create_dns_record(zone_id, record_type, name, content, ttl, proxied).await
             .map_err(|e| format!("Create DNS record failed: {:?}", e))?;
 
-        Ok(serde_json::to_value(result).unwrap())
+        serde_json::to_value(result).map_err(|e| format!("Serialization failed: {}", e))
     }
 
     async fn execute_list_dns_records(&self, params: serde_json::Value) -> Result<serde_json::Value, String> {
@@ -711,7 +711,7 @@ impl DeploymentTools {
         let result = cloudflare.list_dns_records(zone_id).await
             .map_err(|e| format!("List DNS records failed: {:?}", e))?;
 
-        Ok(serde_json::to_value(result).unwrap())
+        serde_json::to_value(result).map_err(|e| format!("Serialization failed: {}", e))
     }
 
     async fn execute_get_ssl_status(&self, params: serde_json::Value) -> Result<serde_json::Value, String> {
@@ -725,7 +725,7 @@ impl DeploymentTools {
         let result = ssl_manager.get_status(zone_id).await
             .map_err(|e| format!("Get SSL status failed: {:?}", e))?;
 
-        Ok(serde_json::to_value(result).unwrap())
+        serde_json::to_value(result).map_err(|e| format!("Serialization failed: {}", e))
     }
 
     async fn execute_purge_cache(&self, params: serde_json::Value) -> Result<serde_json::Value, String> {
@@ -752,6 +752,6 @@ impl DeploymentTools {
         let result = cloudflare.list_zones().await
             .map_err(|e| format!("List zones failed: {:?}", e))?;
 
-        Ok(serde_json::to_value(result).unwrap())
+        serde_json::to_value(result).map_err(|e| format!("Serialization failed: {}", e))
     }
 }

@@ -20,16 +20,7 @@ import {
 import { cn } from '@/lib/utils';
 import { pulseApi } from '@/lib/api';
 import { pulseKeys } from '@/lib/query-keys';
-
-// --- Types ---
-
-interface PulseProject {
-  name: string;
-  description: string | null;
-  adapters: number;
-  active_sources: string[];
-  scheduler_running: boolean;
-}
+import type { PulseProject, PulseContentItem } from '@/lib/api/pulse';
 
 // --- Helpers ---
 
@@ -88,7 +79,7 @@ function ProjectCard({ project }: { project: PulseProject }) {
   );
 }
 
-function ContentRow({ item }: { item: any }) {
+function ContentRow({ item }: { item: PulseContentItem }) {
   return (
     <div className="flex items-start gap-2 py-2 border-b border-border/50 last:border-0">
       <Rss className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
@@ -107,7 +98,7 @@ function ContentRow({ item }: { item: any }) {
             {item.source_id}
           </Badge>
           <span className="text-[10px] text-muted-foreground">
-            {timeAgo(item.collected_at)}
+            {item.collected_at ? timeAgo(item.collected_at) : ''}
           </span>
           {item.relevance_score != null && (
             <span className="text-[10px] text-muted-foreground">
@@ -175,12 +166,13 @@ export function PulseWidget({ className, projectId }: PulseWidgetProps) {
   });
 
   const collectMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (projectId) {
-        return pulseApi.triggerCollection(projectId);
+        await pulseApi.triggerCollection(projectId);
+        return;
       }
       // Legacy: global collection
-      return pulseApi.collectAll();
+      await pulseApi.collectAll();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: pulseKeys.all() });
@@ -202,7 +194,7 @@ export function PulseWidget({ className, projectId }: PulseWidgetProps) {
     : (projects?.projects.reduce((sum, p) => sum + p.adapters, 0) ?? 0);
   const alertCount = projectId
     ? (stats?.unacknowledged_alerts ?? 0)
-    : contentItems.filter((i: any) => i.relevance_score != null && i.relevance_score > 0.8).length;
+    : contentItems.filter((i: PulseContentItem) => i.relevance_score != null && i.relevance_score > 0.8).length;
 
   if (error) {
     return (
@@ -304,7 +296,7 @@ export function PulseWidget({ className, projectId }: PulseWidgetProps) {
                   Recent Content
                 </p>
                 <div>
-                  {contentItems.slice(0, 5).map((item: any) => (
+                  {contentItems.slice(0, 5).map((item: PulseContentItem) => (
                     <ContentRow key={item.content_hash || item.id} item={item} />
                   ))}
                 </div>

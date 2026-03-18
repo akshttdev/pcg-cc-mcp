@@ -1,6 +1,17 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { FolderOpen, Briefcase, X } from 'lucide-react';
 import { ProjectRow } from '../components/ProjectRow';
+import type { SidebarOrg, SidebarClient, SidebarProject } from '@/lib/api';
+
+/** Sidebar org with optional internal_folders (legacy field) */
+interface SidebarOrgWithFolders extends SidebarOrg {
+  internal_folders?: Array<{ name: string; projects: SidebarProject[] }>;
+}
+
+/** Sidebar client with optional folders (legacy field) */
+interface SidebarClientWithFolders extends SidebarClient {
+  folders?: Array<{ name: string; projects: SidebarProject[] }>;
+}
 
 export function ProjectsTab({
   orgId: _orgId,
@@ -9,7 +20,7 @@ export function ProjectsTab({
   onClearClientFilter,
 }: {
   orgId: string;
-  sidebarOrg: any;
+  sidebarOrg: SidebarOrgWithFolders | null;
   clientFilter: string | null;
   onClearClientFilter: () => void;
 }) {
@@ -23,7 +34,7 @@ export function ProjectsTab({
   }
 
   const filteredClient = clientFilter
-    ? sidebarOrg.clients?.find((c: any) => c.id === clientFilter)
+    ? (sidebarOrg.clients as SidebarClientWithFolders[] | undefined)?.find((c) => c.id === clientFilter)
     : null;
 
   return (
@@ -55,11 +66,11 @@ export function ProjectsTab({
                 <p className="text-sm text-muted-foreground text-center py-4">No internal projects</p>
               ) : (
                 <div className="space-y-2">
-                  {sidebarOrg.internal_projects?.map((p: any) => (
+                  {sidebarOrg.internal_projects?.map((p) => (
                     <ProjectRow key={p.id} project={p} />
                   ))}
-                  {(sidebarOrg.internal_folders || []).map((folder: any) =>
-                    folder.projects.map((p: any) => (
+                  {(sidebarOrg.internal_folders || []).map((folder) =>
+                    folder.projects.map((p) => (
                       <ProjectRow key={p.id} project={p} folderName={folder.name} />
                     ))
                   )}
@@ -70,25 +81,25 @@ export function ProjectsTab({
         )}
 
         {/* Client projects */}
-        {(clientFilter ? [filteredClient].filter(Boolean) : sidebarOrg.clients || []).map((client: any) => (
+        {(clientFilter ? [filteredClient].filter((c): c is SidebarClientWithFolders => c != null) : (sidebarOrg.clients as SidebarClientWithFolders[]) || []).map((client) => (
           <Card key={client.id} className="bg-card/80 backdrop-blur-sm border-border/50">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Briefcase className="h-4 w-4 text-purple-600" />
-                {client.name}
+                {client?.name}
               </CardTitle>
               <CardDescription>Client projects</CardDescription>
             </CardHeader>
             <CardContent>
-              {(client.projects?.length === 0 && (client.folders || []).length === 0) ? (
+              {(client?.projects?.length === 0 && (client?.folders || []).length === 0) ? (
                 <p className="text-sm text-muted-foreground text-center py-4">No projects</p>
               ) : (
                 <div className="space-y-2">
-                  {client.projects?.map((p: any) => (
+                  {client?.projects?.map((p) => (
                     <ProjectRow key={p.id} project={p} />
                   ))}
-                  {(client.folders || []).map((folder: any) =>
-                    folder.projects.map((p: any) => (
+                  {(client?.folders || []).map((folder) =>
+                    folder.projects.map((p) => (
                       <ProjectRow key={p.id} project={p} folderName={folder.name} />
                     ))
                   )}

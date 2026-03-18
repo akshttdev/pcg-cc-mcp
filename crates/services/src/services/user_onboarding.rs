@@ -70,7 +70,7 @@ impl UserOnboardingService {
             );
 
             // 3. Set home_project_id on user
-            User::set_home_project(pool, user_id, project_id).await?;
+            User::set_home_project(pool, &user_id.to_string(), &project_id.to_string()).await?;
 
             project_id
         } else {
@@ -85,7 +85,7 @@ impl UserOnboardingService {
             match existing_project_id {
                 Some(bytes) => {
                     let id = Uuid::from_slice(&bytes).unwrap_or_else(|_| Uuid::new_v4());
-                    User::set_home_project(pool, user_id, id).await?;
+                    User::set_home_project(pool, &user_id.to_string(), &id.to_string()).await?;
                     id
                 }
                 None => {

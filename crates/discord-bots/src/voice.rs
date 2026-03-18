@@ -555,20 +555,20 @@ fn pcm_to_wav(samples: &[i16], sample_rate: u32, channels: u16) -> Vec<u8> {
     let mut buf = Vec::with_capacity(file_size as usize + 8);
 
     buf.extend_from_slice(b"RIFF");
-    buf.write_u32::<LittleEndian>(file_size).unwrap();
+    let _ = buf.write_u32::<LittleEndian>(file_size);
     buf.extend_from_slice(b"WAVE");
     buf.extend_from_slice(b"fmt ");
-    buf.write_u32::<LittleEndian>(16).unwrap();
-    buf.write_u16::<LittleEndian>(1).unwrap();
-    buf.write_u16::<LittleEndian>(channels).unwrap();
-    buf.write_u32::<LittleEndian>(sample_rate).unwrap();
-    buf.write_u32::<LittleEndian>(sample_rate * channels as u32 * 2).unwrap();
-    buf.write_u16::<LittleEndian>(channels * 2).unwrap();
-    buf.write_u16::<LittleEndian>(16).unwrap();
+    let _ = buf.write_u32::<LittleEndian>(16);
+    let _ = buf.write_u16::<LittleEndian>(1);
+    let _ = buf.write_u16::<LittleEndian>(channels);
+    let _ = buf.write_u32::<LittleEndian>(sample_rate);
+    let _ = buf.write_u32::<LittleEndian>(sample_rate * channels as u32 * 2);
+    let _ = buf.write_u16::<LittleEndian>(channels * 2);
+    let _ = buf.write_u16::<LittleEndian>(16);
     buf.extend_from_slice(b"data");
-    buf.write_u32::<LittleEndian>(data_size).unwrap();
+    let _ = buf.write_u32::<LittleEndian>(data_size);
     for sample in samples {
-        buf.write_i16::<LittleEndian>(*sample).unwrap();
+        let _ = buf.write_i16::<LittleEndian>(*sample);
     }
     buf
 }

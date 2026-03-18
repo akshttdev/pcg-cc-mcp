@@ -1,6 +1,7 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { organizationsApi } from '@/lib/api';
+import type { SidebarProject, SidebarClient, ClientData } from '@/lib/api';
 import { useOrganizationById } from '@/hooks/queries';
 import { Building2, Users, FolderKanban, ArrowRight, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -52,8 +53,8 @@ export function OrganizationOverview() {
       )
     : undefined;
 
-  const flattenProjects = (projects: any[], clientName?: string): { id: string; name: string; clientName?: string }[] =>
-    projects.flatMap((p: any) => [
+  const flattenProjects = (projects: SidebarProject[], clientName?: string): { id: string; name: string; clientName?: string }[] =>
+    projects.flatMap((p: SidebarProject) => [
       { id: p.id, name: p.name, clientName },
       ...flattenProjects(p.children || [], clientName),
     ]);
@@ -61,7 +62,7 @@ export function OrganizationOverview() {
   const allProjects = sidebarOrg
     ? [
         ...flattenProjects(sidebarOrg.internal_projects),
-        ...sidebarOrg.clients.flatMap((c: any) => flattenProjects(c.projects, c.name)),
+        ...sidebarOrg.clients.flatMap((c: SidebarClient) => flattenProjects(c.projects, c.name)),
       ]
     : [];
   const totalProjects = allProjects.length;
@@ -155,7 +156,7 @@ export function OrganizationOverview() {
             Clients
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {clients.map((client: any) => (
+            {clients.map((client: ClientData) => (
               <Card
                 key={client.id}
                 className="hover:shadow-md transition-shadow cursor-pointer"

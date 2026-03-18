@@ -269,7 +269,9 @@ pub async fn approve_business_report(
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
     use deployment::Deployment;
     let pool = &d.db().pool;
-    let user_id = access_context.user_id;
+    let user_id = &access_context.user_id;
+    let user_id_uuid = uuid::Uuid::parse_str(user_id.as_str())
+        .map_err(|e| ApiError::InternalError(format!("Invalid user UUID: {e}")))?;
 
     let report = BusinessReport::find_by_id(pool, id)
         .await?
@@ -281,7 +283,7 @@ pub async fn approve_business_report(
          reviewed_at = datetime('now','subsec'), updated_at = datetime('now','subsec')
          WHERE id = ?",
     )
-    .bind(user_id)
+    .bind(user_id.as_str())
     .bind(id)
     .execute(pool)
     .await?;
@@ -372,7 +374,7 @@ pub async fn approve_business_report(
                 title,
                 lead_id: Some(uuid::Uuid::parse_str(person_id.as_str()).unwrap_or_default()),
                 organization_id: org_id,
-                owner_id: Some(user_id),
+                owner_id: Some(user_id_uuid),
                 project_id: None,
                 company_id: report.company_id.as_ref().and_then(|id| uuid::Uuid::parse_str(id.as_str()).ok()),
                 description: Some(description),
@@ -408,7 +410,7 @@ pub async fn request_revision(
 ) -> Result<Json<ApiResponse<BusinessReport>>, ApiError> {
     use deployment::Deployment;
     let pool = &d.db().pool;
-    let user_id = access_context.user_id;
+    let user_id = &access_context.user_id;
 
     let report = BusinessReport::find_by_id(pool, id)
         .await?
@@ -421,7 +423,7 @@ pub async fn request_revision(
          updated_at = datetime('now','subsec')
          WHERE id = ?",
     )
-    .bind(user_id)
+    .bind(user_id.as_str())
     .bind(&body.notes)
     .bind(id)
     .execute(pool)

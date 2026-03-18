@@ -11,7 +11,7 @@ pub async fn get_org_knowledge(
     let pool = &deployment.db().pool;
 
     if !access_context.is_admin {
-        let role = Organization::get_user_role(pool, &org_id.to_string(), access_context.user_id).await?;
+        let role = Organization::get_user_role(pool, &org_id.to_string(), access_context.user_id.as_str()).await?;
         if role.is_none() {
             return Err(ApiError::Forbidden("Not a member of this organization".into()));
         }

@@ -19,11 +19,12 @@ import {
 import { cn } from '@/lib/utils';
 import { crmPipelinesApi } from '@/lib/api';
 import type { WorkflowNode } from '@/lib/api';
+import type { CrmPipeline, CrmPipelineStage, CrmPipelineWithStages } from '@/types/crm';
 import { TARGET_SCHEMAS } from './node-types';
 
 interface OutputNodeConfigProps {
   node: WorkflowNode;
-  onUpdateParameter: (key: string, value: any) => void;
+  onUpdateParameter: (key: string, value: string | undefined) => void;
 }
 
 export function OutputNodeConfig({ node, onUpdateParameter }: OutputNodeConfigProps) {
@@ -53,7 +54,7 @@ export function OutputNodeConfig({ node, onUpdateParameter }: OutputNodeConfigPr
     enabled: !!selectedPipelineId && node.type === 'output_crm_deals',
     staleTime: 5 * 60 * 1000,
   });
-  const stages: any[] = (pipelineWithStages as any)?.stages ?? [];
+  const stages: CrmPipelineStage[] = (pipelineWithStages as CrmPipelineWithStages | undefined)?.stages ?? [];
 
   return (
     <div className="space-y-3">
@@ -84,7 +85,7 @@ export function OutputNodeConfig({ node, onUpdateParameter }: OutputNodeConfigPr
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">Auto-assign</SelectItem>
-                {pipelines.map((p: any) => (
+                {pipelines.map((p: CrmPipeline) => (
                   <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                 ))}
               </SelectContent>
@@ -105,7 +106,7 @@ export function OutputNodeConfig({ node, onUpdateParameter }: OutputNodeConfigPr
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__first__">First stage ({stages[0]?.name})</SelectItem>
-                  {stages.map((s: any) => (
+                  {stages.map((s: CrmPipelineStage) => (
                     <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                   ))}
                 </SelectContent>

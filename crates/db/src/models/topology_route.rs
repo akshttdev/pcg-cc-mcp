@@ -208,12 +208,12 @@ impl TopologyRoute {
         data: &CreateTopologyRoute,
     ) -> Result<Self, sqlx::Error> {
         let id = Uuid::new_v4();
-        let path_json = serde_json::to_string(&data.path).unwrap();
-        let edges_json = serde_json::to_string(&data.edges).unwrap();
+        let path_json = serde_json::to_string(&data.path).unwrap_or_else(|_| "[]".to_string());
+        let edges_json = serde_json::to_string(&data.edges).unwrap_or_else(|_| "[]".to_string());
         let metadata_json = data
             .metadata
             .as_ref()
-            .map(|m| serde_json::to_string(m).unwrap());
+            .map(|m| serde_json::to_string(m).unwrap_or_else(|_| "{}".to_string()));
 
         sqlx::query_as!(
             TopologyRoute,
@@ -261,8 +261,8 @@ impl TopologyRoute {
         Self::update_status(pool, original_id, TopologyRouteStatus::Rerouted).await?;
 
         let id = Uuid::new_v4();
-        let path_json = serde_json::to_string(&new_path).unwrap();
-        let edges_json = serde_json::to_string(&new_edges).unwrap();
+        let path_json = serde_json::to_string(&new_path).unwrap_or_else(|_| "[]".to_string());
+        let edges_json = serde_json::to_string(&new_edges).unwrap_or_else(|_| "[]".to_string());
 
         sqlx::query_as!(
             TopologyRoute,

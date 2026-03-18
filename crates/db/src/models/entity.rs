@@ -439,8 +439,8 @@ impl Entity {
     pub async fn create(pool: &SqlitePool, data: &CreateEntity) -> Result<Self, sqlx::Error> {
         let id = Uuid::new_v4();
         let slug = data.slug.clone().unwrap_or_else(|| slugify(&data.canonical_name));
-        let external_ids_json = data.external_ids.as_ref().map(|e| serde_json::to_string(e).unwrap());
-        let social_profiles_json = data.social_profiles.as_ref().map(|s| serde_json::to_string(s).unwrap());
+        let external_ids_json = data.external_ids.as_ref().map(|e| serde_json::to_string(e).unwrap_or_else(|_| "{}".to_string()));
+        let social_profiles_json = data.social_profiles.as_ref().map(|s| serde_json::to_string(s).unwrap_or_else(|_| "[]".to_string()));
         let entity_type_str = data.entity_type.to_string();
 
         sqlx::query_as!(
@@ -485,9 +485,9 @@ impl Entity {
 
     /// Update an existing entity
     pub async fn update(pool: &SqlitePool, id: Uuid, data: &UpdateEntity) -> Result<Self, sqlx::Error> {
-        let external_ids_json = data.external_ids.as_ref().map(|e| serde_json::to_string(e).unwrap());
-        let social_profiles_json = data.social_profiles.as_ref().map(|s| serde_json::to_string(s).unwrap());
-        let social_analysis_json = data.social_analysis.as_ref().map(|s| serde_json::to_string(s).unwrap());
+        let external_ids_json = data.external_ids.as_ref().map(|e| serde_json::to_string(e).unwrap_or_else(|_| "{}".to_string()));
+        let social_profiles_json = data.social_profiles.as_ref().map(|s| serde_json::to_string(s).unwrap_or_else(|_| "[]".to_string()));
+        let social_analysis_json = data.social_analysis.as_ref().map(|s| serde_json::to_string(s).unwrap_or_else(|_| "{}".to_string()));
 
         sqlx::query_as!(
             Entity,

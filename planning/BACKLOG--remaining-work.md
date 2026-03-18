@@ -1,6 +1,6 @@
 # Backlog — Remaining Work
 
-**Last updated:** 2026-03-18 (post PR #46 review — quality sprint)
+**Last updated:** 2026-03-18 (post PR #47 — dev velocity sprint)
 **Context:** Consolidated from all completed planning docs. Items prioritized by impact and dependency.
 
 ---
@@ -56,25 +56,24 @@
 ### 7. DbUuid Migration — 4-Phase Plan
 **Source:** `2026-03-17--plan--dbuuid-migration.md`, `notes/2026-03-14--reference--dbuuid-phase3-remaining.md`
 **What:** Eliminate all Uuid/Vec<u8>/BLOB boilerplate. 4 phases:
-- **Phase A** (highest ROI): `AccessContext.user_id: Uuid` → `DbUuid` — eliminates ~36 conversion sites across ~18 files
-- **Phase B**: `Path<Uuid>` → `Path<String>` in route handlers — ~416 sites across ~79 files
+- ~~**Phase A** (highest ROI): `AccessContext.user_id: Uuid` → `DbUuid`~~ → **DONE** (PR #47, 20 files)
+- ~~**Phase B**: `Path<Uuid>` → `Path<String>` in CRM route handlers~~ → **DONE** (PR #47, 71 handlers across 7 files)
+- **Phase B remainder**: `Path<Uuid>` → `Path<String>` in non-CRM routes — ~345 sites across ~72 files
 - **Phase C**: Migrate `users.id` BLOB → TEXT — eliminates ALL remaining `.as_bytes()` / `Vec<u8>` / `bind_uuid_blob` code
 - **Phase D**: Batch convert remaining ~104 models `Uuid` → `DbUuid`
-**Status:** Planning complete. 16 files annotated with `// TODO(dbuuid)` in PR #45. Phase A ready to start.
+**Status:** Phases A+B (CRM) complete in PR #47. Phase B (non-CRM) and C/D remain.
 
 ### ~~8. Agent "View Profile" Link~~ → RESOLVED
 **Source:** `archive/2026-03-12--tracker--sprint1-issues.md` (item 7)
 **Resolution:** PR #41 added agent profile page at `/agents/:agentId/profile` showing agent description, capabilities, status, default model, and autonomy level. AgentWatcherPanel agent names now link to the profile page. Route registered in App.tsx with ProtectedRoute wrapper.
 
-### 8b. `any` Type Cleanup in New CRM/Pipeline Frontend Code
+### ~~8b. `any` Type Cleanup in New CRM/Pipeline Frontend Code~~ → RESOLVED
 **Source:** PR #45 QA review
-**What:** ~20+ `: any` or `as any` casts in `client-overview.tsx`, `projects.tsx`, and other files from the pipeline-progress cherry-pick. Violates frontend TS standards.
-**Status:** NOT STARTED — deferred from PR #45 (pre-existing pattern, not a regression)
+**Resolution:** PR #47 eliminated all 182 `: any` in targeted files. 107 remain in PR #46 org-profile files (not in scope). See `2026-03-18--plan--dev-velocity-sprint.md`.
 
-### 8c. Sovereign Stack Volume Path Deduplication
+### ~~8c. Sovereign Stack Volume Path Deduplication~~ → RESOLVED
 **Source:** PR #45 QA review
-**What:** `resolve_volume_path()` logic is duplicated in `org_cloud.rs` and `data_sources.rs`. Extract to a shared utility in `crates/utils/` or `crates/server/src/`.
-**Status:** NOT STARTED — both copies now use env vars, but should be unified
+**Resolution:** PR #47 extracted `resolve_volume_path()` to `crates/utils/src/volume.rs`. Both `org_cloud.rs` and `org_cloud_indexer.rs` now use the shared utility.
 
 ### 9. `http_request` Node Guardrails
 **Source:** `archive/2026-03-12--tracker--sprint1-issues.md`
@@ -105,7 +104,7 @@
 - `hooks/useAgentFlows.ts` (4 mutations)
 - `hooks/useTaskMutations.ts` (3 mutations) — complex: async activity logging side effects
 - `pages/oss-library-listener.tsx` (4 mutations)
-- `pages/data-sources.tsx:910` `RunWorkflowFromSourceDialog.runMutation` — conditional toast logic
+- `pages/data-sources/RunWorkflowFromSourceDialog.tsx` `runMutation` — conditional toast logic (split from data-sources.tsx in PR #47)
 Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~90 inline query keys (down from ~318)
 - Over-invalidation in autonomy/bowser/collaboration mutations (broad `autonomyKeys.all` instead of targeted keys)
 - `MembersTab` raw `fetch()` → `makeRequest` migration
@@ -116,12 +115,13 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 ### Modularity — Large Frontend File Splits
 **Source:** `archive/2026-03-15--plan--modularity-sprint-2.md` (remaining large files section)
 **What:** Largest remaining frontend files:
-- `virtual-environment.tsx` (1,282 lines)
+- ~~`virtual-environment.tsx` (1,282 lines)~~ → Done (PR #47, split to `virtual-environment/`)
 - `TaskFormDialog.tsx` (1,240 lines) — complex form, high-traffic
 - `company-profile.tsx` (1,218 lines) — similar pattern to project-detail split
 - ~~`MeetingMode.tsx` (1,207 lines)~~ → Done (PR #46, split to `meeting-mode/`)
 - `CrmDealDetailPanel.tsx` (1,202 lines) — grew in PR #36
-**Status:** PARTIALLY DONE (PR #46 split 3 files: MeetingMode, NoraAssistant, project-tasks). 7 files >900 lines remain (10 including preserved originals pending deletion).
+- ~~`data-sources.tsx` (991 lines)~~ → Done (PR #47, split to `data-sources/`)
+**Status:** PARTIALLY DONE. PR #46 split 3 files, PR #47 split 2 more. 5 files >900 lines remain (8 including preserved originals from PR #46 pending deletion).
 
 ### Workflow UX — Deferred Polish
 **Source:** `archive/2026-03-16--plan--workflow-ux-sprint.md` (deferred items + PR #44 review)
@@ -146,6 +146,47 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 
 ---
 
+## P3 — Developer Experience & Testing Infrastructure
+
+### 13. Onboarding Dialog Bypass for Test Environments
+**Source:** PR #47 smoke testing (2026-03-18)
+**What:** Fresh sessions trigger 4 sequential modals (safety notice → agent/editor config → GitHub connect → feedback opt-in) before the app is usable. Blocks all automated E2E and Playwright smoke testing.
+**Rationale:** Every smoke test run requires manually dismissing 4 dialogs. This makes automated QA impractical and wastes ~30s per test session. Critical for CI/CD pipeline.
+**Proposal:** Persist onboarding completion in `users` table (e.g., `onboarding_completed_at`). Skip for admin users. Add `SKIP_ONBOARDING=1` env var for test environments. Alternatively, add a `?skip_onboarding=1` URL param that sets a session flag.
+**Status:** NOT STARTED
+
+### 14. SSE Connections Should Not Fire Before Authentication
+**Source:** PR #47 smoke testing (2026-03-18)
+**What:** `useAgentDirectory` SSE connection (`/api/events/agent-directory`) fires on the login page before the user is authenticated, causing console errors (`The connection to ... was interrupted`).
+**Rationale:** Unnecessary network requests on unauthenticated pages. Creates noisy console errors that obscure real issues during debugging. The SSE hook should check auth state before connecting.
+**Proposal:** Guard SSE hooks with `isAuthenticated` check from AuthContext. Only establish SSE connections after successful login.
+**Status:** NOT STARTED
+
+### 15. Seed Database Refresh for Smoke Testing
+**Source:** PR #47 smoke testing (2026-03-18)
+**What:** Seed DB (`dev_assets_seed/duck_kanban.db`) lacks CRM deals, communications, and org cloud data. Smoke testing these features requires creating data manually via the UI or API, which is slow and fragile.
+**Rationale:** Every QA pass on CRM/comms features starts from zero. A richer seed with sample pipelines, deals, contacts, and comms would make smoke testing 10x faster.
+**Proposal:** Add seed data generation script or extend existing seed with: 1 pipeline per org with 3-5 deals across stages, 5-10 CRM contacts, sample call/SMS records. Run as part of `flox activate` or `npm run seed:dev`.
+**Status:** NOT STARTED
+
+## P3.5 — CRM UX Polish
+
+### 16. CRM Deal Card — Explain "Research Needed" Badge
+**Source:** PR #47 smoke testing (2026-03-18)
+**What:** New deals immediately show an orange "Research needed" badge and "5%" confidence score with no explanation of what triggers research or what the percentage represents.
+**Rationale:** Users creating simple deals to track prospects don't expect AI research status. The badge implies action is needed but provides no path to take that action. Confidence score has no tooltip or explanation.
+**Proposal:** Add tooltip on hover explaining the badge ("AI research has not been run for this deal. Click to start."). Show confidence explanation ("Based on available data about this prospect"). Consider making research opt-in rather than defaulting to "needed".
+**Status:** NOT STARTED
+
+### 17. Pipeline Aggregate Should Show Currency
+**Source:** PR #47 smoke testing (2026-03-18)
+**What:** Pipeline header shows "$50,000" but the deal form supports multiple currencies (USD, EUR, etc.). If deals have mixed currencies, the aggregate sum would be misleading.
+**Rationale:** Financial data accuracy is critical for CRM. Mixing currencies in a sum is a data integrity issue.
+**Proposal:** Either: (a) normalize all values to pipeline's base currency with conversion, (b) show aggregate per currency, or (c) only show aggregate when all deals share the same currency — otherwise show "Mixed currencies".
+**Status:** NOT STARTED
+
+---
+
 ## Active Branch Conflict Notes (2026-03-18)
 
 ### `sloperation316-pipeline-progress` — Updated from main (2026-03-18)
@@ -160,8 +201,8 @@ Superset of pipeline-progress (Dockerfile fix + VIBE tokenomics plan). Merged `o
 - Frontend: kept vibe's pipeline features, fixed `personsApi.get()` and `tasksApi.getAll()` method names
 **Note**: If PR #46 merges to main before these branches, they'll need another merge from main to pick up query key factories, mutation conversions, and file splits.
 
-### `refactor/dev-velocity-sprint` — Zero conflict with PR #46
-Planning file only. Focus: DbUuid (Rust), unwrap elimination (Rust), `any` types (different TS files), route authz (Rust).
+### `refactor/dev-velocity-sprint` — PR #47 (open)
+Dev velocity sprint: DbUuid Phases A+B, 136 unwrap eliminations, 182 any type removals, 31 route handlers secured, 2 file splits, sovereign hardening. Rebased on main post-PR #46. See `2026-03-18--plan--dev-velocity-sprint.md`.
 
 ### Pre-existing DB/Server Issues (found during e2e setup)
 1. **Seed DB BLOB→TEXT**: `users` table still has BLOB UUIDs. Runtime fix: `UPDATE users SET id = lower(substr(hex(id),...))`. Seed needs regeneration.

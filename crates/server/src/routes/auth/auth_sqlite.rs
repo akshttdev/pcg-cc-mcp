@@ -5,11 +5,11 @@ use axum::{
     http::{StatusCode, header},
     response::{IntoResponse, Response},
 };
+use db::{DbUuid, bind_uuid_blob};
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use utils::response::ApiResponse;
-// TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
@@ -60,9 +60,10 @@ pub struct LoginResponse {
     pub session_id: String,
 }
 
+// users.id is BLOB — DbUuid handles both BLOB and TEXT decoding
 #[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct User {
-    pub id: String,
+    pub id: DbUuid,
     pub username: String,
     pub email: String,
     pub password_hash: String,
@@ -126,9 +127,13 @@ pub async fn login(
         return Err(ApiError::BadRequest("Invalid credentials".to_string()));
     }
 
+    // users.id and related FK columns (sessions.user_id, organization_members.user_id) are BLOB
+    let user_id_blob = bind_uuid_blob(&user.id)
+        .map_err(|e| ApiError::InternalError(format!("Invalid user UUID: {}", e)))?;
+
     // Update last login time
     sqlx::query("UPDATE users SET last_login_at = datetime('now') WHERE id = ?")
-        .bind(&user.id)
+        .bind(&user_id_blob)
         .execute(pool)
         .await
         .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -138,7 +143,7 @@ pub async fn login(
     let has_home: bool = sqlx::query_scalar::<_, Option<String>>(
         "SELECT home_project_id FROM users WHERE id = ?",
     )
-    .bind(&user.id)
+    .bind(&user_id_blob)
     .fetch_optional(pool)
     .await
     .ok()
@@ -173,7 +178,7 @@ pub async fn login(
          VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))",
     )
     .bind(Uuid::new_v4().to_string())
-    .bind(&user.id)
+    .bind(&user_id_blob)
     .bind(&session_token_hash)
     .bind(expires_at.to_rfc3339())
     .execute(pool)
@@ -195,7 +200,7 @@ pub async fn login(
          JOIN organization_members om ON o.id = om.organization_id
          WHERE om.user_id = ? AND o.is_active = 1",
     )
-    .bind(&user.id)
+    .bind(&user_id_blob)
     .fetch_all(pool)
     .await
     .unwrap_or_default();
@@ -214,7 +219,7 @@ pub async fn login(
     let effective_admin = user.is_admin == 1 || platform_roles.iter().any(|r| r == "platform_admin");
 
     let profile = UserProfile {
-        id: user.id.clone(),
+        id: user.id.to_string(),
         username: user.username,
         email: user.email,
         full_name: user.full_name,
@@ -273,9 +278,10 @@ pub async fn get_current_user(
     let session_token_hash = db::services::AuthService::hash_session_token(session_id);
 
     // Find session and check if it's valid
+    // sessions.user_id is BLOB (FK to users.id)
     #[derive(FromRow)]
     struct Session {
-        user_id: String,
+        user_id: DbUuid,
         expires_at: String,
     }
 
@@ -300,13 +306,17 @@ pub async fn get_current_user(
         return Err(ApiError::BadRequest("Session expired".to_string()));
     }
 
+    // users.id and related FK columns are BLOB
+    let user_id_blob = bind_uuid_blob(&session.user_id)
+        .map_err(|e| ApiError::InternalError(format!("Invalid user UUID: {}", e)))?;
+
     // Get user
     let user = sqlx::query_as::<_, User>(
         "SELECT id, username, email, password_hash, full_name, avatar_url, is_active, is_admin,
                 home_organization_id
          FROM users WHERE id = ?",
     )
-    .bind(&session.user_id)
+    .bind(&user_id_blob)
     .fetch_optional(pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?
@@ -327,7 +337,7 @@ pub async fn get_current_user(
          JOIN organization_members om ON o.id = om.organization_id
          WHERE om.user_id = ? AND o.is_active = 1",
     )
-    .bind(&user.id)
+    .bind(&user_id_blob)
     .fetch_all(pool)
     .await
     .unwrap_or_default();
@@ -346,7 +356,7 @@ pub async fn get_current_user(
     let effective_admin = user.is_admin == 1 || platform_roles.iter().any(|r| r == "platform_admin");
 
     let profile = UserProfile {
-        id: user.id.clone(),
+        id: user.id.to_string(),
         username: user.username,
         email: user.email,
         full_name: user.full_name,
