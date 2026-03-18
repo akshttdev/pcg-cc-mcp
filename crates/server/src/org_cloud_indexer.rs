@@ -8,46 +8,6 @@ use sqlx::SqlitePool;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
-/// Volume definition: name + base path on disk
-struct Volume {
-    name: &'static str,
-    base_path: PathBuf,
-}
-
-/// Get the sovereign stack volumes for the Sirak Studios deployment.
-/// Only sovereign stack volumes are indexed — legacy Dropbox volumes are excluded.
-fn get_org_volumes() -> Vec<Volume> {
-    let stack_root = std::env::var("SOVEREIGN_STACK_ROOT")
-        .unwrap_or_else(|_| "E:/topos/sovereign_stack".to_string());
-    let org_name = std::env::var("SOVEREIGN_STACK_ORG_NAME")
-        .unwrap_or_else(|_| "Sirak Studios".to_string());
-    let storage_root = std::env::var("SOVEREIGN_STORAGE_ROOT")
-        .unwrap_or_else(|_| "E:/topos/sovereign_storage".to_string());
-
-    let stack = PathBuf::from(&stack_root);
-    let org_dir = stack.join(&org_name);
-
-    vec![
-        // Sovereign stack volumes (APN cloud — canonical org storage)
-        Volume {
-            name: "sovereign_personal",
-            base_path: stack.join("Personal"),
-        },
-        Volume {
-            name: "sovereign_org",
-            base_path: org_dir.clone(),
-        },
-        Volume {
-            name: "sovereign",
-            base_path: PathBuf::from(storage_root),
-        },
-        Volume {
-            name: "media_pipeline",
-            base_path: org_dir.join("Media Pipeline"),
-        },
-    ]
-}
-
 /// Guess MIME type from file extension
 fn mime_from_extension(path: &Path) -> &'static str {
     match path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).as_deref() {
@@ -145,18 +105,18 @@ pub async fn index_existing_data(pool: &SqlitePool, org_id: &str) -> Result<i64,
 /// Walk a filesystem directory and index all files into cloud_files.
 /// Uses relative paths so resolve_volume_path can reconstruct the absolute path.
 async fn index_filesystem_volumes(pool: &SqlitePool, org_id: &str) -> Result<i64, ApiError> {
-    let volumes = get_org_volumes();
+    let volumes = utils::volume::all_sovereign_volumes();
     let mut total: i64 = 0;
 
-    for volume in &volumes {
-        if !volume.base_path.exists() {
-            tracing::debug!("[CLOUD_INDEX] Volume {} not found at {:?}, skipping", volume.name, volume.base_path);
+    for (name, base_path) in &volumes {
+        if !base_path.exists() {
+            tracing::debug!("[CLOUD_INDEX] Volume {} not found at {:?}, skipping", name, base_path);
             continue;
         }
 
-        tracing::info!("[CLOUD_INDEX] Scanning volume '{}' at {:?}", volume.name, volume.base_path);
-        let count = index_directory(pool, org_id, volume.name, &volume.base_path).await?;
-        tracing::info!("[CLOUD_INDEX] Indexed {} files from '{}'", count, volume.name);
+        tracing::info!("[CLOUD_INDEX] Scanning volume '{}' at {:?}", name, base_path);
+        let count = index_directory(pool, org_id, name, base_path).await?;
+        tracing::info!("[CLOUD_INDEX] Indexed {} files from '{}'", count, name);
         total += count;
     }
 

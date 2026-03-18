@@ -22,6 +22,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 use tokio::time;
+use tokio_util::sync::CancellationToken;
 
 // ============================================================================
 // Configuration
@@ -136,8 +137,28 @@ pub struct Manifest {
 impl Manifest {
     fn load(path: &Path) -> Self {
         match std::fs::read_to_string(path) {
-            Ok(data) => serde_json::from_str(&data).unwrap_or_default(),
-            Err(_) => Self::default(),
+            Ok(data) => match serde_json::from_str(&data) {
+                Ok(manifest) => manifest,
+                Err(e) => {
+                    tracing::warn!(
+                        "[SOVEREIGN_STACK] Failed to parse manifest at {:?}: {}; using default",
+                        path,
+                        e
+                    );
+                    Self::default()
+                }
+            },
+            Err(e) => {
+                // File not found is expected on first run — only warn on other errors
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    tracing::warn!(
+                        "[SOVEREIGN_STACK] Failed to read manifest at {:?}: {}; using default",
+                        path,
+                        e
+                    );
+                }
+                Self::default()
+            }
         }
     }
 
@@ -211,8 +232,11 @@ impl SovereignStackService {
         Self { config }
     }
 
-    /// Start the background scraper loop
-    pub async fn start(&mut self) -> Result<()> {
+    /// Start the background scraper loop.
+    ///
+    /// Accepts a `CancellationToken` for graceful shutdown — when the token is
+    /// cancelled, the loop exits cleanly after the current tick completes.
+    pub async fn start(&mut self, shutdown: CancellationToken) -> Result<()> {
         tracing::info!(
             "[SOVEREIGN_STACK] Starting scraper service (interval: {}s)",
             self.config.scan_interval_secs
@@ -232,12 +256,20 @@ impl SovereignStackService {
         let mut interval = time::interval(Duration::from_secs(self.config.scan_interval_secs));
 
         loop {
-            interval.tick().await;
+            tokio::select! {
+                _ = interval.tick() => {}
+                _ = shutdown.cancelled() => {
+                    tracing::info!("[SOVEREIGN_STACK] Shutting down scraper service");
+                    break;
+                }
+            }
 
             if let Err(e) = self.run_scan().await {
                 tracing::error!("[SOVEREIGN_STACK] Scan failed: {}", e);
             }
         }
+
+        Ok(())
     }
 
     /// Create the sovereign stack directory structure if missing
