@@ -145,3 +145,29 @@ Inline keys remaining after sprint are in files outside the sprint scope:
 - Deal detail tabs, workflow editor pages, misc components
 - Keys with string mismatches (noted above)
 - These can be addressed in a follow-up sprint
+
+## QA Review & Regression Analysis (2026-03-18)
+
+### TypeScript Compilation
+- `npx tsc --noEmit`: **Zero errors** — all splits, barrel exports, and query key factories compile clean.
+
+### ESLint
+- 7 errors in sprint-touched files, **all pre-existing** (not introduced by this sprint):
+  - `_chunkIndex` unused in `meeting-mode/index.tsx` (pre-split)
+  - `_orgId` unused in `ProjectsTab.tsx` (pre-existing)
+  - Empty block statement in unrelated file
+
+### Regression Checks
+1. **No stale imports**: Zero references to old unsplit file paths (`components/topsi/MeetingMode`, `components/nora/NoraAssistant`, `pages/project-tasks.tsx` as file).
+2. **Query key value matching**: All factory return values produce identical strings to replaced inline keys:
+   - `sidebarKeys.tree()` → `['sidebarTree']`
+   - `organizationKeys.brandProfile(id)` → `['orgBrandProfile', id]`
+   - `sidebarKeys.stagingPendingCount()` → `['staging-pending-count']`
+   - All 22 new factories verified.
+3. **Original files preserved**: `NoraAssistant.tsx`, `MeetingMode.tsx`, `project-tasks.tsx` originals retained for reference.
+4. **Mutation conversions**: Spot-checked `useOrgOnboarding`, `media-library`, `knowledge` — all correctly using `useMutationWithToast` with proper `invalidateKeys` and `successMessage`.
+5. **No dead imports**: Key files checked for unused imports — none found.
+
+### Diff Summary (vs main)
+- **97 files changed**, 4,050 insertions, 291 deletions
+- **7 commits** on branch
