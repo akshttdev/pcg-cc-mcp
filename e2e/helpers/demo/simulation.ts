@@ -244,6 +244,152 @@ export async function simulateQaVerdict(
  * Used when the demo needs a PR to exist before triggering watchers
  * (e.g., Manual QA Trigger demo).
  */
+// ── PR Comment Helpers ───────────────────────────────────────────────────────
+
+/**
+ * Post a dev agent work summary comment on a PR.
+ *
+ * Mirrors what `post_dev_agent_pr_comment()` does in the backend:
+ * posts an audit trail comment identifying the agent and summarizing work done.
+ */
+export async function postDevAgentSummaryComment(
+  request: APIRequestContext,
+  prNumber: number,
+  taskId: string,
+  taskTitle: string,
+  repo?: Partial<DemoRepoConfig>
+): Promise<void> {
+  const config = { ...DEMO_REPO_CONFIG, ...repo };
+
+  const comment = [
+    `## Dev Agent Work Summary`,
+    ``,
+    `**Task**: \`${taskId.slice(0, 8)}\` — ${taskTitle}`,
+    `**Agent**: ORCHA Dev Agent (CLAUDE_CODE)`,
+    ``,
+    `### Changes Made`,
+    `- Analyzed task requirements and completion criteria`,
+    `- Implemented fix for the reported issue`,
+    `- Added relevant test coverage`,
+    `- Verified build passes locally`,
+    ``,
+    `### Files Changed`,
+    `| File | Change |`,
+    `|---|---|`,
+    `| \`src/agent-work-*.ts\` | New: agent implementation |`,
+    ``,
+    `---`,
+    `*Created by **ORCHA Dev Agent** — Automated by ORCHA Platform*`,
+  ].join("\n");
+
+  const res = await ghApi(
+    request, "POST",
+    `/repos/${config.owner}/${config.name}/issues/${prNumber}/comments`,
+    { body: comment }
+  );
+  expect(res.ok(), `Failed to post dev agent summary comment on PR #${prNumber}`).toBeTruthy();
+}
+
+/**
+ * Post a QA review comment on a PR.
+ *
+ * Mirrors what `finalize_review()` → `build_review_comment()` does in the backend:
+ * posts a structured review with verdict, criteria checks, and issues table.
+ */
+export async function postQaReviewComment(
+  request: APIRequestContext,
+  prNumber: number,
+  taskId: string,
+  verdict: "pass" | "needs_changes" | "fail",
+  opts?: {
+    summary?: string;
+    criteriaChecks?: Array<{ criterion: string; met: boolean; notes: string }>;
+    issues?: Array<{ file: string; line: number; severity: string; description: string }>;
+    iteration?: number;
+  },
+  repo?: Partial<DemoRepoConfig>
+): Promise<void> {
+  const config = { ...DEMO_REPO_CONFIG, ...repo };
+  const iteration = opts?.iteration ?? 1;
+
+  const verdictEmoji = verdict === "pass" ? "\u2705" : verdict === "needs_changes" ? "\u26a0\ufe0f" : "\u274c";
+  const verdictLabel = verdict === "pass" ? "Pass" : verdict === "needs_changes" ? "Needs Changes" : "Fail";
+  const summary = opts?.summary ?? (verdict === "pass"
+    ? "All completion criteria met. Code changes are clean and well-structured."
+    : "Some issues found that need to be addressed before merging.");
+
+  const checks = opts?.criteriaChecks ?? [
+    { criterion: "Bug fix addresses reported issue", met: verdict === "pass", notes: verdict === "pass" ? "Fix correctly handles the edge case" : "Partial fix — edge case not covered" },
+    { criterion: "No regressions introduced", met: true, notes: "Existing tests pass" },
+    { criterion: "Code follows project conventions", met: true, notes: "Consistent style and patterns" },
+  ];
+
+  const issues = opts?.issues ?? (verdict !== "pass" ? [
+    { file: "src/agent-work.ts", line: 12, severity: "warning", description: "Missing error handling for null input" },
+  ] : []);
+
+  let comment = `## QA Review — Iteration ${iteration}\n\n**Verdict**: ${verdictEmoji} ${verdictLabel}\n\n`;
+
+  comment += "### Completion Criteria\n";
+  for (const check of checks) {
+    const checkbox = check.met ? "[x]" : "[ ]";
+    comment += `- ${checkbox} ${check.criterion} — ${check.notes}\n`;
+  }
+  comment += "\n";
+
+  if (issues.length > 0) {
+    comment += "### Issues\n| File | Line | Severity | Description |\n|---|---|---|---|\n";
+    for (const issue of issues) {
+      comment += `| \`${issue.file}\` | ${issue.line} | ${issue.severity} | ${issue.description} |\n`;
+    }
+    comment += "\n";
+  }
+
+  comment += `### Summary\n${summary}\n\n`;
+  comment += `---\n*ORCHA QA Agent • Task ${taskId.slice(0, 8)} • Iteration ${iteration}/2*`;
+
+  const res = await ghApi(
+    request, "POST",
+    `/repos/${config.owner}/${config.name}/issues/${prNumber}/comments`,
+    { body: comment }
+  );
+  expect(res.ok(), `Failed to post QA review comment on PR #${prNumber}`).toBeTruthy();
+}
+
+/**
+ * Fetch comments on a PR from GitHub API.
+ * Returns array of { body, user } objects.
+ */
+export async function fetchPrComments(
+  request: APIRequestContext,
+  prNumber: number,
+  repo?: Partial<DemoRepoConfig>
+): Promise<Array<{ body: string; user: string }>> {
+  const config = { ...DEMO_REPO_CONFIG, ...repo };
+
+  const res = await ghApi(
+    request, "GET",
+    `/repos/${config.owner}/${config.name}/issues/${prNumber}/comments`
+  );
+  expect(res.ok(), `Failed to fetch comments for PR #${prNumber}`).toBeTruthy();
+  const comments = await res.json();
+
+  return (comments as Array<{ body: string; user: { login: string } }>).map((c) => ({
+    body: c.body,
+    user: c.user.login,
+  }));
+}
+
+/**
+ * Get the HTML URL for a PR in the sandbox repo.
+ */
+export function getPrUrl(prNumber: number, repo?: Partial<DemoRepoConfig>): string {
+  const config = { ...DEMO_REPO_CONFIG, ...repo };
+  return `https://github.com/${config.owner}/${config.name}/pull/${prNumber}`;
+}
+
+// ── PR Creation Helpers ──────────────────────────────────────────────────────
+
 export async function createPrForTask(
   request: APIRequestContext,
   taskId: string,

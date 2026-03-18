@@ -1148,6 +1148,15 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
     );
 
     for trigger in triggers {
+        // Skip triggers in cooldown
+        if !trigger.is_past_cooldown() {
+            tracing::info!(
+                "[TRIGGER] Skipping trigger '{}' — still in cooldown ({}s)",
+                trigger.id, trigger.cooldown_seconds
+            );
+            continue;
+        }
+
         let pool = pool.clone();
         let deployment = deployment.clone();
         let ds_id = data_source_id.clone();
@@ -1158,6 +1167,15 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
 
         tokio::spawn(async move {
             let _trigger_start = std::time::Instant::now();
+
+            // Create audit trail entry
+            use db::models::trigger_execution::{TriggerExecution, CreateTriggerExecution};
+            let execution = TriggerExecution::create(&pool, CreateTriggerExecution {
+                trigger_id: trigger_id.clone(),
+                source_type: Some("data_source".to_string()),
+                source_id: Some(ds_id.clone()),
+                metadata: None,
+            }).await.ok();
             let span = tracing::info_span!("trigger_execution",
                 trigger_id = %trigger_id,
                 workflow_id = %workflow_id,
@@ -1237,10 +1255,21 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                 auto_approve: trigger_auto_approve,
             };
 
+            // Mark execution as running
+            if let Some(ref exec) = execution {
+                let _ = TriggerExecution::mark_running(&pool, &exec.id, Some(&workflow_run_id.to_string())).await;
+            }
+
             let result = super::workflow_engine::execute_workflow_nodes(&pool, &workflow, &content, &opts).await;
 
             let duration_ms = run_start.elapsed().as_millis() as i64;
             super::workflow_engine::finalize_workflow_run(&pool, workflow_run_id, &workflow, &result, duration_ms, "completed").await;
+
+            // Record execution result
+            if let Some(ref exec) = execution {
+                let _ = TriggerExecution::mark_completed(&pool, &exec.id, result.staged_records, duration_ms).await;
+            }
+            let _ = WorkflowTrigger::clear_error(&pool, &trigger_id).await;
 
             tracing::info!(
                 "[TRIGGER] Completed trigger '{}' workflow run {} ({} records staged, {}ms)",

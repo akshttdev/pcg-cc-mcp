@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { resolveApiUrl } from '@/lib/api';
+import { makeRequest, handleApiResponse } from '@/lib/api/client';
 import { systemMetricsKeys } from '@/lib/query-keys';
 
 export interface SystemMetrics {
@@ -35,21 +35,13 @@ export interface DetailedSystemMetrics {
 }
 
 async function fetchSystemMetrics(): Promise<SystemMetrics> {
-  const res = await fetch(resolveApiUrl('/api/system-metrics'));
-  if (!res.ok) {
-    throw new Error('Failed to fetch system metrics');
-  }
-  const data = await res.json();
-  return data.data;
+  const response = await makeRequest('/api/system-metrics');
+  return handleApiResponse<SystemMetrics>(response);
 }
 
 async function fetchDetailedMetrics(): Promise<DetailedSystemMetrics> {
-  const res = await fetch(resolveApiUrl('/api/system-metrics/detailed'));
-  if (!res.ok) {
-    throw new Error('Failed to fetch detailed metrics');
-  }
-  const data = await res.json();
-  return data.data;
+  const response = await makeRequest('/api/system-metrics/detailed');
+  return handleApiResponse<DetailedSystemMetrics>(response);
 }
 
 export function useSystemMetrics(options?: { refetchInterval?: number }) {

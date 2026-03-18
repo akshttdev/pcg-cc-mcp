@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { resolveApiUrl } from '@/lib/api';
+import { makeRequest, handleApiResponse } from '@/lib/api/client';
 import { missionControlKeys } from '@/lib/query-keys';
 
 export interface AgentTaskPlan {
@@ -81,39 +81,23 @@ export interface MissionControlDashboard {
 }
 
 async function fetchMissionControlDashboard(): Promise<MissionControlDashboard> {
-  const response = await fetch(resolveApiUrl('/api/mission-control'));
-  if (!response.ok) {
-    throw new Error('Failed to fetch Mission Control dashboard');
-  }
-  const json = await response.json();
-  return json.data;
+  const response = await makeRequest('/api/mission-control');
+  return handleApiResponse<MissionControlDashboard>(response);
 }
 
 async function fetchExecutionArtifacts(executionId: string): Promise<ExecutionArtifact[]> {
-  const response = await fetch(resolveApiUrl(`/api/mission-control/executions/${executionId}/artifacts`));
-  if (!response.ok) {
-    throw new Error('Failed to fetch execution artifacts');
-  }
-  const json = await response.json();
-  return json.data;
+  const response = await makeRequest(`/api/mission-control/executions/${executionId}/artifacts`);
+  return handleApiResponse<ExecutionArtifact[]>(response);
 }
 
 async function fetchExecutionPlan(executionId: string): Promise<AgentTaskPlan | null> {
-  const response = await fetch(resolveApiUrl(`/api/mission-control/executions/${executionId}/plan`));
-  if (!response.ok) {
-    throw new Error('Failed to fetch execution plan');
-  }
-  const json = await response.json();
-  return json.data;
+  const response = await makeRequest(`/api/mission-control/executions/${executionId}/plan`);
+  return handleApiResponse<AgentTaskPlan | null>(response);
 }
 
 async function fetchActivePlans(): Promise<AgentTaskPlan[]> {
-  const response = await fetch(resolveApiUrl('/api/mission-control/plans/active'));
-  if (!response.ok) {
-    throw new Error('Failed to fetch active plans');
-  }
-  const json = await response.json();
-  return json.data;
+  const response = await makeRequest('/api/mission-control/plans/active');
+  return handleApiResponse<AgentTaskPlan[]>(response);
 }
 
 /**

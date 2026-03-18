@@ -6,8 +6,8 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
+import { useQuery } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import {
   Card,
   CardContent,
@@ -93,8 +93,6 @@ export function AgentExecutionConfigPanel({
   agentName,
   onConfigChange,
 }: AgentExecutionConfigPanelProps) {
-  const queryClient = useQueryClient();
-
   // Fetch execution profiles
   const {
     data: profiles = [],
@@ -176,31 +174,23 @@ export function AgentExecutionConfigPanel({
   }, [existingConfig, onConfigChange]);
 
   // Create mutation
-  const createMutation = useMutation({
+  const createMutation = useMutationWithToast({
     mutationFn: (data: CreateAgentExecutionConfig) =>
       agentExecutionConfigApi.createAgentConfig(agentId, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: agentKeys.executionConfig(agentId) });
-      toast.success('Execution config created');
-      setHasChanges(false);
-    },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Failed to create config');
-    },
+    successMessage: 'Execution config created',
+    errorMessage: (error: Error) => error.message || 'Failed to create config',
+    invalidateKeys: [agentKeys.executionConfig(agentId)],
+    onSuccess: () => setHasChanges(false),
   });
 
   // Update mutation
-  const updateMutation = useMutation({
+  const updateMutation = useMutationWithToast({
     mutationFn: (data: UpdateAgentExecutionConfig) =>
       agentExecutionConfigApi.updateAgentConfig(agentId, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: agentKeys.executionConfig(agentId) });
-      toast.success('Execution config updated');
-      setHasChanges(false);
-    },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Failed to update config');
-    },
+    successMessage: 'Execution config updated',
+    errorMessage: (error: Error) => error.message || 'Failed to update config',
+    invalidateKeys: [agentKeys.executionConfig(agentId)],
+    onSuccess: () => setHasChanges(false),
   });
 
   const isSaving = createMutation.isPending || updateMutation.isPending;

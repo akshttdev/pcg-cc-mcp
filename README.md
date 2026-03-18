@@ -87,11 +87,11 @@ If you prefer not to use flox, install these manually:
 cp .env.example .env
 
 # 2. Deploy
-./deploy.sh
+./scripts/deploy.sh
 # or manually: docker-compose build && docker-compose up -d
 ```
 
-See **[DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md)** for the complete deployment guide.
+See **[docs/deployment/docker/DOCKER_DEPLOYMENT.md](docs/deployment/docker/DOCKER_DEPLOYMENT.md)** for the complete deployment guide.
 
 ### Building for Production
 

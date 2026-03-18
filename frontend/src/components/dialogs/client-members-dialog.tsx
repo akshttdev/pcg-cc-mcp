@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import {
   Dialog,
   DialogContent,
@@ -28,7 +29,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Shield, Trash2, UserPlus, Eye, Pencil } from 'lucide-react';
 import type { UserListItem } from 'shared/types';
-import { resolveApiUrl } from '@/lib/api';
+import { makeRequest, handleApiResponse } from '@/lib/api/client';
 import { userKeys } from '@/lib/query-keys';
 
 interface ClientMembersDialogProps {
@@ -53,43 +54,28 @@ interface ClientMemberItem {
 
 const api = {
   listClientMembers: async (clientId: string): Promise<ClientMemberItem[]> => {
-    const response = await fetch(resolveApiUrl(`/api/clients/${clientId}/members`), {
-      credentials: 'include',
-    });
-    if (!response.ok) throw new Error('Failed to fetch client members');
-    const data = await response.json();
-    return data.data;
+    const response = await makeRequest(`/api/clients/${clientId}/members`);
+    return handleApiResponse<ClientMemberItem[]>(response);
   },
 
   listUsers: async (): Promise<UserListItem[]> => {
-    const response = await fetch(resolveApiUrl('/api/users'), {
-      credentials: 'include',
-    });
-    if (!response.ok) throw new Error('Failed to fetch users');
-    const data = await response.json();
-    return data.data;
+    const response = await makeRequest('/api/users');
+    return handleApiResponse<UserListItem[]>(response);
   },
 
   addClientMember: async (clientId: string, userId: string, role: string) => {
-    const response = await fetch(resolveApiUrl(`/api/clients/${clientId}/members`), {
+    const response = await makeRequest(`/api/clients/${clientId}/members`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify({ user_id: userId, role }),
     });
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Failed to add member');
-    }
-    return response.json();
+    return handleApiResponse(response);
   },
 
   removeClientMember: async (clientId: string, userId: string) => {
-    const response = await fetch(resolveApiUrl(`/api/clients/${clientId}/members/${userId}`), {
+    const response = await makeRequest(`/api/clients/${clientId}/members/${userId}`, {
       method: 'DELETE',
-      credentials: 'include',
     });
-    if (!response.ok) throw new Error('Failed to remove member');
+    return handleApiResponse<void>(response);
   },
 };
 
@@ -111,7 +97,6 @@ export function ClientMembersDialog({
   clientId,
   clientName,
 }: ClientMembersDialogProps) {
-  const queryClient = useQueryClient();
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [selectedRole, setSelectedRole] = useState<string>('viewer');
 
@@ -131,21 +116,23 @@ export function ClientMembersDialog({
     (user) => !members.some((member) => member.user_id === user.id)
   );
 
-  const addMutation = useMutation({
+  const addMutation = useMutationWithToast({
     mutationFn: ({ userId, role }: { userId: string; role: string }) =>
       api.addClientMember(clientId, userId, role),
+    successMessage: 'Member added',
+    errorMessage: 'Failed to add member',
+    invalidateKeys: [userKeys.clientMembers(clientId)],
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: userKeys.clientMembers(clientId) });
       setSelectedUserId('');
       setSelectedRole('viewer');
     },
   });
 
-  const removeMutation = useMutation({
+  const removeMutation = useMutationWithToast({
     mutationFn: (userId: string) => api.removeClientMember(clientId, userId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: userKeys.clientMembers(clientId) });
-    },
+    successMessage: 'Member removed',
+    errorMessage: 'Failed to remove member',
+    invalidateKeys: [userKeys.clientMembers(clientId)],
   });
 
   const handleAddMember = () => {

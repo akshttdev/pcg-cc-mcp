@@ -18,22 +18,22 @@ help: ## Show this help message
 	@echo ""
 
 setup: ## Setup and configure environment
-	@./deploy.sh setup
+	@./scripts/deploy.sh setup
 
 deploy: ## Build and deploy (fresh start)
-	@./deploy.sh deploy
+	@./scripts/deploy.sh deploy
 
 start: ## Start existing containers
-	@./deploy.sh start
+	@./scripts/deploy.sh start
 
 stop: ## Stop all containers
-	@./deploy.sh stop
+	@./scripts/deploy.sh stop
 
 restart: ## Restart all containers
-	@./deploy.sh restart
+	@./scripts/deploy.sh restart
 
 status: ## Show service status
-	@./deploy.sh status
+	@./scripts/deploy.sh status
 
 logs: ## Show logs for all services
 	@docker-compose logs -f
@@ -51,19 +51,19 @@ logs-cloudflared: ## Show logs for Cloudflare tunnel
 	@docker-compose logs -f cloudflared
 
 backup: ## Create manual database backup
-	@./deploy.sh backup
+	@./scripts/deploy.sh backup
 
 update: ## Update and rebuild application
-	@./deploy.sh update
+	@./scripts/deploy.sh update
 
 clean: ## Clean rebuild from scratch
-	@./deploy.sh clean
+	@./scripts/deploy.sh clean
 
 shell: ## Open shell in app container
 	@docker-compose exec app /bin/bash
 
 check: ## Run system checks
-	@./deploy.sh check
+	@./scripts/deploy.sh check
 
 # Monitoring
 ps: ## Show running containers

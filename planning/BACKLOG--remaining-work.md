@@ -1,6 +1,6 @@
 # Backlog — Remaining Work
 
-**Last updated:** 2026-03-18 (post PR #48 — UX polish & quality sprint 2)
+**Last updated:** 2026-03-18 (post frontend polish sprint + sloperation317 integration)
 **Context:** Consolidated from all completed planning docs. Items prioritized by impact and dependency.
 
 ---
@@ -24,9 +24,10 @@
 **Source:** `archive/2026-03-12--review--ui-backend-capability-gaps.md` (F9)
 **What:** Settings > MCP Servers configures Claude Code CLI's `~/.claude.json`. The executor pipeline reads `default_mcp.json`. Completely separate — confusing for users.
 
-### 4. Workflow Trigger System
+### ~~4. Workflow Trigger System~~ → RESOLVED
 **Source:** `archive/2026-03-12--review--ui-backend-capability-gaps.md` (F12)
-**What:** Workflows must be manually run. No cron, event, or webhook triggers.
+**Resolution:** Frontend polish sprint (2026-03-18) added webhook triggers with HMAC-SHA256 validation, execution audit trail (`trigger_executions` table), per-trigger cooldown, retry logic, and full frontend UI. Event triggers and schedule triggers already existed. All three trigger types now operational.
+**Known issues (from PR #49 review):** ~~Webhook route behind `require_auth` (P1)~~ FIXED, retry logic dead code (P2), cooldown race condition (P2). See P2 section below.
 
 ### ~~5. E2E Demo Test Run~~ → RESOLVED
 **Source:** `2026-03-14--plan--e2e-demo-refactor.md`
@@ -125,6 +126,17 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 - ~~`project-tasks.tsx` (998 lines)~~ → **DELETED** (PR #48, replaced by `project-tasks/` directory)
 **Status:** PARTIALLY DONE. 6 files >900 lines remain. PR #48 deleted 2 dead monolith originals (-2,205 lines).
 
+### Component Hook Extraction — Research Similar Patterns
+**Source:** Frontend polish sprint (2026-03-18), task card refactor
+**What:** Extracting shared hooks from task cards (`useResolvedAssignee`, `useResolvedAgent`, `useScrollIntoView`) + shared sub-components (`PriorityBadge`, `DueDateBadge`, `CollaboratorAvatars`) reduced TaskCard 396→259 lines and EnhancedTaskCard 541→428 lines while eliminating duplication. Research similar opportunities across the codebase:
+- **CRM cards** (`CrmDealCard`, `CrmContactCard`) — likely duplicate assignee resolution, priority badges
+- **Project cards** (`ProjectCard`) — may have inline member avatar logic that parallels `CollaboratorAvatars`
+- **Detail panels** — `CrmDealDetailPanel`, `TaskDetailsPanel` likely duplicate the assignee IIFE pattern
+- **Scroll-into-view** — search for `scrollIntoView` calls across components, consolidate to `useScrollIntoView`
+- **Agent name resolution** — any component showing agent names should use `useResolvedAgent` instead of inline lookup
+**Approach:** Audit with `grep -r "usersMap?.get\|scrollIntoView\|agentsMap" frontend/src/` to find candidates. Prioritize files >400 lines with inline data resolution patterns.
+**Status:** NOT STARTED — research item for next modularity sprint
+
 ### Workflow UX — Deferred Polish
 **Source:** `archive/2026-03-16--plan--workflow-ux-sprint.md` (deferred items + PR #44 review)
 **What:**
@@ -148,7 +160,147 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 
 ---
 
+## P1 — PR #49 Review: Critical Deferred Issues
+
+### ~~Webhook Route Behind `require_auth` Middleware~~ → RESOLVED
+**Source:** PR #49 backend review (2026-03-18)
+**Resolution:** Split `workflow_triggers::router()` into authenticated `router()` (CRUD) + public `public_router()` (webhook handler). Webhook endpoint now registered in `base_routes` (before `require_auth` layer). HMAC-SHA256 is the sole auth mechanism for webhooks.
+
+---
+
+## P2 — PR #49 Review: Medium Priority Deferred Issues
+
+### Webhook Retry Logic is Dead Code
+**Source:** PR #49 backend review (2026-03-18)
+**File:** `crates/db/src/models/workflow_trigger.rs`
+**What:** `max_retries`, `retry_count`, and `next_retry_at` fields are stored in the DB but never read or acted upon. No background worker checks `next_retry_at` to re-execute failed triggers.
+**Recommendation:** Either (a) implement a retry worker in `spawn_workflow_schedule_loop` that checks for triggers past `next_retry_at` with `retry_count < max_retries`, or (b) remove the fields if retry isn't needed yet.
+**Status:** NOT STARTED
+
+### Webhook Cooldown Race Condition
+**Source:** PR #49 backend review (2026-03-18)
+**File:** `crates/db/src/models/workflow_trigger.rs` — `is_past_cooldown()`
+**What:** Cooldown check reads `last_triggered_at`, then the caller updates it — but under concurrent requests, two webhooks could both pass the cooldown check before either updates the timestamp.
+**Recommendation:** Use a database-level atomic check-and-update (e.g., `UPDATE ... WHERE last_triggered_at < ? RETURNING *`) or add a per-trigger mutex/advisory lock.
+**Status:** NOT STARTED
+
+### `webhook_url` Stored as Relative Path
+**Source:** PR #49 backend review (2026-03-18)
+**File:** `crates/db/src/models/workflow_trigger.rs`
+**What:** `webhook_url` field stores a relative path (like `/webhooks/abc123`) rather than a full URL. Without the server hostname, the stored URL is not useful for display or documentation.
+**Recommendation:** Either store the full URL (constructed from `HOST`/`BACKEND_PORT` at creation time) or construct it dynamically in the API response.
+**Status:** NOT STARTED — low impact
+
+### `useResolvedAgent` O(n) Scan Per Card
+**Source:** PR #49 frontend review (2026-03-18)
+**File:** `frontend/src/components/tasks/task-card-parts/useResolvedAgent.ts`
+**What:** When `agentsMap` doesn't have a direct hit, the hook does `Array.from(agentsMap.values()).find()` — O(n) per card per render. With many agents and cards, this adds up.
+**Recommendation:** Build a secondary `Map<string, Agent>` keyed by `short_name` at the page level (alongside `agentsMap`), pass it as an optional prop. Falls back to O(n) scan only if secondary map not provided.
+**Status:** NOT STARTED — low impact unless agent count grows
+
+### ~~WorkflowTriggersPanel Toggle Toast Not Descriptive~~ → RESOLVED
+**Resolution:** Changed `successMessage` to `(result) => \`Trigger ${result.enabled ? 'enabled' : 'disabled'}\``.
+
+### ~~`useBranchLoader` Swallows Errors Silently~~ → RESOLVED
+**Resolution:** Added `console.error` to empty catch block.
+
+### ~~`useTopsiVoice` Exports Unused Functions~~ → RESOLVED
+**Resolution:** Removed `startRecording`/`stopRecording` from `TopsiVoiceActions` interface and return object. Functions remain internal for use by `handlePushToTalkStart`.
+
+### ~~`useMoveDeal` Missing Error Toast~~ → RESOLVED
+**Resolution:** Added `toast.error('Failed to move deal')` + `console.error` in `onError` handler. Kept raw `useMutation` for optimistic update pattern.
+
+### `workflowKeys` Mixed Naming Convention
+**Source:** PR #49 frontend review (2026-03-18)
+**File:** `frontend/src/lib/query-keys.ts`
+**What:** `workflowKeys` uses mixed casing — some keys use camelCase, others use kebab-case strings internally. Inconsistent but not buggy (keys match between factory and usage).
+**Recommendation:** Standardize to camelCase in a future query key sweep.
+**Status:** NOT STARTED — cosmetic
+
+### NetworkSettings Wasted API Call
+**Source:** PR #49 frontend review (2026-03-18)
+**File:** `frontend/src/pages/settings/NetworkSettings.tsx`
+**What:** Fetches `/api/mesh/stats` on mount even when the mesh stats panel isn't visible.
+**Recommendation:** Gate the query with `enabled: isPanelExpanded` or lazy-load the stats section.
+**Status:** NOT STARTED — low impact
+
+---
+
+## P2.7 — E2E Test Infrastructure Issues
+
+### E2E: Removed Assertions Without Replacement (PR #49)
+**Source:** PR #49 e2e review (2026-03-18)
+**Files:** `e2e/demos/bug-report-lifecycle.spec.ts`, `e2e/demos/manual-qa-trigger.spec.ts`
+**What:** PR removed `waitForToast` assertions for task state transitions and `page.reload()` before watcher badge assertions. These were removed to fix test failures, but no equivalent assertions replaced them — the tests now skip verification of those behaviors.
+**Recommendation:** Re-add assertions using a more resilient pattern (e.g., `page.waitForSelector` for toast elements, or poll-based checks for badge appearance without hard reload).
+**Status:** NOT STARTED — reduces test coverage
+
+### ~~E2E: `DEMO_PR_NUMBER` Used Without Null Guard~~ → RESOLVED
+**Resolution:** Added `test.skip(!DEMO_PR_NUMBER, "Skipping — Step 4 did not create a PR")` guard at top of Step 6.
+
+### E2E: Conditional Visual Checks Are No-Op
+**Source:** PR #49 e2e review (2026-03-18)
+**Files:** Multiple demo specs
+**What:** Several visual checks are wrapped in `if (element) { expect... }` — if the element isn't found, the assertion silently passes. These are no-op assertions that give false confidence.
+**Recommendation:** Either make the assertions unconditional (fail if element missing) or use `test.fixme()` to mark as known incomplete.
+**Status:** NOT STARTED — reduces test value
+
+### E2E: Fragile Title-Based Button Selectors
+**Source:** PR #49 e2e review (2026-03-18)
+**Files:** Workflow demo specs
+**What:** Button selectors use `[title="..."]` which breaks if button text/title changes. Also `addExtractNode` matches placeholder strings instead of `data-testid`.
+**Recommendation:** Add `data-testid` attributes to workflow editor buttons and use those in selectors.
+**Status:** NOT STARTED — fragile but functional
+
+### E2E: `timing.ts` Pace Detection Doesn't Detect `demos` Project
+**Source:** PR #49 e2e review (2026-03-18)
+**File:** `e2e/helpers/timing.ts`
+**What:** Pace detection logic checks for `--project=` arg but may not correctly identify the `demos` project, causing demo tests to run at default (fast) pace instead of demo pace.
+**Recommendation:** Verify pace detection logic handles `--project=demos` correctly. Add a test or log output.
+**Status:** NOT STARTED
+
+### E2E: GITHUB_TOKEN Required for Agent Simulation Tests
+**Source:** Frontend polish sprint QA (2026-03-18)
+**Tests affected:** `bug-report-lifecycle.spec.ts` Step 4, `manual-qa-trigger.spec.ts` Step 3
+**What:** `simulateDevAgentWork()` and `createPrForTask()` in `e2e/helpers/demo/simulation.ts` call `ghApi()` which requires `GITHUB_TOKEN` env var. Tests fail immediately with "GITHUB_TOKEN env var required for demo simulation".
+**Recommendation:** Either: (a) set `GITHUB_TOKEN` in `.env.test` for CI, (b) add mock mode to `simulation.ts` that fakes GitHub API responses for local testing, or (c) skip these steps gracefully with `test.skip(!process.env.GITHUB_TOKEN, "GITHUB_TOKEN required")`.
+**Status:** NOT STARTED
+
+### E2E: Pipeline Intelligence Expects 8 Stages, Seed Has 7
+**Source:** Frontend polish sprint QA (2026-03-18)
+**Tests affected:** `pipeline-intelligence-workflow.spec.ts` Part 1
+**What:** Test asserts `stageList.length >= 8` but seed DB only provides 7 pipeline stages.
+**Recommendation:** Either: (a) update seed DB to include all 8 expected stages, or (b) update test to match actual seed data (7 stages), or (c) add a test setup step that creates the missing stage via API.
+**Status:** NOT STARTED
+
+### E2E: Workflow CRM/Spanish Pipeline Demos Need LLM Backend
+**Source:** Frontend polish sprint QA (2026-03-18)
+**Tests affected:** `workflow-crm-pipeline.spec.ts` Part 3+, `workflow-spanish-pipeline.spec.ts` Part 3+
+**What:** Workflow execution requires PCG Router (LLM backend) to produce staged records. Parts 1-2 (build workflow + create data source) pass, but Part 3+ (run workflow, verify staged output) times out without an active LLM backend.
+**Recommendation:** These tests are integration-level and require full stack. Tag with `@requires-llm` annotation and skip in CI unless LLM backend is available. Add `test.skip(!process.env.LLM_BACKEND_URL, "LLM backend required")` guard.
+**Status:** NOT STARTED
+
+---
+
 ## P3 — Developer Experience & Testing Infrastructure
+
+### Error Messages Should Include Actionable Steps (Role-Scoped)
+**Source:** Frontend polish sprint QA (2026-03-18) — user feedback
+**What:** When operations fail (e.g., workflow run, API calls), error messages should:
+1. Include actionable steps the user can take to fix the issue
+2. Scope detail level by user role: platform-level users see system details (ports, services, config), end users see only user-facing guidance without platform internals
+3. Never leak infrastructure details (server ports, internal service names, file paths) to non-platform users
+**Examples:**
+- Workflow run failure → Platform user: "Workflow execution failed: LLM backend not reachable at PCG Router. Check service status or configure alternative model." End user: "Workflow could not complete. Please try again or contact your administrator."
+- Missing config → Platform user: "GITHUB_TOKEN not configured. Set in .env or environment." End user: "Integration not configured. Contact your administrator."
+**Recommendation:** Create an `AppError` utility that accepts error detail + user role, returns appropriate message. Add `isSystemError` flag for errors that should only show technical details to admins.
+**Status:** NOT STARTED
+
+### E2E: Missing Env Vars Should Warn, Not Silently Fail
+**Source:** Frontend polish sprint QA (2026-03-18) — user feedback
+**What:** When essential env vars (GITHUB_TOKEN, LLM_BACKEND_URL, etc.) are missing, tests throw cryptic errors deep in execution instead of warning upfront. The `simulation.ts` helper throws at line 15 but only after 3 prior steps pass, wasting test time.
+**Recommendation:** Add a pre-flight env check to `e2e/helpers/index.ts` or `playwright.config.ts` globalSetup that logs warnings for optional env vars and fails fast for required ones. Pattern: `console.warn("⚠️ GITHUB_TOKEN not set — agent simulation tests will be skipped")`.
+**Status:** NOT STARTED
 
 ### ~~13. Onboarding Dialog Bypass for Test Environments~~ → RESOLVED
 **Source:** PR #47 smoke testing (2026-03-18)

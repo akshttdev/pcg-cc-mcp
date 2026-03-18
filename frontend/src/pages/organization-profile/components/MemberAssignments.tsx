@@ -18,7 +18,8 @@ import {
 } from 'lucide-react';
 import {
   organizationsApi,
-  resolveApiUrl,
+  makeRequest,
+  handleApiResponse,
   type ClientData,
 } from '@/lib/api';
 import { organizationKeys, sidebarKeys } from '@/lib/query-keys';
@@ -72,10 +73,12 @@ export function MemberAssignments({ orgId, userId }: { orgId: string; userId: st
   const { data: orgProjects = [] } = useQuery<OrgProject[]>({
     queryKey: organizationKeys.projectsList(orgId),
     queryFn: async () => {
-      const res = await fetch(resolveApiUrl(`/api/projects?organization_id=${orgId}`), { credentials: 'include' });
-      if (!res.ok) return [];
-      const data = await res.json();
-      return data.data || [];
+      try {
+        const response = await makeRequest(`/api/projects?organization_id=${orgId}`);
+        return await handleApiResponse<any[]>(response);
+      } catch {
+        return [];
+      }
     },
   });
 

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { resolveApiUrl } from '@/lib/api';
+import { makeRequest, handleApiResponse } from '@/lib/api/client';
 import { projectAccessKeys } from '@/lib/query-keys';
 
 export interface ProjectAccess {
@@ -14,10 +14,10 @@ export interface ProjectAccess {
 }
 
 async function fetchProjectAccess(projectId: string): Promise<ProjectAccess> {
-  const res = await fetch(resolveApiUrl(`/api/projects/${projectId}/access`), {
-    credentials: 'include',
-  });
-  if (!res.ok) {
+  try {
+    const response = await makeRequest(`/api/projects/${projectId}/access`);
+    return await handleApiResponse<ProjectAccess>(response);
+  } catch {
     return {
       has_access: false,
       role: null,
@@ -29,8 +29,6 @@ async function fetchProjectAccess(projectId: string): Promise<ProjectAccess> {
       platform_roles: [],
     };
   }
-  const json = await res.json();
-  return json.data;
 }
 
 export function useProjectAccess(projectId: string | undefined) {

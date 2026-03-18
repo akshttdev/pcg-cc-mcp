@@ -18,8 +18,8 @@ import {
   DollarSign,
 } from 'lucide-react';
 import { crmApi, crmDealsApi } from '@/lib/api';
-import type { CrmContactRecord, CrmDealRecord } from '@/lib/api';
 import { crmKeys } from '@/lib/query-keys';
+import type { CrmContactRecord, CrmDealRecord } from '@/lib/api';
 import { LIFECYCLE_STAGE_INFO } from '@/types/crm';
 import type { LifecycleStage } from '@/types/crm';
 import { CrmActivityTimeline } from '@/components/crm/CrmActivityTimeline';

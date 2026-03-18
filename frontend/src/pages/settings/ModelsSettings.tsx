@@ -35,6 +35,7 @@ import { useProfiles } from '@/hooks/useProfiles';
 import { useUserSystem } from '@/components/config-provider';
 import { showModal } from '@/lib/modals';
 import { modelPricingApi, type ModelPricing } from '@/lib/api';
+import { settingsKeys } from '@/lib/query-keys';
 
 export function ModelsSettings() {
   const { t } = useTranslation('settings');
@@ -58,7 +59,7 @@ export function ModelsSettings() {
     error: pricingError,
     refetch: refetchPricing,
   } = useQuery<ModelPricing[]>({
-    queryKey: ['model-pricing'],
+    queryKey: settingsKeys.modelPricing(),
     queryFn: modelPricingApi.list,
   });
 

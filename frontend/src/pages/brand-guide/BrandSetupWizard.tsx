@@ -1,14 +1,13 @@
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { organizationsApi, type OrgBrandProfile } from '@/lib/api';
-import { organizationKeys } from '@/lib/query-keys';
 import { Loader2, Sparkles, Palette, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { toast } from 'sonner';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import { organizationKeys } from '@/lib/query-keys';
 
 interface BrandSetupWizardProps {
   orgId: string;
@@ -18,7 +17,6 @@ interface BrandSetupWizardProps {
 }
 
 export function BrandSetupWizard({ orgId, orgName, open, onOpenChange }: BrandSetupWizardProps) {
-  const queryClient = useQueryClient();
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
     tagline: '',
@@ -36,25 +34,25 @@ export function BrandSetupWizard({ orgId, orgName, open, onOpenChange }: BrandSe
   const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((prev) => ({ ...prev, [field]: e.target.value }));
 
-  const upsertMutation = useMutation({
+  const upsertMutation = useMutationWithToast({
     mutationFn: (data: Partial<OrgBrandProfile>) =>
       organizationsApi.upsertBrandProfile(orgId, data),
+    successMessage: 'Brand profile created',
+    errorMessage: 'Failed to create brand profile',
+    invalidateKeys: [organizationKeys.brandProfile(orgId)],
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: organizationKeys.brandProfile(orgId) });
-      toast.success('Brand profile created');
       onOpenChange(false);
     },
-    onError: () => toast.error('Failed to create brand profile'),
   });
 
-  const researchMutation = useMutation({
+  const researchMutation = useMutationWithToast({
     mutationFn: () => organizationsApi.triggerBrandResearch(orgId),
+    successMessage: 'Brand research started -- results will appear shortly',
+    errorMessage: 'Failed to start brand research',
+    invalidateKeys: [organizationKeys.brandProfile(orgId)],
     onSuccess: () => {
-      toast.success('Brand research started -- results will appear shortly');
-      queryClient.invalidateQueries({ queryKey: organizationKeys.brandProfile(orgId) });
       onOpenChange(false);
     },
-    onError: () => toast.error('Failed to start brand research'),
   });
 
   const steps = [

@@ -12,6 +12,7 @@ import { ProjectOverview } from '@/components/projects/ProjectOverview';
 import TaskKanbanBoard from '@/components/tasks/TaskKanbanBoard';
 import type { Project, TaskStatus } from 'shared/types';
 import type { TaskWithArchive, UserListItem, AgentFlow } from '@/lib/api';
+import type { AgentWithParsedFields } from 'shared/types';
 import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
 
 type Task = TaskWithArchive;
@@ -29,6 +30,7 @@ interface TaskViewRendererProps {
   showArchived: boolean;
   useEnhancedCards: boolean;
   usersMap: Map<string, UserListItem>;
+  agentsMap: Map<string, AgentWithParsedFields>;
   agentFlowMap: Map<string, AgentFlow>;
   onCreateTask: () => void;
   onEditTask: (task: Task) => void;
@@ -55,6 +57,7 @@ export function TaskViewRenderer({
   showArchived,
   useEnhancedCards,
   usersMap,
+  agentsMap,
   agentFlowMap,
   onCreateTask,
   onEditTask,
@@ -183,6 +186,7 @@ export function TaskViewRenderer({
         onSendMessageToAgent={onSendMessageToAgent}
         showArchived={showArchived}
         usersMap={usersMap}
+        agentsMap={agentsMap}
         onCreateTask={(status) => {
           openTaskForm({ projectId, initialBoardId: boardFilter, initialStatus: status as TaskStatus });
         }}

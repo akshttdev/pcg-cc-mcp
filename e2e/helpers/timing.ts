@@ -31,7 +31,8 @@ const PACE_MULTIPLIERS: Record<DemoPacePreset, number> = {
 function resolvePace(): DemoPacePreset {
   const env = process.env.E2E_DEMO_PACE?.toLowerCase();
   if (env === "short" || env === "medium" || env === "long") return env;
-  return "medium";
+  // Headless (QA) runs default to short; headed (live demos) default to medium
+  return headed ? "medium" : "short";
 }
 
 const BASE_SHORT = 600;

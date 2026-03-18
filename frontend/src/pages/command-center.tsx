@@ -14,6 +14,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { commandCenterApi } from '@/lib/api';
+import { commandCenterKeys } from '@/lib/query-keys';
 import { formatDate } from '@/lib/formatters';
 
 function fmtVibe(v: number) {
@@ -64,7 +65,7 @@ export function CommandCenterPage() {
   const navigate = useNavigate();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['command-center'],
+    queryKey: commandCenterKeys.dashboard(),
     queryFn: () => commandCenterApi.get(),
     refetchInterval: 60_000, // refresh every minute
   });

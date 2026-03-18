@@ -1,5 +1,13 @@
 # Git & PR Workflow Standards
 
+## Worktree Safety
+
+- **ALWAYS confirm the current worktree before making any changes.** Run `git worktree list` and `pwd` to verify you are in the correct worktree for the task.
+- Planning docs are the **source of truth** for which worktree a task uses. Every planning doc MUST include a `Worktree` field in the header (see Planning section below).
+- Before starting work in a session, read the planning doc and confirm the worktree path matches your current directory.
+- **NEVER switch worktrees without explicit user approval.** If you suspect you're in the wrong worktree, stop and ask.
+- When multiple worktrees exist, be aware that staged/unstaged changes in one worktree are invisible to others — do not assume files staged by another process belong to your task.
+
 ## Commits
 
 - Always include PR number (`#N`) in commit messages when working on a PR
@@ -14,8 +22,41 @@
 - PR descriptions must include a test plan with checkboxes
 - Never push or merge to main without explicit user approval
 
+## Planning Doc Worktree Requirements
+
+Every planning doc MUST include a **Worktree** field in the header metadata, immediately after **Branch**:
+
+```markdown
+**Date**: 2026-03-18
+**Branch**: `refactor/my-feature`
+**Worktree**: `/Users/mediamonsters/topos/pcg-cc-mcp` (root)
+**Base**: `main`
+```
+
+- For root worktree: `(root)` suffix
+- For agent/isolated worktrees: full path, e.g., `.claude/worktrees/main-worktree`
+- At the start of any session continuing a plan, **read the planning doc first** and confirm you are in the documented worktree before making changes
+- If the worktree no longer exists or has changed, update the planning doc and confirm with the user
+
 ## Branch Hygiene
 
 - Keep individual commit history on feature branches (user preference)
 - Squash merge to main via PR
 - After squash merge, sync branch with `git merge origin/main` (not rebase)
+
+## QA Before Merging
+
+- Run `/check` before creating PR
+- Run `/qa-review` before requesting merge to main
+- For frontend changes: run `/playwright-smoke` on affected pages
+- For backend changes: run `cargo test --workspace` inside flox
+- Run E2E demo tests: `FRONTEND_PORT=<port> npx playwright test e2e/demos/ --reporter=list`
+- Playwright config auto-loads `.env` (GITHUB_TOKEN, etc.) — no need to export manually
+- Reference: existing E2E tests in `e2e/`
+
+## Tracking Failures
+
+- Never skip or ignore test failures without tracking them
+- Pre-existing failures that can't be fixed in the current sprint go in `planning/BACKLOG--remaining-work.md` with resolution recommendations
+- Include actionable fix suggestions (not just "this is broken")
+- Categorize: code bug vs env dependency vs seed data vs infrastructure

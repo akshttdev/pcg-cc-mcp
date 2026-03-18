@@ -12,6 +12,7 @@ import { TaskCard } from './TaskCard';
 import { EnhancedTaskCard, type TaskCardMode } from './EnhancedTaskCard';
 import type { TaskStatus, TaskWithAttemptStatus } from 'shared/types';
 import type { AgentFlow, UserListItem } from '@/lib/api';
+import type { AgentWithParsedFields } from 'shared/types';
 import { useTasksCardData } from '@/hooks/useTaskCardData';
 
 import { statusBoardColors, statusLabels } from '@/utils/status-labels';
@@ -37,6 +38,7 @@ interface TaskKanbanBoardProps {
   defaultCardMode?: TaskCardMode;
   onSendMessageToAgent?: (taskId: string, message: string, agentName?: string) => Promise<string>;
   usersMap?: Map<string, UserListItem>;
+  agentsMap?: Map<string, AgentWithParsedFields>;
   onCreateTask?: (status: string) => void;
 }
 
@@ -56,6 +58,7 @@ function TaskKanbanBoard({
   defaultCardMode,
   onSendMessageToAgent,
   usersMap,
+  agentsMap,
   onCreateTask,
 }: TaskKanbanBoardProps) {
   // Collect all task IDs for batch fetching enriched data
@@ -136,6 +139,7 @@ function TaskKanbanBoard({
                     onSendMessage={messageHandlers.get(task.id)}
                     defaultMode={defaultCardMode}
                     usersMap={usersMap}
+                    agentsMap={agentsMap}
                   />
                 );
               }
@@ -156,6 +160,7 @@ function TaskKanbanBoard({
                   onToggleSelection={onToggleSelection}
                   agentFlow={agentFlowMap?.get(task.id)}
                   usersMap={usersMap}
+                  agentsMap={agentsMap}
                 />
               );
             })}

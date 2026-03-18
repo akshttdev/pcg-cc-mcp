@@ -9,6 +9,7 @@ import {
   Palette, MessageSquare,
 } from 'lucide-react';
 import { dataSourcesApi, type DataSourceRecord } from '@/lib/api';
+import { dataSourceKeys } from '@/lib/query-keys';
 import {
   Select,
   SelectContent,
@@ -162,7 +163,7 @@ export default function IntelligencePage() {
 
   // Fetch all data sources, filter to personal ones
   const sourcesQuery = useQuery({
-    queryKey: ['dataSources', 'personal'],
+    queryKey: dataSourceKeys.personal(),
     queryFn: () => dataSourcesApi.listAll(),
     staleTime: 30_000,
   });

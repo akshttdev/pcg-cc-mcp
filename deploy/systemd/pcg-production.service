@@ -1,0 +1,17 @@
+[Unit]
+Description=PCG Dashboard Production Server
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=pythia
+WorkingDirectory=/home/pythia/pcg-cc-mcp
+Environment="DATABASE_URL=postgresql://powerclub:3B!llion$@localhost:5432/pcg"
+Environment="HOST=127.0.0.1"
+Environment="BACKEND_PORT=3002"
+ExecStart=/home/pythia/pcg-cc-mcp/target/release/server
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

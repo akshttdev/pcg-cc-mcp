@@ -169,3 +169,10 @@ ux-review/
 # Stray test screenshots
 screenshot_bug_confirmation.png
 test_bug_screenshot.png
+
+# Large binaries (removed from tracking)
+flox.x86_64-linux.deb
+test_send_message
+pcg-transfer-20251119.tar.gz
+TopiClips_Day000_Genesis.webp
+app.db
