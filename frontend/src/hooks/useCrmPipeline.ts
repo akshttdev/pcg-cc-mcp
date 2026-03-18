@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { crmPipelinesApi, crmDealsApi, projectsApi, organizationsApi } from '@/lib/api';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import type {
   PipelineType,
   CreateCrmDeal,
@@ -114,8 +115,10 @@ export function useOrgCrmKanban(orgId: string, pipelineId: string | undefined) {
 export function useCreateDeal() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithToast({
     mutationFn: (data: CreateCrmDeal) => crmDealsApi.createDeal(data),
+    successMessage: 'Deal created',
+    errorMessage: 'Failed to create deal',
     onSuccess: (deal) => {
       // Invalidate kanban data for both project-scoped and org-scoped queries
       if (deal.crm_pipeline_id) {
@@ -140,9 +143,11 @@ export function useCreateDeal() {
 export function useUpdateDeal() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithToast({
     mutationFn: ({ id, data }: { id: string; data: UpdateCrmDeal }) =>
       crmDealsApi.updateDeal(id, data),
+    successMessage: 'Deal updated',
+    errorMessage: 'Failed to update deal',
     onSuccess: (deal) => {
       // Invalidate deal cache
       queryClient.invalidateQueries({
@@ -258,16 +263,11 @@ export function useMoveDeal() {
 
 // Hook to delete a deal
 export function useDeleteDeal() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useMutationWithToast({
     mutationFn: (id: string) => crmDealsApi.deleteDeal(id),
-    onSuccess: () => {
-      // Invalidate all kanban queries (both project-scoped and org-scoped)
-      queryClient.invalidateQueries({ queryKey: crmKeys.kanbanAll() });
-      queryClient.invalidateQueries({ queryKey: crmKeys.orgKanbanAll() });
-      queryClient.invalidateQueries({ queryKey: crmKeys.dealsAll() });
-    },
+    successMessage: 'Deal deleted',
+    errorMessage: 'Failed to delete deal',
+    invalidateKeys: [crmKeys.kanbanAll(), crmKeys.orgKanbanAll(), crmKeys.dealsAll()],
   });
 }
 

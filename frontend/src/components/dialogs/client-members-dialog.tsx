@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import {
   Dialog,
   DialogContent,
@@ -111,7 +112,6 @@ export function ClientMembersDialog({
   clientId,
   clientName,
 }: ClientMembersDialogProps) {
-  const queryClient = useQueryClient();
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [selectedRole, setSelectedRole] = useState<string>('viewer');
 
@@ -131,21 +131,23 @@ export function ClientMembersDialog({
     (user) => !members.some((member) => member.user_id === user.id)
   );
 
-  const addMutation = useMutation({
+  const addMutation = useMutationWithToast({
     mutationFn: ({ userId, role }: { userId: string; role: string }) =>
       api.addClientMember(clientId, userId, role),
+    successMessage: 'Member added',
+    errorMessage: 'Failed to add member',
+    invalidateKeys: [userKeys.clientMembers(clientId)],
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: userKeys.clientMembers(clientId) });
       setSelectedUserId('');
       setSelectedRole('viewer');
     },
   });
 
-  const removeMutation = useMutation({
+  const removeMutation = useMutationWithToast({
     mutationFn: (userId: string) => api.removeClientMember(clientId, userId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: userKeys.clientMembers(clientId) });
-    },
+    successMessage: 'Member removed',
+    errorMessage: 'Failed to remove member',
+    invalidateKeys: [userKeys.clientMembers(clientId)],
   });
 
   const handleAddMember = () => {

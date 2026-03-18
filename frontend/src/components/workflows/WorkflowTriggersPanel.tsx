@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { workflowKeys } from '@/lib/query-keys';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import {
   Dialog,
   DialogContent,
@@ -67,7 +68,6 @@ export function WorkflowTriggersPanel({
   workflowId,
   workflowName,
 }: WorkflowTriggersPanelProps) {
-  const queryClient = useQueryClient();
   const [showCreateForm, setShowCreateForm] = useState(false);
 
   // Form state for creating a new trigger
@@ -94,26 +94,28 @@ export function WorkflowTriggersPanel({
     enabled: open,
   });
 
-  const createMutation = useMutation({
+  const createMutation = useMutationWithToast({
     mutationFn: (data: CreateWorkflowTrigger) => triggersApi.create(data),
+    successMessage: 'Trigger created',
+    errorMessage: 'Failed to create trigger',
+    invalidateKeys: [workflowKeys.triggers(workflowId)],
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: workflowKeys.triggers(workflowId) });
       resetForm();
     },
   });
 
-  const toggleMutation = useMutation({
+  const toggleMutation = useMutationWithToast({
     mutationFn: (id: string) => triggersApi.toggle(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: workflowKeys.triggers(workflowId) });
-    },
+    successMessage: 'Trigger toggled',
+    errorMessage: 'Failed to toggle trigger',
+    invalidateKeys: [workflowKeys.triggers(workflowId)],
   });
 
-  const deleteMutation = useMutation({
+  const deleteMutation = useMutationWithToast({
     mutationFn: (id: string) => triggersApi.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: workflowKeys.triggers(workflowId) });
-    },
+    successMessage: 'Trigger deleted',
+    errorMessage: 'Failed to delete trigger',
+    invalidateKeys: [workflowKeys.triggers(workflowId)],
   });
 
   function resetForm() {

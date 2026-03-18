@@ -1,6 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { agentFlowsApi, type AgentFlow } from '@/lib/api';
 import { agentFlowKeys } from '@/lib/query-keys';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 
 /**
  * Fetch all agent flows, optionally filtered by task_id or status
@@ -90,34 +91,37 @@ export function useTaskAgentFlowMap(taskIds: string[]) {
  * Mutations for agent flow operations
  */
 export function useAgentFlowMutations() {
-  const queryClient = useQueryClient();
+  const invalidateKeys = [agentFlowKeys.all, agentFlowKeys.detailAll] as const;
 
-  const invalidateFlows = () => {
-    queryClient.invalidateQueries({ queryKey: agentFlowKeys.all });
-    queryClient.invalidateQueries({ queryKey: agentFlowKeys.detailAll });
-  };
-
-  const approveMutation = useMutation({
+  const approveMutation = useMutationWithToast({
     mutationFn: ({ flowId, approvedBy }: { flowId: string; approvedBy: string }) =>
       agentFlowsApi.approve(flowId, approvedBy),
-    onSuccess: invalidateFlows,
+    successMessage: 'Agent flow approved',
+    errorMessage: 'Failed to approve agent flow',
+    invalidateKeys,
   });
 
-  const transitionPhaseMutation = useMutation({
+  const transitionPhaseMutation = useMutationWithToast({
     mutationFn: ({ flowId, phase }: { flowId: string; phase: string }) =>
       agentFlowsApi.transitionPhase(flowId, phase),
-    onSuccess: invalidateFlows,
+    successMessage: 'Phase transitioned successfully',
+    errorMessage: 'Failed to transition phase',
+    invalidateKeys,
   });
 
-  const completeMutation = useMutation({
+  const completeMutation = useMutationWithToast({
     mutationFn: ({ flowId, score }: { flowId: string; score?: number }) =>
       agentFlowsApi.complete(flowId, score),
-    onSuccess: invalidateFlows,
+    successMessage: 'Agent flow completed',
+    errorMessage: 'Failed to complete agent flow',
+    invalidateKeys,
   });
 
-  const requestApprovalMutation = useMutation({
+  const requestApprovalMutation = useMutationWithToast({
     mutationFn: (flowId: string) => agentFlowsApi.requestApproval(flowId),
-    onSuccess: invalidateFlows,
+    successMessage: 'Approval requested',
+    errorMessage: 'Failed to request approval',
+    invalidateKeys,
   });
 
   return {

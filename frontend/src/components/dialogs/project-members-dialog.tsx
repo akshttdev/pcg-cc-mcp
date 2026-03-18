@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import {
   Dialog,
   DialogContent,
@@ -105,7 +106,6 @@ export function ProjectMembersDialog({
   projectId,
   projectName,
 }: ProjectMembersDialogProps) {
-  const queryClient = useQueryClient();
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [selectedRole, setSelectedRole] = useState<string>('viewer');
   const [editingMember, setEditingMember] = useState<string | null>(null);
@@ -131,32 +131,36 @@ export function ProjectMembersDialog({
   );
 
   // Add member mutation
-  const addMutation = useMutation({
+  const addMutation = useMutationWithToast({
     mutationFn: ({ userId, role }: { userId: string; role: string }) =>
       api.addProjectMember(projectId, userId, role),
+    successMessage: 'Member added',
+    errorMessage: 'Failed to add member',
+    invalidateKeys: [userKeys.projectMembers(projectId)],
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: userKeys.projectMembers(projectId) });
       setSelectedUserId('');
       setSelectedRole('viewer');
     },
   });
 
   // Update role mutation
-  const updateRoleMutation = useMutation({
+  const updateRoleMutation = useMutationWithToast({
     mutationFn: ({ userId, role }: { userId: string; role: string }) =>
       api.updateMemberRole(projectId, userId, role),
+    successMessage: 'Role updated',
+    errorMessage: 'Failed to update role',
+    invalidateKeys: [userKeys.projectMembers(projectId)],
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: userKeys.projectMembers(projectId) });
       setEditingMember(null);
     },
   });
 
   // Remove member mutation
-  const removeMutation = useMutation({
+  const removeMutation = useMutationWithToast({
     mutationFn: (userId: string) => api.removeMember(projectId, userId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: userKeys.projectMembers(projectId) });
-    },
+    successMessage: 'Member removed',
+    errorMessage: 'Failed to remove member',
+    invalidateKeys: [userKeys.projectMembers(projectId)],
   });
 
   const handleAddMember = () => {

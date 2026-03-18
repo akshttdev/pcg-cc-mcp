@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2, Mic, Plus, Link2, Clock } from 'lucide-react';
-import { toast } from 'sonner';
 import { crmDealsApi } from '@/lib/api/crm';
 import type { CrmDealWithContact } from '@/types/crm';
 import { formatDistanceToNow } from 'date-fns';
@@ -15,7 +15,6 @@ interface TranscriptsTabProps {
 }
 
 export function TranscriptsTab({ deal }: TranscriptsTabProps) {
-  const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ transcript_text: '', summary: '', call_log_id: '' });
 
@@ -25,15 +24,15 @@ export function TranscriptsTab({ deal }: TranscriptsTabProps) {
     staleTime: 30000,
   });
 
-  const link = useMutation({
+  const link = useMutationWithToast({
     mutationFn: () => crmDealsApi.linkTranscript(deal.id, { ...form, matched_by: 'manual' }),
+    successMessage: 'Transcript linked',
+    errorMessage: 'Failed to link transcript',
+    invalidateKeys: [['deal-transcripts', deal.id]],
     onSuccess: () => {
-      toast.success('Transcript linked');
-      qc.invalidateQueries({ queryKey: ['deal-transcripts', deal.id] });
       setAdding(false);
       setForm({ transcript_text: '', summary: '', call_log_id: '' });
     },
-    onError: () => toast.error('Failed to link transcript'),
   });
 
   return (
