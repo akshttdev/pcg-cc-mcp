@@ -27,7 +27,7 @@
 | Metric | Before | Target | Actual | Delta |
 |--------|--------|--------|--------|-------|
 | `.unwrap()` (non-test Rust) | 394 | ~320 | **258** | -136 (35% reduction) |
-| `: any` (frontend) | 182 | ~60 | **0** | -182 (100% elimination) |
+| `: any` (frontend) | 182 | ~60 | **0 in targeted files** (107 remain in PR #46 files) | -182 in scope |
 | Files >900 lines | 7 | 5 | **5** (2 split, 3 are dead code from PR #46) | -2 new splits |
 | Unauthz'd route handlers | ~31 | 0 | **0** | -31 handlers secured |
 | BLOB/TEXT binding bugs | Recurring | Eliminated for AccessContext | **Done** | — |

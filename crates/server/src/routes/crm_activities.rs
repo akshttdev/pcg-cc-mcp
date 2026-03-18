@@ -59,9 +59,11 @@ async fn create_activity(
 /// DELETE /crm/activities/:id - Delete an activity
 async fn delete_activity(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = Uuid::parse_str(&id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {e}")))?;
     CrmActivity::delete(pool, id).await?;
     Ok(Json(ApiResponse::success(())))
 }
