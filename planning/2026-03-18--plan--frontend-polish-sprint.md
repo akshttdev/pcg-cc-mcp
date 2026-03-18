@@ -13,14 +13,15 @@
 | 1 | Repo root cleanup (~100 file moves, 118MB binary removal) | DONE | `d9a190d5e` |
 | 2 | Cherry-pick dev-velocity frontend work | DONE (provisional) | `48bab1ad5`, `c9dbfd4`, `6f433b1c` |
 | 3 | Query key mismatch fixes (10 critical bugs + 30 inline→factory) | DONE | `67ddc5724` |
-| 4 | Mutation standardization (~15 safe-zone conversions) | IN PROGRESS | |
-| 5 | TaskFormDialog split (useTaskFormState 794→350 lines) | NOT STARTED | |
-| 6 | CrmDealDetailPanel split | NOT STARTED | |
-| 7 | Workflow trigger hardening (webhook support) | NOT STARTED | |
-| 8 | Topsi connection status + voice gating | NOT STARTED | |
+| 4 | Mutation standardization (22 safe-zone conversions) | DONE | `c443e5970` |
+| 5 | TaskFormDialog split (useTaskFormState 794→632 lines, 3 hooks extracted) | DONE | `504791fdc` |
+| 6 | CrmDealDetailPanel split | SKIPPED (sloperation overlap) | |
+| 7 | Webhook triggers + execution audit trail | DONE | `7966ec184` |
+| 8 | Topsi connection status + voice hook extraction (963→616 lines) | DONE | `fbe4ab240` |
 | 9 | fetch() migration + query key sweep | NOT STARTED | |
-| 9.5 | QA infrastructure (skills + rules) | NOT STARTED | |
+| 9.5 | QA infrastructure (skills + rules) | DONE | `f0b2cc8af` |
 | 10 | Sprint QA + retrospective | NOT STARTED | |
+| -- | **PR #47 rebase** | **NEXT** — PR #47 merged, rebase needed | |
 
 ---
 
