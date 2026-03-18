@@ -17,7 +17,7 @@
     "lint:fix": "pnpm --filter pcg-dashboard lint:fix",
     "check": "npm run frontend:check && npm run backend:check",
     "dev": "export FRONTEND_PORT=${FRONTEND_PORT:-$(node scripts/setup-dev-environment.js frontend)} && export BACKEND_PORT=${BACKEND_PORT:-$(node scripts/setup-dev-environment.js backend)} && concurrently \"npm run backend:dev:watch\" \"npm run frontend:dev\"",
-    "test:npm": "./test-npm-package.sh",
+    "test:npm": "./scripts/test-npm-package.sh",
     "test:e2e": "node scripts/e2e-env-check.js && npx playwright test --project=setup --project=${E2E_BROWSER:-chromium}",
     "test:e2e:headed": "node scripts/e2e-env-check.js && E2E_HEADED=true npx playwright test --project=setup --project=${E2E_BROWSER:-chromium}",
     "test:e2e:ui": "node scripts/e2e-env-check.js && npx playwright test --ui",

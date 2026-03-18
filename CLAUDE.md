@@ -114,7 +114,7 @@ shared/types.ts    # Auto-generated TypeScript types from Rust
 - **Unit tests**: Colocated with code in each crate
 - **Integration tests**: In `tests/` directory of relevant crates  
 - **Frontend tests**: TypeScript compilation and linting only
-- **CI/CD**: GitHub Actions workflow in `.github/workflows/test.yml`
+- **CI/CD**: GitHub Actions workflow in `.github/workflows/ci.yml`
 
 ### Flox Development Environment
 
