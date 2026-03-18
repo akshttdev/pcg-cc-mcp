@@ -199,23 +199,33 @@ Post-PR #47 (dev velocity sprint), the codebase has strong backend foundations b
 
 ### QA Review Findings (2026-03-18)
 
-**Fixed during QA:**
+**Fixed during QA (round 1):**
 - SetupProgress: added try/catch around `NiceModal.show()` to handle dismissal
 - Prettier formatting: 4 files reformatted
 - Rust warnings: 9 unused imports/variables cleaned up in server+db crates
+- `create_agent_execution_config`: added UUID validation before DbUuid conversion
+
+**Fixed during QA (round 2):**
+- Replaced ~200 `Uuid::parse_str()` with `DbUuid::parse()` across 33 route files
+- Added `DbUuid::to_uuid()` + `From<DbUuid> for Uuid` conversion bridge
+- Removed `use uuid::Uuid` from 4 files (collaboration, deliverables, onboarding, org_onboarding)
+- Updated `.claude/rules/rust-standards.md`: DbUuid-first UUID handling rules
+- Updated `.claude/rules/frontend-standards.md`: query key factory requirement
+- Server crate warnings: 26 → 18 (8 remaining are pre-existing dead code fields/methods)
 
 **Accepted risks (low impact):**
-- AppShell useEffect captures stale `config` in closure during async wizard flow — mitigated by `cancelled` flag; only relevant in multi-tab scenarios
-- SetupProgress only visible when sidebar expanded — by design; collapsed sidebar has minimal UI
-- 29 remaining `: any` types are in genuinely dynamic code (RJSF forms, DiffCard, conversation entries)
-- 84 remaining `Path<Uuid>` are in files where underlying model functions require `Uuid` type (not `&str`)
+- AppShell useEffect captures stale `config` in closure during async wizard flow — mitigated by `cancelled` flag
+- SetupProgress only visible when sidebar expanded — by design
+- 29 remaining `: any` types in genuinely dynamic code (RJSF, DiffCard, conversation entries)
+- 80 remaining `Path<Uuid>` in files where model layer requires `Uuid` type
+- 5 `Uuid::parse_str` in `crm_deals.rs` CRM business logic (sloperation branch scope)
 
-**Regression verification:**
-- `cargo check --workspace`: 0 errors, 27 pre-existing warnings (nora/alpha-protocol crates only)
+**Final verification:**
+- `cargo check --workspace`: 0 errors, 27 warnings (nora/alpha-protocol pre-existing only)
+- `cargo check -p server`: 0 errors, 8 warnings (pre-existing dead code fields)
 - `tsc --noEmit`: 0 errors
 - `eslint`: 0 warnings on changed files
-- `prettier --check`: 0 issues after formatting fix
-- All NiceModal registrations verified (22 modals including new welcome-wizard)
-- OnboardingCarousel barrel export preserved for org-level carousel
-- No circular imports introduced
-- No behavioral changes in Rust route handlers (only type-level conversions)
+- `prettier --check`: 0 issues on changed files (1 pre-existing in OnboardingCarousel.tsx)
+- All 22 NiceModal registrations verified
+- 32/33 touched route files use `DbUuid::parse` (1 exception: crm_deals.rs — out of scope)
+- No circular imports, no behavioral changes
