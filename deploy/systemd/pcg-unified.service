@@ -1,0 +1,21 @@
+[Unit]
+Description=PCG Dashboard Unified Server (Pythia Master Node)
+After=network.target
+
+[Service]
+Type=simple
+User=spaceterminal
+WorkingDirectory=/home/spaceterminal/topos/PCG/GitHub/pcg-cc-mcp
+Environment="BACKEND_PORT=58297"
+Environment="PCG_ASSET_DIR=/home/spaceterminal/topos/PCG/GitHub/pcg-cc-mcp/dev_assets"
+Environment="AUTO_START_COMFYUI=false"
+Environment="TOPSI_LLM_PROVIDER=ollama"
+Environment="TOPSI_LLM_MODEL=qwen2.5:7b"
+Environment="OLLAMA_BASE_URL=http://localhost:11434"
+EnvironmentFile=/home/spaceterminal/topos/PCG/GitHub/pcg-cc-mcp/.env
+ExecStart=/home/spaceterminal/topos/PCG/GitHub/pcg-cc-mcp/target/release/server
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

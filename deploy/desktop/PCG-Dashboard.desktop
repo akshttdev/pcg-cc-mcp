@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=PCG Dashboard
+Comment=Alpha Protocol Network Dashboard
+Exec=/home/pythia/pcg-cc-mcp/launch-dashboard.sh
+Icon=/home/pythia/pcg-cc-mcp/frontend/src-tauri/icons/icon.png
+Terminal=false
+Categories=Network;System;
+StartupWMClass=pcg-dashboard

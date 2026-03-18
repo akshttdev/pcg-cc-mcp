@@ -14,7 +14,7 @@ npm run frontend:dev    # Frontend only (port 3000)
 npm run backend:dev     # Backend only (port auto-assigned)
 
 # Build production version
-./build-npm-package.sh
+./scripts/build-npm-package.sh
 ```
 
 ### Testing & Validation

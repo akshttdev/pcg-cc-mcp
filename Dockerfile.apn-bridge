@@ -11,7 +11,7 @@ RUN pip install --no-cache-dir \
     nats-py==2.7.0
 
 # Copy APN Bridge Server script
-COPY apn_bridge_server.py /app/apn_bridge_server.py
+COPY scripts/apn_bridge_server.py /app/apn_bridge_server.py
 
 # Make script executable
 RUN chmod +x /app/apn_bridge_server.py

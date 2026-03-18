@@ -34,7 +34,7 @@
     "generate-types": "cargo run --bin generate_types",
     "generate-types:check": "cargo run --bin generate_types -- --check",
     "prepare-db": "node scripts/prepare-db.js",
-    "build:npx": "bash ./local-build.sh",
+    "build:npx": "bash ./scripts/local-build.sh",
     "prepack": "npm run build:npx",
     "simulate:behavior": "node simulations/behavior/run-simulation.js",
     "tauri:dev": "tauri dev",
