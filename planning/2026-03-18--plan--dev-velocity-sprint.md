@@ -2,8 +2,8 @@
 
 **Date**: 2026-03-18
 **Branch**: `refactor/dev-velocity-sprint`
-**Base**: `main` (post-PR #45 merge)
-**Status**: In Progress
+**Base**: `main` (post-PR #45 + PR #46 merge, rebased 2026-03-18)
+**Status**: In Progress — Days 1-3 complete
 
 ## Context
 
@@ -15,10 +15,8 @@ Post-sloperation316 merge (PR #45), the codebase has ~251 files of new CRM/sover
 - **50 files** with raw `useMutation` (no standardized error/success handling)
 - **10 files** >900 lines in frontend (merge conflict magnets)
 
-**Parallel branch**: `refactor/quality-sprint-dialogs-modularity` (PR #46, about to merge) has work on query keys, mutations, MeetingMode/NoraAssistant/project-tasks splits. We work in non-conflicting areas:
-- **Skip**: NoraAssistant split, project-tasks split (already done in PR #46)
-- **Skip**: Query key work in org-profile/sidebar (already done in PR #46)
-- **Non-conflicting**: DbUuid (Rust only), unwrap elimination (Rust only), `any` types (different TS files), route authz (Rust only), sovereign hardening (Rust only), virtual-environment + data-sources splits (untouched by PR #46, though data-sources.tsx has minor PR #46 changes — split after merge)
+**PR #46 merged** (2026-03-18): `refactor/quality-sprint-dialogs-modularity` — dialog standardization, modularity, file splits. Branch rebased onto updated main. NoraAssistant, project-tasks splits, and query key centralization are now in main.
+- data-sources.tsx split is now unblocked (PR #46 changes incorporated)
 
 ## Workstreams (Priority Order)
 
@@ -101,28 +99,28 @@ Update backlog, archive completed docs, write retrospective.
 
 ## Daily Schedule
 
-| Day | Workstream | Deliverable |
-|-----|-----------|-------------|
-| 1 | A: DbUuid Phase A | `AccessContext.user_id` → `DbUuid`, model fns updated |
-| 2 | A+B: Finish DbUuid + start unwrap elimination | Phase A complete, model unwraps started |
-| 3 | B+C: Finish unwraps + start `any` elimination | ~80 unwraps fixed, `any` pass in CRM/pipeline |
-| 4 | C: Continue `any` elimination | client-overview, deal components typed |
-| 5 | C+D: Finish `any` + start route authz | ~128 `any` removed, communications authz |
-| 6 | D+E: Finish authz + virtual-environment split | CRM deal authz, virtual-environment → directory |
-| 7 | E+F: data-sources split + sovereign hardening | data-sources → directory, cancellation token |
-| 8 | F: Finish sovereign hardening | Shared volume resolver, FK constraints |
-| 9 | G: DbUuid Phase B | `Path<Uuid>` → `Path<String>` in CRM handlers |
-| 10 | H: Docs + retro | Backlog updated, sprint retrospective |
+| Day | Workstream | Deliverable | Status |
+|-----|-----------|-------------|--------|
+| 1 | A: DbUuid Phase A | `AccessContext.user_id` → `DbUuid`, 20 files | **Done** |
+| 2 | B: Unwrap elimination | 60 unwraps removed across 11 files (394→334) | **Done** |
+| 3 | C: `any` elimination | 182 → 0 across 13 files (exceeded target) | **Done** |
+| 4 | D: Route authorization | communications.rs + crm_deals.rs authz | Next |
+| 5 | E: virtual-environment split | virtual-environment.tsx → directory | |
+| 6 | E: data-sources split | data-sources.tsx → directory (unblocked by PR #46) | |
+| 7 | F: Sovereign hardening | CancellationToken, volume resolver, FK constraints | |
+| 8 | G: DbUuid Phase B | `Path<Uuid>` → `Path<String>` in CRM handlers | |
+| 9 | H: More unwraps | Second pass — target 334 → ~280 | |
+| 10 | I: Docs + retro | Backlog updated, sprint retrospective | |
 
 ## Success Metrics
 
-| Metric | Before | Target |
-|--------|--------|--------|
-| `.unwrap()` (non-test Rust) | 404 | ~320 |
-| `: any` (frontend) | 188 | ~60 |
-| Files >900 lines | 10 (7 after PR #46) | 5 |
-| Unauthz'd route handlers | ~17 | 0 |
-| BLOB/TEXT binding bugs | Recurring | Eliminated for AccessContext |
+| Metric | Before | Target | Actual |
+|--------|--------|--------|--------|
+| `.unwrap()` (non-test Rust) | 394 | ~320 | 334 (Day 2) |
+| `: any` (frontend) | 182 | ~60 | **0** (Day 3) |
+| Files >900 lines | 7 (post PR #46) | 5 | pending |
+| Unauthz'd route handlers | ~17 | 0 | pending |
+| BLOB/TEXT binding bugs | Recurring | Eliminated for AccessContext | **Done** (Day 1) |
 
 ## Verification
 
@@ -133,6 +131,7 @@ After each workstream:
 
 ## Decisions
 
-- Base from `main` (post-PR #45 merge). Rebase after PR #46 merges.
-- `data-sources.tsx` split deferred until PR #46 lands (minor changes in that PR).
-- All Rust work is non-conflicting with PR #46 (frontend-only).
+- Base from `main` (post-PR #45 merge). Rebased after PR #46 merged (2026-03-18).
+- `data-sources.tsx` split now unblocked (PR #46 merged).
+- Days 1-3 completed ahead of schedule — `any` elimination exceeded target (0 vs 60).
+- Reshuffled remaining days: route authz moved up, second unwrap pass added to Day 9.
