@@ -29,17 +29,36 @@ export function CompanyBrandGuidePage() {
   const navigate = useNavigate();
   const [wizardOpen, setWizardOpen] = useState(false);
 
-  const { data: company, isLoading: companyLoading } = useQuery({
+  const { data: company, isLoading: companyLoading, isError: companyError } = useQuery({
     queryKey: entityKeys.company(companyId!),
     queryFn: () => companiesApi.get(companyId!),
     enabled: !!companyId,
+    retry: 1,
   });
 
   const { data: profile, isLoading: profileLoading } = useQuery<OrgBrandProfile | null>({
     queryKey: entityKeys.companyBrandProfile(companyId!),
     queryFn: () => companiesApi.getBrandProfile(companyId!),
-    enabled: !!companyId,
+    enabled: !!companyId && !!company,
+    retry: 1,
   });
+
+  if (companyError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center bg-black text-gray-400 gap-6 pt-[20vh]">
+        <div className="text-center space-y-3">
+          <Palette className="h-12 w-12 mx-auto text-gray-600" />
+          <h2 className="text-xl font-semibold text-gray-300">Company not found</h2>
+          <p className="text-sm text-gray-500 max-w-md">
+            The company you&apos;re looking for doesn&apos;t exist or you don&apos;t have access.
+          </p>
+        </div>
+        <Button variant="outline" onClick={() => navigate(-1)} className="gap-2">
+          <ArrowLeft className="h-4 w-4" /> Go Back
+        </Button>
+      </div>
+    );
+  }
 
   if (companyLoading || profileLoading) {
     return (

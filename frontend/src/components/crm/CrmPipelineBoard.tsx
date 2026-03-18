@@ -230,8 +230,12 @@ export function CrmPipelineBoard({
 
   if (!pipeline || !kanbanData) {
     return (
-      <div className="h-full flex items-center justify-center text-muted-foreground">
-        Pipeline not found
+      <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-3 py-12">
+        <p className="text-lg font-medium">No pipeline configured</p>
+        <p className="text-sm text-center max-w-md">
+          This organization doesn&apos;t have a deal pipeline set up yet.
+          Create one to start tracking deals through your sales process.
+        </p>
       </div>
     );
   }
