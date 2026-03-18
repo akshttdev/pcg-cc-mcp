@@ -27,7 +27,7 @@ async fn require_org_admin(
     if access_context.is_admin {
         return Ok(());
     }
-    let role = Organization::get_user_role(pool, org_id, access_context.user_id).await?;
+    let role = Organization::get_user_role(pool, org_id, access_context.user_id.as_str()).await?;
     match role.as_deref() {
         Some("admin") => Ok(()),
         _ => Err(ApiError::Forbidden("Only org admins can manage board shares".into())),
@@ -43,7 +43,7 @@ async fn require_org_access(
     if access_context.is_admin {
         return Ok(());
     }
-    let role = Organization::get_user_role(pool, org_id, access_context.user_id).await?;
+    let role = Organization::get_user_role(pool, org_id, access_context.user_id.as_str()).await?;
     if role.is_none() {
         return Err(ApiError::Forbidden("Not a member of this organization".into()));
     }

@@ -245,12 +245,12 @@ async fn add_project_member(
     // Log the action
     log_permission_action(
         &pool,
-        &user_id,
+        &user_id.to_string(),
         "grant",
         "project",
         Some(&project_id),
         &format!(r#"{{"role":"{}"}}"#, role),
-        &context.user_id,
+        context.user_id.as_str(),
     )
     .await?;
 
@@ -332,12 +332,12 @@ async fn remove_project_member(
     // Log the action
     log_permission_action(
         &pool,
-        &user_id,
+        &user_id.to_string(),
         "revoke",
         "project",
         Some(&project_id),
         "{}",
-        &context.user_id,
+        context.user_id.as_str(),
     )
     .await?;
 
@@ -402,12 +402,12 @@ async fn update_member_role(
     // Log the action
     log_permission_action(
         &pool,
-        &user_id,
+        &user_id.to_string(),
         "modify",
         "project",
         Some(&project_id),
         &format!(r#"{{"new_role":"{}"}}"#, role),
-        &context.user_id,
+        context.user_id.as_str(),
     )
     .await?;
 
@@ -521,29 +521,29 @@ async fn list_my_projects(
 /// Helper function to log permission actions
 async fn log_permission_action(
     pool: &sqlx::SqlitePool,
-    user_id: &Uuid,
+    user_id: &str,
     action: &str,
     resource_type: &str,
     resource_id: Option<&str>,
     details: &str,
-    performed_by: &Uuid,
+    performed_by: &str,
 ) -> Result<(), ApiError> {
     let log_id = Uuid::new_v4();
 
     sqlx::query(
         r#"
-        INSERT INTO permission_audit_log 
+        INSERT INTO permission_audit_log
         (id, user_id, action, resource_type, resource_id, details, performed_by)
         VALUES (?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(log_id.to_string())
-    .bind(user_id.to_string())
+    .bind(user_id)
     .bind(action)
     .bind(resource_type)
     .bind(resource_id)
     .bind(details)
-    .bind(performed_by.to_string())
+    .bind(performed_by)
     .execute(pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to log permission action: {}", e)))?;

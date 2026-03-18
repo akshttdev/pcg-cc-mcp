@@ -296,7 +296,8 @@ pub async fn agent_chat(
                             &call.name,
                             &call.arguments,
                             pool,
-                            access_ctx.user_id,
+                            uuid::Uuid::parse_str(access_ctx.user_id.as_str())
+                                .unwrap_or_default(),
                         )
                         .await
                     };

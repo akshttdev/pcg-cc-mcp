@@ -170,7 +170,7 @@ impl BoardShare {
     pub async fn check_user_share_access(
         pool: &SqlitePool,
         board_id: &str,
-        user_id: Uuid,
+        user_id: &str,
     ) -> Result<Option<String>, sqlx::Error> {
         #[derive(FromRow)]
         struct PermRow {

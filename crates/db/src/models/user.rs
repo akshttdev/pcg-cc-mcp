@@ -202,14 +202,14 @@ impl User {
 
     pub async fn set_wallet_address(
         pool: &sqlx::SqlitePool,
-        user_id: Uuid,
+        user_id: &str,
         wallet_address: &str,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
             "UPDATE users SET wallet_address = ?, updated_at = datetime('now', 'subsec') WHERE id = ?",
         )
         .bind(wallet_address)
-        .bind(user_id.to_string())
+        .bind(user_id)
         .execute(pool)
         .await?;
         Ok(())
@@ -217,14 +217,14 @@ impl User {
 
     pub async fn set_home_project(
         pool: &sqlx::SqlitePool,
-        user_id: Uuid,
-        project_id: Uuid,
+        user_id: &str,
+        project_id: &str,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
             "UPDATE users SET home_project_id = ?, updated_at = datetime('now', 'subsec') WHERE id = ?",
         )
-        .bind(project_id.to_string())
-        .bind(user_id.to_string())
+        .bind(project_id)
+        .bind(user_id)
         .execute(pool)
         .await?;
         Ok(())
@@ -269,7 +269,7 @@ impl Organization {
         .await
     }
 
-    pub async fn find_by_user(pool: &SqlitePool, user_id: Uuid) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn find_by_user(pool: &SqlitePool, user_id: &str) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, Organization>(
             r#"SELECT o.id, o.name, o.slug, o.description, o.avatar_url, o.owner_id, o.settings, o.is_active, o.created_at, o.updated_at, o.invite_token, o.pending_owner_email, o.created_by_org_id, o.address
                FROM organizations o
@@ -277,7 +277,7 @@ impl Organization {
                WHERE om.user_id = ? AND o.is_active = 1
                ORDER BY o.name ASC"#,
         )
-        .bind(user_id.to_string())
+        .bind(user_id)
         .fetch_all(pool)
         .await
     }
@@ -352,7 +352,7 @@ impl Organization {
     pub async fn add_member(
         pool: &SqlitePool,
         org_id: &str,
-        user_id: Uuid,
+        user_id: &str,
         role: &str,
     ) -> Result<OrganizationMember, sqlx::Error> {
         let id = Uuid::new_v4().to_string();
@@ -362,7 +362,7 @@ impl Organization {
         )
         .bind(&id)
         .bind(org_id)
-        .bind(user_id.to_string())
+        .bind(user_id)
         .bind(role)
         .execute(pool)
         .await?;
@@ -371,18 +371,18 @@ impl Organization {
         let members = Organization::get_members(pool, org_id).await?;
         members
             .into_iter()
-            .find(|m| m.user_id == user_id)
+            .find(|m| m.user_id.to_string() == user_id)
             .ok_or_else(|| sqlx::Error::RowNotFound)
     }
 
     pub async fn remove_member(
         pool: &SqlitePool,
         org_id: &str,
-        user_id: Uuid,
+        user_id: &str,
     ) -> Result<u64, sqlx::Error> {
         let result = sqlx::query("DELETE FROM organization_members WHERE organization_id = ? AND user_id = ?")
             .bind(org_id)
-            .bind(user_id.to_string())
+            .bind(user_id)
             .execute(pool)
             .await?;
         Ok(result.rows_affected())
@@ -435,7 +435,7 @@ impl Organization {
     pub async fn get_user_role(
         pool: &SqlitePool,
         org_id: &str,
-        user_id: Uuid,
+        user_id: &str,
     ) -> Result<Option<String>, sqlx::Error> {
         #[derive(sqlx::FromRow)]
         struct RoleRow {
@@ -445,7 +445,7 @@ impl Organization {
             "SELECT role FROM organization_members WHERE organization_id = ? AND user_id = ?"
         )
         .bind(org_id)
-        .bind(user_id.to_string())
+        .bind(user_id)
         .fetch_optional(pool)
         .await?;
         Ok(result.map(|r| r.role))

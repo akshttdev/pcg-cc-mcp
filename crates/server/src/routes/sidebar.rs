@@ -234,10 +234,11 @@ pub async fn get_sidebar_tree(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<SidebarTree>>, ApiError> {
     let pool = &deployment.db().pool;
-    let user_id = access_context.user_id;
+    let user_id = &access_context.user_id;
     let user_id_str = user_id.to_string();
     // organization_members.user_id is stored as BLOB (raw bytes), not TEXT UUID
-    let user_id_bytes = user_id.as_bytes().to_vec();
+    let user_id_bytes = db::bind_uuid_blob(user_id)
+        .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {e}")))?;
 
     // For admin: get ALL organizations. For regular users: only orgs they belong to.
     let org_rows: Vec<OrgRow> = if access_context.is_admin {

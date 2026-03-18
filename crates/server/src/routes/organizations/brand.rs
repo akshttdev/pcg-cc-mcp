@@ -150,7 +150,7 @@ pub async fn seed_brand_project(
         .ok_or_else(|| ApiError::NotFound("Organization not found".into()))?;
 
     if !access_context.is_admin {
-        let role = Organization::get_user_role(pool, &org_id.to_string(), access_context.user_id).await?;
+        let role = Organization::get_user_role(pool, &org_id.to_string(), access_context.user_id.as_str()).await?;
         if role.is_none() {
             return Err(ApiError::Forbidden("Not a member of this organization".into()));
         }
@@ -180,19 +180,21 @@ pub async fn seed_brand_project(
         .bind(proj_id)
         .bind(&proj_name)
         .bind(org_id)
-        .bind(access_context.user_id)
+        .bind(access_context.user_id.as_str())
         .bind(org.slug.to_lowercase().replace(' ', "-") + "-brand")
         .execute(pool)
         .await?;
 
         // Add caller as project owner
         let mem_id = Uuid::new_v4();
+        let user_id_blob = db::bind_uuid_blob(&access_context.user_id)
+            .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {e}")))?;
         let _ = sqlx::query(
             "INSERT OR IGNORE INTO project_members (id, project_id, user_id, role) VALUES (?, ?, ?, 'owner')"
         )
         .bind(mem_id)
         .bind(proj_id)
-        .bind(access_context.user_id)
+        .bind(&user_id_blob)
         .execute(pool)
         .await;
 
