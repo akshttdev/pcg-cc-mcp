@@ -111,7 +111,7 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 - `MembersTab` raw `fetch()` → `makeRequest` migration
 - Query key string mismatches: `['brandProfile', orgId]` vs factory `['orgBrandProfile', orgId]`, `['workflowTemplates']` vs factory `['workflow-templates']` — need coordinated rename
 **Source also:** `archive/2026-03-16--plan--modularity-sprint-4.md` (deferred items)
-**Status:** PARTIALLY DONE (PR #46 converted 19 mutations, centralized ~228 keys)
+**Status:** PARTIALLY DONE (PR #46 converted 19 mutations, centralized ~228 keys, ~90 inline keys remain)
 
 ### Modularity — Large Frontend File Splits
 **Source:** `archive/2026-03-15--plan--modularity-sprint-2.md` (remaining large files section)
@@ -121,7 +121,7 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 - `company-profile.tsx` (1,218 lines) — similar pattern to project-detail split
 - ~~`MeetingMode.tsx` (1,207 lines)~~ → Done (PR #46, split to `meeting-mode/`)
 - `CrmDealDetailPanel.tsx` (1,202 lines) — grew in PR #36
-**Status:** PARTIALLY DONE (PR #46 split 3 files: MeetingMode, NoraAssistant, project-tasks). 12 files >900 lines remain.
+**Status:** PARTIALLY DONE (PR #46 split 3 files: MeetingMode, NoraAssistant, project-tasks). 7 files >900 lines remain (10 including preserved originals pending deletion).
 
 ### Workflow UX — Deferred Polish
 **Source:** `archive/2026-03-16--plan--workflow-ux-sprint.md` (deferred items + PR #44 review)
@@ -148,16 +148,20 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 
 ## Active Branch Conflict Notes (2026-03-18)
 
-### `sloperation316-pipeline-progress` — NOT merged in PR #45, has 77 files of unmerged work
-PR #45 merged `integration/sloperation316` (a separate integration branch) — NOT this branch. Pipeline-progress is 7 commits ahead / 5 behind main with 11,685 insertions across 77 files (CRM pipeline automation, company profiles, brand guides, e2e tests).
-**Merge conflicts with main+PR#46** (18 files): sidebar (4), deal-detail tabs (3), org-profile (3), `App.tsx`, `client-overview.tsx`, `call-intake.tsx`, `ClientProjectPanel.tsx`, plus 3 Rust backend files
-**Resolution**: Merge PR #46 to main first. Then update pipeline-progress from main (`git merge origin/main`). Sidebar/org-profile conflicts are import additions for query key factories. Deal-detail/backend conflicts are content changes from both branches.
+### `sloperation316-pipeline-progress` — Updated from main (2026-03-18)
+PR #45 merged `integration/sloperation316` (a separate integration branch) — NOT this branch. Pipeline-progress has 77 files of unmerged work (CRM pipeline automation, company profiles, brand guides, e2e tests).
+**Status**: Merged `origin/main` — no conflicts. Ready to merge to main when pipeline features are approved.
 
-### `sloperation316-vibe-integration` — superset of pipeline-progress, also NOT merged
-9 commits ahead / 5 behind main. Adds Dockerfile fix + VIBE tokenomics plan on top of pipeline-progress. Same conflict set + resolution strategy.
+### `sloperation316-vibe-integration` — Updated from main (2026-03-18)
+Superset of pipeline-progress (Dockerfile fix + VIBE tokenomics plan). Merged `origin/main` with 17 conflicts resolved:
+- `company.rs`: kept main's `hex()` UUID lookup
+- `crm_deals.rs`: kept vibe's `call_llm()`, Astra Pass 2, `generate_*_core()` pattern
+- `App.tsx`: kept `org_viewer` for `/people` routes (consistent with CRM)
+- Frontend: kept vibe's pipeline features, fixed `personsApi.get()` and `tasksApi.getAll()` method names
+**Note**: If PR #46 merges to main before these branches, they'll need another merge from main to pick up query key factories, mutation conversions, and file splits.
 
 ### `refactor/dev-velocity-sprint` — Zero conflict with PR #46
-Planning file only. Explicitly avoids PR #46's files (skips NoraAssistant/project-tasks splits, org-profile keys). Focus: DbUuid (Rust), unwrap elimination (Rust), `any` types (different TS files), route authz (Rust).
+Planning file only. Focus: DbUuid (Rust), unwrap elimination (Rust), `any` types (different TS files), route authz (Rust).
 
 ### Pre-existing DB/Server Issues (found during e2e setup)
 1. **Seed DB BLOB→TEXT**: `users` table still has BLOB UUIDs. Runtime fix: `UPDATE users SET id = lower(substr(hex(id),...))`. Seed needs regeneration.

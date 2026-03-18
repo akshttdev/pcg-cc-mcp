@@ -1,8 +1,9 @@
 # Quality Sprint: Dialog Standardization, Modularity, File Splits
 
 **Branch**: `refactor/quality-sprint-dialogs-modularity`
+**PR**: #46
 **Started**: 2026-03-17
-**Status**: In Progress (Days 1-8 complete)
+**Status**: Complete — pending merge to main. Archive to `planning/archive/` after merge.
 
 ## Sprint Progress
 
@@ -37,15 +38,16 @@ Full verification performed on branch `refactor/quality-sprint-dialogs-modularit
 - `workflow pages` (~12 keys)
 - Misc pages from sloperation316 (~50+ keys)
 
-## Sprint Metrics (Current)
+## Sprint Metrics (Final — 2026-03-18)
 
-| Metric | Before | Current | Target |
-|--------|--------|---------|--------|
-| `window.confirm()` calls | 5 | **0** | 0 |
-| Inline query keys (est.) | ~318 | **~90** | ~100 |
-| Raw `useMutation` (files) | ~60 | **~45** | ~35 |
-| Files >900 lines | 15 | **12** | 12 |
-| NiceModal registrations | 21 | 21 | 24 |
+| Metric | Before | Final | Target | Notes |
+|--------|--------|-------|--------|-------|
+| `window.confirm()` calls | 5 | **0** | 0 | All replaced with `showConfirm()` |
+| Inline query keys (est.) | ~318 | **~90** | ~100 | Beat target; ~90 remain in deal-detail, workflows, misc |
+| Raw `useMutation` (calls) | ~119 | **~100** | — | 19 converted; remaining are complex patterns or outside safe zone |
+| Raw `useMutation` (files) | ~60 | **~50** | ~35 | Target aspirational; complex patterns left intentionally |
+| Files >900 lines | 15 | **7** (10 incl. preserved originals) | 12 | Beat target; 3 preserved originals can be deleted post-verification |
+| NiceModal registrations | 21 | 21 | 24 | Settings dialogs too tightly coupled; deferred |
 
 ## Day 4 Mutations Converted
 
