@@ -45,7 +45,7 @@ export function MembersTab({ orgId, orgName }: { orgId: string; orgName: string 
     enabled: !!orgId,
   });
 
-  const { data: allUsers = [] } = useQuery<any[]>({
+  const { data: allUsers = [] } = useQuery<{ id: string; username: string; full_name?: string }[]>({
     queryKey: userKeys.allUsers(),
     queryFn: async () => {
       const res = await fetch(resolveApiUrl('/api/users'), { credentials: 'include' });
@@ -65,7 +65,7 @@ export function MembersTab({ orgId, orgName }: { orgId: string; orgName: string 
   const [copied, setCopied] = useState(false);
 
   const availableUsers = allUsers.filter(
-    (u: any) => !members.some((m) => m.user_id === u.id)
+    (u) => !members.some((m) => m.user_id === u.id)
   );
 
   const addMemberMutation = useMutationWithToast({
@@ -99,7 +99,7 @@ export function MembersTab({ orgId, orgName }: { orgId: string; orgName: string 
     mutationFn: () => organizationsApi.createInvitation(orgId, inviteRole),
     successMessage: 'Invite link created',
     errorMessage: 'Failed to create invite',
-    onSuccess: (data: any) => {
+    onSuccess: (data: { invite_url?: string }) => {
       setInviteLink(data.invite_url || '');
     },
   });
@@ -138,7 +138,7 @@ export function MembersTab({ orgId, orgName }: { orgId: string; orgName: string 
                 <SelectValue placeholder="Select user..." />
               </SelectTrigger>
               <SelectContent>
-                {availableUsers.map((u: any) => (
+                {availableUsers.map((u) => (
                   <SelectItem key={u.id} value={u.id}>
                     {u.full_name || u.username} <span className="text-muted-foreground ml-1">@{u.username}</span>
                   </SelectItem>

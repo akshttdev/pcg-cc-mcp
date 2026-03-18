@@ -12,6 +12,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use utils::response::ApiResponse;
 use uuid::Uuid;
+use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 
@@ -19,11 +20,11 @@ use crate::{DeploymentImpl, error::ApiError};
 
 /// GET /api/projects/:project_id/data-sources
 async fn list_by_project(
-    Path(project_id): Path<Uuid>,
+    Path(project_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Vec<DataSource>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let sources = DataSource::find_by_project(pool, &project_id.to_string())
+    let sources = DataSource::find_by_project(pool, &project_id)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to list data sources: {e}")))?;
     Ok(Json(ApiResponse::success(sources)))
@@ -174,11 +175,11 @@ async fn upload_data_source(
             }
             "organization_id" => {
                 let val = field.text().await.map_err(|e| ApiError::BadRequest(format!("{e}")))?;
-                organization_id = Some(Uuid::parse_str(&val).map_err(|e| ApiError::BadRequest(format!("Invalid org ID: {e}")))?);
+                organization_id = Some(DbUuid::parse(&val).map_err(|e| ApiError::BadRequest(format!("Invalid org ID: {e}")))?.to_uuid());
             }
             "project_id" => {
                 let val = field.text().await.map_err(|e| ApiError::BadRequest(format!("{e}")))?;
-                project_id = Some(Uuid::parse_str(&val).map_err(|e| ApiError::BadRequest(format!("Invalid project ID: {e}")))?);
+                project_id = Some(DbUuid::parse(&val).map_err(|e| ApiError::BadRequest(format!("Invalid project ID: {e}")))?.to_uuid());
             }
             "metadata" => {
                 metadata_str = Some(field.text().await.map_err(|e| ApiError::BadRequest(format!("{e}")))?);
@@ -352,11 +353,11 @@ async fn upload_data_source(
 
 /// GET /api/data-sources/:id
 async fn get_data_source(
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<DataSource>>, ApiError> {
     let pool = &deployment.db().pool;
-    let source = DataSource::find_by_id(pool, &id.to_string())
+    let source = DataSource::find_by_id(pool, &id)
         .await
         .map_err(|e| ApiError::InternalError(format!("{e}")))?
         .ok_or_else(|| ApiError::NotFound("Data source not found".to_string()))?;
@@ -365,12 +366,12 @@ async fn get_data_source(
 
 /// PUT /api/data-sources/:id
 async fn update_data_source(
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     State(deployment): State<DeploymentImpl>,
     Json(body): Json<UpdateDataSource>,
 ) -> Result<Json<ApiResponse<DataSource>>, ApiError> {
     let pool = &deployment.db().pool;
-    let source = DataSource::update(pool, &id.to_string(), body)
+    let source = DataSource::update(pool, &id, body)
         .await
         .map_err(|e| ApiError::InternalError(format!("{e}")))?
         .ok_or_else(|| ApiError::NotFound("Data source not found".to_string()))?;
@@ -379,11 +380,11 @@ async fn update_data_source(
 
 /// DELETE /api/data-sources/:id (soft delete)
 async fn delete_data_source(
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    DataSource::archive(pool, &id.to_string())
+    DataSource::archive(pool, &id)
         .await
         .map_err(|e| ApiError::InternalError(format!("{e}")))?;
     Ok(Json(ApiResponse::success(())))
@@ -391,11 +392,11 @@ async fn delete_data_source(
 
 /// GET /api/data-sources/:id/download — serve the stored file binary
 async fn download_data_source(
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Response, ApiError> {
     let pool = &deployment.db().pool;
-    let source = DataSource::find_by_id(pool, &id.to_string())
+    let source = DataSource::find_by_id(pool, &id)
         .await
         .map_err(|e| ApiError::InternalError(format!("{e}")))?
         .ok_or_else(|| ApiError::NotFound("Data source not found".to_string()))?;

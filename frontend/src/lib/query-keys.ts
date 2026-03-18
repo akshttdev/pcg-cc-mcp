@@ -44,6 +44,11 @@ export const crmKeys = {
   contactLegacy: (contactId: string) => ['crm-contact', contactId] as const,
   contactDeals: (contactId: string) => ['contact-deals', contactId] as const,
   contactActivities: (contactId: string) => ['contact-activities', contactId] as const,
+  dealTranscripts: (dealId: string) => ['deal-transcripts', dealId] as const,
+  dealLegacy: (dealId: string) => ['crm-deal', dealId] as const,
+  kanbanLegacy: () => ['crm-kanban'] as const,
+  kanbanLegacyFlat: () => ['kanban'] as const,
+  callLogsDeal: (dealId: string) => ['call-logs-deal', dealId] as const,
 
   // Pipelines (project-scoped)
   pipelines: (organizationId: string) => ['crm', 'pipelines', organizationId] as const,
@@ -91,6 +96,7 @@ export const projectKeys = {
   detail: (projectId: string) => ['project', projectId] as const,
   crm: () => ['projects', 'crm'] as const,
   byClient: (clientId?: string) => ['projects', 'byClient', clientId] as const,
+  clientProjects: (clientId: string) => ['clientProjects', clientId] as const,
 };
 
 // ── Organizations ──────────────────────────────────────────────────────────
@@ -154,8 +160,15 @@ export const workflowKeys = {
   status: (workflowId: string) => ['workflow-status', workflowId] as const,
   statusPoll: (workflowId: string) => ['workflow-status-poll', workflowId] as const,
   artifacts: (workflowId: string) => ['workflow-artifacts', workflowId] as const,
+  recentRuns: () => ['workflowRuns'] as const,
+  runsByWorkflow: (workflowId: string) => ['workflowRunsByWf', workflowId] as const,
+  dataSourceNamesForRuns: (dsIds: string[]) => ['ds-names-for-runs', dsIds] as const,
+  dataSourceNamesForRunsTab: (dsIds: string[]) => ['ds-names-for-runs-tab', dsIds] as const,
+  stagingPendingByWorkflow: (workflowId: string) => ['stagingPendingByWf', workflowId] as const,
+  orgDataSources: (orgId: string) => ['orgDataSources', orgId] as const,
   staging: (workflowRunId?: string) => ['staging', workflowRunId] as const,
   stagingPending: () => ['stagingPending'] as const,
+  stagingPendingOrg: (orgId?: string) => ['stagingPending', orgId] as const,
   schemas: (targetTypes: string[]) => ['schemas', targetTypes] as const,
 };
 
@@ -223,6 +236,7 @@ export const entityKeys = {
   person: (id: string) => ['person', id] as const,
   researchPasses: (personId: string) => ['research-passes', personId] as const,
   personReports: (personId: string) => ['person-reports', personId] as const,
+  personNotes: (personId: string) => ['person-notes', personId] as const,
   leads: (orgFilter?: string, typeFilter?: string, search?: string) =>
     ['persons', 'leads', orgFilter, typeFilter, search] as const,
   allDirectory: () => ['allProjectsDirectory'] as const,
@@ -403,8 +417,10 @@ export const collaborationKeys = {
 
 export const socialKeys = {
   accounts: (projectId?: string | null) => ['social-accounts', projectId] as const,
+  postsAll: () => ['social-posts'] as const,
   posts: (projectId?: string | null) => ['social-posts', projectId] as const,
   mentions: (projectId?: string | null) => ['social-mentions', projectId] as const,
+  mentionsOverview: (projectId: string) => ['social-mentions-ov', projectId] as const,
   inboxStats: (projectId?: string | null) => ['social-inbox-stats', projectId] as const,
 };
 

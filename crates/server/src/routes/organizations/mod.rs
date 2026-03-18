@@ -16,6 +16,7 @@ use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
+use db::db_uuid::DbUuid;
 
 use crate::{
     DeploymentImpl,
@@ -53,17 +54,17 @@ pub async fn list_organizations(
 
 /// GET /api/organizations/:id — org details
 pub async fn get_organization(
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Organization>>, ApiError> {
-    let org = Organization::find_by_id(&deployment.db().pool, &id.to_string())
+    let org = Organization::find_by_id(&deployment.db().pool, &id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Organization not found".into()))?;
 
     // Check user has access (is admin or org member)
     if !access_context.is_admin {
-        let role = Organization::get_user_role(&deployment.db().pool, &id.to_string(), access_context.user_id.as_str()).await?;
+        let role = Organization::get_user_role(&deployment.db().pool, &id, access_context.user_id.as_str()).await?;
         if role.is_none() {
             return Err(ApiError::Forbidden("Not a member of this organization".into()));
         }
@@ -101,65 +102,65 @@ pub async fn create_organization(
 
 /// PUT /api/organizations/:id — update org
 pub async fn update_organization(
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Json(data): Json<UpdateOrganization>,
 ) -> Result<Json<ApiResponse<Organization>>, ApiError> {
     // Only org admins or system admins can update
     if !access_context.is_admin {
-        let role = Organization::get_user_role(&deployment.db().pool, &id.to_string(), access_context.user_id.as_str()).await?;
+        let role = Organization::get_user_role(&deployment.db().pool, &id, access_context.user_id.as_str()).await?;
         match role.as_deref() {
             Some("admin") => {}
             _ => return Err(ApiError::Forbidden("Only org admins can update organizations".into())),
         }
     }
 
-    let org = Organization::update(&deployment.db().pool, &id.to_string(), &data).await?;
+    let org = Organization::update(&deployment.db().pool, &id, &data).await?;
     Ok(Json(ApiResponse::success(org)))
 }
 
 /// PATCH /api/organizations/:id/activate — reactivate
 pub async fn activate_organization(
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     if !access_context.is_admin {
         return Err(ApiError::Forbidden("Only system admins can activate organizations".into()));
     }
-    Organization::activate(&deployment.db().pool, &id.to_string()).await?;
+    Organization::activate(&deployment.db().pool, &id).await?;
     Ok(Json(ApiResponse::success(())))
 }
 
 /// PATCH /api/organizations/:id/deactivate — deactivate (hide from sidebar)
 pub async fn deactivate_organization(
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     if !access_context.is_admin {
         return Err(ApiError::Forbidden("Only system admins can deactivate organizations".into()));
     }
-    Organization::deactivate(&deployment.db().pool, &id.to_string()).await?;
+    Organization::deactivate(&deployment.db().pool, &id).await?;
     Ok(Json(ApiResponse::success(())))
 }
 
 /// DELETE /api/organizations/:id — soft-delete (deactivate)
 pub async fn delete_organization(
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     if !access_context.is_admin {
-        let role = Organization::get_user_role(&deployment.db().pool, &id.to_string(), access_context.user_id.as_str()).await?;
+        let role = Organization::get_user_role(&deployment.db().pool, &id, access_context.user_id.as_str()).await?;
         match role.as_deref() {
             Some("admin") => {}
             _ => return Err(ApiError::Forbidden("Only org admins can delete organizations".into())),
         }
     }
 
-    Organization::deactivate(&deployment.db().pool, &id.to_string()).await?;
+    Organization::deactivate(&deployment.db().pool, &id).await?;
     Ok(Json(ApiResponse::success(())))
 }
 

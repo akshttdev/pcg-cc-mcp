@@ -11,9 +11,7 @@ import { TopsiWidget } from '@/components/topsi';
 import { useTaskViewManager } from '@/hooks/useTaskViewManager';
 import { usePreviousPath } from '@/hooks/usePreviousPath';
 import { usePageTitle } from '@/hooks/usePageTitle';
-import {
-  useUserSystem,
-} from '@/components/config-provider';
+import { useUserSystem } from '@/components/config-provider';
 import { ThemeProvider } from '@/components/theme-provider';
 import { SearchProvider } from '@/contexts/search-context';
 import { ShortcutsHelp } from '@/components/shortcuts-help';
@@ -22,7 +20,7 @@ import { Loader } from '@/components/ui/loader';
 import { AppWithStyleOverride } from '@/utils/style-override';
 import { WebviewContextMenu } from '@/vscode/ContextMenu';
 import NiceModal from '@ebay/nice-modal-react';
-import { OnboardingResult } from '@/components/dialogs/global/OnboardingDialog';
+import type { WelcomeWizardResult } from '@/components/onboarding';
 import { Toaster } from '@/components/ui/toaster';
 import { BreadcrumbNav } from '@/components/breadcrumb/BreadcrumbNav';
 import { CommandPalette } from '@/components/command/CommandPalette';
@@ -42,7 +40,12 @@ export function AppShell() {
   const { isFullscreen, toggleFullscreen } = useTaskViewManager();
   const location = useLocation();
   const isVirtualEnv = location.pathname.startsWith('/virtual-environment');
-  const { sidebarCollapsed, toggleSidebar, setSidebarCollapsed, contentFullscreen } = useViewStore();
+  const {
+    sidebarCollapsed,
+    toggleSidebar,
+    setSidebarCollapsed,
+    contentFullscreen,
+  } = useViewStore();
 
   // On mobile, toggle sidebar means show/hide the overlay sidebar
   // We reuse sidebarCollapsed: collapsed=true means hidden on mobile
@@ -65,85 +68,75 @@ export function AppShell() {
 
   const showNavbar = !isFullscreen && !contentFullscreen;
 
+  // Unified onboarding wizard — replaces 4 sequential modals with single stepped dialog
   useEffect(() => {
     let cancelled = false;
 
-    const handleOnboardingComplete = async (
-      onboardingConfig: OnboardingResult
-    ) => {
-      if (cancelled) return;
-      const updatedConfig = {
-        ...config,
-        onboarding_acknowledged: true,
-        executor_profile: onboardingConfig.profile,
-        editor: onboardingConfig.editor,
-      };
-
-      updateAndSaveConfig(updatedConfig);
-    };
-
-    const handleDisclaimerAccept = async () => {
-      if (cancelled) return;
-      await updateAndSaveConfig({ disclaimer_acknowledged: true });
-    };
-
-    const handleGitHubLoginComplete = async () => {
-      if (cancelled) return;
-      await updateAndSaveConfig({ github_login_acknowledged: true });
-    };
-
-    const handleTelemetryOptIn = async (analyticsEnabled: boolean) => {
-      if (cancelled) return;
-      await updateAndSaveConfig({
-        telemetry_acknowledged: true,
-        analytics_enabled: analyticsEnabled,
-      });
-    };
-
-    const handleReleaseNotesClose = async () => {
-      if (cancelled) return;
-      await updateAndSaveConfig({ show_release_notes: false });
-    };
-
-    const checkOnboardingSteps = async () => {
-      if (!config || cancelled) return;
-
-      if (!config.disclaimer_acknowledged) {
-        await NiceModal.show('disclaimer');
-        await handleDisclaimerAccept();
-        await NiceModal.hide('disclaimer');
-      }
-
-      if (!config.onboarding_acknowledged) {
-        const onboardingResult: OnboardingResult =
-          await NiceModal.show('onboarding');
-        await handleOnboardingComplete(onboardingResult);
-        await NiceModal.hide('onboarding');
-      }
-
-      if (!config.github_login_acknowledged) {
-        await NiceModal.show('github-login');
-        await handleGitHubLoginComplete();
-        await NiceModal.hide('github-login');
-      }
-
-      if (!config.telemetry_acknowledged) {
-        const analyticsEnabled: boolean =
-          await NiceModal.show('privacy-opt-in');
-        await handleTelemetryOptIn(analyticsEnabled);
-        await NiceModal.hide('privacy-opt-in');
-      }
-
-      if (config.show_release_notes) {
-        await NiceModal.show('release-notes');
-        await handleReleaseNotesClose();
-        await NiceModal.hide('release-notes');
-      }
-    };
-
     const runOnboarding = async () => {
       if (!config || cancelled) return;
-      await checkOnboardingSteps();
+
+      // Skip onboarding entirely if env var is set (for E2E testing)
+      const skipOnboarding = import.meta.env.VITE_SKIP_ONBOARDING === '1';
+      if (skipOnboarding) {
+        // Auto-acknowledge all flags silently
+        const needsUpdate =
+          !config.disclaimer_acknowledged ||
+          !config.onboarding_acknowledged ||
+          !config.github_login_acknowledged ||
+          !config.telemetry_acknowledged;
+        if (needsUpdate) {
+          await updateAndSaveConfig({
+            disclaimer_acknowledged: true,
+            onboarding_acknowledged: true,
+            github_login_acknowledged: true,
+            telemetry_acknowledged: true,
+          });
+        }
+        return;
+      }
+
+      // Check if any onboarding steps remain incomplete
+      const needsOnboarding =
+        !config.disclaimer_acknowledged ||
+        !config.onboarding_acknowledged ||
+        !config.github_login_acknowledged ||
+        !config.telemetry_acknowledged;
+
+      if (needsOnboarding) {
+        try {
+          const result: WelcomeWizardResult =
+            await NiceModal.show('welcome-wizard');
+          if (cancelled) return;
+
+          // Persist all onboarding results atomically
+          await updateAndSaveConfig({
+            disclaimer_acknowledged: true,
+            onboarding_acknowledged: true,
+            executor_profile: result.profile,
+            editor: result.editor,
+            github_login_acknowledged: true,
+            telemetry_acknowledged: true,
+            analytics_enabled: result.analyticsEnabled,
+          });
+          await NiceModal.hide('welcome-wizard');
+        } catch {
+          // Wizard was dismissed — that's fine, partial state persists
+          await NiceModal.hide('welcome-wizard');
+        }
+      }
+
+      // Release notes — separate from onboarding wizard
+      if (!cancelled && config.show_release_notes) {
+        try {
+          await NiceModal.show('release-notes');
+          if (!cancelled) {
+            await updateAndSaveConfig({ show_release_notes: false });
+          }
+          await NiceModal.hide('release-notes');
+        } catch {
+          await NiceModal.hide('release-notes');
+        }
+      }
     };
 
     runOnboarding();
@@ -151,7 +144,7 @@ export function AppShell() {
     return () => {
       cancelled = true;
     };
-  }, [config]);
+  }, [config, updateAndSaveConfig]);
 
   if (loading) {
     return (
@@ -169,7 +162,10 @@ export function AppShell() {
             <div className="h-screen flex flex-col bg-background">
               <WebviewContextMenu />
               {showNavbar && <Navbar onToggleSidebar={handleToggleSidebar} />}
-              <BreadcrumbNav onToggleFullscreen={toggleFullscreen} isFullscreen={isFullscreen} />
+              <BreadcrumbNav
+                onToggleFullscreen={toggleFullscreen}
+                isFullscreen={isFullscreen}
+              />
 
               <div className="flex-1 flex min-h-0 relative">
                 {/* Mobile/tablet backdrop overlay when sidebar is open */}
@@ -182,13 +178,16 @@ export function AppShell() {
 
                 {/* Sidebar: hidden on small screens when collapsed, overlay when open; always visible on lg+ */}
                 {!showNavbar ? null : (
-                  <div className={`
+                  <div
+                    className={`
                     lg:relative lg:flex lg:shrink-0
-                    ${sidebarCollapsed
-                      ? 'hidden lg:flex'
-                      : 'absolute top-0 left-0 bottom-0 z-50 lg:relative lg:z-auto flex'
+                    ${
+                      sidebarCollapsed
+                        ? 'hidden lg:flex'
+                        : 'absolute top-0 left-0 bottom-0 z-50 lg:relative lg:z-auto flex'
                     }
-                  `}>
+                  `}
+                  >
                     <Sidebar className="shrink-0 bg-background h-full" />
                   </div>
                 )}

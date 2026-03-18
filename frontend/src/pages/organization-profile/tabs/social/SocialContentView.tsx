@@ -77,7 +77,7 @@ export function SocialContentView({ projectEntries }: { projectEntries: { id: st
       scheduled_for: newScheduled || undefined,
     }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['social-posts'] });
+      queryClient.invalidateQueries({ queryKey: socialKeys.postsAll() });
       setShowCreate(false);
       setNewCaption('');
       setNewPlatforms([]);
@@ -87,7 +87,7 @@ export function SocialContentView({ projectEntries }: { projectEntries: { id: st
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => socialApi.deletePost(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['social-posts'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: socialKeys.postsAll() }),
   });
 
   // Helpers shared across views

@@ -39,7 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(true);
       const currentUser = await getCurrentUser();
       setUser(currentUser);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to check session:', error);
       setUser(null);
       // Show session expired message if we had a stored session

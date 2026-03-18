@@ -174,7 +174,7 @@ export function ActivitySettings() {
         <CardContent className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1">
             <label className="text-sm font-medium mb-1.5 block">Activity Type</label>
-            <Select value={filter} onValueChange={(v: any) => setFilter(v)}>
+            <Select value={filter} onValueChange={(v: string) => setFilter(v as 'all' | ActivityType)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>

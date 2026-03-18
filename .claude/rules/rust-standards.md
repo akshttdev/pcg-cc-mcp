@@ -22,6 +22,20 @@ paths:
 - Each route module exports a `router()` function that returns `Router<DeploymentImpl>`
 - Use `middleware::from_fn_with_state()` for model-loading middleware, not inline guards
 
+## UUID Handling — Use DbUuid, not uuid::Uuid
+
+- **Path parameters**: Use `Path<String>`, not `Path<Uuid>`. Validate with `DbUuid::parse(&id).map_err(|e| ApiError::BadRequest(...))?`
+- **NEVER** use `Uuid::parse_str()` — use `DbUuid::parse()` instead. DbUuid is the project's canonical UUID type.
+- **NEVER** use `uuid::Uuid::new_v4()` — use `DbUuid::new()` instead
+- **Interfaces**: Use `String` or `DbUuid` in function signatures. Push BLOB conversions to the DB consumer via `bind_uuid_blob()`.
+- **Import**: `use db::db_uuid::DbUuid;` — avoid `use uuid::Uuid;` in route handlers
+- **Conversion helpers** (in `crates/db/src/db_uuid.rs`):
+  - `DbUuid::new()` — generate v4 UUID
+  - `DbUuid::parse(&str)` — validate and parse (returns `Result<DbUuid, uuid::Error>`)
+  - `DbUuid::from_string(s)` — wrap without validation (trusted input only)
+  - `bind_uuid(&db_uuid)` — bind to TEXT column
+  - `bind_uuid_blob(&db_uuid)` — bind to legacy BLOB column
+
 ## Error Types
 
 - Domain errors go in their own enum (e.g., `ProjectError`) with `#[derive(Debug, Error)]`

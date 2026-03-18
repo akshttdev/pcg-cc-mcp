@@ -79,7 +79,7 @@ export function DataSourcesPage() {
     });
 
     list = [...list].sort((a, b) => {
-      let av: any, bv: any;
+      let av: string | number, bv: string | number;
       if (sortField === 'title') { av = a.title; bv = b.title; }
       else if (sortField === 'data_type') { av = a.data_type; bv = b.data_type; }
       else if (sortField === 'file_size') { av = a.file_size_bytes || 0; bv = b.file_size_bytes || 0; }

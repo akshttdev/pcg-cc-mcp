@@ -172,12 +172,13 @@ export function useProjectData(projectId: string, onBack: () => void) {
     try {
       const result = await projectsApi.listAssets(projectId);
       setAssets(result);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to fetch project assets:', error);
-      if (error.response?.status === 404) {
+      const message = error instanceof Error ? error.message : 'Failed to load brand assets';
+      if (error instanceof Object && 'response' in error && (error as { response?: { status?: number } }).response?.status === 404) {
         setAssetsError('No assets found for this project.');
       } else {
-        setAssetsError(error.message || 'Failed to load brand assets');
+        setAssetsError(message);
       }
     }
     setAssetsLoading(false);

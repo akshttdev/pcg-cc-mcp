@@ -2,6 +2,7 @@ import { createContext, useContext, ReactNode, useMemo } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { organizationsApi } from '@/lib/api';
+import { organizationKeys } from '@/lib/query-keys';
 import type { OrganizationData } from '@/lib/api';
 import { useOrganizationById } from '@/hooks/queries';
 import { useAuth } from './AuthContext';
@@ -37,11 +38,11 @@ export function OrganizationProvider({ children }: OrganizationProviderProps) {
   // Effective org mirrors sidebar logic: URL org → home org → first org
   const effectiveOrgId = useMemo(() => {
     if (orgId) return orgId;
-    return (user as any)?.home_organization_id ?? (user as any)?.organizations?.[0]?.id;
+    return user?.home_organization_id ?? user?.organizations?.[0]?.id;
   }, [orgId, user]);
 
   const { data: organizations = [], isLoading: isOrgsLoading } = useQuery({
-    queryKey: ['organizations'],
+    queryKey: organizationKeys.all,
     queryFn: () => organizationsApi.getAll(),
     staleTime: 5 * 60 * 1000,
   });

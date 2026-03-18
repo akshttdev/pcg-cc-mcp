@@ -1,6 +1,7 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { organizationsApi } from '@/lib/api';
+import { organizationKeys, sidebarKeys } from '@/lib/query-keys';
 import type { SidebarProject, SidebarClient, ClientData } from '@/lib/api';
 import { useOrganizationById } from '@/hooks/queries';
 import { Building2, Users, FolderKanban, ArrowRight, Trash2 } from 'lucide-react';
@@ -19,13 +20,13 @@ export function OrganizationOverview() {
   const { data: org, isLoading } = useOrganizationById(orgId);
 
   const { data: clients = [] } = useQuery({
-    queryKey: ['orgClients', orgId],
+    queryKey: organizationKeys.orgClients(orgId!),
     queryFn: () => organizationsApi.getClients(orgId!),
     enabled: !!orgId,
   });
 
   const { data: sidebarTree } = useQuery({
-    queryKey: ['sidebarTree'],
+    queryKey: sidebarKeys.tree(),
     queryFn: () => organizationsApi.getSidebarTree(),
     staleTime: 5 * 60 * 1000,
   });
@@ -101,7 +102,7 @@ export function OrganizationOverview() {
               if (!await showConfirm({ title: 'Delete Organization', message: `Delete "${org.name}"? This will deactivate the organization and hide it from the sidebar.`, variant: 'destructive', confirmText: 'Delete' })) return;
               try {
                 await organizationsApi.delete(org.id);
-                queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
+                queryClient.invalidateQueries({ queryKey: sidebarKeys.tree() });
                 navigate('/');
               } catch (err) {
                 console.error('Failed to delete organization:', err);

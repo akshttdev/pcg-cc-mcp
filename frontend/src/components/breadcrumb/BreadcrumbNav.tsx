@@ -4,6 +4,7 @@ import { useProject } from '@/contexts/project-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { tasksApi, organizationsApi, dataSourcesApi, personsApi, companiesApi } from '@/lib/api';
+import type { SidebarProject, SidebarClient } from '@/lib/api';
 import { sidebarKeys, taskKeys, dataSourceKeys, entityKeys, organizationKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
 import {
@@ -91,7 +92,7 @@ export function BreadcrumbNav({ onToggleFullscreen, isFullscreen }: BreadcrumbNa
     enabled: !!clientId && !!orgId,
     staleTime: 5 * 60 * 1000,
   });
-  const clientName = clientData?.find((c: any) => c.id === clientId)?.name;
+  const clientName = clientData?.find((c) => c.id === clientId)?.name;
 
   // Derive current org from route, project, or fall back to user's first org
   const allOrgs = sidebarTree
@@ -101,11 +102,11 @@ export function BreadcrumbNav({ onToggleFullscreen, isFullscreen }: BreadcrumbNa
   const currentOrg = allOrgs.find((org) => {
     if (orgId) return org.id === orgId;
     if (project && projectId) {
-      const findProject = (projects: any[]): boolean =>
-        projects.some((p: any) => p.id === projectId || findProject(p.children || []));
+      const findProject = (projects: SidebarProject[]): boolean =>
+        projects.some((p) => p.id === projectId || findProject(p.children || []));
       return (
         findProject(org.internal_projects) ||
-        org.clients.some((c: any) => findProject(c.projects))
+        org.clients.some((c: SidebarClient) => findProject(c.projects))
       );
     }
     return false;

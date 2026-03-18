@@ -2,6 +2,7 @@ import { lazy, Suspense, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { organizationsApi, projectsApi, type CrmContactRecord, type OrgBrandProfile, type ClientData } from '@/lib/api';
+import { userKeys, organizationKeys, projectKeys } from '@/lib/query-keys';
 import type { Project } from 'shared/types';
 
 /** Extended client data as returned by the API (superset of ClientData) */
@@ -254,7 +255,7 @@ function ClientContactsTab({ orgId, clientName }: { orgId: string; clientName: s
 // ── Members tab (client-specific, deduplicated) ───────────────────────────────
 function ClientMembersTab({ clientId, orgId }: { clientId: string; orgId: string }) {
   const { data: members = [], isLoading } = useQuery<MemberRecord[]>({
-    queryKey: ['client-members', clientId],
+    queryKey: userKeys.clientMembers(clientId),
     queryFn: async () => {
       const res = await fetch(`/api/clients/${clientId}/members`, { credentials: 'include' });
       if (!res.ok) throw new Error('Failed');
@@ -264,7 +265,7 @@ function ClientMembersTab({ clientId, orgId }: { clientId: string; orgId: string
   });
 
   const { data: orgMembers = [] } = useQuery<MemberRecord[]>({
-    queryKey: ['org-members', orgId],
+    queryKey: organizationKeys.members(orgId),
     queryFn: () => organizationsApi.getMembers(orgId),
     staleTime: 60_000,
   });
@@ -370,19 +371,19 @@ export function ClientOverview() {
   const [membersOpen, setMembersOpen] = useState(false);
 
   const { data: clients = [], isLoading } = useQuery({
-    queryKey: ['orgClients', orgId],
+    queryKey: organizationKeys.orgClients(orgId!),
     queryFn: () => organizationsApi.getClients(orgId!),
     enabled: !!orgId,
   });
 
   const { data: projects = [], isLoading: isProjectsLoading } = useQuery({
-    queryKey: ['clientProjects', clientId],
+    queryKey: projectKeys.clientProjects(clientId!),
     queryFn: () => projectsApi.getByClientId(clientId!),
     enabled: !!clientId,
   });
 
   const { data: brandProfile } = useQuery<OrgBrandProfile | null>({
-    queryKey: ['orgBrandProfile', orgId],
+    queryKey: organizationKeys.brandProfile(orgId!),
     queryFn: () => organizationsApi.getBrandProfile(orgId!),
     enabled: !!orgId,
     staleTime: 5 * 60_000,

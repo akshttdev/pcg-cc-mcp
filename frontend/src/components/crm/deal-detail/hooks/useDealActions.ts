@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { reportsApi, crmDealsApi, intelligenceApi } from '@/lib/api';
+import { crmKeys } from '@/lib/query-keys';
 import { showConfirm } from '@/lib/modals';
 import { toast } from 'sonner';
 
@@ -27,7 +28,7 @@ export function useDealActions() {
     try {
       await crmDealsApi.advanceDeal(dealId);
       toast.success('Deal advanced to next stage');
-      queryClient.invalidateQueries({ queryKey: ['kanban'] });
+      queryClient.invalidateQueries({ queryKey: crmKeys.kanbanLegacyFlat() });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to advance deal');
     } finally {

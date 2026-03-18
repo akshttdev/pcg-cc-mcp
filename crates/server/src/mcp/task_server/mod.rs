@@ -18,7 +18,7 @@ use rmcp::{
     ErrorData, ServerHandler,
     handler::server::tool::ToolRouter,
     model::{
-        Annotated, CallToolResult, Implementation, ProtocolVersion,
+        Annotated, Implementation, ProtocolVersion,
         ReadResourceRequestParam, ReadResourceResult, ResourceContents,
         ResourceTemplate, RawResourceTemplate, ServerCapabilities, ServerInfo,
         ListResourceTemplatesResult,

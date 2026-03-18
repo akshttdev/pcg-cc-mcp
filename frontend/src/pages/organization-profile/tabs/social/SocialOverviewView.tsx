@@ -10,7 +10,7 @@ import {
   type SocialPostRecord,
   type SocialMentionRecord,
 } from '@/lib/api';
-import { socialKeys } from '@/lib/query-keys';
+import { socialKeys, organizationKeys } from '@/lib/query-keys';
 import {
   PLATFORM_ICONS,
   PLATFORM_COLORS,
@@ -31,7 +31,7 @@ export function SocialOverviewView({
   onSwitchView: (v: string) => void;
 }) {
   const { data: brandProfile } = useQuery({
-    queryKey: ['brandProfile', orgId],
+    queryKey: organizationKeys.brandProfile(orgId),
     queryFn: () => organizationsApi.getBrandProfile(orgId),
     staleTime: 300_000,
     enabled: !!orgId,
@@ -55,7 +55,7 @@ export function SocialOverviewView({
 
   const mentionQueries = useQueries({
     queries: projectEntries.map(e => ({
-      queryKey: ['social-mentions-ov', e.id],
+      queryKey: socialKeys.mentionsOverview(e.id),
       queryFn: () => socialApi.listMentions(e.id, { limit: 10 }),
       staleTime: 60_000,
     })),

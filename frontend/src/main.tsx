@@ -34,6 +34,7 @@ import {
   FeedbackDialog,
   TeamManagementDialog,
 } from './components/dialogs';
+import { WelcomeWizard } from './components/onboarding';
 
 // Register modals
 NiceModal.register('github-login', GitHubLoginDialog);
@@ -58,6 +59,7 @@ NiceModal.register('project-editor-selection', ProjectEditorSelectionDialog);
 NiceModal.register('restore-logs', RestoreLogsDialog);
 NiceModal.register('feedback', FeedbackDialog);
 NiceModal.register('team-management', TeamManagementDialog);
+NiceModal.register('welcome-wizard', WelcomeWizard);
 // Install VS Code iframe keyboard bridge when running inside an iframe
 import './vscode/bridge';
 

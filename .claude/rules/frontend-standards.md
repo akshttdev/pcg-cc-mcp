@@ -32,6 +32,7 @@ paths:
 ## React Query Patterns
 
 - Configure `staleTime` appropriately (default: 5 minutes via QueryClient defaults)
+- **NEVER use inline query keys** like `queryKey: ['tasks', id]` — use factory functions from `lib/query-keys.ts` (e.g., `taskKeys.detail(id)`)
 - Invalidate related queries on mutation success: `queryClient.invalidateQueries({ queryKey: [...] })`
 - Use optimistic updates via `queryClient.setQueryData()` for responsive UI
 - Always handle `error` state in the component render — never show blank on failure

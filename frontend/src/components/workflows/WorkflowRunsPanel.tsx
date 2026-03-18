@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { workflowsApi, dataSourcesApi } from '@/lib/api';
+import { workflowKeys, dataSourceKeys } from '@/lib/query-keys';
 import type { WorkflowRun } from '@/lib/api';
 import { StagingReviewPanel } from './StagingReviewPanel';
 
@@ -82,7 +83,7 @@ export function WorkflowRunsPanel({
   const [selectedRunName, setSelectedRunName] = useState<string>('');
 
   const { data: runs = [], isLoading } = useQuery({
-    queryKey: ['workflow-runs', workflowId, organizationId],
+    queryKey: workflowKeys.runs(workflowId!, organizationId),
     queryFn: () => workflowsApi.listRecentRuns({ workflow_id: workflowId, organization_id: organizationId }),
     enabled: open,
     refetchInterval: 10000,
@@ -95,7 +96,7 @@ export function WorkflowRunsPanel({
   );
 
   const { data: dataSourceNames = {} } = useQuery({
-    queryKey: ['data-source-names', dataSourceIds],
+    queryKey: dataSourceKeys.names(dataSourceIds),
     queryFn: async () => {
       const results: Record<string, string> = {};
       await Promise.all(

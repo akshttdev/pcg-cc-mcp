@@ -12,6 +12,7 @@ use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
+use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 use db::models::social_mention::{CreateSocialMention, SocialMention, UpdateSocialMention};
@@ -55,12 +56,13 @@ async fn list_inbox(
 /// GET /social/inbox/stats/:project_id - Get inbox statistics
 async fn get_inbox_stats(
     State(deployment): State<DeploymentImpl>,
-    Path(project_id): Path<Uuid>,
+    Path(project_id): Path<String>,
 ) -> Result<Json<ApiResponse<InboxStats>>, ApiError> {
     let pool = &deployment.db().pool;
+    let project_uuid = DbUuid::parse(&project_id).map_err(|_| ApiError::BadRequest("Invalid project ID".into()))?.to_uuid();
 
-    let total_unread = SocialMention::count_unread(pool, project_id).await?;
-    let high_priority_mentions = SocialMention::find_high_priority(pool, project_id).await?;
+    let total_unread = SocialMention::count_unread(pool, project_uuid).await?;
+    let high_priority_mentions = SocialMention::find_high_priority(pool, project_uuid).await?;
 
     Ok(Json(ApiResponse::success(InboxStats {
         total_unread,
@@ -71,31 +73,34 @@ async fn get_inbox_stats(
 /// GET /social/inbox/:id - Get single mention
 async fn get_mention(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<SocialMention>>, ApiError> {
     let pool = &deployment.db().pool;
-    let mention = SocialMention::find_by_id(pool, id).await?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let mention = SocialMention::find_by_id(pool, id_uuid).await?;
     Ok(Json(ApiResponse::success(mention)))
 }
 
 /// PATCH /social/inbox/:id - Update mention
 async fn update_mention(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(update): Json<UpdateSocialMention>,
 ) -> Result<Json<ApiResponse<SocialMention>>, ApiError> {
     let pool = &deployment.db().pool;
-    let mention = SocialMention::update(pool, id, update).await?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let mention = SocialMention::update(pool, id_uuid, update).await?;
     Ok(Json(ApiResponse::success(mention)))
 }
 
 /// POST /social/inbox/:id/read - Mark mention as read
 async fn mark_read(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    SocialMention::mark_read(pool, id).await?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    SocialMention::mark_read(pool, id_uuid).await?;
     Ok(Json(ApiResponse::success(())))
 }
 

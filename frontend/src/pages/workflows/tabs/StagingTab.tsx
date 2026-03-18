@@ -77,7 +77,7 @@ export function StagingTab() {
   }, [setSearchParams]);
 
   const { data: pendingRecords = [], isLoading } = useQuery({
-    queryKey: ['stagingPending', orgId],
+    queryKey: workflowKeys.stagingPendingOrg(orgId),
     queryFn: () => stagingApi.listPending(orgId!),
     enabled: !!orgId,
     refetchInterval: 15000,
@@ -85,14 +85,14 @@ export function StagingTab() {
 
   // Fetch recent runs to map run IDs to workflow names
   const { data: recentRuns = [] } = useQuery({
-    queryKey: ['workflowRuns'],
+    queryKey: workflowKeys.recentRuns(),
     queryFn: () => workflowsApi.listRecentRuns({ limit: 100 }),
     staleTime: 30000,
   });
 
   const runNameMap = useMemo(() => {
     const m: Record<string, string> = {};
-    for (const r of recentRuns as any[]) {
+    for (const r of recentRuns) {
       if (r.id && r.workflow_name) m[r.id] = r.workflow_name;
     }
     return m;
@@ -102,7 +102,7 @@ export function StagingTab() {
   const targetTypes = useMemo(() => [...new Set(pendingRecords.map(r => r.target_type))], [pendingRecords]);
 
   const { data: schemasMap = {} } = useQuery({
-    queryKey: ['schemas', targetTypes],
+    queryKey: workflowKeys.schemas(targetTypes),
     queryFn: async () => {
       const entries = await Promise.all(
         targetTypes.map(async (tt) => {
@@ -164,7 +164,7 @@ export function StagingTab() {
 
   // Per-record mutations for table view actions
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { status?: string; record_data?: any } }) =>
+    mutationFn: ({ id, data }: { id: string; data: { status?: string; record_data?: unknown } }) =>
       stagingApi.update(id, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: workflowKeys.stagingPending() }),
   });

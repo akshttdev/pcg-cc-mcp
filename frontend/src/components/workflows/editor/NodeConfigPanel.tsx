@@ -100,7 +100,7 @@ interface NodeConfigPanelProps {
   connections: WorkflowConnection[];
   availableModels: AvailableModel[];
   onUpdate: (updates: Partial<WorkflowNode>) => void;
-  onUpdateParameter: (key: string, value: any) => void;
+  onUpdateParameter: (key: string, value: unknown) => void;
   onAddConnection: (sourceId: string) => void;
   onRemoveConnection: (sourceId: string) => void;
   onClose: () => void;

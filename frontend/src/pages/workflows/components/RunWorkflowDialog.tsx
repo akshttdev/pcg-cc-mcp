@@ -24,6 +24,7 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Play, Search, Loader2, FileText, Upload, Database } from 'lucide-react';
 import { dataSourcesApi, workflowsApi, DATA_TYPE_OPTIONS } from '@/lib/api';
+import { workflowKeys } from '@/lib/query-keys';
 import type { WorkflowDefinition } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -44,13 +45,13 @@ export function RunWorkflowDialog({ workflow, onClose, onRunComplete }: RunWorkf
   const [searchFilter, setSearchFilter] = useState('');
   const [dataTypeFilter, setDataTypeFilter] = useState<string>('__all__');
   const { data: dataSources = [] } = useQuery({
-    queryKey: ['orgDataSources', orgId],
+    queryKey: workflowKeys.orgDataSources(orgId!),
     queryFn: () => dataSourcesApi.listByOrganization(orgId!),
     enabled: !!workflow && !!orgId,
   });
 
   const { data: availableModels } = useQuery({
-    queryKey: ['workflowModels'],
+    queryKey: workflowKeys.models(),
     queryFn: () => workflowsApi.listAvailableModels(),
     staleTime: 60 * 60 * 1000,
     enabled: !!workflow,
@@ -77,8 +78,8 @@ export function RunWorkflowDialog({ workflow, onClose, onRunComplete }: RunWorkf
     mutationFn: () => dataSourcesApi.runWorkflow(selectedDataSourceId, workflow!.id, effectiveModel || undefined),
     onSuccess: (data) => {
       if (data.workflow_run_id && data.staged_records > 0) {
-        queryClient.invalidateQueries({ queryKey: ['staging', data.workflow_run_id] });
-        queryClient.invalidateQueries({ queryKey: ['staging-pending'] });
+        queryClient.invalidateQueries({ queryKey: workflowKeys.staging(data.workflow_run_id) });
+        queryClient.invalidateQueries({ queryKey: workflowKeys.stagingPending() });
         if (onRunComplete) {
           handleClose();
           onRunComplete(data.workflow_run_id, data.staged_records);

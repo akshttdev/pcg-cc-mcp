@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { crmKeys } from '@/lib/query-keys';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -363,7 +364,7 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
 
 function DataSourcesSection({ deal }: { deal: CrmDealWithContact }) {
   const { data: callLogs = [], isLoading } = useQuery<CallLogSummary[]>({
-    queryKey: ['call-logs-deal', deal.id],
+    queryKey: crmKeys.callLogsDeal(deal.id),
     queryFn: async () => {
       const res = await fetch(`/api/communications/calls?crm_deal_id=${deal.id}&limit=10`, { credentials: 'include' });
       const json = await res.json();

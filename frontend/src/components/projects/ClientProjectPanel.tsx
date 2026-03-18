@@ -5,6 +5,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { projectsApi, tasksApi } from '@/lib/api';
+import { projectKeys, projectBoardKeys } from '@/lib/query-keys';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +16,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ProjectBoard } from 'shared/types';
+import type { TaskWithArchive } from '@/lib/api';
 
 // ── Brand profile helpers (duplicated from project-detail to avoid circular dep) ─
 
@@ -78,20 +80,20 @@ export function ClientProjectPanel({ projectId }: ClientProjectPanelProps) {
   const navigate = useNavigate();
 
   const { data: project, isLoading: projectLoading } = useQuery({
-    queryKey: ['project', projectId],
+    queryKey: projectKeys.detail(projectId),
     queryFn: () => projectsApi.getById(projectId),
     staleTime: 2 * 60 * 1000,
   });
 
   const { data: boards = [], isLoading: boardsLoading } = useQuery({
-    queryKey: ['projectBoards', projectId],
+    queryKey: projectBoardKeys.boards(projectId),
     queryFn: () => projectsApi.listBoards(projectId),
     staleTime: 2 * 60 * 1000,
     enabled: !!project,
   });
 
   const { data: allTasks = [] } = useQuery({
-    queryKey: ['projectTasks', projectId],
+    queryKey: projectBoardKeys.tasks(projectId),
     queryFn: () => tasksApi.getAll(projectId),
     staleTime: 60 * 1000,
     enabled: !!project,
@@ -123,12 +125,12 @@ export function ClientProjectPanel({ projectId }: ClientProjectPanelProps) {
 
   // Task counts
   const tasksByBoard = new Map<string, number>();
-  for (const task of allTasks as any[]) {
+  for (const task of allTasks as TaskWithArchive[]) {
     if (task.board_id) tasksByBoard.set(task.board_id, (tasksByBoard.get(task.board_id) ?? 0) + 1);
   }
-  const totalTasks = (allTasks as any[]).length;
-  const activeTasks = (allTasks as any[]).filter((t: any) => t.status !== 'done' && t.status !== 'cancelled' && !t.deleted_at).length;
-  const doneTasks  = (allTasks as any[]).filter((t: any) => t.status === 'done').length;
+  const totalTasks = (allTasks as TaskWithArchive[]).length;
+  const activeTasks = (allTasks as TaskWithArchive[]).filter((t) => t.status !== 'done' && t.status !== 'cancelled' && !t.archived_at).length;
+  const doneTasks  = (allTasks as TaskWithArchive[]).filter((t) => t.status === 'done').length;
   const pct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
 
   return (

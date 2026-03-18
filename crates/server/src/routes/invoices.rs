@@ -14,6 +14,7 @@ use deployment::Deployment;
 use serde::Deserialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
+use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 
@@ -86,9 +87,10 @@ async fn create_invoice(
 /// GET /api/invoices/:id
 async fn get_invoice(
     State(d): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Invoice>>, ApiError> {
-    Invoice::find_by_id(&d.db().pool, id)
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    Invoice::find_by_id(&d.db().pool, id_uuid)
         .await?
         .map(|i| Json(ApiResponse::success(i)))
         .ok_or_else(|| ApiError::NotFound("Invoice not found".into()))
@@ -97,7 +99,7 @@ async fn get_invoice(
 /// PATCH /api/invoices/:id
 async fn update_invoice(
     State(d): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(mut body): Json<UpdateInvoice>,
 ) -> Result<Json<ApiResponse<Invoice>>, ApiError> {
     // Auto-recompute VIBE if USD changed
@@ -106,7 +108,8 @@ async fn update_invoice(
             body.amount_vibe = Some((usd * VIBE_PER_USD).ceil() as i64);
         }
     }
-    Invoice::update(&d.db().pool, id, body)
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    Invoice::update(&d.db().pool, id_uuid, body)
         .await?
         .map(|i| Json(ApiResponse::success(i)))
         .ok_or_else(|| ApiError::NotFound("Invoice not found".into()))
@@ -115,10 +118,11 @@ async fn update_invoice(
 /// PATCH /api/invoices/:id/status
 async fn move_invoice_status(
     State(d): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(body): Json<MoveStatusBody>,
 ) -> Result<Json<ApiResponse<Invoice>>, ApiError> {
     let pool = &d.db().pool;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
 
     // Set paid_at when marking paid or partial
     let sql = match body.status.as_str() {
@@ -129,11 +133,11 @@ async fn move_invoice_status(
     };
     sqlx::query(sql)
         .bind(&body.status)
-        .bind(id)
+        .bind(id_uuid)
         .execute(pool)
         .await?;
 
-    Invoice::find_by_id(pool, id)
+    Invoice::find_by_id(pool, id_uuid)
         .await?
         .map(|i| Json(ApiResponse::success(i)))
         .ok_or_else(|| ApiError::NotFound("Invoice not found".into()))
@@ -142,9 +146,10 @@ async fn move_invoice_status(
 /// DELETE /api/invoices/:id
 async fn delete_invoice(
     State(d): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    let deleted = Invoice::delete(&d.db().pool, id).await?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let deleted = Invoice::delete(&d.db().pool, id_uuid).await?;
     if deleted {
         Ok(Json(ApiResponse::success(())))
     } else {

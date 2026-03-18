@@ -1,6 +1,7 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { personsApi, intelligenceApi, reportsApi } from '@/lib/api';
+import { entityKeys } from '@/lib/query-keys';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
@@ -119,19 +120,19 @@ export function PersonIntelPage({ personId: propPersonId, embedded = false }: { 
   const queryClient = useQueryClient();
 
   const { data: person, isLoading } = useQuery({
-    queryKey: ['person', personId],
+    queryKey: entityKeys.person(personId!),
     queryFn: () => personsApi.get(personId!),
     enabled: !!personId,
   });
 
   const { data: passes = [] } = useQuery({
-    queryKey: ['research-passes', personId],
+    queryKey: entityKeys.researchPasses(personId!),
     queryFn: () => intelligenceApi.listResearchPasses(personId!),
     enabled: !!personId,
   });
 
   const { data: reports = [] } = useQuery({
-    queryKey: ['person-reports', personId],
+    queryKey: entityKeys.personReports(personId!),
     queryFn: () => intelligenceApi.listPersonReports(personId!),
     enabled: !!personId,
   });
@@ -139,8 +140,8 @@ export function PersonIntelPage({ personId: propPersonId, embedded = false }: { 
   const triggerMut = useMutation({
     mutationFn: () => intelligenceApi.triggerNextPass(personId!),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['research-passes', personId] });
-      queryClient.invalidateQueries({ queryKey: ['person', personId] });
+      queryClient.invalidateQueries({ queryKey: entityKeys.researchPasses(personId!) });
+      queryClient.invalidateQueries({ queryKey: entityKeys.person(personId!) });
       toast.success('Intel pass queued');
     },
     onError: () => toast.error('Failed to trigger intel pass'),
@@ -149,7 +150,7 @@ export function PersonIntelPage({ personId: propPersonId, embedded = false }: { 
   const generateReportMut = useMutation({
     mutationFn: () => reportsApi.generate(personId!, 'business_audit'),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['person-reports', personId] });
+      queryClient.invalidateQueries({ queryKey: entityKeys.personReports(personId!) });
       toast.success('Report generation started');
     },
     onError: () => toast.error('Failed to generate report'),

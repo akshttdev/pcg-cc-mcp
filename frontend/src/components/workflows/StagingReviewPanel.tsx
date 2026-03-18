@@ -94,7 +94,7 @@ function InlineField({
 
     if (hasEnum) {
       return (
-        <select ref={inputRef as any} value={editValue} onChange={e => { setEditValue(e.target.value); }}
+        <select ref={inputRef} value={editValue} onChange={e => { setEditValue(e.target.value); }}
           onBlur={handleSave} className="w-full text-xs bg-background border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-ring">
           <option value="">— select —</option>
           {fieldDef!.enum_values!.map(v => <option key={v} value={v}>{v.replace(/_/g, ' ')}</option>)}
@@ -103,14 +103,14 @@ function InlineField({
     }
     if (isLong) {
       return (
-        <textarea ref={inputRef as any} value={editValue} onChange={e => setEditValue(e.target.value)}
+        <textarea ref={inputRef} value={editValue} onChange={e => setEditValue(e.target.value)}
           onBlur={handleSave} onKeyDown={handleKeyDown}
           placeholder={fieldDef?.type === 'array' ? 'Comma-separated values' : undefined}
           className="w-full text-xs bg-background border rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-ring min-h-[60px] resize-y" />
       );
     }
     return (
-      <input ref={inputRef as any} type={inputType} value={editValue} onChange={e => setEditValue(e.target.value)}
+      <input ref={inputRef} type={inputType} value={editValue} onChange={e => setEditValue(e.target.value)}
         onBlur={handleSave} onKeyDown={handleKeyDown}
         className="w-full text-xs bg-background border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-ring" />
     );
@@ -205,7 +205,7 @@ export function StagingReviewContent({
 }: StagingReviewContentProps) {
   const queryClient = useQueryClient();
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editData, setEditData] = useState<Record<string, any>>({});
+  const [editData, setEditData] = useState<Record<string, unknown>>({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'valid' | 'duplicates' | 'validation_issues' | 'approved' | 'rejected' | 'error'>('all');
   const [commitErrors, setCommitErrors] = useState<Record<string, string>>({});
@@ -311,7 +311,7 @@ export function StagingReviewContent({
   const duplicatePendingCount = records.filter(r => r.status === 'pending_review' && r.duplicate_of_id != null).length;
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { status?: string; record_data?: any } }) =>
+    mutationFn: ({ id, data }: { id: string; data: { status?: string; record_data?: unknown } }) =>
       stagingApi.update(id, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: workflowKeys.staging(workflowRunId) }),
   });
@@ -490,14 +490,14 @@ export function StagingReviewContent({
 
   // Flatten all records for table view
   const flatRecords = useMemo(() => {
-    const result: { record: WorkflowStagingRecord; targetType: string; displayName: string; data: Record<string, any> }[] = [];
+    const result: { record: WorkflowStagingRecord; targetType: string; displayName: string; data: Record<string, unknown> }[] = [];
     for (const [targetType, groupRecords] of Object.entries(grouped)) {
       for (const record of groupRecords) {
-        let data: Record<string, any> = {};
+        let data: Record<string, unknown> = {};
         try { data = JSON.parse(record.record_data); } catch {}
         const displayName = data.first_name
-          ? `${data.first_name} ${data.last_name || ''}`
-          : data.name || data.title || 'Untitled';
+          ? `${String(data.first_name)} ${String(data.last_name || '')}`
+          : String(data.name || data.title || 'Untitled');
         result.push({ record, targetType, displayName, data });
       }
     }

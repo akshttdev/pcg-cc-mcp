@@ -15,6 +15,7 @@ use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
+use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 use db::models::quickbooks_account::{
@@ -141,7 +142,7 @@ async fn callback(
     // Extract organization_id from state
     let organization_id = state
         .strip_prefix("org_")
-        .and_then(|s| Uuid::parse_str(s).ok())
+        .and_then(|s| DbUuid::parse(s).map(|u| u.to_uuid()).ok())
         .ok_or_else(|| ApiError::BadRequest("Invalid state parameter".into()))?;
 
     // Exchange authorization code for tokens
@@ -302,10 +303,11 @@ async fn list_accounts(
 /// GET /quickbooks/accounts/:id
 async fn get_account(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<QuickBooksAccount>>, ApiError> {
     let pool = &deployment.db().pool;
-    let account = QuickBooksAccount::find_by_id(pool, id).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let account = QuickBooksAccount::find_by_id(pool, id_uuid).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
     Ok(Json(ApiResponse::success(account)))
 }
 
@@ -313,11 +315,12 @@ async fn get_account(
 /// Update sync settings for a QB connection
 async fn update_account(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(update): Json<UpdateQuickBooksAccount>,
 ) -> Result<Json<ApiResponse<QuickBooksAccount>>, ApiError> {
     let pool = &deployment.db().pool;
-    let account = QuickBooksAccount::update(pool, id, update).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let account = QuickBooksAccount::update(pool, id_uuid, update).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
     Ok(Json(ApiResponse::success(account)))
 }
 
@@ -325,17 +328,18 @@ async fn update_account(
 /// Disconnect QuickBooks for this organization
 async fn disconnect(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
 
     // Revoke the token at Intuit (best effort)
-    let account = QuickBooksAccount::find_by_id(pool, id).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let account = QuickBooksAccount::find_by_id(pool, id_uuid).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
     if let Some(ref token) = account.refresh_token {
         let _ = revoke_token(token).await;
     }
 
-    QuickBooksAccount::delete(pool, id).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
+    QuickBooksAccount::delete(pool, id_uuid).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
     Ok(Json(ApiResponse::success(())))
 }
 
@@ -343,10 +347,11 @@ async fn disconnect(
 /// Force-refresh the OAuth token
 async fn refresh_token(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    let account = QuickBooksAccount::find_by_id(pool, id).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let account = QuickBooksAccount::find_by_id(pool, id_uuid).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
 
     let refresh = account.refresh_token.as_deref().ok_or_else(|| {
         ApiError::BadRequest("No refresh token available".into())
@@ -358,7 +363,7 @@ async fn refresh_token(
 
     QuickBooksAccount::update_tokens(
         pool,
-        id,
+        id_uuid,
         &tokens.access_token,
         Some(&tokens.refresh_token),
         Some(expires_at),
@@ -373,18 +378,19 @@ async fn refresh_token(
 /// Trigger a manual sync
 async fn trigger_sync(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(_req): Json<SyncRequest>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
     let pool = &deployment.db().pool;
-    let _account = QuickBooksAccount::find_by_id(pool, id).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let _account = QuickBooksAccount::find_by_id(pool, id_uuid).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
 
     // TODO: Implement actual sync logic - for now mark the sync attempt
-    QuickBooksAccount::update_sync_status(pool, id, "active").await.map_err(|e| ApiError::InternalError(e.to_string()))?;
+    QuickBooksAccount::update_sync_status(pool, id_uuid, "active").await.map_err(|e| ApiError::InternalError(e.to_string()))?;
 
     Ok(Json(ApiResponse::success(serde_json::json!({
         "message": "Sync initiated",
-        "account_id": id.to_string(),
+        "account_id": id,
     }))))
 }
 
@@ -392,10 +398,11 @@ async fn trigger_sync(
 /// List all entity mappings for a QB account
 async fn list_entity_maps(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<QuickBooksEntityMap>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let maps = QuickBooksEntityMap::list_for_account(pool, id).await
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let maps = QuickBooksEntityMap::list_for_account(pool, id_uuid).await
         .map_err(|e| ApiError::InternalError(e.to_string()))?;
     Ok(Json(ApiResponse::success(maps)))
 }

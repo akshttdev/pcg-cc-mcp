@@ -127,8 +127,9 @@ export const TaskTemplateEditDialog =
 
           modal.resolve('saved' as TaskTemplateEditResult);
           modal.hide();
-        } catch (err: any) {
-          setError(err.message || 'Failed to save template');
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : 'Failed to save template';
+          setError(message);
         } finally {
           setSaving(false);
         }

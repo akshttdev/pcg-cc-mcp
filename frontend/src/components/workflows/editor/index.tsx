@@ -186,7 +186,7 @@ export function WorkflowEditor({
   );
 
   const updateNodeParameter = useCallback(
-    (nodeId: string, key: string, value: any) => {
+    (nodeId: string, key: string, value: unknown) => {
       setNodes((prev) =>
         prev.map((n) =>
           n.id === nodeId
@@ -271,7 +271,7 @@ export function WorkflowEditor({
         const parsed = JSON.parse(r.output);
         // Check if output is an array of records with validation_errors
         if (Array.isArray(parsed)) {
-          const withErrors = parsed.filter((rec: any) =>
+          const withErrors = parsed.filter((rec: Record<string, unknown>) =>
             rec.validation_errors && Array.isArray(rec.validation_errors) && rec.validation_errors.length > 0
           );
           if (withErrors.length > 0) {
@@ -286,7 +286,7 @@ export function WorkflowEditor({
           }
           // Check for records array inside the result
           if (parsed.records && Array.isArray(parsed.records)) {
-            const withErrors = parsed.records.filter((rec: any) =>
+            const withErrors = parsed.records.filter((rec: Record<string, unknown>) =>
               rec.validation_errors && Array.isArray(rec.validation_errors) && rec.validation_errors.length > 0
             );
             if (withErrors.length > 0) {
