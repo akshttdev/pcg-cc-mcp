@@ -195,4 +195,27 @@ Post-PR #47 (dev velocity sprint), the codebase has strong backend foundations b
 
 ### Files Changed
 
-111 files changed, 2,106 insertions(+), 2,943 deletions(-) (net -837 lines)
+121 files changed, 2,194 insertions(+), 2,973 deletions(-) (net -779 lines)
+
+### QA Review Findings (2026-03-18)
+
+**Fixed during QA:**
+- SetupProgress: added try/catch around `NiceModal.show()` to handle dismissal
+- Prettier formatting: 4 files reformatted
+- Rust warnings: 9 unused imports/variables cleaned up in server+db crates
+
+**Accepted risks (low impact):**
+- AppShell useEffect captures stale `config` in closure during async wizard flow — mitigated by `cancelled` flag; only relevant in multi-tab scenarios
+- SetupProgress only visible when sidebar expanded — by design; collapsed sidebar has minimal UI
+- 29 remaining `: any` types are in genuinely dynamic code (RJSF forms, DiffCard, conversation entries)
+- 84 remaining `Path<Uuid>` are in files where underlying model functions require `Uuid` type (not `&str`)
+
+**Regression verification:**
+- `cargo check --workspace`: 0 errors, 27 pre-existing warnings (nora/alpha-protocol crates only)
+- `tsc --noEmit`: 0 errors
+- `eslint`: 0 warnings on changed files
+- `prettier --check`: 0 issues after formatting fix
+- All NiceModal registrations verified (22 modals including new welcome-wizard)
+- OnboardingCarousel barrel export preserved for org-level carousel
+- No circular imports introduced
+- No behavioral changes in Rust route handlers (only type-level conversions)
