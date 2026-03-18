@@ -168,6 +168,16 @@ Inline keys remaining after sprint are in files outside the sprint scope:
 4. **Mutation conversions**: Spot-checked `useOrgOnboarding`, `media-library`, `knowledge` — all correctly using `useMutationWithToast` with proper `invalidateKeys` and `successMessage`.
 5. **No dead imports**: Key files checked for unused imports — none found.
 
+### E2E Tests
+- **84/85 passing** (1 pre-existing failure: `health-check.spec.ts:111` strict-mode violation — `getByRole('heading', { name: 'Projects' })` matches 2 elements)
+- Auth setup, sidebar, navigation, tasks/kanban, org profile, settings, workflows, RBAC, pipeline — all green
+- No regressions from sprint changes
+
+### Pre-existing Issues Found During E2E Setup
+1. **Seed DB BLOB→TEXT mismatch**: `dev_assets_seed/db.sqlite` has BLOB UUIDs in `users` table, but `User.id` is `uuid::Uuid` (sqlx expects TEXT). The `20260328000000_uuid_blob_to_text` migration intentionally skipped the `users` table. Runtime fix: manually convert with `UPDATE users SET id = lower(substr(hex(id),...))`. Seed DB should be regenerated post-migration.
+2. **Login onboarding warning**: `table projects has no column named slug` — the `user_onboarding.rs` service tries to create a project but the seed DB `projects` table schema doesn't have a `slug` column that matches what the code expects. Non-blocking (login succeeds, onboarding silently fails).
+3. **Migration checksum mismatch**: Copying seed DB and then running server fails with `VersionMismatch(20260409000000)` — migration file was modified after being applied to seed. Must use fresh seed + `sqlx migrate run`, or use the runtime DB.
+
 ### Diff Summary (vs main)
 - **97 files changed**, 4,050 insertions, 291 deletions
 - **7 commits** on branch
