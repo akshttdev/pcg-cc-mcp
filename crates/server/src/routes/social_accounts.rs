@@ -53,31 +53,34 @@ async fn list_accounts(
 /// GET /social/accounts/:id - Get single account
 async fn get_account(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<SocialAccount>>, ApiError> {
     let pool = &deployment.db().pool;
-    let account = SocialAccount::find_by_id(pool, id).await?;
+    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let account = SocialAccount::find_by_id(pool, id_uuid).await?;
     Ok(Json(ApiResponse::success(account)))
 }
 
 /// PATCH /social/accounts/:id - Update account
 async fn update_account(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(update): Json<UpdateSocialAccount>,
 ) -> Result<Json<ApiResponse<SocialAccount>>, ApiError> {
     let pool = &deployment.db().pool;
-    let account = SocialAccount::update(pool, id, update).await?;
+    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let account = SocialAccount::update(pool, id_uuid, update).await?;
     Ok(Json(ApiResponse::success(account)))
 }
 
 /// DELETE /social/accounts/:id - Disconnect account
 async fn delete_account(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    SocialAccount::delete(pool, id).await?;
+    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    SocialAccount::delete(pool, id_uuid).await?;
     Ok(Json(ApiResponse::success(())))
 }
 
@@ -93,9 +96,10 @@ pub struct BestTimeSlot {
 /// GET /social/accounts/{id}/best-times — suggest optimal posting times
 async fn get_best_times(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<BestTimeSlot>>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
 
     #[derive(sqlx::FromRow)]
     struct Row {
@@ -117,7 +121,7 @@ async fn get_best_times(
            ORDER BY eng DESC
            LIMIT 10"#,
     )
-    .bind(id)
+    .bind(id_uuid)
     .fetch_all(pool)
     .await?;
 

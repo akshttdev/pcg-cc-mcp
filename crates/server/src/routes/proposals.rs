@@ -61,9 +61,10 @@ async fn create_proposal(
 /// GET /api/proposals/:id
 async fn get_proposal(
     State(d): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Proposal>>, ApiError> {
-    Proposal::find_by_id(&d.db().pool, id)
+    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    Proposal::find_by_id(&d.db().pool, id_uuid)
         .await?
         .map(|p| Json(ApiResponse::success(p)))
         .ok_or_else(|| ApiError::NotFound("Proposal not found".into()))
@@ -72,10 +73,11 @@ async fn get_proposal(
 /// PATCH /api/proposals/:id
 async fn update_proposal(
     State(d): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(body): Json<UpdateProposal>,
 ) -> Result<Json<ApiResponse<Proposal>>, ApiError> {
-    Proposal::update(&d.db().pool, id, body)
+    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    Proposal::update(&d.db().pool, id_uuid, body)
         .await?
         .map(|p| Json(ApiResponse::success(p)))
         .ok_or_else(|| ApiError::NotFound("Proposal not found".into()))
@@ -84,10 +86,11 @@ async fn update_proposal(
 /// PATCH /api/proposals/:id/status
 async fn move_proposal_status(
     State(d): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(body): Json<MoveStatusBody>,
 ) -> Result<Json<ApiResponse<Proposal>>, ApiError> {
-    Proposal::move_status(&d.db().pool, id, &body.status)
+    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    Proposal::move_status(&d.db().pool, id_uuid, &body.status)
         .await?
         .map(|p| Json(ApiResponse::success(p)))
         .ok_or_else(|| ApiError::NotFound("Proposal not found".into()))
@@ -96,9 +99,10 @@ async fn move_proposal_status(
 /// DELETE /api/proposals/:id
 async fn delete_proposal(
     State(d): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    let deleted = Proposal::delete(&d.db().pool, id).await?;
+    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let deleted = Proposal::delete(&d.db().pool, id_uuid).await?;
     if deleted {
         Ok(Json(ApiResponse::success(())))
     } else {
