@@ -271,6 +271,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(peer_rewards::router(&deployment))
         .merge(marketplace::public_router(&deployment))
         .merge(nora_classifier::public_router(&deployment))
+        .merge(workflow_triggers::public_router(&deployment))
         .merge(pythia::router(&deployment))
         .merge(pcg_router::router(&deployment))
         .route("/data-sync-test", get(apn_data::apn_ping))

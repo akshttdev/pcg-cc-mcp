@@ -155,6 +155,7 @@ test.describe("Bug Report Lifecycle Demo", () => {
   });
 
   test("Step 6: QA reviews → visit GitHub PR with QA review comment", async ({ page, request }) => {
+    test.skip(!DEMO_PR_NUMBER, "Skipping — Step 4 did not create a PR");
     test.setTimeout(60_000);
     await navigateToTaskDetail(page, TASK_PATH);
     await apiLogin(request);

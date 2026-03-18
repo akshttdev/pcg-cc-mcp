@@ -407,6 +407,7 @@ async fn list_trigger_executions(
     Ok(Json(ApiResponse::success(executions)))
 }
 
+/// Authenticated routes — CRUD operations on triggers (behind require_auth)
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/workflows/triggers", get(list_triggers).post(create_trigger))
@@ -414,5 +415,10 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/workflows/triggers/{id}", get(get_trigger).put(update_trigger).delete(delete_trigger))
         .route("/workflows/triggers/{id}/toggle", post(toggle_trigger))
         .route("/workflows/triggers/{id}/executions", get(list_trigger_executions))
+}
+
+/// Public routes — webhook endpoint uses HMAC auth, not session auth
+pub fn public_router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
+    Router::new()
         .route("/webhooks/triggers/{trigger_id}", post(webhook_trigger_handler))
 }

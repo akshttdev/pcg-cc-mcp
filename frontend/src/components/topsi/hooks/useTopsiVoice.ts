@@ -28,8 +28,6 @@ export interface TopsiVoiceState {
 }
 
 export interface TopsiVoiceActions {
-  startRecording: () => Promise<void>;
-  stopRecording: () => void;
   startCall: () => Promise<void>;
   endCall: () => void;
   toggleMute: () => void;
@@ -422,8 +420,6 @@ export function useTopsiVoice({
   };
 
   const actions: TopsiVoiceActions = {
-    startRecording,
-    stopRecording,
     startCall,
     endCall,
     toggleMute,

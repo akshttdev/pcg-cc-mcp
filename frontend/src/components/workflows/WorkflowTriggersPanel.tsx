@@ -113,7 +113,7 @@ export function WorkflowTriggersPanel({
 
   const toggleMutation = useMutationWithToast({
     mutationFn: (id: string) => triggersApi.toggle(id),
-    successMessage: 'Trigger toggled',
+    successMessage: (result) => `Trigger ${result.enabled ? 'enabled' : 'disabled'}`,
     errorMessage: 'Failed to toggle trigger',
     invalidateKeys: [workflowKeys.triggers(workflowId)],
   });

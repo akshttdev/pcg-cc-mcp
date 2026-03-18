@@ -76,8 +76,8 @@ export function useBranchLoader({
             setSelectedBranch(parentBranch);
           }
         })
-        .catch(() => {
-          // Silently fail, will use current branch fallback
+        .catch((err) => {
+          console.error('Failed to load parent task attempt branch:', err);
         });
     }
   }, [

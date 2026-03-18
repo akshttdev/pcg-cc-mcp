@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { crmPipelinesApi, crmDealsApi, projectsApi, organizationsApi } from '@/lib/api';
 import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import { toast } from 'sonner';
 import type {
   PipelineType,
   CreateCrmDeal,
@@ -246,11 +247,13 @@ export function useMoveDeal() {
         }
       }
     },
-    onError: (_err, _vars, context) => {
+    onError: (err, _vars, context) => {
       // Rollback on error
       if (context?.previousData) {
         queryClient.setQueryData(context.queryKey, context.previousData);
       }
+      toast.error('Failed to move deal');
+      console.error('Move deal error:', err);
     },
     onSettled: (_data, _err, _vars, context) => {
       // Always refetch after mutation settles
