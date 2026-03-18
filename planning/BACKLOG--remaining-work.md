@@ -1,6 +1,6 @@
 # Backlog — Remaining Work
 
-**Last updated:** 2026-03-18 (post PR #47 — dev velocity sprint)
+**Last updated:** 2026-03-18 (post PR #48 — UX polish & quality sprint 2)
 **Context:** Consolidated from all completed planning docs. Items prioritized by impact and dependency.
 
 ---
@@ -58,10 +58,11 @@
 **What:** Eliminate all Uuid/Vec<u8>/BLOB boilerplate. 4 phases:
 - ~~**Phase A** (highest ROI): `AccessContext.user_id: Uuid` → `DbUuid`~~ → **DONE** (PR #47, 20 files)
 - ~~**Phase B**: `Path<Uuid>` → `Path<String>` in CRM route handlers~~ → **DONE** (PR #47, 71 handlers across 7 files)
-- **Phase B remainder**: `Path<Uuid>` → `Path<String>` in non-CRM routes — ~345 sites across ~72 files
+- ~~**Phase B remainder**: `Path<Uuid>` → `Path<String>` in non-CRM routes~~ → **DONE** (PR #48, 231 conversions across 34 files, 311→80 remaining)
+- ~~**Phase B2**: `Uuid::parse_str()` → `DbUuid::parse()`~~ → **DONE** (PR #48, ~200 replacements across 33 route files)
 - **Phase C**: Migrate `users.id` BLOB → TEXT — eliminates ALL remaining `.as_bytes()` / `Vec<u8>` / `bind_uuid_blob` code
 - **Phase D**: Batch convert remaining ~104 models `Uuid` → `DbUuid`
-**Status:** Phases A+B (CRM) complete in PR #47. Phase B (non-CRM) and C/D remain.
+**Status:** Phases A+B+B2 complete. 80 `Path<Uuid>` remain where model layer requires `Uuid`. Phase C/D remain.
 
 ### ~~8. Agent "View Profile" Link~~ → RESOLVED
 **Source:** `archive/2026-03-12--tracker--sprint1-issues.md` (item 7)
@@ -105,12 +106,12 @@
 - `hooks/useTaskMutations.ts` (3 mutations) — complex: async activity logging side effects
 - `pages/oss-library-listener.tsx` (4 mutations)
 - `pages/data-sources/RunWorkflowFromSourceDialog.tsx` `runMutation` — conditional toast logic (split from data-sources.tsx in PR #47)
-Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~90 inline query keys (down from ~318)
+Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~15 inline query keys (down from ~318 via PRs #46, #48)
 - Over-invalidation in autonomy/bowser/collaboration mutations (broad `autonomyKeys.all` instead of targeted keys)
 - `MembersTab` raw `fetch()` → `makeRequest` migration
-- Query key string mismatches: `['brandProfile', orgId]` vs factory `['orgBrandProfile', orgId]`, `['workflowTemplates']` vs factory `['workflow-templates']` — need coordinated rename
+- ~~Query key string mismatches: `['brandProfile', orgId]` vs `['orgBrandProfile', orgId]`, `['workflowTemplates']` vs `['workflow-templates']`~~ → **FIXED** (PR #48)
 **Source also:** `archive/2026-03-16--plan--modularity-sprint-4.md` (deferred items)
-**Status:** PARTIALLY DONE (PR #46 converted 19 mutations, centralized ~228 keys, ~90 inline keys remain)
+**Status:** PARTIALLY DONE (PR #46 converted 19 mutations, PR #48 migrated 74 inline keys + fixed 2 key mismatches. ~15 inline keys remain.)
 
 ### Modularity — Large Frontend File Splits
 **Source:** `archive/2026-03-15--plan--modularity-sprint-2.md` (remaining large files section)
@@ -118,10 +119,11 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 - ~~`virtual-environment.tsx` (1,282 lines)~~ → Done (PR #47, split to `virtual-environment/`)
 - `TaskFormDialog.tsx` (1,240 lines) — complex form, high-traffic
 - `company-profile.tsx` (1,218 lines) — similar pattern to project-detail split
-- ~~`MeetingMode.tsx` (1,207 lines)~~ → Done (PR #46, split to `meeting-mode/`)
+- ~~`MeetingMode.tsx` (1,207 lines)~~ → **DELETED** (PR #48, replaced by `meeting-mode/` directory)
 - `CrmDealDetailPanel.tsx` (1,202 lines) — grew in PR #36
 - ~~`data-sources.tsx` (991 lines)~~ → Done (PR #47, split to `data-sources/`)
-**Status:** PARTIALLY DONE. PR #46 split 3 files, PR #47 split 2 more. 5 files >900 lines remain (8 including preserved originals from PR #46 pending deletion).
+- ~~`project-tasks.tsx` (998 lines)~~ → **DELETED** (PR #48, replaced by `project-tasks/` directory)
+**Status:** PARTIALLY DONE. 6 files >900 lines remain. PR #48 deleted 2 dead monolith originals (-2,205 lines).
 
 ### Workflow UX — Deferred Polish
 **Source:** `archive/2026-03-16--plan--workflow-ux-sprint.md` (deferred items + PR #44 review)
@@ -148,19 +150,13 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 
 ## P3 — Developer Experience & Testing Infrastructure
 
-### 13. Onboarding Dialog Bypass for Test Environments
+### ~~13. Onboarding Dialog Bypass for Test Environments~~ → RESOLVED
 **Source:** PR #47 smoke testing (2026-03-18)
-**What:** Fresh sessions trigger 4 sequential modals (safety notice → agent/editor config → GitHub connect → feedback opt-in) before the app is usable. Blocks all automated E2E and Playwright smoke testing.
-**Rationale:** Every smoke test run requires manually dismissing 4 dialogs. This makes automated QA impractical and wastes ~30s per test session. Critical for CI/CD pipeline.
-**Proposal:** Persist onboarding completion in `users` table (e.g., `onboarding_completed_at`). Skip for admin users. Add `SKIP_ONBOARDING=1` env var for test environments. Alternatively, add a `?skip_onboarding=1` URL param that sets a session flag.
-**Status:** NOT STARTED
+**Resolution:** PR #48 unified 4 sequential modals into single WelcomeWizard, added `VITE_SKIP_ONBOARDING=1` env var bypass, and SetupProgress sidebar indicator for return-to-setup.
 
-### 14. SSE Connections Should Not Fire Before Authentication
+### ~~14. SSE Connections Should Not Fire Before Authentication~~ → RESOLVED
 **Source:** PR #47 smoke testing (2026-03-18)
-**What:** `useAgentDirectory` SSE connection (`/api/events/agent-directory`) fires on the login page before the user is authenticated, causing console errors (`The connection to ... was interrupted`).
-**Rationale:** Unnecessary network requests on unauthenticated pages. Creates noisy console errors that obscure real issues during debugging. The SSE hook should check auth state before connecting.
-**Proposal:** Guard SSE hooks with `isAuthenticated` check from AuthContext. Only establish SSE connections after successful login.
-**Status:** NOT STARTED
+**Resolution:** PR #48 added `enabled` option to `useAgentDirectory` hook (default true). Connections now skippable for pre-auth contexts.
 
 ### 15. Seed Database Refresh for Smoke Testing
 **Source:** PR #47 smoke testing (2026-03-18)
@@ -189,20 +185,17 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 
 ## Active Branch Conflict Notes (2026-03-18)
 
-### `sloperation316-pipeline-progress` — Updated from main (2026-03-18)
-PR #45 merged `integration/sloperation316` (a separate integration branch) — NOT this branch. Pipeline-progress has 77 files of unmerged work (CRM pipeline automation, company profiles, brand guides, e2e tests).
-**Status**: Merged `origin/main` — no conflicts. Ready to merge to main when pipeline features are approved.
+### `sloperation317` — 11 commits behind main (PRs #46, #47, #48)
+Dealflow pipeline v2, company profiles, brand guides, Dockerfile fixes, VIBE tokenomics plan.
+**Conflicts expected with:** DbUuid::parse changes (PR #48), query key factories (PR #48), file splits (PR #46/47), onboarding wizard (PR #48), Path<Uuid>→Path<String> conversions (PR #48).
+**Status**: Next sprint target — merge to main with quality pass applying new standards.
 
-### `sloperation316-vibe-integration` — Updated from main (2026-03-18)
-Superset of pipeline-progress (Dockerfile fix + VIBE tokenomics plan). Merged `origin/main` with 17 conflicts resolved:
-- `company.rs`: kept main's `hex()` UUID lookup
-- `crm_deals.rs`: kept vibe's `call_llm()`, Astra Pass 2, `generate_*_core()` pattern
-- `App.tsx`: kept `org_viewer` for `/people` routes (consistent with CRM)
-- Frontend: kept vibe's pipeline features, fixed `personsApi.get()` and `tasksApi.getAll()` method names
-**Note**: If PR #46 merges to main before these branches, they'll need another merge from main to pick up query key factories, mutation conversions, and file splits.
-
-### `refactor/dev-velocity-sprint` — PR #47 (open)
-Dev velocity sprint: DbUuid Phases A+B, 136 unwrap eliminations, 182 any type removals, 31 route handlers secured, 2 file splits, sovereign hardening. Rebased on main post-PR #46. See `2026-03-18--plan--dev-velocity-sprint.md`.
+### Stale branches (can be cleaned up):
+- `sloperation316-pipeline-progress` — superseded by sloperation317
+- `sloperation316-vibe-integration` — superseded by sloperation317
+- `refactor/dev-velocity-sprint` — merged as PR #47
+- `refactor/ux-polish-quality-sprint-2` — merged as PR #48
+- `refactor/frontend-polish-sprint` — in review, may have active work
 
 ### Pre-existing DB/Server Issues (found during e2e setup)
 1. **Seed DB BLOB→TEXT**: `users` table still has BLOB UUIDs. Runtime fix: `UPDATE users SET id = lower(substr(hex(id),...))`. Seed needs regeneration.
@@ -379,3 +372,13 @@ Dev velocity sprint: DbUuid Phases A+B, 136 unwrap eliminations, 182 any type re
 | Workflow UX: Deleted source display | "(Deleted source)" instead of truncated UUIDs in runs (PR #44) |
 | Workflow UX: `any` type cleanup + code quality | `WorkflowRunResult` interface, `cn()`, `useEffect` fixes (PR #44) |
 | Modularity Sprint 4: billing helper deferred | Done in Sprint 5 — `helpers/billing.rs` (PR #43) |
+| Onboarding: 4 sequential blocking modals | Unified WelcomeWizard + VITE_SKIP_ONBOARDING env var (PR #48) |
+| SSE pre-auth console errors | useAgentDirectory `enabled` option (PR #48) |
+| `: any` types (107 in org-profile/workflow) | 78 eliminated, 29 remaining RJSF/dynamic (PR #48) |
+| Path<Uuid> non-CRM routes (311) | 231 converted to Path<String>, 80 remaining (PR #48) |
+| Uuid::parse_str in route handlers (~200) | Replaced with DbUuid::parse across 33 files (PR #48) |
+| Inline query keys (89) | 74 migrated to factories, 15 remaining (PR #48) |
+| Dead monolith files (project-tasks, MeetingMode) | Deleted -2,205 lines (PR #48) |
+| Query key mismatches (brandProfile, workflowTemplates) | Fixed cache invalidation bugs (PR #48) |
+| Orphaned project-level CRM routes (7) | Commented out in App.tsx (PR #48) |
+| Rust warnings (9 unused imports/vars in server+db) | Cleaned up (PR #48) |
