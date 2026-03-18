@@ -93,6 +93,7 @@ const TopsiUserSettingsPage = lazy(() => import('@/pages/settings/TopsiUserSetti
 const TopsiActivityPage = lazy(() => import('@/pages/topsi-activity').then(m => ({ default: m.TopsiActivityPage })));
 const BrandIntakePage   = lazy(() => import('@/pages/brand-intake').then(m => ({ default: m.BrandIntakePage })));
 const BrandGuidePage    = lazy(() => import('@/pages/brand-guide').then(m => ({ default: m.BrandGuidePage })));
+const CompanyBrandGuidePage = lazy(() => import('@/pages/brand-guide/CompanyBrandGuidePage').then(m => ({ default: m.CompanyBrandGuidePage })));
 const CallIntakePage      = lazy(() => import('@/pages/call-intake'));
 const BusinessReportsPage = lazy(() => import('@/pages/business-reports'));
 const ReportDetailPage    = lazy(() => import('@/pages/business-reports').then(m => ({ default: m.ReportDetail })));
@@ -333,35 +334,39 @@ function App() {
           />
           <Route
             path="/people"
-            element={<RoleRoute minRole="platform_member"><PeoplePage /></RoleRoute>}
+            element={<RoleRoute minRole="org_viewer"><PeoplePage /></RoleRoute>}
           />
           <Route
             path="/people/:personId"
-            element={<RoleRoute minRole="platform_member"><PersonProfilePage /></RoleRoute>}
+            element={<RoleRoute minRole="org_viewer"><PersonProfilePage /></RoleRoute>}
           />
           <Route
             path="/people/:personId/intel"
-            element={<RoleRoute minRole="platform_member"><PersonIntelPage /></RoleRoute>}
+            element={<RoleRoute minRole="org_viewer"><PersonIntelPage /></RoleRoute>}
           />
           <Route
             path="/proposals"
-            element={<RoleRoute minRole="platform_member"><ProposalsPage /></RoleRoute>}
+            element={<RoleRoute minRole="org_viewer"><ProposalsPage /></RoleRoute>}
           />
           <Route
             path="/companies"
-            element={<RoleRoute minRole="platform_member"><CompaniesPage /></RoleRoute>}
+            element={<RoleRoute minRole="org_viewer"><CompaniesPage /></RoleRoute>}
           />
           <Route
             path="/companies/:companyId"
-            element={<RoleRoute minRole="platform_member"><CompanyProfilePage /></RoleRoute>}
+            element={<RoleRoute minRole="org_viewer"><CompanyProfilePage /></RoleRoute>}
+          />
+          <Route
+            path="/companies/:companyId/brand-guide"
+            element={<RoleRoute minRole="org_viewer"><CompanyBrandGuidePage /></RoleRoute>}
           />
           <Route
             path="/command-center"
-            element={<RoleRoute minRole="platform_member"><CommandCenterPage /></RoleRoute>}
+            element={<RoleRoute minRole="org_viewer"><CommandCenterPage /></RoleRoute>}
           />
           <Route
             path="/invoices"
-            element={<RoleRoute minRole="platform_member"><InvoicesPage /></RoleRoute>}
+            element={<RoleRoute minRole="org_viewer"><InvoicesPage /></RoleRoute>}
           />
           <Route
             path="/projects/:projectId/deliverables"

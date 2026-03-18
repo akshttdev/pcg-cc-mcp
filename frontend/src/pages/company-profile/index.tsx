@@ -7,8 +7,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   BookOpen,
+  Brain,
   Building2,
   Download,
+  Loader2,
   Plus,
   RefreshCw,
 } from 'lucide-react';
@@ -159,78 +161,103 @@ export function CompanyProfilePage() {
     <div className="flex flex-col h-full">
       {/* -- Cover + Header -- */}
       <div className="shrink-0">
-        {/* Cover image */}
-        <div
-          className="h-32 w-full bg-gradient-to-br from-slate-200 to-slate-300 relative"
-          style={company.cover_image_url ? {
-            backgroundImage: `url(${company.cover_image_url})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-          } : {}}
-        >
-          <div className="absolute inset-0 bg-black/20" />
-          <button
-            className="absolute top-3 left-3 flex items-center gap-1 px-2 py-1 rounded-md bg-black/40 hover:bg-black/60 text-white text-xs transition-colors"
-            onClick={() => navigate('/companies')}
+        {/* Cover image — only rendered when a cover URL exists */}
+        {company.cover_image_url && (
+          <div
+            className="h-32 w-full relative"
+            style={{
+              backgroundImage: `url(${company.cover_image_url})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+            }}
           >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Companies
-          </button>
-          {/* Action buttons top-right */}
-          <div className="absolute top-3 right-3 flex gap-1.5">
-            {totalRevenue > 0 && (
-              <span className="px-2 py-1 rounded-md bg-green-500/90 text-white text-xs font-semibold">
-                ${totalRevenue.toLocaleString()} earned
-              </span>
-            )}
-            {company.organization_id && (
-              <Link to={`/organizations/${company.organization_id}/brand-guide`}>
-                <Button size="sm" variant="secondary" className="h-7 text-xs gap-1">
-                  <BookOpen className="h-3 w-3" />
-                  Brand Guide
-                </Button>
-              </Link>
-            )}
-            <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={handleExportAnalysis} disabled={isExporting}>
-              {isExporting ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
-            </Button>
-            <Button size="sm" className="h-7 text-xs" onClick={() => setShowCreateProposal(true)}>
-              <Plus className="h-3 w-3 mr-0.5" />
-              Proposal
-            </Button>
+            <div className="absolute inset-0 bg-black/20" />
           </div>
-        </div>
+        )}
 
-        {/* Logo + name row */}
-        <div className="px-6 pb-0">
-          <div className="flex items-end gap-4 -mt-8">
+        {/* Header row */}
+        <div className="px-6 pt-3 pb-0">
+          <div className="flex items-center gap-2 mb-3">
+            <button
+              className="flex items-center gap-1 px-2 py-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted text-xs transition-colors"
+              onClick={() => navigate(-1)}
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <div className={`flex items-start gap-4 ${company.cover_image_url ? '-mt-14' : ''}`}>
             {/* Logo */}
-            <div className="h-16 w-16 rounded-xl border-2 border-background bg-white shadow-sm flex items-center justify-center overflow-hidden shrink-0">
+            <div className="h-14 w-14 rounded-xl border-2 border-background bg-card shadow-sm flex items-center justify-center overflow-hidden shrink-0">
               {company.logo_url ? (
                 <img src={company.logo_url} alt={company.name} className="h-full w-full object-contain p-1" />
               ) : (
-                <Building2 className="h-8 w-8 text-muted-foreground" />
+                <Building2 className="h-7 w-7 text-muted-foreground" />
               )}
             </div>
-            <div className="pb-1 flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-xl font-bold">{company.name}</h1>
-                <IntelBadge status={company.intelligence_status} />
-                {company.organization_id && (
-                  <button
-                    onClick={() => navigate(`/organizations/${company.organization_id}`)}
-                    className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition-colors font-medium"
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 flex-wrap min-w-0">
+                  <h1 className="text-xl font-bold truncate">{company.name}</h1>
+                  <IntelBadge status={company.intelligence_status} />
+                  {totalRevenue > 0 && (
+                    <span className="px-2 py-0.5 rounded-md bg-green-500/90 text-white text-xs font-semibold">
+                      ${totalRevenue.toLocaleString()}
+                    </span>
+                  )}
+                </div>
+                {/* Action buttons — matches org profile pattern */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs gap-1.5"
+                    onClick={handleRunResearch}
+                    disabled={isPolling}
                   >
-                    View Org →
-                  </button>
-                )}
+                    {isPolling
+                      ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Researching…</>
+                      : <><RefreshCw className="h-3.5 w-3.5" />Research</>
+                    }
+                  </Button>
+                  <Link to={`/companies/${companyId}/brand-guide`}>
+                    <Button variant="outline" size="sm" className="text-xs gap-1.5">
+                      <BookOpen className="h-3.5 w-3.5" />
+                      Brand Guide
+                    </Button>
+                  </Link>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs gap-1.5 border-indigo-700/60 text-indigo-400 hover:bg-indigo-950/40"
+                    onClick={() => setTab('intelligence')}
+                  >
+                    <Brain className="h-3.5 w-3.5" />
+                    Intel
+                  </Button>
+                  <Button size="sm" variant="outline" className="text-xs" onClick={handleExportAnalysis} disabled={isExporting}>
+                    {isExporting ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                  </Button>
+                  <Button size="sm" className="text-xs" onClick={() => setShowCreateProposal(true)}>
+                    <Plus className="h-3 w-3 mr-0.5" />
+                    Proposal
+                  </Button>
+                </div>
               </div>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap mt-0.5">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap mt-1">
                 {company.industry && <span>{company.industry}</span>}
                 {company.city && <><span>·</span><span>{company.city}</span></>}
                 {company.headquarters && !company.city && <><span>·</span><span>{company.headquarters}</span></>}
                 {company.gmb_rating != null && (
                   <><span>·</span><StarRating rating={company.gmb_rating} count={company.gmb_review_count} /></>
+                )}
+                {company.organization_id && (
+                  <button
+                    onClick={() => navigate(`/organizations/${company.organization_id}`)}
+                    className="text-xs px-2 py-0.5 rounded-full bg-indigo-100/10 text-indigo-400 hover:bg-indigo-100/20 transition-colors font-medium border border-indigo-500/30"
+                  >
+                    View Org →
+                  </button>
                 )}
               </div>
             </div>

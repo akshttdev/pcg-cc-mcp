@@ -1,5 +1,5 @@
 import { makeRequest, handleApiResponse } from './client';
-import type { PersonRecord, CompanyContactMethod, InvoiceRecord } from './communication';
+import type { PersonRecord, CompanyContactMethod, InvoiceRecord, OrgBrandProfile } from './communication';
 
 // ── Proposals ─────────────────────────────────────────────────────────────────
 
@@ -451,6 +451,19 @@ export const companiesApi = {
   removeContactMethod: async (id: string, method_id: string): Promise<void> => {
     const response = await makeRequest(`/api/companies/${id}/contact-methods/${method_id}`, { method: 'DELETE' });
     return handleApiResponse<void>(response);
+  },
+
+  getBrandProfile: async (id: string): Promise<OrgBrandProfile | null> => {
+    const response = await makeRequest(`/api/companies/${id}/brand-profile`);
+    return handleApiResponse<OrgBrandProfile | null>(response);
+  },
+
+  upsertBrandProfile: async (id: string, data: Partial<OrgBrandProfile>): Promise<OrgBrandProfile> => {
+    const response = await makeRequest(`/api/companies/${id}/brand-profile`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<OrgBrandProfile>(response);
   },
 };
 

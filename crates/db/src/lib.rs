@@ -27,10 +27,12 @@ pub struct PgDBService {
 
 impl DBService {
     pub async fn new() -> Result<DBService, Error> {
-        let database_url = format!(
-            "sqlite://{}",
-            asset_dir().join("db.sqlite").to_string_lossy()
-        );
+        let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+            format!(
+                "sqlite://{}",
+                asset_dir().join("db.sqlite").to_string_lossy()
+            )
+        });
         // sqlx 0.8+ defaults foreign_keys=ON; disable for migration to allow
         // data-only migrations with production UUIDs that may not exist in dev.
         // Re-enabled post-migration via after_connect hook on the app pool.

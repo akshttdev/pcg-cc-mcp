@@ -20,8 +20,8 @@ import { useOpenProjectInEditor } from '@/hooks/useOpenProjectInEditor';
 import { useCommandStore } from '@/stores/useCommandStore';
 import { NotificationCenter } from '@/components/notifications/NotificationCenter';
 import { NavbarUserButton } from '@/components/layout/NavbarUserButton';
-import { DevBanner } from '@/components/DevBanner';
 import { useViewStore } from '@/stores/useViewStore';
+import { DevBanner } from '@/components/DevBanner';
 
 const ADMIN_ROUTES = ['/site-directory', '/nora', '/mission-control', '/admin'];
 
