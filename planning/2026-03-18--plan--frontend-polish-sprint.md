@@ -11,17 +11,17 @@
 |-----|------|--------|--------|
 | 0 | Branch setup + planning file | DONE | `de9073140` |
 | 1 | Repo root cleanup (~100 file moves, 118MB binary removal) | DONE | `d9a190d5e` |
-| 2 | Cherry-pick dev-velocity frontend work | DONE (provisional) | `48bab1ad5`, `c9dbfd4`, `6f433b1c` |
-| 3 | Query key mismatch fixes (10 critical bugs + 30 inline→factory) | DONE | `67ddc5724` |
-| 4 | Mutation standardization (22 safe-zone conversions) | DONE | `c443e5970` |
-| 5 | TaskFormDialog split (useTaskFormState 794→632 lines, 3 hooks extracted) | DONE | `504791fdc` |
+| 2 | Cherry-pick dev-velocity frontend work | DONE → DROPPED (PR #47 merged) | dropped during rebase |
+| 3 | Query key mismatch fixes (10 critical bugs + 30 inline→factory) | DONE | `db020dd01` |
+| 4 | Mutation standardization (22 safe-zone conversions) | DONE | `2e4d05a39` |
+| 5 | TaskFormDialog split (useTaskFormState 794→632 lines, 3 hooks extracted) | DONE | `dcd565d2b` |
 | 6 | CrmDealDetailPanel split | SKIPPED (sloperation overlap) | |
-| 7 | Webhook triggers + execution audit trail | DONE | `7966ec184` |
-| 8 | Topsi connection status + voice hook extraction (963→616 lines) | DONE | `fbe4ab240` |
-| 9 | fetch() migration + query key sweep | NOT STARTED | |
-| 9.5 | QA infrastructure (skills + rules) | DONE | `f0b2cc8af` |
-| 10 | Sprint QA + retrospective | NOT STARTED | |
-| -- | **PR #47 rebase** | **NEXT** — PR #47 merged, rebase needed | |
+| 7 | Webhook triggers + execution audit trail | DONE | `15848e955` |
+| 8 | Topsi connection status + voice hook extraction (963→616 lines) | DONE | `4e23c49d4` |
+| 9 | fetch() migration (28 calls) + query key sweep (8 inline→factory) | DONE | `d2bca09d9` |
+| 9.5 | QA infrastructure (skills + rules) | DONE | `7928a1a70` |
+| 10 | Sprint QA + retrospective | **NEXT** | |
+| -- | **PR #47 rebase** | DONE | rebased, 3 cherry-picks dropped |
 
 ---
 
