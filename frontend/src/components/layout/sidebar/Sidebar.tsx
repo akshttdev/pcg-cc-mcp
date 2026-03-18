@@ -36,6 +36,7 @@ import type { CreateNameDialogResult } from '@/components/dialogs';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEffectiveRole } from '@/hooks/useEffectiveRole';
 import { SidebarUserCard } from '@/components/layout/SidebarUserCard';
+import { SetupProgress } from '@/components/onboarding';
 import {
   ADMIN_NAV_ITEMS,
   PRIMARY_NAV_ITEMS,
@@ -592,6 +593,9 @@ export function Sidebar({ className }: SidebarProps) {
 
       {/* Spacer when collapsed */}
       {sidebarCollapsed && <div className="flex-1" />}
+
+      {/* Setup progress indicator (only shown when onboarding incomplete, expanded sidebar) */}
+      {!sidebarCollapsed && <SetupProgress />}
 
       {/* Bottom section: Settings + External Links + Collapse Toggle */}
       <div className={cn("border-t border-border/40 flex-shrink-0", sidebarCollapsed ? "p-1.5" : "p-2 px-3")}>
