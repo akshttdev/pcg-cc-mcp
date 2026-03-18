@@ -97,3 +97,9 @@ paths:
 - No magic strings or numbers inline — extract to constants files
 - Colors, timeouts, batch sizes, and validation limits should be in named constants
 - Task status values: `todo`, `inprogress`, `inreview`, `done`, `cancelled` (no underscores)
+
+## Post-Feature QA
+
+- After completing feature work, run `/review-frontend` on changed files
+- Run `/playwright-smoke <affected-pages>` to verify rendering
+- If feature involves mutations: verify toast appears + cache invalidation works

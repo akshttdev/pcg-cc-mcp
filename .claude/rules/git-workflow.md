@@ -19,3 +19,11 @@
 - Keep individual commit history on feature branches (user preference)
 - Squash merge to main via PR
 - After squash merge, sync branch with `git merge origin/main` (not rebase)
+
+## QA Before Merging
+
+- Run `/check` before creating PR
+- Run `/qa-review` before requesting merge to main
+- For frontend changes: run `/playwright-smoke` on affected pages
+- For backend changes: run `cargo test --workspace` inside flox
+- Reference: existing E2E tests in `e2e/`
