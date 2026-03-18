@@ -28,7 +28,7 @@ import {
   cleanupDemoBranches, cleanupDemoPr,
   postDevAgentSummaryComment, postQaReviewComment, fetchPrComments, getPrUrl,
 } from "../helpers/demo";
-import { waitForToast } from "../helpers/demo/assertions";
+
 
 const BUG_TITLE = `${TEST_DATA_PREFIX} Demo: Dashboard crash ${Date.now()}`;
 const BUGREPORTS_PROJECT_ID = "00000000-0000-0000-0000-000000000001";

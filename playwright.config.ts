@@ -12,7 +12,8 @@ if (fs.existsSync(envPath)) {
     if (eqIdx < 0) continue;
     const key = trimmed.slice(0, eqIdx).trim();
     const val = trimmed.slice(eqIdx + 1).trim();
-    if (!process.env[key]) process.env[key] = val; // don't override explicit env
+    const unquoted = val.replace(/^['"]|['"]$/g, '');
+    if (!process.env[key]) process.env[key] = unquoted; // don't override explicit env
   }
 }
 
