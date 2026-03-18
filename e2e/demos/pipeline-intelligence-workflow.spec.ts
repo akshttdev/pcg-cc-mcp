@@ -67,9 +67,11 @@ test.describe("Pipeline Intelligence Workflow — 8-Stage Demo", () => {
     expect(pipelinesRes.ok()).toBeTruthy();
     const pipelines = await pipelinesRes.json();
     const pipelineList = pipelines.data || pipelines || [];
+    // Prefer exact pipeline_type match to avoid matching "Client Delivery" (7 stages)
     const clientsPipeline = pipelineList.find(
-      (p: { pipeline_type?: string; name?: string }) =>
-        p.pipeline_type === "clients" || p.name?.toLowerCase().includes("client")
+      (p: { pipeline_type?: string; name?: string }) => p.pipeline_type === "clients"
+    ) ?? pipelineList.find(
+      (p: { pipeline_type?: string; name?: string }) => p.name === "Clients"
     );
     expect(clientsPipeline, "Clients pipeline not found — ensure 8-stage migration ran").toBeTruthy();
     pipelineId = clientsPipeline.id;
