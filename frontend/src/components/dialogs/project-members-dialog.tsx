@@ -29,7 +29,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Shield, User, Edit, Trash2, UserPlus, Eye, Pencil } from 'lucide-react';
 import type { ProjectMemberItem, UserListItem } from 'shared/types';
-import { resolveApiUrl } from '@/lib/api';
+import { makeRequest, handleApiResponse } from '@/lib/api/client';
 import { userKeys } from '@/lib/query-keys';
 
 interface ProjectMembersDialogProps {
@@ -42,47 +42,36 @@ interface ProjectMembersDialogProps {
 // API functions
 const api = {
   listProjectMembers: async (projectId: string): Promise<ProjectMemberItem[]> => {
-    const response = await fetch(resolveApiUrl(`/api/permissions/projects/${projectId}/members`));
-    if (!response.ok) throw new Error('Failed to fetch project members');
-    const data = await response.json();
-    return data.data;
+    const response = await makeRequest(`/api/permissions/projects/${projectId}/members`);
+    return handleApiResponse<ProjectMemberItem[]>(response);
   },
 
   listUsers: async (): Promise<UserListItem[]> => {
-    const response = await fetch(resolveApiUrl('/api/users'));
-    if (!response.ok) throw new Error('Failed to fetch users');
-    const data = await response.json();
-    return data.data;
+    const response = await makeRequest('/api/users');
+    return handleApiResponse<UserListItem[]>(response);
   },
 
   addProjectMember: async (projectId: string, userId: string, role: string) => {
-    const response = await fetch(resolveApiUrl(`/api/permissions/projects/${projectId}/members`), {
+    const response = await makeRequest(`/api/permissions/projects/${projectId}/members`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: userId, role }),
     });
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Failed to add member');
-    }
-    return response.json();
+    return handleApiResponse(response);
   },
 
   updateMemberRole: async (projectId: string, userId: string, role: string) => {
-    const response = await fetch(resolveApiUrl(`/api/permissions/projects/${projectId}/members/${userId}/role`), {
+    const response = await makeRequest(`/api/permissions/projects/${projectId}/members/${userId}/role`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ role }),
     });
-    if (!response.ok) throw new Error('Failed to update member role');
-    return response.json();
+    return handleApiResponse(response);
   },
 
   removeMember: async (projectId: string, userId: string) => {
-    const response = await fetch(resolveApiUrl(`/api/permissions/projects/${projectId}/members/${userId}`), {
+    const response = await makeRequest(`/api/permissions/projects/${projectId}/members/${userId}`, {
       method: 'DELETE',
     });
-    if (!response.ok) throw new Error('Failed to remove member');
+    return handleApiResponse<void>(response);
   },
 };
 

@@ -51,7 +51,7 @@ export function RunWorkflowDialog({ workflow, onClose, onRunComplete }: RunWorkf
   });
 
   const { data: availableModels } = useQuery({
-    queryKey: ['workflowModels'],
+    queryKey: workflowKeys.models(),
     queryFn: () => workflowsApi.listAvailableModels(),
     staleTime: 60 * 60 * 1000,
     enabled: !!workflow,

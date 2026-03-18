@@ -147,6 +147,7 @@ export const workflowKeys = {
   definitions: () => ['workflowDefinitions'] as const,
   triggers: (workflowId: string) => ['workflowTriggers', workflowId] as const,
   models: () => ['workflowModels'] as const,
+  recentRuns: () => ['workflowRuns'] as const,
   runs: (workflowId: string, organizationId?: string) =>
     ['workflow-runs', workflowId, organizationId] as const,
   runsBuilder: () => ['workflow-runs-builder'] as const,
@@ -163,6 +164,7 @@ export const workflowKeys = {
 
 export const dataSourceKeys = {
   all: ['dataSources'] as const,
+  personal: () => ['dataSources', 'personal'] as const,
   list: (orgId?: string, projectId?: string) => ['dataSources', orgId, projectId] as const,
   detail: (id: string) => ['dataSource', id] as const,
   workflows: (id: string) => ['dataSourceWorkflows', id] as const,
@@ -284,6 +286,7 @@ export const tokenUsageKeys = {
 export const settingsKeys = {
   providerKeys: () => ['provider-keys'] as const,
   apnCapabilities: () => ['apn-capabilities'] as const,
+  modelPricing: () => ['model-pricing'] as const,
 };
 
 // ── Project Controller ─────────────────────────────────────────────────────
@@ -403,6 +406,7 @@ export const collaborationKeys = {
 
 export const socialKeys = {
   accounts: (projectId?: string | null) => ['social-accounts', projectId] as const,
+  postsAll: () => ['social-posts'] as const,
   posts: (projectId?: string | null) => ['social-posts', projectId] as const,
   mentions: (projectId?: string | null) => ['social-mentions', projectId] as const,
   inboxStats: (projectId?: string | null) => ['social-inbox-stats', projectId] as const,
@@ -525,6 +529,12 @@ export const agentWatcherKeys = {
   availableAgents: () => ['available-agents-for-watchers'] as const,
 };
 
+// ── Command Center ─────────────────────────────────────────────────────────
+
+export const commandCenterKeys = {
+  dashboard: () => ['command-center'] as const,
+};
+
 // ── Unified export ─────────────────────────────────────────────────────────
 
 export const queryKeys = {
@@ -573,4 +583,5 @@ export const queryKeys = {
   workflowTemplates: workflowTemplateKeys,
   orcha: orchaKeys,
   agentWatchers: agentWatcherKeys,
+  commandCenter: commandCenterKeys,
 } as const;

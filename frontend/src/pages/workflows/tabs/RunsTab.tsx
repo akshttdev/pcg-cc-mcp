@@ -10,12 +10,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Activity, Database, ClipboardCheck } from 'lucide-react';
 import { workflowsApi, dataSourcesApi } from '@/lib/api';
+import { workflowKeys } from '@/lib/query-keys';
 
 export function RunsTab() {
   const navigate = useNavigate();
 
   const { data: recentRuns = [], isLoading } = useQuery({
-    queryKey: ['workflowRuns'],
+    queryKey: workflowKeys.recentRuns(),
     queryFn: () => workflowsApi.listRecentRuns({ limit: 50 }),
     refetchInterval: 10000,
   });

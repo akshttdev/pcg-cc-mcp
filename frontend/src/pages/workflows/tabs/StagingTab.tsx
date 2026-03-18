@@ -85,7 +85,7 @@ export function StagingTab() {
 
   // Fetch recent runs to map run IDs to workflow names
   const { data: recentRuns = [] } = useQuery({
-    queryKey: ['workflowRuns'],
+    queryKey: workflowKeys.recentRuns(),
     queryFn: () => workflowsApi.listRecentRuns({ limit: 100 }),
     staleTime: 30000,
   });

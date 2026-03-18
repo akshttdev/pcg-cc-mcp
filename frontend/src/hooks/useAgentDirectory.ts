@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { resolveApiUrl, resolveWsUrl } from '@/lib/api';
+import { makeRequest, resolveApiUrl, resolveWsUrl } from '@/lib/api/client';
 import {
   AgentCoordinationState,
   CoordinationEvent,
@@ -37,8 +37,8 @@ export function useAgentDirectory(): AgentDirectoryState {
   const refresh = useCallback(async () => {
     try {
       const [statsResponse, agentsResponse] = await Promise.all([
-        fetch(resolveApiUrl('/api/nora/coordination/stats')),
-        fetch(resolveApiUrl('/api/nora/coordination/agents')),
+        makeRequest('/api/nora/coordination/stats'),
+        makeRequest('/api/nora/coordination/agents'),
       ]);
 
       if (statsResponse.ok) {
