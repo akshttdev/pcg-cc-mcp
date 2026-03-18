@@ -148,14 +148,13 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 
 ## Active Branch Conflict Notes (2026-03-18)
 
-### `sloperation316-pipeline-progress` — 18 merge conflicts with main+PR#46
-**Frontend conflicts** (12 files): sidebar (4: ClientGroup, OrgSection, ProjectFolder, ProjectList), deal-detail tabs (3: ActivityTab, DeckTab, OverviewTab), org-profile (3: ContactDetailModal, index, ContactsTab, WikiTab), client-overview, call-intake
-**Backend conflicts** (3 files): `company.rs`, `crm_deals.rs`, `mod.rs`
-**Other** (3): `App.tsx`, `ClientProjectPanel.tsx`, `dealflow-pipeline.spec.ts`
-**Resolution**: Merge PR #46 first. Sidebar/org-profile conflicts are just import additions (`sidebarKeys`, `organizationKeys`, etc.) that need adding to pipeline-progress's versions. Deal-detail tab conflicts are new files on both sides (add/add). Backend conflicts are unrelated to PR #46.
+### `sloperation316-pipeline-progress` — NOT merged in PR #45, has 77 files of unmerged work
+PR #45 merged `integration/sloperation316` (a separate integration branch) — NOT this branch. Pipeline-progress is 7 commits ahead / 5 behind main with 11,685 insertions across 77 files (CRM pipeline automation, company profiles, brand guides, e2e tests).
+**Merge conflicts with main+PR#46** (18 files): sidebar (4), deal-detail tabs (3), org-profile (3), `App.tsx`, `client-overview.tsx`, `call-intake.tsx`, `ClientProjectPanel.tsx`, plus 3 Rust backend files
+**Resolution**: Merge PR #46 to main first. Then update pipeline-progress from main (`git merge origin/main`). Sidebar/org-profile conflicts are import additions for query key factories. Deal-detail/backend conflicts are content changes from both branches.
 
-### `sloperation316-vibe-integration` — superset of pipeline-progress
-Same 10+ frontend overlapping files. Also adds Rust backend changes (migrations, sovereign storage). Same resolution strategy — merge PR #46, then rebase.
+### `sloperation316-vibe-integration` — superset of pipeline-progress, also NOT merged
+9 commits ahead / 5 behind main. Adds Dockerfile fix + VIBE tokenomics plan on top of pipeline-progress. Same conflict set + resolution strategy.
 
 ### `refactor/dev-velocity-sprint` — Zero conflict with PR #46
 Planning file only. Explicitly avoids PR #46's files (skips NoraAssistant/project-tasks splits, org-profile keys). Focus: DbUuid (Rust), unwrap elimination (Rust), `any` types (different TS files), route authz (Rust).

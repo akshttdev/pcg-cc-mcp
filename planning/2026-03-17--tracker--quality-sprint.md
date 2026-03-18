@@ -184,13 +184,13 @@ Inline keys remaining after sprint are in files outside the sprint scope:
 
 ### Merge Conflict Analysis (vs active branches)
 
-**`sloperation316-pipeline-progress`** — 18 conflicting files if merged after PR #46:
+**`sloperation316-pipeline-progress`** — NOT merged in PR #45 (PR #45 merged `integration/sloperation316`, a different branch). 7 commits ahead / 5 behind main with 77 files changed (11,685 insertions). 18 conflicting files if both branches merge to main:
 - **Rust backend** (3): `company.rs`, `crm_deals.rs`, `mod.rs` — unrelated to PR #46 changes
 - **Frontend** (12): sidebar files (4), deal-detail tabs (3), org-profile tabs (3), `client-overview.tsx`, `call-intake.tsx`
 - **Other** (3): `App.tsx`, `ClientProjectPanel.tsx`, `dealflow-pipeline.spec.ts`
-- **Resolution strategy**: Merge PR #46 first (frontend-only, no backend changes). Then rebase pipeline-progress — sidebar/org-profile conflicts are just import additions (`sidebarKeys`, `organizationKeys`) that need adding to the pipeline branch's versions of those files.
+- **Resolution strategy**: Merge PR #46 first. Then update pipeline-progress from main (`git merge origin/main`). Sidebar/org-profile conflicts are import additions for query key factories.
 
-**`sloperation316-vibe-integration`** — Same 10 overlapping files as pipeline-progress (superset branch). Same resolution strategy.
+**`sloperation316-vibe-integration`** — Superset of pipeline-progress (2 extra commits: Dockerfile + VIBE plan). Also NOT merged in PR #45. Same conflict set + resolution strategy.
 
 **`refactor/dev-velocity-sprint`** — Zero frontend overlap (planning file only). Explicitly designed to avoid PR #46 conflicts. Safe to work in parallel.
 
