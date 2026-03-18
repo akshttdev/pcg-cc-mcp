@@ -24,6 +24,8 @@
 | -- | **PR #47 rebase** | DONE | rebased, 3 cherry-picks dropped |
 | -- | E2E demo enhancements + error messaging | DONE | `20666b2ed`, `1879489af` |
 | -- | **PR #48 merge** | DONE | `b65d2add8` (11 conflicts resolved) |
+| -- | Agent name badges on task cards + task-card-parts extraction | DONE | pending commit |
+| -- | Task card hooks extraction (useResolvedAssignee, useResolvedAgent, useScrollIntoView) | DONE | pending commit |
 
 ---
 

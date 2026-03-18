@@ -123,6 +123,17 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 - ~~`data-sources.tsx` (991 lines)~~ → Done (PR #47, split to `data-sources/`)
 **Status:** PARTIALLY DONE. PR #46 split 3 files, PR #47 split 2 more. 5 files >900 lines remain (8 including preserved originals from PR #46 pending deletion).
 
+### Component Hook Extraction — Research Similar Patterns
+**Source:** Frontend polish sprint (2026-03-18), task card refactor
+**What:** Extracting shared hooks from task cards (`useResolvedAssignee`, `useResolvedAgent`, `useScrollIntoView`) + shared sub-components (`PriorityBadge`, `DueDateBadge`, `CollaboratorAvatars`) reduced TaskCard 396→259 lines and EnhancedTaskCard 541→428 lines while eliminating duplication. Research similar opportunities across the codebase:
+- **CRM cards** (`CrmDealCard`, `CrmContactCard`) — likely duplicate assignee resolution, priority badges
+- **Project cards** (`ProjectCard`) — may have inline member avatar logic that parallels `CollaboratorAvatars`
+- **Detail panels** — `CrmDealDetailPanel`, `TaskDetailsPanel` likely duplicate the assignee IIFE pattern
+- **Scroll-into-view** — search for `scrollIntoView` calls across components, consolidate to `useScrollIntoView`
+- **Agent name resolution** — any component showing agent names should use `useResolvedAgent` instead of inline lookup
+**Approach:** Audit with `grep -r "usersMap?.get\|scrollIntoView\|agentsMap" frontend/src/` to find candidates. Prioritize files >400 lines with inline data resolution patterns.
+**Status:** NOT STARTED — research item for next modularity sprint
+
 ### Workflow UX — Deferred Polish
 **Source:** `archive/2026-03-16--plan--workflow-ux-sprint.md` (deferred items + PR #44 review)
 **What:**
