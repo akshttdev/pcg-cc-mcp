@@ -82,7 +82,7 @@ impl WorkflowTrigger {
         // Generate webhook secret and URL for webhook triggers
         let (webhook_secret, webhook_url) = if trigger_type == "webhook" {
             let secret = Uuid::new_v4().to_string().replace('-', "");
-            let url = format!("/api/webhooks/triggers/{}", id);
+            let url = format!("/api/webhooks/triggers/{id}");
             (Some(secret), Some(url))
         } else {
             (None, None)
@@ -361,31 +361,30 @@ impl WorkflowTrigger {
             }
 
             // Check data_source_types filter
-            if let Some(ref types_json) = trigger.filter_data_source_types {
-                if let Ok(types) = serde_json::from_str::<Vec<String>>(types_json) {
-                    if !types.is_empty() && !types.contains(&data_source_type.to_string()) {
-                        return false;
-                    }
-                }
+            if let Some(ref types_json) = trigger.filter_data_source_types
+                && let Ok(types) = serde_json::from_str::<Vec<String>>(types_json)
+                && !types.is_empty() && !types.contains(&data_source_type.to_string())
+            {
+                return false;
             }
 
             // Check organization filter
-            if let Some(ref filter_org) = trigger.filter_organization_id {
-                if !filter_org.is_empty() {
-                    match organization_id {
-                        Some(org) if org == filter_org => {}
-                        _ => return false,
-                    }
+            if let Some(ref filter_org) = trigger.filter_organization_id
+                && !filter_org.is_empty()
+            {
+                match organization_id {
+                    Some(org) if org == filter_org => {}
+                    _ => return false,
                 }
             }
 
             // Check project filter
-            if let Some(ref filter_proj) = trigger.filter_project_id {
-                if !filter_proj.is_empty() {
-                    match project_id {
-                        Some(proj) if proj == filter_proj => {}
-                        _ => return false,
-                    }
+            if let Some(ref filter_proj) = trigger.filter_project_id
+                && !filter_proj.is_empty()
+            {
+                match project_id {
+                    Some(proj) if proj == filter_proj => {}
+                    _ => return false,
                 }
             }
 
