@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { makeRequest } from '@/lib/api';
 import { toast } from 'sonner';
 
@@ -63,8 +63,14 @@ export function useTopsiVoice({
   const streamRef = useRef<MediaStream | null>(null);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const isInCallRef = useRef(false);
+  const isMutedRef = useRef(false);
+  const isSpeakerOnRef = useRef(true);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasSpokenRef = useRef(false);
+
+  // Keep refs in sync with state for use inside async callbacks
+  useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
+  useEffect(() => { isSpeakerOnRef.current = isSpeakerOn; }, [isSpeakerOn]);
 
   // Audio level monitoring with silence detection
   const monitorAudioLevel = () => {
@@ -181,13 +187,13 @@ export function useTopsiVoice({
         onAssistantMessage(responseText, hasAudio);
 
         // Play audio in push-to-talk mode (not call mode)
-        if (hasAudio && isSpeakerOn && !isInCallRef.current) {
+        if (hasAudio && isSpeakerOnRef.current && !isInCallRef.current) {
           await playAudio(responseData.audioResponse!);
         }
 
         // Handle meeting action
         if (responseData.action === 'start_meeting') {
-          if (isInCall) {
+          if (isInCallRef.current) {
             setIsInCall(false);
             stopRecordingInternal();
           }
@@ -198,15 +204,15 @@ export function useTopsiVoice({
         onActionComplete(responseText);
 
         // Call mode: restart listening after response
-        if (isInCallRef.current && !isMuted) {
+        if (isInCallRef.current && !isMutedRef.current) {
           hasSpokenRef.current = false;
-          if (hasAudio && isSpeakerOn) {
+          if (hasAudio && isSpeakerOnRef.current) {
             await playAudio(responseData.audioResponse!, () => {
-              if (isInCallRef.current && !isMuted) startCallRecorder();
+              if (isInCallRef.current && !isMutedRef.current) startCallRecorder();
             });
           } else {
             setTimeout(() => {
-              if (isInCallRef.current && !isMuted) startCallRecorder();
+              if (isInCallRef.current && !isMutedRef.current) startCallRecorder();
             }, 300);
           }
         }

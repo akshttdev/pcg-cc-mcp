@@ -81,17 +81,6 @@ export function useBoardLoader({
   }, [boards, selectedBoardId, boardsProjectId, projectId]);
 
   useEffect(() => {
-    console.log('[TaskFormDialog] Board selection effect running:', {
-      isEditMode,
-      modalVisible,
-      boardsLoading,
-      boardsLength: boards.length,
-      boardsProjectId,
-      projectId,
-      selectedBoardId,
-      initialBoardId,
-    });
-
     if (isEditMode) return;
     if (!modalVisible) return;
     if (boardsLoading) return;
@@ -100,13 +89,11 @@ export function useBoardLoader({
     if (boardsProjectId !== projectId) return;
 
     if (selectedBoardId && boards.some((board) => board.id === selectedBoardId)) {
-      console.log('[TaskFormDialog] Board already selected and valid:', selectedBoardId);
       return;
     }
 
     // If initialBoardId is provided and exists in the boards list, use it
     if (initialBoardId && boards.some((board) => board.id === initialBoardId)) {
-      console.log('[TaskFormDialog] Setting board from initialBoardId:', initialBoardId);
       setSelectedBoardId(initialBoardId);
       return;
     }
@@ -115,7 +102,6 @@ export function useBoardLoader({
     const preferred =
       boards.find((board) => board.board_type === 'default') || boards[0];
     if (preferred) {
-      console.log('[TaskFormDialog] Falling back to preferred board:', preferred.id, preferred.name);
       setSelectedBoardId(preferred.id);
     }
   }, [boards, boardsLoading, isEditMode, selectedBoardId, modalVisible, initialBoardId, boardsProjectId, projectId]);

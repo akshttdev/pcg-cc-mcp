@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import { organizationKeys } from '@/lib/query-keys';
 
 interface BrandSetupWizardProps {
   orgId: string;
@@ -38,7 +39,7 @@ export function BrandSetupWizard({ orgId, orgName, open, onOpenChange }: BrandSe
       organizationsApi.upsertBrandProfile(orgId, data),
     successMessage: 'Brand profile created',
     errorMessage: 'Failed to create brand profile',
-    invalidateKeys: [['orgBrandProfile', orgId]],
+    invalidateKeys: [organizationKeys.brandProfile(orgId)],
     onSuccess: () => {
       onOpenChange(false);
     },
@@ -48,7 +49,7 @@ export function BrandSetupWizard({ orgId, orgName, open, onOpenChange }: BrandSe
     mutationFn: () => organizationsApi.triggerBrandResearch(orgId),
     successMessage: 'Brand research started -- results will appear shortly',
     errorMessage: 'Failed to start brand research',
-    invalidateKeys: [['orgBrandProfile', orgId]],
+    invalidateKeys: [organizationKeys.brandProfile(orgId)],
     onSuccess: () => {
       onOpenChange(false);
     },
