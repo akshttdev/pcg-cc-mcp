@@ -45,6 +45,11 @@
 8. `fix: sovereign stack hardening — shutdown, logging, shared utils, FK constraints`
 9. `refactor: DbUuid Phase B — Path<Uuid> to Path<String> in CRM route handlers`
 10. `refactor: unwrap elimination round 3 — remove 76 more unwraps across 8 files`
+11. `docs: finalize dev velocity sprint plan with results and QA checklist`
+12. `fix: QA regression fixes — missed Path<Uuid> in CRM contacts/activities, PulseWidget any types`
+13. `docs: update backlog with PR #47 sprint results`
+14. `fix: missing space in markdown h2 Tailwind class`
+15. `fix: critical — use DbUuid for users.id BLOB decoding in auth flow` ← found via smoke test
 
 ## Key Decisions Made
 
@@ -55,13 +60,16 @@
 - WorkflowDetailPanel uses `total_records_staged` (not `records_staged`) — commented in code.
 - `data-sources/index.tsx` at 444 lines (above 200 target) — state is tightly coupled to views, further extraction would add prop-drilling for marginal benefit.
 
-## QA Needed Before Merge
+## QA Results
 
-Per feedback_qa_before_merge.md:
-- [ ] Login flow smoke test (DbUuid Phase A changes auth path)
-- [ ] CRM deal CRUD + proposal generation (route authz + DbUuid Phase B)
-- [ ] Communications list/detail (route authz)
-- [ ] Org cloud file browse/upload (sovereign hardening + volume path changes)
-- [ ] Virtual environment page loads (file split)
-- [ ] Data sources page loads (file split)
-- [ ] Regression: org profile, sidebar, project tasks still work
+Smoke tested via Playwright Firefox MCP on isolated ports (3010/3012):
+- [x] Login flow — **critical regression found and fixed** (UserSession.id String→DbUuid for BLOB decoding, bind_uuid_blob for FK compat)
+- [ ] CRM deal CRUD + proposal generation — not smoke tested (requires seed deal data)
+- [ ] Communications list/detail — not smoke tested (requires seed comm data)
+- [ ] Org cloud file browse/upload — not smoke tested (requires sovereign stack setup)
+- [x] Virtual environment page loads (0 console errors)
+- [x] Data sources page loads (0 console errors)
+- [x] Dashboard + sidebar regression (all 5 orgs, projects visible, 0 errors)
+- [x] API health check passes
+- [x] `cargo check --workspace` clean
+- [x] `tsc --noEmit` clean
