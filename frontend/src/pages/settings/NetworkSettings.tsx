@@ -94,7 +94,7 @@ export function NetworkSettings() {
           const data = await capsRes.json();
           return data.capabilities || data;
         }
-      } catch {}
+      } catch { /* APN Core may not be running */ }
       return { agents: [], software: {}, contribution: [] };
     },
     refetchInterval: 60000,
