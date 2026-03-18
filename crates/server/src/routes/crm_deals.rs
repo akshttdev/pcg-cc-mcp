@@ -1233,14 +1233,15 @@ async fn advance_deal(
             ));
         }
 
-        // Check person intelligence_status via crm_contact_id
+        // Check person intelligence_status via crm_contact_id (use CAST for BLOB/TEXT compat)
         let person_intel_status: Option<String> = if let Some(ref cid) = deal.crm_contact_id {
             #[derive(sqlx::FromRow)]
             struct PIS { intelligence_status: Option<String> }
             sqlx::query_as::<_, PIS>(
-                "SELECT intelligence_status FROM persons WHERE crm_contact_id = ? LIMIT 1"
+                "SELECT intelligence_status FROM persons WHERE crm_contact_id = ? OR CAST(crm_contact_id AS TEXT) = ? LIMIT 1"
             )
             .bind(cid)
+            .bind(cid.to_string())
             .fetch_optional(pool)
             .await
             .ok()
@@ -1257,14 +1258,15 @@ async fn advance_deal(
             ));
         }
 
-        // Check company intelligence_status via person.company_name
+        // Check company intelligence_status via person.company_name (CAST for BLOB/TEXT compat)
         let company_intel_status: Option<String> = if let Some(ref cid) = deal.crm_contact_id {
             #[derive(sqlx::FromRow)]
             struct CIS { intelligence_status: Option<String> }
             sqlx::query_as::<_, CIS>(
-                "SELECT co.intelligence_status FROM companies co JOIN persons p ON lower(p.company_name) = lower(co.name) WHERE p.crm_contact_id = ? LIMIT 1"
+                "SELECT co.intelligence_status FROM companies co JOIN persons p ON lower(p.company_name) = lower(co.name) WHERE p.crm_contact_id = ? OR CAST(p.crm_contact_id AS TEXT) = ? LIMIT 1"
             )
             .bind(cid)
+            .bind(cid.to_string())
             .fetch_optional(pool)
             .await
             .ok()

@@ -299,7 +299,7 @@ async function pollForTTS() {
 
 // ── Google Meet page joining ──────────────────────────────────────────────────
 async function joinMeet(page) {
-  log('Navigating to Google Meet as guest', { url: meetUrl });
+  log('Navigating to Google Meet', { url: meetUrl });
 
   await page.goto(meetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
   await page.waitForTimeout(3000);
@@ -313,54 +313,58 @@ async function joinMeet(page) {
     }
   } catch (_) {}
 
-  // If redirected to Google sign-in, navigate to guest join URL
   const currentUrl = page.url();
   log('Current URL', { url: currentUrl });
+
+  // If redirected to Google sign-in, the Chrome profile session is expired —
+  // fall back to guest join so we at least attempt to reach the lobby
   if (currentUrl.includes('accounts.google.com')) {
-    log('Sign-in redirect detected — going back to Meet to join as guest');
+    log('Sign-in redirect — Chrome profile session expired, attempting guest join');
     await page.goto(meetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
     await page.waitForTimeout(2000);
-  }
 
-  // Step 1: Click "Continue without signing in" / "Use without an account" if shown
-  const guestSelectors = [
-    'button:has-text("Continue without signing in")',
-    'button:has-text("Use without an account")',
-    'a:has-text("Use without an account")',
-    'button:has-text("Join as guest")',
-  ];
-  for (const sel of guestSelectors) {
-    try {
-      const btn = page.locator(sel).first();
-      if (await btn.isVisible({ timeout: 2000 })) {
-        log('Clicking guest option', { selector: sel });
-        await btn.click();
-        await page.waitForTimeout(1500);
-        break;
-      }
-    } catch (_) {}
-  }
-
-  // Step 2: Fill in name field (guest join)
-  try {
-    const nameSelectors = [
-      'input[placeholder*="name" i]',
-      'input[aria-label*="name" i]',
-      'input[aria-label*="Your name" i]',
-      'input[type="text"]',
+    // Only click guest option as last resort
+    const guestSelectors = [
+      'button:has-text("Continue without signing in")',
+      'button:has-text("Use without an account")',
+      'a:has-text("Use without an account")',
+      'button:has-text("Join as guest")',
     ];
-    for (const sel of nameSelectors) {
+    for (const sel of guestSelectors) {
       try {
-        const input = page.locator(sel).first();
-        if (await input.isVisible({ timeout: 2000 })) {
-          await input.fill('Nora');
-          log('Entered guest name: Nora');
-          await page.waitForTimeout(500);
+        const btn = page.locator(sel).first();
+        if (await btn.isVisible({ timeout: 2000 })) {
+          log('Falling back to guest option', { selector: sel });
+          await btn.click();
+          await page.waitForTimeout(1500);
           break;
         }
       } catch (_) {}
     }
-  } catch (_) {}
+
+    // Fill guest name
+    try {
+      const nameSelectors = [
+        'input[placeholder*="name" i]',
+        'input[aria-label*="name" i]',
+        'input[aria-label*="Your name" i]',
+        'input[type="text"]',
+      ];
+      for (const sel of nameSelectors) {
+        try {
+          const input = page.locator(sel).first();
+          if (await input.isVisible({ timeout: 2000 })) {
+            await input.fill('Nora');
+            log('Entered guest name: Nora');
+            await page.waitForTimeout(500);
+            break;
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+  } else {
+    log('Chrome profile session active — joining as authenticated user');
+  }
 
   // Step 3: Turn off mic and camera before joining (Nora controls these via PipeWire)
   const muteSelectors = [
