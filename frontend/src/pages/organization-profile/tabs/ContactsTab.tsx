@@ -47,7 +47,6 @@ import { useCrmContacts, crmContactsQueryKey } from '@/hooks/queries';
 import { entityKeys, organizationKeys } from '@/lib/query-keys';
 import { LIFECYCLE_STAGE_INFO } from '@/types/crm';
 import type { CrmDealWithContact } from '@/types/crm';
-// import { ContactCard } from '../components/ContactCard';
 import { ContactDetailModal } from '../components/ContactDetailModal';
 
 type PeopleView = 'people' | 'companies' | 'pipeline';
@@ -130,6 +129,15 @@ export function ContactsTab({ orgId }: { orgId: string }) {
   //   queryFn: () => organizationsApi.getClients(orgId),
   //   staleTime: 60_000,
   // });
+
+  // Client name → client id lookup
+  // const clientByName = useMemo(() => {
+  //   const m = new Map<string, string>();
+  //   for (const c of orgClients) {
+  //     m.set(c.name.toLowerCase(), c.id);
+  //   }
+  //   return m;
+  // }, [orgClients]);
 
   // Company name → company record lookup
   const companyByName = useMemo(() => {
@@ -671,6 +679,7 @@ export function ContactsTab({ orgId }: { orgId: string }) {
           open={!!selectedContactId}
           onClose={() => setSelectedContactId(null)}
           personId={dealPersonMap.get(selectedContact.id)?.person_id}
+          companyId={dealPersonMap.get(selectedContact.id)?.company_id}
         />
       )}
     </div>
