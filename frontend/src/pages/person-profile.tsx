@@ -364,14 +364,14 @@ function NotesTab({ personId }: { personId: string }) {
   const [editText, setEditText] = useState('');
 
   const { data: notes = [], isLoading } = useQuery({
-    queryKey: ['person-notes', personId],
+    queryKey: entityKeys.personNotes(personId),
     queryFn: () => personsApi.listNotes(personId),
   });
 
   const createMut = useMutation({
     mutationFn: () => personsApi.createNote(personId, newText),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['person-notes', personId] });
+      qc.invalidateQueries({ queryKey: entityKeys.personNotes(personId) });
       setNewText('');
       toast.success('Note added');
     },
@@ -382,7 +382,7 @@ function NotesTab({ personId }: { personId: string }) {
     mutationFn: ({ id, text }: { id: string; text: string }) =>
       personsApi.updateNote(id, { text }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['person-notes', personId] });
+      qc.invalidateQueries({ queryKey: entityKeys.personNotes(personId) });
       setEditId(null);
       toast.success('Note updated');
     },
@@ -392,7 +392,7 @@ function NotesTab({ personId }: { personId: string }) {
   const deleteMut = useMutation({
     mutationFn: (id: string) => personsApi.deleteNote(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['person-notes', personId] });
+      qc.invalidateQueries({ queryKey: entityKeys.personNotes(personId) });
       toast.success('Note deleted');
     },
     onError: () => toast.error('Failed to delete note'),

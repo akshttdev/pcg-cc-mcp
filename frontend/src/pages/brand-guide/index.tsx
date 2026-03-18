@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { organizationsApi, type OrgBrandProfile, resolveApiUrl } from '@/lib/api';
+import { organizationKeys } from '@/lib/query-keys';
 import { Loader2, ArrowLeft, Instagram, Linkedin, Twitter, Facebook, Youtube, Printer, Palette, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -25,19 +26,19 @@ export function BrandGuidePage() {
   const [wizardOpen, setWizardOpen] = useState(false);
 
   const { data: org, isLoading: orgLoading } = useQuery({
-    queryKey: ['org', orgId],
+    queryKey: organizationKeys.orgData(orgId!),
     queryFn: () => organizationsApi.getById(orgId!),
     enabled: !!orgId,
   });
 
   const { data: profile, isLoading: profileLoading } = useQuery<OrgBrandProfile | null>({
-    queryKey: ['orgBrandProfile', orgId],
+    queryKey: organizationKeys.brandProfile(orgId!),
     queryFn: () => organizationsApi.getBrandProfile(orgId!),
     enabled: !!orgId,
   });
 
   const { data: knowledge } = useQuery<OrgKnowledgeData>({
-    queryKey: ['orgKnowledge', orgId],
+    queryKey: organizationKeys.knowledge(orgId!),
     queryFn: () => organizationsApi.getKnowledge(orgId!) as Promise<OrgKnowledgeData>,
     enabled: !!orgId,
   });

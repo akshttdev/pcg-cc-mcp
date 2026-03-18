@@ -5,6 +5,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { projectsApi, tasksApi } from '@/lib/api';
+import { projectKeys, projectBoardKeys } from '@/lib/query-keys';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -79,20 +80,20 @@ export function ClientProjectPanel({ projectId }: ClientProjectPanelProps) {
   const navigate = useNavigate();
 
   const { data: project, isLoading: projectLoading } = useQuery({
-    queryKey: ['project', projectId],
+    queryKey: projectKeys.detail(projectId),
     queryFn: () => projectsApi.getById(projectId),
     staleTime: 2 * 60 * 1000,
   });
 
   const { data: boards = [], isLoading: boardsLoading } = useQuery({
-    queryKey: ['projectBoards', projectId],
+    queryKey: projectBoardKeys.boards(projectId),
     queryFn: () => projectsApi.listBoards(projectId),
     staleTime: 2 * 60 * 1000,
     enabled: !!project,
   });
 
   const { data: allTasks = [] } = useQuery({
-    queryKey: ['projectTasks', projectId],
+    queryKey: projectBoardKeys.tasks(projectId),
     queryFn: () => tasksApi.getAll(projectId),
     staleTime: 60 * 1000,
     enabled: !!project,

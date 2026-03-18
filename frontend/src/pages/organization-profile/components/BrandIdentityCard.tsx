@@ -105,7 +105,7 @@ export function BrandIdentityCard({ orgId, orgName }: { orgId: string; orgName: 
     setSaving(true);
     try {
       await organizationsApi.upsertBrandProfile(orgId, form);
-      qc.invalidateQueries({ queryKey: ['orgBrandProfile', orgId] });
+      qc.invalidateQueries({ queryKey: organizationKeys.brandProfile(orgId) });
       setEditing(false);
     } finally {
       setSaving(false);

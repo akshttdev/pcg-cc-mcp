@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { organizationsApi, type OrgBrandProfile } from '@/lib/api';
+import { organizationKeys } from '@/lib/query-keys';
 import { Loader2, Sparkles, Palette, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,7 +40,7 @@ export function BrandSetupWizard({ orgId, orgName, open, onOpenChange }: BrandSe
     mutationFn: (data: Partial<OrgBrandProfile>) =>
       organizationsApi.upsertBrandProfile(orgId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orgBrandProfile', orgId] });
+      queryClient.invalidateQueries({ queryKey: organizationKeys.brandProfile(orgId) });
       toast.success('Brand profile created');
       onOpenChange(false);
     },
@@ -50,7 +51,7 @@ export function BrandSetupWizard({ orgId, orgName, open, onOpenChange }: BrandSe
     mutationFn: () => organizationsApi.triggerBrandResearch(orgId),
     onSuccess: () => {
       toast.success('Brand research started -- results will appear shortly');
-      queryClient.invalidateQueries({ queryKey: ['orgBrandProfile', orgId] });
+      queryClient.invalidateQueries({ queryKey: organizationKeys.brandProfile(orgId) });
       onOpenChange(false);
     },
     onError: () => toast.error('Failed to start brand research'),

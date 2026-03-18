@@ -27,6 +27,7 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { organizationsApi } from '@/lib/api';
+import { organizationKeys } from '@/lib/query-keys';
 import type { CrmDealWithContact } from '@/types/crm';
 
 // ── MetricCard (local helper) ────────────────────────────────────────────────
@@ -75,7 +76,7 @@ export function OverviewTab({ deal, stageColor, onConvert, orgId }: OverviewTabP
 
   const effectiveOrgId = orgId || deal.organization_id;
   const { data: orgData } = useQuery({
-    queryKey: ['org', effectiveOrgId],
+    queryKey: organizationKeys.orgData(effectiveOrgId!),
     queryFn: () => organizationsApi.getById(effectiveOrgId!),
     enabled: !!effectiveOrgId,
     staleTime: 5 * 60 * 1000,

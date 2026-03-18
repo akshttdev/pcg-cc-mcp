@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { taskKeys } from '@/lib/query-keys';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -208,7 +209,7 @@ export function ActivityTab({ deal, projectId: _ignored }: ActivityTabProps) {
   const projectId = deal.project_id;
 
   const { data: tasks = [], isLoading: tasksLoading } = useQuery({
-    queryKey: ['tasks', 'project', projectId],
+    queryKey: taskKeys.list(projectId!),
     queryFn: () => tasksApi.getAll(projectId!),
     enabled: !!projectId,
     staleTime: 30_000,

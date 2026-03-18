@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Presentation, Wand2, Receipt, Trophy } from 'lucide-react';
 import { toast } from 'sonner';
 import { crmDealsApi } from '@/lib/api/crm';
+import { crmKeys } from '@/lib/query-keys';
 import type { CrmDealWithContact } from '@/types/crm';
 
 interface DeckTabProps {
@@ -20,7 +21,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
     mutationFn: () => crmDealsApi.generateDeck(deal.id),
     onSuccess: () => {
       toast.success('Lux generated your deck script');
-      qc.invalidateQueries({ queryKey: ['crm-kanban'] });
+      qc.invalidateQueries({ queryKey: crmKeys.kanbanLegacy() });
     },
     onError: (e: Error) => toast.error(e.message ?? 'Deck generation failed'),
   });
@@ -29,7 +30,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
     mutationFn: () => crmDealsApi.sendInvoice(deal.id, { due_days: 14 }),
     onSuccess: (res) => {
       toast.success(`Invoice ${res.invoice_number} sent ($${res.amount_usd.toFixed(0)})`);
-      qc.invalidateQueries({ queryKey: ['crm-kanban'] });
+      qc.invalidateQueries({ queryKey: crmKeys.kanbanLegacy() });
       setInvoiceSending(false);
     },
     onError: () => { toast.error('Failed to send invoice'); setInvoiceSending(false); },
@@ -39,7 +40,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
     mutationFn: () => crmDealsApi.markWon(deal.id),
     onSuccess: (res) => {
       toast.success(`🏆 Deal Won! Project "${res.project_name}" created with ${res.tasks_created} tasks.`);
-      qc.invalidateQueries({ queryKey: ['crm-kanban'] });
+      qc.invalidateQueries({ queryKey: crmKeys.kanbanLegacy() });
       setMarkingWon(false);
       onMarkWon?.();
     },

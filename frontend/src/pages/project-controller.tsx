@@ -30,7 +30,7 @@ import {
   type ProjectControllerConversation,
 } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { controllerKeys } from '@/lib/query-keys';
+import { controllerKeys, projectKeys, taskKeys } from '@/lib/query-keys';
 import { ControllerSettingsDialog } from '@/components/dialogs/controller-settings-dialog';
 import type { Project, TaskWithAttemptStatus } from 'shared/types';
 
@@ -53,7 +53,7 @@ export function ProjectControllerPage() {
 
   // Fetch project data
   const { data: project, isLoading: projectLoading } = useQuery<Project>({
-    queryKey: ['project', projectId],
+    queryKey: projectKeys.detail(projectId!),
     queryFn: () => projectsApi.getById(projectId!),
     enabled: !!projectId,
   });
@@ -94,7 +94,7 @@ export function ProjectControllerPage() {
 
   // Fetch recent tasks for activity feed
   const { data: tasks = [] } = useQuery<TaskWithAttemptStatus[]>({
-    queryKey: ['project-tasks', projectId],
+    queryKey: taskKeys.projectTasks(projectId!),
     queryFn: () => tasksApi.getAll(projectId!),
     enabled: !!projectId,
     refetchInterval: 30000, // Refresh every 30 seconds

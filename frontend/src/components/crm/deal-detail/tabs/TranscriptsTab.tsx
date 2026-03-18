@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Loader2, Mic, Plus, Link2, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { crmDealsApi } from '@/lib/api/crm';
+import { crmKeys } from '@/lib/query-keys';
 import type { CrmDealWithContact } from '@/types/crm';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -20,7 +21,7 @@ export function TranscriptsTab({ deal }: TranscriptsTabProps) {
   const [form, setForm] = useState({ transcript_text: '', summary: '', call_log_id: '' });
 
   const { data: transcripts, isLoading } = useQuery({
-    queryKey: ['deal-transcripts', deal.id],
+    queryKey: crmKeys.dealTranscripts(deal.id),
     queryFn: () => crmDealsApi.listTranscripts(deal.id),
     staleTime: 30000,
   });
@@ -29,7 +30,7 @@ export function TranscriptsTab({ deal }: TranscriptsTabProps) {
     mutationFn: () => crmDealsApi.linkTranscript(deal.id, { ...form, matched_by: 'manual' }),
     onSuccess: () => {
       toast.success('Transcript linked');
-      qc.invalidateQueries({ queryKey: ['deal-transcripts', deal.id] });
+      qc.invalidateQueries({ queryKey: crmKeys.dealTranscripts(deal.id) });
       setAdding(false);
       setForm({ transcript_text: '', summary: '', call_log_id: '' });
     },

@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Play, Pencil, Zap, ArrowRight, Database } from 'lucide-react';
 import { workflowsApi, dataSourcesApi, stagingApi } from '@/lib/api';
+import { workflowKeys } from '@/lib/query-keys';
 import type { WorkflowDefinition, WorkflowStagingRecord, WorkflowRun, WorkflowNode } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -32,7 +33,7 @@ export function WorkflowDetailPanel({
   const [detailTab, setDetailTab] = useState<'overview' | 'runs' | 'staging'>('overview');
 
   const { data: recentRuns = [] } = useQuery({
-    queryKey: ['workflowRunsByWf', workflow.id],
+    queryKey: workflowKeys.runsByWorkflow(workflow.id),
     queryFn: () => workflowsApi.listRecentRuns({ workflow_id: workflow.id, limit: 10 }),
     refetchInterval: 15000,
   });
@@ -43,7 +44,7 @@ export function WorkflowDetailPanel({
     [recentRuns],
   );
   const { data: dsNames = {} } = useQuery({
-    queryKey: ['ds-names-for-runs', dsIds],
+    queryKey: workflowKeys.dataSourceNamesForRuns(dsIds),
     queryFn: async () => {
       const out: Record<string, string> = {};
       await Promise.all(dsIds.map(async (id) => {
@@ -57,7 +58,7 @@ export function WorkflowDetailPanel({
   const { user } = useAuth();
   const orgId = user?.home_organization_id ?? user?.organizations?.[0]?.id;
   const { data: pendingRecords = [] } = useQuery({
-    queryKey: ['stagingPendingByWf', workflow.id],
+    queryKey: workflowKeys.stagingPendingByWorkflow(workflow.id),
     queryFn: () => stagingApi.listPending(orgId!),
     enabled: !!orgId,
   });

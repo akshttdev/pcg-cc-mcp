@@ -2,6 +2,7 @@ import { createContext, useContext, ReactNode, useMemo } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { organizationsApi } from '@/lib/api';
+import { organizationKeys } from '@/lib/query-keys';
 import type { OrganizationData } from '@/lib/api';
 import { useOrganizationById } from '@/hooks/queries';
 import { useAuth } from './AuthContext';
@@ -41,7 +42,7 @@ export function OrganizationProvider({ children }: OrganizationProviderProps) {
   }, [orgId, user]);
 
   const { data: organizations = [], isLoading: isOrgsLoading } = useQuery({
-    queryKey: ['organizations'],
+    queryKey: organizationKeys.all,
     queryFn: () => organizationsApi.getAll(),
     staleTime: 5 * 60 * 1000,
   });

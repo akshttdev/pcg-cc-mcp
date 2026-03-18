@@ -23,7 +23,7 @@ export function CloudSettings({ orgId }: CloudSettingsProps) {
   const updateMutation = useMutation({
     mutationFn: (data: Partial<SettingsType>) => orgCloudApi.updateSettings(orgId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['org-cloud-settings', orgId] });
+      queryClient.invalidateQueries({ queryKey: orgCloudKeys.settings(orgId) });
       toast.success('Settings updated');
     },
     onError: () => toast.error('Failed to update settings'),

@@ -183,7 +183,7 @@ export function ContactsTab({ orgId }: { orgId: string }) {
     mutationFn: (data: { name: string; website?: string; industry?: string; created_by_org_id?: string }) =>
       companiesApi.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['companies-all'] });
+      queryClient.invalidateQueries({ queryKey: entityKeys.companiesAll() });
       setShowAddCompany(false);
       setCompanyForm({ name: '', website: '', industry: '' });
       toast.success('Company created');

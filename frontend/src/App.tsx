@@ -36,12 +36,13 @@ const MissionControlPage    = lazy(() => import('@/pages/mission-control'));
 const WorkflowsPage         = lazy(() => import('@/pages/workflows').then(m => ({ default: m.WorkflowsPage })));
 const SocialPage            = lazy(() => import('@/pages/social').then(m => ({ default: m.SocialPage })));
 const CrmPage               = lazy(() => import('@/pages/crm').then(m => ({ default: m.CrmPage })));
-const CrmClientsPage        = lazy(() => import('@/pages/crm-clients').then(m => ({ default: m.CrmClientsPage })));
-const CrmSalesPage          = lazy(() => import('@/pages/crm-sales').then(m => ({ default: m.CrmSalesPage })));
-const CrmDeliveryPage       = lazy(() => import('@/pages/crm-delivery').then(m => ({ default: m.CrmDeliveryPage })));
-const CrmConferencesPage    = lazy(() => import('@/pages/crm-conferences').then(m => ({ default: m.CrmConferencesPage })));
-const CrmContactDetailPage  = lazy(() => import('@/pages/crm-contact-detail').then(m => ({ default: m.CrmContactDetailPage })));
-const CrmOverviewPage       = lazy(() => import('@/pages/crm-overview').then(m => ({ default: m.CrmOverviewPage })));
+// Project-level CRM pages — orphaned after CRM moved to org scope (routes commented out below)
+// const CrmClientsPage        = lazy(() => import('@/pages/crm-clients').then(m => ({ default: m.CrmClientsPage })));
+// const CrmSalesPage          = lazy(() => import('@/pages/crm-sales').then(m => ({ default: m.CrmSalesPage })));
+// const CrmDeliveryPage       = lazy(() => import('@/pages/crm-delivery').then(m => ({ default: m.CrmDeliveryPage })));
+// const CrmConferencesPage    = lazy(() => import('@/pages/crm-conferences').then(m => ({ default: m.CrmConferencesPage })));
+// const CrmContactDetailPage  = lazy(() => import('@/pages/crm-contact-detail').then(m => ({ default: m.CrmContactDetailPage })));
+// const CrmOverviewPage       = lazy(() => import('@/pages/crm-overview').then(m => ({ default: m.CrmOverviewPage })));
 const OrganizationProfilePage  = lazy(() => import('@/pages/organization-profile').then(m => ({ default: m.OrganizationProfilePage })));
 const ClientOverview        = lazy(() => import('@/pages/client-overview').then(m => ({ default: m.ClientOverview })));
 const VirtualEnvironmentPage       = lazy(() => import('@/pages/virtual-environment').then(m => ({ default: m.VirtualEnvironmentPage })));
@@ -192,35 +193,16 @@ function App() {
             path="/projects/:projectId/control"
             element={<ProtectedRoute><ProjectControllerPage /></ProtectedRoute>}
           />
-          {/* Project CRM - scoped to project (from main) */}
-          <Route
-            path="/projects/:projectId/crm"
-            element={<ProtectedRoute><CrmPage /></ProtectedRoute>}
-          />
-          <Route
-            path="/projects/:projectId/crm/sales"
-            element={<ProtectedRoute><CrmSalesPage /></ProtectedRoute>}
-          />
-          <Route
-            path="/projects/:projectId/crm/delivery"
-            element={<ProtectedRoute><CrmDeliveryPage /></ProtectedRoute>}
-          />
-          <Route
-            path="/projects/:projectId/crm/clients"
-            element={<ProtectedRoute><CrmClientsPage /></ProtectedRoute>}
-          />
-          <Route
-            path="/projects/:projectId/crm/conferences"
-            element={<ProtectedRoute><CrmConferencesPage /></ProtectedRoute>}
-          />
-          <Route
-            path="/projects/:projectId/crm/contacts/:contactId"
-            element={<ProtectedRoute><CrmContactDetailPage /></ProtectedRoute>}
-          />
-          <Route
-            path="/projects/:projectId/crm/overview"
-            element={<ProtectedRoute><CrmOverviewPage /></ProtectedRoute>}
-          />
+          {/* Project-level CRM routes — orphaned after CRM moved to org scope.
+              Kept for reference; no sidebar/nav entries point here.
+          <Route path="/projects/:projectId/crm" element={<ProtectedRoute><CrmPage /></ProtectedRoute>} />
+          <Route path="/projects/:projectId/crm/sales" element={<ProtectedRoute><CrmSalesPage /></ProtectedRoute>} />
+          <Route path="/projects/:projectId/crm/delivery" element={<ProtectedRoute><CrmDeliveryPage /></ProtectedRoute>} />
+          <Route path="/projects/:projectId/crm/clients" element={<ProtectedRoute><CrmClientsPage /></ProtectedRoute>} />
+          <Route path="/projects/:projectId/crm/conferences" element={<ProtectedRoute><CrmConferencesPage /></ProtectedRoute>} />
+          <Route path="/projects/:projectId/crm/contacts/:contactId" element={<ProtectedRoute><CrmContactDetailPage /></ProtectedRoute>} />
+          <Route path="/projects/:projectId/crm/overview" element={<ProtectedRoute><CrmOverviewPage /></ProtectedRoute>} />
+          */}
           {/* Organization - base route */}
           <Route
             path="/organizations/:orgId"

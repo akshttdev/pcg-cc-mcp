@@ -13,6 +13,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { deliverablesApi, projectsApi, type DeliverableRecord } from '@/lib/api';
+import { organizationKeys } from '@/lib/query-keys';
 
 const TYPE_ICONS: Record<string, React.ElementType> = {
   video: Video,
@@ -47,7 +48,7 @@ export function OrgDeliverablesPage() {
   const navigate = useNavigate();
 
   const { data: projects = [] } = useQuery({
-    queryKey: ['orgProjects', orgId],
+    queryKey: organizationKeys.projects(orgId!),
     queryFn: () => projectsApi.getAll(),
     enabled: !!orgId,
   });
@@ -57,7 +58,7 @@ export function OrgDeliverablesPage() {
   );
 
   const { data: allDeliverables = [], isLoading } = useQuery({
-    queryKey: ['orgDeliverables', orgId, orgProjects.map((p) => p.id)],
+    queryKey: organizationKeys.deliverables(orgId!, orgProjects.map((p) => p.id)),
     queryFn: async () => {
       const results = await Promise.all(
         orgProjects.map((p) => deliverablesApi.listForProject(p.id)),
