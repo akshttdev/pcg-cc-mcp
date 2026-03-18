@@ -16,6 +16,8 @@ env:
   CARGO_INCREMENTAL: 0
   CARGO_NET_RETRY: 10
   RUSTUP_MAX_RETRIES: 10
+  # Disable sccache (configured in .cargo/config.toml but unreliable in CI)
+  RUSTC_WRAPPER: ""
 
 jobs:
   build:
@@ -47,15 +49,6 @@ jobs:
         with:
           toolchain: nightly-2025-05-18
           targets: ${{ matrix.target }}
-
-      - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.6
-
-      - name: Configure sccache
-        run: |
-          echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
-          echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
-        shell: bash
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
