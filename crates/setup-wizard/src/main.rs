@@ -502,7 +502,7 @@ async fn create_user_account(config: &SetupConfig) -> Result<()> {
         "INSERT OR IGNORE INTO users (id, username, password_hash, email, is_active, created_at)
          VALUES (?, ?, ?, ?, 1, datetime('now'))",
     )
-    .bind(user_id.as_bytes().to_vec())
+    .bind(user_id.to_string())
     .bind(&config.user.username)
     .bind(&config.user.password_hash)
     .bind(format!("{}@local", config.user.username))

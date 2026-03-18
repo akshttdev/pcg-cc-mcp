@@ -43,6 +43,7 @@ import {
   SocialPostRecord,
   SocialMentionRecord,
 } from '@/lib/api';
+import { projectKeys, socialKeys } from '@/lib/query-keys';
 
 export function SocialPage() {
   const {
@@ -50,7 +51,7 @@ export function SocialPage() {
     isLoading: projectsLoading,
     error: projectsError,
   } = useQuery<Project[], Error>({
-    queryKey: ['projects', 'social-command'],
+    queryKey: projectKeys.list('social-command'),
     queryFn: projectsApi.getAll,
   });
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -78,25 +79,25 @@ export function SocialPage() {
   }, [selectedProjectId, projectParam, setSearchParams]);
 
   const accountsQuery = useQuery<SocialAccountRecord[], Error>({
-    queryKey: ['social-accounts', selectedProjectId],
+    queryKey: socialKeys.accounts(selectedProjectId),
     queryFn: () => socialApi.listAccounts(selectedProjectId ?? undefined),
     enabled: !!selectedProjectId,
   });
 
   const postsQuery = useQuery<SocialPostRecord[], Error>({
-    queryKey: ['social-posts', selectedProjectId],
+    queryKey: socialKeys.posts(selectedProjectId),
     queryFn: () => socialApi.listPosts(selectedProjectId ?? undefined),
     enabled: !!selectedProjectId,
   });
 
   const mentionsQuery = useQuery<SocialMentionRecord[], Error>({
-    queryKey: ['social-mentions', selectedProjectId],
+    queryKey: socialKeys.mentions(selectedProjectId),
     queryFn: () => socialApi.listMentions(selectedProjectId as string, { limit: 60 }),
     enabled: !!selectedProjectId,
   });
 
   const statsQuery = useQuery({
-    queryKey: ['social-inbox-stats', selectedProjectId],
+    queryKey: socialKeys.inboxStats(selectedProjectId),
     queryFn: () => socialApi.inboxStats(selectedProjectId as string),
     enabled: !!selectedProjectId,
   });

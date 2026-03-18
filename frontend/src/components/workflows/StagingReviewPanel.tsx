@@ -214,6 +214,7 @@ export function StagingReviewContent({
     queryKey: workflowKeys.staging(workflowRunId),
     queryFn: () => stagingApi.listByRun(workflowRunId),
     enabled: alwaysEnabled ? !!workflowRunId : !!workflowRunId,
+    refetchInterval: editingId ? false : 10_000,
   });
 
   // Fetch schemas for target types in records

@@ -33,6 +33,8 @@ import {
   ChevronRight,
   AlertTriangle,
   List,
+  Lock,
+  LockOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { WorkflowTriggersPanel } from '../WorkflowTriggersPanel';
@@ -85,6 +87,7 @@ export function WorkflowEditor({
   const [id, setId] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [idLocked, setIdLocked] = useState(true);
 
   const [defaultModel, setDefaultModel] = useState('');
 
@@ -438,11 +441,44 @@ export function WorkflowEditor({
               </button>
               {metadataExpanded && (
                 <div className="px-4 pb-3 space-y-2">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-xs text-muted-foreground">
-                        Workflow ID
-                      </Label>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Name</Label>
+                    <Input
+                      value={name}
+                      onChange={(e) => {
+                        setName(e.target.value);
+                        if (isNew && idLocked) {
+                          setId(
+                            e.target.value
+                              .toLowerCase()
+                              .replace(/[^a-z0-9]+/g, '_')
+                              .replace(/^_|_$/g, '')
+                          );
+                        }
+                      }}
+                      placeholder="My Workflow"
+                      className="h-8 text-sm mt-1"
+                    />
+                    {isNew && (
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className="text-[10px] text-muted-foreground">
+                          ID: <code className="font-mono">{id || 'auto_generated'}</code>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setIdLocked(!idLocked)}
+                          className="p-0.5 rounded hover:bg-muted transition-colors"
+                          title={idLocked ? 'Unlock to edit ID manually' : 'Lock to auto-generate from name'}
+                        >
+                          {idLocked ? (
+                            <Lock className="h-3 w-3 text-muted-foreground" />
+                          ) : (
+                            <LockOpen className="h-3 w-3 text-primary" />
+                          )}
+                        </button>
+                      </div>
+                    )}
+                    {isNew && !idLocked && (
                       <Input
                         value={id}
                         onChange={(e) =>
@@ -453,19 +489,9 @@ export function WorkflowEditor({
                           )
                         }
                         placeholder="my_workflow"
-                        className="h-8 text-sm mt-1"
-                        disabled={!isNew}
+                        className="h-7 text-xs mt-1 font-mono"
                       />
-                    </div>
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Name</Label>
-                      <Input
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="My Workflow"
-                        className="h-8 text-sm mt-1"
-                      />
-                    </div>
+                    )}
                   </div>
                   <div>
                     <Label className="text-xs text-muted-foreground">
@@ -510,9 +536,9 @@ export function WorkflowEditor({
                   <WorkflowGraphView
                     nodes={nodes}
                     connections={connections}
-                    onSelectNode={(id) => {
-                      setSelectedNodeId(id);
-                      setShowGraph(false);
+                    selectedNodeId={selectedNodeId}
+                    onSelectNode={(nodeId) => {
+                      setSelectedNodeId(selectedNodeId === nodeId ? null : nodeId);
                     }}
                   />
                 </div>
@@ -679,7 +705,7 @@ export function WorkflowEditor({
           {/* Right: Node configuration panel (n8n style) */}
           <div className={cn(
             'flex flex-col bg-muted/20',
-            selectedNodeId ? 'flex-1 min-w-[280px]' : 'w-[320px]'
+            selectedNodeId ? 'flex-1 min-w-[280px] max-w-[480px]' : 'w-[320px]'
           )}>
             {selectedNode ? (
               <NodeConfigPanel

@@ -182,7 +182,7 @@ impl TopologyAccessControl {
         }
 
         // Create membership
-        let membership_id = uuid::Uuid::new_v4().as_bytes().to_vec();
+        let membership_id = uuid::Uuid::new_v4().to_string();
 
         db.execute(
             r#"

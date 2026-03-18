@@ -120,7 +120,7 @@ export function PersonIntelPage({ personId: propPersonId, embedded = false }: { 
 
   const { data: person, isLoading } = useQuery({
     queryKey: ['person', personId],
-    queryFn: () => personsApi.getById(personId!),
+    queryFn: () => personsApi.get(personId!),
     enabled: !!personId,
   });
 

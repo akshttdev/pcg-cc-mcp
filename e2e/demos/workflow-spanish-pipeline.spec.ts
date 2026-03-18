@@ -5,7 +5,7 @@
  *   1. Build a CRM extraction workflow with Spanish-aware prompts
  *   2. Create a Spanish conversation data source
  *   3. Run the workflow against the data source
- *   4. Verify staged records, approve & commit into CRM
+ *   4. Verify staged records inline (RunAndReviewPanel), approve & commit into CRM
  *   5. Verify CRM contacts (Spanish names preserved)
  *   6. Verify CRM deals were created with correct amounts
  *
@@ -203,22 +203,26 @@ test.describe("Spanish Workflow → CRM Pipeline Demo", () => {
     // Click the Run Workflow button in the dialog
     await page.getByRole("button", { name: /Run Workflow/ }).last().click();
 
+    // Wait for the workflow to complete — the dialog shows "Running..." then
+    // closes on success. The RunAndReviewPanel renders staging results inline
+    // on the data source detail page (via onRunComplete callback).
+    //
+    // SUCCESS path: dialog closes → RunAndReviewPanel appears inline with staged records
+    // FAILURE path: toast shows "Failed to run workflow" and dialog stays open
+
     // Wait for "Running..." state (confirms request was sent)
     await expect(
       page.getByRole("button", { name: "Running..." })
     ).toBeVisible({ timeout: t(10_000) });
 
-    // Wait for navigation to staging tab (only happens on successful parse with records)
-    await expect(page).toHaveURL(/tab=staging/, { timeout: t(60_000) });
+    // Wait for inline staging results to appear (RunAndReviewPanel renders after onRunComplete)
+    await expect(
+      page.getByText(/records staged|contacts|companies|deals/i).first()
+    ).toBeVisible({ timeout: t(60_000) });
 
     // Verify no failure indicators
     const failedText = page.getByText("Failed to run workflow");
     await expect(failedText).not.toBeVisible();
-
-    // Verify the staging tab loaded and has records
-    await expect(
-      page.getByText(/records staged|contacts|companies|deals/i).first()
-    ).toBeVisible({ timeout: t(15_000) });
 
     await page.waitForTimeout(demoPause.medium);
   });
@@ -227,19 +231,13 @@ test.describe("Spanish Workflow → CRM Pipeline Demo", () => {
     test.setTimeout(60_000);
     await apiLogin(request);
 
-    // Navigate to staging tab if not already there
-    if (!page.url().includes("tab=staging")) {
-      await page.goto("/workflows");
-      await expect(page.getByRole("tab", { name: "Staging" })).toBeVisible({
-        timeout: t(10_000),
-      });
-      await page.getByRole("tab", { name: "Staging" }).click();
-    }
+    // Part 3 left us on the data source detail page with the RunAndReviewPanel
+    // showing inline staging results. Verify records are present.
 
     // Verify staging records are present (not empty)
     const noRecordsText = page.getByText("No staged records for this workflow run.");
     const noRecordsVisible = await noRecordsText.isVisible().catch(() => false);
-    expect(noRecordsVisible, "Staging tab shows 'No staged records' — workflow parsing failed").toBe(false);
+    expect(noRecordsVisible, "Inline staging panel shows 'No staged records' — workflow parsing failed").toBe(false);
 
     // Verify Spanish names appear in staged records (preserved through translation)
     const body = page.locator("body");
@@ -295,11 +293,10 @@ test.describe("Spanish Workflow → CRM Pipeline Demo", () => {
     console.log(`[Part 4] CRM contacts: ${contactList.length} total, ${committedContacts.length} matching test emails`);
 
     if (committedContacts.length === 0) {
-      // Auto-approve didn't work — fallback to API batch approve + commit
-      const url = new URL(page.url(), "http://localhost");
-      let workflowRunId = url.searchParams.get("run");
-
-      if (!workflowRunId) {
+      // Auto-approve didn't work — fallback to API batch approve + commit.
+      // Inline review doesn't use URL params, so look up pending staging records via API.
+      let workflowRunId: string | null = null;
+      {
         const stagingRes = await request.get("/api/workflow-staging/pending?organization_id=" + ORG_ID);
         if (stagingRes.ok()) {
           const staging = await stagingRes.json();

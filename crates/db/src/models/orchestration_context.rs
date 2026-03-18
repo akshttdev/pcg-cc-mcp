@@ -201,10 +201,10 @@ impl OrchestrationContext {
         data: &CreateOrchestrationContext,
     ) -> Result<Self, sqlx::Error> {
         let id = Uuid::new_v4();
-        let id_bytes = id.as_bytes().to_vec();
-        let root_bytes = data.root_task_id.as_bytes().to_vec();
-        let proj_bytes = data.project_id.as_bytes().to_vec();
-        let task_bytes = data.task_id.map(|u| u.as_bytes().to_vec());
+        let id_bytes = id.to_string();
+        let root_bytes = data.root_task_id.to_string();
+        let proj_bytes = data.project_id.to_string();
+        let task_bytes = data.task_id.map(|u| u.to_string());
         let entry_type = data.entry_type.to_string();
         let status = ContextEntryStatus::Active.to_string();
         let priority = data.priority.to_string();
@@ -245,7 +245,7 @@ impl OrchestrationContext {
         pool: &SqlitePool,
         root_task_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
-        let root_bytes = root_task_id.as_bytes().to_vec();
+        let root_bytes = root_task_id.to_string();
         let rows = sqlx::query_as::<_, ContextRow>(
             "SELECT id, root_task_id, project_id, task_id, entry_type, title, content, source, \
              status, priority, resolved_by, resolved_at, metadata, created_at, updated_at \
@@ -264,7 +264,7 @@ impl OrchestrationContext {
         pool: &SqlitePool,
         root_task_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
-        let root_bytes = root_task_id.as_bytes().to_vec();
+        let root_bytes = root_task_id.to_string();
         let rows = sqlx::query_as::<_, ContextRow>(
             "SELECT id, root_task_id, project_id, task_id, entry_type, title, content, source, \
              status, priority, resolved_by, resolved_at, metadata, created_at, updated_at \
@@ -285,7 +285,7 @@ impl OrchestrationContext {
         resolved_by: &str,
         status: &ContextEntryStatus,
     ) -> Result<bool, sqlx::Error> {
-        let id_bytes = id.as_bytes().to_vec();
+        let id_bytes = id.to_string();
         let status_str = status.to_string();
         let result = sqlx::query(
             "UPDATE orchestration_contexts \
@@ -304,7 +304,7 @@ impl OrchestrationContext {
         pool: &SqlitePool,
         project_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
-        let proj_bytes = project_id.as_bytes().to_vec();
+        let proj_bytes = project_id.to_string();
         let rows = sqlx::query_as::<_, ContextRow>(
             "SELECT id, root_task_id, project_id, task_id, entry_type, title, content, source, \
              status, priority, resolved_by, resolved_at, metadata, created_at, updated_at \
@@ -319,7 +319,7 @@ impl OrchestrationContext {
     }
 
     pub async fn delete(pool: &SqlitePool, id: Uuid) -> Result<bool, sqlx::Error> {
-        let id_bytes = id.as_bytes().to_vec();
+        let id_bytes = id.to_string();
         let result = sqlx::query("DELETE FROM orchestration_contexts WHERE id = ?")
             .bind(&id_bytes)
             .execute(pool)

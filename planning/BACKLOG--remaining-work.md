@@ -1,6 +1,6 @@
 # Backlog — Remaining Work
 
-**Last updated:** 2026-03-16
+**Last updated:** 2026-03-17 (post PR #45 — sloperation316 integration)
 **Context:** Consolidated from all completed planning docs. Items prioritized by impact and dependency.
 
 ---
@@ -53,14 +53,28 @@
 **Source:** `archive/2026-03-13--review--dogfood-e2e-qa.md` (Bug #3)
 **Resolution:** PR #41 added `loadError` state with error UI (AlertTriangle icon + "Failed to load agent reviewers" message + RefreshCw retry button). Distinguishes "no reviewers configured" from "API error".
 
-### 7. DbUuid Phase 3 — Remaining Model Conversions
-**Source:** `notes/2026-03-14--reference--dbuuid-phase3-remaining.md`
-**What:** ~107 models still use `Uuid`. Phase 1-2 complete — unblocked agent endpoints. Phase 3 removes bridge code and prevents future BLOB/TEXT mismatches.
-**Effort:** High volume, low risk per file. Batch by domain.
+### 7. DbUuid Migration — 4-Phase Plan
+**Source:** `2026-03-17--plan--dbuuid-migration.md`, `notes/2026-03-14--reference--dbuuid-phase3-remaining.md`
+**What:** Eliminate all Uuid/Vec<u8>/BLOB boilerplate. 4 phases:
+- **Phase A** (highest ROI): `AccessContext.user_id: Uuid` → `DbUuid` — eliminates ~36 conversion sites across ~18 files
+- **Phase B**: `Path<Uuid>` → `Path<String>` in route handlers — ~416 sites across ~79 files
+- **Phase C**: Migrate `users.id` BLOB → TEXT — eliminates ALL remaining `.as_bytes()` / `Vec<u8>` / `bind_uuid_blob` code
+- **Phase D**: Batch convert remaining ~104 models `Uuid` → `DbUuid`
+**Status:** Planning complete. 16 files annotated with `// TODO(dbuuid)` in PR #45. Phase A ready to start.
 
 ### ~~8. Agent "View Profile" Link~~ → RESOLVED
 **Source:** `archive/2026-03-12--tracker--sprint1-issues.md` (item 7)
 **Resolution:** PR #41 added agent profile page at `/agents/:agentId/profile` showing agent description, capabilities, status, default model, and autonomy level. AgentWatcherPanel agent names now link to the profile page. Route registered in App.tsx with ProtectedRoute wrapper.
+
+### 8b. `any` Type Cleanup in New CRM/Pipeline Frontend Code
+**Source:** PR #45 QA review
+**What:** ~20+ `: any` or `as any` casts in `client-overview.tsx`, `projects.tsx`, and other files from the pipeline-progress cherry-pick. Violates frontend TS standards.
+**Status:** NOT STARTED — deferred from PR #45 (pre-existing pattern, not a regression)
+
+### 8c. Sovereign Stack Volume Path Deduplication
+**Source:** PR #45 QA review
+**What:** `resolve_volume_path()` logic is duplicated in `org_cloud.rs` and `data_sources.rs`. Extract to a shared utility in `crates/utils/` or `crates/server/src/`.
+**Status:** NOT STARTED — both copies now use env vars, but should be unified
 
 ### 9. `http_request` Node Guardrails
 **Source:** `archive/2026-03-12--tracker--sprint1-issues.md`
@@ -80,20 +94,44 @@
 
 ---
 
-## P2.5 — Modularity Sprint 3 Candidates
+## P2.5 — Modularity Sprint 6 Candidates
 
-### Modularity Sprint 3 — Next Large File Splits
-**Source:** `2026-03-15--plan--modularity-sprint-2.md` (remaining large files section)
-**What:** After Sprint 2, these are the largest remaining frontend files:
+### Modularity Sprint 6 — Hook Mutations + Remaining Debt
+**Source:** `archive/2026-03-16--plan--modularity-sprint-5.md` (deferred 2e)
+**What:** 6 hooks with raw `useMutation` → `useMutationWithToast`:
+- `hooks/useAgentFlows.ts` (4 mutations)
+- `hooks/useOrgOnboarding.ts` (4 mutations)
+- `hooks/useWorkflowTemplates.ts` (1 mutation)
+- `hooks/useCrmActivities.ts` (2 mutations)
+- `hooks/useTaskMutations.ts` (3 mutations)
+- `pages/oss-library-listener.tsx` (4 mutations)
+Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~268 inline query keys
+- Over-invalidation in autonomy/bowser/collaboration mutations (broad `autonomyKeys.all` instead of targeted keys)
+- `MembersTab` raw `fetch()` → `makeRequest` migration
+**Source also:** `archive/2026-03-16--plan--modularity-sprint-4.md` (deferred items)
+**Status:** NOT STARTED
+
+### Modularity — Large Frontend File Splits
+**Source:** `archive/2026-03-15--plan--modularity-sprint-2.md` (remaining large files section)
+**What:** Largest remaining frontend files:
 - `virtual-environment.tsx` (1,282 lines)
 - `TaskFormDialog.tsx` (1,240 lines) — complex form, high-traffic
 - `company-profile.tsx` (1,218 lines) — similar pattern to project-detail split
 - `MeetingMode.tsx` (1,207 lines) — Topsi meeting component
 - `CrmDealDetailPanel.tsx` (1,202 lines) — grew in PR #36
-**Status:** NOT STARTED — candidates for next modularity sprint
+**Status:** NOT STARTED — candidates for future modularity sprint
+
+### Workflow UX — Deferred Polish
+**Source:** `archive/2026-03-16--plan--workflow-ux-sprint.md` (deferred items + PR #44 review)
+**What:**
+- Extract `DataSourceWorkflowRunner` from `data-source-detail.tsx` (~730 lines) — Day 2 deferral
+- `CopyWorkflowDialog` NiceModal migration (C1) — all dialogs should use `@ebay/nice-modal-react`
+- `window.confirm()` → shadcn `AlertDialog` in `WorkflowCardGrid` delete (W3)
+- Ownership filter toggle (My/Org/All) on workflow cards — badges exist but no filtering
+**Status:** NOT STARTED
 
 ### Modularity — Deferred Stretch Items
-**Source:** `2026-03-15--plan--modularity-sprint-2.md` (Day 5c)
+**Source:** `archive/2026-03-15--plan--modularity-sprint-2.md` (Day 5c)
 **What:** Hook splits deferred (below priority threshold):
 - `useConversationHistory.ts` (540 lines) → extract `flattenEntries`, `executionHelpers`, `patchWithKey`
 - `useAutonomy.ts` (478 lines) → extract `useCheckpoints`, `useApprovalGates`
@@ -153,7 +191,7 @@
 - Breadcrumbs: "Jungleverse" still appears as default org name in some views (#15)
 
 ### 20. User Account Onboarding (deferred from UX Sprint 2)
-**Source:** `2026-03-16--plan--ux-engagement-polish-sprint2.md`
+**Source:** `archive/2026-03-16--plan--ux-engagement-polish-sprint2.md`
 **What:** First-login walkthrough — profile setup, preferences, Topsi intro. Org onboarding (PR #39) covers org-level setup; user account onboarding covers individual user first-run experience.
 **Status:** NOT STARTED
 
@@ -254,3 +292,23 @@
 | Agent profile page (Backlog #8) | `/agents/:agentId/profile` page with capabilities, status, model (PR #41) |
 | Route conflict fix (pre-existing) | Merged duplicate routes in org_onboarding.rs (committed to main) |
 | Migration version collision fix (pre-existing) | Renamed 20260405000000→20260405000001 to avoid collision (committed to main) |
+| Modularity Sprint 5: VIBE billing duplication | `ensure_vibe_balance` + `record_llm_vibe_usage` in `helpers/billing.rs`, 5 blocks eliminated (PR #43) |
+| Modularity Sprint 5: topsi raw fetch() | `topsi.ts` API module wrapping 7 endpoints + `topsiKeys` factory (PR #43) |
+| Modularity Sprint 5: topiclips raw fetch() | `topiclips.ts` API module wrapping 7 endpoints + `topiclipsKeys` factory (PR #43) |
+| Modularity Sprint 5: twilio.rs monolith | 2285 lines → 8-file `twilio/` directory module (PR #43) |
+| Modularity Sprint 5: task_attempts.rs monolith | 1909 lines → 6-file `task_attempts/` directory module (PR #43) |
+| Modularity Sprint 5: nora/mod.rs decomposition | 1172→718 lines, extracted config.rs, rate_limiter.rs, initialization.rs (PR #43) |
+| Modularity Sprint 5: conversation persistence | `helpers/conversations.rs` with `persist_chat_exchange`, adopted in topsi + nora chat (PR #43) |
+| Modularity Sprint 5: query key migration (8 files) | ~43 inline keys → factories, new `socialKeys`/`networkKeys` factories (PR #43) |
+| Workflow UX: Inline staging review | `RunAndReviewPanel` composite, `RunWorkflowDialog` `onRunComplete` callback (PR #44) |
+| Workflow UX: Shared workflow card grid | `WorkflowCardGrid` with ownership badges, used in BuilderTab + WorkflowsView (PR #44) |
+| Workflow UX: Copy/promote workflows | `CopyWorkflowDialog` for user ↔ org workflow copying (PR #44) |
+| Workflow UX: Node picker search + categories | Search/filter, category headers with counts (PR #44) |
+| Workflow UX: Workflow ID auto-generation | ID derived from name with lock/unlock toggle (PR #44) |
+| Workflow UX: Graph view zoom + selection | Zoom controls, node selection highlight, connection validation (PR #44) |
+| Workflow UX: Prompt templates + output schema | 3 starter templates, schema Select dropdown (PR #44) |
+| Workflow UX: Sidebar workflow sub-links | Builder/Runs/Staging sub-links with pending count badge (PR #44) |
+| Workflow UX: Real-time updates | AgentWatcher → React Query 10s polling, staging `refetchInterval` (PR #44) |
+| Workflow UX: Deleted source display | "(Deleted source)" instead of truncated UUIDs in runs (PR #44) |
+| Workflow UX: `any` type cleanup + code quality | `WorkflowRunResult` interface, `cn()`, `useEffect` fixes (PR #44) |
+| Modularity Sprint 4: billing helper deferred | Done in Sprint 5 — `helpers/billing.rs` (PR #43) |

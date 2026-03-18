@@ -120,20 +120,15 @@ pub struct UpdateCompany {
 
 impl Company {
     pub async fn find_by_id(pool: &SqlitePool, id: &DbUuid) -> Result<Option<Self>, CompanyError> {
-        // Try direct comparison first (works when id stored as same format as binding)
-        let row = sqlx::query_as::<_, Self>("SELECT * FROM companies WHERE id = ?")
-            .bind(id)
-            .fetch_optional(pool)
-            .await?;
-        if row.is_some() { return Ok(row); }
-
-        // Fallback: compare as string (handles TEXT-stored UUIDs)
-        let id_str = id.to_string();
-        let row = sqlx::query_as::<_, Self>("SELECT * FROM companies WHERE CAST(id AS TEXT) = ? OR CAST(id AS TEXT) = ?")
-            .bind(&id_str)
-            .bind(id_str.replace('-', ""))
-            .fetch_optional(pool)
-            .await?;
+        // Companies store id as BLOB; DbUuid encodes as TEXT so direct `= ?` misses.
+        // Use hex(id) comparison which works for both BLOB and TEXT storage.
+        let hex_no_dashes = id.to_string().replace('-', "");
+        let row = sqlx::query_as::<_, Self>(
+            "SELECT * FROM companies WHERE lower(hex(id)) = lower(?)",
+        )
+        .bind(&hex_no_dashes)
+        .fetch_optional(pool)
+        .await?;
         Ok(row)
     }
 

@@ -2,6 +2,7 @@ import { useMemo, useCallback } from 'react';
 import { useQuery, useQueries, useQueryClient } from '@tanstack/react-query';
 import { attemptsApi, executionProcessesApi } from '@/lib/api';
 import { useTaskStopping } from '@/stores/useTaskDetailsUiStore';
+import { executionProcessKeys } from '@/lib/query-keys';
 import type { AttemptData } from '@/lib/types';
 import type { ExecutionProcess } from 'shared/types';
 
@@ -16,7 +17,7 @@ export function useAttemptExecution(attemptId?: string, taskId?: string) {
     isFetching: processesFetching,
     refetch,
   } = useQuery({
-    queryKey: ['executionProcesses', attemptId],
+    queryKey: executionProcessKeys.list(attemptId),
     queryFn: () => executionProcessesApi.getExecutionProcesses(attemptId!),
     enabled: !!attemptId,
     refetchInterval: 5000,
@@ -43,7 +44,7 @@ export function useAttemptExecution(attemptId?: string, taskId?: string) {
   // Fetch details for setup processes
   const processDetailQueries = useQueries({
     queries: setupProcesses.map((process) => ({
-      queryKey: ['processDetails', process.id],
+      queryKey: executionProcessKeys.details(process.id),
       queryFn: () => executionProcessesApi.getDetails(process.id),
       enabled: !!process.id,
     })),
@@ -81,7 +82,7 @@ export function useAttemptExecution(attemptId?: string, taskId?: string) {
 
       // Invalidate queries to refresh data
       await queryClient.invalidateQueries({
-        queryKey: ['executionProcesses', attemptId],
+        queryKey: executionProcessKeys.list(attemptId),
       });
     } catch (error) {
       console.error('Failed to stop executions:', error);

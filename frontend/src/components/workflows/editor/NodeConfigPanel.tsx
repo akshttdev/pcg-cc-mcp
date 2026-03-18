@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -14,6 +15,7 @@ import {
   Zap,
   Link,
   Unlink,
+  FileText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type {
@@ -24,6 +26,73 @@ import type {
 import { NODE_TYPES, getNodeTypeDef } from './node-types';
 import { OutputNodeConfig } from './OutputNodeConfig';
 import { DataSourceNodeConfig } from './DataSourceNodeConfig';
+
+const PROMPT_TEMPLATES = [
+  {
+    label: 'Contact Extraction',
+    prompt: 'Extract all people mentioned. For each person, provide: first_name, last_name, email, phone, company_name, job_title.',
+  },
+  {
+    label: 'Company Research',
+    prompt: 'Extract all companies mentioned. For each company, provide: name, website, industry, description, employee_count.',
+  },
+  {
+    label: 'Deal Pipeline',
+    prompt: 'Extract all potential deals or opportunities. For each, provide: deal_name, contact_name, company_name, estimated_value, stage, next_steps.',
+  },
+] as const;
+
+const KNOWN_OUTPUT_SCHEMAS = [
+  { value: 'contacts[]', label: 'Contacts' },
+  { value: 'companies[]', label: 'Companies' },
+  { value: 'crm_deals[]', label: 'Deals' },
+  { value: 'tasks[]', label: 'Tasks' },
+];
+
+function OutputSchemaField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const isKnown = KNOWN_OUTPUT_SCHEMAS.some(s => s.value === value);
+  const [showCustom, setShowCustom] = useState(!isKnown && value !== '');
+
+  return (
+    <div>
+      <Label className="text-xs">Output Schema</Label>
+      <Select
+        value={showCustom ? '__custom__' : (value || '__none__')}
+        onValueChange={(v) => {
+          if (v === '__custom__') {
+            setShowCustom(true);
+          } else if (v === '__none__') {
+            setShowCustom(false);
+            onChange('');
+          } else {
+            setShowCustom(false);
+            onChange(v);
+          }
+        }}
+      >
+        <SelectTrigger className="h-8 text-sm mt-1">
+          <SelectValue placeholder="Select output schema..." />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__none__">None</SelectItem>
+          {KNOWN_OUTPUT_SCHEMAS.map((s) => (
+            <SelectItem key={s.value} value={s.value}>{s.label} ({s.value})</SelectItem>
+          ))}
+          <SelectItem value="__custom__">Custom...</SelectItem>
+        </SelectContent>
+      </Select>
+      {showCustom && (
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="e.g. opportunities[], custom_type[]"
+          className="h-8 text-sm mt-1.5"
+          autoFocus
+        />
+      )}
+    </div>
+  );
+}
 
 interface NodeConfigPanelProps {
   node: WorkflowNode;
@@ -241,7 +310,25 @@ export function NodeConfigPanel({
                   </p>
                 </div>
                 <div>
-                  <Label className="text-xs">Prompt Template</Label>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">Prompt Template</Label>
+                    <Select onValueChange={(v) => {
+                      const tpl = PROMPT_TEMPLATES.find(t => t.label === v);
+                      if (tpl) onUpdateParameter('prompt_template', tpl.prompt);
+                    }}>
+                      <SelectTrigger className="h-6 w-auto text-[11px] gap-1 border-dashed px-2">
+                        <FileText className="h-3 w-3" />
+                        <span>Templates</span>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PROMPT_TEMPLATES.map((tpl) => (
+                          <SelectItem key={tpl.label} value={tpl.label}>
+                            {tpl.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <div className="flex flex-wrap gap-1 mt-1.5 mb-1.5">
                     <button
                       type="button"
@@ -320,21 +407,14 @@ export function NodeConfigPanel({
                     onChange={(e) =>
                       onUpdateParameter('prompt_template', e.target.value)
                     }
-                    placeholder={`Enter extraction instructions here. The source content is automatically included.\n\nExample for contacts:\nExtract all people mentioned. For each: first_name, last_name, email, phone, company_name, job_title.\n\nExample for companies:\nExtract all companies mentioned. For each: name, website, industry, description.\n\nTip: Use {{content}} to reference the source data explicitly.`}
+                    placeholder="Describe what to extract (e.g., 'Extract all contacts with name, email, and company'). Use Templates above for starters."
                     className="text-sm font-mono min-h-[200px] resize-y"
                   />
                 </div>
-                <div>
-                  <Label className="text-xs">Output Schema</Label>
-                  <Input
-                    value={node.parameters.output_schema ?? ''}
-                    onChange={(e) =>
-                      onUpdateParameter('output_schema', e.target.value)
-                    }
-                    placeholder="e.g. companies[], contacts[], opportunities[]"
-                    className="h-8 text-sm mt-1"
-                  />
-                </div>
+                <OutputSchemaField
+                  value={node.parameters.output_schema ?? ''}
+                  onChange={(v) => onUpdateParameter('output_schema', v)}
+                />
                 <div>
                   <Label className="text-xs">Output Mode</Label>
                   <div className="flex gap-1 mt-1">

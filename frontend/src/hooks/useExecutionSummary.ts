@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { executionSummaryApi } from '@/lib/api';
+import { executionKeys } from '@/lib/query-keys';
 
 interface UpdateFeedbackRequest {
   human_rating?: number | null;
@@ -9,7 +10,7 @@ interface UpdateFeedbackRequest {
 
 export function useExecutionSummary(attemptId: string | null | undefined) {
   return useQuery({
-    queryKey: ['execution-summary', attemptId],
+    queryKey: executionKeys.summary(attemptId ?? ''),
     queryFn: async () => {
       if (!attemptId) return null;
       return executionSummaryApi.getByAttemptId(attemptId);
@@ -29,7 +30,7 @@ export function useUpdateExecutionSummaryFeedback(summaryId: string | undefined)
     },
     onSuccess: (data) => {
       // Update the cache with the new data
-      queryClient.setQueryData(['execution-summary', data.task_attempt_id], data);
+      queryClient.setQueryData(executionKeys.summary(data.task_attempt_id), data);
     },
   });
 }

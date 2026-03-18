@@ -42,7 +42,7 @@ export function useCreateActivity() {
   return useMutation({
     mutationFn: crmActivitiesApi.createActivity,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['crm', 'activities'] });
+      queryClient.invalidateQueries({ queryKey: crmKeys.activitiesAll() });
     },
   });
 }
@@ -53,7 +53,7 @@ export function useDeleteActivity() {
   return useMutation({
     mutationFn: crmActivitiesApi.deleteActivity,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['crm', 'activities'] });
+      queryClient.invalidateQueries({ queryKey: crmKeys.activitiesAll() });
     },
   });
 }

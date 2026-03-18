@@ -74,8 +74,8 @@ impl ScheduledMeeting {
                (id, proposal_id, scheduled_at, duration_min, location, agenda, channel)
                VALUES (?1,?2,?3,?4,?5,?6,?7)"#,
         )
-        .bind(id.as_bytes().as_slice())
-        .bind(data.proposal_id.as_bytes().as_slice())
+        .bind(id.to_string())
+        .bind(data.proposal_id.to_string())
         .bind(&data.scheduled_at)
         .bind(duration_min)
         .bind(&data.location)
@@ -92,9 +92,9 @@ impl ScheduledMeeting {
                    (id, scheduled_meeting_id, person_id, channel, channel_address)
                    VALUES (?1,?2,?3,?4,?5)"#,
             )
-            .bind(inv_id.as_bytes().as_slice())
-            .bind(id.as_bytes().as_slice())
-            .bind(inv.person_id.as_bytes().as_slice())
+            .bind(inv_id.to_string())
+            .bind(id.to_string())
+            .bind(inv.person_id.to_string())
             .bind(&inv.channel)
             .bind(&inv.channel_address)
             .execute(pool)
@@ -103,7 +103,7 @@ impl ScheduledMeeting {
             let row: ScheduledMeetingInvitee = sqlx::query_as(
                 "SELECT * FROM scheduled_meeting_invitees WHERE id = ?1",
             )
-            .bind(inv_id.as_bytes().as_slice())
+            .bind(inv_id.to_string())
             .fetch_one(pool)
             .await?;
             invitees.push(row);
@@ -112,7 +112,7 @@ impl ScheduledMeeting {
         let meeting: ScheduledMeeting = sqlx::query_as(
             "SELECT * FROM scheduled_meetings WHERE id = ?1",
         )
-        .bind(id.as_bytes().as_slice())
+        .bind(id.to_string())
         .fetch_one(pool)
         .await?;
 
@@ -126,7 +126,7 @@ impl ScheduledMeeting {
         let meetings: Vec<ScheduledMeeting> = sqlx::query_as(
             "SELECT * FROM scheduled_meetings WHERE proposal_id = ?1 ORDER BY scheduled_at ASC",
         )
-        .bind(proposal_id.as_bytes().as_slice())
+        .bind(proposal_id.to_string())
         .fetch_all(pool)
         .await?;
 

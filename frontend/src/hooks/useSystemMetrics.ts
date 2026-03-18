@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { resolveApiUrl } from '@/lib/api';
+import { systemMetricsKeys } from '@/lib/query-keys';
 
 export interface SystemMetrics {
   cpu_usage_percent: number;
@@ -53,7 +54,7 @@ async function fetchDetailedMetrics(): Promise<DetailedSystemMetrics> {
 
 export function useSystemMetrics(options?: { refetchInterval?: number }) {
   return useQuery({
-    queryKey: ['system-metrics'],
+    queryKey: systemMetricsKeys.basic(),
     queryFn: fetchSystemMetrics,
     refetchInterval: options?.refetchInterval ?? 5000, // Default 5 second refresh
   });
@@ -61,7 +62,7 @@ export function useSystemMetrics(options?: { refetchInterval?: number }) {
 
 export function useDetailedSystemMetrics(options?: { refetchInterval?: number }) {
   return useQuery({
-    queryKey: ['system-metrics-detailed'],
+    queryKey: systemMetricsKeys.detailed(),
     queryFn: fetchDetailedMetrics,
     refetchInterval: options?.refetchInterval ?? 5000,
   });

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { resolveApiUrl } from '@/lib/api';
+import { missionControlKeys } from '@/lib/query-keys';
 
 export interface AgentTaskPlan {
   id: string;
@@ -120,7 +121,7 @@ async function fetchActivePlans(): Promise<AgentTaskPlan[]> {
  */
 export function useMissionControlDashboard() {
   return useQuery({
-    queryKey: ['missionControl', 'dashboard'],
+    queryKey: missionControlKeys.dashboard(),
     queryFn: fetchMissionControlDashboard,
     refetchInterval: 3000, // Refresh every 3 seconds for real-time updates
   });
@@ -131,7 +132,7 @@ export function useMissionControlDashboard() {
  */
 export function useExecutionArtifacts(executionId: string | undefined) {
   return useQuery({
-    queryKey: ['missionControl', 'artifacts', executionId],
+    queryKey: missionControlKeys.artifacts(executionId),
     queryFn: () => fetchExecutionArtifacts(executionId!),
     enabled: !!executionId,
     refetchInterval: 5000,
@@ -143,7 +144,7 @@ export function useExecutionArtifacts(executionId: string | undefined) {
  */
 export function useExecutionPlan(executionId: string | undefined) {
   return useQuery({
-    queryKey: ['missionControl', 'plan', executionId],
+    queryKey: missionControlKeys.plan(executionId),
     queryFn: () => fetchExecutionPlan(executionId!),
     enabled: !!executionId,
     refetchInterval: 5000,
@@ -155,7 +156,7 @@ export function useExecutionPlan(executionId: string | undefined) {
  */
 export function useActivePlans() {
   return useQuery({
-    queryKey: ['missionControl', 'activePlans'],
+    queryKey: missionControlKeys.activePlans(),
     queryFn: fetchActivePlans,
     refetchInterval: 5000,
   });

@@ -38,7 +38,9 @@ impl DBService {
             .create_if_missing(true)
             .foreign_keys(false);
         let migration_pool = SqlitePool::connect_with(migration_options).await?;
-        sqlx::migrate!("./migrations").run(&migration_pool).await?;
+        if std::env::var("SKIP_MIGRATIONS").unwrap_or_default() != "1" {
+            sqlx::migrate!("./migrations").set_ignore_missing(true).run(&migration_pool).await?;
+        }
         migration_pool.close().await;
 
         let options = SqliteConnectOptions::from_str(&database_url)?.create_if_missing(true);
@@ -80,7 +82,9 @@ impl DBService {
         // production UUIDs don't fail on dev/staging databases.
         let migration_options = options.clone().foreign_keys(false);
         let migration_pool = SqlitePool::connect_with(migration_options).await?;
-        sqlx::migrate!("./migrations").run(&migration_pool).await?;
+        if std::env::var("SKIP_MIGRATIONS").unwrap_or_default() != "1" {
+            sqlx::migrate!("./migrations").set_ignore_missing(true).run(&migration_pool).await?;
+        }
         migration_pool.close().await;
 
         let pool = if let Some(hook) = after_connect {

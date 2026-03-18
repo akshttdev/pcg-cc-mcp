@@ -92,7 +92,7 @@ export function ClientProjectPanel({ projectId, clientPageUrl }: ClientProjectPa
 
   const { data: allTasks = [], isLoading: tasksLoading } = useQuery({
     queryKey: ['projectTasks', projectId],
-    queryFn: () => tasksApi.getByProject(projectId),
+    queryFn: () => tasksApi.getAll(projectId),
     staleTime: 60 * 1000,
     enabled: !!project,
   });

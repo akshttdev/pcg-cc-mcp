@@ -31,15 +31,11 @@ use ts_rs::TS;
 use uuid::Uuid;
 
 use deployment::Deployment;
-use db::models::project::Project;
 use sqlx;
 use db::models::task_attempt::{CreateTaskAttempt, TaskAttempt};
-use db::models::vibe_deposit::{VibeDeposit, VibeWithdrawal};
-use db::models::vibe_transaction::{VibeSourceType, VibeTransaction};
 use executors::executors::BaseCodingAgent;
 use executors::profile::ExecutorProfileId;
 use services::services::container::ContainerService;
-use services::services::vibe_pricing::VibePricingService;
 
 // Import voice types from Nora
 use nora::voice::{
@@ -633,5 +629,4 @@ fn apply_topsi_llm_overrides(config: &mut TopsiConfig) {
     }
 }
 
-// NOTE: Billing logic (resolve_billing_project, check_vibe_balance) is currently
-// inline in chat.rs. It should be extracted to a shared helper in a future refactor.
+// Billing logic extracted to crate::helpers::billing (Sprint 5).

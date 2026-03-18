@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { resolveApiUrl } from '@/lib/api';
+import { capacityKeys } from '@/lib/query-keys';
 
 export interface ProjectCapacity {
   project_id: string;
@@ -66,7 +67,7 @@ async function fetchActiveExecutions(): Promise<ActiveExecutionsResponse> {
  */
 export function useProjectCapacity(projectId: string | undefined) {
   return useQuery({
-    queryKey: ['projectCapacity', projectId],
+    queryKey: capacityKeys.project(projectId),
     queryFn: () => fetchProjectCapacity(projectId!),
     enabled: !!projectId,
     refetchInterval: 5000, // Refresh every 5 seconds to track slot changes
@@ -78,7 +79,7 @@ export function useProjectCapacity(projectId: string | undefined) {
  */
 export function useActiveSlots(projectId: string | undefined) {
   return useQuery({
-    queryKey: ['activeSlots', projectId],
+    queryKey: capacityKeys.activeSlots(projectId),
     queryFn: () => fetchActiveSlots(projectId!),
     enabled: !!projectId,
     refetchInterval: 5000,
@@ -90,7 +91,7 @@ export function useActiveSlots(projectId: string | undefined) {
  */
 export function useActiveExecutions() {
   return useQuery({
-    queryKey: ['activeExecutions'],
+    queryKey: capacityKeys.activeExecutions(),
     queryFn: fetchActiveExecutions,
     refetchInterval: 5000,
   });

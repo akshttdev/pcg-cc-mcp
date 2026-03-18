@@ -29,7 +29,7 @@ impl UserOnboardingService {
         let has_projects: bool = sqlx::query_scalar::<_, i64>(
             "SELECT COUNT(*) FROM project_members WHERE user_id = ?",
         )
-        .bind(user_id.as_bytes().as_slice())
+        .bind(user_id.to_string())
         .fetch_one(pool)
         .await
         .map(|c| c > 0)
@@ -45,7 +45,7 @@ impl UserOnboardingService {
                 r#"INSERT INTO projects (id, name, slug, git_repo_path, created_at, updated_at)
                    VALUES (?, ?, ?, ?, datetime('now', 'subsec'), datetime('now', 'subsec'))"#,
             )
-            .bind(project_id.as_bytes().as_slice())
+            .bind(project_id.to_string())
             .bind(&project_name)
             .bind(&slug)
             .bind(format!("/home/{}", slug))
@@ -58,9 +58,9 @@ impl UserOnboardingService {
                 r#"INSERT INTO project_members (id, project_id, user_id, role, created_at)
                    VALUES (?, ?, ?, 'owner', datetime('now', 'subsec'))"#,
             )
-            .bind(member_id.as_bytes().as_slice())
-            .bind(project_id.as_bytes().as_slice())
-            .bind(user_id.as_bytes().as_slice())
+            .bind(member_id.to_string())
+            .bind(project_id.to_string())
+            .bind(user_id.to_string())
             .execute(pool)
             .await?;
 
@@ -78,7 +78,7 @@ impl UserOnboardingService {
             let existing_project_id: Option<Vec<u8>> = sqlx::query_scalar(
                 "SELECT project_id FROM project_members WHERE user_id = ? LIMIT 1",
             )
-            .bind(user_id.as_bytes().as_slice())
+            .bind(user_id.to_string())
             .fetch_optional(pool)
             .await?;
 
@@ -101,7 +101,7 @@ impl UserOnboardingService {
             "UPDATE projects SET vibe_budget_limit = ?, vibe_spent_amount = 0 WHERE id = ?",
         )
         .bind(INITIAL_VIBE_BUDGET)
-        .bind(home_project_id.as_bytes().as_slice())
+        .bind(home_project_id.to_string())
         .execute(pool)
         .await?;
 

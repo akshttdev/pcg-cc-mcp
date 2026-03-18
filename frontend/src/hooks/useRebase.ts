@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { attemptsApi, Result } from '@/lib/api';
+import { branchKeys } from '@/lib/query-keys';
 import type { GitOperationError } from 'shared/types';
 import type { RebaseTaskAttemptRequest } from 'shared/types';
 
@@ -29,13 +30,13 @@ export function useRebase(
       onSuccess: () => {
         // Refresh branch status immediately
         queryClient.invalidateQueries({
-          queryKey: ['branchStatus', attemptId],
+          queryKey: branchKeys.status(attemptId),
         });
 
         // Refresh branch list used by PR dialog
         if (projectId) {
           queryClient.invalidateQueries({
-            queryKey: ['projectBranches', projectId],
+            queryKey: branchKeys.projectBranches(projectId),
           });
         }
 
@@ -45,7 +46,7 @@ export function useRebase(
         console.error('Failed to rebase:', err);
         // Even on failure (likely conflicts), re-fetch branch status immediately to show rebase-in-progress
         queryClient.invalidateQueries({
-          queryKey: ['branchStatus', attemptId],
+          queryKey: branchKeys.status(attemptId),
         });
         onError?.(err);
       },

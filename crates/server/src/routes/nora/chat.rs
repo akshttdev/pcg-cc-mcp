@@ -41,22 +41,9 @@ pub async fn chat_with_nora(
         }
     };
 
-    // VIBE Balance Check — uses real deposit ledger
-    if !crate::helpers::vibe_check::is_vibe_bypass_active(&pool).await {
-        if let Some(project_id) = billing_project_id {
-            let total_deposited = VibeDeposit::total_deposited(&pool, project_id).await.unwrap_or(0);
-            let total_withdrawn = VibeWithdrawal::total_withdrawn(&pool, project_id).await.unwrap_or(0);
-            let total_spent = VibeTransaction::sum_by_source(&pool, VibeSourceType::Project, project_id, None)
-                .await
-                .map(|s| s.total_vibe)
-                .unwrap_or(0);
-            let balance = total_deposited - total_withdrawn - total_spent;
-            if balance <= 0 {
-                return Err(ApiError::PaymentRequired(
-                    "Insufficient VIBE balance. Deposit VIBE tokens to your project to continue.".into(),
-                ));
-            }
-        }
+    // VIBE Balance Check
+    if let Some(project_id) = billing_project_id {
+        crate::helpers::billing::ensure_vibe_balance(&pool, project_id).await?;
     }
 
     // Get request ID from middleware or generate new one
@@ -111,26 +98,13 @@ pub async fn chat_with_nora(
     crate::nora_metrics::record_request("chat", priority_str);
     tracing::info!("Request processed successfully");
 
-    // Record VIBE cost
+    // Record VIBE cost (estimate tokens if not available)
     if let Some(project_id) = billing_project_id {
-        // Use actual tokens if available, otherwise estimate (2000 input, 500 output)
-        let input_tokens = response.input_tokens.unwrap_or(2000);
-        let output_tokens = response.output_tokens.unwrap_or(500);
-        if input_tokens > 0 || output_tokens > 0 {
-            let vibe_pricing = VibePricingService::new(pool.clone());
-            match vibe_pricing.record_llm_usage(
-                VibeSourceType::Project, project_id,
-                "claude-sonnet-4-20250514",
-                input_tokens, output_tokens,
-                None, None, None,
-            ).await {
-                Ok(tx) => {
-                    let _ = Project::adjust_vibe_spent(&pool, &project_id.to_string(), tx.amount_vibe).await;
-                    tracing::info!("[VIBE] Nora recorded {} VIBE for project {}", tx.amount_vibe, project_id);
-                }
-                Err(e) => tracing::error!("[VIBE] Failed to record Nora usage: {}", e),
-            }
-        }
+        crate::helpers::billing::record_llm_vibe_usage(
+            &pool, project_id, "claude-sonnet-4-20250514",
+            response.input_tokens.unwrap_or(2000), response.output_tokens.unwrap_or(500),
+            None, None, None, "Nora",
+        ).await;
     }
 
     // Persist conversation (non-blocking — fire and forget)
@@ -142,26 +116,14 @@ pub async fn chat_with_nora(
         let resp_input = response.input_tokens;
         let resp_output = response.output_tokens;
         tokio::spawn(async move {
-            // Use Nora's well-known agent ID from the agents table
             let nora_agent_id = Uuid::parse_str("0907dc4f-3f7f-4c40-93cf-f36a833eaa78")
                 .unwrap_or_else(|_| Uuid::new_v4());
-            match AgentConversation::get_or_create(&pool_conv, nora_agent_id, &session_id, None).await {
-                Ok(conversation) => {
-                    if let Err(e) = AgentConversationMessage::add_user_message(
-                        &pool_conv, conversation.id, &user_msg,
-                    ).await {
-                        tracing::warn!("Failed to persist Nora user message: {}", e);
-                    }
-                    if let Err(e) = AgentConversationMessage::add_assistant_message(
-                        &pool_conv, conversation.id, &assistant_msg,
-                        Some("claude-sonnet-4-20250514"), Some("anthropic"),
-                        resp_input, resp_output, None,
-                    ).await {
-                        tracing::warn!("Failed to persist Nora assistant message: {}", e);
-                    }
-                }
-                Err(e) => tracing::warn!("Failed to get/create Nora conversation: {}", e),
-            }
+            crate::helpers::conversations::persist_chat_exchange(
+                &pool_conv, nora_agent_id, &session_id, None,
+                &user_msg, &assistant_msg,
+                Some("claude-sonnet-4-20250514"), Some("anthropic"),
+                resp_input, resp_output, "Nora",
+            ).await;
         });
     }
 
@@ -211,22 +173,9 @@ pub async fn chat_with_nora_stream(
         }
     };
 
-    // VIBE Balance Check — uses real deposit ledger
-    if !crate::helpers::vibe_check::is_vibe_bypass_active(&pool).await {
-        if let Some(project_id) = billing_project_id {
-            let total_deposited = VibeDeposit::total_deposited(&pool, project_id).await.unwrap_or(0);
-            let total_withdrawn = VibeWithdrawal::total_withdrawn(&pool, project_id).await.unwrap_or(0);
-            let total_spent = VibeTransaction::sum_by_source(&pool, VibeSourceType::Project, project_id, None)
-                .await
-                .map(|s| s.total_vibe)
-                .unwrap_or(0);
-            let balance = total_deposited - total_withdrawn - total_spent;
-            if balance <= 0 {
-                return Err(ApiError::PaymentRequired(
-                    "Insufficient VIBE balance. Deposit VIBE tokens to your project to continue.".into(),
-                ));
-            }
-        }
+    // VIBE Balance Check
+    if let Some(project_id) = billing_project_id {
+        crate::helpers::billing::ensure_vibe_balance(&pool, project_id).await?;
     }
 
     // Get request ID from middleware or generate new one

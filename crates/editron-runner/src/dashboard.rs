@@ -12,6 +12,7 @@ use serde_json::{json, Value};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
 use tracing::{info, warn};
+// TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 
 /// All the info the dashboard needs from a completed pipeline run.
@@ -254,7 +255,7 @@ async fn insert_artifact(
             file_path, metadata, phase, created_at)
            VALUES (?1, NULL, ?2, ?3, ?4, ?5, ?6, 'execution', ?7)"#,
     )
-    .bind(id.as_bytes().as_slice())
+    .bind(id.to_string())
     .bind(artifact_type)
     .bind(title)
     .bind(content)
@@ -279,7 +280,7 @@ async fn resolve_or_create_task(
         if let Ok(tid) = Uuid::parse_str(tid_str) {
             let exists: Option<(Vec<u8>,)> =
                 sqlx::query_as("SELECT id FROM tasks WHERE id = ?1")
-                    .bind(tid.as_bytes().as_slice())
+                    .bind(tid.to_string())
                     .fetch_optional(pool)
                     .await
                     .ok()?;
@@ -308,8 +309,8 @@ async fn resolve_or_create_task(
            VALUES (?1, ?2, ?3, ?4, 'in_progress', 'editron', ?5, ?6,
                    'editron-runner', ?7, ?7)"#,
     )
-    .bind(task_uuid.as_bytes().as_slice())
-    .bind(project_uuid.as_bytes().as_slice())
+    .bind(task_uuid.to_string())
+    .bind(project_uuid.to_string())
     .bind(&title)
     .bind(&description)
     .bind(&tags)
@@ -343,8 +344,8 @@ async fn link_artifact(
            (task_id, artifact_id, artifact_role, display_order, pinned, added_by)
            VALUES (?1, ?2, ?3, ?4, ?5, 'editron-runner')"#,
     )
-    .bind(task_id.as_bytes().as_slice())
-    .bind(artifact_id.as_bytes().as_slice())
+    .bind(task_id.to_string())
+    .bind(artifact_id.to_string())
     .bind(role)
     .bind(display_order)
     .bind(pinned as i32)

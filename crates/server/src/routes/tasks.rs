@@ -35,6 +35,7 @@ use services::services::container::{
 use sqlx::{Error as SqlxError, types::Json as SqlxJson};
 use ts_rs::TS;
 use utils::response::ApiResponse;
+// TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError, middleware::load_task_middleware, middleware::access_control::AccessContext};

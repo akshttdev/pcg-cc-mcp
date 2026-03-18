@@ -54,7 +54,7 @@ const AIUsagePage           = lazy(() => import('@/pages/ai-usage').then(m => ({
 const AgentExecutionsPage   = lazy(() => import('@/pages/agent-executions').then(m => ({ default: m.AgentExecutionsPage })));
 const OAuthCallbackPage     = lazy(() => import('@/pages/oauth/OAuthCallbackPage').then(m => ({ default: m.OAuthCallbackPage })));
 const PeoplePage            = lazy(() => import('@/pages/people').then(m => ({ default: m.PeoplePage })));
-const PersonDetailPage      = lazy(() => import('@/pages/person-detail').then(m => ({ default: m.PersonDetailPage })));
+// const PersonDetailPage      = lazy(() => import('@/pages/person-detail').then(m => ({ default: m.PersonDetailPage })));
 const ProposalsPage         = lazy(() => import('@/pages/proposals').then(m => ({ default: m.ProposalsPage })));
 const CompaniesPage         = lazy(() => import('@/pages/companies').then(m => ({ default: m.CompaniesPage })));
 const CompanyProfilePage    = lazy(() => import('@/pages/company-profile').then(m => ({ default: m.CompanyProfilePage })));
@@ -63,6 +63,7 @@ const InvoicesPage          = lazy(() => import('@/pages/invoices').then(m => ({
 const ProjectDeliverablesPage = lazy(() => import('@/pages/project-deliverables').then(m => ({ default: m.ProjectDeliverablesPage })));
 const OrgDeliverablesPage = lazy(() => import('@/pages/org-deliverables').then(m => ({ default: m.OrgDeliverablesPage })));
 const DataSourcesPage      = lazy(() => import('@/pages/data-sources'));
+const IntelligencePage     = lazy(() => import('@/pages/intelligence'));
 const DataSourceDetailPage = lazy(() => import('@/pages/data-source-detail').then(m => ({ default: m.DataSourceDetailPage })));
 const DiscordPage             = lazy(() => import('@/pages/discord').then(m => ({ default: m.DiscordPage })));
 const SiteDirectoryPage       = lazy(() => import('@/pages/site-directory').then(m => ({ default: m.SiteDirectoryPage })));
@@ -324,6 +325,7 @@ function App() {
             path="/projects/:projectId/knowledge"
             element={<ProtectedRoute><KnowledgePage /></ProtectedRoute>}
           />
+          <Route path="/intelligence" element={<ProtectedRoute><IntelligencePage /></ProtectedRoute>} />
           <Route path="/my-tasks" element={<ProtectedRoute><MyTasksPage /></ProtectedRoute>} />
           <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
           <Route path="/agents/:agentId/profile" element={<ProtectedRoute><AgentProfilePage /></ProtectedRoute>} />

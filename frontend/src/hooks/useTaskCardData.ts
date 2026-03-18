@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { taskArtifactsApi, agentFlowsApi } from '@/lib/api';
+import { taskCardKeys } from '@/lib/query-keys';
 import type { ExecutionArtifact, AgentFlowEvent, ArtifactType, FlowEventType } from 'shared/types';
 
 // Valid flow event types for normalization
@@ -51,7 +52,7 @@ export function useTaskCardData(taskId: string | undefined) {
     data: artifactsData,
     isLoading: artifactsLoading,
   } = useQuery({
-    queryKey: ['taskArtifacts', taskId],
+    queryKey: taskCardKeys.artifacts(taskId),
     queryFn: async () => {
       if (!taskId) return [];
       const result = await taskArtifactsApi.list(taskId);
@@ -78,7 +79,7 @@ export function useTaskCardData(taskId: string | undefined) {
     data: workflowData,
     isLoading: workflowLoading,
   } = useQuery({
-    queryKey: ['taskWorkflowEvents', taskId],
+    queryKey: taskCardKeys.workflowEvents(taskId),
     queryFn: async () => {
       if (!taskId) return [];
       const flows = await agentFlowsApi.list({ task_id: taskId });
@@ -118,7 +119,7 @@ export function useTasksCardData(taskIds: string[]) {
     data: allArtifacts,
     isLoading: artifactsLoading,
   } = useQuery({
-    queryKey: ['tasksArtifacts', [...taskIds].sort().join(',')],
+    queryKey: taskCardKeys.batchArtifacts(taskIds),
     queryFn: async () => {
       if (taskIds.length === 0) return new Map<string, ExecutionArtifact[]>();
 
@@ -160,7 +161,7 @@ export function useTasksCardData(taskIds: string[]) {
     data: allWorkflowEvents,
     isLoading: workflowLoading,
   } = useQuery({
-    queryKey: ['tasksWorkflowEvents', [...taskIds].sort().join(',')],
+    queryKey: taskCardKeys.batchWorkflowEvents(taskIds),
     queryFn: async () => {
       if (taskIds.length === 0) return new Map<string, AgentFlowEvent[]>();
 

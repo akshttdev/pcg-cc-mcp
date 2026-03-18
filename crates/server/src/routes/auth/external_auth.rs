@@ -38,8 +38,7 @@ pub struct ValidateTokenResponse {
 
 #[derive(Debug, FromRow)]
 struct User {
-    #[sqlx(try_from = "Vec<u8>")]
-    pub id: Uuid,
+    pub id: String,
     pub username: String,
     pub email: String,
     pub full_name: String,
@@ -47,7 +46,7 @@ struct User {
     #[allow(dead_code)]
     pub is_active: i32,
     pub is_admin: i32,
-    pub home_organization_id: Option<Vec<u8>>,
+    pub home_organization_id: Option<String>,
 }
 
 /// POST /auth/external/validate
@@ -98,7 +97,7 @@ pub async fn validate_external_token(
             )
             .bind(&claims.email)
             .bind(claims.name.as_deref().unwrap_or(&claims.email))
-            .bind(u.id.as_bytes().as_slice())
+            .bind(&u.id)
             .execute(pool)
             .await
             .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -107,6 +106,7 @@ pub async fn validate_external_token(
         None => {
             // Create new external user
             let user_id = Uuid::new_v4();
+            let user_id_str = user_id.to_string();
             let username = format!("jv_{}", &claims.sub[..8.min(claims.sub.len())]);
             let full_name = claims.name.unwrap_or_else(|| claims.email.clone());
 
@@ -114,7 +114,7 @@ pub async fn validate_external_token(
                 "INSERT INTO users (id, username, email, password_hash, full_name, external_provider, external_id, is_active, is_admin, created_at, updated_at)
                  VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, datetime('now'), datetime('now'))",
             )
-            .bind(user_id.as_bytes().as_slice())
+            .bind(&user_id_str)
             .bind(&username)
             .bind(&claims.email)
             .bind("external_auth_only") // Placeholder - cannot login with password
@@ -126,7 +126,7 @@ pub async fn validate_external_token(
             .map_err(|e| ApiError::InternalError(format!("Failed to create user: {}", e)))?;
 
             User {
-                id: user_id,
+                id: user_id_str,
                 username,
                 email: claims.email.clone(),
                 full_name,
@@ -147,8 +147,8 @@ pub async fn validate_external_token(
         "INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at, last_used_at)
          VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))",
     )
-    .bind(Uuid::new_v4().as_bytes().as_slice())
-    .bind(user.id.as_bytes().as_slice())
+    .bind(Uuid::new_v4().to_string())
+    .bind(&user.id)
     .bind(&session_id)
     .bind(expires_at.to_rfc3339())
     .execute(pool)
@@ -158,8 +158,7 @@ pub async fn validate_external_token(
     // Get user organizations (likely empty for external users)
     #[derive(FromRow)]
     struct OrgRow {
-        #[sqlx(try_from = "Vec<u8>")]
-        id: Uuid,
+        id: String,
         name: String,
         slug: String,
         role: String,
@@ -171,7 +170,7 @@ pub async fn validate_external_token(
          JOIN organization_members om ON o.id = om.organization_id
          WHERE om.user_id = ? AND o.is_active = 1",
     )
-    .bind(user.id.as_bytes().as_slice())
+    .bind(&user.id)
     .fetch_all(pool)
     .await
     .unwrap_or_default();
@@ -179,18 +178,18 @@ pub async fn validate_external_token(
     let organizations: Vec<UserOrganization> = orgs
         .into_iter()
         .map(|row| UserOrganization {
-            id: row.id.to_string(),
+            id: row.id.clone(),
             name: row.name,
             slug: row.slug,
             role: row.role,
         })
         .collect();
 
-    let platform_roles = super::auth_sqlite::load_platform_roles_pub(pool, user.id.as_bytes().as_slice()).await;
+    let platform_roles = super::auth_sqlite::load_platform_roles_pub(pool, &user.id).await;
     let effective_admin = user.is_admin == 1 || platform_roles.iter().any(|r| r == "platform_admin");
 
     let profile = UserProfile {
-        id: user.id.to_string(),
+        id: user.id.clone(),
         username: user.username,
         email: user.email,
         full_name: user.full_name,
@@ -198,9 +197,7 @@ pub async fn validate_external_token(
         is_admin: effective_admin,
         organizations,
         platform_roles,
-        home_organization_id: user.home_organization_id
-            .and_then(|b| uuid::Uuid::from_slice(&b).ok())
-            .map(|u| u.to_string()),
+        home_organization_id: user.home_organization_id,
     };
 
     let response = ValidateTokenResponse {

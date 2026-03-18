@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT OR IGNORE INTO attempt_repos (id, task_attempt_id, repo_id, target_branch)\n            VALUES ($1, $2, $3, $4)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "8752495380d361312703d95d48256962aced1b2381d94d3e4942e17205ac65f7"
+}

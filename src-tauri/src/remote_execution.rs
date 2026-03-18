@@ -180,7 +180,7 @@ impl RemoteExecutionService {
         };
 
         // 4. Create execution record
-        let execution_id = uuid::Uuid::new_v4().as_bytes().to_vec();
+        let execution_id = uuid::Uuid::new_v4().to_string();
 
         let (execution_type, device_ids) = match &target {
             ExecutionTarget::MasterNode { node_id, .. } => {
@@ -277,7 +277,7 @@ impl RemoteExecutionService {
         execution_id: Option<&[u8]>,
         description: &str,
     ) -> Result<(), rusqlite::Error> {
-        let tx_id = uuid::Uuid::new_v4().as_bytes().to_vec();
+        let tx_id = uuid::Uuid::new_v4().to_string();
 
         db.execute(
             r#"
