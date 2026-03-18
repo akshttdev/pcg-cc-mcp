@@ -178,6 +178,22 @@ Inline keys remaining after sprint are in files outside the sprint scope:
 2. **Login onboarding warning**: `table projects has no column named slug` — the `user_onboarding.rs` service tries to create a project but the seed DB `projects` table schema doesn't have a `slug` column that matches what the code expects. Non-blocking (login succeeds, onboarding silently fails).
 3. **Migration checksum mismatch**: Copying seed DB and then running server fails with `VersionMismatch(20260409000000)` — migration file was modified after being applied to seed. Must use fresh seed + `sqlx migrate run`, or use the runtime DB.
 
+### Second Review (2026-03-18) — Additional Fix
+- **Missed inline key**: `project-tasks/index.tsx:143` had `queryKey: ['users']` instead of `userKeys.all` — fixed in commit `37b9a2616`
+- **Pre-existing console.log**: `project-tasks/index.tsx:111` has debug logging (`[ProjectTasks] Creating task...`) — exists on main, not introduced by this PR
+
+### Merge Conflict Analysis (vs active branches)
+
+**`sloperation316-pipeline-progress`** — 18 conflicting files if merged after PR #46:
+- **Rust backend** (3): `company.rs`, `crm_deals.rs`, `mod.rs` — unrelated to PR #46 changes
+- **Frontend** (12): sidebar files (4), deal-detail tabs (3), org-profile tabs (3), `client-overview.tsx`, `call-intake.tsx`
+- **Other** (3): `App.tsx`, `ClientProjectPanel.tsx`, `dealflow-pipeline.spec.ts`
+- **Resolution strategy**: Merge PR #46 first (frontend-only, no backend changes). Then rebase pipeline-progress — sidebar/org-profile conflicts are just import additions (`sidebarKeys`, `organizationKeys`) that need adding to the pipeline branch's versions of those files.
+
+**`sloperation316-vibe-integration`** — Same 10 overlapping files as pipeline-progress (superset branch). Same resolution strategy.
+
+**`refactor/dev-velocity-sprint`** — Zero frontend overlap (planning file only). Explicitly designed to avoid PR #46 conflicts. Safe to work in parallel.
+
 ### Diff Summary (vs main)
 - **97 files changed**, 4,050 insertions, 291 deletions
-- **7 commits** on branch
+- **11 commits** on branch
