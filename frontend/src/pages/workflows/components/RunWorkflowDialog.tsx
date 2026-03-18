@@ -5,6 +5,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { workflowKeys } from '@/lib/query-keys';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -77,8 +78,8 @@ export function RunWorkflowDialog({ workflow, onClose, onRunComplete }: RunWorkf
     mutationFn: () => dataSourcesApi.runWorkflow(selectedDataSourceId, workflow!.id, effectiveModel || undefined),
     onSuccess: (data) => {
       if (data.workflow_run_id && data.staged_records > 0) {
-        queryClient.invalidateQueries({ queryKey: ['staging', data.workflow_run_id] });
-        queryClient.invalidateQueries({ queryKey: ['staging-pending'] });
+        queryClient.invalidateQueries({ queryKey: workflowKeys.staging(data.workflow_run_id) });
+        queryClient.invalidateQueries({ queryKey: workflowKeys.stagingPending() });
         if (onRunComplete) {
           handleClose();
           onRunComplete(data.workflow_run_id, data.staged_records);

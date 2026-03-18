@@ -8,7 +8,7 @@ import {
   socialApi,
   type SocialAccountRecord,
 } from '@/lib/api';
-import { socialKeys } from '@/lib/query-keys';
+import { organizationKeys, socialKeys } from '@/lib/query-keys';
 import { PLATFORM_ICONS, PLATFORM_COLORS, PLATFORM_BG } from '../../constants';
 import { formatCompactNumber } from '@/lib/formatters';
 
@@ -20,7 +20,7 @@ export function SocialAccountsView({
   orgId: string;
 }) {
   const { data: brandProfile } = useQuery({
-    queryKey: ['brandProfile', orgId],
+    queryKey: organizationKeys.brandProfile(orgId),
     queryFn: () => organizationsApi.getBrandProfile(orgId),
     staleTime: 300_000,
     enabled: !!orgId,

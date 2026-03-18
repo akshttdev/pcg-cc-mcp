@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { workflowKeys } from '@/lib/query-keys';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -16,7 +17,7 @@ export function ArticlePreview({ workflowId, artifactId }: ArticlePreviewProps) 
   // For now, we'll fetch from a simpler approach
   // In production, you'd want a dedicated artifact detail endpoint
   const { data: artifactsData, isLoading } = useQuery({
-    queryKey: ['workflow-artifacts', workflowId],
+    queryKey: workflowKeys.artifacts(workflowId),
     queryFn: async () => {
       const response = await fetch(`/api/nora/workflows/${workflowId}/artifacts`);
       if (!response.ok) throw new Error('Failed to fetch artifacts');

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { projectsApi } from '@/lib/api';
+import { projectKeys } from '@/lib/query-keys';
 import { ProjectList } from '@/components/projects/project-list';
 import { ProjectDetail } from '@/components/projects/project-detail';
 import { Loader } from '@/components/ui/loader';
@@ -14,7 +15,7 @@ function ProjectDetailOrRedirect({ projectId }: { projectId: string }) {
   const navigate = useNavigate();
 
   const { data: project, isLoading } = useQuery({
-    queryKey: ['project', projectId],
+    queryKey: projectKeys.detail(projectId),
     queryFn: () => projectsApi.getById(projectId),
     staleTime: 60 * 1000,
   });

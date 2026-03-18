@@ -18,6 +18,7 @@ import {
   DollarSign,
 } from 'lucide-react';
 import { crmApi, crmDealsApi } from '@/lib/api';
+import { crmKeys } from '@/lib/query-keys';
 import type { CrmContactRecord, CrmDealRecord } from '@/lib/api';
 import { LIFECYCLE_STAGE_INFO } from '@/types/crm';
 import type { LifecycleStage } from '@/types/crm';
@@ -33,13 +34,13 @@ export function CrmContactDetailPage() {
   const navigate = useNavigate();
 
   const { data: contact, isLoading: contactLoading } = useQuery<CrmContactRecord>({
-    queryKey: ['crm', 'contact', contactId],
+    queryKey: crmKeys.contact(contactId!),
     queryFn: () => crmApi.getContact(contactId ?? ''),
     enabled: !!contactId,
   });
 
   const { data: deals = [] } = useQuery<CrmDealRecord[]>({
-    queryKey: ['crm', 'deals', 'contact', contactId],
+    queryKey: crmKeys.dealsByContact(contactId!),
     queryFn: () => crmDealsApi.listDeals({ contact_id: contactId }),
     enabled: !!contactId,
   });

@@ -2,6 +2,7 @@ import { lazy, Suspense, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { organizationsApi, projectsApi, type CrmContactRecord, type OrgBrandProfile, type ClientData } from '@/lib/api';
+import { organizationKeys } from '@/lib/query-keys';
 import type { Project } from 'shared/types';
 
 /** Extended client data as returned by the API (superset of ClientData) */
@@ -370,7 +371,7 @@ export function ClientOverview() {
   const [membersOpen, setMembersOpen] = useState(false);
 
   const { data: clients = [], isLoading } = useQuery({
-    queryKey: ['orgClients', orgId],
+    queryKey: organizationKeys.clients(orgId!),
     queryFn: () => organizationsApi.getClients(orgId!),
     enabled: !!orgId,
   });

@@ -16,7 +16,7 @@ import {
   automationsApi,
 } from '@/lib/api';
 import type { WorkflowDefinition, WorkflowNode, WorkflowConnection } from '@/lib/api';
-import { workflowKeys } from '@/lib/query-keys';
+import { workflowKeys, workflowTemplateKeys } from '@/lib/query-keys';
 import { WorkflowEditor as WorkflowEditorComponent } from '@/components/workflows/WorkflowEditor';
 import { WorkflowCardGrid } from '@/components/workflows/WorkflowCardGrid';
 import { RunWorkflowDialog } from '@/pages/workflows/components/RunWorkflowDialog';
@@ -340,7 +340,7 @@ export function LegacyPipelinesView({ orgId: _orgId }: { orgId: string }) {
   const [selected, setSelected] = useState<string | null>(null);
 
   const { data: templates = [] } = useQuery({
-    queryKey: ['workflowTemplates'],
+    queryKey: workflowTemplateKeys.all(),
     queryFn: () =>
       fetch(resolveApiUrl('/api/workflow-templates'), { credentials: 'include' })
         .then((r) => r.json())
