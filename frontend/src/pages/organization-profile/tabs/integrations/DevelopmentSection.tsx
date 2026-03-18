@@ -3,10 +3,11 @@ import { Link } from 'react-router-dom';
 import { FileText, Boxes, Network, Plug, ExternalLink } from 'lucide-react';
 import { IntegrationCard } from '../../components/IntegrationCard';
 import { githubAuthApi } from '@/lib/api';
+import { integrationKeys } from '@/lib/query-keys';
 
 export function DevelopmentSection() {
   const { data: ghStatus } = useQuery<string>({
-    queryKey: ['github-token-status'],
+    queryKey: integrationKeys.githubTokenStatus(),
     queryFn: () => githubAuthApi.checkGithubToken() as unknown as Promise<string>,
     staleTime: 60_000,
   });

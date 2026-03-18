@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { settingsKeys } from '@/lib/query-keys';
 import {
   Card,
   CardContent,
@@ -238,7 +239,7 @@ export function KeysSettings() {
     isLoading,
     error,
   } = useQuery<ProviderKeyStatus[]>({
-    queryKey: ['provider-keys'],
+    queryKey: settingsKeys.providerKeys(),
     queryFn: pcgRouterApi.listProviderKeys,
   });
 
@@ -246,7 +247,7 @@ export function KeysSettings() {
     mutationFn: ({ provider, apiKey }: { provider: string; apiKey: string }) =>
       pcgRouterApi.setProviderKey(provider, apiKey),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['provider-keys'] });
+      queryClient.invalidateQueries({ queryKey: settingsKeys.providerKeys() });
       const info = PROVIDER_INFO[data.provider];
       setSuccessMsg(`${info?.label || data.provider} API key saved (${data.models_updated} models updated)`);
       setErrorMsg(null);
@@ -261,7 +262,7 @@ export function KeysSettings() {
   const deleteMutation = useMutation({
     mutationFn: (provider: string) => pcgRouterApi.deleteProviderKey(provider),
     onSuccess: (_data, provider) => {
-      queryClient.invalidateQueries({ queryKey: ['provider-keys'] });
+      queryClient.invalidateQueries({ queryKey: settingsKeys.providerKeys() });
       const info = PROVIDER_INFO[provider];
       setSuccessMsg(`${info?.label || provider} API key removed`);
       setErrorMsg(null);

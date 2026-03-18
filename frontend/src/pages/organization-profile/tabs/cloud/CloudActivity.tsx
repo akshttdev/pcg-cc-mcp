@@ -3,6 +3,7 @@ import { Clock, Upload, Wifi, Bot, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { orgCloudApi, type CloudContribution } from '@/lib/api/org-cloud';
+import { orgCloudKeys } from '@/lib/query-keys';
 
 interface CloudActivityProps {
   orgId: string;
@@ -28,7 +29,7 @@ function formatRelativeTime(dateStr: string): string {
 
 export function CloudActivity({ orgId }: CloudActivityProps) {
   const { data: contributions = [], isLoading } = useQuery({
-    queryKey: ['org-cloud-contributions', orgId],
+    queryKey: orgCloudKeys.contributions(orgId),
     queryFn: () => orgCloudApi.getContributions(orgId, 100),
     enabled: !!orgId,
     staleTime: 30_000,

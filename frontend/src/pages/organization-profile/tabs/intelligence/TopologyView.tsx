@@ -8,6 +8,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { knowledgeApi } from '@/lib/api';
+import { knowledgeKeys } from '@/lib/query-keys';
 import type { ProjectKnowledgeSource } from '@/lib/api';
 
 // ── Topology View (used by KnowledgeTab) ─────────────────────────────────────
@@ -76,7 +77,7 @@ export function TopologyView({
 export function TopologyIntelView({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
   const knowledgeQueries = useQueries({
     queries: projectEntries.map((entry) => ({
-      queryKey: ['projectKnowledge', entry.id],
+      queryKey: knowledgeKeys.project(entry.id),
       queryFn: () => knowledgeApi.getProjectKnowledge(entry.id),
       staleTime: 60_000,
       enabled: projectEntries.length > 0,

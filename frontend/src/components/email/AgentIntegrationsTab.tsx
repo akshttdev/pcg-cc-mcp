@@ -21,6 +21,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { emailApi } from '@/lib/api';
+import { commsKeys } from '@/lib/query-keys';
 
 interface Channel {
   id: string;
@@ -72,7 +73,7 @@ export function AgentIntegrationsTab({
 
   // Fetch connected email accounts for this agent
   const { data: accounts = [], isLoading } = useQuery({
-    queryKey: ['email-accounts', ownerType, ownerId],
+    queryKey: commsKeys.emailAccounts(ownerType, ownerId),
     queryFn: async () => {
       const params = new URLSearchParams({ owner_type: ownerType, owner_id: ownerId });
       const res = await fetch(`/api/email/accounts?${params}`, { credentials: 'include' });
@@ -109,7 +110,7 @@ export function AgentIntegrationsTab({
   };
 
   const handleRefresh = () => {
-    queryClient.invalidateQueries({ queryKey: ['email-accounts', ownerType, ownerId] });
+    queryClient.invalidateQueries({ queryKey: commsKeys.emailAccounts(ownerType, ownerId) });
   };
 
   return (

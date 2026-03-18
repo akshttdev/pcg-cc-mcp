@@ -36,6 +36,7 @@ import {
   BookMarked,
 } from 'lucide-react';
 import { deliverablesApi, projectsApi, type DeliverableRecord, type CreateDeliverableInput, type DeliverableStatus, type DeliverableType } from '@/lib/api';
+import { projectKeys, businessKeys } from '@/lib/query-keys';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -271,13 +272,13 @@ export function ProjectDeliverablesPage() {
   const [filterStatus, setFilterStatus] = useState<string>('');
 
   const { data: project } = useQuery({
-    queryKey: ['projects', projectId],
+    queryKey: projectKeys.detail(projectId!),
     queryFn: () => projectsApi.getById(projectId!),
     enabled: !!projectId,
   });
 
   const { data: deliverables = [], isLoading } = useQuery<DeliverableRecord[]>({
-    queryKey: ['deliverables', projectId],
+    queryKey: businessKeys.deliverables(projectId!),
     queryFn: () => deliverablesApi.listForProject(projectId!),
     enabled: !!projectId,
   });
@@ -285,7 +286,7 @@ export function ProjectDeliverablesPage() {
   const moveStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: DeliverableStatus }) =>
       deliverablesApi.moveStatus(id, status),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['deliverables', projectId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: businessKeys.deliverables(projectId!) }),
   });
 
   if (!projectId) return null;
@@ -372,7 +373,7 @@ export function ProjectDeliverablesPage() {
         projectId={projectId}
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        onCreated={() => queryClient.invalidateQueries({ queryKey: ['deliverables', projectId] })}
+        onCreated={() => queryClient.invalidateQueries({ queryKey: businessKeys.deliverables(projectId!) })}
       />
     </div>
   );

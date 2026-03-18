@@ -30,6 +30,7 @@ import { ImportDialog } from '@/components/export/ImportDialog';
 
 import { useSearch } from '@/contexts/search-context';
 import { useQuery } from '@tanstack/react-query';
+import { userKeys } from '@/lib/query-keys';
 import { useTaskViewManager } from '@/hooks/useTaskViewManager';
 import {
   useKeyCreate,
@@ -153,7 +154,7 @@ export function ProjectTasks() {
 
   // Fetch users for assignee display
   const { data: usersData } = useQuery({
-    queryKey: ['users'],
+    queryKey: userKeys.all,
     queryFn: () => usersApi.list(),
     staleTime: 5 * 60 * 1000,
   });

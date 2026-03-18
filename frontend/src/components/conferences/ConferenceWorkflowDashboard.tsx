@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { resolveApiUrl } from '@/lib/api';
+import { workflowKeys } from '@/lib/query-keys';
 import { ArticlePreview } from './ArticlePreview';
 
 interface WorkflowListItem {
@@ -215,20 +216,20 @@ function WorkflowDetails({
   const [activeTab, setActiveTab] = useState('articles');
 
   const { data: status, isLoading: statusLoading } = useQuery({
-    queryKey: ['workflow-status', workflowId],
+    queryKey: workflowKeys.status(workflowId),
     queryFn: () => fetchWorkflowStatus(workflowId),
   });
 
   // Separate query for polling when workflow is running
   useQuery({
-    queryKey: ['workflow-status-poll', workflowId],
+    queryKey: workflowKeys.statusPoll(workflowId),
     queryFn: () => fetchWorkflowStatus(workflowId),
     refetchInterval: status?.status.toLowerCase().includes('running') ? 5000 : false,
     enabled: !!status?.status.toLowerCase().includes('running'),
   });
 
   const { data: artifactsData } = useQuery({
-    queryKey: ['workflow-artifacts', workflowId],
+    queryKey: workflowKeys.artifacts(workflowId),
     queryFn: () => fetchWorkflowArtifacts(workflowId),
   });
 
@@ -441,7 +442,7 @@ export function ConferenceWorkflowDashboard() {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
 
   const { data: workflows, isLoading, refetch } = useQuery({
-    queryKey: ['workflows'],
+    queryKey: workflowKeys.all,
     queryFn: fetchWorkflows,
   });
 

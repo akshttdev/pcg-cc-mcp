@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
 import { crmApi, type CrmContactRecord } from '@/lib/api';
+import { crmKeys } from '@/lib/query-keys';
 import { useAuth } from '@/contexts/AuthContext';
 
 /**
@@ -19,7 +20,7 @@ export function PersonDetailPage() {
 
   // Try to fetch the contact to confirm it exists
   const { data: contact, isLoading, isError } = useQuery<CrmContactRecord>({
-    queryKey: ['crm-contact', personId],
+    queryKey: crmKeys.contactLegacy(personId!),
     queryFn: () => crmApi.getContact(personId!),
     enabled: !!personId,
   });

@@ -110,6 +110,12 @@ export const organizationKeys = {
   deliverables: (orgId: string, projectIds: string[]) =>
     ['orgDeliverables', orgId, projectIds] as const,
   onboarding: (orgId: string) => ['org-onboarding', orgId] as const,
+  memberAssignments: (orgId: string, userId: string) => ['member-assignments', orgId, userId] as const,
+  projectsList: (orgId: string) => ['org-projects-list', orgId] as const,
+  deals: (orgId: string) => ['org-deals', orgId] as const,
+  dealsEnriched: (orgId: string) => ['crm-deals-org-enriched', orgId] as const,
+  activitiesOrg: (orgId: string) => ['crm-activities-org', orgId] as const,
+  workflowRuns: (orgId: string) => ['workflow-runs', orgId] as const,
 };
 
 // ── Sidebar & Navigation ───────────────────────────────────────────────────
@@ -144,6 +150,7 @@ export const workflowKeys = {
   runs: (workflowId: string, organizationId?: string) =>
     ['workflow-runs', workflowId, organizationId] as const,
   runsBuilder: () => ['workflow-runs-builder'] as const,
+  systemAutomations: () => ['system-automations'] as const,
   status: (workflowId: string) => ['workflow-status', workflowId] as const,
   statusPoll: (workflowId: string) => ['workflow-status-poll', workflowId] as const,
   artifacts: (workflowId: string) => ['workflow-artifacts', workflowId] as const,
@@ -156,10 +163,13 @@ export const workflowKeys = {
 
 export const dataSourceKeys = {
   all: ['dataSources'] as const,
+  list: (orgId?: string, projectId?: string) => ['dataSources', orgId, projectId] as const,
   detail: (id: string) => ['dataSource', id] as const,
   workflows: (id: string) => ['dataSourceWorkflows', id] as const,
   artifacts: (id: string) => ['dataSourceArtifacts', id] as const,
   names: (ids: string[]) => ['data-source-names', ids] as const,
+  project: (projectId: string) => ['dataSourcesProject', projectId] as const,
+  recentArtifacts: () => ['recentArtifacts'] as const,
 };
 
 // ── Users ──────────────────────────────────────────────────────────────────
@@ -216,6 +226,7 @@ export const entityKeys = {
   leads: (orgFilter?: string, typeFilter?: string, search?: string) =>
     ['persons', 'leads', orgFilter, typeFilter, search] as const,
   allDirectory: () => ['allProjectsDirectory'] as const,
+  companiesAll: () => ['companies-all'] as const,
 };
 
 // ── Pulse ──────────────────────────────────────────────────────────────────
@@ -233,6 +244,8 @@ export const pulseKeys = {
   projects: () => ['pulse', 'projects'] as const,
   contentLatest: (projectId: string) => ['pulse', 'content', 'latest', projectId] as const,
   contentLegacy: () => ['pulse', 'content', 'legacy'] as const,
+  alertsOrg: (orgId: string) => ['pulse-alerts-org', orgId] as const,
+  contentOrg: (orgId: string) => ['pulse-content-org', orgId] as const,
 };
 
 // ── Communications ─────────────────────────────────────────────────────────
@@ -257,10 +270,12 @@ export const commsKeys = {
 
 export const tokenUsageKeys = {
   today: () => ['token-usage', 'today'] as const,
+  todaySummary: () => ['token-usage-today'] as const,
   daily: (days: number) => ['token-usage', 'daily', days] as const,
   byProvider: (days: number) => ['token-usage', 'by-provider', days] as const,
   byModel: (days: number) => ['token-usage', 'by-model', days] as const,
   byProject: (days: number) => ['token-usage', 'by-project', days] as const,
+  byProjectSummary: () => ['token-usage-by-project'] as const,
   byAgent: (days: number) => ['token-usage', 'by-agent', days] as const,
 };
 
@@ -301,6 +316,15 @@ export const reviewKeys = {
 export const discordKeys = {
   active: () => ['discord-active'] as const,
   archive: () => ['discord-archive'] as const,
+  activeSessions: () => ['discord-active-sessions'] as const,
+};
+
+// ── Integrations ────────────────────────────────────────────────────────────
+
+export const integrationKeys = {
+  githubTokenStatus: () => ['github-token-status'] as const,
+  emailAccountsOrg: (orgId: string) => ['email-accounts-org', orgId] as const,
+  qbStatusOrg: (orgId: string) => ['qb-status-org', orgId] as const,
 };
 
 // ── Media ──────────────────────────────────────────────────────────────────
@@ -494,6 +518,13 @@ export const orchaKeys = {
   status: () => ['orcha-status'] as const,
 };
 
+// ── Agent Watchers ───────────────────────────────────────────────────────
+
+export const agentWatcherKeys = {
+  watchers: (taskId: string) => ['agent-watchers', taskId] as const,
+  availableAgents: () => ['available-agents-for-watchers'] as const,
+};
+
 // ── Unified export ─────────────────────────────────────────────────────────
 
 export const queryKeys = {
@@ -518,6 +549,7 @@ export const queryKeys = {
   oss: ossKeys,
   review: reviewKeys,
   discord: discordKeys,
+  integrations: integrationKeys,
   media: mediaKeys,
   knowledge: knowledgeKeys,
   autonomy: autonomyKeys,
@@ -540,4 +572,5 @@ export const queryKeys = {
   orgPersons: orgPersonKeys,
   workflowTemplates: workflowTemplateKeys,
   orcha: orchaKeys,
+  agentWatchers: agentWatcherKeys,
 } as const;

@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { commentsApi } from '@/lib/api';
+import { taskKeys } from '@/lib/query-keys';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import type { TaskComment, AuthorType, CommentType } from 'shared/types';
 import { format } from 'date-fns';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -8,7 +10,6 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { User, Bot, Server, Trash2, Reply, MessageSquare } from 'lucide-react';
 import { CommentInput } from './CommentInput';
@@ -37,24 +38,19 @@ const COMMENT_TYPE_LABELS: Record<CommentType, string> = {
 };
 
 export function TaskCommentThread({ taskId, currentUserId = 'current-user' }: TaskCommentThreadProps) {
-  const queryClient = useQueryClient();
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
 
   const { data: comments = [], isLoading, error } = useQuery({
-    queryKey: ['taskComments', taskId],
+    queryKey: taskKeys.comments(taskId),
     queryFn: () => commentsApi.getAll(taskId),
     refetchInterval: 10000, // Refresh every 10 seconds
   });
 
-  const deleteMutation = useMutation({
+  const deleteMutation = useMutationWithToast({
     mutationFn: (commentId: string) => commentsApi.delete(commentId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['taskComments', taskId] });
-      toast.success('Comment deleted');
-    },
-    onError: () => {
-      toast.error('Failed to delete comment');
-    },
+    successMessage: 'Comment deleted',
+    errorMessage: 'Failed to delete comment',
+    invalidateKeys: [taskKeys.comments(taskId)],
   });
 
   const handleDelete = (commentId: string) => {

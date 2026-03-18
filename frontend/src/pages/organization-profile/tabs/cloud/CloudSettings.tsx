@@ -4,6 +4,7 @@ import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { orgCloudApi, type OrgCloudSettings as SettingsType } from '@/lib/api/org-cloud';
+import { orgCloudKeys } from '@/lib/query-keys';
 
 interface CloudSettingsProps {
   orgId: string;
@@ -13,7 +14,7 @@ export function CloudSettings({ orgId }: CloudSettingsProps) {
   const queryClient = useQueryClient();
 
   const { data: settings, isLoading } = useQuery({
-    queryKey: ['org-cloud-settings', orgId],
+    queryKey: orgCloudKeys.settings(orgId),
     queryFn: () => orgCloudApi.getSettings(orgId),
     enabled: !!orgId,
     staleTime: 60_000,

@@ -1,11 +1,12 @@
 import { useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import { reportsApi, personsApi, companiesApi, type BusinessReportRecord, type PersonRecord, type CompanyRecord } from '@/lib/api';
+import { businessKeys } from '@/lib/query-keys';
 import { InlineEdit } from '@/components/ui/inline-edit';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { toast } from 'sonner';
 import {
   ClipboardList, ArrowLeft, User, Building2, Globe, ExternalLink,
   TrendingUp, Users, Target, Zap, MapPin, AlertCircle, CheckCircle,
@@ -331,7 +332,7 @@ export function ReportDetail() {
   const queryClient = useQueryClient();
 
   const { data: report, isLoading } = useQuery({
-    queryKey: ['report', id],
+    queryKey: businessKeys.report(id!),
     queryFn: () => reportsApi.get(id!),
     enabled: !!id,
     refetchInterval: (q) => {
@@ -347,24 +348,24 @@ export function ReportDetail() {
     },
   });
 
-  const approveMut = useMutation({
+  const approveMut = useMutationWithToast({
     mutationFn: () => reportsApi.approve(id!),
+    successMessage: 'Report approved and proposal generated',
+    errorMessage: 'Failed to approve report',
+    invalidateKeys: [businessKeys.reports()],
     onSuccess: (result) => {
       queryClient.setQueryData(['report', id], result.report);
-      queryClient.invalidateQueries({ queryKey: ['business-reports'] });
-      toast.success('Report approved and proposal generated');
     },
-    onError: () => toast.error('Failed to approve report'),
   });
 
-  const revisionMut = useMutation({
+  const revisionMut = useMutationWithToast({
     mutationFn: (notes: string) => reportsApi.requestRevision(id!, notes),
+    successMessage: 'Revision requested',
+    errorMessage: 'Failed to request revision',
+    invalidateKeys: [businessKeys.reports()],
     onSuccess: (updated) => {
       queryClient.setQueryData(['report', id], updated);
-      queryClient.invalidateQueries({ queryKey: ['business-reports'] });
-      toast.success('Revision requested');
     },
-    onError: () => toast.error('Failed to request revision'),
   });
 
   const save = useCallback((field: string, value: string) => {
@@ -725,7 +726,7 @@ export function ReportDetail() {
 
 export default function BusinessReportsPage() {
   const { data: reports = [], isLoading, refetch, isFetching } = useQuery({
-    queryKey: ['business-reports'],
+    queryKey: businessKeys.reports(),
     queryFn: reportsApi.list,
     refetchInterval: 30000,
   });

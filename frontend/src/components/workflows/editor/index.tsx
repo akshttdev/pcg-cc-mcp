@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { workflowKeys } from '@/lib/query-keys';
 import {
   Dialog,
   DialogContent,
@@ -97,7 +98,7 @@ export function WorkflowEditor({
 
   // Fetch available models
   const { data: availableModels = [] } = useQuery({
-    queryKey: ['workflowModels'],
+    queryKey: workflowKeys.models(),
     queryFn: () => workflowsApi.listAvailableModels(),
     staleTime: 60 * 60 * 1000,
     enabled: open,

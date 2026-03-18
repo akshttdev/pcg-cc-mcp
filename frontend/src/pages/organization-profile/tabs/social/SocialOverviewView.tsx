@@ -10,6 +10,7 @@ import {
   type SocialPostRecord,
   type SocialMentionRecord,
 } from '@/lib/api';
+import { socialKeys } from '@/lib/query-keys';
 import {
   PLATFORM_ICONS,
   PLATFORM_COLORS,
@@ -38,7 +39,7 @@ export function SocialOverviewView({
 
   const accountQueries = useQueries({
     queries: projectEntries.map(e => ({
-      queryKey: ['social-accounts', e.id],
+      queryKey: socialKeys.accounts(e.id),
       queryFn: () => socialApi.listAccounts(e.id),
       staleTime: 60_000,
     })),
@@ -46,7 +47,7 @@ export function SocialOverviewView({
 
   const postQueries = useQueries({
     queries: projectEntries.map(e => ({
-      queryKey: ['social-posts', e.id],
+      queryKey: socialKeys.posts(e.id),
       queryFn: () => socialApi.listPostsFiltered({ projectId: e.id, limit: 20 }),
       staleTime: 60_000,
     })),

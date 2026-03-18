@@ -44,6 +44,7 @@ import {
   type CompanyRecord,
 } from '@/lib/api';
 import { useCrmContacts, crmContactsQueryKey } from '@/hooks/queries';
+import { entityKeys, organizationKeys } from '@/lib/query-keys';
 import { LIFECYCLE_STAGE_INFO } from '@/types/crm';
 import type { CrmDealWithContact } from '@/types/crm';
 // import { ContactCard } from '../components/ContactCard';
@@ -77,14 +78,14 @@ export function ContactsTab({ orgId }: { orgId: string }) {
 
   // All companies (knowledge graph) — used to look up company profiles by name
   const { data: allCompanies = [], isLoading: companiesLoading } = useQuery<CompanyRecord[]>({
-    queryKey: ['companies-all'],
+    queryKey: entityKeys.companiesAll(),
     queryFn: () => companiesApi.list({ limit: 500 }),
     staleTime: 60_000,
   });
 
   // Pipeline deals — enriched with person_id, contact_company, company_id for each contact
   const { data: pipelineDeals = [], isLoading: pipelineLoading } = useQuery<CrmDealWithContact[]>({
-    queryKey: ['crm-deals-org-enriched', orgId],
+    queryKey: organizationKeys.dealsEnriched(orgId),
     queryFn: async () => {
       const res = await fetch(`/api/crm/deals/enriched?organization_id=${orgId}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('session_id') ?? ''}` },

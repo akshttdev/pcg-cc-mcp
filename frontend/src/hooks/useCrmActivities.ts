@@ -1,7 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { crmActivitiesApi } from '@/lib/api';
-
 import { crmKeys } from '@/lib/query-keys';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 
 // Re-export for backward compatibility — prefer importing from @/lib/query-keys directly
 export const crmActivityQueryKeys = {
@@ -37,23 +37,17 @@ export function useCrmActivities(options: {
 }
 
 export function useCreateActivity() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useMutationWithToast({
     mutationFn: crmActivitiesApi.createActivity,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: crmKeys.activitiesAll() });
-    },
+    errorMessage: 'Failed to create activity',
+    invalidateKeys: [crmKeys.activitiesAll()],
   });
 }
 
 export function useDeleteActivity() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useMutationWithToast({
     mutationFn: crmActivitiesApi.deleteActivity,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: crmKeys.activitiesAll() });
-    },
+    errorMessage: 'Failed to delete activity',
+    invalidateKeys: [crmKeys.activitiesAll()],
   });
 }

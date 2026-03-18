@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { reviewApi, type ReviewComment, type ReviewSourceFile } from '@/lib/api';
+import { reviewKeys } from '@/lib/query-keys';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -166,7 +167,7 @@ export function ReviewPage() {
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['review', token],
+    queryKey: reviewKeys.detail(token!),
     queryFn: () => reviewApi.getData(token!),
     enabled: !!token,
     refetchInterval: 30000,
@@ -181,7 +182,7 @@ export function ReviewPage() {
         timecode_seconds: pendingTimecode ?? undefined,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['review', token] });
+      queryClient.invalidateQueries({ queryKey: reviewKeys.detail(token!) });
       setForm((f) => ({ ...f, content: '' }));
       setPendingTimecode(null);
     },
@@ -189,7 +190,7 @@ export function ReviewPage() {
 
   const resolveMutation = useMutation({
     mutationFn: (commentId: string) => reviewApi.resolve(token!, commentId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['review', token] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: reviewKeys.detail(token!) }),
   });
 
   const handleMarkTimecode = () => {

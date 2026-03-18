@@ -19,6 +19,7 @@ import {
   knowledgeApi,
   type ExecutionArtifact,
 } from '@/lib/api';
+import { dataSourceKeys, knowledgeKeys } from '@/lib/query-keys';
 
 // ── Artifacts View (execution artifacts accordion) ──────────────────────────
 
@@ -26,7 +27,7 @@ export function ArtifactsView({ orgId }: { orgId: string }) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   const { data: artifacts = [], isLoading } = useQuery({
-    queryKey: ['recentArtifacts'],
+    queryKey: dataSourceKeys.recentArtifacts(),
     queryFn: () => workflowsApi.listRecentArtifacts(),
   });
 
@@ -154,14 +155,14 @@ export function ArtifactsView({ orgId }: { orgId: string }) {
 
 export function DataSourcesIntelView({ orgId, projectEntries }: { orgId: string; projectEntries: { id: string; name: string }[] }) {
   const { data: orgSources = [], isLoading: orgLoading } = useQuery({
-    queryKey: ['dataSources', orgId],
+    queryKey: dataSourceKeys.list(orgId),
     queryFn: () => dataSourcesApi.listByOrganization(orgId),
     staleTime: 60_000,
   });
 
   const projSourceQueries = useQueries({
     queries: projectEntries.map((entry) => ({
-      queryKey: ['dataSourcesProject', entry.id],
+      queryKey: dataSourceKeys.project(entry.id),
       queryFn: () => dataSourcesApi.listByProject(entry.id),
       staleTime: 60_000,
       enabled: projectEntries.length > 0,
@@ -241,7 +242,7 @@ export function DataSourcesIntelView({ orgId, projectEntries }: { orgId: string;
 export function ArtifactsIntelView({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
   const knowledgeQueries = useQueries({
     queries: projectEntries.map((entry) => ({
-      queryKey: ['projectKnowledge', entry.id],
+      queryKey: knowledgeKeys.project(entry.id),
       queryFn: () => knowledgeApi.getProjectKnowledge(entry.id),
       staleTime: 60_000,
       enabled: projectEntries.length > 0,

@@ -1,6 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { workflowTemplatesApi } from '@/lib/api';
 import { workflowTemplateKeys, crmKeys, projectKeys } from '@/lib/query-keys';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import type { ConvertDealRequest } from '@/lib/api';
 
 export function useWorkflowTemplates() {
@@ -12,15 +13,11 @@ export function useWorkflowTemplates() {
 }
 
 export function useConvertDeal() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useMutationWithToast({
     mutationFn: ({ dealId, data }: { dealId: string; data: ConvertDealRequest }) =>
       workflowTemplatesApi.convertDeal(dealId, data),
-    onSuccess: () => {
-      // Invalidate deals (custom_fields updated) and projects (new project created)
-      queryClient.invalidateQueries({ queryKey: crmKeys.all });
-      queryClient.invalidateQueries({ queryKey: projectKeys.all });
-    },
+    successMessage: 'Deal converted successfully',
+    errorMessage: 'Failed to convert deal',
+    invalidateKeys: [crmKeys.all, projectKeys.all],
   });
 }

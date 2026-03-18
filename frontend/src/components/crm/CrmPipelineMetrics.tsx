@@ -9,6 +9,7 @@ import {
   Trophy,
 } from 'lucide-react';
 import { crmDealsApi } from '@/lib/api';
+import { crmKeys } from '@/lib/query-keys';
 import type { PipelineMetricsRecord } from '@/lib/api';
 import { formatCurrencyFull } from '@/lib/formatters';
 
@@ -22,7 +23,7 @@ export function CrmPipelineMetrics({
   pipelineId,
 }: CrmPipelineMetricsProps) {
   const { data: metrics, isLoading } = useQuery<PipelineMetricsRecord>({
-    queryKey: ['crm', 'metrics', projectId, pipelineId],
+    queryKey: crmKeys.metrics(projectId, pipelineId),
     queryFn: () => crmDealsApi.getMetrics(projectId, pipelineId),
     enabled: !!projectId,
     staleTime: 60 * 1000,

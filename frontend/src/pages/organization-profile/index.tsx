@@ -56,7 +56,7 @@ import {
   type ClientData,
   type OrgBrandProfile,
 } from '@/lib/api';
-import { organizationKeys } from '@/lib/query-keys';
+import { organizationKeys, sidebarKeys } from '@/lib/query-keys';
 import { useOrganizationById, useCrmContacts } from '@/hooks/queries';
 import type { OrganizationProfilePageProps, OrgMember } from './types';
 import { formatCurrency, parseJsonArray } from './helpers';
@@ -149,13 +149,13 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
   });
 
   const { data: sidebarTree } = useQuery({
-    queryKey: ['sidebarTree'],
+    queryKey: sidebarKeys.tree(),
     queryFn: () => organizationsApi.getSidebarTree(),
     staleTime: 60_000,
   });
 
   const { data: orgDeals = [] } = useQuery({
-    queryKey: ['org-deals', orgId],
+    queryKey: organizationKeys.deals(orgId!),
     queryFn: () => crmDealsApi.listOrgDeals(orgId!),
     enabled: !!orgId,
     staleTime: 60_000,

@@ -23,6 +23,7 @@ import { MoreHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { projectsApi, organizationsApi, stagingApi } from '@/lib/api';
+import { sidebarKeys, projectKeys } from '@/lib/query-keys';
 import type { SidebarTree } from '@/lib/api';
 import type { Project } from 'shared/types';
 import { useCommandStore } from '@/stores/useCommandStore';
@@ -70,7 +71,7 @@ export function Sidebar({ className }: SidebarProps) {
     isLoading: isTreeLoading,
     error: treeError,
   } = useQuery<SidebarTree, Error>({
-    queryKey: ['sidebarTree'],
+    queryKey: sidebarKeys.tree(),
     queryFn: organizationsApi.getSidebarTree,
   });
 
@@ -80,7 +81,7 @@ export function Sidebar({ className }: SidebarProps) {
     isLoading: isProjectsLoading,
     error: projectsError,
   } = useQuery<Project[], Error>({
-    queryKey: ['projects'],
+    queryKey: projectKeys.all,
     queryFn: projectsApi.getAll,
     enabled: !!treeError || (!!sidebarTree && sidebarTree.owned_orgs.length === 0 && sidebarTree.member_orgs.length === 0),
   });
@@ -130,7 +131,7 @@ export function Sidebar({ className }: SidebarProps) {
   // from org-level Intelligence workflows (system automations, pipeline blueprints),
   // consider splitting this badge or moving org-level staging to Intelligence.
   const { data: stagingPendingCount = 0 } = useQuery({
-    queryKey: ['stagingPendingCount', homeOrgId],
+    queryKey: sidebarKeys.stagingPendingCount(homeOrgId!),
     queryFn: async () => {
       if (!homeOrgId) return 0;
       const records = await stagingApi.listPending(homeOrgId);
@@ -468,7 +469,7 @@ export function Sidebar({ className }: SidebarProps) {
                   }) as CreateNameDialogResult;
                   const slug = result.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
                   const newOrg = await organizationsApi.create({ name: result.name, slug });
-                  queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
+                  queryClient.invalidateQueries({ queryKey: sidebarKeys.tree() });
                   if (newOrg?.id) {
                     navigate(`/organizations/${newOrg.id}`);
                   }

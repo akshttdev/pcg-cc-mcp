@@ -38,6 +38,7 @@ import {
   type RalphIteration,
   type RalphLoopStatus,
 } from '@/lib/api';
+import { executionKeys } from '@/lib/query-keys';
 
 interface RalphLoopProgressProps {
   loopId?: string;
@@ -106,7 +107,7 @@ export function RalphLoopProgress({
     isLoading: stateLoading,
     error: stateError,
   } = useQuery({
-    queryKey: ['ralph-loop', loopId || taskAttemptId],
+    queryKey: executionKeys.ralphLoop(loopId || taskAttemptId || ''),
     queryFn: async () => {
       if (loopId) {
         return ralphApi.getLoopState(loopId);
@@ -134,7 +135,7 @@ export function RalphLoopProgress({
   const {
     data: iterations = [],
   } = useQuery({
-    queryKey: ['ralph-iterations', loopState?.id],
+    queryKey: executionKeys.ralphIterations(loopState?.id || ''),
     queryFn: () => ralphApi.getIterations(loopState!.id),
     enabled: !!loopState?.id,
     refetchInterval: () => {

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { workflowKeys } from '@/lib/query-keys';
 import {
   Dialog,
   DialogContent,
@@ -81,13 +82,13 @@ export function WorkflowTriggersPanel({
   const [newScheduleInterval, setNewScheduleInterval] = useState('hourly');
 
   const { data: triggers = [], isLoading } = useQuery({
-    queryKey: ['workflowTriggers', workflowId],
+    queryKey: workflowKeys.triggers(workflowId),
     queryFn: () => triggersApi.list(workflowId),
     enabled: open && !!workflowId,
   });
 
   const { data: availableModels = [] } = useQuery<AvailableModel[]>({
-    queryKey: ['workflowModels'],
+    queryKey: workflowKeys.models(),
     queryFn: () => workflowsApi.listAvailableModels(),
     staleTime: 60 * 60 * 1000,
     enabled: open,
@@ -96,7 +97,7 @@ export function WorkflowTriggersPanel({
   const createMutation = useMutation({
     mutationFn: (data: CreateWorkflowTrigger) => triggersApi.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workflowTriggers', workflowId] });
+      queryClient.invalidateQueries({ queryKey: workflowKeys.triggers(workflowId) });
       resetForm();
     },
   });
@@ -104,14 +105,14 @@ export function WorkflowTriggersPanel({
   const toggleMutation = useMutation({
     mutationFn: (id: string) => triggersApi.toggle(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workflowTriggers', workflowId] });
+      queryClient.invalidateQueries({ queryKey: workflowKeys.triggers(workflowId) });
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => triggersApi.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workflowTriggers', workflowId] });
+      queryClient.invalidateQueries({ queryKey: workflowKeys.triggers(workflowId) });
     },
   });
 

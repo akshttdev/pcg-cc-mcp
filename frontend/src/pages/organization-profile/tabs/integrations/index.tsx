@@ -24,6 +24,7 @@ import {
   type EmailAccountRecord,
 } from '@/lib/api';
 import { useUserSystem } from '@/components/config-provider';
+import { integrationKeys } from '@/lib/query-keys';
 
 function IntegrationsTab({ orgId }: { orgId: string }) {
   const queryClient = useQueryClient();
@@ -33,7 +34,7 @@ function IntegrationsTab({ orgId }: { orgId: string }) {
 
   // ── Email accounts (Gmail / Zoho) ─────────────────────────────────────────
   const { data: emailAccounts = [], isLoading: emailLoading } = useQuery<EmailAccountRecord[]>({
-    queryKey: ['email-accounts-org', orgId],
+    queryKey: integrationKeys.emailAccountsOrg(orgId),
     queryFn: () => emailApi.listAccounts(undefined, undefined, 'organization', orgId),
     staleTime: 30_000,
   });
@@ -52,17 +53,17 @@ function IntegrationsTab({ orgId }: { orgId: string }) {
   const handleEmailDisconnect = async (id: string) => {
     if (!confirm('Disconnect this email account?')) return;
     await emailApi.deleteAccount(id);
-    queryClient.invalidateQueries({ queryKey: ['email-accounts-org', orgId] });
+    queryClient.invalidateQueries({ queryKey: integrationKeys.emailAccountsOrg(orgId) });
   };
 
   const handleEmailSync = async (id: string) => {
     await emailApi.triggerSync(id);
-    queryClient.invalidateQueries({ queryKey: ['email-accounts-org', orgId] });
+    queryClient.invalidateQueries({ queryKey: integrationKeys.emailAccountsOrg(orgId) });
   };
 
   // ── QuickBooks ────────────────────────────────────────────────────────────
   const { data: qbStatus, isLoading: qbLoading, refetch: refetchQb } = useQuery({
-    queryKey: ['qb-status-org', orgId],
+    queryKey: integrationKeys.qbStatusOrg(orgId),
     queryFn: () => quickbooksApi.getStatus(orgId),
     staleTime: 30_000,
   });

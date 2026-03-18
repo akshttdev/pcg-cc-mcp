@@ -1,43 +1,41 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { orgOnboardingApi } from '@/lib/api';
 import { organizationKeys } from '@/lib/query-keys';
-import { toast } from 'sonner';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 
 export function useOrgOnboarding(orgId: string | undefined) {
-  const queryClient = useQueryClient();
-
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: organizationKeys.onboarding(orgId!) });
+  const onboardingKey = organizationKeys.onboarding(orgId!);
 
   const query = useQuery({
-    queryKey: organizationKeys.onboarding(orgId!),
+    queryKey: onboardingKey,
     queryFn: () => orgOnboardingApi.getByOrg(orgId!),
     enabled: !!orgId,
     staleTime: 60_000,
   });
 
-  const startOnboarding = useMutation({
+  const startOnboarding = useMutationWithToast({
     mutationFn: (contextData?: string) => orgOnboardingApi.startOrg(orgId!, contextData),
-    onSuccess: invalidate,
-    onError: () => toast.error('Failed to start onboarding'),
+    errorMessage: 'Failed to start onboarding',
+    invalidateKeys: [onboardingKey],
   });
 
-  const startSegment = useMutation({
+  const startSegment = useMutationWithToast({
     mutationFn: (segmentId: string) => orgOnboardingApi.startOrgSegment(segmentId),
-    onSuccess: invalidate,
-    onError: () => toast.error('Failed to start segment'),
+    errorMessage: 'Failed to start segment',
+    invalidateKeys: [onboardingKey],
   });
 
-  const completeSegment = useMutation({
+  const completeSegment = useMutationWithToast({
     mutationFn: ({ segmentId, opts }: { segmentId: string; opts?: { user_decisions?: string; skip?: boolean } }) =>
       orgOnboardingApi.completeOrgSegment(segmentId, opts),
-    onSuccess: invalidate,
-    onError: () => toast.error('Failed to complete segment'),
+    errorMessage: 'Failed to complete segment',
+    invalidateKeys: [onboardingKey],
   });
 
-  const skipSegment = useMutation({
+  const skipSegment = useMutationWithToast({
     mutationFn: (segmentId: string) => orgOnboardingApi.completeOrgSegment(segmentId, { skip: true }),
-    onSuccess: invalidate,
-    onError: () => toast.error('Failed to skip segment'),
+    errorMessage: 'Failed to skip segment',
+    invalidateKeys: [onboardingKey],
   });
 
   return {

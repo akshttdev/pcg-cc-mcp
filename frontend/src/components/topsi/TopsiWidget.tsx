@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { MeetingMode } from './MeetingMode';
+import { MeetingMode } from './meeting-mode';
 import { useAgentChatStore } from '@/stores/useAgentChatStore';
 import { useActivityStore } from '@/stores/useActivityStore';
 
