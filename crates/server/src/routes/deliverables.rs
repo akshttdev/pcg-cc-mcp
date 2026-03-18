@@ -6,7 +6,7 @@ use axum::{
 };
 use deployment::Deployment;
 use utils::response::ApiResponse;
-use uuid::Uuid;
+use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 use db::models::deliverable::{CreateDeliverable, Deliverable, UpdateDeliverable};
@@ -27,7 +27,7 @@ async fn list_deliverables(
     State(d): State<DeploymentImpl>,
     Path(project_id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<Deliverable>>>, ApiError> {
-    let project_id = Uuid::parse_str(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let project_id = DbUuid::parse(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let items = Deliverable::list_for_project(&d.db().pool, project_id).await?;
     Ok(Json(ApiResponse::success(items)))
 }
@@ -38,7 +38,7 @@ async fn create_deliverable(
     Path(project_id): Path<String>,
     Json(mut body): Json<CreateDeliverable>,
 ) -> Result<Json<ApiResponse<Deliverable>>, ApiError> {
-    let project_id = Uuid::parse_str(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let project_id = DbUuid::parse(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     // Ensure the path project_id takes precedence
     body.project_id = project_id;
     let item = Deliverable::create(&d.db().pool, body).await?;
@@ -50,7 +50,7 @@ async fn get_deliverable(
     State(d): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Deliverable>>, ApiError> {
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     Deliverable::find_by_id(&d.db().pool, id)
         .await?
         .map(|x| Json(ApiResponse::success(x)))
@@ -63,7 +63,7 @@ async fn update_deliverable(
     Path(id): Path<String>,
     Json(body): Json<UpdateDeliverable>,
 ) -> Result<Json<ApiResponse<Deliverable>>, ApiError> {
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     Deliverable::update(&d.db().pool, id, body)
         .await?
         .map(|x| Json(ApiResponse::success(x)))
@@ -76,7 +76,7 @@ async fn move_deliverable_status(
     Path(id): Path<String>,
     Json(body): Json<MoveStatusBody>,
 ) -> Result<Json<ApiResponse<Deliverable>>, ApiError> {
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let pool = &d.db().pool;
     let deliverable = Deliverable::move_status(pool, id, &body.status)
         .await?
@@ -116,7 +116,7 @@ async fn get_review_link(
     State(d): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let pool = &d.db().pool;
     let token = ReviewToken::get_or_create(pool, id, None)
         .await?;
@@ -136,7 +136,7 @@ async fn delete_deliverable(
     State(d): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let deleted = Deliverable::delete(&d.db().pool, id).await?;
     if deleted {
         Ok(Json(ApiResponse::success(())))

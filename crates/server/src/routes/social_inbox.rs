@@ -12,6 +12,7 @@ use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
+use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 use db::models::social_mention::{CreateSocialMention, SocialMention, UpdateSocialMention};
@@ -58,7 +59,7 @@ async fn get_inbox_stats(
     Path(project_id): Path<String>,
 ) -> Result<Json<ApiResponse<InboxStats>>, ApiError> {
     let pool = &deployment.db().pool;
-    let project_uuid = Uuid::parse_str(&project_id).map_err(|_| ApiError::BadRequest("Invalid project ID".into()))?;
+    let project_uuid = DbUuid::parse(&project_id).map_err(|_| ApiError::BadRequest("Invalid project ID".into()))?.to_uuid();
 
     let total_unread = SocialMention::count_unread(pool, project_uuid).await?;
     let high_priority_mentions = SocialMention::find_high_priority(pool, project_uuid).await?;
@@ -75,7 +76,7 @@ async fn get_mention(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<SocialMention>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
     let mention = SocialMention::find_by_id(pool, id_uuid).await?;
     Ok(Json(ApiResponse::success(mention)))
 }
@@ -87,7 +88,7 @@ async fn update_mention(
     Json(update): Json<UpdateSocialMention>,
 ) -> Result<Json<ApiResponse<SocialMention>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
     let mention = SocialMention::update(pool, id_uuid, update).await?;
     Ok(Json(ApiResponse::success(mention)))
 }
@@ -98,7 +99,7 @@ async fn mark_read(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
     SocialMention::mark_read(pool, id_uuid).await?;
     Ok(Json(ApiResponse::success(())))
 }

@@ -20,6 +20,7 @@ use std::{convert::Infallible, time::Duration};
 use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
+use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError, pulse_publisher};
 
@@ -147,7 +148,7 @@ async fn list_content(
     Path(project_id): Path<String>,
     Query(query): Query<ContentQueryParams>,
 ) -> Result<ResponseJson<ApiResponse<PulseContentResponse>>, ApiError> {
-    let project_id = Uuid::parse_str(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let project_id = DbUuid::parse(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let pool = &deployment.db().pool;
     let limit = query.limit.unwrap_or(50);
     let items = PulseContentItem::search(
@@ -170,7 +171,7 @@ async fn get_latest_content(
     Path(project_id): Path<String>,
     Query(query): Query<LimitQuery>,
 ) -> Result<ResponseJson<ApiResponse<PulseContentResponse>>, ApiError> {
-    let project_id = Uuid::parse_str(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let project_id = DbUuid::parse(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let pool = &deployment.db().pool;
     let limit = query.limit.unwrap_or(20);
     let items = PulseContentItem::find_latest(pool, project_id, limit)
@@ -261,7 +262,7 @@ async fn list_alerts(
     Path(project_id): Path<String>,
     Query(query): Query<LimitQuery>,
 ) -> Result<ResponseJson<ApiResponse<Vec<PulseAlert>>>, ApiError> {
-    let project_id = Uuid::parse_str(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let project_id = DbUuid::parse(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let pool = &deployment.db().pool;
     let limit = query.limit.unwrap_or(50);
     let alerts = PulseAlert::find_by_project(pool, project_id, limit)
@@ -274,7 +275,7 @@ async fn list_alert_rules(
     State(deployment): State<DeploymentImpl>,
     Path(project_id): Path<String>,
 ) -> Result<ResponseJson<ApiResponse<Vec<PulseAlertRule>>>, ApiError> {
-    let project_id = Uuid::parse_str(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let project_id = DbUuid::parse(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let pool = &deployment.db().pool;
     let rules = PulseAlertRule::find_by_project(pool, project_id)
         .await
@@ -287,7 +288,7 @@ async fn create_alert_rule(
     Path(project_id): Path<String>,
     ResponseJson(mut data): ResponseJson<CreatePulseAlertRule>,
 ) -> Result<ResponseJson<ApiResponse<PulseAlertRule>>, ApiError> {
-    let project_id = Uuid::parse_str(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let project_id = DbUuid::parse(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     data.project_id = project_id;
     let pool = &deployment.db().pool;
     let rule = PulseAlertRule::create(pool, &data)
@@ -353,7 +354,7 @@ async fn list_runs(
     Path(project_id): Path<String>,
     Query(query): Query<LimitQuery>,
 ) -> Result<ResponseJson<ApiResponse<Vec<PulseCollectionRun>>>, ApiError> {
-    let project_id = Uuid::parse_str(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let project_id = DbUuid::parse(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let pool = &deployment.db().pool;
     let limit = query.limit.unwrap_or(50);
     let runs = PulseCollectionRun::find_by_project(pool, project_id, limit)
@@ -370,7 +371,7 @@ async fn get_tracking_config(
     State(deployment): State<DeploymentImpl>,
     Path(project_id): Path<String>,
 ) -> Result<ResponseJson<ApiResponse<Option<PulseTrackingConfig>>>, ApiError> {
-    let project_id = Uuid::parse_str(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let project_id = DbUuid::parse(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let pool = &deployment.db().pool;
     let config = PulseTrackingConfig::find_by_project(pool, project_id)
         .await
@@ -383,7 +384,7 @@ async fn update_tracking_config(
     Path(project_id): Path<String>,
     ResponseJson(data): ResponseJson<UpdatePulseTrackingConfig>,
 ) -> Result<ResponseJson<ApiResponse<PulseTrackingConfig>>, ApiError> {
-    let project_id = Uuid::parse_str(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let project_id = DbUuid::parse(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let pool = &deployment.db().pool;
     let config = PulseTrackingConfig::upsert(pool, project_id, None, &data)
         .await
@@ -423,7 +424,7 @@ async fn dashboard_stats(
     State(deployment): State<DeploymentImpl>,
     Path(project_id): Path<String>,
 ) -> Result<ResponseJson<ApiResponse<PulseDashboardStats>>, ApiError> {
-    let project_uuid = Uuid::parse_str(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let project_uuid = DbUuid::parse(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let pool = &deployment.db().pool;
 
     let total_content = PulseContentItem::count_by_project(pool, project_uuid)
@@ -534,7 +535,7 @@ async fn stream_pulse_content(
     Path(project_id): Path<String>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     // Parse project_id to Uuid for model calls; default to nil UUID on parse failure
-    let project_id = Uuid::parse_str(&project_id).unwrap_or_default();
+    let project_id = DbUuid::parse(&project_id).unwrap_or_default().to_uuid();
     let pool = deployment.db().pool.clone();
 
     let stream = stream::unfold(

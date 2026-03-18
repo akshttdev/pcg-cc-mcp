@@ -12,6 +12,7 @@ use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
+use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 use db::models::email_account::{
@@ -119,7 +120,7 @@ async fn get_account(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<EmailAccount>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
     let account = EmailAccount::find_by_id(pool, id_uuid).await?;
     Ok(Json(ApiResponse::success(account)))
 }
@@ -131,7 +132,7 @@ async fn update_account(
     Json(update): Json<UpdateEmailAccount>,
 ) -> Result<Json<ApiResponse<EmailAccount>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
     let account = EmailAccount::update(pool, id_uuid, update).await?;
     Ok(Json(ApiResponse::success(account)))
 }
@@ -142,7 +143,7 @@ async fn delete_account(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
     EmailAccount::delete(pool, id_uuid).await?;
     Ok(Json(ApiResponse::success(())))
 }
@@ -153,7 +154,7 @@ async fn trigger_sync(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<EmailAccount>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
 
     // Update sync status to indicate sync is starting
     EmailAccount::update_sync_status(pool, id_uuid, "active", None).await?;

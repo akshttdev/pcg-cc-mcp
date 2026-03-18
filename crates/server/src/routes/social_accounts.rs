@@ -13,6 +13,7 @@ use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
+use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 use db::models::social_account::{SocialAccount, UpdateSocialAccount};
@@ -56,7 +57,7 @@ async fn get_account(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<SocialAccount>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
     let account = SocialAccount::find_by_id(pool, id_uuid).await?;
     Ok(Json(ApiResponse::success(account)))
 }
@@ -68,7 +69,7 @@ async fn update_account(
     Json(update): Json<UpdateSocialAccount>,
 ) -> Result<Json<ApiResponse<SocialAccount>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
     let account = SocialAccount::update(pool, id_uuid, update).await?;
     Ok(Json(ApiResponse::success(account)))
 }
@@ -79,7 +80,7 @@ async fn delete_account(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
     SocialAccount::delete(pool, id_uuid).await?;
     Ok(Json(ApiResponse::success(())))
 }
@@ -99,7 +100,7 @@ async fn get_best_times(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<BestTimeSlot>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
 
     #[derive(sqlx::FromRow)]
     struct Row {

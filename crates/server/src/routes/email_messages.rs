@@ -12,6 +12,7 @@ use deployment::Deployment;
 use serde::Deserialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
+use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 use db::models::email_message::{
@@ -63,7 +64,7 @@ async fn get_inbox_stats(
     State(deployment): State<DeploymentImpl>,
     Path(project_id): Path<String>,
 ) -> Result<Json<ApiResponse<EmailInboxStats>>, ApiError> {
-    let project_id = Uuid::parse_str(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let project_id = DbUuid::parse(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let pool = &deployment.db().pool;
     let stats = EmailMessage::get_inbox_stats(pool, project_id).await?;
     Ok(Json(ApiResponse::success(stats)))
@@ -74,7 +75,7 @@ async fn get_message(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<EmailMessage>>, ApiError> {
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let pool = &deployment.db().pool;
     let message = EmailMessage::find_by_id(pool, id).await?;
     Ok(Json(ApiResponse::success(message)))
@@ -96,7 +97,7 @@ async fn update_message(
     Path(id): Path<String>,
     Json(update): Json<UpdateEmailMessage>,
 ) -> Result<Json<ApiResponse<EmailMessage>>, ApiError> {
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let pool = &deployment.db().pool;
     let message = EmailMessage::update(pool, id, update).await?;
     Ok(Json(ApiResponse::success(message)))
@@ -107,7 +108,7 @@ async fn mark_as_read(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let pool = &deployment.db().pool;
     EmailMessage::mark_as_read(pool, id).await?;
     Ok(Json(ApiResponse::success(())))
@@ -118,7 +119,7 @@ async fn mark_as_unread(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let pool = &deployment.db().pool;
     EmailMessage::mark_as_unread(pool, id).await?;
     Ok(Json(ApiResponse::success(())))
@@ -129,7 +130,7 @@ async fn toggle_star(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<EmailMessage>>, ApiError> {
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let pool = &deployment.db().pool;
     let message = EmailMessage::toggle_star(pool, id).await?;
     Ok(Json(ApiResponse::success(message)))
@@ -140,7 +141,7 @@ async fn move_to_trash(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let pool = &deployment.db().pool;
     EmailMessage::move_to_trash(pool, id).await?;
     Ok(Json(ApiResponse::success(())))

@@ -27,6 +27,7 @@ use deployment::Deployment;
 use serde::Deserialize;
 use ts_rs::TS;
 use uuid::Uuid;
+use db::db_uuid::DbUuid;
 
 use crate::DeploymentImpl;
 
@@ -98,7 +99,7 @@ async fn patch_library(
     Json(body): Json<PatchOssLibrary>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let pool = &deployment.db().pool;
-    let id_uuid = Uuid::parse_str(&id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid ID".to_string()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid ID".to_string()))?.to_uuid();
 
     sqlx::query(
         "UPDATE oss_libraries
@@ -130,7 +131,7 @@ async fn delete_library(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let id_uuid = Uuid::parse_str(&id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid ID".to_string()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid ID".to_string()))?.to_uuid();
     let result = sqlx::query("DELETE FROM oss_libraries WHERE id = ?")
         .bind(id_uuid)
         .execute(&deployment.db().pool)
@@ -149,7 +150,7 @@ async fn check_library_now(
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let pool = deployment.db().pool.clone();
-    let id_uuid = Uuid::parse_str(&id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid ID".to_string()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid ID".to_string()))?.to_uuid();
 
     let lib = OssLibrary::get(&pool, id_uuid)
         .await
@@ -170,7 +171,7 @@ async fn list_updates_for_library(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let id_uuid = Uuid::parse_str(&id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid ID".to_string()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid ID".to_string()))?.to_uuid();
     let updates = OssLibraryUpdate::list_for_library(&deployment.db().pool, id_uuid)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -190,7 +191,7 @@ async fn dismiss_update(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let id_uuid = Uuid::parse_str(&id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid ID".to_string()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid ID".to_string()))?.to_uuid();
     sqlx::query(
         "UPDATE oss_library_updates SET recommendation_status = 'dismissed' WHERE id = ?",
     )

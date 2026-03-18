@@ -11,6 +11,7 @@ use db::models::{
 use deployment::Deployment;
 use utils::response::ApiResponse;
 use uuid::Uuid;
+use db::db_uuid::DbUuid;
 
 use crate::{
     DeploymentImpl,
@@ -213,7 +214,7 @@ pub async fn add_client_member(
         &deployment.db().pool,
         &member_id,
         &id,
-        Uuid::parse_str(&data.user_id).map_err(|_| ApiError::BadRequest("Invalid user_id".into()))?,
+        DbUuid::parse(&data.user_id).map_err(|_| ApiError::BadRequest("Invalid user_id".into()))?.to_uuid(),
         role,
         Some(&granted_by),
     )
@@ -227,7 +228,7 @@ pub async fn remove_client_member(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    let uid = Uuid::parse_str(&uid).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let uid = DbUuid::parse(&uid).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let client = Client::find_by_id(&deployment.db().pool, &id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Client not found".into()))?;

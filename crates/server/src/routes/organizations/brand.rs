@@ -6,7 +6,7 @@ pub async fn get_org_brand_profile(
     Path(org_id): Path<String>,
 ) -> Result<Json<ApiResponse<Option<OrgBrandProfile>>>, ApiError> {
     let _ = access_context;
-    let org_uuid = Uuid::parse_str(&org_id).map_err(|_| ApiError::BadRequest("Invalid org ID".into()))?;
+    let org_uuid = DbUuid::parse(&org_id).map_err(|_| ApiError::BadRequest("Invalid org ID".into()))?.to_uuid();
     let profile = OrgBrandProfile::find_by_org(&deployment.db().pool, org_uuid).await?;
     Ok(Json(ApiResponse::success(profile)))
 }
@@ -19,7 +19,7 @@ pub async fn upsert_org_brand_profile(
     Json(body): Json<UpsertOrgBrandProfile>,
 ) -> Result<Json<ApiResponse<OrgBrandProfile>>, ApiError> {
     let _ = access_context;
-    let org_uuid = Uuid::parse_str(&org_id).map_err(|_| ApiError::BadRequest("Invalid org ID".into()))?;
+    let org_uuid = DbUuid::parse(&org_id).map_err(|_| ApiError::BadRequest("Invalid org ID".into()))?.to_uuid();
     let profile = OrgBrandProfile::upsert(&deployment.db().pool, org_uuid, &body).await?;
     Ok(Json(ApiResponse::success(profile)))
 }
@@ -50,7 +50,7 @@ pub async fn trigger_brand_research(
 ) -> Result<Json<ApiResponse<BrandResearchJobResponse>>, ApiError> {
     let _ = access_context;
     let pool = &deployment.db().pool;
-    let org_uuid = Uuid::parse_str(&org_id).map_err(|_| ApiError::BadRequest("Invalid org ID".into()))?;
+    let org_uuid = DbUuid::parse(&org_id).map_err(|_| ApiError::BadRequest("Invalid org ID".into()))?.to_uuid();
 
     // Fetch org name + existing brand profile
     let org: Option<Organization> = Organization::find_by_id(pool, &org_id).await
@@ -109,7 +109,7 @@ pub async fn get_brand_research_status(
     Path(org_id): Path<String>,
 ) -> Result<Json<ApiResponse<BrandResearchStatusResponse>>, ApiError> {
     let _ = access_context;
-    let org_uuid = Uuid::parse_str(&org_id).map_err(|_| ApiError::BadRequest("Invalid org ID".into()))?;
+    let org_uuid = DbUuid::parse(&org_id).map_err(|_| ApiError::BadRequest("Invalid org ID".into()))?.to_uuid();
 
     #[derive(sqlx::FromRow)]
     struct Row {

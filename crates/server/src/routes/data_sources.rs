@@ -12,6 +12,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use utils::response::ApiResponse;
 use uuid::Uuid;
+use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 
@@ -174,11 +175,11 @@ async fn upload_data_source(
             }
             "organization_id" => {
                 let val = field.text().await.map_err(|e| ApiError::BadRequest(format!("{e}")))?;
-                organization_id = Some(Uuid::parse_str(&val).map_err(|e| ApiError::BadRequest(format!("Invalid org ID: {e}")))?);
+                organization_id = Some(DbUuid::parse(&val).map_err(|e| ApiError::BadRequest(format!("Invalid org ID: {e}")))?.to_uuid());
             }
             "project_id" => {
                 let val = field.text().await.map_err(|e| ApiError::BadRequest(format!("{e}")))?;
-                project_id = Some(Uuid::parse_str(&val).map_err(|e| ApiError::BadRequest(format!("Invalid project ID: {e}")))?);
+                project_id = Some(DbUuid::parse(&val).map_err(|e| ApiError::BadRequest(format!("Invalid project ID: {e}")))?.to_uuid());
             }
             "metadata" => {
                 metadata_str = Some(field.text().await.map_err(|e| ApiError::BadRequest(format!("{e}")))?);

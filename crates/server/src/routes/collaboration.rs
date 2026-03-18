@@ -22,7 +22,7 @@ use services::services::execution_control::{
 };
 use ts_rs::TS;
 use utils::response::ApiResponse;
-use uuid::Uuid;
+use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 
@@ -74,7 +74,7 @@ pub async fn pause_execution(
     State(deployment): State<DeploymentImpl>,
     ResponseJson(req): ResponseJson<PauseExecutionRequest>,
 ) -> Result<ResponseJson<ApiResponse<ExecutionPauseHistory>>, ApiError> {
-    let execution_id = Uuid::parse_str(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let control = ExecutionControlService::new(deployment.db().clone());
 
     let entry = control
@@ -96,7 +96,7 @@ pub async fn resume_execution(
     State(deployment): State<DeploymentImpl>,
     ResponseJson(req): ResponseJson<ResumeExecutionRequest>,
 ) -> Result<ResponseJson<ApiResponse<ExecutionPauseHistory>>, ApiError> {
-    let execution_id = Uuid::parse_str(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let control = ExecutionControlService::new(deployment.db().clone());
 
     let entry = control
@@ -116,7 +116,7 @@ pub async fn get_pause_history(
     Path(execution_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<ExecutionPauseHistory>>>, ApiError> {
-    let execution_id = Uuid::parse_str(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let control = ExecutionControlService::new(deployment.db().clone());
 
     let history = control
@@ -135,7 +135,7 @@ pub async fn takeover_execution(
     State(deployment): State<DeploymentImpl>,
     ResponseJson(req): ResponseJson<TakeoverExecutionRequest>,
 ) -> Result<ResponseJson<ApiResponse<ExecutionHandoff>>, ApiError> {
-    let execution_id = Uuid::parse_str(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let control = ExecutionControlService::new(deployment.db().clone());
 
     let handoff = control
@@ -157,7 +157,7 @@ pub async fn return_control(
     State(deployment): State<DeploymentImpl>,
     ResponseJson(req): ResponseJson<ReturnControlToAgentRequest>,
 ) -> Result<ResponseJson<ApiResponse<ExecutionHandoff>>, ApiError> {
-    let execution_id = Uuid::parse_str(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let control = ExecutionControlService::new(deployment.db().clone());
 
     let handoff = control
@@ -180,7 +180,7 @@ pub async fn get_handoffs(
     Path(execution_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<ExecutionHandoff>>>, ApiError> {
-    let execution_id = Uuid::parse_str(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let control = ExecutionControlService::new(deployment.db().clone());
 
     let handoffs = control
@@ -199,7 +199,7 @@ pub async fn inject_context(
     State(deployment): State<DeploymentImpl>,
     ResponseJson(req): ResponseJson<InjectContextRequest>,
 ) -> Result<ResponseJson<ApiResponse<ContextInjection>>, ApiError> {
-    let execution_id = Uuid::parse_str(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let control = ExecutionControlService::new(deployment.db().clone());
 
     let injection = control
@@ -222,7 +222,7 @@ pub async fn get_injections(
     Path(execution_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<ContextInjection>>>, ApiError> {
-    let execution_id = Uuid::parse_str(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let control = ExecutionControlService::new(deployment.db().clone());
 
     let injections = control
@@ -238,7 +238,7 @@ pub async fn get_pending_injections(
     Path(execution_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<ContextInjection>>>, ApiError> {
-    let execution_id = Uuid::parse_str(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let control = ExecutionControlService::new(deployment.db().clone());
 
     let injections = control
@@ -254,7 +254,7 @@ pub async fn acknowledge_injection(
     Path(injection_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<ContextInjection>>, ApiError> {
-    let injection_id = Uuid::parse_str(&injection_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let injection_id = DbUuid::parse(&injection_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let control = ExecutionControlService::new(deployment.db().clone());
 
     let injection = control
@@ -270,7 +270,7 @@ pub async fn acknowledge_all_injections(
     Path(execution_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<u64>>, ApiError> {
-    let execution_id = Uuid::parse_str(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let control = ExecutionControlService::new(deployment.db().clone());
 
     let count = control
@@ -288,7 +288,7 @@ pub async fn get_collaboration_state(
     Path(execution_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<CollaborationState>>, ApiError> {
-    let execution_id = Uuid::parse_str(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
     let control = ExecutionControlService::new(deployment.db().clone());
 
     let state = control

@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use services::services::ralph::{RalphService, StartRalphRequest};
 use ts_rs::TS;
 use uuid::Uuid;
+use db::db_uuid::DbUuid;
 
 use crate::DeploymentImpl;
 
@@ -96,7 +97,7 @@ async fn get_agent_execution_config(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let agent_uuid = Uuid::parse_str(&agent_id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid agent ID".to_string()))?;
+    let agent_uuid = DbUuid::parse(&agent_id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid agent ID".to_string()))?.to_uuid();
     match config {
         Some(c) => Ok(Json(AgentConfigResponse::Found(c))),
         None => Ok(Json(AgentConfigResponse::NotConfigured { agent_id: agent_uuid })),
@@ -110,7 +111,7 @@ async fn create_agent_execution_config(
     Json(mut data): Json<CreateAgentExecutionConfig>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // Validate UUID format and ensure agent_id matches path
-    let _valid = Uuid::parse_str(&agent_id)
+    let _valid = DbUuid::parse(&agent_id)
         .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid agent UUID".to_string()))?;
     data.agent_id = agent_id.into();
 

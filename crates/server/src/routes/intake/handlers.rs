@@ -160,7 +160,7 @@ pub async fn get_intake_item(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<CallIntakeItem>>, ApiError> {
     use deployment::Deployment;
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let item = CallIntakeItem::find_by_id(&d.db().pool, id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Intake item not found".into()))?;
@@ -172,7 +172,7 @@ pub async fn process_intake_item_handler(
     State(d): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     use deployment::Deployment;
     let pool = &d.db().pool;
 
@@ -212,7 +212,7 @@ pub async fn get_intake_status(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
     use deployment::Deployment;
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let item = CallIntakeItem::find_by_id(&d.db().pool, id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Intake item not found".into()))?;
@@ -244,7 +244,7 @@ pub async fn get_report(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<BusinessReport>>, ApiError> {
     use deployment::Deployment;
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let report = BusinessReport::find_by_id(&d.db().pool, id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Report not found".into()))?;
@@ -258,7 +258,7 @@ pub async fn patch_report(
     Json(body): Json<PatchBusinessReport>,
 ) -> Result<Json<ApiResponse<BusinessReport>>, ApiError> {
     use deployment::Deployment;
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let report = BusinessReport::patch(&d.db().pool, id, body)
         .await?
         .ok_or_else(|| ApiError::NotFound("Report not found".into()))?;
@@ -272,12 +272,12 @@ pub async fn approve_business_report(
     Extension(access_context): Extension<AccessContext>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     use deployment::Deployment;
     let pool = &d.db().pool;
     let user_id = &access_context.user_id;
-    let user_id_uuid = uuid::Uuid::parse_str(user_id.as_str())
-        .map_err(|e| ApiError::InternalError(format!("Invalid user UUID: {e}")))?;
+    let user_id_uuid = DbUuid::parse(user_id.as_str())
+        .map_err(|e| ApiError::InternalError(format!("Invalid user UUID: {e}")))?.to_uuid();
 
     let report = BusinessReport::find_by_id(pool, id)
         .await?
@@ -378,11 +378,11 @@ pub async fn approve_business_report(
 
             let new_proposal = Proposal::create(pool, CreateProposal {
                 title,
-                lead_id: Some(uuid::Uuid::parse_str(person_id.as_str()).unwrap_or_default()),
+                lead_id: Some(DbUuid::parse(person_id.as_str()).map(|u| u.to_uuid()).unwrap_or_default()),
                 organization_id: org_id,
                 owner_id: Some(user_id_uuid),
                 project_id: None,
-                company_id: report.company_id.as_ref().and_then(|id| uuid::Uuid::parse_str(id.as_str()).ok()),
+                company_id: report.company_id.as_ref().and_then(|id| DbUuid::parse(id.as_str()).map(|u| u.to_uuid()).ok()),
                 description: Some(description),
                 quote_amount_vibe: None,
                 deal_type: None,
@@ -414,7 +414,7 @@ pub async fn request_revision(
     Path(id): Path<String>,
     Json(body): Json<RevisionRequest>,
 ) -> Result<Json<ApiResponse<BusinessReport>>, ApiError> {
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     use deployment::Deployment;
     let pool = &d.db().pool;
     let user_id = &access_context.user_id;

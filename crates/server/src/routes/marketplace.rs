@@ -32,6 +32,7 @@ use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use uuid::Uuid;
+use db::db_uuid::DbUuid;
 
 use db::models::{
     gateway_request::GatewayRequest,
@@ -425,7 +426,7 @@ async fn update_listing(
     Json(body): Json<UpdateListing>,
 ) -> Result<Json<ApiResponse<MarketplaceListing>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
     let listing = MarketplaceListing::update(pool, id_uuid, body)
         .await?
         .ok_or_else(|| ApiError::NotFound("Listing not found".to_string()))?;
@@ -438,7 +439,7 @@ async fn deactivate_listing(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<bool>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
     let deleted = MarketplaceListing::delete(pool, id_uuid).await?;
     Ok(Json(ApiResponse::success(deleted)))
 }
@@ -475,7 +476,7 @@ async fn get_subscription(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<SubscriptionView>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
     let sub = MarketplaceSubscription::find_by_id(pool, id_uuid)
         .await?
         .ok_or_else(|| ApiError::NotFound("Subscription not found".to_string()))?;
@@ -494,7 +495,7 @@ async fn topup_subscription(
         ));
     }
     let pool = &deployment.db().pool;
-    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
     MarketplaceSubscription::add_budget(pool, id_uuid, body.vibe_amount).await?;
     let sub = MarketplaceSubscription::find_by_id(pool, id_uuid)
         .await?
@@ -509,7 +510,7 @@ async fn list_requests(
     Query(q): Query<HistoryQuery>,
 ) -> Result<Json<ApiResponse<Vec<GatewayRequest>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
     let requests = GatewayRequest::list_for_subscription(pool, id_uuid, q.limit).await?;
     Ok(Json(ApiResponse::success(requests)))
 }

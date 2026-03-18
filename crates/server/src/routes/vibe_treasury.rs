@@ -14,6 +14,7 @@ use services::services::aptos::AptosService;
 use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
+use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 
@@ -120,7 +121,7 @@ async fn get_project_balance(
     Path(project_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<ProjectVibeBalance>>, ApiError> {
-    let project_id = Uuid::parse_str(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let project_id = DbUuid::parse(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let pool = &deployment.db().pool;
 
     // Get totals
@@ -150,7 +151,7 @@ async fn list_deposits(
     Query(query): Query<ListQuery>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Vec<VibeDeposit>>>, ApiError> {
-    let project_id = Uuid::parse_str(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let project_id = DbUuid::parse(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let deposits = VibeDeposit::list_by_project(&deployment.db().pool, project_id, query.limit)
         .await?;
     Ok(Json(ApiResponse::success(deposits)))
@@ -162,7 +163,7 @@ async fn record_deposit(
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<RecordDepositRequest>,
 ) -> Result<Json<ApiResponse<VibeDeposit>>, ApiError> {
-    let project_id = Uuid::parse_str(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let project_id = DbUuid::parse(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     // Check if deposit already exists
     if let Some(existing) =
         VibeDeposit::find_by_tx_hash(&deployment.db().pool, &payload.tx_hash).await?
@@ -191,8 +192,8 @@ async fn confirm_deposit(
     Path((project_id, deposit_id)): Path<(String, String)>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<VibeDeposit>>, ApiError> {
-    let project_id = Uuid::parse_str(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
-    let deposit_id = Uuid::parse_str(&deposit_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let project_id = DbUuid::parse(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let deposit_id = DbUuid::parse(&deposit_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     // Verify deposit belongs to project
     let deposit = VibeDeposit::find_by_id(&deployment.db().pool, deposit_id)
         .await?
@@ -211,8 +212,8 @@ async fn credit_deposit(
     Path((project_id, deposit_id)): Path<(String, String)>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<VibeDeposit>>, ApiError> {
-    let project_id = Uuid::parse_str(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
-    let deposit_id = Uuid::parse_str(&deposit_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let project_id = DbUuid::parse(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let deposit_id = DbUuid::parse(&deposit_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     // Verify deposit belongs to project
     let deposit = VibeDeposit::find_by_id(&deployment.db().pool, deposit_id)
         .await?
@@ -232,7 +233,7 @@ async fn list_withdrawals(
     Query(query): Query<ListQuery>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Vec<VibeWithdrawal>>>, ApiError> {
-    let project_id = Uuid::parse_str(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let project_id = DbUuid::parse(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let withdrawals =
         VibeWithdrawal::list_by_project(&deployment.db().pool, project_id, query.limit).await?;
     Ok(Json(ApiResponse::success(withdrawals)))
@@ -244,7 +245,7 @@ async fn request_withdrawal(
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<CreateVibeWithdrawal>,
 ) -> Result<Json<ApiResponse<VibeWithdrawal>>, ApiError> {
-    let project_id = Uuid::parse_str(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let project_id = DbUuid::parse(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     // Verify the project_id matches
     if payload.project_id != project_id {
         return Err(ApiError::BadRequest("Project ID mismatch".to_string()));
@@ -276,7 +277,7 @@ async fn list_transactions(
     Query(query): Query<ListQuery>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Vec<VibeTransaction>>>, ApiError> {
-    let project_id = Uuid::parse_str(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let project_id = DbUuid::parse(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
     let transactions = VibeTransaction::list_by_source(
         &deployment.db().pool,
         VibeSourceType::Project,

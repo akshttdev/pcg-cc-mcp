@@ -8,6 +8,7 @@ use deployment::Deployment;
 use serde::Deserialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
+use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 use db::models::proposal::{CreateProposal, Proposal, UpdateProposal};
@@ -63,7 +64,7 @@ async fn get_proposal(
     State(d): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Proposal>>, ApiError> {
-    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
     Proposal::find_by_id(&d.db().pool, id_uuid)
         .await?
         .map(|p| Json(ApiResponse::success(p)))
@@ -76,7 +77,7 @@ async fn update_proposal(
     Path(id): Path<String>,
     Json(body): Json<UpdateProposal>,
 ) -> Result<Json<ApiResponse<Proposal>>, ApiError> {
-    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
     Proposal::update(&d.db().pool, id_uuid, body)
         .await?
         .map(|p| Json(ApiResponse::success(p)))
@@ -89,7 +90,7 @@ async fn move_proposal_status(
     Path(id): Path<String>,
     Json(body): Json<MoveStatusBody>,
 ) -> Result<Json<ApiResponse<Proposal>>, ApiError> {
-    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
     Proposal::move_status(&d.db().pool, id_uuid, &body.status)
         .await?
         .map(|p| Json(ApiResponse::success(p)))
@@ -101,7 +102,7 @@ async fn delete_proposal(
     State(d): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    let id_uuid = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?;
+    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
     let deleted = Proposal::delete(&d.db().pool, id_uuid).await?;
     if deleted {
         Ok(Json(ApiResponse::success(())))
