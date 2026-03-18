@@ -95,6 +95,21 @@
 
 ---
 
+## P2.5 — Code Quality Infrastructure
+
+### Lint-Staged + Import Sort + Prettier Pre-Commit
+**Source:** PR #49 wrap-up (2026-03-18)
+**What:** Full setup for auto-formatting on every commit:
+- `lint-staged` + `eslint --fix` + `prettier --write` on staged `.ts`/`.tsx` files
+- `eslint-plugin-simple-import-sort` added (auto-sorts imports on `--fix`)
+- `.githooks/pre-commit` hook with `git config core.hooksPath .githooks`
+- `eslint --fix` already run across entire codebase (658 files, import reordering)
+- `--max-warnings` threshold needs updating after import sort warnings cleared
+**Stash:** `git stash list` → "lint-staged + import-sort setup + eslint --fix" on `refactor/frontend-polish-sprint`. Apply with `git stash pop` on the target branch.
+**Status:** STASHED — ready to apply on a new branch
+
+---
+
 ## P2.5 — Modularity Sprint 6 Candidates
 
 ### Modularity Sprint 6 — Hook Mutations + Remaining Debt
@@ -125,6 +140,17 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 - ~~`data-sources.tsx` (991 lines)~~ → Done (PR #47, split to `data-sources/`)
 - ~~`project-tasks.tsx` (998 lines)~~ → **DELETED** (PR #48, replaced by `project-tasks/` directory)
 **Status:** PARTIALLY DONE. 6 files >900 lines remain. PR #48 deleted 2 dead monolith originals (-2,205 lines).
+
+### Component Hook Extraction — Research Similar Patterns
+**Source:** Frontend polish sprint (2026-03-18), task card refactor
+**What:** Extracting shared hooks from task cards (`useResolvedAssignee`, `useResolvedAgent`, `useScrollIntoView`) + shared sub-components (`PriorityBadge`, `DueDateBadge`, `CollaboratorAvatars`) reduced TaskCard 396→259 lines and EnhancedTaskCard 541→428 lines while eliminating duplication. Research similar opportunities across the codebase:
+- **CRM cards** (`CrmDealCard`, `CrmContactCard`) — likely duplicate assignee resolution, priority badges
+- **Project cards** (`ProjectCard`) — may have inline member avatar logic that parallels `CollaboratorAvatars`
+- **Detail panels** — `CrmDealDetailPanel`, `TaskDetailsPanel` likely duplicate the assignee IIFE pattern
+- **Scroll-into-view** — search for `scrollIntoView` calls across components, consolidate to `useScrollIntoView`
+- **Agent name resolution** — any component showing agent names should use `useResolvedAgent` instead of inline lookup
+**Approach:** Audit with `grep -r "usersMap?.get\|scrollIntoView\|agentsMap" frontend/src/` to find candidates. Prioritize files >400 lines with inline data resolution patterns.
+**Status:** NOT STARTED — research item for next modularity sprint
 
 ### Component Hook Extraction — Research Similar Patterns
 **Source:** Frontend polish sprint (2026-03-18), task card refactor

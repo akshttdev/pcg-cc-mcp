@@ -1,4 +1,4 @@
-import { Page, BrowserContext } from '@playwright/test';
+import { Page } from '@playwright/test';
 
 export const DEAL_ID = '3b5de595-b2dc-0792-2284-e0349788dfd7';
 export const PIPELINE_ID = '138ff8ec-6d65-493e-b6a9-0f9fef409968';
