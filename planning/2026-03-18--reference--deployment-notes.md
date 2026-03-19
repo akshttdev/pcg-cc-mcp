@@ -16,6 +16,10 @@ Run these on any dev database before deploying this branch:
 ALTER TABLE persons ADD COLUMN intelligence_status TEXT NOT NULL DEFAULT 'pending';
 ALTER TABLE persons ADD COLUMN intelligence_agent TEXT;
 
+-- Missing columns on crm_contacts table
+ALTER TABLE crm_contacts ADD COLUMN person_id TEXT;
+ALTER TABLE crm_contacts ADD COLUMN deleted_at TEXT;
+
 -- Missing columns on crm_deals table
 ALTER TABLE crm_deals ADD COLUMN proposal_text TEXT;
 ALTER TABLE crm_deals ADD COLUMN proposal_status TEXT DEFAULT 'none';
@@ -57,6 +61,56 @@ INSERT OR IGNORE INTO organization_members (id, organization_id, user_id, role)
 SELECT 'mem-admin-' || substr(id, 1, 8), id, X'07192211AE5CF20B42BD546422D71A23', 'admin'
 FROM organizations;
 ```
+
+### Test Seed Data (for E2E tests)
+
+The E2E tests expect specific entities. Create them after schema fixes:
+
+```sql
+-- Hudson's Car Club company
+INSERT OR IGNORE INTO companies (id, name, industry, organization_id, intelligence_status, created_at, updated_at)
+VALUES ('5b3d9e7c-8d05-454d-a73f-b8e659396072', 'Hudson''s Car Club', 'Automotive & Luxury',
+  '02020202-0202-0202-0202-020202020202', 'done', datetime('now'), datetime('now'));
+
+-- Joshua Marotta person + CRM contact
+INSERT OR IGNORE INTO persons (id, full_name, email, company_name, job_title, organization_id,
+  company_id, crm_contact_id, intelligence_status, created_at, updated_at)
+VALUES ('p-joshua-marotta-001', 'Joshua Marotta', 'joshua@hudsoncarclub.com', 'Hudson''s Car Club',
+  'Founder', '02020202-0202-0202-0202-020202020202', '5b3d9e7c-8d05-454d-a73f-b8e659396072',
+  'ct-joshua-marotta-001', 'done', datetime('now'), datetime('now'));
+
+INSERT OR IGNORE INTO crm_contacts (id, organization_id, first_name, last_name, email, person_id, created_at, updated_at)
+VALUES ('ct-joshua-marotta-001', '02020202-0202-0202-0202-020202020202', 'Joshua', 'Marotta',
+  'joshua@hudsoncarclub.com', 'p-joshua-marotta-001', datetime('now'), datetime('now'));
+
+-- Hudson deal (linked to Acquisition pipeline)
+INSERT OR IGNORE INTO crm_deals (id, name, organization_id, crm_pipeline_id, crm_stage_id,
+  crm_contact_id, stage, proposal_status, expedited, position, created_at, updated_at)
+VALUES ('3b5de595-b2dc-0792-2284-e0349788dfd7', 'Hudson''s Car Club — Joshua Marotta',
+  '02020202-0202-0202-0202-020202020202',
+  (SELECT id FROM crm_pipelines WHERE name='Acquisition' AND organization_id='02020202-0202-0202-0202-020202020202'),
+  (SELECT id FROM crm_pipeline_stages WHERE stage_type='intel' AND pipeline_id=(SELECT id FROM crm_pipelines WHERE name='Acquisition' AND organization_id='02020202-0202-0202-0202-020202020202')),
+  'ct-joshua-marotta-001', 'intel', 'none', 0, 0, datetime('now'), datetime('now'));
+
+-- Sirak user org membership (non-admin, for permission tests)
+INSERT OR IGNORE INTO organization_members (id, organization_id, user_id, role)
+VALUES ('mem-sirak-sirak', '02020202-0202-0202-0202-020202020202',
+  X'A0A1A2A3A4A5A6A7A8A9AAABACADAEAF', 'member');
+```
+
+## E2E Test Results (post-DB fixes)
+
+| Test | Pass | Fail | Skip | Notes |
+|------|------|------|------|-------|
+| pipeline-userflows (promoted) | 22 | 0 | 0 | Fully passing |
+| dealflow-pipeline | 7 | ? | ? | Improved from 1/18 |
+| hudson-as-sirak | 3 | ? | ? | Improved from 0/4 |
+| hudson-exact-flow | 2 | ? | ? | Improved from 0/4 |
+| company-links | 7 | ? | ? | First run |
+| trace-company-nav | 6 | ? | ? | Improved from 4/7 |
+| full-pipeline-walkthrough | TBD | | | LLM test |
+| operator-walkthrough | TBD | | | LLM test |
+| visual-pipeline-walkthrough | TBD | | | LLM test / demo |
 
 ## Production Deployment
 
