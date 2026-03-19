@@ -583,6 +583,28 @@ async fn main() -> Result<(), VibeKanbanError> {
         });
     }
 
-    axum::serve(listener, app_router).await?;
+    // Create shutdown registry and wire graceful shutdown
+    let registry = server::workers::ShutdownRegistry::new();
+    let shutdown_registry = registry.clone();
+
+    // Register existing shutdown tokens with the registry
+    {
+        let token = registry.token();
+        let sov_shutdown = sovereign_stack_shutdown.clone();
+        let sched_shutdown = schedule_shutdown.clone();
+        tokio::spawn(async move {
+            token.cancelled().await;
+            sov_shutdown.cancel();
+            sched_shutdown.cancel();
+        });
+        registry.register("sovereign_stack").await;
+        registry.register("workflow_schedule_loop").await;
+    }
+
+    axum::serve(listener, app_router)
+        .with_graceful_shutdown(server::workers::shutdown_signal(shutdown_registry))
+        .await?;
+
+    tracing::info!("Server shut down cleanly.");
     Ok(())
 }
