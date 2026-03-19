@@ -144,9 +144,25 @@ During this sprint, add `validator` to `Cargo.toml` and apply `#[derive(Validate
 - This is a security fix, not a feature
 
 **1b. Fix `uuid::Uuid` in new code** (`crm_deals.rs`)
-- 6 instances of `uuid::Uuid` found. Most are for BLOB column binding (lines 895, 1011, 1191-1195) — these need `DbUuid` but may require model-layer changes since BLOB columns expect `uuid::Uuid`.
+- 6 instances of `uuid::Uuid` found (line 20 import + lines 895, 1011, 1191, 1194, 1195).
+- Most are for BLOB column binding — these need `DbUuid` but may require model-layer changes since BLOB columns expect `uuid::Uuid`.
 - Per rust-standards.md: "NEVER use uuid::Uuid in route handlers" — route handler code should use `DbUuid::parse()`, push BLOB conversion to model/consumer layer.
-- **Scope for this sprint**: Fix route-handler-level usage. BLOB-binding instances deferred to DbUuid Phase C (backlog).
+
+**DbUuid conversion patterns** (from `crates/db/src/db_uuid.rs`):
+- Canonical route handler pattern: `DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid()`
+- For BLOB column binding: `bind_uuid_blob(&db_uuid)?` → returns `Vec<u8>` (16-byte BLOB)
+- For TEXT column binding: `bind_uuid(&db_uuid)` → returns `&str`
+- For optional BLOB: `bind_optional_uuid_blob(&opt_db_uuid)?`
+- For string→BLOB shortcut: `str_to_uuid_blob(&str_id)?`
+- Known BLOB columns: `users.id`, `project_members.user_id/.granted_by`, `organization_members.user_id`, `client_members.user_id`
+- All other UUID columns are TEXT — use `bind_uuid()` or `.bind(&db_uuid)` directly.
+
+**Fix approach for crm_deals.rs**:
+- Line 895: `uuid::Uuid::parse_str(person_id.as_str())` → use `DbUuid::from_string(person_id.as_str()).to_uuid()` (person_id is already validated)
+- Line 1011: `uuid::Uuid::parse_str(company.id.as_str())` → `DbUuid::from_string(company.id.as_str()).to_uuid()`
+- Lines 1191-1195: BLOB column binding for `business_reports` table → use `bind_uuid_blob()` helper
+- Line 20: remove `use uuid::Uuid;` import after above conversions
+- **Scope for this sprint**: Fix route-handler-level usage. BLOB-binding instances deferred to DbUuid Phase C (backlog) only if model layer requires `uuid::Uuid` type signature changes.
 
 **1c. ~~Fix raw `fetch()` in call-intake.tsx~~** — RESOLVED
 - Exploration found `call-intake.tsx` already uses `makeRequest` (dynamic import), not raw `fetch()`.
