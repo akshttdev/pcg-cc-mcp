@@ -2,12 +2,20 @@
 name: expand-plan
 description: Research the codebase to expand and validate a planning file — finds gaps, contradictions, missing files, and modularity opportunities
 user-invocable: true
-allowed-tools: Agent, Bash, Read, Write, Edit, Glob, Grep
+allowed-tools: Agent, Bash, Read, Write, Edit, Glob, Grep, WebSearch, WebFetch, mcp__sequential-thinking__sequentialthinking
 ---
 
 # Expand & Validate Planning File
 
-Given a planning file path (or the most recent `planning/*.md` on the current branch), perform a multi-phase research expansion:
+Given a planning file path (or the most recent `planning/*.md` on the current branch), perform a multi-phase research expansion.
+
+## Available MCP Tools
+
+Use these when available to enhance research quality:
+
+- **Sequential Thinking** (`mcp__sequential-thinking__sequentialthinking`): Use for complex reasoning steps — analyzing contradictions, dependency ordering, gap identification. Start a thinking session before Phase 3 (Gap Analysis) to reason through dependencies and conflicts systematically.
+- **Context7** (via Agent tool): If the plan references external libraries or frameworks, agents can use Context7 MCP to fetch up-to-date documentation.
+- **GitHub** (via Agent tool): If the plan references PRs, issues, or CI workflows, agents can use GitHub MCP to verify PR status, check CI results, or read issue context.
 
 ## Phase 1: Parse the Plan
 
@@ -29,6 +37,8 @@ Launch exploration agents to verify each major claim:
 - **Frontend hook/component audit**: Verify referenced hooks, components, and API clients exist
 
 ## Phase 3: Gap Analysis
+
+Use Sequential Thinking MCP to reason through dependencies and conflicts before writing findings.
 
 For each sprint item, check for:
 
