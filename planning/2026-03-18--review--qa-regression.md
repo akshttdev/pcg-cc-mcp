@@ -139,18 +139,22 @@ The `generate_proposal` handler was refactored into `generate_proposal_core` (no
 
 ## Sign-off
 
-- [ ] **Backend: crm_deals.rs** -- BLOCKED: `get_kanban_data` access control regression must be fixed
+- [x] **Backend: crm_deals.rs** -- FIXED: `get_kanban_data` access control restored (commit `8a77952`)
 - [x] **Backend: companies.rs** -- no regressions (DbUuid migration clean)
 - [x] **Backend: intelligence.rs** -- no regressions (LLM fallback logic sound)
 - [x] **Backend: db models** -- no regressions
-- [ ] **Frontend: call-intake.tsx** -- raw fetch() should use makeRequest/crmDealsApi
+- [x] **Frontend: call-intake.tsx** -- FIXED: raw fetch() → makeRequest (commit `8a77952`)
 - [x] **Frontend: all other** -- no regressions
-- [ ] **Migrations** -- BLOB/TEXT inconsistency in 20260412 (functional but inconsistent)
-- [x] **Tests** -- quarantined appropriately, promoted test passes
+- [x] **Migrations** -- FIXED: company_brand_profiles BLOB → TEXT (commit `8a77952`)
+- [x] **Tests** -- 104/104 pass, quarantined appropriately, promoted test passes
 - [x] **Docs** -- updated accurately
 
-## Blocking Issues Before Merge
+## Issues Found & Fixed
 
-1. **MUST FIX**: Restore org authorization on `get_kanban_data` endpoint
-2. **SHOULD FIX**: Replace raw `fetch()` in call-intake.tsx with `crmDealsApi`
-3. **NICE TO HAVE**: Use TEXT columns in `company_brand_profiles` migration for consistency
+1. ~~**MUST FIX**: Restore org authorization on `get_kanban_data` endpoint~~ → **FIXED** (commit `8a77952`)
+2. ~~**SHOULD FIX**: Replace raw `fetch()` in call-intake.tsx with `crmDealsApi`~~ → **FIXED** (commit `8a77952`)
+3. ~~**NICE TO HAVE**: Use TEXT columns in `company_brand_profiles` migration~~ → **FIXED** (commit `8a77952`)
+
+## Remaining Low-Effort Items Not Addressed
+
+These are pre-existing or intentional — acceptable to defer:

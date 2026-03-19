@@ -560,3 +560,31 @@ Dealflow pipeline v2, company profiles, brand guides, Dockerfile fixes, VIBE tok
 | Query key mismatches (brandProfile, workflowTemplates) | Fixed cache invalidation bugs (PR #48) |
 | Orphaned project-level CRM routes (7) | Commented out in App.tsx (PR #48) |
 | Rust warnings (9 unused imports/vars in server+db) | Cleaned up (PR #48) |
+
+---
+
+## PR #50 — Deferred Items
+
+### Dead Code Cleanup: companies.rs run_company_research
+**Source:** PR #50 QA regression review (2026-03-18)
+**What:** `run_company_research()` and helpers (`extract_summary`, `extract_confidence`, `extract_text_from_response`) are dead code — replaced by `intelligence::run_company_research_direct()` in sloperation317 port. Currently annotated with `#[allow(dead_code)]`.
+**Recommendation:** Delete after confirming `run_company_research_direct` covers all use cases. Check if any other code calls the old function.
+**Status:** DEFERRED — commented out, not blocking
+
+### Hardcoded Operator Assignment in CRM Deals
+**Source:** PR #50 QA regression review (2026-03-18)
+**What:** `create_review_task_if_needed` has hardcoded username-to-org mapping (Sirak → "Sirak", PowerClub/PCG → "Bodhi"). Breaks if org names or usernames change.
+**Recommendation:** Move to a configurable mapping (org_settings table or env var).
+**Status:** DEFERRED — working as designed for current orgs
+
+### BLOB Column uuid::Uuid Usage in Pre-existing Code
+**Source:** PR #50 QA regression review (2026-03-18)
+**What:** 5 pre-existing functions still use `uuid::Uuid::parse_str()` for BLOB column binding: `trigger_who_is_research`, `trigger_company_research_if_idle`, `generate_phase1_business_report`. These should use `DbUuid::parse().to_uuid()` pattern.
+**Recommendation:** Convert in a dedicated DbUuid batch migration sprint.
+**Status:** DEFERRED — functionally correct, style debt only
+
+### Company Profile Page Rendering Gap
+**Source:** PR #50 E2E test observations (2026-03-18)
+**What:** `/companies/:id` page loads with correct URL but doesn't display the company name or data in the main content area. Sidebar renders correctly. May be a missing data fetch or component rendering issue.
+**Recommendation:** Investigate CompanyProfilePage data loading — check if it queries by TEXT or BLOB ID.
+**Status:** DEFERRED — documented via test.fixme() in quarantine tests

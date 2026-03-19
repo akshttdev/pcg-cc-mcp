@@ -1822,9 +1822,9 @@ async fn trigger_deep_research_pass2(pool: &sqlx::SqlitePool, deal_id: DbUuid) {
                 .await;
                 tracing::info!("Astra Pass 2 enhanced report {} for deal {} (depth {})", r.id, deal_id, new_depth);
             } else {
-                // No existing report — create one
-                let report_id = uuid::Uuid::new_v4();
-                let deal_uuid = uuid::Uuid::parse_str(deal_id.as_str()).ok();
+                // No existing report — create one (BLOB columns: use .to_uuid() for binding)
+                let report_id = DbUuid::new().to_uuid();
+                let deal_uuid = DbUuid::parse(deal_id.as_str()).ok().map(|d| d.to_uuid());
                 let _ = sqlx::query(
                     r#"INSERT INTO business_reports
                        (id, crm_deal_id, report_type, title, status, executive_summary, research_depth,
@@ -2065,13 +2065,13 @@ async fn generate_deck_core(pool: &sqlx::SqlitePool, id: &DbUuid) -> Result<CrmD
 
     let deck_script = call_llm(lux_system, &user_prompt).await?;
 
-    let deck_id = uuid::Uuid::new_v4();
+    let deck_id = DbUuid::new();
     let deck_url = format!("/api/crm/deals/{}/deck/{}", id, deck_id);
 
     let _ = sqlx::query(
         "INSERT OR IGNORE INTO project_knowledge_sources (id, owner_type, owner_id, source_type, source_id, source_title, source_summary, coverage_score, is_active, created_at, updated_at) VALUES (?, 'deal', ?, 'deck_script', ?, ?, ?, 0.8, 1, datetime('now','subsec'), datetime('now','subsec'))"
     )
-    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(DbUuid::new().to_string())
     .bind(id.to_string())
     .bind(deck_id.to_string())
     .bind(format!("Sales Deck: {}", deal.name))
@@ -2122,7 +2122,7 @@ async fn send_deal_invoice(
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM invoices WHERE invoice_type = 'ar'")
         .fetch_one(pool).await.unwrap_or(0);
     let invoice_number = format!("INV-{:05}", count + 1);
-    let invoice_id = uuid::Uuid::new_v4();
+    let invoice_id = DbUuid::new().to_uuid();
     let amount_usd = deal.amount.unwrap_or(0.0);
     let amount_vibe = (amount_usd * 100.0) as i64;
 

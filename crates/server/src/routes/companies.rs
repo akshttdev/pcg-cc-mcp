@@ -203,6 +203,9 @@ async fn trigger_company_research(
     })))
 }
 
+// NOTE: Replaced by intelligence::run_company_research_direct() in sloperation317 port.
+// Keeping for reference — remove after confirming direct version covers all cases.
+#[allow(dead_code)]
 async fn run_company_research(
     pool: &sqlx::SqlitePool,
     company_id: Uuid,
