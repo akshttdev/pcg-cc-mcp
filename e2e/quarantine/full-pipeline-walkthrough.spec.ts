@@ -12,8 +12,9 @@
  */
 import { test, expect, Page } from '@playwright/test';
 
+const BASE_URL = `http://localhost:${process.env.FRONTEND_PORT || '3000'}`;
 const ORG_ID = '02020202-0202-0202-0202-020202020202';
-const PIPELINE_ID = '138ff8ec-6d65-493e-b6a9-0f9fef409968'; // Sirak Studios Acquisition
+let PIPELINE_ID: string | undefined;
 
 // Test lead data
 const TEST_LEAD = {
@@ -32,7 +33,7 @@ const TEST_LEAD = {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 async function loginAs(page: Page, username: string, password: string) {
-  const res = await page.request.post('http://localhost:3000/api/auth/login', {
+  const res = await page.request.post(`${BASE_URL}/api/auth/login`, {
     data: { username, password },
     headers: { 'Content-Type': 'application/json' },
   });
@@ -49,19 +50,19 @@ async function loginAsSirak(page: Page) { return loginAs(page, 'Sirak', 'Sirak12
 async function loginAsAdmin(page: Page) { return loginAs(page, 'admin', 'admin123'); }
 
 async function apiPost(page: Page, path: string, body: object) {
-  const res = await page.request.post(`http://localhost:3000/api${path}`, {
+  const res = await page.request.post(`${BASE_URL}/api${path}`, {
     data: body, headers: { 'Content-Type': 'application/json' },
   });
   return res.json();
 }
 
 async function apiGet(page: Page, path: string) {
-  const res = await page.request.get(`http://localhost:3000/api${path}`);
+  const res = await page.request.get(`${BASE_URL}/api${path}`);
   return res.json();
 }
 
 async function apiPatch(page: Page, path: string, body: object) {
-  const res = await page.request.patch(`http://localhost:3000/api${path}`, {
+  const res = await page.request.patch(`${BASE_URL}/api${path}`, {
     data: body, headers: { 'Content-Type': 'application/json' },
   });
   return res.json();
@@ -69,18 +70,18 @@ async function apiPatch(page: Page, path: string, body: object) {
 
 async function gotoAsSirak(page: Page, path: string) {
   const sessionId = await loginAsSirak(page);
-  await page.goto('http://localhost:3000/', { waitUntil: 'domcontentloaded' });
+  await page.goto(`${BASE_URL}/`, { waitUntil: 'domcontentloaded' });
   await page.evaluate((sid) => localStorage.setItem('session_id', sid), sessionId);
-  await page.goto(`http://localhost:3000${path}`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE_URL}${path}`, { waitUntil: 'networkidle' });
   await page.evaluate((sid) => localStorage.setItem('session_id', sid), sessionId);
   await page.waitForTimeout(1500);
 }
 
 async function gotoAsAdmin(page: Page, path: string) {
   const sessionId = await loginAsAdmin(page);
-  await page.goto('http://localhost:3000/', { waitUntil: 'domcontentloaded' });
+  await page.goto(`${BASE_URL}/`, { waitUntil: 'domcontentloaded' });
   await page.evaluate((sid) => localStorage.setItem('session_id', sid), sessionId);
-  await page.goto(`http://localhost:3000${path}`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE_URL}${path}`, { waitUntil: 'networkidle' });
   await page.evaluate((sid) => localStorage.setItem('session_id', sid), sessionId);
   await page.waitForTimeout(1500);
 }
@@ -106,6 +107,14 @@ test.describe.serial('Full Pipeline Walkthrough — Vanguard Social Club', () =>
   // ══════════════════════════════════════════════════════════════════════════
 
   test('Phase 1: Create lead entities (company, person, contact, deal)', async ({ page }) => {
+    // Discover pipeline dynamically
+    const pipelines = await apiGet(page, `/crm/pipelines?organization_id=${ORG_ID}`);
+    const pipelineList = Array.isArray(pipelines.data) ? pipelines.data : [];
+    const acquisitionPipeline = pipelineList.find((p: any) => p.name === 'Acquisition') || pipelineList[0];
+    PIPELINE_ID = acquisitionPipeline?.id;
+    test.skip(!PIPELINE_ID, 'No pipeline found for org');
+    console.log('Using pipeline:', PIPELINE_ID, acquisitionPipeline?.name);
+
     const DEAL_NAME = `${TEST_LEAD.first_name} ${TEST_LEAD.last_name} — ${TEST_LEAD.company_name}`;
 
     // ── Find or create Company ──────────────────────────────────────────
@@ -283,7 +292,13 @@ test.describe.serial('Full Pipeline Walkthrough — Vanguard Social Club', () =>
   // ══════════════════════════════════════════════════════════════════════════
 
   test('Phase 3: Advance Intel → BA → Discovery → Proposal', async ({ page }) => {
-    const STAGE_ORDER = ['intel', 'business_analysis', 'discovery', 'proposal'];
+    test.skip(!PIPELINE_ID, 'No pipeline found for org');
+
+    // Fetch stage order dynamically from the pipeline
+    const pipelineRes = await apiGet(page, `/crm/pipelines/${PIPELINE_ID}`);
+    const pipelineStages = pipelineRes.data?.stages ?? [];
+    const STAGE_ORDER = pipelineStages.map((s: any) => s.stage_type as string);
+    console.log('Pipeline stages:', STAGE_ORDER.join(' → '));
 
     // Helper: complete all pending tasks and advance
     async function advanceOnce(label: string) {
@@ -297,23 +312,32 @@ test.describe.serial('Full Pipeline Walkthrough — Vanguard Social Club', () =>
       }
       const advRes = await apiPost(page, `/crm/deals/${dealId}/advance`, {});
       const check = await apiGet(page, `/crm/deals/${dealId}/rich`);
-      console.log(`${label}: ${advRes.success ? '✅' : '❌'} → ${check.data?.stage} ${advRes.message ?? ''}`);
+      console.log(`${label}: ${advRes.success ? 'OK' : 'FAIL'} -> ${check.data?.stage} ${advRes.message ?? ''}`);
       return check.data?.stage;
     }
 
     // Check current stage and advance to Proposal
     let richRes = await apiGet(page, `/crm/deals/${dealId}/rich`);
-    let currentStage = richRes.data?.stage?.toLowerCase().replace(/\s+/g, '_') ?? 'intel';
+    let currentStage = richRes.data?.stage?.toLowerCase().replace(/\s+/g, '_') ?? STAGE_ORDER[0];
     console.log('Starting stage:', richRes.data?.stage);
 
     const currentIdx = STAGE_ORDER.indexOf(currentStage);
     const targetIdx = STAGE_ORDER.indexOf('proposal');
 
-    if (currentIdx < targetIdx) {
+    if (targetIdx < 0) {
+      console.log('No "proposal" stage in pipeline, skipping advances');
+    } else if (currentIdx < 0) {
+      // Current stage not in our list — try advancing until we reach proposal
+      console.log(`Current stage "${currentStage}" not in pipeline order, advancing until proposal`);
+      for (let i = 0; i < STAGE_ORDER.length; i++) {
+        const newStage = await advanceOnce(`step ${i + 1}`);
+        if (newStage?.toLowerCase().replace(/\s+/g, '_') === 'proposal') break;
+      }
+    } else if (currentIdx < targetIdx) {
       for (let i = currentIdx; i < targetIdx; i++) {
         const from = STAGE_ORDER[i];
         const to = STAGE_ORDER[i + 1];
-        await advanceOnce(`${from} → ${to}`);
+        await advanceOnce(`${from} -> ${to}`);
       }
     } else {
       console.log('Already at or past Proposal stage, skipping advances');
@@ -510,22 +534,22 @@ test.describe.serial('Full Pipeline Walkthrough — Vanguard Social Club', () =>
   test('Phase 7: Cleanup test data', async ({ page }) => {
     // Delete deal
     if (dealId) {
-      await page.request.delete(`http://localhost:3000/api/crm/deals/${dealId}`);
+      await page.request.delete(`${BASE_URL}/api/crm/deals/${dealId}`);
       console.log('Deleted deal:', dealId);
     }
     // Delete contact
     if (contactId) {
-      await page.request.delete(`http://localhost:3000/api/crm/contacts/${contactId}`);
+      await page.request.delete(`${BASE_URL}/api/crm/contacts/${contactId}`);
       console.log('Deleted contact:', contactId);
     }
     // Delete person
     if (personId) {
-      await page.request.delete(`http://localhost:3000/api/persons/${personId}`);
+      await page.request.delete(`${BASE_URL}/api/persons/${personId}`);
       console.log('Deleted person:', personId);
     }
     // Delete company
     if (companyId) {
-      await page.request.delete(`http://localhost:3000/api/companies/${companyId}`);
+      await page.request.delete(`${BASE_URL}/api/companies/${companyId}`);
       console.log('Deleted company:', companyId);
     }
   });

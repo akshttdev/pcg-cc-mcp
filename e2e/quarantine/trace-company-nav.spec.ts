@@ -5,6 +5,7 @@
 import { test, expect } from '@playwright/test';
 import { loginAsAdmin, loginAndGoto, DEAL_ID, ORG_ID } from './helpers/auth';
 
+const BASE_URL = `http://localhost:${process.env.FRONTEND_PORT || '3000'}`;
 const HUDSON_COMPANY_ID = '5b3d9e7c-8d05-454d-a73f-b8e659396072';
 
 test.beforeEach(async ({ page }) => {
@@ -236,7 +237,7 @@ test('Method 6: Deal panel → IntelTab → Profile link', async ({ page }) => {
 
 test('Method 7: Person profile → Company link', async ({ page }) => {
   const urls = trackNavs(page);
-  const res = await page.request.get(`http://localhost:3000/api/crm/deals/${DEAL_ID}/rich`);
+  const res = await page.request.get(`${BASE_URL}/api/crm/deals/${DEAL_ID}/rich`);
   const personId = (await res.json()).data?.person_id;
 
   await loginAndGoto(page, `/people/${personId}`);

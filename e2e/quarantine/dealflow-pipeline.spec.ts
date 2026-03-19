@@ -9,6 +9,8 @@
 import { test, expect, Page } from '@playwright/test';
 import { loginAsAdmin, loginAndGoto, DEAL_ID, PIPELINE_ID, ORG_ID } from './helpers/auth';
 
+const BASE_URL = `http://localhost:${process.env.FRONTEND_PORT || '3000'}`;
+
 // ── Auth setup ───────────────────────────────────────────────────────────────
 
 test.beforeEach(async ({ page }) => {
@@ -18,12 +20,12 @@ test.beforeEach(async ({ page }) => {
 // ── API helpers ──────────────────────────────────────────────────────────────
 
 async function apiGet(page: Page, path: string) {
-  const res = await page.request.get(`http://localhost:3000/api${path}`);
+  const res = await page.request.get(`${BASE_URL}/api${path}`);
   return res.json();
 }
 
 async function apiPost(page: Page, path: string, body?: object) {
-  const res = await page.request.post(`http://localhost:3000/api${path}`, {
+  const res = await page.request.post(`${BASE_URL}/api${path}`, {
     data: body,
     headers: { 'Content-Type': 'application/json' },
   });
@@ -102,7 +104,7 @@ test.describe('Pipeline Stages — Configuration', () => {
   });
 
   test('agents Cash and Lux exist', async ({ page }) => {
-    const res = await page.request.get('http://localhost:3000/api/agents');
+    const res = await page.request.get(`${BASE_URL}/api/agents`);
     const agents = (await res.json()).data ?? [];
     const cash = agents.find((a: { short_name: string }) => a.short_name === 'Cash');
     const lux = agents.find((a: { short_name: string }) => a.short_name === 'Lux');

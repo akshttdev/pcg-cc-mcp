@@ -11,9 +11,10 @@
  */
 import { test, expect, Page } from '@playwright/test';
 
+const BASE_URL = `http://localhost:${process.env.FRONTEND_PORT || '3000'}`;
 const ORG_ID = '02020202-0202-0202-0202-020202020202';
-const PIPELINE_ID = '138ff8ec-6d65-493e-b6a9-0f9fef409968';
-const INTEL_STAGE_ID = '63300647-b5d9-4865-a41f-5aa105f7461e';
+let PIPELINE_ID = '';
+let INTEL_STAGE_ID = '';
 const PAUSE = 3000;
 
 const LEAD = {
@@ -90,7 +91,7 @@ SIRAK: Excellent. I'll have the invoice and onboarding package to you by end of 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 async function login(page: Page, user: string, pw: string) {
-  const res = await page.request.post('http://localhost:3000/api/auth/login', {
+  const res = await page.request.post(`${BASE_URL}/api/auth/login`, {
     data: { username: user, password: pw }, headers: { 'Content-Type': 'application/json' },
   });
   const sid = (await res.json())?.data?.session_id;
@@ -100,10 +101,10 @@ async function login(page: Page, user: string, pw: string) {
 }
 
 async function go(page: Page, user: string, pw: string, path: string) {
-  await page.goto('http://localhost:3000/', { waitUntil: 'domcontentloaded' });
+  await page.goto(`${BASE_URL}/`, { waitUntil: 'domcontentloaded' });
   const sid = await login(page, user, pw);
   await page.evaluate((s) => localStorage.setItem('session_id', s), sid);
-  await page.goto(`http://localhost:3000${path}`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE_URL}${path}`, { waitUntil: 'networkidle' });
   await page.evaluate((s) => localStorage.setItem('session_id', s), sid);
   await page.waitForTimeout(2000);
 }
@@ -111,10 +112,10 @@ async function go(page: Page, user: string, pw: string, path: string) {
 async function api(page: Page, method: string, path: string, body?: object) {
   const opts: any = { headers: { 'Content-Type': 'application/json' } };
   if (body) opts.data = body;
-  const r = method === 'GET' ? await page.request.get(`http://localhost:3000/api${path}`)
-    : method === 'PATCH' ? await page.request.patch(`http://localhost:3000/api${path}`, opts)
-    : method === 'DELETE' ? await page.request.delete(`http://localhost:3000/api${path}`)
-    : await page.request.post(`http://localhost:3000/api${path}`, opts);
+  const r = method === 'GET' ? await page.request.get(`${BASE_URL}/api${path}`)
+    : method === 'PATCH' ? await page.request.patch(`${BASE_URL}/api${path}`, opts)
+    : method === 'DELETE' ? await page.request.delete(`${BASE_URL}/api${path}`)
+    : await page.request.post(`${BASE_URL}/api${path}`, opts);
   return r.json();
 }
 
@@ -162,7 +163,27 @@ test.describe.serial('Operator Walkthrough — Devon Franklin', () => {
   // SETUP: Create entities with proper linkage + trigger research
   // ═══════════════════════════════════════════════════════════════════════════
 
+  test('Setup: Discover pipeline and stages', async ({ page }) => {
+    await login(page, 'admin', 'admin123');
+
+    // Find the Acquisition pipeline for this org
+    const pipelines = await api(page, 'GET', `/crm/pipelines?organization_id=${ORG_ID}`);
+    const acqPipeline = (pipelines.data ?? []).find((p: { name: string }) => p.name === 'Acquisition') || pipelines.data?.[0];
+    test.skip(!acqPipeline, 'No pipeline found for org — skipping entire walkthrough');
+    PIPELINE_ID = acqPipeline.id;
+    console.log('Pipeline:', PIPELINE_ID, acqPipeline.name);
+
+    // Find Intel stage
+    const stages = await api(page, 'GET', `/crm/pipelines/${PIPELINE_ID}/stages`);
+    const intelStage = (stages.data ?? []).find((s: { name: string; stage_type?: string }) =>
+      s.name === 'Intel' || s.stage_type === 'intel'
+    );
+    INTEL_STAGE_ID = intelStage?.id || '';
+    console.log('Intel stage:', INTEL_STAGE_ID);
+  });
+
   test('Setup: Create lead with proper entity linkage', async ({ page }) => {
+    test.skip(!PIPELINE_ID, 'No pipeline available');
     await login(page, 'admin', 'admin123');
 
     // 1. Create company

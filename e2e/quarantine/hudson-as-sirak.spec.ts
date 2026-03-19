@@ -4,10 +4,11 @@
  */
 import { test, expect, Page } from '@playwright/test';
 
+const BASE_URL = `http://localhost:${process.env.FRONTEND_PORT || '3000'}`;
 const ORG_ID = '02020202-0202-0202-0202-020202020202';
 
 async function loginAsSirak(page: Page) {
-  const res = await page.request.post('http://localhost:3000/api/auth/login', {
+  const res = await page.request.post(`${BASE_URL}/api/auth/login`, {
     data: { username: 'Sirak', password: 'Sirak123' },
     headers: { 'Content-Type': 'application/json' },
   });
@@ -28,10 +29,10 @@ async function loginAsSirak(page: Page) {
 }
 
 async function loginAndGotoAsSirak(page: Page, path: string) {
-  await page.goto('http://localhost:3000/', { waitUntil: 'domcontentloaded' });
+  await page.goto(`${BASE_URL}/`, { waitUntil: 'domcontentloaded' });
   const sessionId = await loginAsSirak(page);
   await page.evaluate((sid) => localStorage.setItem('session_id', sid), sessionId);
-  await page.goto(`http://localhost:3000${path}`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE_URL}${path}`, { waitUntil: 'networkidle' });
   await page.evaluate((sid) => localStorage.setItem('session_id', sid), sessionId);
   await page.context().addCookies([{
     name: 'session_id',
@@ -167,7 +168,7 @@ test('Sirak: Check role and permissions', async ({ page }) => {
   console.log('Session info:', roleInfo);
 
   // Try navigating to /companies/... directly
-  await page.goto('http://localhost:3000/companies/5b3d9e7c-8d05-454d-a73f-b8e659396072', { waitUntil: 'networkidle' });
+  await page.goto(`${BASE_URL}/companies/5b3d9e7c-8d05-454d-a73f-b8e659396072`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(3000);
 
   console.log('After direct company nav URL:', page.url());

@@ -8,8 +8,9 @@
  */
 import { test, expect, Page } from '@playwright/test';
 
+const BASE_URL = `http://localhost:${process.env.FRONTEND_PORT || '3000'}`;
 const ORG_ID = '02020202-0202-0202-0202-020202020202';
-const PIPELINE_ID = '138ff8ec-6d65-493e-b6a9-0f9fef409968';
+let PIPELINE_ID = '';
 const PAUSE = 2500; // ms between actions so you can watch
 
 const TEST_LEAD = {
@@ -25,7 +26,7 @@ const TEST_LEAD = {
 // ── Auth helpers ─────────────────────────────────────────────────────────────
 
 async function loginAs(page: Page, username: string, password: string) {
-  const res = await page.request.post('http://localhost:3000/api/auth/login', {
+  const res = await page.request.post(`${BASE_URL}/api/auth/login`, {
     data: { username, password },
     headers: { 'Content-Type': 'application/json' },
   });
@@ -39,24 +40,24 @@ async function loginAs(page: Page, username: string, password: string) {
 }
 
 async function gotoAs(page: Page, user: string, pw: string, path: string) {
-  await page.goto('http://localhost:3000/', { waitUntil: 'domcontentloaded' });
+  await page.goto(`${BASE_URL}/`, { waitUntil: 'domcontentloaded' });
   const sid = await loginAs(page, user, pw);
   await page.evaluate((s) => localStorage.setItem('session_id', s), sid);
-  await page.goto(`http://localhost:3000${path}`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE_URL}${path}`, { waitUntil: 'networkidle' });
   await page.evaluate((s) => localStorage.setItem('session_id', s), sid);
   await page.waitForTimeout(PAUSE);
 }
 
 async function apiGet(page: Page, path: string) {
-  return (await page.request.get(`http://localhost:3000/api${path}`)).json();
+  return (await page.request.get(`${BASE_URL}/api${path}`)).json();
 }
 async function apiPost(page: Page, path: string, body: object) {
-  return (await page.request.post(`http://localhost:3000/api${path}`, {
+  return (await page.request.post(`${BASE_URL}/api${path}`, {
     data: body, headers: { 'Content-Type': 'application/json' },
   })).json();
 }
 async function apiPatch(page: Page, path: string, body: object) {
-  return (await page.request.patch(`http://localhost:3000/api${path}`, {
+  return (await page.request.patch(`${BASE_URL}/api${path}`, {
     data: body, headers: { 'Content-Type': 'application/json' },
   })).json();
 }
@@ -76,7 +77,18 @@ test.describe.serial('Visual Pipeline Walkthrough — Operator View', () => {
   // SETUP: Create entities via API as admin, then switch to Sirak for UI
   // ═══════════════════════════════════════════════════════════════════════════
 
+  test('Setup: Discover pipeline', async ({ page }) => {
+    await loginAs(page, 'admin', 'admin123');
+
+    const pipelines = await apiGet(page, `/crm/pipelines?organization_id=${ORG_ID}`);
+    const acqPipeline = (pipelines.data ?? []).find((p: { name: string }) => p.name === 'Acquisition') || pipelines.data?.[0];
+    test.skip(!acqPipeline, 'No pipeline found for org');
+    PIPELINE_ID = acqPipeline.id;
+    console.log('🎯 Pipeline:', PIPELINE_ID, acqPipeline.name);
+  });
+
   test('Setup: Create lead entities', async ({ page }) => {
+    test.skip(!PIPELINE_ID, 'No pipeline available');
     await loginAs(page, 'admin', 'admin123');
 
     // Find or create company
@@ -493,10 +505,10 @@ test.describe.serial('Visual Pipeline Walkthrough — Operator View', () => {
 
   test('Cleanup: Remove test data', async ({ page }) => {
     await loginAs(page, 'admin', 'admin123');
-    if (dealId) await page.request.delete(`http://localhost:3000/api/crm/deals/${dealId}`);
-    if (contactId) await page.request.delete(`http://localhost:3000/api/crm/contacts/${contactId}`);
-    if (personId) await page.request.delete(`http://localhost:3000/api/persons/${personId}`);
-    if (companyId) await page.request.delete(`http://localhost:3000/api/companies/${companyId}`);
+    if (dealId) await page.request.delete(`${BASE_URL}/api/crm/deals/${dealId}`);
+    if (contactId) await page.request.delete(`${BASE_URL}/api/crm/contacts/${contactId}`);
+    if (personId) await page.request.delete(`${BASE_URL}/api/persons/${personId}`);
+    if (companyId) await page.request.delete(`${BASE_URL}/api/companies/${companyId}`);
     console.log('✅ Test data cleaned up');
   });
 });
