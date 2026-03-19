@@ -275,7 +275,9 @@ async fn respond_clarification(
         .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
         .to_uuid();
 
-    let flow = AgentFlow::find_by_id(pool, flow_id).await?;
+    let flow = AgentFlow::find_by_id(pool, flow_id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Agent flow not found".into()))?;
 
     if flow.status != FlowStatus::NeedsClarification {
         return Err(ApiError::BadRequest(format!(
