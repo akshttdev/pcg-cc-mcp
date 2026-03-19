@@ -201,7 +201,12 @@ During this sprint, add `validator` to root `Cargo.toml` workspace dependencies 
 **2e. Remove `continue-on-error: true`** from `.github/workflows/ci.yml` lines 48, 65 (clippy + tests). Keep on lines 119, 129 (security audits — advisory only).
 **2f. Add `vite build` step** to CI — currently only `tsc --noEmit` catches TS errors; actual build failures go undetected. Add after ESLint step in `frontend-check` job.
 
-**Note**: CI still runs `cargo fmt --check` and `eslint` on full codebase. If pre-existing format violations block CI, use targeted `#[rustfmt::skip]` or `eslint-disable` on pre-existing issues rather than mass-formatting. Goal: CI passes without touching files outside sprint scope.
+**CI fmt strategy (decided)**: CI runs `cargo fmt --check` on full codebase. To avoid mass-formatting:
+- Add `rustfmt.toml` with `ignore` list for vendored crates (`serenity-voice-model`, etc.)
+- Use targeted `#[rustfmt::skip]` or `eslint-disable` for pre-existing violations outside sprint scope
+- Goal: CI passes without touching files outside sprint scope
+
+**`crm_deals.rs` split timing (decided)**: Split FIRST (before making access control / FSM changes). Reduces merge conflict risk and makes subsequent changes to smaller files.
 
 ### 3. Apply Lint-Staged Config [QUICK WIN — Day 1]
 **Effort**: 0.25 days
@@ -285,7 +290,8 @@ Configurable drain timeout: default 30s, env `SHUTDOWN_DRAIN_TIMEOUT_SECS` for l
 - 6 aggregation queries in `token_usage.rs` SUM cost_cents — all return NULL
 
 **Approach**: Redirect dashboard to `vibe_transactions` (source of truth)
-- Add org-scoped cost aggregation endpoints to `vibe_treasury.rs` (extend existing, not new module):
+- Add org-scoped cost aggregation endpoints to `vibe_treasury.rs` (extend existing, not new module)
+- **Access control**: `require_editor()` on all cost endpoints (viewer too permissive for financial data):
   - `GET /api/vibe/costs/summary?org_id=&days=` — total VIBE + cost_cents + tx count
   - `GET /api/vibe/costs/daily?org_id=&days=` — GROUP BY DATE(created_at)
   - `GET /api/vibe/costs/by-model?org_id=&days=` — GROUP BY model, provider
@@ -587,7 +593,7 @@ FRONTEND_PORT=3000 npx playwright test --reporter=list
 | File | Action | Sprint Item |
 |------|--------|-------------|
 | `crates/server/src/routes/crm_deals.rs` | Modify — access control + DbUuid | #1 |
-| `crates/server/src/helpers/access.rs` | Create — shared `require_org_membership()` helper | #1 |
+| `crates/server/src/helpers.rs` | Create — `parse_db_uuid_param()`, shared route helpers | #1 |
 | `crates/server/src/routes/crm_deal_transitions.rs` | Create — extracted stage transitions from crm_deals.rs | #1 |
 | `crates/server/src/routes/crm_deal_automations.rs` | Create — extracted research/proposal/deck triggers | #1 |
 | `crates/server/src/routes/crm_contacts.rs` | Modify — add access control to all 12 endpoints | #1 |
@@ -614,6 +620,50 @@ FRONTEND_PORT=3000 npx playwright test --reporter=list
 | `crates/server/src/routes/feedback.rs` | Modify — friction fields | #10 |
 | `frontend/src/components/feedback/` | Create/modify — friction form | #10 |
 | `crates/db/migrations/20260413000000_*.sql` | Create — new migrations (NeedsClarification column, friction fields) | #8, #10 |
+| `crates/server/src/middleware/access_control.rs` | Modify — add `require_org_membership()` method to `AccessContext` | #1 |
+| `frontend/src/constants/artifact.ts` | Create — shared `VIDEO_EDIT_TYPES` constant (dedup 3 files) | #1 |
+| `frontend/src/constants/query-config.ts` | Create — centralized query staleTime/refetchInterval constants | #6 |
+| `rustfmt.toml` | Create — `ignore` list for vendored crates | #2 |
+
+---
+
+## Modularity Wins (2026-03-19)
+
+Low-effort extractions to apply DURING sprint implementation (not separate tasks).
+
+### In-Sprint Extractions (~4h total, embedded in PRs)
+
+**Backend**:
+| Extraction | Effort | File | PR |
+|-----------|--------|------|-----|
+| `require_org_membership()` → `AccessContext` method | 30m | `middleware/access_control.rs` | #51 |
+| `parse_db_uuid_param()` helper | 20m | `crates/server/src/helpers.rs` (new) | #51 |
+| `crm_deals.rs` → `crm_deal_transitions.rs` + `crm_deal_automations.rs` | 1h | `routes/` | #51 |
+| `BackgroundWorker` trait + `spawn_worker()` | 30m | `workers/mod.rs` | #52 |
+| `AgentFlowExecutorConfig::from_env()` | 15m | agent flow executor | #54 |
+
+**Frontend**:
+| Extraction | Effort | File | PR |
+|-----------|--------|------|-----|
+| `VIDEO_EDIT_TYPES` → `constants/artifact.ts` | 15m | 3 files deduped | #51 |
+| Date formatting → use `formatDate()` everywhere | 30m | 3-4 files | #53 |
+| `QUERY_CONFIG` constants | 30m | `constants/query-config.ts` | #53/#54 |
+
+### Deferred (noted for future sprints)
+
+**Backend**: env var helpers (96+ sites), model error macro (30+ files), inline `FromRow` cleanup (83+ structs), DB error wrapping trait (1,060+ `ApiError::InternalError` conversions), large file splits beyond `crm_deals.rs` (brand.rs 1,863L, tasks.rs 1,572L, intelligence.rs 1,443L, sovereign_storage.rs 2,699L). Note: `main.rs` (588L) background task extraction is covered by sprint item #5.
+
+**Frontend**: stream hook backoff utility (4 hooks), query/mutation hook factory, `useAsyncModalAction()` hook (72 NiceModal dialogs share loading/error pattern), `<LoadingButton>` component (20+ dialog submit buttons), `<EmptyState>` component (standardize empty state UX), localStorage typed wrapper (63 raw `localStorage` calls), validation utils (20+ inline `required` checks), spinner standardization (mixed Loader/Loader2/RefreshCw/custom), large component splits (NoraAssistant 1,027L, StagingReviewPanel 933L, topsi.tsx 937L)
+
+### Large File Inventory (>1,000 lines)
+
+**Backend routes**: `crm_deals.rs` (2,923), `sovereign_storage.rs` (2,699), `brand.rs` (1,863), `data_source_workflows.rs` (1,691), `tasks.rs` (1,572), `intelligence.rs` (1,443), `workflow_staging.rs` (1,401), `meet.rs` (1,372)
+
+**Backend models**: `crm_deal.rs` (1,114), `topiclip.rs` (1,030), `task.rs` (1,010)
+
+**Frontend components**: `NoraAssistant.tsx` (1,027), `useProjectData.ts` (952), `StagingReviewPanel.tsx` (933), `meeting-mode/index.tsx` (887), `editor/index.tsx` (864)
+
+**Frontend pages**: `topsi.tsx` (937), `AgentSettings.tsx` (918), `crm.tsx` (898), `StagingTab.tsx` (856), `business-reports.tsx` (827)
 
 ---
 
