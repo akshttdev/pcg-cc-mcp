@@ -3,7 +3,7 @@
 //! Handles contact creation, lead scoring, lifecycle management, and Zoho CRM sync.
 
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, Query, State},
     routing::{delete, get, patch, post},
 };
@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
 #[derive(Debug, Deserialize)]
 pub struct ListContactsQuery {
@@ -59,13 +59,30 @@ pub struct UpdateLeadScoreRequest {
     pub score_delta: i32,
 }
 
+/// Helper: load a contact and verify org membership
+async fn require_contact_org_access(
+    access: &AccessContext,
+    pool: &sqlx::SqlitePool,
+    contact_id: &DbUuid,
+) -> Result<CrmContact, ApiError> {
+    let contact = CrmContact::find_by_id(pool, contact_id).await?;
+    if let Some(ref org_id) = contact.organization_id {
+        access.require_org_membership(pool, org_id.as_str()).await?;
+    }
+    Ok(contact)
+}
+
 /// GET /crm/contacts - List contacts by organization
 
 async fn list_contacts(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Query(query): Query<ListContactsQuery>,
 ) -> Result<Json<ApiResponse<Vec<CrmContact>>>, ApiError> {
     let pool = &deployment.db().pool;
+    access_context
+        .require_org_membership(pool, &query.organization_id.to_string())
+        .await?;
 
     let org_id = DbUuid::from(query.organization_id);
     let contacts = if let Some(stage_str) = query.lifecycle_stage {
@@ -93,10 +110,14 @@ async fn list_contacts(
 
 /// POST /crm/contacts - Create contact
 async fn create_contact(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Json(data): Json<CreateCrmContact>,
 ) -> Result<Json<ApiResponse<CrmContact>>, ApiError> {
     let pool = &deployment.db().pool;
+    access_context
+        .require_org_membership(pool, data.organization_id.as_str())
+        .await?;
 
     // Check if contact with this email already exists
     if let Some(ref email) = data.email {
@@ -116,10 +137,14 @@ async fn create_contact(
 
 /// GET /crm/contacts/search - Search contacts
 async fn search_contacts(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Query(query): Query<SearchContactsQuery>,
 ) -> Result<Json<ApiResponse<Vec<CrmContact>>>, ApiError> {
     let pool = &deployment.db().pool;
+    access_context
+        .require_org_membership(pool, &query.organization_id.to_string())
+        .await?;
 
     let lifecycle_stage = query
         .lifecycle_stage
@@ -144,10 +169,14 @@ async fn search_contacts(
 
 /// GET /crm/contacts/stats/:organization_id - Get contact statistics by org
 async fn get_contact_stats(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(organization_id): Path<String>,
 ) -> Result<Json<ApiResponse<ContactStats>>, ApiError> {
     let pool = &deployment.db().pool;
+    access_context
+        .require_org_membership(pool, &organization_id)
+        .await?;
     let organization_id = DbUuid::from(organization_id);
 
     let stage_counts: Vec<(String, i64)> = sqlx::query_as(
@@ -202,21 +231,26 @@ async fn get_contact_stats(
 
 /// GET /crm/contacts/:id - Get single contact
 async fn get_contact(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<CrmContact>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
-    let contact = CrmContact::find_by_id(pool, &id).await?;
+    let contact = require_contact_org_access(&access_context, pool, &id).await?;
     Ok(Json(ApiResponse::success(contact)))
 }
 
 /// GET /crm/contacts/by-email/:organization_id/:email - Get contact by email (org-scoped)
 async fn get_contact_by_email(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path((organization_id, email)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<Option<CrmContact>>>, ApiError> {
     let pool = &deployment.db().pool;
+    access_context
+        .require_org_membership(pool, &organization_id)
+        .await?;
     let organization_id = DbUuid::from(organization_id);
     let contact = CrmContact::find_by_email(pool, &organization_id, &email).await?;
 
@@ -225,57 +259,67 @@ async fn get_contact_by_email(
 
 /// PATCH /crm/contacts/:id - Update contact
 async fn update_contact(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
     Json(update): Json<UpdateCrmContact>,
 ) -> Result<Json<ApiResponse<CrmContact>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
+    require_contact_org_access(&access_context, pool, &id).await?;
     let contact = CrmContact::update(pool, &id, update).await?;
     Ok(Json(ApiResponse::success(contact)))
 }
 
 /// POST /crm/contacts/:id/activity - Record activity
 async fn record_activity(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
+    require_contact_org_access(&access_context, pool, &id).await?;
     CrmContact::record_activity(pool, &id).await?;
     Ok(Json(ApiResponse::success(())))
 }
 
 /// POST /crm/contacts/:id/contacted - Record contact made
 async fn record_contacted(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
+    require_contact_org_access(&access_context, pool, &id).await?;
     CrmContact::record_contact_made(pool, &id).await?;
     Ok(Json(ApiResponse::success(())))
 }
 
 /// POST /crm/contacts/:id/replied - Record reply received
 async fn record_replied(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
+    require_contact_org_access(&access_context, pool, &id).await?;
     CrmContact::record_reply_received(pool, &id).await?;
     Ok(Json(ApiResponse::success(())))
 }
 
 /// POST /crm/contacts/:id/lead-score - Update lead score
 async fn update_lead_score(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
     Json(request): Json<UpdateLeadScoreRequest>,
 ) -> Result<Json<ApiResponse<CrmContact>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
+    require_contact_org_access(&access_context, pool, &id).await?;
     CrmContact::update_lead_score(pool, &id, request.score_delta).await?;
     let contact = CrmContact::find_by_id(pool, &id).await?;
     Ok(Json(ApiResponse::success(contact)))
@@ -283,11 +327,13 @@ async fn update_lead_score(
 
 /// DELETE /crm/contacts/:id - Delete contact
 async fn delete_contact(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = DbUuid::from(id);
+    require_contact_org_access(&access_context, pool, &id).await?;
     CrmContact::delete(pool, &id).await?;
     Ok(Json(ApiResponse::success(())))
 }

@@ -119,6 +119,28 @@ impl AccessContext {
         Ok(())
     }
 
+    /// Check that the user is a member of the given organization.
+    /// Admins bypass the check.
+    pub async fn require_org_membership(
+        &self,
+        pool: &sqlx::SqlitePool,
+        org_id: &str,
+    ) -> Result<(), ApiError> {
+        if self.is_admin {
+            return Ok(());
+        }
+        let role =
+            db::models::user::Organization::get_user_role(pool, org_id, self.user_id.as_str())
+                .await
+                .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+        if role.is_none() {
+            return Err(ApiError::Forbidden(
+                "Not a member of this organization".into(),
+            ));
+        }
+        Ok(())
+    }
+
     /// Require at least Viewer access to a project.
     pub async fn require_viewer(
         &self,
