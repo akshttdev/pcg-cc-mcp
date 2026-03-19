@@ -285,14 +285,101 @@ pub struct AgentFlowExecutorConfig {
 
 **Frontend**: No new hooks needed — `useAgentFlows`, `useAgentFlowEvents`, `useAgentFlowsAwaitingApproval` already exist in `frontend/src/hooks/useAgentFlows.ts` with appropriate staleTime (30s/15s/10s). Phase 1 focuses on backend only.
 
-**State machine**:
+**State machine** (FSM with transition validation + caller-aware guards):
+
+Per research (`fsm-requirement-models.md`): the orchestrator IS a state machine — "deterministic envelope, non-deterministic core." The FSM controls *when* agents run; agents control *what* they produce. Phase 1 implements the foundation; Phase 2 adds traceback/null transitions, parallel regions, and artifact FSMs.
+
+**Key design principle**: These flows are also managed from the dashboard by human users. Agent-driven transitions get strict FSM enforcement. Dashboard/API transitions from authenticated users get **permissive mode** — users can force-transition to any valid status. The FSM guards are for preventing *agent* mistakes, not blocking *human* overrides.
+
 ```
 Planning → [emit PhaseStarted] → Executing →
 [emit PhaseCompleted] → Verifying → [emit FlowCompleted]
 
 Any phase → NeedsClarification → [pause, emit event] → user responds → resume
 Any phase → Failed → [emit FlowFailed]
+Any phase → Paused → [user action] → resume to previous phase
 ```
+
+**Transition table** (Event-State Analysis, Phase 1 — simplified ESA matrix):
+```
+              | Planning  | Executing | Verifying | NeedsClar | AwaitAppr | Paused | Completed | Failed |
+--------------|-----------|-----------|-----------|-----------|-----------|--------|-----------|--------|
+phase_done    | →Executing| →Verifying| →Completed| —         | —         | —      | —         | —      |
+need_clarify  | →NeedsClar| →NeedsClar| →NeedsClar| ∅ (ignore)| —         | —      | —         | —      |
+respond_clar  | —         | —         | —         | →resume   | —         | —      | —         | —      |
+request_appr  | —         | —         | →AwaitAppr| —         | —         | —      | —         | —      |
+approve       | —         | —         | —         | —         | →Completed| —      | —         | —      |
+reject        | —         | —         | —         | —         | →Executing| —      | —         | —      |
+error         | →Failed   | →Failed   | →Failed   | →Failed   | →Failed   | →Failed| —         | —      |
+pause         | →Paused   | →Paused   | →Paused   | —         | —         | ∅      | —         | —      |
+resume        | —         | —         | —         | —         | —         | →prev  | —         | —      |
+user_override | →any      | →any      | →any      | →any      | →any      | →any   | →any      | →any   |
+```
+
+`user_override` = dashboard user with auth, bypasses FSM guards. `→resume` = returns to phase stored in `previous_phase` field. `∅` = event ignored. `—` = invalid (returns error for agents, allowed for user_override).
+
+**Implementation** — add to `agent_flow.rs`:
+```rust
+impl FlowStatus {
+    /// Valid transitions for agent-driven (strict) mode.
+    /// Returns None if transition is invalid.
+    pub fn valid_agent_transitions(&self) -> &[FlowStatus] {
+        match self {
+            Self::Planning => &[Self::Executing, Self::NeedsClarification, Self::Failed, Self::Paused],
+            Self::Executing => &[Self::Verifying, Self::NeedsClarification, Self::Failed, Self::Paused],
+            Self::Verifying => &[Self::Completed, Self::AwaitingApproval, Self::NeedsClarification, Self::Failed, Self::Paused],
+            Self::NeedsClarification => &[Self::Planning, Self::Executing, Self::Verifying, Self::Failed],
+            Self::AwaitingApproval => &[Self::Completed, Self::Executing, Self::Failed],
+            Self::Paused => &[Self::Planning, Self::Executing, Self::Verifying, Self::Failed],
+            Self::Completed => &[],  // terminal
+            Self::Failed => &[],     // terminal (Phase 2: add retry → Planning)
+        }
+    }
+
+    pub fn can_transition_to(&self, target: &FlowStatus) -> bool {
+        self.valid_agent_transitions().contains(target)
+    }
+}
+
+/// Validated transition — used by agent flow executor (strict mode).
+pub async fn transition_validated(pool: &SqlitePool, id: Uuid, target_status: FlowStatus, target_phase: AgentPhase) -> Result<Self, AgentFlowError> {
+    let flow = Self::find_by_id(pool, id).await?.ok_or(AgentFlowError::NotFound)?;
+    if !flow.status.can_transition_to(&target_status) {
+        return Err(AgentFlowError::InvalidTransition(
+            format!("{} → {} not allowed", flow.status, target_status)
+        ));
+    }
+    Self::transition_to_phase(pool, id, target_phase).await
+}
+```
+
+**Dashboard/API callers** continue using `transition_to_phase()` directly (no validation) — existing behavior preserved. The executor uses `transition_validated()` for strict FSM enforcement.
+
+**Research references applied** (from `roadmap/reference/` on `research/5-year-product-roadmap` branch):
+- `fsm-requirement-models.md` — IREB layered FSM model, ESA completeness checking, MetaAgent 3-transition-type FSM
+- `rooroo-agent-orchestration.md` — JSON Output Envelope (`{status, message, artifacts}`), cost-tiered model routing, "clarify, don't assume" principle
+- `multi-agent-system-design.md` — Hybrid reactive/deliberative architecture, Anthropic orchestrator-workers pattern, context isolation
+- `12-ai--workflow-engines.md` — Restate checkpoint-based recovery (Rust-native), event sourcing for execution state, Temporal durable execution patterns
+
+**Phase 1 applies these patterns**:
+- **Output Envelope** (RooRoo) → item #7 `AgentResponseEnvelope`
+- **"Deterministic envelope, non-deterministic core"** (FSM research) → FSM controls phase transitions, agents have freedom within phases
+- **Caller-aware guards** (dashboard constraint) → strict for agents, permissive for humans
+- **Hybrid architecture** (MAS research) → BackgroundWorker = reactive loop, agent dispatch = deliberative layer
+- **Event sourcing** (workflow engines) → `AgentFlowEvent` table already follows this pattern — current state derivable from event replay
+
+**Phase 2 additions** (deferred — from research backlog #22-27):
+- Traceback transitions: `s_i → s_j` (j < i) with accumulated error context (MetaAgent pattern, 85% checkpoint passage)
+- Null transitions: self-loops for iterative refinement within a state
+- Parallel state regions with `onDone` synchronization (XState statechart pattern)
+- Artifact FSMs: `draft → in_review → approved → complete` per output
+- ESA matrix auto-generation for workflow definitions
+- Guard conditions: `start` requires `assigned_agent IS NOT NULL`, etc.
+- Layered validation: deterministic checks before LLM review
+- Context isolation: subtask agents get own conversation, parent gets summary only (RooRoo/Anthropic pattern)
+- Hierarchical Task DAG (HTDAG): lazy decomposition of non-atomic tasks (Deep Agent pattern)
+- Contract Net Protocol: agents bid on tasks based on capability/workload (MAS research)
+- Restate-style checkpoint recovery: journal side-effect results, no deterministic replay requirement
 
 **Agent dispatch strategy**: Configurable per flow_type
 - **Simple tasks** (research, analysis, triage): Route through `pcg_router.rs` (HTTP/API calls) — simpler, cost-tracked automatically via VibeTransaction
@@ -476,20 +563,48 @@ FRONTEND_PORT=3000 npx playwright test --reporter=list
 
 ## Out of Scope (Deferred)
 
-- Wide research orchestration (agent engine phase 2)
+### Agent Engine Phase 2 (from FSM/orchestration research)
+- Wide research orchestration — parallel agent execution with `onDone` sync
+- Traceback transitions (`s_i → s_j`, j < i) — go back N steps with error context instead of restart (MetaAgent, 85% checkpoint passage)
+- Null transitions (self-loops) — iterative refinement within a state without progressing the FSM
+- Parallel state regions — XState statechart pattern for concurrent agent work streams
+- Artifact FSMs — `draft → in_review → approved → complete` lifecycle per agent output
+- ESA matrix tooling — auto-generate Event-State Analysis for workflow definitions, highlight specification gaps
+- Context isolation — subtask agents get own conversation context, parent receives summary only (RooRoo/Anthropic pattern)
+- Hierarchical Task DAG (HTDAG) — lazy decomposition of non-atomic tasks (Deep Agent pattern)
+- Contract Net Protocol — agents bid on tasks based on capability/workload matching
+- Restate-style checkpoint recovery — journal side-effect results instead of requiring deterministic replay
+- Hierarchical/nested states — orchestrator sees phases, executing agent sees sub-steps
+- Guard conditions with DB queries — `start` requires `assigned_agent IS NOT NULL`, `complete` requires all subtasks done
+- Layered validation — deterministic checks (schema, completeness, consistency) before expensive LLM review
+
+### Cost & Routing
 - Cost-tiered model routing (S0-08) — needs engine working first
 - CAPO per-task tracking (S0-07) — needs cost bridge first
 - Prompt caching (S0-10) — needs routing first
+### Infrastructure & Quality
 - Full input validation framework (S0-13) — progressive adoption started here
 - Webhook retry worker (S0-14) — fields exist, not urgent
-- Vision/mission anchor doc (S0-11) — writing, not code
 - Rate limiting (S0-17) — internal only
-- DbUuid Phase C/D — style debt
-- Editron/social media workflow migration — needs engine first
-- A2A (Agent-to-Agent) Protocol — Google's emerging standard for agent discovery/delegation (v0.3 with gRPC). Future direction for agent registry, not Phase 1
+- DbUuid Phase C/D — style debt (84 `Path<Uuid>` remaining)
+
+### Observability & Production Readiness
 - OpenTelemetry distributed tracing — `tracing-opentelemetry` crate + OTLP export. Needed for Stage 1 pilot, not Phase 0
 - Three-endpoint health checks (live/ready/startup) — Kubernetes-style, needed for production deploy
 - JSON structured log output for production — `tracing-subscriber` with `fmt::layer().json()`
+- AI-specific tracing attributes per workflow step (model, tokens, cost, duration)
+
+### Platform & Multi-Agent
+- A2A (Agent-to-Agent) Protocol — Google's emerging standard for agent discovery/delegation (v0.3 with gRPC). Future direction for agent registry
+- BDI (Belief-Desire-Intention) model — formal commitment strategies for agent planning
+- Blackboard architecture — shared knowledge base for multi-agent collaboration on same project
+- Workflow marketplace/templates — JSON definitions with parameterized credentials, import/export
+- Workflow versioning — immutable versioned definitions, running executions pinned to creation-time version
+- Auto-generate workflow FSMs from task descriptions (MetaAgent approach)
+
+### Content & Ops
+- Vision/mission anchor doc (S0-11) — writing, not code
+- Editron/social media workflow migration — needs engine first
 
 ---
 
