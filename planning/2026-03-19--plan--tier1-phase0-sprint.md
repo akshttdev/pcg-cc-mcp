@@ -124,7 +124,7 @@ pub trait StructuredOutput {
 ### E. Input Validation Progressive Adoption
 No `validator` crate exists today — all validation is inline. Rather than a big-bang adoption, add validation incrementally via a derive macro pattern on the highest-risk structs first:
 
-During this sprint, add `validator` to `Cargo.toml` and apply `#[derive(Validate)]` to:
+During this sprint, add `validator` to root `Cargo.toml` workspace dependencies (`[workspace.dependencies]`) and reference via `validator = { workspace = true }` in crates that need it (`server`, `db`). Apply `#[derive(Validate)]` to:
 1. `SubmitFeedbackRequest` (friction logging form — new code, clean slate)
 2. `CreateFlowEvent` (agent events — new code)
 3. `CreateAgentFlow` (flow creation — modified code)
@@ -146,13 +146,13 @@ During this sprint, add `validator` to `Cargo.toml` and apply `#[derive(Validate
 **1d. Add access control to `crm_contacts.rs`** (12 endpoints, ZERO access checks)
 - All handlers lack `Extension(access_context)` parameter entirely
 - Any authenticated user can CRUD all contacts regardless of organization membership
-- Fix: Add `Extension(access_context): Extension<AccessContext>` to all handlers
+- Fix: Extract `require_org_membership()` to shared module `crates/server/src/helpers/access.rs` (low-effort modularity — reusable across all CRM route files)
+- Add `Extension(access_context): Extension<AccessContext>` to all handlers
 - Add `require_org_membership()` checks using `organization_id` query param
-- Follow `crm_deals.rs` patterns (gold standard — all 20 handlers protected)
 
 **1e. Add access control to `crm_pipelines.rs`** (13 endpoints, ZERO access checks)
 - Same issue as contacts — handlers accept `organization_id` but never validate membership
-- Fix: Same pattern as 1d
+- Fix: Use shared `require_org_membership()` from new helpers/access.rs
 
 **1b. Fix `uuid::Uuid` in new code** (`crm_deals.rs`)
 - 6 instances of `uuid::Uuid` found (line 20 import + lines 895, 1011, 1191, 1194, 1195).
@@ -175,6 +175,12 @@ During this sprint, add `validator` to `Cargo.toml` and apply `#[derive(Validate
 - Line 20: remove `use uuid::Uuid;` import after above conversions
 - **Scope for this sprint**: Fix route-handler-level usage. BLOB-binding instances deferred to DbUuid Phase C (backlog) only if model layer requires `uuid::Uuid` type signature changes.
 
+**1f. Split `crm_deals.rs` (2,923 lines)** — opportunistic while touching for #1a, #1b, FSM
+- Extract stage transition logic (move_deal_stage, advance_deal, mark_deal_won ~800 lines) → `crm_deal_transitions.rs`
+- Extract research/proposal/deck auto-triggers (~400 lines) → `crm_deal_automations.rs`
+- Core CRUD + list/get handlers stay in `crm_deals.rs` (~1,700 lines)
+- `main.rs` split happens naturally via item #5 (workers extract to `workers/mod.rs`)
+
 **1c. ~~Fix raw `fetch()` in call-intake.tsx~~** — RESOLVED
 - Exploration found `call-intake.tsx` already uses `makeRequest` (dynamic import), not raw `fetch()`.
 - Uses `callIntakeApi` and `reportsApi` domain modules correctly.
@@ -183,19 +189,29 @@ During this sprint, add `validator` to `Cargo.toml` and apply `#[derive(Validate
 ### 2. Fix CI Pipeline [HIGH — Day 1-2]
 **Effort**: 1.5 days | **Parallelizable**: Yes (assign to different dev)
 
-**2a. `cargo fmt --all`** — single formatting-only commit (200+ files)
-**2b. Fix clippy errors** — `discord-bots` (29), `utils` (23), `pcg-cli` (65). Use `#![allow(clippy::uninlined_format_args)]` at crate root for bulk non-critical lints.
+**Incremental lint/fmt strategy** — optimize for speed, avoid 200+ file mass commits:
+- Run `cargo fmt` and `eslint --fix` only on files modified in this sprint, not full codebase
+- Pre-commit hooks (item #3) enforce formatting on all future commits automatically
+- Full codebase formatting deferred to a dedicated cleanup PR (low-conflict window)
+
+**2a. `cargo fmt` on modified files only** — format files touched by sprint items, not `cargo fmt --all`
+**2b. Fix clippy errors** — `discord-bots` (29), `utils` (23), `pcg-cli` (65). Use `#![allow(clippy::uninlined_format_args)]` at crate root for bulk non-critical lints. Exclude vendored crates (`serenity-voice-model`).
 **2c. Fix `alpha-protocol-core` test compile errors** — 2 borrow checker issues in test code
-**2d. Fix ESLint** — `eslint --fix` for unused disable directives (62 errors)
+**2d. Fix ESLint on modified files** — `eslint --fix` only on files touched in sprint
 **2e. Remove `continue-on-error: true`** from `.github/workflows/ci.yml` lines 48, 65 (clippy + tests). Keep on lines 119, 129 (security audits — advisory only).
 **2f. Add `vite build` step** to CI — currently only `tsc --noEmit` catches TS errors; actual build failures go undetected. Add after ESLint step in `frontend-check` job.
 
-### 3. Apply Lint-Staged Setup [QUICK WIN — Day 1]
-**Effort**: 0.5 days
+**Note**: CI still runs `cargo fmt --check` and `eslint` on full codebase. If pre-existing format violations block CI, use targeted `#[rustfmt::skip]` or `eslint-disable` on pre-existing issues rather than mass-formatting. Goal: CI passes without touching files outside sprint scope.
 
-- Apply stash: `git stash pop` (stash@{0}: "lint-staged + import-sort setup + eslint --fix")
-- Verify pre-commit hook works
-- Commit: `chore: add lint-staged pre-commit hooks`
+### 3. Apply Lint-Staged Config [QUICK WIN — Day 1]
+**Effort**: 0.25 days
+
+**Strategy change**: Extract only config files from stash, discard 657-file import reorder:
+- Cherry-pick from stash: `.githooks/pre-commit`, `frontend/package.json` (lint-staged + simple-import-sort deps), `frontend/.eslintrc.cjs` (import-sort rules)
+- Discard: mass import reordering across 654 source files (pre-commit hook handles incrementally on future commits)
+- ESLint max-warnings: accept 110→180 bump for now; re-evaluate at sprint end based on warning count
+- `git config core.hooksPath .githooks` to activate
+- Verify: stage a `.tsx` file with bad imports → pre-commit auto-sorts on commit
 
 ### 4. Cooldown Race Condition Fix (S0-05) [HIGH — Day 2]
 **Effort**: 0.5 days
@@ -223,7 +239,7 @@ axum::serve(listener, app_router)
     .await?;
 ```
 Add `shutdown_signal()` using `tokio::signal` for SIGTERM + SIGINT.
-Add drain timeout (30s) via `tokio::time::timeout` to prevent hanging on long-running LLM streams.
+Configurable drain timeout: default 30s, env `SHUTDOWN_DRAIN_TIMEOUT_SECS` for longer-running tasks (LLM streams can run 60s+).
 **Note**: `CancellationToken` + Axum may have edge cases (axum issue #3326) — test thoroughly.
 
 **5b. Shutdown registry** — new `crates/server/src/workers/mod.rs`
@@ -269,9 +285,13 @@ Add drain timeout (30s) via `tokio::time::timeout` to prevent hanging on long-ru
 - 6 aggregation queries in `token_usage.rs` SUM cost_cents — all return NULL
 
 **Approach**: Redirect dashboard to `vibe_transactions` (source of truth)
-- Add new API endpoint `GET /api/vibe-usage/summary` mirroring token_usage aggregation queries but reading from `vibe_transactions`
-- Add `GET /api/vibe-usage/daily`, `/by-project`, `/by-model` equivalents
-- Update `frontend/src/pages/ai-usage.tsx` to query vibe-usage endpoints
+- Add org-scoped cost aggregation endpoints to `vibe_treasury.rs` (extend existing, not new module):
+  - `GET /api/vibe/costs/summary?org_id=&days=` — total VIBE + cost_cents + tx count
+  - `GET /api/vibe/costs/daily?org_id=&days=` — GROUP BY DATE(created_at)
+  - `GET /api/vibe/costs/by-model?org_id=&days=` — GROUP BY model, provider
+  - `GET /api/vibe/costs/by-project?org_id=&days=` — GROUP BY source_id WHERE source_type='project'
+- Add GROUP BY queries to `vibe_transaction.rs` model (indexes already exist: source, created_at, task)
+- Update `frontend/src/pages/ai-usage.tsx` to call vibe cost endpoints (reuse existing `vibeApi` patterns from `vibe.tsx`)
 - Update `TokenUsageWidget.tsx` (mission-control) to use vibe data
 - Keep `token_usage` routes as-is for backward compatibility
 - Verify: dashboard shows actual cost data after running an agent
@@ -430,7 +450,12 @@ pub async fn transition_validated(pool: &SqlitePool, id: Uuid, target_status: Fl
 4. Advance phases using `AgentFlow::transition_to_phase()` (already exists)
 5. Emit events via `AgentFlowEvent::emit_phase_started()` (already exists)
 6. Handle approval gates (`human_approval_required = true`)
-7. Publish `DomainEvent::FlowPhaseAdvanced` on broadcast channel (Arch C)
+7. Publish `DomainEvent::FlowPhaseAdvanced` on broadcast channel AND persist to `agent_flow_events` table (Arch C)
+   - Pattern: `emit_and_persist()` — broadcasts in-memory AND writes to DB in one call
+   - Follows existing pattern in `ExecutionEngine::emit_flow_event()` (nora/src/execution/engine.rs:274-309)
+   - SSE endpoint (`event_stream.rs`) already polls `agent_flow_events` — persistence = automatic SSE delivery
+
+**Phase 2 migration note**: The inline stage-trigger agents (Scout, Astra, Cash, Lux) in `crm_deals.rs` currently spawn as direct async tasks with no retry/timeout/observability (roadmap P0 Blocker #3). Phase 2 will migrate these to dispatch through the agent flow engine, giving them the retry/timeout/FSM enforcement that this sprint builds. Phase 1: engine and inline agents coexist (engine opt-in via `ENABLE_AGENT_FLOW_ENGINE=1`).
 
 **Reuse**:
 - `AgentFlow::find_by_status()` — queries by status (agent_flow.rs)
@@ -562,6 +587,9 @@ FRONTEND_PORT=3000 npx playwright test --reporter=list
 | File | Action | Sprint Item |
 |------|--------|-------------|
 | `crates/server/src/routes/crm_deals.rs` | Modify — access control + DbUuid | #1 |
+| `crates/server/src/helpers/access.rs` | Create — shared `require_org_membership()` helper | #1 |
+| `crates/server/src/routes/crm_deal_transitions.rs` | Create — extracted stage transitions from crm_deals.rs | #1 |
+| `crates/server/src/routes/crm_deal_automations.rs` | Create — extracted research/proposal/deck triggers | #1 |
 | `crates/server/src/routes/crm_contacts.rs` | Modify — add access control to all 12 endpoints | #1 |
 | `crates/server/src/routes/crm_pipelines.rs` | Modify — add access control to all 13 endpoints | #1 |
 | ~~`frontend/src/pages/call-intake.tsx`~~ | ~~Modify — replace raw fetch~~ | ~~#1~~ (already uses `makeRequest`) |
