@@ -479,7 +479,7 @@ Large feature branches risk merge conflicts and hide broken code. Ship to main i
 
 ### PR #53: Cost System Bridge
 **Items**: #6 (cost bridge)
-**Why safe for main**: Populates a field that was always NULL. Dashboard starts showing data instead of $0. No schema changes, no new endpoints.
+**Why safe for main**: Redirects dashboard from dead `token_usage` table to `vibe_transactions` (source of truth). New aggregation endpoints are additive. Dashboard starts showing real data instead of $0.
 **Gate**: Run an agent task → cost dashboard shows non-zero value.
 
 ### PR #54: Agent Engine + Response Protocol + Clarification + Deal FSM
@@ -487,24 +487,22 @@ Large feature branches risk merge conflicts and hide broken code. Ship to main i
 **Why safe for main**: Agent engine **disabled by default** via feature flag (`ENABLE_AGENT_FLOW_ENGINE=1` env var). Response types are additive. `NeedsClarification` status is a new enum variant — no existing flows use it. Deal FSM validation is agent-only (dashboard users bypass). Migration adds nullable columns.
 **Gate**: With flag enabled: create flow → engine progresses through phases. Without flag: no behavior change. `npm run generate-types:check` passes.
 
-### PR #56: Dogfood Friction Logging
+### PR #55: Dogfood Friction Logging
 **Items**: #10 (friction logging)
 **Why safe for main**: Extends existing feedback form with optional fields. Existing feedback still works unchanged. New UI button is additive.
 **Gate**: Submit standard feedback → works as before. Submit friction report → stored with metadata.
 
 ### PR Dependency Chain
 ```
-PR #51 (CI + regressions) → independent
+PR #51 (CI + regressions + access control) → independent
 PR #52 (stability) → independent
 PR #53 (cost bridge) → independent
-PR #54 (protocol + clarification) → after #51 (needs clean CI)
-PR #55 (agent engine) → after #52 (needs worker trait) + #54 (needs response protocol)
-PR #56 (friction logging) → independent
+PR #54 (agent engine + protocol + clarification + deal FSM) → after #52 (needs worker trait) + clean CI
+PR #55 (friction logging) → independent
 ```
 
-PRs #51, #52, #53, #56 can merge to main in any order.
-PR #54 merges after #52 (needs worker trait) + clean CI.
-**Note**: PR #55 removed — items #7 and #9 merged into PR #54.
+PRs #51, #52, #53, #55 can merge to main in any order.
+PR #54 merges last (depends on #52 for worker trait).
 
 ---
 
