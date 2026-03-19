@@ -74,13 +74,19 @@ jobs:
         run: |
           choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System'
 
+      - name: Remove lld linker config (not available on CI)
+        if: runner.os == 'macOS'
+        run: |
+          # Remove lld linker flags from cargo config (lld not installed on macOS runners)
+          grep -v 'fuse-ld=lld' .cargo/config.toml > .cargo/config.toml.new
+          mv .cargo/config.toml.new .cargo/config.toml
+          echo "Updated .cargo/config.toml:"
+          cat .cargo/config.toml
+
       - name: Build release binaries
         run: cargo build --release --locked --target ${{ matrix.target }} --bin server --bin orcha
         env:
           OPENSSL_DIR: ${{ runner.os == 'macOS' && '/opt/homebrew/opt/openssl@3' || '' }}
-          # Override .cargo/config.toml rustflags that specify lld (not available on CI runners)
-          CARGO_TARGET_X86_64_APPLE_DARWIN_RUSTFLAGS: ""
-          CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS: ""
 
       - name: Create artifact directory
         shell: bash
