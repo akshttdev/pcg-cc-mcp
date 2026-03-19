@@ -8,16 +8,15 @@ use axum::{
     Extension, Json,
     extract::{Path, State},
 };
-use db::{
-    db_uuid::DbUuid,
-    models::crm_deal::CrmDeal,
-};
+use db::{db_uuid::DbUuid, models::crm_deal::CrmDeal};
 use deployment::Deployment;
 use utils::response::ApiResponse;
 
-use crate::{DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param, middleware::access_control::AccessContext};
-
 use super::crm_deals::require_deal_org_access;
+use crate::{
+    DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param,
+    middleware::access_control::AccessContext,
+};
 
 // ── Scout: Who-Is Research ────────────────────────────────────────────────────
 

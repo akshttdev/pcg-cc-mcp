@@ -1612,7 +1612,10 @@ pub fn spawn_workflow_schedule_loop(
                     // Atomically claim trigger (prevents double-fire if schedule overlaps)
                     match WorkflowTrigger::try_claim_trigger(&pool, &trigger_id).await {
                         Ok(None) => {
-                            tracing::debug!("[SCHEDULE] Trigger {} still in cooldown, skipping", trigger_id);
+                            tracing::debug!(
+                                "[SCHEDULE] Trigger {} still in cooldown, skipping",
+                                trigger_id
+                            );
                             return;
                         }
                         Err(e) => {

@@ -77,11 +77,10 @@ pub fn resolve_volume_path(volume: &str, file_path: &str) -> Result<PathBuf, Vol
     if let (Ok(canon_base), Ok(canon_resolved)) = (
         std::fs::canonicalize(&base),
         std::fs::canonicalize(&resolved),
-    ) {
-        if !canon_resolved.starts_with(&canon_base) {
+    )
+        && !canon_resolved.starts_with(&canon_base) {
             return Err(VolumePathError::InvalidPath);
         }
-    }
 
     Ok(resolved)
 }

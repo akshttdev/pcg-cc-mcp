@@ -5,6 +5,7 @@
 //! sovereign stack, VIBE watchers, etc.).
 
 use std::sync::Arc;
+
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
@@ -91,7 +92,9 @@ pub async fn shutdown_signal(registry: ShutdownRegistry) {
     #[cfg(unix)]
     let terminate = async {
         match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
-            Ok(mut signal) => { signal.recv().await; }
+            Ok(mut signal) => {
+                signal.recv().await;
+            }
             Err(e) => {
                 tracing::error!("[Shutdown] Failed to install SIGTERM handler: {e}");
                 std::future::pending::<()>().await;

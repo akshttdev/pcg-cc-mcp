@@ -21,10 +21,11 @@ use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param, middleware::access_control::AccessContext};
-
-use super::crm_deal_automations;
-use super::crm_deal_transitions;
+use super::{crm_deal_automations, crm_deal_transitions};
+use crate::{
+    DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param,
+    middleware::access_control::AccessContext,
+};
 
 #[derive(Debug, Serialize)]
 pub struct DealTask {
@@ -781,19 +782,46 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/crm/deals/{id}", patch(update_deal))
         .route("/crm/deals/{id}", delete(delete_deal))
         .route("/crm/deals/{id}/rich", get(get_deal_rich))
-        .route("/crm/deals/{id}/stage", patch(crm_deal_transitions::move_deal_stage))
+        .route(
+            "/crm/deals/{id}/stage",
+            patch(crm_deal_transitions::move_deal_stage),
+        )
         .route(
             "/crm/deals/{id}/advance-requirements",
             get(crm_deal_transitions::get_advance_requirements),
         )
-        .route("/crm/deals/{id}/advance", post(crm_deal_transitions::advance_deal))
-        .route("/crm/deals/{id}/generate-proposal", post(crm_deal_automations::generate_proposal))
-        .route("/crm/deals/{id}/approve-proposal", post(crm_deal_automations::approve_proposal))
-        .route("/crm/deals/{id}/generate-deck", post(crm_deal_automations::generate_deck))
-        .route("/crm/deals/{id}/send-invoice", post(crm_deal_automations::send_deal_invoice))
-        .route("/crm/deals/{id}/mark-won", post(crm_deal_automations::mark_deal_won))
-        .route("/crm/deals/{id}/transcripts", get(crm_deal_automations::list_deal_transcripts))
-        .route("/crm/deals/{id}/transcripts", post(crm_deal_automations::link_deal_transcript))
+        .route(
+            "/crm/deals/{id}/advance",
+            post(crm_deal_transitions::advance_deal),
+        )
+        .route(
+            "/crm/deals/{id}/generate-proposal",
+            post(crm_deal_automations::generate_proposal),
+        )
+        .route(
+            "/crm/deals/{id}/approve-proposal",
+            post(crm_deal_automations::approve_proposal),
+        )
+        .route(
+            "/crm/deals/{id}/generate-deck",
+            post(crm_deal_automations::generate_deck),
+        )
+        .route(
+            "/crm/deals/{id}/send-invoice",
+            post(crm_deal_automations::send_deal_invoice),
+        )
+        .route(
+            "/crm/deals/{id}/mark-won",
+            post(crm_deal_automations::mark_deal_won),
+        )
+        .route(
+            "/crm/deals/{id}/transcripts",
+            get(crm_deal_automations::list_deal_transcripts),
+        )
+        .route(
+            "/crm/deals/{id}/transcripts",
+            post(crm_deal_automations::link_deal_transcript),
+        )
         // Org-scoped CRM deal routes
         .route("/organizations/{org_id}/crm/deals", get(list_org_deals))
 }

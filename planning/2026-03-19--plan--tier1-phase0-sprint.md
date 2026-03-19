@@ -434,7 +434,7 @@ All decisions resolved during planning — captured here for reference.
 | Items #7 + #9 merge | Build together — protocol exists to serve the executor | Avoids design-in-a-vacuum risk |
 | DomainEvent persistence | Persist events to DB via `emit_and_persist()` pattern | Follows existing Nora `emit_flow_event()` pattern |
 | Agent dispatch mode | Hybrid: API + executor, configurable per flow (default: "api") | Support both research and coding tasks |
-| ESLint max-warnings | Accept 110→180 bump for now | Re-evaluate at sprint end |
+| ESLint max-warnings | Accept 110→860 bump (855 actual from `simple-import-sort` on untouched files). Run `eslint --fix` in dedicated PR to reduce back to ~180. | Re-evaluate at sprint end |
 | Drain timeout | Configurable via `SHUTDOWN_DRAIN_TIMEOUT_SECS` (default 30s) | LLM streams can run 60s+ |
 
 ---
