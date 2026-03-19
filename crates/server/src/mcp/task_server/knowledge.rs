@@ -1,17 +1,8 @@
-use db::models::project_knowledge_source::{
-    KnowledgeSourceType, ProjectKnowledgeSource,
-};
-use rmcp::{
-    ErrorData,
-    handler::server::tool::Parameters,
-    model::CallToolResult,
-    tool,
-};
+use db::models::project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource};
+use rmcp::{ErrorData, handler::server::tool::Parameters, model::CallToolResult, tool};
 use serde_json::Value;
 
-use super::TaskServer;
-use super::helpers::*;
-use super::types::*;
+use super::{TaskServer, helpers::*, types::*};
 
 impl TaskServer {
     #[tool(
@@ -28,10 +19,12 @@ impl TaskServer {
 
         let source_type: KnowledgeSourceType = match req.source_type.parse() {
             Ok(st) => st,
-            Err(_) => return Ok(error_result(
-                "Invalid source_type. Valid: conversation, artifact, pulse_content, context_injection, entity, topology_snapshot",
-                None,
-            )),
+            Err(_) => {
+                return Ok(error_result(
+                    "Invalid source_type. Valid: conversation, artifact, pulse_content, context_injection, entity, topology_snapshot",
+                    None,
+                ));
+            }
         };
 
         let coverage = req.coverage_score.unwrap_or(0.5).clamp(0.0, 1.0);
@@ -54,7 +47,10 @@ impl TaskServer {
                 "source_type": req.source_type,
                 "source_id": req.source_id,
             }))),
-            Err(e) => Ok(error_result("Failed to add knowledge source", Some(&e.to_string()))),
+            Err(e) => Ok(error_result(
+                "Failed to add knowledge source",
+                Some(&e.to_string()),
+            )),
         }
     }
 
@@ -85,17 +81,19 @@ impl TaskServer {
                         }
                         true
                     })
-                    .map(|s| serde_json::json!({
-                        "id": s.id.to_string(),
-                        "source_type": s.source_type,
-                        "source_id": s.source_id,
-                        "source_title": s.source_title,
-                        "source_summary": s.source_summary,
-                        "coverage_score": s.coverage_score,
-                        "is_stale": s.is_stale,
-                        "last_refreshed_at": s.last_refreshed_at.to_rfc3339(),
-                        "created_at": s.created_at.to_rfc3339(),
-                    }))
+                    .map(|s| {
+                        serde_json::json!({
+                            "id": s.id.to_string(),
+                            "source_type": s.source_type,
+                            "source_id": s.source_id,
+                            "source_title": s.source_title,
+                            "source_summary": s.source_summary,
+                            "coverage_score": s.coverage_score,
+                            "is_stale": s.is_stale,
+                            "last_refreshed_at": s.last_refreshed_at.to_rfc3339(),
+                            "created_at": s.created_at.to_rfc3339(),
+                        })
+                    })
                     .collect();
 
                 Ok(success_json(&serde_json::json!({
@@ -105,7 +103,10 @@ impl TaskServer {
                     "sources": filtered,
                 })))
             }
-            Err(e) => Ok(error_result("Failed to list knowledge sources", Some(&e.to_string()))),
+            Err(e) => Ok(error_result(
+                "Failed to list knowledge sources",
+                Some(&e.to_string()),
+            )),
         }
     }
 
@@ -140,7 +141,10 @@ impl TaskServer {
                 "type_count": 0,
                 "knowledge_completeness": 0.0,
             }))),
-            Err(e) => Ok(error_result("Failed to get knowledge completeness", Some(&e.to_string()))),
+            Err(e) => Ok(error_result(
+                "Failed to get knowledge completeness",
+                Some(&e.to_string()),
+            )),
         }
     }
 
@@ -176,7 +180,10 @@ impl TaskServer {
                         "success": true,
                         "message": "Knowledge source marked as refreshed",
                     }))),
-                    Err(e) => Ok(error_result("Failed to mark refreshed", Some(&e.to_string()))),
+                    Err(e) => Ok(error_result(
+                        "Failed to mark refreshed",
+                        Some(&e.to_string()),
+                    )),
                 }
             }
             "delete" => {
@@ -196,10 +203,16 @@ impl TaskServer {
                             Ok(error_result("Knowledge source not found", None))
                         }
                     }
-                    Err(e) => Ok(error_result("Failed to delete knowledge source", Some(&e.to_string()))),
+                    Err(e) => Ok(error_result(
+                        "Failed to delete knowledge source",
+                        Some(&e.to_string()),
+                    )),
                 }
             }
-            _ => Ok(error_result("Invalid action. Use 'mark_stale', 'mark_refreshed', or 'delete'", None)),
+            _ => Ok(error_result(
+                "Invalid action. Use 'mark_stale', 'mark_refreshed', or 'delete'",
+                None,
+            )),
         }
     }
 }

@@ -31,11 +31,11 @@ mod nora_integration;
 mod onboarding;
 mod sms;
 
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::time::{Duration, SystemTime};
-
-use nora::agent::{NoraRequest, NoraRequestType, RequestPriority};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, SystemTime},
+};
 
 use axum::{
     Form, Router,
@@ -45,31 +45,32 @@ use axum::{
     routing::{get, post},
 };
 use chrono::Utc;
-
-use db::models::agent_conversation::{
-    AgentConversation, AgentConversationMessage, ConversationStatus,
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        agent_conversation::{AgentConversation, AgentConversationMessage, ConversationStatus},
+        call_log::{CallDirection, CallLog, CallStatus, CreateCallLog, UpdateCallLog},
+        crm_contact::{ContactSource, CreateCrmContact, CrmContact, LifecycleStage},
+        vibe_transaction::VibeSourceType,
+    },
 };
-use db::models::call_log::{CallDirection, CallLog, CallStatus, CreateCallLog, UpdateCallLog};
-use db::models::crm_contact::{
-    ContactSource, CreateCrmContact, CrmContact, LifecycleStage,
-};
-use db::models::vibe_transaction::VibeSourceType;
-use services::services::vibe_pricing::VibePricingService;
-use nora::twilio::{
-    TwilioCallHandler, TwilioCallRequest, TwilioConfig, TwilioSpeechResult,
-    TwilioStatusCallback, TwimlBuilder, get_audio_cache,
+use deployment::Deployment;
+use nora::{
+    agent::{NoraRequest, NoraRequestType, RequestPriority},
+    twilio::{
+        TwilioCallHandler, TwilioCallRequest, TwilioConfig, TwilioSpeechResult,
+        TwilioStatusCallback, TwimlBuilder, get_audio_cache,
+    },
 };
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tokio::sync::Mutex;
-use tokio::time::timeout;
+use services::services::vibe_pricing::VibePricingService;
+use tokio::{sync::Mutex, time::timeout};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, routes::nora::get_nora_instance};
-use db::db_uuid::DbUuid;
-use deployment::Deployment;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared statics
@@ -303,7 +304,11 @@ async fn send_outbound_sms(to: &str, body: &str) -> Result<(), anyhow::Error> {
     } else {
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
-        Err(anyhow::anyhow!("SMS send error {}: {}", status, &text[..text.len().min(200)]))
+        Err(anyhow::anyhow!(
+            "SMS send error {}: {}",
+            status,
+            &text[..text.len().min(200)]
+        ))
     }
 }
 
@@ -314,7 +319,8 @@ async fn lookup_sms_sender_context(
     phone: &str,
 ) -> Option<serde_json::Value> {
     // PCG team check first — higher priority than CRM lookup
-    if let Some((_uid, full_name, is_admin)) = onboarding::lookup_pcg_team_member(pool, phone).await {
+    if let Some((_uid, full_name, is_admin)) = onboarding::lookup_pcg_team_member(pool, phone).await
+    {
         return Some(serde_json::json!({
             "name": full_name,
             "phone": phone,
@@ -341,13 +347,15 @@ async fn lookup_sms_sender_context(
     .ok()
     .flatten();
 
-    row.map(|r| serde_json::json!({
-        "name": r.full_name,
-        "email": r.email,
-        "phone": phone,
-        "caller_type": "client",
-        "is_pcg_team": false,
-    }))
+    row.map(|r| {
+        serde_json::json!({
+            "name": r.full_name,
+            "email": r.email,
+            "phone": phone,
+            "caller_type": "client",
+            "is_pcg_team": false,
+        })
+    })
 }
 
 /// Strip markdown formatting so TTS doesn't read symbols aloud.
@@ -370,7 +378,9 @@ pub(crate) fn strip_markdown_for_tts(text: &str) -> String {
                 if chars.peek() == Some(&'(') {
                     chars.next();
                     while let Some(ch) = chars.next() {
-                        if ch == ')' { break; }
+                        if ch == ')' {
+                            break;
+                        }
                     }
                 }
                 out.push_str(&label);

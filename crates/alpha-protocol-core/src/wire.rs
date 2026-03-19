@@ -12,8 +12,9 @@
 //! | TASK_BROADCAST | 0x06 | Distributed task announcement |
 //! | PYTHIA_GRADIENT | 0x07 | Federated learning gradient |
 
-use serde::{Serialize, Deserialize};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use serde::{Deserialize, Serialize};
 
 /// Wire message type codes
 #[repr(u8)]

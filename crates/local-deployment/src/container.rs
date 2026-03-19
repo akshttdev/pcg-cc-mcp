@@ -64,11 +64,10 @@ use services::services::{
     vibe_pricing::VibePricingService,
     worktree_manager::WorktreeManager,
 };
-use utils::diff::DiffChangeKind;
 use tokio::{sync::RwLock, task::JoinHandle};
 use tokio_util::io::ReaderStream;
 use utils::{
-    diff::create_unified_diff_hunk,
+    diff::{DiffChangeKind, create_unified_diff_hunk},
     log_msg::LogMsg,
     msg_store::MsgStore,
     text::{git_branch_id, short_uuid},
@@ -266,7 +265,10 @@ impl LocalContainerService {
         let branch_name = match ctx.task_attempt.branch.as_ref() {
             Some(b) if !b.is_empty() => b.clone(),
             _ => {
-                tracing::warn!("Auto-PR skipped: no branch on task attempt {}", ctx.task_attempt.id);
+                tracing::warn!(
+                    "Auto-PR skipped: no branch on task attempt {}",
+                    ctx.task_attempt.id
+                );
                 return None;
             }
         };
@@ -291,7 +293,10 @@ impl LocalContainerService {
         let project = match Project::find_by_id(&db.pool, &ctx.task.project_id).await {
             Ok(Some(p)) => p,
             _ => {
-                tracing::warn!("Auto-PR skipped: project not found for task {}", ctx.task.id);
+                tracing::warn!(
+                    "Auto-PR skipped: project not found for task {}",
+                    ctx.task.id
+                );
                 return None;
             }
         };
@@ -300,7 +305,10 @@ impl LocalContainerService {
         let workspace_path = match &ctx.task_attempt.container_ref {
             Some(path) => PathBuf::from(path),
             None => {
-                tracing::warn!("Auto-PR skipped: no container_ref on attempt {}", ctx.task_attempt.id);
+                tracing::warn!(
+                    "Auto-PR skipped: no container_ref on attempt {}",
+                    ctx.task_attempt.id
+                );
                 return None;
             }
         };
@@ -339,7 +347,9 @@ impl LocalContainerService {
             Ok(pr_info) => {
                 tracing::info!(
                     "Auto-PR created: {} (#{}) for task '{}'",
-                    pr_info.url, pr_info.number, ctx.task.title
+                    pr_info.url,
+                    pr_info.number,
+                    ctx.task.title
                 );
                 if let Err(e) = Merge::create_pr(
                     &db.pool,
@@ -405,9 +415,10 @@ impl LocalContainerService {
         let project_repo_path = self.get_project_repo_path(&ctx.task_attempt).await?;
 
         // Get the base commit to compare against
-        let task_branch = ctx.task_attempt.branch.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Task attempt {} has no branch", ctx.task_attempt.id)
-        })?;
+        let task_branch =
+            ctx.task_attempt.branch.as_ref().ok_or_else(|| {
+                anyhow::anyhow!("Task attempt {} has no branch", ctx.task_attempt.id)
+            })?;
 
         let base_commit = self.git().get_base_commit(
             &project_repo_path,
@@ -831,11 +842,9 @@ impl LocalContainerService {
 
                 // Release execution slots for this task attempt when execution finalizes
                 if Self::should_finalize(&ctx) {
-                    if let Err(e) = ExecutionSlot::release_all_for_task_attempt(
-                        &db.pool,
-                        ctx.task_attempt.id,
-                    )
-                    .await
+                    if let Err(e) =
+                        ExecutionSlot::release_all_for_task_attempt(&db.pool, ctx.task_attempt.id)
+                            .await
                     {
                         tracing::warn!(
                             "Failed to release slots for task attempt {}: {}",
@@ -1217,7 +1226,11 @@ impl LocalContainerService {
             // version of this path earlier in the stream, skip sending a
             // degrading replacement.
             if diff.content_omitted {
-                if full_sent_paths.read().unwrap_or_else(|e| e.into_inner()).contains(&file_path) {
+                if full_sent_paths
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .contains(&file_path)
+                {
                     continue;
                 }
             } else {
@@ -1306,7 +1319,10 @@ impl ContainerService for LocalContainerService {
         // Copy task images from cache to worktree
         if let Err(e) = self
             .image_service
-            .copy_images_by_task_to_worktree(&worktree_path, Uuid::parse_str(&task.id).unwrap_or_default())
+            .copy_images_by_task_to_worktree(
+                &worktree_path,
+                Uuid::parse_str(&task.id).unwrap_or_default(),
+            )
             .await
         {
             tracing::warn!("Failed to copy task images to worktree: {}", e);
@@ -1473,7 +1489,9 @@ impl ContainerService for LocalContainerService {
             execution_process.run_reason,
             ExecutionProcessRunReason::CodingAgent
         ) {
-            if let Ok(ctx) = ExecutionProcess::load_context(&self.db.pool, execution_process.id).await {
+            if let Ok(ctx) =
+                ExecutionProcess::load_context(&self.db.pool, execution_process.id).await
+            {
                 self.create_classic_pipeline_flow(&ctx).await;
             }
         }
@@ -1619,7 +1637,9 @@ impl ContainerService for LocalContainerService {
                 )
                 .await
                 {
-                    Ok(Some(session)) if session.summary.is_some() => session.summary.unwrap_or_default(),
+                    Ok(Some(session)) if session.summary.is_some() => {
+                        session.summary.unwrap_or_default()
+                    }
                     Ok(_) => {
                         tracing::debug!(
                             "No summary found for execution process {}, using default message",
@@ -1882,7 +1902,12 @@ impl LocalContainerService {
         let mut prompt = draft.prompt.clone();
         if let Some(image_ids) = &draft.image_ids {
             // Associate to task
-            let _ = TaskImage::associate_many_dedup(&self.db.pool, Uuid::parse_str(&ctx.task.id).unwrap_or_default(), image_ids).await;
+            let _ = TaskImage::associate_many_dedup(
+                &self.db.pool,
+                Uuid::parse_str(&ctx.task.id).unwrap_or_default(),
+                image_ids,
+            )
+            .await;
 
             // Copy to worktree and canonicalize
             let worktree_path = std::path::PathBuf::from(&container_ref);
@@ -1937,14 +1962,22 @@ impl LocalContainerService {
         let mut found = false;
 
         for msg in &history {
-            if let LogMsg::TokenCount { input_tokens, output_tokens } = msg {
+            if let LogMsg::TokenCount {
+                input_tokens,
+                output_tokens,
+            } = msg
+            {
                 total_input += input_tokens;
                 total_output += output_tokens;
                 found = true;
             }
         }
 
-        if found { Some((total_input, total_output)) } else { None }
+        if found {
+            Some((total_input, total_output))
+        } else {
+            None
+        }
     }
 
     /// Estimate token counts from execution duration and model
@@ -1982,14 +2015,16 @@ impl LocalContainerService {
         let exec_id = ctx.execution_process.id;
 
         // Try to get actual token counts from MsgStore
-        let (input_tokens, output_tokens, source) = if let Some((input, output)) = self.extract_token_counts(&exec_id) {
+        let (input_tokens, output_tokens, source) = if let Some((input, output)) =
+            self.extract_token_counts(&exec_id)
+        {
             (input as i64, output as i64, "actual")
         } else {
             // Fallback: estimate from duration
-            let duration_ms = ctx.execution_process.completed_at
-                .map(|completed| {
-                    (completed - ctx.execution_process.started_at).num_milliseconds()
-                })
+            let duration_ms = ctx
+                .execution_process
+                .completed_at
+                .map(|completed| (completed - ctx.execution_process.started_at).num_milliseconds())
                 .unwrap_or(60_000);
             let model = Self::infer_model_for_executor(&ctx.task_attempt.executor);
             let (input, output) = Self::estimate_tokens_from_duration(duration_ms, model);
@@ -2004,11 +2039,18 @@ impl LocalContainerService {
         let provider = infer_provider(model);
 
         // Try to find and update the pending zero-amount transaction
-        match VibeTransaction::find_by_task_pending(&self.db.pool, Uuid::parse_str(&ctx.task.id).unwrap_or_default()).await {
+        match VibeTransaction::find_by_task_pending(
+            &self.db.pool,
+            Uuid::parse_str(&ctx.task.id).unwrap_or_default(),
+        )
+        .await
+        {
             Ok(Some(pending_tx)) => {
                 // Use VibePricingService to calculate cost
                 let pricing_service = VibePricingService::new(self.db.pool.clone());
-                let cost_estimate = pricing_service.estimate_cost(model, input_tokens, output_tokens).await;
+                let cost_estimate = pricing_service
+                    .estimate_cost(model, input_tokens, output_tokens)
+                    .await;
 
                 let (amount_vibe, cost_cents) = match cost_estimate {
                     Ok(est) => (est.cost_vibe, Some(est.cost_cents)),
@@ -2036,12 +2078,18 @@ impl LocalContainerService {
                     Some(ctx.execution_process.id),
                     Some(ctx.task_attempt.id),
                     Some(&description),
-                ).await {
+                )
+                .await
+                {
                     tracing::warn!("Failed to update VIBE transaction cost: {}", e);
                 } else {
                     tracing::info!(
                         "Updated VIBE cost for task {}: {} VIBE ({} in, {} out tokens, {})",
-                        ctx.task.id, amount_vibe, input_tokens, output_tokens, source
+                        ctx.task.id,
+                        amount_vibe,
+                        input_tokens,
+                        output_tokens,
+                        source
                     );
                 }
             }
@@ -2049,16 +2097,19 @@ impl LocalContainerService {
                 // No pending transaction found; create a new one via VibePricingService
                 let pricing_service = VibePricingService::new(self.db.pool.clone());
                 // We need a source_id; use the task's project_id as a fallback
-                if let Err(e) = pricing_service.record_llm_usage(
-                    db::models::vibe_transaction::VibeSourceType::Project,
-                    Uuid::parse_str(&ctx.task.project_id).unwrap_or_default(),
-                    model,
-                    input_tokens,
-                    output_tokens,
-                    Some(Uuid::parse_str(&ctx.task.id).unwrap_or_default()),
-                    Some(ctx.task_attempt.id),
-                    Some(ctx.execution_process.id),
-                ).await {
+                if let Err(e) = pricing_service
+                    .record_llm_usage(
+                        db::models::vibe_transaction::VibeSourceType::Project,
+                        Uuid::parse_str(&ctx.task.project_id).unwrap_or_default(),
+                        model,
+                        input_tokens,
+                        output_tokens,
+                        Some(Uuid::parse_str(&ctx.task.id).unwrap_or_default()),
+                        Some(ctx.task_attempt.id),
+                        Some(ctx.execution_process.id),
+                    )
+                    .await
+                {
                     tracing::warn!("Failed to create VIBE transaction: {}", e);
                 }
             }
@@ -2087,35 +2138,37 @@ impl LocalContainerService {
                 })),
                 human_approval_required: None,
             },
-        ).await;
+        )
+        .await;
 
         match flow {
             Ok(flow) => {
                 // Transition to Execution phase (classic pipeline skips Planning)
-                if let Err(e) = AgentFlow::transition_to_phase(
-                    &self.db.pool,
-                    flow.id,
-                    AgentPhase::Execution,
-                ).await {
+                if let Err(e) =
+                    AgentFlow::transition_to_phase(&self.db.pool, flow.id, AgentPhase::Execution)
+                        .await
+                {
                     tracing::warn!("Failed to transition flow to execution phase: {}", e);
                 }
 
                 // Emit phase_started event
-                if let Err(e) = AgentFlowEvent::emit_phase_started(
-                    &self.db.pool,
-                    flow.id,
-                    "execution",
-                    None,
-                ).await {
+                if let Err(e) =
+                    AgentFlowEvent::emit_phase_started(&self.db.pool, flow.id, "execution", None)
+                        .await
+                {
                     tracing::warn!("Failed to emit phase_started event: {}", e);
                 }
 
                 // Store flow_id for retrieval at completion
-                self.flow_ids.write().await.insert(ctx.execution_process.id, flow.id);
+                self.flow_ids
+                    .write()
+                    .await
+                    .insert(ctx.execution_process.id, flow.id);
 
                 tracing::info!(
                     "Created classic pipeline flow {} for task {}",
-                    flow.id, ctx.task.id
+                    flow.id,
+                    ctx.task.id
                 );
             }
             Err(e) => {
@@ -2135,7 +2188,12 @@ impl LocalContainerService {
             Some(id) => id,
             None => {
                 // Fallback: try to find by task_id
-                match AgentFlow::find_by_task(&self.db.pool, Uuid::parse_str(&ctx.task.id).unwrap_or_default()).await {
+                match AgentFlow::find_by_task(
+                    &self.db.pool,
+                    Uuid::parse_str(&ctx.task.id).unwrap_or_default(),
+                )
+                .await
+                {
                     Ok(flows) => {
                         if let Some(flow) = flows.into_iter().find(|f| {
                             f.status != db::models::agent_flow::FlowStatus::Completed
@@ -2168,7 +2226,9 @@ impl LocalContainerService {
                         artifacts_produced: vec![],
                     },
                 },
-            ).await {
+            )
+            .await
+            {
                 tracing::warn!("Failed to emit phase_completed event: {}", e);
             }
 
@@ -2183,7 +2243,9 @@ impl LocalContainerService {
                         total_artifacts: 0,
                     },
                 },
-            ).await {
+            )
+            .await
+            {
                 tracing::warn!("Failed to emit flow_completed event: {}", e);
             }
 
@@ -2195,8 +2257,7 @@ impl LocalContainerService {
             // Emit flow_failed
             let error_msg = format!(
                 "Execution failed with status {:?}, exit_code {:?}",
-                ctx.execution_process.status,
-                ctx.execution_process.exit_code
+                ctx.execution_process.status, ctx.execution_process.exit_code
             );
             if let Err(e) = AgentFlowEvent::create(
                 &self.db.pool,
@@ -2208,7 +2269,9 @@ impl LocalContainerService {
                         phase: "execution".to_string(),
                     },
                 },
-            ).await {
+            )
+            .await
+            {
                 tracing::warn!("Failed to emit flow_failed event: {}", e);
             }
 
@@ -2222,7 +2285,10 @@ impl LocalContainerService {
         }
 
         // Cleanup flow_ids entry
-        self.flow_ids.write().await.remove(&ctx.execution_process.id);
+        self.flow_ids
+            .write()
+            .await
+            .remove(&ctx.execution_process.id);
     }
 
     // ==================== Part 3: Execution Artifacts ====================
@@ -2234,26 +2300,35 @@ impl LocalContainerService {
 
         // 1. DiffSummary artifact — from compute_diff_stats()
         if let Ok(diff_stats) = self.compute_diff_stats(ctx).await {
-            if diff_stats.files_modified > 0 || diff_stats.files_created > 0 || diff_stats.files_deleted > 0 {
+            if diff_stats.files_modified > 0
+                || diff_stats.files_created > 0
+                || diff_stats.files_deleted > 0
+            {
                 let content = format!(
                     "Files modified: {}, Files created: {}, Files deleted: {}, Additions: +{}, Deletions: -{}",
-                    diff_stats.files_modified, diff_stats.files_created, diff_stats.files_deleted,
-                    diff_stats.additions, diff_stats.deletions
+                    diff_stats.files_modified,
+                    diff_stats.files_created,
+                    diff_stats.files_deleted,
+                    diff_stats.additions,
+                    diff_stats.deletions
                 );
-                if let Err(e) = artifact_service.create_artifact(CreateExecutionArtifact {
-                    execution_process_id: Some(exec_id),
-                    artifact_type: ArtifactType::DiffSummary,
-                    title: "Diff Summary".to_string(),
-                    content: Some(content),
-                    file_path: None,
-                    metadata: Some(serde_json::json!({
-                        "files_modified": diff_stats.files_modified,
-                        "files_created": diff_stats.files_created,
-                        "files_deleted": diff_stats.files_deleted,
-                        "additions": diff_stats.additions,
-                        "deletions": diff_stats.deletions,
-                    })),
-                }).await {
+                if let Err(e) = artifact_service
+                    .create_artifact(CreateExecutionArtifact {
+                        execution_process_id: Some(exec_id),
+                        artifact_type: ArtifactType::DiffSummary,
+                        title: "Diff Summary".to_string(),
+                        content: Some(content),
+                        file_path: None,
+                        metadata: Some(serde_json::json!({
+                            "files_modified": diff_stats.files_modified,
+                            "files_created": diff_stats.files_created,
+                            "files_deleted": diff_stats.files_deleted,
+                            "additions": diff_stats.additions,
+                            "deletions": diff_stats.deletions,
+                        })),
+                    })
+                    .await
+                {
                     tracing::warn!("Failed to create DiffSummary artifact: {}", e);
                 }
             }
@@ -2261,37 +2336,46 @@ impl LocalContainerService {
 
         // 2. ErrorReport artifact — on failure, extract last error from MsgStore
         if matches!(ctx.execution_process.status, ExecutionProcessStatus::Failed) {
-            let error_content = self.extract_last_error_message(&exec_id)
-                .unwrap_or_else(|| format!(
-                    "Execution failed with exit code {:?}",
-                    ctx.execution_process.exit_code
-                ));
-            if let Err(e) = artifact_service.store_error_report(
-                exec_id,
-                "Execution Error".to_string(),
-                error_content,
-                Some(serde_json::json!({
-                    "exit_code": ctx.execution_process.exit_code,
-                    "executor": ctx.task_attempt.executor,
-                })),
-            ).await {
+            let error_content = self
+                .extract_last_error_message(&exec_id)
+                .unwrap_or_else(|| {
+                    format!(
+                        "Execution failed with exit code {:?}",
+                        ctx.execution_process.exit_code
+                    )
+                });
+            if let Err(e) = artifact_service
+                .store_error_report(
+                    exec_id,
+                    "Execution Error".to_string(),
+                    error_content,
+                    Some(serde_json::json!({
+                        "exit_code": ctx.execution_process.exit_code,
+                        "executor": ctx.task_attempt.executor,
+                    })),
+                )
+                .await
+            {
                 tracing::warn!("Failed to create ErrorReport artifact: {}", e);
             }
         }
 
         // 3. Checkpoint artifact — executor's final summary
         if let Some(summary) = self.extract_last_assistant_message(&exec_id) {
-            if let Err(e) = artifact_service.create_artifact(CreateExecutionArtifact {
-                execution_process_id: Some(exec_id),
-                artifact_type: ArtifactType::Checkpoint,
-                title: "Execution Summary".to_string(),
-                content: Some(summary),
-                file_path: None,
-                metadata: Some(serde_json::json!({
-                    "executor": ctx.task_attempt.executor,
-                    "status": format!("{:?}", ctx.execution_process.status),
-                })),
-            }).await {
+            if let Err(e) = artifact_service
+                .create_artifact(CreateExecutionArtifact {
+                    execution_process_id: Some(exec_id),
+                    artifact_type: ArtifactType::Checkpoint,
+                    title: "Execution Summary".to_string(),
+                    content: Some(summary),
+                    file_path: None,
+                    metadata: Some(serde_json::json!({
+                        "executor": ctx.task_attempt.executor,
+                        "status": format!("{:?}", ctx.execution_process.status),
+                    })),
+                })
+                .await
+            {
                 tracing::warn!("Failed to create Checkpoint artifact: {}", e);
             }
         }

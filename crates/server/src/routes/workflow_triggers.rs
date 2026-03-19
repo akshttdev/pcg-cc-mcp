@@ -1,13 +1,16 @@
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     body::Bytes,
     extract::{Path, Query, State},
     http::HeaderMap,
     routing::{get, post},
 };
-use db::models::data_source::DataSource;
-use db::models::trigger_execution::{CreateTriggerExecution, TriggerExecution};
-use db::models::workflow_trigger::{CreateWorkflowTrigger, UpdateWorkflowTrigger, WorkflowTrigger};
+use db::models::{
+    data_source::DataSource,
+    trigger_execution::{CreateTriggerExecution, TriggerExecution},
+    workflow_trigger::{CreateWorkflowTrigger, UpdateWorkflowTrigger, WorkflowTrigger},
+};
+use deployment::Deployment;
 use hmac::{Hmac, Mac};
 use serde::Deserialize;
 use sha2::Sha256;
@@ -15,9 +18,7 @@ use tracing::{error, info, warn};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use axum::Extension;
 use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
-use deployment::Deployment;
 
 #[derive(Debug, Deserialize)]
 struct ListTriggersQuery {
@@ -133,14 +134,9 @@ async fn check_triggers(
     let org_id = ds.organization_id.as_deref();
     let proj_id = ds.project_id.as_deref();
 
-    let triggers = WorkflowTrigger::find_matching_triggers(
-        pool,
-        &ds.data_type,
-        org_id,
-        proj_id,
-    )
-    .await
-    .map_err(|e| ApiError::InternalError(format!("Failed to check triggers: {e}")))?;
+    let triggers = WorkflowTrigger::find_matching_triggers(pool, &ds.data_type, org_id, proj_id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to check triggers: {e}")))?;
 
     Ok(Json(ApiResponse::success(triggers)))
 }
@@ -162,7 +158,9 @@ async fn webhook_trigger_handler(
 
     // Verify it's a webhook trigger
     if trigger.trigger_type != "webhook" {
-        return Err(ApiError::BadRequest("This trigger is not a webhook trigger".to_string()));
+        return Err(ApiError::BadRequest(
+            "This trigger is not a webhook trigger".to_string(),
+        ));
     }
 
     // Verify it's enabled
@@ -180,22 +178,29 @@ async fn webhook_trigger_handler(
     // Validate HMAC-SHA256 signature
     let secret = trigger.webhook_secret.as_deref().unwrap_or_default();
     if secret.is_empty() {
-        warn!("Webhook trigger {} has no secret configured, rejecting request", trigger_id);
-        return Err(ApiError::Unauthorized("Webhook trigger has no secret configured".to_string()));
+        warn!(
+            "Webhook trigger {} has no secret configured, rejecting request",
+            trigger_id
+        );
+        return Err(ApiError::Unauthorized(
+            "Webhook trigger has no secret configured".to_string(),
+        ));
     }
     {
         let sig_header = headers
             .get("x-webhook-signature")
             .and_then(|v| v.to_str().ok())
             .ok_or_else(|| {
-                warn!("Webhook trigger {} missing X-Webhook-Signature header", trigger_id);
+                warn!(
+                    "Webhook trigger {} missing X-Webhook-Signature header",
+                    trigger_id
+                );
                 ApiError::Unauthorized("Missing X-Webhook-Signature header".to_string())
             })?;
 
         let expected_hex = sig_header.strip_prefix("sha256=").unwrap_or(sig_header);
-        let expected_bytes = hex::decode(expected_hex).map_err(|_| {
-            ApiError::Unauthorized("Invalid signature format".to_string())
-        })?;
+        let expected_bytes = hex::decode(expected_hex)
+            .map_err(|_| ApiError::Unauthorized("Invalid signature format".to_string()))?;
 
         type HmacSha256 = Hmac<Sha256>;
         let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
@@ -203,7 +208,10 @@ async fn webhook_trigger_handler(
         mac.update(&body);
 
         mac.verify_slice(&expected_bytes).map_err(|_| {
-            warn!("Webhook trigger {} signature verification failed", trigger_id);
+            warn!(
+                "Webhook trigger {} signature verification failed",
+                trigger_id
+            );
             ApiError::Unauthorized("Signature verification failed".to_string())
         })?;
     }
@@ -212,17 +220,23 @@ async fn webhook_trigger_handler(
     let content = String::from_utf8_lossy(&body).to_string();
 
     // Create audit trail entry
-    let execution = TriggerExecution::create(pool, CreateTriggerExecution {
-        trigger_id: trigger_id.clone(),
-        source_type: Some("webhook".to_string()),
-        source_id: None,
-        metadata: Some(serde_json::json!({
-            "content_length": body.len(),
-            "content_type": headers.get("content-type")
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or("unknown"),
-        }).to_string()),
-    })
+    let execution = TriggerExecution::create(
+        pool,
+        CreateTriggerExecution {
+            trigger_id: trigger_id.clone(),
+            source_type: Some("webhook".to_string()),
+            source_id: None,
+            metadata: Some(
+                serde_json::json!({
+                    "content_length": body.len(),
+                    "content_type": headers.get("content-type")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("unknown"),
+                })
+                .to_string(),
+            ),
+        },
+    )
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to create execution record: {e}")))?;
 
@@ -251,16 +265,29 @@ async fn webhook_trigger_handler(
         let start = std::time::Instant::now();
 
         let result = execute_webhook_trigger(
-            &bg_pool, &bg_deployment, &workflow_id, &content,
-            model_override, trigger_auto_approve, &bg_trigger_id, &exec_id,
+            &bg_pool,
+            &bg_deployment,
+            &workflow_id,
+            &content,
+            model_override,
+            trigger_auto_approve,
+            &bg_trigger_id,
+            &exec_id,
             trigger_org_id.clone(),
-        ).await;
+        )
+        .await;
 
         let duration_ms = start.elapsed().as_millis() as i64;
 
         match result {
             Ok(records_staged) => {
-                let _ = TriggerExecution::mark_completed(&bg_pool, &exec_id, records_staged, duration_ms).await;
+                let _ = TriggerExecution::mark_completed(
+                    &bg_pool,
+                    &exec_id,
+                    records_staged,
+                    duration_ms,
+                )
+                .await;
                 let _ = WorkflowTrigger::clear_error(&bg_pool, &bg_trigger_id).await;
                 info!(
                     "[WEBHOOK] Completed trigger '{}' execution {} ({} records, {}ms)",
@@ -269,7 +296,8 @@ async fn webhook_trigger_handler(
             }
             Err(e) => {
                 let err_msg = format!("{e}");
-                let _ = TriggerExecution::mark_failed(&bg_pool, &exec_id, &err_msg, duration_ms).await;
+                let _ =
+                    TriggerExecution::mark_failed(&bg_pool, &exec_id, &err_msg, duration_ms).await;
                 let _ = WorkflowTrigger::record_error(&bg_pool, &bg_trigger_id, &err_msg).await;
                 error!(
                     "[WEBHOOK] Failed trigger '{}' execution {}: {} (retry_budget={})",
@@ -298,7 +326,8 @@ async fn execute_webhook_trigger(
     execution_id: &str,
     organization_id: Option<String>,
 ) -> Result<i64, String> {
-    use db::models::workflow_run::{WorkflowRun, CreateWorkflowRun};
+    use db::models::workflow_run::{CreateWorkflowRun, WorkflowRun};
+
     use super::data_source_workflows::load_workflow;
 
     let workflow = load_workflow(pool, workflow_id)
@@ -313,22 +342,31 @@ async fn execute_webhook_trigger(
     let workflow_run_id = Uuid::new_v4();
 
     // Create workflow run record
-    WorkflowRun::create(pool, CreateWorkflowRun {
-        id: workflow_run_id,
-        workflow_id: workflow.id.clone(),
-        workflow_name: workflow.name.clone(),
-        data_source_id: None,
-        organization_id: organization_id.as_deref()
-            .and_then(|id| Uuid::parse_str(id).ok()),
-        project_id: None,
-        model_used: if model.is_empty() { None } else { Some(model.clone()) },
-        content_hash: None,
-    })
+    WorkflowRun::create(
+        pool,
+        CreateWorkflowRun {
+            id: workflow_run_id,
+            workflow_id: workflow.id.clone(),
+            workflow_name: workflow.name.clone(),
+            data_source_id: None,
+            organization_id: organization_id
+                .as_deref()
+                .and_then(|id| Uuid::parse_str(id).ok()),
+            project_id: None,
+            model_used: if model.is_empty() {
+                None
+            } else {
+                Some(model.clone())
+            },
+            content_hash: None,
+        },
+    )
     .await
     .map_err(|e| format!("Failed to create workflow run: {e}"))?;
 
     // Link execution to workflow run
-    let _ = TriggerExecution::mark_running(pool, execution_id, Some(&workflow_run_id.to_string())).await;
+    let _ = TriggerExecution::mark_running(pool, execution_id, Some(&workflow_run_id.to_string()))
+        .await;
 
     let opts = super::workflow_engine::ExecutionOptions {
         model: model.clone(),
@@ -344,17 +382,31 @@ async fn execute_webhook_trigger(
         ..Default::default()
     };
 
-    let result = super::workflow_engine::execute_workflow_nodes(pool, &workflow, content, &opts).await;
+    let result =
+        super::workflow_engine::execute_workflow_nodes(pool, &workflow, content, &opts).await;
 
     let duration_ms = std::time::Instant::now().elapsed().as_millis() as i64;
-    super::workflow_engine::finalize_workflow_run(pool, workflow_run_id, &workflow, &result, duration_ms, "completed").await;
+    super::workflow_engine::finalize_workflow_run(
+        pool,
+        workflow_run_id,
+        &workflow,
+        &result,
+        duration_ms,
+        "completed",
+    )
+    .await;
 
     // Auto-approve if configured
     if auto_approve && result.staged_records > 0 {
         let label = format!("webhook trigger '{trigger_id}'");
         super::workflow_engine::auto_approve_staged_records(
-            pool, workflow_run_id, result.staged_records, deployment, &label,
-        ).await;
+            pool,
+            workflow_run_id,
+            result.staged_records,
+            deployment,
+            &label,
+        )
+        .await;
     }
 
     Ok(result.staged_records)
@@ -378,13 +430,14 @@ async fn list_trigger_executions(
     if !access.is_admin {
         if let Some(ref trigger_org_id) = trigger.filter_organization_id {
             // Look up user's home org to compare
-            let user_org: Option<(Option<String>,)> = sqlx::query_as(
-                "SELECT home_organization_id FROM users WHERE id = ?1"
-            )
-            .bind(access.user_id.to_string())
-            .fetch_optional(pool)
-            .await
-            .map_err(|e| ApiError::InternalError(format!("Failed to look up user org: {e}")))?;
+            let user_org: Option<(Option<String>,)> =
+                sqlx::query_as("SELECT home_organization_id FROM users WHERE id = ?1")
+                    .bind(access.user_id.to_string())
+                    .fetch_optional(pool)
+                    .await
+                    .map_err(|e| {
+                        ApiError::InternalError(format!("Failed to look up user org: {e}"))
+                    })?;
 
             let user_home_org = user_org.and_then(|row| row.0);
             if user_home_org.as_deref() != Some(trigger_org_id.as_str()) {
@@ -410,15 +463,26 @@ async fn list_trigger_executions(
 /// Authenticated routes — CRUD operations on triggers (behind require_auth)
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
-        .route("/workflows/triggers", get(list_triggers).post(create_trigger))
+        .route(
+            "/workflows/triggers",
+            get(list_triggers).post(create_trigger),
+        )
         .route("/workflows/triggers/check", post(check_triggers))
-        .route("/workflows/triggers/{id}", get(get_trigger).put(update_trigger).delete(delete_trigger))
+        .route(
+            "/workflows/triggers/{id}",
+            get(get_trigger).put(update_trigger).delete(delete_trigger),
+        )
         .route("/workflows/triggers/{id}/toggle", post(toggle_trigger))
-        .route("/workflows/triggers/{id}/executions", get(list_trigger_executions))
+        .route(
+            "/workflows/triggers/{id}/executions",
+            get(list_trigger_executions),
+        )
 }
 
 /// Public routes — webhook endpoint uses HMAC auth, not session auth
 pub fn public_router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
-    Router::new()
-        .route("/webhooks/triggers/{trigger_id}", post(webhook_trigger_handler))
+    Router::new().route(
+        "/webhooks/triggers/{trigger_id}",
+        post(webhook_trigger_handler),
+    )
 }

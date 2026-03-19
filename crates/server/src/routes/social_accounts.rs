@@ -3,20 +3,21 @@
 //! Handles OAuth connections, account management, and platform integrations.
 
 use axum::{
-    Router,
+    Json, Router,
     extract::{Path, Query, State},
     response::Html,
-    routing::{get, delete, patch},
-    Json,
+    routing::{delete, get, patch},
+};
+use db::{
+    db_uuid::DbUuid,
+    models::social_account::{SocialAccount, UpdateSocialAccount},
 };
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
-use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError};
-use db::models::social_account::{SocialAccount, UpdateSocialAccount};
 
 #[derive(Debug, Deserialize)]
 pub struct ListAccountsQuery {
@@ -57,7 +58,9 @@ async fn get_account(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<SocialAccount>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid ID".into()))?
+        .to_uuid();
     let account = SocialAccount::find_by_id(pool, id_uuid).await?;
     Ok(Json(ApiResponse::success(account)))
 }
@@ -69,7 +72,9 @@ async fn update_account(
     Json(update): Json<UpdateSocialAccount>,
 ) -> Result<Json<ApiResponse<SocialAccount>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid ID".into()))?
+        .to_uuid();
     let account = SocialAccount::update(pool, id_uuid, update).await?;
     Ok(Json(ApiResponse::success(account)))
 }
@@ -80,7 +85,9 @@ async fn delete_account(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid ID".into()))?
+        .to_uuid();
     SocialAccount::delete(pool, id_uuid).await?;
     Ok(Json(ApiResponse::success(())))
 }
@@ -88,7 +95,7 @@ async fn delete_account(
 /// Best time slot for posting
 #[derive(Debug, Serialize)]
 pub struct BestTimeSlot {
-    pub day_of_week: i64,   // 0=Sunday, 6=Saturday
+    pub day_of_week: i64, // 0=Sunday, 6=Saturday
     pub hour_of_day: i64,
     pub post_count: i64,
     pub avg_engagement: f64,
@@ -100,7 +107,9 @@ async fn get_best_times(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<BestTimeSlot>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid ID".into()))?
+        .to_uuid();
 
     #[derive(sqlx::FromRow)]
     struct Row {
@@ -155,7 +164,10 @@ pub async fn bio_page(
     .await?;
 
     let Some(acct) = account else {
-        return Err(ApiError::NotFound(format!("No bio found for @{}", username)));
+        return Err(ApiError::NotFound(format!(
+            "No bio found for @{}",
+            username
+        )));
     };
 
     // Get recent published posts
@@ -194,10 +206,7 @@ pub async fn bio_page(
         .collect::<Vec<_>>()
         .join("\n");
 
-    let profile_url = acct
-        .profile_url
-        .as_deref()
-        .unwrap_or("#");
+    let profile_url = acct.profile_url.as_deref().unwrap_or("#");
 
     let html = format!(
         r#"<!DOCTYPE html>

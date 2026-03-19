@@ -125,7 +125,10 @@ impl ProjectControllerConfig {
     }
 
     /// Find controller config by project ID
-    pub async fn find_by_project(pool: &SqlitePool, project_id: &str) -> sqlx::Result<Option<Self>> {
+    pub async fn find_by_project(
+        pool: &SqlitePool,
+        project_id: &str,
+    ) -> sqlx::Result<Option<Self>> {
         sqlx::query_as("SELECT * FROM project_controller_config WHERE project_id = ?")
             .bind(project_id)
             .fetch_optional(pool)

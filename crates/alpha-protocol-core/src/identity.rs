@@ -4,11 +4,11 @@
 //! an Ed25519 keypair. The keypair can be generated from a BIP39 mnemonic phrase
 //! for easy backup and recovery.
 
-use anyhow::{Result, Context};
-use bip39::{Mnemonic, Language};
-use ed25519_dalek::{SigningKey, VerifyingKey, Signer, Signature};
-use sha2::{Sha256, Digest};
-use serde::{Serialize, Deserialize};
+use anyhow::{Context, Result};
+use bip39::{Language, Mnemonic};
+use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 /// Information about a wallet/identity
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,9 +73,7 @@ impl NodeIdentity {
         let seed = mnemonic.to_seed("");
 
         // Use first 32 bytes as Ed25519 private key
-        let private_key_bytes: [u8; 32] = seed[0..32]
-            .try_into()
-            .context("Invalid seed length")?;
+        let private_key_bytes: [u8; 32] = seed[0..32].try_into().context("Invalid seed length")?;
 
         let signing_key = SigningKey::from_bytes(&private_key_bytes);
         let verifying_key = signing_key.verifying_key();
@@ -130,10 +128,10 @@ impl NodeIdentity {
 
     /// Verify a signature from another peer
     pub fn verify(public_key: &[u8; 32], message: &[u8], signature: &Signature) -> Result<()> {
-        let verifying_key = VerifyingKey::from_bytes(public_key)
-            .context("Invalid public key")?;
+        let verifying_key = VerifyingKey::from_bytes(public_key).context("Invalid public key")?;
 
-        verifying_key.verify_strict(message, signature)
+        verifying_key
+            .verify_strict(message, signature)
             .context("Signature verification failed")?;
 
         Ok(())
@@ -193,11 +191,7 @@ mod tests {
 
         let signature = identity.sign(message);
 
-        let result = NodeIdentity::verify(
-            identity.public_key_bytes(),
-            message,
-            &signature
-        );
+        let result = NodeIdentity::verify(identity.public_key_bytes(), message, &signature);
 
         assert!(result.is_ok());
     }

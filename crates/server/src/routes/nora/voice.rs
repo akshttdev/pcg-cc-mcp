@@ -164,12 +164,9 @@ pub async fn voice_interaction(
 
         // Save user message (transcription) and assistant response
         if let Some(transcription) = &processed_interaction.transcription {
-            let _ = AgentConversationMessage::add_user_message(
-                pool,
-                conversation.id,
-                transcription,
-            )
-            .await;
+            let _ =
+                AgentConversationMessage::add_user_message(pool, conversation.id, transcription)
+                    .await;
 
             let _ = AgentConversationMessage::add_assistant_message(
                 pool,
@@ -184,7 +181,10 @@ pub async fn voice_interaction(
             .await;
         }
     } else {
-        tracing::warn!("Failed to persist voice conversation to database: {:?}", conversation_result.err());
+        tracing::warn!(
+            "Failed to persist voice conversation to database: {:?}",
+            conversation_result.err()
+        );
     }
 
     Ok(Json(processed_interaction))
@@ -269,7 +269,10 @@ pub async fn get_all_users_voice_analytics(
         ApiError::InternalError(format!("Failed to fetch analytics: {}", e))
     })?;
 
-    let analytics: Vec<VoiceAnalyticsSummary> = results.into_iter().map(VoiceAnalyticsSummary::from).collect();
+    let analytics: Vec<VoiceAnalyticsSummary> = results
+        .into_iter()
+        .map(VoiceAnalyticsSummary::from)
+        .collect();
 
     Ok(Json(analytics))
 }

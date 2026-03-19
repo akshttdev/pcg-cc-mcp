@@ -77,7 +77,10 @@ impl WorkflowRun {
         .await
     }
 
-    pub async fn find_by_content_hash(pool: &SqlitePool, hash: &str) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn find_by_content_hash(
+        pool: &SqlitePool,
+        hash: &str,
+    ) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as::<_, Self>(
             "SELECT * FROM workflow_runs WHERE content_hash = ?1 AND status = 'completed' ORDER BY created_at DESC LIMIT 1",
         )
@@ -93,7 +96,11 @@ impl WorkflowRun {
             .await
     }
 
-    pub async fn find_by_workflow(pool: &SqlitePool, workflow_id: &str, limit: i64) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn find_by_workflow(
+        pool: &SqlitePool,
+        workflow_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, Self>(
             "SELECT * FROM workflow_runs WHERE workflow_id = ?1 ORDER BY created_at DESC LIMIT ?2",
         )
@@ -103,7 +110,11 @@ impl WorkflowRun {
         .await
     }
 
-    pub async fn find_by_organization(pool: &SqlitePool, organization_id: &str, limit: i64) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn find_by_organization(
+        pool: &SqlitePool,
+        organization_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, Self>(
             "SELECT * FROM workflow_runs WHERE organization_id = ?1 ORDER BY created_at DESC LIMIT ?2",
         )
@@ -167,7 +178,11 @@ impl WorkflowRun {
         .await
     }
 
-    pub async fn mark_failed(pool: &SqlitePool, id: &str, duration_ms: i64) -> Result<(), sqlx::Error> {
+    pub async fn mark_failed(
+        pool: &SqlitePool,
+        id: &str,
+        duration_ms: i64,
+    ) -> Result<(), sqlx::Error> {
         sqlx::query(
             r#"UPDATE workflow_runs
                SET status = 'failed', duration_ms = ?1, completed_at = datetime('now', 'subsec')

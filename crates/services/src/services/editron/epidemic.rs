@@ -5,8 +5,10 @@
 //!   1. Partner token (from access key credentials, 1-day TTL)
 //!   2. User token (from partner token + user ID, 7-day TTL)
 
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use backon::{ExponentialBuilder, Retryable};
 use reqwest::Client;
@@ -15,11 +17,13 @@ use thiserror::Error;
 use tokio::sync::RwLock;
 use ts_rs::TS;
 
-use super::music::{
-    LicenseInfo, LicenseType, MusicGenre, MusicMood, MusicPlatform, MusicSearchCriteria,
-    MusicTrack,
+use super::{
+    EditronError,
+    music::{
+        LicenseInfo, LicenseType, MusicGenre, MusicMood, MusicPlatform, MusicSearchCriteria,
+        MusicTrack,
+    },
 };
-use super::EditronError;
 
 /// Epidemic Sound API base URL
 const ES_API_BASE: &str = "https://api.epidemicsound.com/v0";
@@ -388,9 +392,7 @@ impl EpidemicSoundClient {
     }
 
     /// Handle common response errors and clear token caches as needed
-    fn handle_response_status(
-        status: reqwest::StatusCode,
-    ) -> Option<EpidemicSoundError> {
+    fn handle_response_status(status: reqwest::StatusCode) -> Option<EpidemicSoundError> {
         if status == 401 || status == 403 {
             Some(EpidemicSoundError::UserTokenExpired)
         } else if status == 429 {
@@ -661,10 +663,7 @@ impl EpidemicSoundClient {
     }
 
     /// Get similar tracks
-    pub async fn get_similar(
-        &self,
-        track_id: &str,
-    ) -> Result<Vec<MusicTrack>, EpidemicSoundError> {
+    pub async fn get_similar(&self, track_id: &str) -> Result<Vec<MusicTrack>, EpidemicSoundError> {
         let url = format!("{}/tracks/{}/similar", ES_API_BASE, track_id);
         let auth = self.auth_header().await?;
 
@@ -693,10 +692,7 @@ impl EpidemicSoundClient {
     }
 
     /// Get native beat timestamps for a track
-    pub async fn get_beats(
-        &self,
-        track_id: &str,
-    ) -> Result<TrackBeats, EpidemicSoundError> {
+    pub async fn get_beats(&self, track_id: &str) -> Result<TrackBeats, EpidemicSoundError> {
         let url = format!("{}/tracks/{}/beats", ES_API_BASE, track_id);
         let auth = self.auth_header().await?;
 
@@ -758,10 +754,7 @@ impl EpidemicTrack {
             moods,
             tags: vec![],
             platform: MusicPlatform::Epidemic,
-            url: Some(format!(
-                "https://www.epidemicsound.com/track/{}",
-                self.id
-            )),
+            url: Some(format!("https://www.epidemicsound.com/track/{}", self.id)),
             local_path: None,
             preview_url: self.preview_url,
             license: LicenseInfo {

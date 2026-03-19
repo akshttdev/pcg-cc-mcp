@@ -110,7 +110,7 @@ pub struct SubscriptionCreated {
     pub id: Uuid,
     pub consumer_name: String,
     pub service_type: String,
-    pub api_key: String,      // shown ONCE on creation
+    pub api_key: String, // shown ONCE on creation
     pub api_key_prefix: String,
     pub vibe_budget: f64,
     pub status: String,
@@ -141,7 +141,7 @@ impl MarketplaceSubscription {
              (id, consumer_name, consumer_type, consumer_project_id, consumer_org_id,
               contact_email, service_type, listing_id, api_key, api_key_prefix,
               vibe_budget, auto_refill_threshold, auto_refill_amount, expires_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(id)
         .bind(&data.consumer_name)
@@ -172,12 +172,9 @@ impl MarketplaceSubscription {
         })
     }
 
-    pub async fn find_by_api_key(
-        pool: &SqlitePool,
-        api_key: &str,
-    ) -> anyhow::Result<Option<Self>> {
+    pub async fn find_by_api_key(pool: &SqlitePool, api_key: &str) -> anyhow::Result<Option<Self>> {
         sqlx::query_as::<_, Self>(
-            "SELECT * FROM marketplace_subscriptions WHERE api_key = ? AND status = 'active'"
+            "SELECT * FROM marketplace_subscriptions WHERE api_key = ? AND status = 'active'",
         )
         .bind(api_key)
         .fetch_optional(pool)
@@ -209,7 +206,7 @@ impl MarketplaceSubscription {
 
     pub async fn list_all(pool: &SqlitePool, limit: i64) -> anyhow::Result<Vec<SubscriptionView>> {
         let rows = sqlx::query_as::<_, Self>(
-            "SELECT * FROM marketplace_subscriptions ORDER BY created_at DESC LIMIT ?"
+            "SELECT * FROM marketplace_subscriptions ORDER BY created_at DESC LIMIT ?",
         )
         .bind(limit)
         .fetch_all(pool)
@@ -219,16 +216,12 @@ impl MarketplaceSubscription {
     }
 
     /// Top up VIBE balance
-    pub async fn add_budget(
-        pool: &SqlitePool,
-        id: Uuid,
-        amount: f64,
-    ) -> anyhow::Result<()> {
+    pub async fn add_budget(pool: &SqlitePool, id: Uuid, amount: f64) -> anyhow::Result<()> {
         sqlx::query(
             "UPDATE marketplace_subscriptions SET
              vibe_budget = vibe_budget + ?,
              updated_at = datetime('now','subsec')
-             WHERE id = ?"
+             WHERE id = ?",
         )
         .bind(amount)
         .bind(id)
@@ -238,16 +231,12 @@ impl MarketplaceSubscription {
     }
 
     /// Debit VIBE spend (called after successful gateway request)
-    pub async fn record_spend(
-        pool: &SqlitePool,
-        id: Uuid,
-        amount: f64,
-    ) -> anyhow::Result<()> {
+    pub async fn record_spend(pool: &SqlitePool, id: Uuid, amount: f64) -> anyhow::Result<()> {
         sqlx::query(
             "UPDATE marketplace_subscriptions SET
              vibe_spent = vibe_spent + ?,
              updated_at = datetime('now','subsec')
-             WHERE id = ?"
+             WHERE id = ?",
         )
         .bind(amount)
         .bind(id)

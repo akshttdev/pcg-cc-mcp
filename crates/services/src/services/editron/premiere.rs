@@ -3,8 +3,11 @@
 //! Uses AppleScript/osascript to communicate with Premiere Pro on macOS.
 //! ExtendScript commands are executed through the Adobe CEP extension system.
 
-use std::path::{Path, PathBuf};
-use std::process::Stdio;
+use std::{
+    path::{Path, PathBuf},
+    process::Stdio,
+};
+
 use tokio::process::Command;
 
 use super::{EditronError, EditronResult};
@@ -57,7 +60,9 @@ impl PremiereProBridge {
             .await
             .map_err(|e| EditronError::Process(e.to_string()))?;
 
-        let result = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
+        let result = String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .to_lowercase();
         Ok(result == "true")
     }
 
@@ -165,11 +170,7 @@ impl PremiereProBridge {
     }
 
     /// Export current sequence via Adobe Media Encoder
-    pub async fn queue_export(
-        &self,
-        preset_path: &str,
-        output_path: &str,
-    ) -> EditronResult<()> {
+    pub async fn queue_export(&self, preset_path: &str, output_path: &str) -> EditronResult<()> {
         let jsx_script = format!(
             r#"
             var sequence = app.project.activeSequence;

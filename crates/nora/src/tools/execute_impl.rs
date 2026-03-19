@@ -1,19 +1,21 @@
 //! Tool implementation logic — the main execution handler
 
 use chrono::{DateTime, Utc};
-use db::models::project_board::ProjectBoardType;
-use db::models::task::{Priority, TaskStatus};
-use services::services::agent_channels::ChannelOwner;
-use services::services::media_pipeline::{
-    EditSessionRequest, MediaBatchAnalysisRequest, MediaBatchIngestRequest,
-    MediaStorageTier, RenderJobRequest, VideoRenderPriority as PipelineRenderPriority,
+use db::models::{
+    project_board::ProjectBoardType,
+    task::{Priority, TaskStatus},
+};
+use services::services::{
+    agent_channels::ChannelOwner,
+    media_pipeline::{
+        EditSessionRequest, MediaBatchAnalysisRequest, MediaBatchIngestRequest, MediaStorageTier,
+        RenderJobRequest, VideoRenderPriority as PipelineRenderPriority,
+    },
 };
 use uuid::Uuid;
 
-use super::types::*;
-use super::ExecutiveTools;
-use crate::executor::TaskDefinition;
-use crate::NoraError;
+use super::{types::*, ExecutiveTools};
+use crate::{executor::TaskDefinition, NoraError};
 
 #[allow(dead_code)]
 impl ExecutiveTools {
@@ -88,7 +90,12 @@ impl ExecutiveTools {
                             });
 
                     match executor
-                        .create_board(&project_uuid.to_string(), name.clone(), description, board_type_enum)
+                        .create_board(
+                            &project_uuid.to_string(),
+                            name.clone(),
+                            description,
+                            board_type_enum,
+                        )
                         .await
                     {
                         Ok(board) => Ok(serde_json::json!({
@@ -172,23 +179,29 @@ impl ExecutiveTools {
                         Ok(tasks) => {
                             // Optionally filter by status
                             let filtered_tasks: Vec<_> = if let Some(status) = status_filter {
-                                tasks.into_iter().filter(|t| t.status.to_lowercase() == status.to_lowercase()).collect()
+                                tasks
+                                    .into_iter()
+                                    .filter(|t| t.status.to_lowercase() == status.to_lowercase())
+                                    .collect()
                             } else {
                                 tasks
                             };
 
-                            let task_summaries: Vec<serde_json::Value> = filtered_tasks.iter().map(|t| {
-                                serde_json::json!({
-                                    "id": t.id,
-                                    "title": t.title,
-                                    "description": t.description,
-                                    "status": t.status,
-                                    "priority": t.priority,
-                                    "assignee": t.assignee_id,
-                                    "created_at": t.created_at,
-                                    "updated_at": t.updated_at,
+                            let task_summaries: Vec<serde_json::Value> = filtered_tasks
+                                .iter()
+                                .map(|t| {
+                                    serde_json::json!({
+                                        "id": t.id,
+                                        "title": t.title,
+                                        "description": t.description,
+                                        "status": t.status,
+                                        "priority": t.priority,
+                                        "assignee": t.assignee_id,
+                                        "created_at": t.created_at,
+                                        "updated_at": t.updated_at,
+                                    })
                                 })
-                            }).collect();
+                                .collect();
 
                             Ok(serde_json::json!({
                                 "success": true,
@@ -209,43 +222,39 @@ impl ExecutiveTools {
                     }))
                 }
             }
-            NoraExecutiveTool::GetProjectDetails {
-                project_name,
-            } => {
+            NoraExecutiveTool::GetProjectDetails { project_name } => {
                 if let Some(executor) = &self.task_executor {
                     // First find project by name, then get details
                     match executor.find_project_by_name(&project_name).await {
-                        Ok(project_id) => {
-                            match executor.get_project_details(&project_id).await {
-                                Ok(details) => Ok(serde_json::json!({
-                                    "success": true,
-                                    "project": {
-                                        "id": details.id,
-                                        "name": details.name,
-                                        "git_repo_path": details.git_repo_path,
-                                        "task_count": details.tasks.len(),
-                                        "board_count": details.boards.len(),
-                                        "pod_count": details.pods.len(),
-                                    },
-                                    "tasks": details.tasks.iter().map(|t| serde_json::json!({
-                                        "id": t.id,
-                                        "title": t.title,
-                                        "description": t.description,
-                                        "status": t.status,
-                                        "priority": t.priority,
-                                    })).collect::<Vec<_>>(),
-                                    "boards": details.boards.iter().map(|b| serde_json::json!({
-                                        "id": b.id,
-                                        "name": b.name,
-                                        "description": b.description,
-                                    })).collect::<Vec<_>>(),
-                                })),
-                                Err(e) => Ok(serde_json::json!({
-                                    "success": false,
-                                    "error": format!("Failed to get project details: {}", e),
-                                })),
-                            }
-                        }
+                        Ok(project_id) => match executor.get_project_details(&project_id).await {
+                            Ok(details) => Ok(serde_json::json!({
+                                "success": true,
+                                "project": {
+                                    "id": details.id,
+                                    "name": details.name,
+                                    "git_repo_path": details.git_repo_path,
+                                    "task_count": details.tasks.len(),
+                                    "board_count": details.boards.len(),
+                                    "pod_count": details.pods.len(),
+                                },
+                                "tasks": details.tasks.iter().map(|t| serde_json::json!({
+                                    "id": t.id,
+                                    "title": t.title,
+                                    "description": t.description,
+                                    "status": t.status,
+                                    "priority": t.priority,
+                                })).collect::<Vec<_>>(),
+                                "boards": details.boards.iter().map(|b| serde_json::json!({
+                                    "id": b.id,
+                                    "name": b.name,
+                                    "description": b.description,
+                                })).collect::<Vec<_>>(),
+                            })),
+                            Err(e) => Ok(serde_json::json!({
+                                "success": false,
+                                "error": format!("Failed to get project details: {}", e),
+                            })),
+                        },
                         Err(e) => Ok(serde_json::json!({
                             "success": false,
                             "error": format!("Project not found: {}", e),
@@ -262,11 +271,12 @@ impl ExecutiveTools {
                 if let Some(executor) = &self.task_executor {
                     let pool = executor.pool();
                     match sqlx::query_scalar::<_, Vec<u8>>(
-                        "SELECT id FROM projects WHERE name = ? LIMIT 1"
+                        "SELECT id FROM projects WHERE name = ? LIMIT 1",
                     )
                     .bind(&project_name)
                     .fetch_optional(pool)
-                    .await {
+                    .await
+                    {
                         Ok(Some(id_bytes)) => {
                             match sqlx::query("DELETE FROM projects WHERE id = ?")
                                 .bind(&id_bytes)
@@ -293,10 +303,16 @@ impl ExecutiveTools {
                         })),
                     }
                 } else {
-                    Ok(serde_json::json!({"success": false, "error": "Task executor not available"}))
+                    Ok(
+                        serde_json::json!({"success": false, "error": "Task executor not available"}),
+                    )
                 }
             }
-            NoraExecutiveTool::UpdateProject { project_name, new_name, new_description } => {
+            NoraExecutiveTool::UpdateProject {
+                project_name,
+                new_name,
+                new_description,
+            } => {
                 if let Some(executor) = &self.task_executor {
                     let pool = executor.pool();
                     let mut updated = false;
@@ -326,12 +342,18 @@ impl ExecutiveTools {
                         updated = true;
                     }
                     if updated {
-                        Ok(serde_json::json!({"success": true, "message": format!("Project '{}' updated.", project_name)}))
+                        Ok(
+                            serde_json::json!({"success": true, "message": format!("Project '{}' updated.", project_name)}),
+                        )
                     } else {
-                        Ok(serde_json::json!({"success": false, "error": "No fields to update provided."}))
+                        Ok(
+                            serde_json::json!({"success": false, "error": "No fields to update provided."}),
+                        )
                     }
                 } else {
-                    Ok(serde_json::json!({"success": false, "error": "Task executor not available"}))
+                    Ok(
+                        serde_json::json!({"success": false, "error": "Task executor not available"}),
+                    )
                 }
             }
             NoraExecutiveTool::DelegateTask {
@@ -341,10 +363,7 @@ impl ExecutiveTools {
                 deadline: _,
             } => {
                 if let Some(executor) = &self.task_executor {
-                    tracing::info!(
-                        "[TOOL] Delegating task {} to agent {}",
-                        task_id, assignee
-                    );
+                    tracing::info!("[TOOL] Delegating task {} to agent {}", task_id, assignee);
 
                     // Parse the task UUID
                     let task_uuid = match uuid::Uuid::parse_str(&task_id) {
@@ -368,7 +387,10 @@ impl ExecutiveTools {
                     };
 
                     // Delegate and execute
-                    match executor.delegate_and_execute_task(task_uuid.to_string(), &assignee, executor_type).await {
+                    match executor
+                        .delegate_and_execute_task(task_uuid.to_string(), &assignee, executor_type)
+                        .await
+                    {
                         Ok(result) => Ok(serde_json::json!({
                             "success": true,
                             "message": format!("Task delegated to {} and execution started", result.agent_name),
@@ -382,7 +404,7 @@ impl ExecutiveTools {
                         Err(e) => Ok(serde_json::json!({
                             "success": false,
                             "error": format!("Failed to delegate task: {}", e)
-                        }))
+                        })),
                     }
                 } else {
                     Ok(serde_json::json!({
@@ -405,9 +427,7 @@ impl ExecutiveTools {
                 );
 
                 // Parse project_id if provided
-                let project_uuid = project_id
-                    .as_ref()
-                    .and_then(|id| Uuid::parse_str(id).ok());
+                let project_uuid = project_id.as_ref().and_then(|id| Uuid::parse_str(id).ok());
 
                 // Prefer new ExecutionEngine if available
                 if let Some(engine) = &self.execution_engine {
@@ -415,7 +435,10 @@ impl ExecutiveTools {
                         project_id: project_uuid,
                         agent: Some(agent_id.clone()),
                         workflow_id: Some(workflow_id.clone()),
-                        request: Some(format!("Execute workflow {} for agent {}", workflow_id, agent_id)),
+                        request: Some(format!(
+                            "Execute workflow {} for agent {}",
+                            workflow_id, agent_id
+                        )),
                         inputs: inputs.clone(),
                     };
 
@@ -466,7 +489,10 @@ impl ExecutiveTools {
                         metadata: std::collections::HashMap::new(),
                     };
 
-                    match orchestrator.start_workflow(&agent_id, &workflow_id, context).await {
+                    match orchestrator
+                        .start_workflow(&agent_id, &workflow_id, context)
+                        .await
+                    {
                         Ok(workflow_instance_id) => {
                             tracing::info!(
                                 "[TOOL] Workflow started via legacy orchestrator: instance_id={}",
@@ -596,7 +622,10 @@ impl ExecutiveTools {
             }
             NoraExecutiveTool::ListAvailableWorkflows { agent_id } => {
                 if let Some(orchestrator) = &self.workflow_orchestrator {
-                    tracing::info!("[TOOL] Listing available workflows - filter: {:?}", agent_id);
+                    tracing::info!(
+                        "[TOOL] Listing available workflows - filter: {:?}",
+                        agent_id
+                    );
 
                     if let Some(ref agent_filter) = agent_id {
                         // Get workflows for specific agent
@@ -678,10 +707,7 @@ impl ExecutiveTools {
                 task_id,
             } => {
                 if let Some(pipeline) = &self.media_pipeline {
-                    tracing::info!(
-                        "[TOOL] Ingesting media batch from: {}",
-                        source_url
-                    );
+                    tracing::info!("[TOOL] Ingesting media batch from: {}", source_url);
 
                     let tier = match MediaStorageTier::from_str(&storage_tier) {
                         Ok(t) => t,
@@ -848,7 +874,8 @@ impl ExecutiveTools {
                                     )
                                     .await
                                 {
-                                    let vibe_cost = crate::editron_tracking::EditronVibeCosts::analyze(passes);
+                                    let vibe_cost =
+                                        crate::editron_tracking::EditronVibeCosts::analyze(passes);
 
                                     let _ = crate::editron_tracking::create_and_link_artifact(
                                         pool,
@@ -977,7 +1004,10 @@ impl ExecutiveTools {
                                     )
                                     .await
                                 {
-                                    let vibe_cost = crate::editron_tracking::EditronVibeCosts::generate(aspect_ratios.len());
+                                    let vibe_cost =
+                                        crate::editron_tracking::EditronVibeCosts::generate(
+                                            aspect_ratios.len(),
+                                        );
 
                                     let _ = crate::editron_tracking::create_and_link_artifact(
                                         pool,
@@ -1061,7 +1091,10 @@ impl ExecutiveTools {
                 task_id,
             } => {
                 if let Some(pipeline) = &self.media_pipeline {
-                    tracing::info!("[TOOL] Rendering video deliverables for session: {}", edit_session_id);
+                    tracing::info!(
+                        "[TOOL] Rendering video deliverables for session: {}",
+                        edit_session_id
+                    );
 
                     let session_uuid = match Uuid::parse_str(&edit_session_id) {
                         Ok(uuid) => uuid,
@@ -1091,10 +1124,7 @@ impl ExecutiveTools {
 
                     match pipeline.render_deliverables(request).await {
                         Ok(job) => {
-                            tracing::info!(
-                                "[TOOL] Render job created: job_id={}",
-                                job.id
-                            );
+                            tracing::info!("[TOOL] Render job created: job_id={}", job.id);
 
                             // Dashboard tracking
                             if let Some(executor) = &self.task_executor {
@@ -1112,7 +1142,11 @@ impl ExecutiveTools {
                                     )
                                     .await
                                 {
-                                    let vibe_cost = crate::editron_tracking::EditronVibeCosts::render(formats.len(), is_rush);
+                                    let vibe_cost =
+                                        crate::editron_tracking::EditronVibeCosts::render(
+                                            formats.len(),
+                                            is_rush,
+                                        );
 
                                     let _ = crate::editron_tracking::create_and_link_artifact(
                                         pool,
@@ -1233,10 +1267,8 @@ impl ExecutiveTools {
                     let _ = tokio::fs::create_dir_all(&work_dir).await;
 
                     let ffmpeg_path = std::path::PathBuf::from("ffmpeg");
-                    let engine = services::services::visual_qc::VisualQcEngine::new(
-                        &ffmpeg_path,
-                        &work_dir,
-                    );
+                    let engine =
+                        services::services::visual_qc::VisualQcEngine::new(&ffmpeg_path, &work_dir);
                     let (_system_prompt, _user_prompt_template) =
                         services::services::visual_qc::VisualQcEngine::build_vision_prompt(
                             target_aspect_ratio.as_deref(),
@@ -1255,13 +1287,18 @@ impl ExecutiveTools {
                             continue;
                         }
 
-                        let frames = match engine.extract_candidate_frames(&file_path, &config).await {
-                            Ok(f) => f,
-                            Err(e) => {
-                                tracing::warn!("Failed to extract frames from {}: {}", file.filename, e);
-                                continue;
-                            }
-                        };
+                        let frames =
+                            match engine.extract_candidate_frames(&file_path, &config).await {
+                                Ok(f) => f,
+                                Err(e) => {
+                                    tracing::warn!(
+                                        "Failed to extract frames from {}: {}",
+                                        file.filename,
+                                        e
+                                    );
+                                    continue;
+                                }
+                            };
 
                         let mut analyzed_frames = Vec::new();
 
@@ -1292,18 +1329,24 @@ impl ExecutiveTools {
                                 "notes": "Frame extracted — vision API scoring deferred to workflow execution"
                             });
 
-                            if let Ok(frame) = services::services::visual_qc::VisualQcEngine::parse_vision_response(
-                                *timestamp,
-                                frame_path,
-                                &placeholder_response.to_string(),
-                            ) {
+                            if let Ok(frame) =
+                                services::services::visual_qc::VisualQcEngine::parse_vision_response(
+                                    *timestamp,
+                                    frame_path,
+                                    &placeholder_response.to_string(),
+                                )
+                            {
                                 analyzed_frames.push(frame);
                             }
 
                             total_frames += 1;
                         }
 
-                        let best = services::services::visual_qc::VisualQcEngine::select_best_in_point(&analyzed_frames, &config);
+                        let best =
+                            services::services::visual_qc::VisualQcEngine::select_best_in_point(
+                                &analyzed_frames,
+                                &config,
+                            );
                         let (best_in_point, best_score) = best.unwrap_or((0.0, 0.0));
                         let qc_passed = best_score >= config.min_composition_score;
 
@@ -1328,7 +1371,12 @@ impl ExecutiveTools {
                     }
 
                     let time_ms = start.elapsed().as_millis() as u64;
-                    let result = services::services::visual_qc::VisualQcEngine::assemble_batch_result(clip_results, &config, time_ms);
+                    let result =
+                        services::services::visual_qc::VisualQcEngine::assemble_batch_result(
+                            clip_results,
+                            &config,
+                            time_ms,
+                        );
 
                     // Persist result
                     let result_path = work_dir.join("qc_result.json");
@@ -1389,11 +1437,19 @@ impl ExecutiveTools {
                     tracing::info!("[TOOL] Running deep scene analysis on batch: {}", batch_id);
                     let batch_uuid = match Uuid::parse_str(&batch_id) {
                         Ok(uuid) => uuid,
-                        Err(_) => return Ok(serde_json::json!({"success": false, "error": "Invalid batch_id"})),
+                        Err(_) => {
+                            return Ok(
+                                serde_json::json!({"success": false, "error": "Invalid batch_id"}),
+                            )
+                        }
                     };
                     let batch = match pipeline.load_batch_for_qc(batch_uuid).await {
                         Ok(b) => b,
-                        Err(e) => return Ok(serde_json::json!({"success": false, "error": format!("Batch not ready: {}", e)})),
+                        Err(e) => {
+                            return Ok(
+                                serde_json::json!({"success": false, "error": format!("Batch not ready: {}", e)}),
+                            )
+                        }
                     };
 
                     let start = std::time::Instant::now();
@@ -1403,12 +1459,19 @@ impl ExecutiveTools {
 
                     for file in &batch.files {
                         // Skip non-video files
-                        let ext = file.filename.rsplit('.').next().unwrap_or("").to_lowercase();
+                        let ext = file
+                            .filename
+                            .rsplit('.')
+                            .next()
+                            .unwrap_or("")
+                            .to_lowercase();
                         if !matches!(ext.as_str(), "mp4" | "mov" | "avi" | "mxf" | "mkv") {
                             continue;
                         }
                         let file_path = pipeline.get_batch_dir(batch_uuid).join(&file.filename);
-                        if !file_path.exists() { continue; }
+                        if !file_path.exists() {
+                            continue;
+                        }
 
                         match engine.analyze_clip(&file_path, interval).await {
                             Ok(analysis) => {
@@ -1444,17 +1507,20 @@ impl ExecutiveTools {
                         let _ = tokio::fs::write(&result_path, json_str).await;
                     }
 
-                    let clip_summaries: Vec<serde_json::Value> = clip_analyses.iter().map(|c| {
-                        serde_json::json!({
-                            "filename": c.filename,
-                            "duration": c.duration,
-                            "overall_energy": c.overall_energy,
-                            "peak_timestamp": c.peak_energy_timestamp,
-                            "content_type": format!("{:?}", c.dominant_content_type),
-                            "segments": c.segments.len(),
-                            "usable": c.usable,
+                    let clip_summaries: Vec<serde_json::Value> = clip_analyses
+                        .iter()
+                        .map(|c| {
+                            serde_json::json!({
+                                "filename": c.filename,
+                                "duration": c.duration,
+                                "overall_energy": c.overall_energy,
+                                "peak_timestamp": c.peak_energy_timestamp,
+                                "content_type": format!("{:?}", c.dominant_content_type),
+                                "segments": c.segments.len(),
+                                "usable": c.usable,
+                            })
                         })
-                    }).collect();
+                        .collect();
 
                     Ok(serde_json::json!({
                         "success": true,
@@ -1465,7 +1531,9 @@ impl ExecutiveTools {
                         "clips": clip_summaries,
                     }))
                 } else {
-                    Ok(serde_json::json!({"success": false, "error": "Media pipeline not available"}))
+                    Ok(
+                        serde_json::json!({"success": false, "error": "Media pipeline not available"}),
+                    )
                 }
             }
 
@@ -1479,7 +1547,9 @@ impl ExecutiveTools {
                 tracing::info!("[TOOL] Analyzing beat grid for: {}", audio_path);
                 let path = std::path::PathBuf::from(&audio_path);
                 if !path.exists() {
-                    return Ok(serde_json::json!({"success": false, "error": format!("Audio file not found: {}", audio_path)}));
+                    return Ok(
+                        serde_json::json!({"success": false, "error": format!("Audio file not found: {}", audio_path)}),
+                    );
                 }
 
                 let engine = services::services::beat_analysis::BeatAnalysisEngine::new();
@@ -1499,15 +1569,19 @@ impl ExecutiveTools {
                             let _ = tokio::fs::write(&result_path, json_str).await;
                         }
 
-                        let section_summaries: Vec<serde_json::Value> = result.sections.iter().map(|s| {
-                            serde_json::json!({
-                                "name": s.name,
-                                "start": s.start,
-                                "end": s.end,
-                                "energy": s.energy_level,
-                                "suggested_content": format!("{:?}", s.suggested_content),
+                        let section_summaries: Vec<serde_json::Value> = result
+                            .sections
+                            .iter()
+                            .map(|s| {
+                                serde_json::json!({
+                                    "name": s.name,
+                                    "start": s.start,
+                                    "end": s.end,
+                                    "energy": s.energy_level,
+                                    "suggested_content": format!("{:?}", s.suggested_content),
+                                })
                             })
-                        }).collect();
+                            .collect();
 
                         Ok(serde_json::json!({
                             "success": true,
@@ -1521,9 +1595,9 @@ impl ExecutiveTools {
                             "processing_time_ms": result.processing_time_ms,
                         }))
                     }
-                    Err(e) => {
-                        Ok(serde_json::json!({"success": false, "error": format!("Beat analysis failed: {}", e)}))
-                    }
+                    Err(e) => Ok(
+                        serde_json::json!({"success": false, "error": format!("Beat analysis failed: {}", e)}),
+                    ),
                 }
             }
 
@@ -1538,34 +1612,58 @@ impl ExecutiveTools {
             } => {
                 let name_slug = project_name.as_deref().unwrap_or("Recap").replace(' ', "_");
                 if let Some(pipeline) = &self.media_pipeline {
-                    tracing::info!("[TOOL] Assembling recap edit for batch: {} with audio: {}", batch_id, audio_path);
+                    tracing::info!(
+                        "[TOOL] Assembling recap edit for batch: {} with audio: {}",
+                        batch_id,
+                        audio_path
+                    );
 
                     let batch_uuid = match Uuid::parse_str(&batch_id) {
                         Ok(uuid) => uuid,
-                        Err(_) => return Ok(serde_json::json!({"success": false, "error": "Invalid batch_id"})),
+                        Err(_) => {
+                            return Ok(
+                                serde_json::json!({"success": false, "error": "Invalid batch_id"}),
+                            )
+                        }
                     };
 
                     let audio = std::path::PathBuf::from(&audio_path);
                     if !audio.exists() {
-                        return Ok(serde_json::json!({"success": false, "error": format!("Audio not found: {}", audio_path)}));
+                        return Ok(
+                            serde_json::json!({"success": false, "error": format!("Audio not found: {}", audio_path)}),
+                        );
                     }
 
                     let start = std::time::Instant::now();
 
                     // Step 1: Scene analysis
                     tracing::info!("[TOOL] Step 1/4: Deep scene analysis...");
-                    let scene_engine = services::services::scene_analysis::SceneAnalysisEngine::new();
+                    let scene_engine =
+                        services::services::scene_analysis::SceneAnalysisEngine::new();
                     let batch = match pipeline.load_batch_for_qc(batch_uuid).await {
                         Ok(b) => b,
-                        Err(e) => return Ok(serde_json::json!({"success": false, "error": format!("Batch not ready: {}", e)})),
+                        Err(e) => {
+                            return Ok(
+                                serde_json::json!({"success": false, "error": format!("Batch not ready: {}", e)}),
+                            )
+                        }
                     };
 
                     let mut clip_analyses = Vec::new();
                     for file in &batch.files {
-                        let ext = file.filename.rsplit('.').next().unwrap_or("").to_lowercase();
-                        if !matches!(ext.as_str(), "mp4" | "mov" | "avi" | "mxf" | "mkv") { continue; }
+                        let ext = file
+                            .filename
+                            .rsplit('.')
+                            .next()
+                            .unwrap_or("")
+                            .to_lowercase();
+                        if !matches!(ext.as_str(), "mp4" | "mov" | "avi" | "mxf" | "mkv") {
+                            continue;
+                        }
                         let file_path = pipeline.get_batch_dir(batch_uuid).join(&file.filename);
-                        if !file_path.exists() { continue; }
+                        if !file_path.exists() {
+                            continue;
+                        }
                         if let Ok(analysis) = scene_engine.analyze_clip(&file_path, 1.0).await {
                             clip_analyses.push(analysis);
                         }
@@ -1586,7 +1684,11 @@ impl ExecutiveTools {
                     let beat_engine = services::services::beat_analysis::BeatAnalysisEngine::new();
                     let beat_grid = match beat_engine.analyze(&audio, bpm_hint, 4).await {
                         Ok(bg) => bg,
-                        Err(e) => return Ok(serde_json::json!({"success": false, "error": format!("Beat analysis failed: {}", e)})),
+                        Err(e) => {
+                            return Ok(
+                                serde_json::json!({"success": false, "error": format!("Beat analysis failed: {}", e)}),
+                            )
+                        }
                     };
 
                     // Step 3: Assembly
@@ -1597,16 +1699,18 @@ impl ExecutiveTools {
                         _ => (3840, 2160),
                     };
 
-                    let (placements, music_window) = services::services::recap_assembly::RecapAssemblyEngine::assemble(
-                        &scene_result,
-                        &beat_grid,
-                        &audio,
-                        width,
-                        height,
-                        None, // Use default 59s duration
-                    );
+                    let (placements, music_window) =
+                        services::services::recap_assembly::RecapAssemblyEngine::assemble(
+                            &scene_result,
+                            &beat_grid,
+                            &audio,
+                            width,
+                            height,
+                            None, // Use default 59s duration
+                        );
 
-                    let beat_locked_cuts = placements.iter().filter(|p| p.beat_locked).count() as u32;
+                    let beat_locked_cuts =
+                        placements.iter().filter(|p| p.beat_locked).count() as u32;
 
                     let assembly_result = services::services::recap_assembly::RecapAssemblyResult {
                         id: Uuid::new_v4().to_string(),
@@ -1627,7 +1731,9 @@ impl ExecutiveTools {
                     };
 
                     // Step 4: Generate XML
-                    tracing::info!("[TOOL] Step 4/4: Generating Premiere Pro XML (music only, NAT muted)...");
+                    tracing::info!(
+                        "[TOOL] Step 4/4: Generating Premiere Pro XML (music only, NAT muted)..."
+                    );
                     let xml = services::services::recap_assembly::RecapAssemblyEngine::generate_premiere_xml(
                         &assembly_result,
                         &placements,
@@ -1661,16 +1767,19 @@ impl ExecutiveTools {
                         let _ = tokio::fs::write(&result_path, json_str).await;
                     }
 
-                    let placement_summaries: Vec<serde_json::Value> = placements.iter().map(|p| {
-                        serde_json::json!({
-                            "clip": p.clip_filename,
-                            "section": p.section_name,
-                            "timeline": format!("{:.2}s-{:.2}s", p.timeline_in, p.timeline_out),
-                            "source": format!("{:.2}s-{:.2}s", p.source_in, p.source_out),
-                            "energy_match": p.energy_match_score,
-                            "beat_locked": p.beat_locked,
+                    let placement_summaries: Vec<serde_json::Value> = placements
+                        .iter()
+                        .map(|p| {
+                            serde_json::json!({
+                                "clip": p.clip_filename,
+                                "section": p.section_name,
+                                "timeline": format!("{:.2}s-{:.2}s", p.timeline_in, p.timeline_out),
+                                "source": format!("{:.2}s-{:.2}s", p.source_in, p.source_out),
+                                "energy_match": p.energy_match_score,
+                                "beat_locked": p.beat_locked,
+                            })
                         })
-                    }).collect();
+                        .collect();
 
                     tracing::info!(
                         "[TOOL] Recap assembled: {} clips, {} beat-locked cuts, {:.1}s duration, {:.0}ms",
@@ -1710,7 +1819,9 @@ impl ExecutiveTools {
                         }).collect::<Vec<_>>(),
                     }))
                 } else {
-                    Ok(serde_json::json!({"success": false, "error": "Media pipeline not available"}))
+                    Ok(
+                        serde_json::json!({"success": false, "error": "Media pipeline not available"}),
+                    )
                 }
             }
 
@@ -1740,12 +1851,16 @@ impl ExecutiveTools {
                         let stdout = String::from_utf8_lossy(&result.stdout);
                         let stderr = String::from_utf8_lossy(&result.stderr);
                         let render_path = std::path::Path::new(&render_output);
-                        let file_size = tokio::fs::metadata(&render_path).await
-                            .map(|m| m.len()).unwrap_or(0);
+                        let file_size = tokio::fs::metadata(&render_path)
+                            .await
+                            .map(|m| m.len())
+                            .unwrap_or(0);
 
                         tracing::info!(
                             "[TOOL] Render complete: {} ({} bytes), exit={}",
-                            render_output, file_size, result.status
+                            render_output,
+                            file_size,
+                            result.status
                         );
 
                         let _ = stdout; // consumed for logging if needed
@@ -1768,27 +1883,39 @@ impl ExecutiveTools {
                             "stderr_tail": stderr_tail,
                         }))
                     }
-                    Err(e) => {
-                        Ok(serde_json::json!({
-                            "success": false,
-                            "error": format!("Failed to execute render script: {}", e),
-                        }))
-                    }
+                    Err(e) => Ok(serde_json::json!({
+                        "success": false,
+                        "error": format!("Failed to execute render script: {}", e),
+                    })),
                 }
             }
 
             // === Music Discovery & Download Tools ===
             NoraExecutiveTool::SearchMusic {
-                query, moods, genres, min_bpm, max_bpm, min_duration, max_duration,
-                instrumental, platforms, page, per_page,
+                query,
+                moods,
+                genres,
+                min_bpm,
+                max_bpm,
+                min_duration,
+                max_duration,
+                instrumental,
+                platforms,
+                page,
+                per_page,
             } => {
-                tracing::info!("[TOOL] SearchMusic: query={:?}, moods={:?}, genres={:?}", query, moods, genres);
+                tracing::info!(
+                    "[TOOL] SearchMusic: query={:?}, moods={:?}, genres={:?}",
+                    query,
+                    moods,
+                    genres
+                );
 
                 use services::services::editron::{
-                    load_music_platform_configs,
-                    music::{MusicSearchCriteria, MusicMood, MusicGenre},
                     artlist::ArtlistClient,
                     epidemic::EpidemicSoundClient,
+                    load_music_platform_configs,
+                    music::{MusicGenre, MusicMood, MusicSearchCriteria},
                     soundstripe::SoundstripeClient,
                 };
 
@@ -1797,14 +1924,22 @@ impl ExecutiveTools {
                 // Build search criteria
                 let criteria = MusicSearchCriteria {
                     query,
-                    moods: moods.unwrap_or_default().iter().filter_map(|m| {
-                        MusicMood::from_epidemic_term(m)
-                            .or_else(|| MusicMood::from_artlist_term(m))
-                    }).collect(),
-                    genres: genres.unwrap_or_default().iter().filter_map(|g| {
-                        MusicGenre::from_epidemic_term(g)
-                            .or_else(|| MusicGenre::from_artlist_term(g))
-                    }).collect(),
+                    moods: moods
+                        .unwrap_or_default()
+                        .iter()
+                        .filter_map(|m| {
+                            MusicMood::from_epidemic_term(m)
+                                .or_else(|| MusicMood::from_artlist_term(m))
+                        })
+                        .collect(),
+                    genres: genres
+                        .unwrap_or_default()
+                        .iter()
+                        .filter_map(|g| {
+                            MusicGenre::from_epidemic_term(g)
+                                .or_else(|| MusicGenre::from_artlist_term(g))
+                        })
+                        .collect(),
                     min_duration,
                     max_duration,
                     min_bpm,
@@ -1822,12 +1957,16 @@ impl ExecutiveTools {
                 let mut platform_status = serde_json::Map::new();
 
                 // Search Artlist
-                let search_artlist = platform_filter.is_empty() || platform_filter.iter().any(|p| p == "artlist");
+                let search_artlist =
+                    platform_filter.is_empty() || platform_filter.iter().any(|p| p == "artlist");
                 if search_artlist {
                     if artlist_cfg.is_configured() {
                         match ArtlistClient::from_config(&artlist_cfg) {
                             Ok(client) => {
-                                match client.search_tracks(&criteria, page_num, results_per_page).await {
+                                match client
+                                    .search_tracks(&criteria, page_num, results_per_page)
+                                    .await
+                                {
                                     Ok(tracks) => {
                                         platform_status.insert("artlist".to_string(), serde_json::json!({"status": "ok", "count": tracks.len()}));
                                         all_tracks.extend(tracks);
@@ -1838,21 +1977,31 @@ impl ExecutiveTools {
                                 }
                             }
                             Err(e) => {
-                                platform_status.insert("artlist".to_string(), serde_json::json!({"status": "error", "error": e.to_string()}));
+                                platform_status.insert(
+                                    "artlist".to_string(),
+                                    serde_json::json!({"status": "error", "error": e.to_string()}),
+                                );
                             }
                         }
                     } else {
-                        platform_status.insert("artlist".to_string(), serde_json::json!({"status": "not_configured"}));
+                        platform_status.insert(
+                            "artlist".to_string(),
+                            serde_json::json!({"status": "not_configured"}),
+                        );
                     }
                 }
 
                 // Search Epidemic Sound
-                let search_epidemic = platform_filter.is_empty() || platform_filter.iter().any(|p| p == "epidemic");
+                let search_epidemic =
+                    platform_filter.is_empty() || platform_filter.iter().any(|p| p == "epidemic");
                 if search_epidemic {
                     if epidemic_cfg.is_configured() {
                         match EpidemicSoundClient::from_config(&epidemic_cfg) {
                             Ok(client) => {
-                                match client.search_tracks(&criteria, page_num, results_per_page).await {
+                                match client
+                                    .search_tracks(&criteria, page_num, results_per_page)
+                                    .await
+                                {
                                     Ok(tracks) => {
                                         platform_status.insert("epidemic".to_string(), serde_json::json!({"status": "ok", "count": tracks.len()}));
                                         all_tracks.extend(tracks);
@@ -1863,21 +2012,31 @@ impl ExecutiveTools {
                                 }
                             }
                             Err(e) => {
-                                platform_status.insert("epidemic".to_string(), serde_json::json!({"status": "error", "error": e.to_string()}));
+                                platform_status.insert(
+                                    "epidemic".to_string(),
+                                    serde_json::json!({"status": "error", "error": e.to_string()}),
+                                );
                             }
                         }
                     } else {
-                        platform_status.insert("epidemic".to_string(), serde_json::json!({"status": "not_configured"}));
+                        platform_status.insert(
+                            "epidemic".to_string(),
+                            serde_json::json!({"status": "not_configured"}),
+                        );
                     }
                 }
 
                 // Search Soundstripe
-                let search_soundstripe = platform_filter.is_empty() || platform_filter.iter().any(|p| p == "soundstripe");
+                let search_soundstripe = platform_filter.is_empty()
+                    || platform_filter.iter().any(|p| p == "soundstripe");
                 if search_soundstripe {
                     if soundstripe_cfg.is_configured() {
                         match SoundstripeClient::from_config(&soundstripe_cfg) {
                             Ok(client) => {
-                                match client.search_tracks(&criteria, page_num, results_per_page).await {
+                                match client
+                                    .search_tracks(&criteria, page_num, results_per_page)
+                                    .await
+                                {
                                     Ok(tracks) => {
                                         platform_status.insert("soundstripe".to_string(), serde_json::json!({"status": "ok", "count": tracks.len()}));
                                         all_tracks.extend(tracks);
@@ -1888,28 +2047,37 @@ impl ExecutiveTools {
                                 }
                             }
                             Err(e) => {
-                                platform_status.insert("soundstripe".to_string(), serde_json::json!({"status": "error", "error": e.to_string()}));
+                                platform_status.insert(
+                                    "soundstripe".to_string(),
+                                    serde_json::json!({"status": "error", "error": e.to_string()}),
+                                );
                             }
                         }
                     } else {
-                        platform_status.insert("soundstripe".to_string(), serde_json::json!({"status": "not_configured"}));
+                        platform_status.insert(
+                            "soundstripe".to_string(),
+                            serde_json::json!({"status": "not_configured"}),
+                        );
                     }
                 }
 
-                let track_summaries: Vec<serde_json::Value> = all_tracks.iter().map(|t| {
-                    serde_json::json!({
-                        "id": t.id,
-                        "title": t.title,
-                        "artist": t.artist,
-                        "duration": t.duration,
-                        "bpm": t.bpm,
-                        "genre": format!("{:?}", t.genre),
-                        "moods": t.moods.iter().map(|m| format!("{:?}", m)).collect::<Vec<_>>(),
-                        "platform": format!("{:?}", t.platform),
-                        "preview_url": t.preview_url,
-                        "url": t.url,
+                let track_summaries: Vec<serde_json::Value> = all_tracks
+                    .iter()
+                    .map(|t| {
+                        serde_json::json!({
+                            "id": t.id,
+                            "title": t.title,
+                            "artist": t.artist,
+                            "duration": t.duration,
+                            "bpm": t.bpm,
+                            "genre": format!("{:?}", t.genre),
+                            "moods": t.moods.iter().map(|m| format!("{:?}", m)).collect::<Vec<_>>(),
+                            "platform": format!("{:?}", t.platform),
+                            "preview_url": t.preview_url,
+                            "url": t.url,
+                        })
                     })
-                }).collect();
+                    .collect();
 
                 Ok(serde_json::json!({
                     "success": true,
@@ -1919,7 +2087,11 @@ impl ExecutiveTools {
                 }))
             }
 
-            NoraExecutiveTool::DownloadMusicTrack { track_id, filename, output_dir } => {
+            NoraExecutiveTool::DownloadMusicTrack {
+                track_id,
+                filename,
+                output_dir,
+            } => {
                 tracing::info!("[TOOL] DownloadMusicTrack: {}", track_id);
 
                 use services::services::editron::load_music_platform_configs;
@@ -1927,10 +2099,12 @@ impl ExecutiveTools {
                 // Parse platform prefix
                 let (platform, raw_id) = match track_id.split_once(':') {
                     Some((p, id)) => (p.to_string(), id.to_string()),
-                    None => return Ok(serde_json::json!({
-                        "success": false,
-                        "error": "Invalid track_id format. Must be 'platform:id' (e.g., 'artlist:12345')"
-                    })),
+                    None => {
+                        return Ok(serde_json::json!({
+                            "success": false,
+                            "error": "Invalid track_id format. Must be 'platform:id' (e.g., 'artlist:12345')"
+                        }))
+                    }
                 };
 
                 let (artlist_cfg, epidemic_cfg, soundstripe_cfg) = load_music_platform_configs();
@@ -1940,18 +2114,19 @@ impl ExecutiveTools {
                         if !artlist_cfg.is_configured() {
                             Err("Artlist not configured (set ARTLIST_CLIENT_ID and ARTLIST_CLIENT_SECRET)".to_string())
                         } else {
-                            match services::services::editron::artlist::ArtlistClient::from_config(&artlist_cfg) {
-                                Ok(client) => {
-                                    match client.get_download_url(&raw_id).await {
-                                        Ok(url) => {
-                                            let track = client.get_track(&raw_id).await.ok();
-                                            let default_name = track.map(|t| format!("{} - {}.mp3", t.artist, t.title))
-                                                .unwrap_or_else(|| format!("artlist_{}.mp3", raw_id));
-                                            Ok((url, default_name))
-                                        }
-                                        Err(e) => Err(e.to_string()),
+                            match services::services::editron::artlist::ArtlistClient::from_config(
+                                &artlist_cfg,
+                            ) {
+                                Ok(client) => match client.get_download_url(&raw_id).await {
+                                    Ok(url) => {
+                                        let track = client.get_track(&raw_id).await.ok();
+                                        let default_name = track
+                                            .map(|t| format!("{} - {}.mp3", t.artist, t.title))
+                                            .unwrap_or_else(|| format!("artlist_{}.mp3", raw_id));
+                                        Ok((url, default_name))
                                     }
-                                }
+                                    Err(e) => Err(e.to_string()),
+                                },
                                 Err(e) => Err(e.to_string()),
                             }
                         }
@@ -1998,12 +2173,16 @@ impl ExecutiveTools {
                             }
                         }
                     }
-                    _ => Err(format!("Unknown platform: '{}'. Use 'artlist', 'epidemic', or 'soundstripe'", platform)),
+                    _ => Err(format!(
+                        "Unknown platform: '{}'. Use 'artlist', 'epidemic', or 'soundstripe'",
+                        platform
+                    )),
                 };
 
                 match result {
                     Ok((download_url, default_name)) => {
-                        let safe_filename = filename.unwrap_or(default_name)
+                        let safe_filename = filename
+                            .unwrap_or(default_name)
                             .replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
                         let dir = output_dir.unwrap_or_else(|| format!("/tmp/music/{}", platform));
                         let dir_path = std::path::Path::new(&dir);
@@ -2013,13 +2192,19 @@ impl ExecutiveTools {
                         match reqwest::Client::new().get(&download_url).send().await {
                             Ok(response) => {
                                 if !response.status().is_success() {
-                                    return Ok(serde_json::json!({"success": false, "error": format!("Download failed with status: {}", response.status())}));
+                                    return Ok(
+                                        serde_json::json!({"success": false, "error": format!("Download failed with status: {}", response.status())}),
+                                    );
                                 }
                                 match response.bytes().await {
                                     Ok(bytes) => {
                                         match tokio::fs::write(&output_path, &bytes).await {
                                             Ok(_) => {
-                                                tracing::info!("[TOOL] Downloaded {} bytes to {}", bytes.len(), output_path.display());
+                                                tracing::info!(
+                                                    "[TOOL] Downloaded {} bytes to {}",
+                                                    bytes.len(),
+                                                    output_path.display()
+                                                );
                                                 Ok(serde_json::json!({
                                                     "success": true,
                                                     "message": format!("Track downloaded to {}", output_path.display()),
@@ -2029,13 +2214,19 @@ impl ExecutiveTools {
                                                     "track_id": track_id,
                                                 }))
                                             }
-                                            Err(e) => Ok(serde_json::json!({"success": false, "error": format!("Failed to write file: {}", e)})),
+                                            Err(e) => Ok(
+                                                serde_json::json!({"success": false, "error": format!("Failed to write file: {}", e)}),
+                                            ),
                                         }
                                     }
-                                    Err(e) => Ok(serde_json::json!({"success": false, "error": format!("Failed to read download bytes: {}", e)})),
+                                    Err(e) => Ok(
+                                        serde_json::json!({"success": false, "error": format!("Failed to read download bytes: {}", e)}),
+                                    ),
                                 }
                             }
-                            Err(e) => Ok(serde_json::json!({"success": false, "error": format!("Download request failed: {}", e)})),
+                            Err(e) => Ok(
+                                serde_json::json!({"success": false, "error": format!("Download request failed: {}", e)}),
+                            ),
                         }
                     }
                     Err(e) => Ok(serde_json::json!({"success": false, "error": e})),
@@ -2043,9 +2234,16 @@ impl ExecutiveTools {
             }
 
             NoraExecutiveTool::RecommendMusicForVideo {
-                video_path: _, content_type, target_duration, auto_search,
+                video_path: _,
+                content_type,
+                target_duration,
+                auto_search,
             } => {
-                tracing::info!("[TOOL] RecommendMusicForVideo: content_type={:?}, duration={:?}", content_type, target_duration);
+                tracing::info!(
+                    "[TOOL] RecommendMusicForVideo: content_type={:?}, duration={:?}",
+                    content_type,
+                    target_duration
+                );
 
                 use services::services::editron::music::MusicLibrary;
 
@@ -2075,51 +2273,65 @@ impl ExecutiveTools {
                 // Auto-search if requested
                 if auto_search == Some(true) {
                     use services::services::editron::{
-                        load_music_platform_configs,
-                        artlist::ArtlistClient,
-                        epidemic::EpidemicSoundClient,
-                        soundstripe::SoundstripeClient,
+                        artlist::ArtlistClient, epidemic::EpidemicSoundClient,
+                        load_music_platform_configs, soundstripe::SoundstripeClient,
                     };
 
-                    let (artlist_cfg, epidemic_cfg, soundstripe_cfg) = load_music_platform_configs();
+                    let (artlist_cfg, epidemic_cfg, soundstripe_cfg) =
+                        load_music_platform_configs();
                     let mut tracks = Vec::new();
 
                     if artlist_cfg.is_configured() {
                         if let Ok(client) = ArtlistClient::from_config(&artlist_cfg) {
-                            if let Ok(results) = client.search_tracks(&recommendation.criteria, 1, 10).await {
+                            if let Ok(results) =
+                                client.search_tracks(&recommendation.criteria, 1, 10).await
+                            {
                                 tracks.extend(results);
                             }
                         }
                     }
                     if epidemic_cfg.is_configured() {
                         if let Ok(client) = EpidemicSoundClient::from_config(&epidemic_cfg) {
-                            if let Ok(results) = client.search_tracks(&recommendation.criteria, 1, 10).await {
+                            if let Ok(results) =
+                                client.search_tracks(&recommendation.criteria, 1, 10).await
+                            {
                                 tracks.extend(results);
                             }
                         }
                     }
                     if soundstripe_cfg.is_configured() {
                         if let Ok(client) = SoundstripeClient::from_config(&soundstripe_cfg) {
-                            if let Ok(results) = client.search_tracks(&recommendation.criteria, 1, 10).await {
+                            if let Ok(results) =
+                                client.search_tracks(&recommendation.criteria, 1, 10).await
+                            {
                                 tracks.extend(results);
                             }
                         }
                     }
 
-                    let track_list: Vec<serde_json::Value> = tracks.iter().map(|t| {
-                        serde_json::json!({
-                            "id": t.id,
-                            "title": t.title,
-                            "artist": t.artist,
-                            "duration": t.duration,
-                            "bpm": t.bpm,
-                            "platform": format!("{:?}", t.platform),
-                            "preview_url": t.preview_url,
+                    let track_list: Vec<serde_json::Value> = tracks
+                        .iter()
+                        .map(|t| {
+                            serde_json::json!({
+                                "id": t.id,
+                                "title": t.title,
+                                "artist": t.artist,
+                                "duration": t.duration,
+                                "bpm": t.bpm,
+                                "platform": format!("{:?}", t.platform),
+                                "preview_url": t.preview_url,
+                            })
                         })
-                    }).collect();
+                        .collect();
 
-                    response.as_object_mut().unwrap().insert("search_results".to_string(), serde_json::json!(track_list));
-                    response.as_object_mut().unwrap().insert("total_results".to_string(), serde_json::json!(tracks.len()));
+                    response
+                        .as_object_mut()
+                        .unwrap()
+                        .insert("search_results".to_string(), serde_json::json!(track_list));
+                    response
+                        .as_object_mut()
+                        .unwrap()
+                        .insert("total_results".to_string(), serde_json::json!(tracks.len()));
                 }
 
                 Ok(response)
@@ -2132,18 +2344,26 @@ impl ExecutiveTools {
 
                 let (platform, raw_id) = match track_id.split_once(':') {
                     Some((p, id)) => (p.to_string(), id.to_string()),
-                    None => return Ok(serde_json::json!({
-                        "success": false,
-                        "error": "Invalid track_id format. Must be 'platform:id'"
-                    })),
+                    None => {
+                        return Ok(serde_json::json!({
+                            "success": false,
+                            "error": "Invalid track_id format. Must be 'platform:id'"
+                        }))
+                    }
                 };
 
                 let (artlist_cfg, epidemic_cfg, soundstripe_cfg) = load_music_platform_configs();
 
                 let track_result: Result<serde_json::Value, String> = match platform.as_str() {
                     "artlist" => {
-                        if !artlist_cfg.is_configured() { return Ok(serde_json::json!({"success": false, "error": "Artlist not configured"})); }
-                        match services::services::editron::artlist::ArtlistClient::from_config(&artlist_cfg) {
+                        if !artlist_cfg.is_configured() {
+                            return Ok(
+                                serde_json::json!({"success": false, "error": "Artlist not configured"}),
+                            );
+                        }
+                        match services::services::editron::artlist::ArtlistClient::from_config(
+                            &artlist_cfg,
+                        ) {
                             Ok(client) => match client.get_track(&raw_id).await {
                                 Ok(t) => Ok(serde_json::json!({
                                     "preview_url": t.preview_url,
@@ -2159,7 +2379,11 @@ impl ExecutiveTools {
                         }
                     }
                     "epidemic" => {
-                        if !epidemic_cfg.is_configured() { return Ok(serde_json::json!({"success": false, "error": "Epidemic Sound not configured"})); }
+                        if !epidemic_cfg.is_configured() {
+                            return Ok(
+                                serde_json::json!({"success": false, "error": "Epidemic Sound not configured"}),
+                            );
+                        }
                         match services::services::editron::epidemic::EpidemicSoundClient::from_config(&epidemic_cfg) {
                             Ok(client) => match client.get_track(&raw_id).await {
                                 Ok(t) => {
@@ -2180,7 +2404,11 @@ impl ExecutiveTools {
                         }
                     }
                     "soundstripe" => {
-                        if !soundstripe_cfg.is_configured() { return Ok(serde_json::json!({"success": false, "error": "Soundstripe not configured"})); }
+                        if !soundstripe_cfg.is_configured() {
+                            return Ok(
+                                serde_json::json!({"success": false, "error": "Soundstripe not configured"}),
+                            );
+                        }
                         match services::services::editron::soundstripe::SoundstripeClient::from_config(&soundstripe_cfg) {
                             Ok(client) => match client.get_track(&raw_id).await {
                                 Ok(t) => Ok(serde_json::json!({
@@ -2212,18 +2440,26 @@ impl ExecutiveTools {
 
                 let (platform, raw_id) = match track_id.split_once(':') {
                     Some((p, id)) => (p.to_string(), id.to_string()),
-                    None => return Ok(serde_json::json!({
-                        "success": false,
-                        "error": "Invalid track_id format. Must be 'platform:id'"
-                    })),
+                    None => {
+                        return Ok(serde_json::json!({
+                            "success": false,
+                            "error": "Invalid track_id format. Must be 'platform:id'"
+                        }))
+                    }
                 };
 
                 let (artlist_cfg, epidemic_cfg, soundstripe_cfg) = load_music_platform_configs();
 
                 match platform.as_str() {
                     "artlist" => {
-                        if !artlist_cfg.is_configured() { return Ok(serde_json::json!({"success": false, "error": "Artlist not configured"})); }
-                        match services::services::editron::artlist::ArtlistClient::from_config(&artlist_cfg) {
+                        if !artlist_cfg.is_configured() {
+                            return Ok(
+                                serde_json::json!({"success": false, "error": "Artlist not configured"}),
+                            );
+                        }
+                        match services::services::editron::artlist::ArtlistClient::from_config(
+                            &artlist_cfg,
+                        ) {
                             Ok(client) => match client.get_track(&raw_id).await {
                                 Ok(t) => Ok(serde_json::json!({
                                     "success": true,
@@ -2236,13 +2472,21 @@ impl ExecutiveTools {
                                         "url": t.url, "preview_url": t.preview_url,
                                     }
                                 })),
-                                Err(e) => Ok(serde_json::json!({"success": false, "error": e.to_string()})),
+                                Err(e) => Ok(
+                                    serde_json::json!({"success": false, "error": e.to_string()}),
+                                ),
                             },
-                            Err(e) => Ok(serde_json::json!({"success": false, "error": e.to_string()})),
+                            Err(e) => {
+                                Ok(serde_json::json!({"success": false, "error": e.to_string()}))
+                            }
                         }
                     }
                     "epidemic" => {
-                        if !epidemic_cfg.is_configured() { return Ok(serde_json::json!({"success": false, "error": "Epidemic Sound not configured"})); }
+                        if !epidemic_cfg.is_configured() {
+                            return Ok(
+                                serde_json::json!({"success": false, "error": "Epidemic Sound not configured"}),
+                            );
+                        }
                         match services::services::editron::epidemic::EpidemicSoundClient::from_config(&epidemic_cfg) {
                             Ok(client) => match client.get_track(&raw_id).await {
                                 Ok(t) => {
@@ -2275,7 +2519,11 @@ impl ExecutiveTools {
                         }
                     }
                     "soundstripe" => {
-                        if !soundstripe_cfg.is_configured() { return Ok(serde_json::json!({"success": false, "error": "Soundstripe not configured"})); }
+                        if !soundstripe_cfg.is_configured() {
+                            return Ok(
+                                serde_json::json!({"success": false, "error": "Soundstripe not configured"}),
+                            );
+                        }
                         match services::services::editron::soundstripe::SoundstripeClient::from_config(&soundstripe_cfg) {
                             Ok(client) => match client.get_track(&raw_id).await {
                                 Ok(t) => Ok(serde_json::json!({
@@ -2294,36 +2542,48 @@ impl ExecutiveTools {
                             Err(e) => Ok(serde_json::json!({"success": false, "error": e.to_string()})),
                         }
                     }
-                    _ => Ok(serde_json::json!({"success": false, "error": format!("Unknown platform: '{}'", platform)})),
+                    _ => Ok(
+                        serde_json::json!({"success": false, "error": format!("Unknown platform: '{}'", platform)}),
+                    ),
                 }
             }
 
-            NoraExecutiveTool::AnalyzeMusicTrack { audio_path, bpm_hint } => {
+            NoraExecutiveTool::AnalyzeMusicTrack {
+                audio_path,
+                bpm_hint,
+            } => {
                 tracing::info!("[TOOL] AnalyzeMusicTrack: {}", audio_path);
 
                 let path = std::path::PathBuf::from(&audio_path);
                 if !path.exists() {
-                    return Ok(serde_json::json!({"success": false, "error": format!("Audio file not found: {}", audio_path)}));
+                    return Ok(
+                        serde_json::json!({"success": false, "error": format!("Audio file not found: {}", audio_path)}),
+                    );
                 }
 
                 let engine = services::services::beat_analysis::BeatAnalysisEngine::new();
 
                 match engine.analyze(&path, bpm_hint, 4).await {
                     Ok(result) => {
-                        let section_summaries: Vec<serde_json::Value> = result.sections.iter().map(|s| {
-                            serde_json::json!({
-                                "name": s.name,
-                                "start": s.start,
-                                "end": s.end,
-                                "duration": s.end - s.start,
-                                "energy": s.energy_level,
-                                "suggested_content": format!("{:?}", s.suggested_content),
+                        let section_summaries: Vec<serde_json::Value> = result
+                            .sections
+                            .iter()
+                            .map(|s| {
+                                serde_json::json!({
+                                    "name": s.name,
+                                    "start": s.start,
+                                    "end": s.end,
+                                    "duration": s.end - s.start,
+                                    "energy": s.energy_level,
+                                    "suggested_content": format!("{:?}", s.suggested_content),
+                                })
                             })
-                        }).collect();
+                            .collect();
 
                         // Compute energy profile summary
                         let avg_energy = if !result.sections.is_empty() {
-                            result.sections.iter().map(|s| s.energy_level).sum::<f64>() / result.sections.len() as f64
+                            result.sections.iter().map(|s| s.energy_level).sum::<f64>()
+                                / result.sections.len() as f64
                         } else {
                             0.5
                         };
@@ -2344,7 +2604,9 @@ impl ExecutiveTools {
                             "processing_time_ms": result.processing_time_ms,
                         }))
                     }
-                    Err(e) => Ok(serde_json::json!({"success": false, "error": format!("Music analysis failed: {}", e)})),
+                    Err(e) => Ok(
+                        serde_json::json!({"success": false, "error": format!("Music analysis failed: {}", e)}),
+                    ),
                 }
             }
 
@@ -2449,7 +2711,10 @@ impl ExecutiveTools {
                         }
                     };
 
-                    match executor.add_task_to_board(&task_uuid.to_string(), &board_uuid.to_string()).await {
+                    match executor
+                        .add_task_to_board(&task_uuid.to_string(), &board_uuid.to_string())
+                        .await
+                    {
                         Ok(()) => Ok(serde_json::json!({
                             "success": true,
                             "message": "Task assigned to board successfully",
@@ -2561,10 +2826,9 @@ impl ExecutiveTools {
                         .parse::<uuid::Uuid>()
                         .ok()
                         .map(ChannelOwner::Organization),
-                    (Some("project"), Some(id)) => id
-                        .parse::<uuid::Uuid>()
-                        .ok()
-                        .map(ChannelOwner::Project),
+                    (Some("project"), Some(id)) => {
+                        id.parse::<uuid::Uuid>().ok().map(ChannelOwner::Project)
+                    }
                     (Some("user"), Some(id)) => {
                         id.parse::<uuid::Uuid>().ok().map(ChannelOwner::User)
                     }
@@ -2837,7 +3101,9 @@ impl ExecutiveTools {
             }))
             .send()
             .await
-            .map_err(|e| crate::NoraError::ToolExecutionError(format!("Exa search request failed: {}", e)))?;
+            .map_err(|e| {
+                crate::NoraError::ToolExecutionError(format!("Exa search request failed: {}", e))
+            })?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -2848,18 +3114,24 @@ impl ExecutiveTools {
             }));
         }
 
-        let data: serde_json::Value = resp.json().await
-            .map_err(|e| crate::NoraError::ToolExecutionError(format!("Failed to parse Exa response: {}", e)))?;
+        let data: serde_json::Value = resp.json().await.map_err(|e| {
+            crate::NoraError::ToolExecutionError(format!("Failed to parse Exa response: {}", e))
+        })?;
 
-        let results = data.get("results")
+        let results = data
+            .get("results")
             .and_then(|r| r.as_array())
             .map(|arr| {
-                arr.iter().map(|r| serde_json::json!({
-                    "title": r.get("title").and_then(|t| t.as_str()).unwrap_or(""),
-                    "url": r.get("url").and_then(|u| u.as_str()).unwrap_or(""),
-                    "snippet": r.get("text").and_then(|t| t.as_str()).unwrap_or(""),
-                    "score": r.get("score")
-                })).collect::<Vec<_>>()
+                arr.iter()
+                    .map(|r| {
+                        serde_json::json!({
+                            "title": r.get("title").and_then(|t| t.as_str()).unwrap_or(""),
+                            "url": r.get("url").and_then(|u| u.as_str()).unwrap_or(""),
+                            "snippet": r.get("text").and_then(|t| t.as_str()).unwrap_or(""),
+                            "score": r.get("score")
+                        })
+                    })
+                    .collect::<Vec<_>>()
             })
             .unwrap_or_default();
 
@@ -2952,7 +3224,10 @@ impl ExecutiveTools {
             }));
         }
 
-        tracing::info!("[NORA TOOLS] Rendering JavaScript page via Playwright: {}", url);
+        tracing::info!(
+            "[NORA TOOLS] Rendering JavaScript page via Playwright: {}",
+            url
+        );
 
         let url_owned = url.to_string();
         let output = tokio::task::spawn_blocking(move || {
@@ -2961,8 +3236,12 @@ impl ExecutiveTools {
                 .output()
         })
         .await
-        .map_err(|e| crate::NoraError::ToolExecutionError(format!("Failed to spawn render task: {}", e)))?
-        .map_err(|e| crate::NoraError::ToolExecutionError(format!("Failed to execute render script: {}", e)))?;
+        .map_err(|e| {
+            crate::NoraError::ToolExecutionError(format!("Failed to spawn render task: {}", e))
+        })?
+        .map_err(|e| {
+            crate::NoraError::ToolExecutionError(format!("Failed to execute render script: {}", e))
+        })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -2979,8 +3258,9 @@ impl ExecutiveTools {
             }));
         }
 
-        let parsed: serde_json::Value = serde_json::from_slice(&output.stdout)
-            .map_err(|e| crate::NoraError::ToolExecutionError(format!("Failed to parse render output: {}", e)))?;
+        let parsed: serde_json::Value = serde_json::from_slice(&output.stdout).map_err(|e| {
+            crate::NoraError::ToolExecutionError(format!("Failed to parse render output: {}", e))
+        })?;
 
         // Convert HTML to plain text (basic stripping)
         let html = parsed.get("html").and_then(|h| h.as_str()).unwrap_or("");
@@ -2991,8 +3271,13 @@ impl ExecutiveTools {
             let mut s = String::with_capacity(html.len());
             for c in html.chars() {
                 match c {
-                    '<' => { in_tag = true; s.push(' '); }
-                    '>' => { in_tag = false; }
+                    '<' => {
+                        in_tag = true;
+                        s.push(' ');
+                    }
+                    '>' => {
+                        in_tag = false;
+                    }
                     _ if !in_tag => s.push(c),
                     _ => {}
                 }
@@ -3109,9 +3394,7 @@ impl ExecutiveTools {
         priority: &EmailPriority,
     ) -> crate::Result<serde_json::Value> {
         // Prefer OAuth channel service (Nora's connected Zoho account)
-        if let (Some(ref svc), Some(ref owner)) =
-            (&self.agent_channel_service, &self.agent_owner)
-        {
+        if let (Some(ref svc), Some(ref owner)) = (&self.agent_channel_service, &self.agent_owner) {
             match svc.send_email(owner, recipients, subject, body).await {
                 Ok(message_id) => {
                     tracing::info!(
@@ -3162,7 +3445,11 @@ impl ExecutiveTools {
         }
 
         // Final fallback: log only
-        tracing::warn!("No email transport configured — email logged only: {:?} / {}", recipients, subject);
+        tracing::warn!(
+            "No email transport configured — email logged only: {:?} / {}",
+            recipients,
+            subject
+        );
         Ok(serde_json::json!({
             "success": false,
             "recipients": recipients,
@@ -3200,11 +3487,7 @@ impl ExecutiveTools {
         }
     }
 
-    async fn execute_send_sms(
-        &self,
-        to: &str,
-        message: &str,
-    ) -> crate::Result<serde_json::Value> {
+    async fn execute_send_sms(&self, to: &str, message: &str) -> crate::Result<serde_json::Value> {
         if let Some(ref svc) = self.agent_channel_service {
             match svc.send_sms(to, message).await {
                 Ok(sid) => {
@@ -3444,7 +3727,8 @@ impl ExecutiveTools {
                 return Ok(id);
             }
             if let Ok(Some(project)) = executor.find_project_record_by_name(hint).await {
-                return Uuid::parse_str(&project.id).map_err(|e| NoraError::ConfigError(format!("Invalid project id: {}", e)));
+                return Uuid::parse_str(&project.id)
+                    .map_err(|e| NoraError::ConfigError(format!("Invalid project id: {}", e)));
             }
         }
 
@@ -3501,7 +3785,10 @@ impl ExecutiveTools {
 
     async fn complete_pipeline_task(&self, task_id: Uuid, status: TaskStatus) {
         if let Some(executor) = &self.task_executor {
-            if let Err(err) = executor.update_task_status(&task_id.to_string(), status).await {
+            if let Err(err) = executor
+                .update_task_status(&task_id.to_string(), status)
+                .await
+            {
                 tracing::warn!("Failed to update pipeline task {}: {}", task_id, err);
             }
         }

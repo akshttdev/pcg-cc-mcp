@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
 use ts_rs::TS;
 use uuid::Uuid;
+
 use crate::db_uuid::DbUuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]

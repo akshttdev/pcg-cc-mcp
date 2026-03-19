@@ -66,15 +66,15 @@ pub struct Task {
     // Phase A: Core Collaboration Fields
     pub priority: Priority,
     pub assignee_id: Option<String>,
-    pub assignee_type: Option<String>,   // Polymorphic: "user", "agent", "team"
-    pub assigned_agent: Option<String>,  // Legacy: agent name (e.g., "Nora")
-    pub agent_id: Option<String>,           // New: foreign key to agents table
-    pub assigned_mcps: Option<String>,    // JSON array of strings
+    pub assignee_type: Option<String>, // Polymorphic: "user", "agent", "team"
+    pub assigned_agent: Option<String>, // Legacy: agent name (e.g., "Nora")
+    pub agent_id: Option<String>,      // New: foreign key to agents table
+    pub assigned_mcps: Option<String>, // JSON array of strings
     pub created_by: String,
     pub requires_approval: bool,
     pub approval_status: Option<ApprovalStatus>,
     pub parent_task_id: Option<String>, // For subtasks
-    pub tags: Option<String>,         // JSON array of strings
+    pub tags: Option<String>,           // JSON array of strings
     pub due_date: Option<DateTime<Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(type = "Record<string, unknown> | null")]
@@ -171,9 +171,9 @@ pub struct CreateTask {
     // Phase A: Core Collaboration Fields
     pub priority: Option<Priority>,
     pub assignee_id: Option<String>,
-    pub assignee_type: Option<String>,   // Polymorphic: "user", "agent", "team"
-    pub assigned_agent: Option<String>,  // Legacy: agent name
-    pub agent_id: Option<String>,           // New: foreign key to agents table
+    pub assignee_type: Option<String>, // Polymorphic: "user", "agent", "team"
+    pub assigned_agent: Option<String>, // Legacy: agent name
+    pub agent_id: Option<String>,      // New: foreign key to agents table
     pub assigned_mcps: Option<Vec<String>>,
     #[serde(default)]
     pub created_by: String,
@@ -211,9 +211,9 @@ pub struct UpdateTask {
     // Phase A: Core Collaboration Fields
     pub priority: Option<Priority>,
     pub assignee_id: Option<String>,
-    pub assignee_type: Option<String>,   // Polymorphic: "user", "agent", "team"
-    pub assigned_agent: Option<String>,  // Legacy: agent name
-    pub agent_id: Option<Option<String>>,   // New: foreign key to agents table
+    pub assignee_type: Option<String>, // Polymorphic: "user", "agent", "team"
+    pub assigned_agent: Option<String>, // Legacy: agent name
+    pub agent_id: Option<Option<String>>, // New: foreign key to agents table
     pub assigned_mcps: Option<Vec<String>>,
     pub requires_approval: Option<bool>,
     pub approval_status: Option<ApprovalStatus>,
@@ -452,10 +452,15 @@ ORDER BY t.created_at DESC"#,
                 last_attempt_failed: rec.last_attempt_failed != 0,
                 executor: rec.executor,
                 last_execution_summary: None, // Loaded separately via API when needed
-                collaborators: rec.collaborators
+                collaborators: rec
+                    .collaborators
                     .as_deref()
                     .and_then(|json| serde_json::from_str(json).ok()),
-                vibe_cost: if rec.vibe_cost > 0 { Some(rec.vibe_cost) } else { None },
+                vibe_cost: if rec.vibe_cost > 0 {
+                    Some(rec.vibe_cost)
+                } else {
+                    None
+                },
                 vibe_model: rec.vibe_model,
             })
             .collect();
@@ -513,9 +518,13 @@ ORDER BY t.created_at DESC"#,
         let custom_properties = data.custom_properties.clone().map(Json);
         // Auto-derive assignee_type if not explicitly set
         let assignee_type = data.assignee_type.clone().or_else(|| {
-            if data.assignee_id.is_some() { Some("user".to_string()) }
-            else if data.agent_id.is_some() { Some("agent".to_string()) }
-            else { None }
+            if data.assignee_id.is_some() {
+                Some("user".to_string())
+            } else if data.agent_id.is_some() {
+                Some("agent".to_string())
+            } else {
+                None
+            }
         });
 
         let status_str = "todo";
@@ -656,11 +665,13 @@ ORDER BY t.created_at DESC"#,
         task_id: &str,
         agent_id: &str,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query("UPDATE tasks SET agent_id = $2, updated_at = datetime('now', 'subsec') WHERE id = $1")
-            .bind(task_id)
-            .bind(agent_id)
-            .execute(pool)
-            .await?;
+        sqlx::query(
+            "UPDATE tasks SET agent_id = $2, updated_at = datetime('now', 'subsec') WHERE id = $1",
+        )
+        .bind(task_id)
+        .bind(agent_id)
+        .execute(pool)
+        .await?;
         Ok(())
     }
 
@@ -681,10 +692,11 @@ ORDER BY t.created_at DESC"#,
         action: &str,
     ) -> Result<(), sqlx::Error> {
         // Get existing collaborators
-        let record = sqlx::query("SELECT collaborators FROM tasks WHERE id = $1 AND deleted_at IS NULL")
-            .bind(task_id)
-            .fetch_optional(pool)
-            .await?;
+        let record =
+            sqlx::query("SELECT collaborators FROM tasks WHERE id = $1 AND deleted_at IS NULL")
+                .bind(task_id)
+                .fetch_optional(pool)
+                .await?;
 
         let mut collaborators: Vec<TaskCollaborator> = match record {
             Some(rec) => rec
@@ -717,11 +729,13 @@ ORDER BY t.created_at DESC"#,
         let collaborators_json = serde_json::to_string(&collaborators)
             .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
 
-        sqlx::query("UPDATE tasks SET collaborators = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1")
-            .bind(task_id)
-            .bind(&collaborators_json)
-            .execute(pool)
-            .await?;
+        sqlx::query(
+            "UPDATE tasks SET collaborators = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+        )
+        .bind(task_id)
+        .bind(&collaborators_json)
+        .execute(pool)
+        .await?;
 
         Ok(())
     }
@@ -731,11 +745,13 @@ ORDER BY t.created_at DESC"#,
         id: &str,
         project_id: &str,
     ) -> Result<bool, sqlx::Error> {
-        let result = sqlx::query("SELECT id FROM tasks WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL")
-            .bind(id)
-            .bind(project_id)
-            .fetch_optional(pool)
-            .await?;
+        let result = sqlx::query(
+            "SELECT id FROM tasks WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL",
+        )
+        .bind(id)
+        .bind(project_id)
+        .fetch_optional(pool)
+        .await?;
         Ok(result.is_some())
     }
 
@@ -767,8 +783,7 @@ ORDER BY t.created_at DESC"#,
             // Find the attempt that created the current task
             // parent_attempt_id is now a String, parse to Uuid for TaskAttempt::find_by_id
             if let Ok(parent_uuid) = Uuid::parse_str(parent_attempt_id) {
-                if let Ok(Some(parent_attempt)) = TaskAttempt::find_by_id(pool, parent_uuid).await
-                {
+                if let Ok(Some(parent_attempt)) = TaskAttempt::find_by_id(pool, parent_uuid).await {
                     // Find the task that owns that parent attempt - THAT's the real parent
                     Self::find_by_id(pool, &parent_attempt.task_id.to_string()).await?
                 } else {
@@ -782,7 +797,8 @@ ORDER BY t.created_at DESC"#,
         };
 
         // 3. Get children tasks (created by this attempt)
-        let children = Self::find_children_by_attempt_id(pool, &task_attempt.id.to_string()).await?;
+        let children =
+            Self::find_children_by_attempt_id(pool, &task_attempt.id.to_string()).await?;
 
         Ok(TaskRelationships {
             parent_task,
@@ -806,10 +822,11 @@ ORDER BY t.created_at DESC"#,
         task_id: &str,
         user_id: &str,
     ) -> Result<(), sqlx::Error> {
-        let record = sqlx::query("SELECT collaborators FROM tasks WHERE id = $1 AND deleted_at IS NULL")
-            .bind(task_id)
-            .fetch_optional(pool)
-            .await?;
+        let record =
+            sqlx::query("SELECT collaborators FROM tasks WHERE id = $1 AND deleted_at IS NULL")
+                .bind(task_id)
+                .fetch_optional(pool)
+                .await?;
 
         let mut collaborators: Vec<TaskCollaborator> = match record {
             Some(rec) => rec
@@ -825,11 +842,13 @@ ORDER BY t.created_at DESC"#,
         let collaborators_json = serde_json::to_string(&collaborators)
             .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
 
-        sqlx::query("UPDATE tasks SET collaborators = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1")
-            .bind(task_id)
-            .bind(&collaborators_json)
-            .execute(pool)
-            .await?;
+        sqlx::query(
+            "UPDATE tasks SET collaborators = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+        )
+        .bind(task_id)
+        .bind(&collaborators_json)
+        .execute(pool)
+        .await?;
 
         Ok(())
     }
@@ -891,9 +910,8 @@ ORDER BY t.created_at DESC"#,
             None => return Ok(()),
         };
 
-        collaborators.retain(|c| {
-            !(c.actor_id == agent_id && c.actor_type == ACTOR_TYPE_AGENT_WATCHER)
-        });
+        collaborators
+            .retain(|c| !(c.actor_id == agent_id && c.actor_type == ACTOR_TYPE_AGENT_WATCHER));
 
         let collaborators_json = serde_json::to_string(&collaborators)
             .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;

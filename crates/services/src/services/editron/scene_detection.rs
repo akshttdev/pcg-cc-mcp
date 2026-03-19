@@ -7,9 +7,11 @@
 //! - Color-based scene grouping
 //! - Audio-based scene detection
 
-use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
 use tokio::process::Command;
+
 use super::{EditronError, EditronResult};
 
 /// Scene detection method
@@ -21,7 +23,10 @@ pub enum DetectionMethod {
     /// Threshold-based on pixel difference
     Threshold { threshold: f32 },
     /// Adaptive threshold
-    Adaptive { min_threshold: f32, max_threshold: f32 },
+    Adaptive {
+        min_threshold: f32,
+        max_threshold: f32,
+    },
     /// Combined methods
     Hybrid,
 }
@@ -155,7 +160,8 @@ pub struct SceneDetectionEngine {
 impl SceneDetectionEngine {
     pub fn new<P: AsRef<Path>>(ffmpeg_path: P) -> Self {
         let ffmpeg = ffmpeg_path.as_ref().to_path_buf();
-        let ffprobe = ffmpeg.parent()
+        let ffprobe = ffmpeg
+            .parent()
             .map(|p| p.join("ffprobe"))
             .unwrap_or_else(|| PathBuf::from("ffprobe"));
 
@@ -252,18 +258,22 @@ impl SceneDetectionEngine {
     async fn get_video_info(&self, input: &Path) -> EditronResult<(f64, u64, f32)> {
         let output = Command::new(&self.ffprobe_path)
             .args([
-                "-v", "quiet",
-                "-show_entries", "format=duration:stream=nb_frames,r_frame_rate",
-                "-select_streams", "v:0",
-                "-of", "json",
+                "-v",
+                "quiet",
+                "-show_entries",
+                "format=duration:stream=nb_frames,r_frame_rate",
+                "-select_streams",
+                "v:0",
+                "-of",
+                "json",
                 &input.to_string_lossy(),
             ])
             .output()
             .await?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let json: serde_json::Value = serde_json::from_str(&stdout)
-            .map_err(|e| EditronError::FFmpeg(e.to_string()))?;
+        let json: serde_json::Value =
+            serde_json::from_str(&stdout).map_err(|e| EditronError::FFmpeg(e.to_string()))?;
 
         let duration = json["format"]["duration"]
             .as_str()
@@ -300,9 +310,12 @@ impl SceneDetectionEngine {
     async fn run_scene_detect(&self, input: &Path, threshold: f32) -> EditronResult<Vec<f64>> {
         let output = Command::new(&self.ffmpeg_path)
             .args([
-                "-i", &input.to_string_lossy(),
-                "-filter:v", &format!("select='gt(scene,{})',showinfo", threshold),
-                "-f", "null",
+                "-i",
+                &input.to_string_lossy(),
+                "-filter:v",
+                &format!("select='gt(scene,{})',showinfo", threshold),
+                "-f",
+                "null",
                 "-",
             ])
             .output()
@@ -337,7 +350,9 @@ impl SceneDetectionEngine {
         // This is a simplified implementation
         for scene in scenes.iter_mut() {
             // Run motion estimation on scene segment
-            let motion = self.estimate_motion(input.as_ref(), scene.start_time, scene.end_time).await?;
+            let motion = self
+                .estimate_motion(input.as_ref(), scene.start_time, scene.end_time)
+                .await?;
             scene.motion_intensity = Some(motion);
 
             // Tag based on motion
@@ -359,11 +374,16 @@ impl SceneDetectionEngine {
 
         let output = Command::new(&self.ffmpeg_path)
             .args([
-                "-ss", &start.to_string(),
-                "-t", &duration.to_string(),
-                "-i", &input.to_string_lossy(),
-                "-vf", "mpdecimate,metadata=print:file=-",
-                "-f", "null",
+                "-ss",
+                &start.to_string(),
+                "-t",
+                &duration.to_string(),
+                "-i",
+                &input.to_string_lossy(),
+                "-vf",
+                "mpdecimate,metadata=print:file=-",
+                "-f",
+                "null",
                 "-",
             ])
             .output()
@@ -402,12 +422,18 @@ impl SceneDetectionEngine {
 
         let _output = Command::new(&self.ffmpeg_path)
             .args([
-                "-ss", &mid_time.to_string(),
-                "-i", &input.as_ref().to_string_lossy(),
-                "-vframes", "1",
-                "-vf", &format!("scale=100:-1,palettegen=max_colors={}", num_colors),
-                "-f", "image2pipe",
-                "-vcodec", "png",
+                "-ss",
+                &mid_time.to_string(),
+                "-i",
+                &input.as_ref().to_string_lossy(),
+                "-vframes",
+                "1",
+                "-vf",
+                &format!("scale=100:-1,palettegen=max_colors={}", num_colors),
+                "-f",
+                "image2pipe",
+                "-vcodec",
+                "png",
                 "-",
             ])
             .output()
@@ -541,19 +567,18 @@ impl SceneDetectionEngine {
 
     /// Export scene markers for Premiere Pro
     pub fn export_premiere_markers(&self, result: &SceneDetectionResult) -> String {
-        let mut script = String::from(r#"
+        let mut script = String::from(
+            r#"
 // Import Scene Detection Markers
 var seq = app.project.activeSequence;
 var markers = seq.markers;
 
-"#);
+"#,
+        );
 
         for scene in &result.scenes {
             let ticks = (scene.start_time * 254016000000.0) as i64; // Premiere ticks
-            script.push_str(&format!(
-                "markers.createMarker({});\n",
-                ticks
-            ));
+            script.push_str(&format!("markers.createMarker({});\n", ticks));
         }
 
         script.push_str("\n$.writeln(\"Scene markers imported\");\n");
@@ -573,7 +598,10 @@ mod tests {
 
     #[test]
     fn test_frame_rate_parsing() {
-        assert_eq!(SceneDetectionEngine::parse_frame_rate("30000/1001"), 29.97003);
+        assert_eq!(
+            SceneDetectionEngine::parse_frame_rate("30000/1001"),
+            29.97003
+        );
         assert_eq!(SceneDetectionEngine::parse_frame_rate("24"), 24.0);
     }
 }

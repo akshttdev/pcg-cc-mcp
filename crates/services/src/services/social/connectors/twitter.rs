@@ -4,6 +4,7 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use db::models::social_account::SocialPlatform;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +12,6 @@ use crate::services::social::{
     EngagementMetrics, OAuthTokens, PlatformConnector, PlatformLimits, PlatformMention,
     ProfileInfo, PublishContent, PublishResult, SocialError,
 };
-use db::models::social_account::SocialPlatform;
 
 const TWITTER_AUTH_URL: &str = "https://twitter.com/i/oauth2/authorize";
 const TWITTER_TOKEN_URL: &str = "https://api.twitter.com/2/oauth2/token";
@@ -114,7 +114,10 @@ impl PlatformConnector for TwitterConnector {
 
         if !response.status().is_success() {
             let err = response.text().await.unwrap_or_default();
-            return Err(SocialError::AuthError(format!("Twitter token exchange failed: {}", err)));
+            return Err(SocialError::AuthError(format!(
+                "Twitter token exchange failed: {}",
+                err
+            )));
         }
 
         let tok: TwitterTokenResponse = response
@@ -151,7 +154,9 @@ impl PlatformConnector for TwitterConnector {
             .map_err(|e| SocialError::NetworkError(e.to_string()))?;
 
         if !response.status().is_success() {
-            return Err(SocialError::AuthError("Twitter token refresh failed".into()));
+            return Err(SocialError::AuthError(
+                "Twitter token refresh failed".into(),
+            ));
         }
 
         let tok: TwitterTokenResponse = response
@@ -182,7 +187,9 @@ impl PlatformConnector for TwitterConnector {
             .map_err(|e| SocialError::NetworkError(e.to_string()))?;
 
         if !response.status().is_success() {
-            return Err(SocialError::PlatformError("Failed to fetch Twitter profile".into()));
+            return Err(SocialError::PlatformError(
+                "Failed to fetch Twitter profile".into(),
+            ));
         }
 
         let data: TwitterUserResponse = response
@@ -236,7 +243,10 @@ impl PlatformConnector for TwitterConnector {
 
         if !response.status().is_success() {
             let err = response.text().await.unwrap_or_default();
-            return Err(SocialError::PlatformError(format!("Twitter publish failed: {}", err)));
+            return Err(SocialError::PlatformError(format!(
+                "Twitter publish failed: {}",
+                err
+            )));
         }
 
         let result: TweetResponse = response
@@ -247,7 +257,10 @@ impl PlatformConnector for TwitterConnector {
         Ok(PublishResult {
             platform: SocialPlatform::Twitter,
             platform_post_id: result.data.id.clone(),
-            platform_url: Some(format!("https://twitter.com/i/web/status/{}", result.data.id)),
+            platform_url: Some(format!(
+                "https://twitter.com/i/web/status/{}",
+                result.data.id
+            )),
             published_at: Utc::now(),
         })
     }

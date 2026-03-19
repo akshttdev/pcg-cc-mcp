@@ -8,8 +8,9 @@
 //! - Beat detection and sync
 //! - Audio effects and filters
 
-use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
 
 /// Loudness standard for normalization
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -357,17 +358,29 @@ impl AudioProcessingEngine {
                 compression: Some(CompressionSettings::dialogue()),
                 eq: Some(EQSettings {
                     bands: vec![
-                        EQBand { frequency: 80.0, gain: -3.0, q: 1.0, band_type: EQBandType::LowShelf },
-                        EQBand { frequency: 3000.0, gain: 2.0, q: 1.5, band_type: EQBandType::Peak },
+                        EQBand {
+                            frequency: 80.0,
+                            gain: -3.0,
+                            q: 1.0,
+                            band_type: EQBandType::LowShelf,
+                        },
+                        EQBand {
+                            frequency: 3000.0,
+                            gain: 2.0,
+                            q: 1.5,
+                            band_type: EQBandType::Peak,
+                        },
                     ],
-                    high_pass: Some(HighPassFilter { frequency: 80.0, slope: FilterSlope::Db12 }),
+                    high_pass: Some(HighPassFilter {
+                        frequency: 80.0,
+                        slope: FilterSlope::Db12,
+                    }),
                     low_pass: None,
                 }),
                 noise_reduction: None,
                 de_esser: None,
                 reverb: None,
             },
-
             // YouTube/Streaming
             AudioProcessingPreset {
                 name: "YouTube Optimized".to_string(),
@@ -386,7 +399,6 @@ impl AudioProcessingEngine {
                 de_esser: None,
                 reverb: None,
             },
-
             // Podcast
             AudioProcessingPreset {
                 name: "Podcast Standard".to_string(),
@@ -395,33 +407,79 @@ impl AudioProcessingEngine {
                 compression: Some(CompressionSettings::voice_over()),
                 eq: Some(EQSettings {
                     bands: vec![
-                        EQBand { frequency: 100.0, gain: -2.0, q: 1.0, band_type: EQBandType::LowShelf },
-                        EQBand { frequency: 200.0, gain: -3.0, q: 2.0, band_type: EQBandType::Peak },
-                        EQBand { frequency: 3500.0, gain: 3.0, q: 1.5, band_type: EQBandType::Peak },
-                        EQBand { frequency: 8000.0, gain: 2.0, q: 1.0, band_type: EQBandType::HighShelf },
+                        EQBand {
+                            frequency: 100.0,
+                            gain: -2.0,
+                            q: 1.0,
+                            band_type: EQBandType::LowShelf,
+                        },
+                        EQBand {
+                            frequency: 200.0,
+                            gain: -3.0,
+                            q: 2.0,
+                            band_type: EQBandType::Peak,
+                        },
+                        EQBand {
+                            frequency: 3500.0,
+                            gain: 3.0,
+                            q: 1.5,
+                            band_type: EQBandType::Peak,
+                        },
+                        EQBand {
+                            frequency: 8000.0,
+                            gain: 2.0,
+                            q: 1.0,
+                            band_type: EQBandType::HighShelf,
+                        },
                     ],
-                    high_pass: Some(HighPassFilter { frequency: 80.0, slope: FilterSlope::Db18 }),
+                    high_pass: Some(HighPassFilter {
+                        frequency: 80.0,
+                        slope: FilterSlope::Db18,
+                    }),
                     low_pass: None,
                 }),
                 noise_reduction: Some(NoiseReductionSettings::default()),
                 de_esser: Some(DeEsserSettings::default()),
                 reverb: None,
             },
-
             // Voice Over Clean
             AudioProcessingPreset {
                 name: "Voice Over Clean".to_string(),
                 description: "Pristine voice-over for commercial use".to_string(),
-                loudness: Some(LoudnessStandard::Custom { lufs: -20.0, true_peak: -1.5 }),
+                loudness: Some(LoudnessStandard::Custom {
+                    lufs: -20.0,
+                    true_peak: -1.5,
+                }),
                 compression: Some(CompressionSettings::voice_over()),
                 eq: Some(EQSettings {
                     bands: vec![
-                        EQBand { frequency: 250.0, gain: -2.0, q: 2.0, band_type: EQBandType::Peak },
-                        EQBand { frequency: 4000.0, gain: 2.5, q: 1.5, band_type: EQBandType::Peak },
-                        EQBand { frequency: 10000.0, gain: 1.5, q: 1.0, band_type: EQBandType::HighShelf },
+                        EQBand {
+                            frequency: 250.0,
+                            gain: -2.0,
+                            q: 2.0,
+                            band_type: EQBandType::Peak,
+                        },
+                        EQBand {
+                            frequency: 4000.0,
+                            gain: 2.5,
+                            q: 1.5,
+                            band_type: EQBandType::Peak,
+                        },
+                        EQBand {
+                            frequency: 10000.0,
+                            gain: 1.5,
+                            q: 1.0,
+                            band_type: EQBandType::HighShelf,
+                        },
                     ],
-                    high_pass: Some(HighPassFilter { frequency: 100.0, slope: FilterSlope::Db24 }),
-                    low_pass: Some(LowPassFilter { frequency: 16000.0, slope: FilterSlope::Db12 }),
+                    high_pass: Some(HighPassFilter {
+                        frequency: 100.0,
+                        slope: FilterSlope::Db24,
+                    }),
+                    low_pass: Some(LowPassFilter {
+                        frequency: 16000.0,
+                        slope: FilterSlope::Db12,
+                    }),
                 }),
                 noise_reduction: Some(NoiseReductionSettings {
                     noise_floor: -55.0,
@@ -436,7 +494,6 @@ impl AudioProcessingEngine {
                 }),
                 reverb: None,
             },
-
             // Music Background
             AudioProcessingPreset {
                 name: "Music Background".to_string(),
@@ -446,17 +503,29 @@ impl AudioProcessingEngine {
                 eq: Some(EQSettings {
                     bands: vec![
                         // Cut some mids to make room for voice
-                        EQBand { frequency: 800.0, gain: -2.0, q: 1.0, band_type: EQBandType::Peak },
-                        EQBand { frequency: 3000.0, gain: -3.0, q: 1.5, band_type: EQBandType::Peak },
+                        EQBand {
+                            frequency: 800.0,
+                            gain: -2.0,
+                            q: 1.0,
+                            band_type: EQBandType::Peak,
+                        },
+                        EQBand {
+                            frequency: 3000.0,
+                            gain: -3.0,
+                            q: 1.5,
+                            band_type: EQBandType::Peak,
+                        },
                     ],
-                    high_pass: Some(HighPassFilter { frequency: 40.0, slope: FilterSlope::Db12 }),
+                    high_pass: Some(HighPassFilter {
+                        frequency: 40.0,
+                        slope: FilterSlope::Db12,
+                    }),
                     low_pass: None,
                 }),
                 noise_reduction: None,
                 de_esser: None,
                 reverb: None,
             },
-
             // Cinematic
             AudioProcessingPreset {
                 name: "Cinematic Mix".to_string(),
@@ -491,10 +560,18 @@ impl AudioProcessingEngine {
         // High-pass filter
         if let Some(eq) = &preset.eq {
             if let Some(hp) = &eq.high_pass {
-                filters.push(format!("highpass=f={}:poles={}", hp.frequency, hp.slope.poles()));
+                filters.push(format!(
+                    "highpass=f={}:poles={}",
+                    hp.frequency,
+                    hp.slope.poles()
+                ));
             }
             if let Some(lp) = &eq.low_pass {
-                filters.push(format!("lowpass=f={}:poles={}", lp.frequency, lp.slope.poles()));
+                filters.push(format!(
+                    "lowpass=f={}:poles={}",
+                    lp.frequency,
+                    lp.slope.poles()
+                ));
             }
 
             // EQ bands

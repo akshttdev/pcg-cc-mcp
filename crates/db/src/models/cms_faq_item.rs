@@ -73,7 +73,10 @@ impl CmsFaqItem {
         .await
     }
 
-    pub async fn find_active_by_site(pool: &SqlitePool, site_id: Uuid) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn find_active_by_site(
+        pool: &SqlitePool,
+        site_id: Uuid,
+    ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
             CmsFaqItem,
             r#"SELECT
@@ -154,7 +157,9 @@ impl CmsFaqItem {
         id: Uuid,
         data: &UpdateCmsFaqItem,
     ) -> Result<Self, sqlx::Error> {
-        let current = Self::find_by_id(pool, id).await?.ok_or(sqlx::Error::RowNotFound)?;
+        let current = Self::find_by_id(pool, id)
+            .await?
+            .ok_or(sqlx::Error::RowNotFound)?;
 
         let category = data.category.as_ref().or(current.category.as_ref());
         let question = data.question.as_ref().unwrap_or(&current.question);

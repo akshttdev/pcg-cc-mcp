@@ -2,18 +2,17 @@
 //! Rates are private: only visible to org admins and project managers.
 
 use axum::{
-    Router,
+    Json, Router,
     extract::{Path, Query, State},
     routing::{delete, get},
-    Json,
 };
+use db::models::operator_rate::{OperatorRate, UpsertOperatorRate};
 use deployment::Deployment;
 use serde::Deserialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
-use db::models::operator_rate::{OperatorRate, UpsertOperatorRate};
 
 #[derive(Debug, Deserialize)]
 pub struct ListRatesParams {

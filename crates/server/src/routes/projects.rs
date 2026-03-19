@@ -8,12 +8,17 @@ use axum::{
     response::Json as ResponseJson,
     routing::{get, patch, post, put},
 };
-use db::models::{
-    brand_profile::{BrandProfile, UpsertBrandProfile},
-    project::{CreateProject, Project, ProjectError, SearchMatchType, SearchResult, UpdateProject},
-    project_asset::{CreateProjectAsset, ProjectAsset, UpdateProjectAsset},
-    project_board::ProjectBoard,
-    project_pod::{CreateProjectPod, ProjectPod, UpdateProjectPod},
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        brand_profile::{BrandProfile, UpsertBrandProfile},
+        project::{
+            CreateProject, Project, ProjectError, SearchMatchType, SearchResult, UpdateProject,
+        },
+        project_asset::{CreateProjectAsset, ProjectAsset, UpdateProjectAsset},
+        project_board::ProjectBoard,
+        project_pod::{CreateProjectPod, ProjectPod, UpdateProjectPod},
+    },
 };
 use deployment::Deployment;
 use ignore::WalkBuilder;
@@ -24,7 +29,6 @@ use services::services::{
 };
 use utils::{path::expand_tilde, response::ApiResponse};
 use uuid::Uuid;
-use db::db_uuid::DbUuid;
 
 use crate::{
     DeploymentImpl,
@@ -141,7 +145,9 @@ pub async fn list_project_pods(
     Extension(project): Extension<Project>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<ProjectPod>>>, ApiError> {
-    let project_uuid = DbUuid::parse(&project.id).map_err(|_| ApiError::InternalError("Invalid project id".into()))?.to_uuid();
+    let project_uuid = DbUuid::parse(&project.id)
+        .map_err(|_| ApiError::InternalError("Invalid project id".into()))?
+        .to_uuid();
     let pods = ProjectPod::find_by_project(&deployment.db().pool, project_uuid).await?;
     Ok(ResponseJson(ApiResponse::success(pods)))
 }
@@ -151,7 +157,9 @@ pub async fn create_project_pod(
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<CreatePodPayload>,
 ) -> Result<ResponseJson<ApiResponse<ProjectPod>>, ApiError> {
-    let project_uuid = DbUuid::parse(&project.id).map_err(|_| ApiError::InternalError("Invalid project id".into()))?.to_uuid();
+    let project_uuid = DbUuid::parse(&project.id)
+        .map_err(|_| ApiError::InternalError("Invalid project id".into()))?
+        .to_uuid();
     let pod = ProjectPod::create(
         &deployment.db().pool,
         Uuid::new_v4(),
@@ -173,7 +181,9 @@ pub async fn update_project_pod(
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<UpdatePodPayload>,
 ) -> Result<ResponseJson<ApiResponse<ProjectPod>>, ApiError> {
-    let pod_uuid = DbUuid::parse(&pod_id).map_err(|_| ApiError::BadRequest("Invalid pod ID".into()))?.to_uuid();
+    let pod_uuid = DbUuid::parse(&pod_id)
+        .map_err(|_| ApiError::BadRequest("Invalid pod ID".into()))?
+        .to_uuid();
     let pod = ProjectPod::update(
         &deployment.db().pool,
         pod_uuid,
@@ -193,7 +203,9 @@ pub async fn delete_project_pod(
     Path(pod_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
-    let pod_uuid = DbUuid::parse(&pod_id).map_err(|_| ApiError::BadRequest("Invalid pod ID".into()))?.to_uuid();
+    let pod_uuid = DbUuid::parse(&pod_id)
+        .map_err(|_| ApiError::BadRequest("Invalid pod ID".into()))?
+        .to_uuid();
     let deleted = ProjectPod::delete(&deployment.db().pool, pod_uuid).await?;
     if deleted == 0 {
         return Err(ApiError::NotFound("Pod not found".to_string()));
@@ -235,7 +247,9 @@ pub async fn list_project_assets(
     Extension(project): Extension<Project>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<ProjectAsset>>>, ApiError> {
-    let project_uuid = DbUuid::parse(&project.id).map_err(|_| ApiError::InternalError("Invalid project id".into()))?.to_uuid();
+    let project_uuid = DbUuid::parse(&project.id)
+        .map_err(|_| ApiError::InternalError("Invalid project id".into()))?
+        .to_uuid();
     let assets = ProjectAsset::find_by_project(&deployment.db().pool, project_uuid).await?;
     Ok(ResponseJson(ApiResponse::success(assets)))
 }
@@ -271,7 +285,9 @@ pub async fn create_project_asset(
         }
     }
 
-    let project_uuid = DbUuid::parse(&project.id).map_err(|_| ApiError::InternalError("Invalid project id".into()))?.to_uuid();
+    let project_uuid = DbUuid::parse(&project.id)
+        .map_err(|_| ApiError::InternalError("Invalid project id".into()))?
+        .to_uuid();
     let asset = ProjectAsset::create(
         &deployment.db().pool,
         Uuid::new_v4(),
@@ -313,7 +329,9 @@ pub async fn update_project_asset(
         metadata,
     } = payload;
 
-    let asset_uuid = DbUuid::parse(&asset_id).map_err(|_| ApiError::BadRequest("Invalid asset ID".into()))?.to_uuid();
+    let asset_uuid = DbUuid::parse(&asset_id)
+        .map_err(|_| ApiError::BadRequest("Invalid asset ID".into()))?
+        .to_uuid();
     let existing_asset = ProjectAsset::find_by_id(&deployment.db().pool, asset_uuid)
         .await?
         .ok_or_else(|| ApiError::NotFound("Asset not found".to_string()))?;
@@ -355,7 +373,9 @@ pub async fn delete_project_asset(
     Path(asset_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
-    let asset_uuid = DbUuid::parse(&asset_id).map_err(|_| ApiError::BadRequest("Invalid asset ID".into()))?.to_uuid();
+    let asset_uuid = DbUuid::parse(&asset_id)
+        .map_err(|_| ApiError::BadRequest("Invalid asset ID".into()))?
+        .to_uuid();
     let deleted = ProjectAsset::delete(&deployment.db().pool, asset_uuid).await?;
     if deleted == 0 {
         return Err(ApiError::NotFound("Asset not found".to_string()));
@@ -397,11 +417,8 @@ pub async fn create_project(
         // Validate and setup git repository
         let path = std::path::absolute(expand_tilde(&git_repo_path))?;
         // Check if git repo path is already used by another project
-        match Project::find_by_git_repo_path(
-            &deployment.db().pool,
-            path.to_string_lossy().as_ref(),
-        )
-        .await
+        match Project::find_by_git_repo_path(&deployment.db().pool, path.to_string_lossy().as_ref())
+            .await
         {
             Ok(Some(_)) => {
                 return Ok(ResponseJson(ApiResponse::error(
@@ -497,19 +514,17 @@ pub async fn create_project(
             let user_id = access_context.user_id.clone();
             let user_id_blob = db::bind_uuid_blob(&user_id)
                 .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {e}")))?;
-            let _ = sqlx::query(
-                "UPDATE projects SET owner_id = ? WHERE id = ?"
-            )
-            .bind(user_id.as_str())
-            .bind(&project.id)
-            .execute(&deployment.db().pool)
-            .await;
+            let _ = sqlx::query("UPDATE projects SET owner_id = ? WHERE id = ?")
+                .bind(user_id.as_str())
+                .bind(&project.id)
+                .execute(&deployment.db().pool)
+                .await;
 
             // Add the creator as project owner in project_members
             let member_id = db::DbUuid::new();
             if let Err(e) = sqlx::query(
                 r#"INSERT INTO project_members (id, project_id, user_id, role, granted_by)
-                   VALUES (?, ?, ?, ?, ?)"#
+                   VALUES (?, ?, ?, ?, ?)"#,
             )
             .bind(db::bind_uuid(&member_id))
             .bind(&project.id)
@@ -517,9 +532,18 @@ pub async fn create_project(
             .bind("owner")
             .bind(&user_id_blob)
             .execute(&deployment.db().pool)
-            .await {
-                tracing::error!("Failed to add project member for new project {}: {}", project.id, e);
-                return Err(ProjectError::CreateFailed(format!("Project created but failed to grant access: {}", e)).into());
+            .await
+            {
+                tracing::error!(
+                    "Failed to add project member for new project {}: {}",
+                    project.id,
+                    e
+                );
+                return Err(ProjectError::CreateFailed(format!(
+                    "Project created but failed to grant access: {}",
+                    e
+                ))
+                .into());
             }
 
             if let Err(e) =
@@ -627,7 +651,9 @@ pub async fn update_project(
                 None
             } else {
                 // Validate it's a valid UUID format
-                DbUuid::parse(&org_id_str).map_err(|_| StatusCode::BAD_REQUEST)?.to_uuid();
+                DbUuid::parse(&org_id_str)
+                    .map_err(|_| StatusCode::BAD_REQUEST)?
+                    .to_uuid();
                 Some(org_id_str)
             }
         }
@@ -639,7 +665,9 @@ pub async fn update_project(
                 None
             } else {
                 // Validate it's a valid UUID format
-                DbUuid::parse(&client_id_str).map_err(|_| StatusCode::BAD_REQUEST)?.to_uuid();
+                DbUuid::parse(&client_id_str)
+                    .map_err(|_| StatusCode::BAD_REQUEST)?
+                    .to_uuid();
                 Some(client_id_str)
             }
         }
@@ -676,11 +704,7 @@ pub async fn delete_project(
     // Only admins or project owners can delete projects
     if !access_context.is_admin {
         match access_context
-            .check_project_access(
-                &deployment.db().pool,
-                &project.id,
-                ProjectRole::Owner,
-            )
+            .check_project_access(&deployment.db().pool, &project.id, ProjectRole::Owner)
             .await
         {
             Ok(_) => {
@@ -941,7 +965,9 @@ pub async fn get_brand_profile(
     Extension(project): Extension<Project>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Option<BrandProfile>>>, ApiError> {
-    let project_uuid = DbUuid::parse(&project.id).map_err(|_| ApiError::InternalError("Invalid project id".into()))?.to_uuid();
+    let project_uuid = DbUuid::parse(&project.id)
+        .map_err(|_| ApiError::InternalError("Invalid project id".into()))?
+        .to_uuid();
     let profile = BrandProfile::find_by_project(&deployment.db().pool, project_uuid).await?;
     Ok(ResponseJson(ApiResponse::success(profile)))
 }
@@ -951,7 +977,9 @@ pub async fn upsert_brand_profile(
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<UpsertBrandProfile>,
 ) -> Result<ResponseJson<ApiResponse<BrandProfile>>, ApiError> {
-    let project_uuid = DbUuid::parse(&project.id).map_err(|_| ApiError::InternalError("Invalid project id".into()))?.to_uuid();
+    let project_uuid = DbUuid::parse(&project.id)
+        .map_err(|_| ApiError::InternalError("Invalid project id".into()))?
+        .to_uuid();
     let profile = BrandProfile::upsert(&deployment.db().pool, project_uuid, &payload).await?;
     Ok(ResponseJson(ApiResponse::success(profile)))
 }
@@ -1022,16 +1050,17 @@ pub async fn set_vibe_budget(
     // Only admins or project owners can set budget
     if !access_context.is_admin {
         access_context
-            .check_project_access(
-                &deployment.db().pool,
-                &project.id,
-                ProjectRole::Owner,
-            )
+            .check_project_access(&deployment.db().pool, &project.id, ProjectRole::Owner)
             .await
             .map_err(|_| ApiError::Forbidden("Only project owners can set VIBE budget".into()))?;
     }
 
-    Project::set_vibe_budget(&deployment.db().pool, &project.id, payload.vibe_budget_limit).await?;
+    Project::set_vibe_budget(
+        &deployment.db().pool,
+        &project.id,
+        payload.vibe_budget_limit,
+    )
+    .await?;
 
     // Fetch updated project to return current state
     let updated_project = Project::find_by_id(&deployment.db().pool, &project.id)
@@ -1068,11 +1097,7 @@ pub async fn set_project_parent(
     // Only admins or project owners can reparent
     if !access_context.is_admin {
         access_context
-            .check_project_access(
-                &deployment.db().pool,
-                &project.id,
-                ProjectRole::Owner,
-            )
+            .check_project_access(&deployment.db().pool, &project.id, ProjectRole::Owner)
             .await
             .map_err(|_| ApiError::Forbidden("Only project owners can change parent".into()))?;
     }
@@ -1082,8 +1107,8 @@ pub async fn set_project_parent(
         &project.id,
         payload.parent_project_id.map(|u| u.to_string()).as_deref(),
     )
-        .await
-        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    .await
+    .map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
     Ok(ResponseJson(ApiResponse::success(())))
 }
@@ -1096,11 +1121,7 @@ pub async fn reorder_project(
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
     if !access_context.is_admin {
         access_context
-            .check_project_access(
-                &deployment.db().pool,
-                &project.id,
-                ProjectRole::Owner,
-            )
+            .check_project_access(&deployment.db().pool, &project.id, ProjectRole::Owner)
             .await
             .map_err(|_| ApiError::Forbidden("Only project owners can reorder".into()))?;
     }
@@ -1135,10 +1156,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/brand-profile",
             get(get_brand_profile).put(upsert_brand_profile),
         )
-        .route(
-            "/budget",
-            get(get_vibe_budget).put(set_vibe_budget),
-        )
+        .route("/budget", get(get_vibe_budget).put(set_vibe_budget))
         .route("/parent", put(set_project_parent))
         .route("/reorder", put(reorder_project))
         .route("/wallet", patch(register_project_wallet))

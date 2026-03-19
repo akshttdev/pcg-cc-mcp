@@ -378,7 +378,8 @@ impl VibeTransaction {
     ) -> Result<Self, VibeTransactionError> {
         let metadata = serde_json::json!({
             "sync_error": error_message
-        }).to_string();
+        })
+        .to_string();
 
         let tx = sqlx::query_as::<_, VibeTransaction>(
             r#"

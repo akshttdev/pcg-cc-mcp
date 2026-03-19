@@ -2,8 +2,7 @@
 
 use chrono::Utc;
 
-use super::types::*;
-use super::ExecutiveTools;
+use super::{types::*, ExecutiveTools};
 
 #[allow(dead_code)]
 impl ExecutiveTools {
@@ -325,7 +324,8 @@ impl ExecutiveTools {
                 ToolParameter {
                     name: "task_id".to_string(),
                     parameter_type: ParameterType::String,
-                    description: "Optional workflow task ID to attach artifacts and activity to".to_string(),
+                    description: "Optional workflow task ID to attach artifacts and activity to"
+                        .to_string(),
                     required: false,
                     default_value: None,
                 },
@@ -384,7 +384,8 @@ impl ExecutiveTools {
                 ToolParameter {
                     name: "task_id".to_string(),
                     parameter_type: ParameterType::String,
-                    description: "Optional workflow task ID to attach artifacts and activity to".to_string(),
+                    description: "Optional workflow task ID to attach artifacts and activity to"
+                        .to_string(),
                     required: false,
                     default_value: None,
                 },
@@ -442,7 +443,8 @@ impl ExecutiveTools {
                 ToolParameter {
                     name: "task_id".to_string(),
                     parameter_type: ParameterType::String,
-                    description: "Optional workflow task ID to attach artifacts and activity to".to_string(),
+                    description: "Optional workflow task ID to attach artifacts and activity to"
+                        .to_string(),
                     required: false,
                     default_value: None,
                 },
@@ -682,7 +684,9 @@ impl ExecutiveTools {
             NoraExecutiveTool::ExecuteWorkflow { .. } => "execute_workflow".to_string(),
             NoraExecutiveTool::CancelWorkflow { .. } => "cancel_workflow".to_string(),
             NoraExecutiveTool::ListActiveWorkflows => "list_active_workflows".to_string(),
-            NoraExecutiveTool::ListAvailableWorkflows { .. } => "list_available_workflows".to_string(),
+            NoraExecutiveTool::ListAvailableWorkflows { .. } => {
+                "list_available_workflows".to_string()
+            }
 
             // Coordination
             NoraExecutiveTool::CoordinateTeamMeeting { .. } => {
@@ -709,7 +713,9 @@ impl ExecutiveTools {
             NoraExecutiveTool::ExecuteRenderScript { .. } => "execute_render_script".to_string(),
             NoraExecutiveTool::SearchMusic { .. } => "search_music".to_string(),
             NoraExecutiveTool::DownloadMusicTrack { .. } => "download_music_track".to_string(),
-            NoraExecutiveTool::RecommendMusicForVideo { .. } => "recommend_music_for_video".to_string(),
+            NoraExecutiveTool::RecommendMusicForVideo { .. } => {
+                "recommend_music_for_video".to_string()
+            }
             NoraExecutiveTool::PreviewMusicTrack { .. } => "preview_music_track".to_string(),
             NoraExecutiveTool::GetMusicTrackDetails { .. } => "get_music_track_details".to_string(),
             NoraExecutiveTool::AnalyzeMusicTrack { .. } => "analyze_music_track".to_string(),
@@ -718,5 +724,4 @@ impl ExecutiveTools {
             _ => "unknown_tool".to_string(),
         }
     }
-
 }

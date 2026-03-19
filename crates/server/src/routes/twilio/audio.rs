@@ -19,7 +19,10 @@ pub(super) async fn generate_and_cache_audio(
 
     // Synthesize speech using NORA's voice engine with timeout
     let truncated_text = truncate_for_log(text, 50);
-    info!("Synthesizing speech with NORA voice engine: '{}'", truncated_text);
+    info!(
+        "Synthesizing speech with NORA voice engine: '{}'",
+        truncated_text
+    );
 
     // Strip markdown before TTS so symbols like * aren't read aloud
     let clean_text = strip_markdown_for_tts(text);

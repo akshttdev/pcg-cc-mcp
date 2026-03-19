@@ -1,9 +1,13 @@
 //! Topology engine - Graph algorithms for pathfinding and analysis
 
-use super::graph::TopologyGraph;
-use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
-use std::cmp::Ordering;
+use std::{
+    cmp::Ordering,
+    collections::{BinaryHeap, HashMap, HashSet, VecDeque},
+};
+
 use uuid::Uuid;
+
+use super::graph::TopologyGraph;
 
 /// A path through the topology
 #[derive(Debug, Clone)]
@@ -49,7 +53,10 @@ impl Eq for DijkstraState {}
 impl Ord for DijkstraState {
     fn cmp(&self, other: &Self) -> Ordering {
         // Reverse ordering for min-heap
-        other.cost.partial_cmp(&self.cost).unwrap_or(Ordering::Equal)
+        other
+            .cost
+            .partial_cmp(&self.cost)
+            .unwrap_or(Ordering::Equal)
     }
 }
 
@@ -64,11 +71,7 @@ pub struct TopologyEngine;
 
 impl TopologyEngine {
     /// Find the shortest path between two nodes using Dijkstra's algorithm
-    pub fn find_shortest_path(
-        graph: &TopologyGraph,
-        from: Uuid,
-        to: Uuid,
-    ) -> Option<Path> {
+    pub fn find_shortest_path(graph: &TopologyGraph, from: Uuid, to: Uuid) -> Option<Path> {
         if !graph.nodes.contains_key(&from) || !graph.nodes.contains_key(&to) {
             return None;
         }
@@ -86,7 +89,10 @@ impl TopologyEngine {
         let mut heap = BinaryHeap::new();
 
         dist.insert(from, 0.0);
-        heap.push(DijkstraState { cost: 0.0, node_id: from });
+        heap.push(DijkstraState {
+            cost: 0.0,
+            node_id: from,
+        });
 
         while let Some(DijkstraState { cost, node_id }) = heap.pop() {
             if node_id == to {
@@ -225,11 +231,7 @@ impl TopologyEngine {
     }
 
     /// Find the best path considering weights and node status
-    pub fn find_best_path(
-        graph: &TopologyGraph,
-        from: Uuid,
-        to: Uuid,
-    ) -> Option<Path> {
+    pub fn find_best_path(graph: &TopologyGraph, from: Uuid, to: Uuid) -> Option<Path> {
         // For now, best path is the shortest path
         // Could be extended to consider node weights, capacities, etc.
         Self::find_shortest_path(graph, from, to)
@@ -241,11 +243,7 @@ impl TopologyEngine {
     }
 
     /// Check if adding an edge would create a cycle
-    pub fn would_create_cycle(
-        graph: &TopologyGraph,
-        from: Uuid,
-        to: Uuid,
-    ) -> bool {
+    pub fn would_create_cycle(graph: &TopologyGraph, from: Uuid, to: Uuid) -> bool {
         // A cycle would be created if there's already a path from 'to' to 'from'
         Self::path_exists(graph, to, from)
     }
@@ -400,9 +398,7 @@ impl TopologyEngine {
         graph
             .nodes
             .keys()
-            .filter(|&node_id| {
-                graph.in_degree(*node_id) == 0 && graph.out_degree(*node_id) == 0
-            })
+            .filter(|&node_id| graph.in_degree(*node_id) == 0 && graph.out_degree(*node_id) == 0)
             .copied()
             .collect()
     }
@@ -412,9 +408,7 @@ impl TopologyEngine {
         graph
             .nodes
             .keys()
-            .filter(|&node_id| {
-                graph.in_degree(*node_id) > 0 && graph.out_degree(*node_id) == 0
-            })
+            .filter(|&node_id| graph.in_degree(*node_id) > 0 && graph.out_degree(*node_id) == 0)
             .copied()
             .collect()
     }
@@ -477,9 +471,21 @@ mod tests {
         graph.add_node(GraphNode::new(node_c, "task", "C"));
         graph.add_node(GraphNode::new(node_d, "task", "D"));
 
-        graph.add_edge(GraphEdge::new(Uuid::new_v4(), node_a, node_b, "can_execute"));
-        graph.add_edge(GraphEdge::new(Uuid::new_v4(), node_b, node_c, "can_execute"));
-        graph.add_edge(GraphEdge::new(Uuid::new_v4(), node_a, node_c, "can_execute").with_weight(3.0));
+        graph.add_edge(GraphEdge::new(
+            Uuid::new_v4(),
+            node_a,
+            node_b,
+            "can_execute",
+        ));
+        graph.add_edge(GraphEdge::new(
+            Uuid::new_v4(),
+            node_b,
+            node_c,
+            "can_execute",
+        ));
+        graph.add_edge(
+            GraphEdge::new(Uuid::new_v4(), node_a, node_c, "can_execute").with_weight(3.0),
+        );
         graph.add_edge(GraphEdge::new(Uuid::new_v4(), node_c, node_d, "depends_on"));
 
         graph
@@ -513,7 +519,12 @@ mod tests {
 
         graph.add_node(GraphNode::new(orphan, "agent", "orphan"));
         graph.add_node(GraphNode::new(connected, "agent", "connected"));
-        graph.add_edge(GraphEdge::new(Uuid::new_v4(), connected, connected, "self_loop"));
+        graph.add_edge(GraphEdge::new(
+            Uuid::new_v4(),
+            connected,
+            connected,
+            "self_loop",
+        ));
 
         let orphans = TopologyEngine::find_orphans(&graph);
         assert_eq!(orphans.len(), 1);

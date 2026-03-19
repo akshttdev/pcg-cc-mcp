@@ -3,22 +3,23 @@
 //! Handles pipeline and stage CRUD operations for Kanban boards.
 
 use axum::{
-    extract::{Path, Query, State},
-    routing::{get, patch, post, delete},
     Json, Router,
+    extract::{Path, Query, State},
+    routing::{delete, get, patch, post},
+};
+use db::{
+    db_uuid::DbUuid,
+    models::crm_pipeline::{
+        CreateCrmPipeline, CreateCrmPipelineStage, CrmPipeline, CrmPipelineStage,
+        CrmPipelineWithStages, PipelineType, UpdateCrmPipeline, UpdateCrmPipelineStage,
+    },
 };
 use deployment::Deployment;
 use serde::Deserialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
-use db::db_uuid::DbUuid;
-use db::models::crm_pipeline::{
-    CrmPipeline, CrmPipelineStage, CrmPipelineWithStages,
-    CreateCrmPipeline, CreateCrmPipelineStage, PipelineType,
-    UpdateCrmPipeline, UpdateCrmPipelineStage,
-};
+use crate::{DeploymentImpl, error::ApiError};
 
 #[derive(Debug, Deserialize)]
 pub struct ListPipelinesQuery {
@@ -183,7 +184,12 @@ async fn reorder_stages(
 ) -> Result<Json<ApiResponse<Vec<CrmPipelineStage>>>, ApiError> {
     let pool = &deployment.db().pool;
     let pipeline_id = DbUuid::from(pipeline_id);
-    let stages = CrmPipelineStage::reorder(pool, &pipeline_id, data.stage_ids.into_iter().map(DbUuid::from).collect()).await?;
+    let stages = CrmPipelineStage::reorder(
+        pool,
+        &pipeline_id,
+        data.stage_ids.into_iter().map(DbUuid::from).collect(),
+    )
+    .await?;
     Ok(Json(ApiResponse::success(stages)))
 }
 
@@ -204,19 +210,16 @@ async fn list_org_pipelines(
     // Ensure default pipelines exist for the organization
     let _ = CrmPipeline::ensure_defaults_for_org(pool, &org_id).await;
 
+    let pipeline_type_filter =
+        if let Some(ref type_str) = query.pipeline_type {
+            Some(type_str.parse::<PipelineType>().map_err(|_| {
+                ApiError::BadRequest(format!("Invalid pipeline type: {}", type_str))
+            })?)
+        } else {
+            None
+        };
 
-    let pipeline_type_filter = if let Some(ref type_str) = query.pipeline_type {
-        Some(
-            type_str
-                .parse::<PipelineType>()
-                .map_err(|_| ApiError::BadRequest(format!("Invalid pipeline type: {}", type_str)))?,
-        )
-    } else {
-        None
-    };
-
-    let pipelines =
-        CrmPipeline::find_by_organization(pool, &org_id, pipeline_type_filter).await?;
+    let pipelines = CrmPipeline::find_by_organization(pool, &org_id, pipeline_type_filter).await?;
 
     Ok(Json(ApiResponse::success(pipelines)))
 }
@@ -255,11 +258,26 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/crm/pipelines/{id}", delete(delete_pipeline))
         .route("/crm/pipelines/{id}/stages", get(list_stages))
         .route("/crm/pipelines/{id}/stages", post(create_stage))
-        .route("/crm/pipelines/{pipeline_id}/stages/{stage_id}", patch(update_stage))
-        .route("/crm/pipelines/{pipeline_id}/stages/{stage_id}", delete(delete_stage))
+        .route(
+            "/crm/pipelines/{pipeline_id}/stages/{stage_id}",
+            patch(update_stage),
+        )
+        .route(
+            "/crm/pipelines/{pipeline_id}/stages/{stage_id}",
+            delete(delete_stage),
+        )
         .route("/crm/pipelines/{id}/stages/reorder", post(reorder_stages))
         // Org-scoped CRM routes
-        .route("/organizations/{org_id}/crm/pipelines", get(list_org_pipelines))
-        .route("/organizations/{org_id}/crm/pipelines/{pipeline_id}", get(get_org_pipeline))
-        .route("/organizations/{org_id}/crm/pipelines/{pipeline_id}/kanban", get(get_org_kanban))
+        .route(
+            "/organizations/{org_id}/crm/pipelines",
+            get(list_org_pipelines),
+        )
+        .route(
+            "/organizations/{org_id}/crm/pipelines/{pipeline_id}",
+            get(get_org_pipeline),
+        )
+        .route(
+            "/organizations/{org_id}/crm/pipelines/{pipeline_id}/kanban",
+            get(get_org_kanban),
+        )
 }

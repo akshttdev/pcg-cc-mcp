@@ -8,15 +8,17 @@
 //! - Artifact-based communication (Antigravity: plans, outputs, diffs)
 //! - Event broadcast to all UI surfaces (Mission Control, Task Board, Chat)
 
-pub mod bowser_bridge;
 mod artifact;
+pub mod bowser_bridge;
 mod engine;
 mod events;
 mod research;
 mod router;
 
 pub use artifact::{Artifact, ArtifactStore, ArtifactType};
-pub use engine::{ExecutionEngine, ExecutionRequest, ExecutionResult, ExecutionStatus, TaskCreator};
-pub use events::{ExecutionEvent, EventBroadcaster};
+pub use engine::{
+    ExecutionEngine, ExecutionRequest, ExecutionResult, ExecutionStatus, TaskCreator,
+};
+pub use events::{EventBroadcaster, ExecutionEvent};
 pub use research::{ResearchContext, ResearchExecutor};
 pub use router::{AgentMatch, ExecutionRouter};

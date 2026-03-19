@@ -10,8 +10,10 @@ use tokio::sync::{broadcast, Mutex};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-use crate::audio;
-use crate::session::{DiscordVoiceSession, TranscriptEvent, UserAudioBuffer};
+use crate::{
+    audio,
+    session::{DiscordVoiceSession, TranscriptEvent, UserAudioBuffer},
+};
 
 /// Shared state between the Receiver and the session manager
 pub struct ReceiverState {
@@ -137,7 +139,11 @@ async fn process_audio_chunk(
         }
     };
 
-    info!("Discord transcript [{}]: {}", user_id, &transcript[..transcript.len().min(80)]);
+    info!(
+        "Discord transcript [{}]: {}",
+        user_id,
+        &transcript[..transcript.len().min(80)]
+    );
 
     let (meeting_session_id, segment_index, agent, project_id, server_port, speaker_label) = {
         let mut session = state.session.lock().await;
@@ -163,7 +169,11 @@ async fn process_audio_chunk(
 
     // Call agent and get text response
     let agent_response = if let Some(command) = &addressed {
-        let cmd = if command.is_empty() { &transcript } else { command.as_str() };
+        let cmd = if command.is_empty() {
+            &transcript
+        } else {
+            command.as_str()
+        };
         match audio::call_agent(server_port, agent, cmd, &project_id, &meeting_session_id).await {
             Ok(response) => Some(response),
             Err(e) => {
@@ -204,11 +214,9 @@ async fn process_audio_chunk(
     .bind(start_time_ms)
     .bind(end_time_ms)
     .bind(is_addressed)
-    .bind(
-        agent_response
-            .as_ref()
-            .map(|r| serde_json::json!({ "agent_response": r, "discord_user_id": user_id }).to_string()),
-    )
+    .bind(agent_response.as_ref().map(|r| {
+        serde_json::json!({ "agent_response": r, "discord_user_id": user_id }).to_string()
+    }))
     .execute(&state.pool)
     .await;
 
@@ -257,10 +265,9 @@ async fn process_audio_chunk(
 pub async fn register_handlers(handler: &mut songbird::Call, state: Arc<ReceiverState>) {
     handler.add_global_event(
         CoreEvent::SpeakingStateUpdate.into(),
-        VoiceReceiver { state: Arc::clone(&state) },
+        VoiceReceiver {
+            state: Arc::clone(&state),
+        },
     );
-    handler.add_global_event(
-        CoreEvent::VoiceTick.into(),
-        VoiceReceiver { state },
-    );
+    handler.add_global_event(CoreEvent::VoiceTick.into(), VoiceReceiver { state });
 }

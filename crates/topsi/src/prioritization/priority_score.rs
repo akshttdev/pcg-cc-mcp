@@ -8,8 +8,10 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use uuid::Uuid;
 
-use super::free_energy::{EFECalculator, ExpectedFreeEnergy, PotentialAction};
-use super::goals::Goal;
+use super::{
+    free_energy::{EFECalculator, ExpectedFreeEnergy, PotentialAction},
+    goals::Goal,
+};
 
 /// Priority level (human-readable)
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
@@ -165,11 +167,7 @@ impl PriorityCalculator {
     }
 
     /// Calculate priority score for a single task
-    pub fn calculate(
-        &self,
-        action: &PotentialAction,
-        goals: &[Goal],
-    ) -> PriorityScore {
+    pub fn calculate(&self, action: &PotentialAction, goals: &[Goal]) -> PriorityScore {
         let efe = self.efe_calculator.calculate(action, goals);
         let mut priority = PriorityScore::new(action.id, &action.name, efe);
 
@@ -190,19 +188,15 @@ impl PriorityCalculator {
     }
 
     /// Calculate and rank all tasks
-    pub fn rank_tasks(
-        &self,
-        actions: &[PotentialAction],
-        goals: &[Goal],
-    ) -> Vec<PriorityScore> {
-        let mut scores: Vec<PriorityScore> = actions
-            .iter()
-            .map(|a| self.calculate(a, goals))
-            .collect();
+    pub fn rank_tasks(&self, actions: &[PotentialAction], goals: &[Goal]) -> Vec<PriorityScore> {
+        let mut scores: Vec<PriorityScore> =
+            actions.iter().map(|a| self.calculate(a, goals)).collect();
 
         // Sort by score descending
         scores.sort_by(|a, b| {
-            b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal)
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         scores
@@ -215,7 +209,10 @@ impl PriorityCalculator {
         goals: &[Goal],
         n: usize,
     ) -> Vec<PriorityScore> {
-        self.rank_tasks(actions, goals).into_iter().take(n).collect()
+        self.rank_tasks(actions, goals)
+            .into_iter()
+            .take(n)
+            .collect()
     }
 }
 

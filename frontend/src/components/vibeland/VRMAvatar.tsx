@@ -45,7 +45,8 @@ export function VRMAvatar({
         // Setup animation mixer
         mixerRef.current = new THREE.AnimationMixer(loadedVrm.scene);
       },
-      (_progress) => {
+      () => {
+        // intentionally empty — progress callback unused
       },
       (error) => {
         console.error('Error loading VRM:', error);

@@ -6,10 +6,10 @@
 //! - Audit trail for all agent actions
 //! - UI visibility into execution progress
 
+use std::{collections::HashMap, sync::Arc};
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::sync::Arc;
 use tokio::sync::RwLock;
 use ts_rs::TS;
 use uuid::Uuid;
@@ -115,11 +115,15 @@ impl ArtifactStore {
     /// Store a new artifact
     pub async fn store(&self, artifact: Artifact) {
         // Store stage output for chaining if applicable
-        if artifact.artifact_type == ArtifactType::StageOutput ||
-           artifact.artifact_type == ArtifactType::StageData {
+        if artifact.artifact_type == ArtifactType::StageOutput
+            || artifact.artifact_type == ArtifactType::StageData
+        {
             if let Some(stage_index) = artifact.stage_index {
                 let mut outputs = self.stage_outputs.write().await;
-                outputs.insert((artifact.execution_id, stage_index), artifact.content.clone());
+                outputs.insert(
+                    (artifact.execution_id, stage_index),
+                    artifact.content.clone(),
+                );
             }
         }
 
@@ -132,13 +136,20 @@ impl ArtifactStore {
     }
 
     /// Get output from a previous stage (for chaining)
-    pub async fn get_stage_output(&self, execution_id: Uuid, stage_index: u32) -> Option<serde_json::Value> {
+    pub async fn get_stage_output(
+        &self,
+        execution_id: Uuid,
+        stage_index: u32,
+    ) -> Option<serde_json::Value> {
         let outputs = self.stage_outputs.read().await;
         outputs.get(&(execution_id, stage_index)).cloned()
     }
 
     /// Get all outputs from previous stages
-    pub async fn get_all_stage_outputs(&self, execution_id: Uuid) -> HashMap<u32, serde_json::Value> {
+    pub async fn get_all_stage_outputs(
+        &self,
+        execution_id: Uuid,
+    ) -> HashMap<u32, serde_json::Value> {
         let outputs = self.stage_outputs.read().await;
         outputs
             .iter()
@@ -154,7 +165,11 @@ impl ArtifactStore {
     }
 
     /// Get artifacts of a specific type for an execution
-    pub async fn get_by_type(&self, execution_id: Uuid, artifact_type: ArtifactType) -> Vec<Artifact> {
+    pub async fn get_by_type(
+        &self,
+        execution_id: Uuid,
+        artifact_type: ArtifactType,
+    ) -> Vec<Artifact> {
         self.get_by_execution(execution_id)
             .await
             .into_iter()
@@ -163,7 +178,11 @@ impl ArtifactStore {
     }
 
     /// Get the latest artifact of a type
-    pub async fn get_latest(&self, execution_id: Uuid, artifact_type: ArtifactType) -> Option<Artifact> {
+    pub async fn get_latest(
+        &self,
+        execution_id: Uuid,
+        artifact_type: ArtifactType,
+    ) -> Option<Artifact> {
         self.get_by_type(execution_id, artifact_type)
             .await
             .into_iter()
@@ -201,7 +220,8 @@ mod tests {
             ArtifactType::StageOutput,
             "Stage 0 Output",
             serde_json::json!({"batch_id": "abc123"}),
-        ).with_stage(0, "Ingest");
+        )
+        .with_stage(0, "Ingest");
 
         store.store(artifact).await;
 

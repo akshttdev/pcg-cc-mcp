@@ -25,14 +25,38 @@ pub mod media_catalog;
 pub mod transcript;
 pub mod types;
 
-pub use engine::{ContentEditingEngine, ContentEditingConfig, ContentEditingResult};
+pub use engine::{ContentEditingConfig, ContentEditingEngine, ContentEditingResult};
 pub use types::{
-    ActAssignment, ActLabel, AssemblyResult, BRollClip, ClientSpec, ContentContextBrief,
-    EditDirective, EnergyLevel, LipSyncPoint, MediaAsset, MediaType, MusicBehavior,
-    PipelineState, Resolution, SegmentType, SentenceBoundary, ShotCatalog, StoryArcBeat,
-    StructuredTranscript, TranscriptSegment, VerifiedSoundbite,
+    ActAssignment,
+    ActLabel,
+    AssemblyResult,
+    BRollClip,
+    BeatPoint,
+    ClientSpec,
     // Deep analysis types
-    ClipSceneAnalysis, SceneContentType, SceneSegment,
-    ClipVisualQc, FrameAnalysis, VisualCropRegion,
-    MusicBeatAnalysis, BeatPoint, MusicStructureSection, MusicEnergyPoint,
+    ClipSceneAnalysis,
+    ClipVisualQc,
+    ContentContextBrief,
+    EditDirective,
+    EnergyLevel,
+    FrameAnalysis,
+    LipSyncPoint,
+    MediaAsset,
+    MediaType,
+    MusicBeatAnalysis,
+    MusicBehavior,
+    MusicEnergyPoint,
+    MusicStructureSection,
+    PipelineState,
+    Resolution,
+    SceneContentType,
+    SceneSegment,
+    SegmentType,
+    SentenceBoundary,
+    ShotCatalog,
+    StoryArcBeat,
+    StructuredTranscript,
+    TranscriptSegment,
+    VerifiedSoundbite,
+    VisualCropRegion,
 };

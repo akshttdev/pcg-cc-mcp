@@ -5,24 +5,14 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use db::models::{
-    agent_flow::AgentFlowError,
-    agent_flow_event::AgentFlowEventError,
-    artifact_review::ArtifactReviewError,
-    crm_activity::CrmActivityError,
-    crm_contact::CrmContactError,
-    crm_deal::CrmDealError,
-    crm_pipeline::CrmPipelineError,
-    email_account::EmailAccountError,
-    execution_artifact::ExecutionArtifactError,
-    execution_process::ExecutionProcessError,
-    project::ProjectError,
-    quickbooks_account::QuickBooksAccountError,
-    social_account::SocialAccountError,
-    social_mention::SocialMentionError,
-    social_post::SocialPostError,
-    task_artifact::TaskArtifactError,
-    task_attempt::TaskAttemptError,
-    token_usage::TokenUsageError,
+    agent_flow::AgentFlowError, agent_flow_event::AgentFlowEventError,
+    artifact_review::ArtifactReviewError, crm_activity::CrmActivityError,
+    crm_contact::CrmContactError, crm_deal::CrmDealError, crm_pipeline::CrmPipelineError,
+    email_account::EmailAccountError, execution_artifact::ExecutionArtifactError,
+    execution_process::ExecutionProcessError, project::ProjectError,
+    quickbooks_account::QuickBooksAccountError, social_account::SocialAccountError,
+    social_mention::SocialMentionError, social_post::SocialPostError,
+    task_artifact::TaskArtifactError, task_attempt::TaskAttemptError, token_usage::TokenUsageError,
     wide_research::WideResearchError,
 };
 use deployment::DeploymentError;
@@ -118,7 +108,9 @@ impl From<AgentFlowEventError> for ApiError {
     fn from(err: AgentFlowEventError) -> Self {
         match err {
             AgentFlowEventError::Database(e) => ApiError::Database(e),
-            AgentFlowEventError::NotFound => ApiError::NotFound("Agent flow event not found".into()),
+            AgentFlowEventError::NotFound => {
+                ApiError::NotFound("Agent flow event not found".into())
+            }
         }
     }
 }
@@ -136,8 +128,12 @@ impl From<TaskArtifactError> for ApiError {
     fn from(err: TaskArtifactError) -> Self {
         match err {
             TaskArtifactError::Database(e) => ApiError::Database(e),
-            TaskArtifactError::NotFound => ApiError::NotFound("Task artifact link not found".into()),
-            TaskArtifactError::AlreadyExists => ApiError::Conflict("Artifact already linked to task".into()),
+            TaskArtifactError::NotFound => {
+                ApiError::NotFound("Task artifact link not found".into())
+            }
+            TaskArtifactError::AlreadyExists => {
+                ApiError::Conflict("Artifact already linked to task".into())
+            }
         }
     }
 }
@@ -146,8 +142,12 @@ impl From<WideResearchError> for ApiError {
     fn from(err: WideResearchError) -> Self {
         match err {
             WideResearchError::Database(e) => ApiError::Database(e),
-            WideResearchError::SessionNotFound => ApiError::NotFound("Wide research session not found".into()),
-            WideResearchError::SubagentNotFound => ApiError::NotFound("Research subagent not found".into()),
+            WideResearchError::SessionNotFound => {
+                ApiError::NotFound("Wide research session not found".into())
+            }
+            WideResearchError::SubagentNotFound => {
+                ApiError::NotFound("Research subagent not found".into())
+            }
         }
     }
 }
@@ -156,7 +156,9 @@ impl From<ExecutionArtifactError> for ApiError {
     fn from(err: ExecutionArtifactError) -> Self {
         match err {
             ExecutionArtifactError::Database(e) => ApiError::Database(e),
-            ExecutionArtifactError::NotFound => ApiError::NotFound("Execution artifact not found".into()),
+            ExecutionArtifactError::NotFound => {
+                ApiError::NotFound("Execution artifact not found".into())
+            }
             ExecutionArtifactError::InvalidType(msg) => ApiError::BadRequest(msg),
         }
     }
@@ -176,7 +178,9 @@ impl From<SocialAccountError> for ApiError {
         match err {
             SocialAccountError::Database(e) => ApiError::Database(e),
             SocialAccountError::NotFound => ApiError::NotFound("Social account not found".into()),
-            SocialAccountError::AlreadyExists => ApiError::Conflict("Social account already exists".into()),
+            SocialAccountError::AlreadyExists => {
+                ApiError::Conflict("Social account already exists".into())
+            }
         }
     }
 }
@@ -255,7 +259,9 @@ impl IntoResponse for ApiError {
             ApiError::CrmPipeline(e) => match e {
                 CrmPipelineError::NotFound => (StatusCode::NOT_FOUND, "CrmPipelineNotFound"),
                 CrmPipelineError::StageNotFound => (StatusCode::NOT_FOUND, "CrmStageNotFound"),
-                CrmPipelineError::AlreadyExists => (StatusCode::CONFLICT, "CrmPipelineAlreadyExists"),
+                CrmPipelineError::AlreadyExists => {
+                    (StatusCode::CONFLICT, "CrmPipelineAlreadyExists")
+                }
                 _ => (StatusCode::INTERNAL_SERVER_ERROR, "CrmPipelineError"),
             },
             ApiError::CrmDeal(e) => match e {
@@ -267,9 +273,15 @@ impl IntoResponse for ApiError {
                 _ => (StatusCode::INTERNAL_SERVER_ERROR, "CrmActivityError"),
             },
             ApiError::QuickBooks(e) => match e {
-                QuickBooksAccountError::NotFound => (StatusCode::NOT_FOUND, "QuickBooksAccountNotFound"),
-                QuickBooksAccountError::AlreadyExists => (StatusCode::CONFLICT, "QuickBooksAccountAlreadyExists"),
-                QuickBooksAccountError::TokenExpired => (StatusCode::UNAUTHORIZED, "QuickBooksTokenExpired"),
+                QuickBooksAccountError::NotFound => {
+                    (StatusCode::NOT_FOUND, "QuickBooksAccountNotFound")
+                }
+                QuickBooksAccountError::AlreadyExists => {
+                    (StatusCode::CONFLICT, "QuickBooksAccountAlreadyExists")
+                }
+                QuickBooksAccountError::TokenExpired => {
+                    (StatusCode::UNAUTHORIZED, "QuickBooksTokenExpired")
+                }
                 _ => (StatusCode::INTERNAL_SERVER_ERROR, "QuickBooksError"),
             },
         };

@@ -3,11 +3,11 @@
 //! Handles the logic of finding suitable nodes for task execution,
 //! bidding/negotiation, and task assignment.
 
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
+
+use chrono::Utc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
-use chrono::Utc;
 
 use super::types::*;
 
@@ -114,9 +114,14 @@ impl TaskDistributor {
     }
 
     /// Distribute a task to the network
-    pub async fn distribute(&self, request: TaskDistributionRequest) -> anyhow::Result<TaskDistributionResult> {
+    pub async fn distribute(
+        &self,
+        request: TaskDistributionRequest,
+    ) -> anyhow::Result<TaskDistributionResult> {
         // Find capable peers
-        let capable_peers = self.find_capable_peers(&request.resource_requirements).await;
+        let capable_peers = self
+            .find_capable_peers(&request.resource_requirements)
+            .await;
 
         if capable_peers.is_empty() {
             // No remote peers available - this is actually OK for now
@@ -142,7 +147,10 @@ impl TaskDistributor {
             .iter()
             .max_by(|a, b| {
                 // Higher reputation is better
-                let rep_cmp = a.reputation.partial_cmp(&b.reputation).unwrap_or(std::cmp::Ordering::Equal);
+                let rep_cmp = a
+                    .reputation
+                    .partial_cmp(&b.reputation)
+                    .unwrap_or(std::cmp::Ordering::Equal);
                 if rep_cmp != std::cmp::Ordering::Equal {
                     return rep_cmp;
                 }
@@ -170,7 +178,10 @@ impl TaskDistributor {
             distribution.bids.push(bid);
             Ok(())
         } else {
-            Err(anyhow::anyhow!("No pending distribution for task {}", task_id))
+            Err(anyhow::anyhow!(
+                "No pending distribution for task {}",
+                task_id
+            ))
         }
     }
 
@@ -222,38 +233,46 @@ mod tests {
         let distributor = TaskDistributor::new();
 
         // Register peers with different capabilities
-        distributor.register_peer(PeerInfo {
-            node_id: "compute_node".to_string(),
-            address: "127.0.0.1".to_string(),
-            capabilities: vec!["compute".to_string()],
-            reputation: 1.0,
-            latency_ms: Some(50),
-            available_bandwidth_mbps: Some(100.0),
-            last_seen: Utc::now(),
-        }).await;
+        distributor
+            .register_peer(PeerInfo {
+                node_id: "compute_node".to_string(),
+                address: "127.0.0.1".to_string(),
+                capabilities: vec!["compute".to_string()],
+                reputation: 1.0,
+                latency_ms: Some(50),
+                available_bandwidth_mbps: Some(100.0),
+                last_seen: Utc::now(),
+            })
+            .await;
 
-        distributor.register_peer(PeerInfo {
-            node_id: "gpu_node".to_string(),
-            address: "127.0.0.2".to_string(),
-            capabilities: vec!["compute".to_string(), "gpu".to_string()],
-            reputation: 1.0,
-            latency_ms: Some(100),
-            available_bandwidth_mbps: Some(50.0),
-            last_seen: Utc::now(),
-        }).await;
+        distributor
+            .register_peer(PeerInfo {
+                node_id: "gpu_node".to_string(),
+                address: "127.0.0.2".to_string(),
+                capabilities: vec!["compute".to_string(), "gpu".to_string()],
+                reputation: 1.0,
+                latency_ms: Some(100),
+                available_bandwidth_mbps: Some(50.0),
+                last_seen: Utc::now(),
+            })
+            .await;
 
         // Find peers that can do compute
-        let compute_peers = distributor.find_capable_peers(&ResourceRequirements {
-            required_capabilities: vec!["compute".to_string()],
-            ..Default::default()
-        }).await;
+        let compute_peers = distributor
+            .find_capable_peers(&ResourceRequirements {
+                required_capabilities: vec!["compute".to_string()],
+                ..Default::default()
+            })
+            .await;
         assert_eq!(compute_peers.len(), 2);
 
         // Find peers that can do GPU compute
-        let gpu_peers = distributor.find_capable_peers(&ResourceRequirements {
-            required_capabilities: vec!["compute".to_string(), "gpu".to_string()],
-            ..Default::default()
-        }).await;
+        let gpu_peers = distributor
+            .find_capable_peers(&ResourceRequirements {
+                required_capabilities: vec!["compute".to_string(), "gpu".to_string()],
+                ..Default::default()
+            })
+            .await;
         assert_eq!(gpu_peers.len(), 1);
         assert_eq!(gpu_peers[0].node_id, "gpu_node");
     }

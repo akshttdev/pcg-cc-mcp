@@ -4,21 +4,16 @@
 //! and checking sync status.
 
 use axum::{
-    Extension,
+    Extension, Router,
     extract::State,
     response::Json as ResponseJson,
     routing::{get, post},
-    Router,
 };
 use deployment::Deployment;
 use serde::Serialize;
 use utils::response::ApiResponse;
 
-use crate::{
-    DeploymentImpl,
-    error::ApiError,
-    middleware::access_control::AccessContext,
-};
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
 #[derive(Debug, Serialize)]
 pub struct SyncStatus {
@@ -91,13 +86,11 @@ pub async fn trigger_sync(
             )
             .await
             {
-                Ok(()) => {
-                    Ok(ResponseJson(ApiResponse::success(TriggerSyncResponse {
-                        message: "Sync request sent to APN provider".to_string(),
-                        provider_id: config.provider_id,
-                        device_id: config.device_id,
-                    })))
-                }
+                Ok(()) => Ok(ResponseJson(ApiResponse::success(TriggerSyncResponse {
+                    message: "Sync request sent to APN provider".to_string(),
+                    provider_id: config.provider_id,
+                    device_id: config.device_id,
+                }))),
                 Err(e) => Err(ApiError::InternalError(format!(
                     "Failed to send sync request: {}",
                     e
@@ -120,7 +113,9 @@ pub struct TriggerSyncResponse {
 
 /// Simple test handler to verify route registration
 pub async fn apn_ping() -> ResponseJson<ApiResponse<String>> {
-    ResponseJson(ApiResponse::success("pong from APN data service".to_string()))
+    ResponseJson(ApiResponse::success(
+        "pong from APN data service".to_string(),
+    ))
 }
 
 /// Router for APN data endpoints — no auth layer (added by protected_routes group)
@@ -132,6 +127,5 @@ pub fn router() -> Router<DeploymentImpl> {
 
 /// Public routes (no auth required) for basic health-check style endpoints
 pub fn public_router() -> Router<DeploymentImpl> {
-    Router::new()
-        .route("/apn-ping", get(apn_ping))
+    Router::new().route("/apn-ping", get(apn_ping))
 }

@@ -4,7 +4,7 @@ use axum::{
     routing::{get, post},
 };
 use db::models::project_knowledge_source::{
-    ProjectKnowledgeSource, ProjectKnowledgeCompleteness, KnowledgeSourceType,
+    KnowledgeSourceType, ProjectKnowledgeCompleteness, ProjectKnowledgeSource,
 };
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
@@ -34,7 +34,9 @@ async fn get_project_knowledge(
 
     let sources = ProjectKnowledgeSource::find_by_project(pool, project_id)
         .await
-        .map_err(|e| ApiError::InternalError(format!("Failed to fetch knowledge sources: {}", e)))?;
+        .map_err(|e| {
+            ApiError::InternalError(format!("Failed to fetch knowledge sources: {}", e))
+        })?;
 
     let completeness = ProjectKnowledgeSource::get_completeness(pool, project_id)
         .await
@@ -78,7 +80,9 @@ async fn create_knowledge_source(
 ) -> Result<Json<ApiResponse<ProjectKnowledgeSource>>, ApiError> {
     let pool = &deployment.db().pool;
 
-    let source_type: KnowledgeSourceType = body.source_type.parse()
+    let source_type: KnowledgeSourceType = body
+        .source_type
+        .parse()
         .map_err(|e: String| ApiError::BadRequest(e))?;
 
     let source_id = Uuid::new_v4().to_string();

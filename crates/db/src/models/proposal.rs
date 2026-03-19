@@ -78,7 +78,8 @@ impl Proposal {
         let quote = input.quote_amount_vibe.unwrap_or(0);
         let deal_type = input.deal_type.unwrap_or_else(|| "one-off".into());
 
-        let contact_ids_json = input.contact_ids
+        let contact_ids_json = input
+            .contact_ids
             .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".to_string()))
             .unwrap_or_else(|| "[]".to_string());
 
@@ -132,7 +133,8 @@ impl Proposal {
         if let Some(org) = organization_id {
             qb.push(" AND organization_id = ").push_bind(org);
         }
-        qb.push(" ORDER BY created_at DESC LIMIT ").push_bind(limit.unwrap_or(200));
+        qb.push(" ORDER BY created_at DESC LIMIT ")
+            .push_bind(limit.unwrap_or(200));
         qb.build_query_as::<Self>().fetch_all(pool).await
     }
 
@@ -156,17 +158,32 @@ impl Proposal {
         id: Uuid,
         input: UpdateProposal,
     ) -> Result<Option<Self>, sqlx::Error> {
-        let mut qb = sqlx::QueryBuilder::new(
-            "UPDATE proposals SET updated_at = datetime('now','subsec')",
-        );
-        if let Some(v) = input.title       { qb.push(", title = ").push_bind(v); }
-        if let Some(v) = input.description { qb.push(", description = ").push_bind(v); }
-        if let Some(v) = input.quote_amount_vibe { qb.push(", quote_amount_vibe = ").push_bind(v); }
-        if let Some(v) = input.deal_type   { qb.push(", deal_type = ").push_bind(v); }
-        if let Some(v) = input.lead_id     { qb.push(", lead_id = ").push_bind(v); }
-        if let Some(v) = input.project_id  { qb.push(", project_id = ").push_bind(v); }
-        if let Some(v) = input.owner_id    { qb.push(", owner_id = ").push_bind(v); }
-        if let Some(v) = input.company_id  { qb.push(", company_id = ").push_bind(v); }
+        let mut qb =
+            sqlx::QueryBuilder::new("UPDATE proposals SET updated_at = datetime('now','subsec')");
+        if let Some(v) = input.title {
+            qb.push(", title = ").push_bind(v);
+        }
+        if let Some(v) = input.description {
+            qb.push(", description = ").push_bind(v);
+        }
+        if let Some(v) = input.quote_amount_vibe {
+            qb.push(", quote_amount_vibe = ").push_bind(v);
+        }
+        if let Some(v) = input.deal_type {
+            qb.push(", deal_type = ").push_bind(v);
+        }
+        if let Some(v) = input.lead_id {
+            qb.push(", lead_id = ").push_bind(v);
+        }
+        if let Some(v) = input.project_id {
+            qb.push(", project_id = ").push_bind(v);
+        }
+        if let Some(v) = input.owner_id {
+            qb.push(", owner_id = ").push_bind(v);
+        }
+        if let Some(v) = input.company_id {
+            qb.push(", company_id = ").push_bind(v);
+        }
         if let Some(v) = input.contact_ids {
             let json = serde_json::to_string(&v).unwrap_or_else(|_| "[]".to_string());
             qb.push(", contact_ids = ").push_bind(json);
@@ -183,11 +200,11 @@ impl Proposal {
         new_status: &str,
     ) -> Result<Option<Self>, sqlx::Error> {
         let ts_col = match new_status {
-            "sent"            => Some("sent_at"),
-            "seen"            => Some("seen_at"),
-            "verbal"          => Some("verbal_at"),
+            "sent" => Some("sent_at"),
+            "seen" => Some("seen_at"),
+            "verbal" => Some("verbal_at"),
             "contract_signed" => Some("signed_at"),
-            "declined"        => Some("declined_at"),
+            "declined" => Some("declined_at"),
             _ => None,
         };
 
@@ -197,7 +214,11 @@ impl Proposal {
                  updated_at = datetime('now','subsec') WHERE id = ?",
                 col
             );
-            sqlx::query(&sql).bind(new_status).bind(id).execute(pool).await?;
+            sqlx::query(&sql)
+                .bind(new_status)
+                .bind(id)
+                .execute(pool)
+                .await?;
         } else {
             sqlx::query(
                 "UPDATE proposals SET status = ?, updated_at = datetime('now','subsec') WHERE id = ?",

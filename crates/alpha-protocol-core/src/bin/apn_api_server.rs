@@ -3,6 +3,13 @@
 //! Provides a simple HTTP API to view Alpha Protocol Network nodes
 //! Can be accessed from any device on the network
 
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::{BufRead, BufReader},
+    sync::Arc,
+};
+
 use axum::{
     extract::State,
     response::{Html, Json},
@@ -10,10 +17,6 @@ use axum::{
     Router,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
-use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower_http::cors::{Any, CorsLayer};
 
@@ -56,7 +59,12 @@ fn fetch_network_info() -> (Vec<PeerInfo>, bool, String) {
         // Get master node ID
         if let Some(line) = lines.iter().find(|l| l.contains("Node ID:")) {
             if let Some(id_part) = line.split("Node ID:").nth(1) {
-                master_node_id = id_part.trim().split_whitespace().next().unwrap_or("unknown").to_string();
+                master_node_id = id_part
+                    .trim()
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("unknown")
+                    .to_string();
             }
         }
 
@@ -78,9 +86,18 @@ fn fetch_network_info() -> (Vec<PeerInfo>, bool, String) {
                 let wallet = caps.get(2).map(|m| m.as_str()).unwrap_or("").to_string();
                 let caps_str = caps.get(3).map(|m| m.as_str()).unwrap_or("");
 
-                let cpu_cores: u32 = caps.get(4).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
-                let ram_mb: u64 = caps.get(5).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
-                let storage_gb: u64 = caps.get(6).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+                let cpu_cores: u32 = caps
+                    .get(4)
+                    .and_then(|m| m.as_str().parse().ok())
+                    .unwrap_or(0);
+                let ram_mb: u64 = caps
+                    .get(5)
+                    .and_then(|m| m.as_str().parse().ok())
+                    .unwrap_or(0);
+                let storage_gb: u64 = caps
+                    .get(6)
+                    .and_then(|m| m.as_str().parse().ok())
+                    .unwrap_or(0);
                 let gpu_available = caps.get(7).map(|m| m.as_str() == "true").unwrap_or(false);
                 let gpu_model = if gpu_available {
                     caps.get(9).map(|m| m.as_str().to_string())
@@ -94,27 +111,34 @@ fn fetch_network_info() -> (Vec<PeerInfo>, bool, String) {
                     .collect();
 
                 if !peers.contains_key(&node_id) {
-                    peers.insert(node_id.clone(), PeerInfo {
-                        node_id,
-                        wallet_address: wallet,
-                        capabilities,
-                        resources: Some(alpha_protocol_core::wire::NodeResources {
-                            cpu_cores,
-                            ram_mb,
-                            storage_gb,
-                            gpu_available,
-                            gpu_model,
-                            hashrate: None,
-                            bandwidth_mbps: None,
-                        }),
-                        device_name: None, // Parsed from NATS heartbeats, not logs
-                    });
+                    peers.insert(
+                        node_id.clone(),
+                        PeerInfo {
+                            node_id,
+                            wallet_address: wallet,
+                            capabilities,
+                            resources: Some(alpha_protocol_core::wire::NodeResources {
+                                cpu_cores,
+                                ram_mb,
+                                storage_gb,
+                                gpu_available,
+                                gpu_model,
+                                hashrate: None,
+                                bandwidth_mbps: None,
+                            }),
+                            device_name: None, // Parsed from NATS heartbeats, not logs
+                        },
+                    );
                 }
             }
         }
     }
 
-    (peers.into_values().collect(), relay_connected, master_node_id)
+    (
+        peers.into_values().collect(),
+        relay_connected,
+        master_node_id,
+    )
 }
 
 /// API endpoint: Get network status
@@ -125,7 +149,8 @@ async fn get_network_status(State(state): State<Arc<AppState>>) -> Json<NetworkS
 
 /// Web UI: Simple HTML dashboard
 async fn web_dashboard() -> Html<&'static str> {
-    Html(r#"
+    Html(
+        r#"
 <!DOCTYPE html>
 <html>
 <head>
@@ -285,13 +310,17 @@ async fn web_dashboard() -> Html<&'static str> {
     </script>
 </body>
 </html>
-    "#)
+    "#,
+    )
 }
 
 /// Background task to update network status
 async fn update_network_status(state: Arc<AppState>) {
     loop {
-        let (peers, relay_connected, master_node_id) = tokio::task::spawn_blocking(fetch_network_info).await.unwrap();
+        let (peers, relay_connected, master_node_id) =
+            tokio::task::spawn_blocking(fetch_network_info)
+                .await
+                .unwrap();
 
         let mut status = state.network_status.write().await;
         status.master_node_id = master_node_id;
@@ -306,9 +335,7 @@ async fn update_network_status(state: Arc<AppState>) {
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter("info")
-        .init();
+    tracing_subscriber::fmt().with_env_filter("info").init();
 
     let initial_status = NetworkStatus {
         master_node_id: "loading".to_string(),

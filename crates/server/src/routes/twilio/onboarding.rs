@@ -14,9 +14,7 @@ pub(super) async fn create_caller_account(
     full_name: &str,
 ) -> anyhow::Result<(Uuid, Uuid)> {
     // Sanitise phone into a valid username slug
-    let slug = phone
-        .replace('+', "")
-        .replace(['-', ' ', '(', ')'], "_");
+    let slug = phone.replace('+', "").replace(['-', ' ', '(', ')'], "_");
     let username = format!("caller_{}", slug);
     let email = format!("{}@pcg.phone.noreply", slug);
 
@@ -68,7 +66,10 @@ pub(super) async fn create_caller_account(
 
     let project_id = create_caller_project(pool, user_id, full_name).await?;
 
-    info!("Created PCG account for caller {}: user={}, project={}", phone, user_id, project_id);
+    info!(
+        "Created PCG account for caller {}: user={}, project={}",
+        phone, user_id, project_id
+    );
     Ok((user_id, project_id))
 }
 
@@ -133,19 +134,22 @@ pub(super) async fn lookup_pcg_team_member(
             let mut parts = entry.trim().splitn(2, ':');
             let p = parts.next()?.trim();
             let u = parts.next()?.trim();
-            if p == phone.trim() { Some(u.to_string()) } else { None }
+            if p == phone.trim() {
+                Some(u.to_string())
+            } else {
+                None
+            }
         })
         .next()?;
 
     // Look up user in DB
-    let row: Option<(Vec<u8>, String, i64)> = sqlx::query_as(
-        "SELECT id, full_name, is_admin FROM users WHERE username = ? LIMIT 1",
-    )
-    .bind(&username)
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten();
+    let row: Option<(Vec<u8>, String, i64)> =
+        sqlx::query_as("SELECT id, full_name, is_admin FROM users WHERE username = ? LIMIT 1")
+            .bind(&username)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
 
     row.and_then(|(id_bytes, full_name, is_admin)| {
         Uuid::from_slice(&id_bytes)

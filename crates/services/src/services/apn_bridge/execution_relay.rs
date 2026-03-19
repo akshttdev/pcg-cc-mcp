@@ -3,11 +3,11 @@
 //! Handles bidirectional communication during remote task execution,
 //! including log streaming, progress updates, and result collection.
 
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::{broadcast, RwLock};
-use uuid::Uuid;
+use std::{collections::HashMap, sync::Arc};
+
 use chrono::Utc;
+use tokio::sync::{RwLock, broadcast};
+use uuid::Uuid;
 
 use super::types::*;
 
@@ -104,15 +104,25 @@ impl ExecutionRelay {
     }
 
     /// Subscribe to logs for an execution
-    pub async fn subscribe_logs(&self, execution_process_id: Uuid) -> Option<broadcast::Receiver<ExecutionLogChunk>> {
+    pub async fn subscribe_logs(
+        &self,
+        execution_process_id: Uuid,
+    ) -> Option<broadcast::Receiver<ExecutionLogChunk>> {
         let log_channels = self.log_channels.read().await;
-        log_channels.get(&execution_process_id).map(|tx| tx.subscribe())
+        log_channels
+            .get(&execution_process_id)
+            .map(|tx| tx.subscribe())
     }
 
     /// Subscribe to progress for an execution
-    pub async fn subscribe_progress(&self, execution_process_id: Uuid) -> Option<broadcast::Receiver<ExecutionProgress>> {
+    pub async fn subscribe_progress(
+        &self,
+        execution_process_id: Uuid,
+    ) -> Option<broadcast::Receiver<ExecutionProgress>> {
         let progress_channels = self.progress_channels.read().await;
-        progress_channels.get(&execution_process_id).map(|tx| tx.subscribe())
+        progress_channels
+            .get(&execution_process_id)
+            .map(|tx| tx.subscribe())
     }
 
     /// Relay a log chunk from a remote execution
@@ -169,15 +179,17 @@ impl ExecutionRelay {
     /// Get execution info
     pub async fn get_execution_info(&self, execution_process_id: Uuid) -> Option<ExecutionInfo> {
         let executions = self.active_executions.read().await;
-        executions.get(&execution_process_id).map(|e| ExecutionInfo {
-            task_id: e.task_id,
-            execution_process_id: e.execution_process_id,
-            executor_node: e.executor_node.clone(),
-            started_at: e.started_at,
-            log_count: e.log_count,
-            last_stage: e.last_progress.as_ref().map(|p| p.stage.clone()),
-            progress_percent: e.last_progress.as_ref().map(|p| p.progress_percent),
-        })
+        executions
+            .get(&execution_process_id)
+            .map(|e| ExecutionInfo {
+                task_id: e.task_id,
+                execution_process_id: e.execution_process_id,
+                executor_node: e.executor_node.clone(),
+                started_at: e.started_at,
+                log_count: e.log_count,
+                last_stage: e.last_progress.as_ref().map(|p| p.stage.clone()),
+                progress_percent: e.last_progress.as_ref().map(|p| p.progress_percent),
+            })
     }
 }
 
@@ -210,7 +222,10 @@ mod tests {
         let task_id = Uuid::new_v4();
         let exec_id = Uuid::new_v4();
 
-        relay.start_execution(task_id, exec_id, "test_node".to_string()).await.unwrap();
+        relay
+            .start_execution(task_id, exec_id, "test_node".to_string())
+            .await
+            .unwrap();
 
         assert!(relay.is_tracking(exec_id).await);
         assert_eq!(relay.active_count().await, 1);
@@ -228,7 +243,10 @@ mod tests {
         let task_id = Uuid::new_v4();
         let exec_id = Uuid::new_v4();
 
-        relay.start_execution(task_id, exec_id, "test_node".to_string()).await.unwrap();
+        relay
+            .start_execution(task_id, exec_id, "test_node".to_string())
+            .await
+            .unwrap();
 
         // Subscribe to logs
         let mut log_rx = relay.subscribe_logs(exec_id).await.unwrap();

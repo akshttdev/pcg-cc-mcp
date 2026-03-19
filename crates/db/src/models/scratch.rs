@@ -16,11 +16,24 @@ pub struct Scratch {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ScratchPayload {
-    DraftTask { message: String },
-    DraftFollowUp { message: String, executor: Option<String> },
-    UiPreferences { data: serde_json::Value },
-    WorkspaceNotes { task_attempt_id: String, notes: String },
-    ProjectRepoDefaults { project_id: String, repo_ids: Vec<String> },
+    DraftTask {
+        message: String,
+    },
+    DraftFollowUp {
+        message: String,
+        executor: Option<String>,
+    },
+    UiPreferences {
+        data: serde_json::Value,
+    },
+    WorkspaceNotes {
+        task_attempt_id: String,
+        notes: String,
+    },
+    ProjectRepoDefaults {
+        project_id: String,
+        repo_ids: Vec<String>,
+    },
 }
 
 #[derive(Debug, Deserialize, TS)]

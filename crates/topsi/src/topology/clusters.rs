@@ -1,12 +1,16 @@
 //! Cluster management - Dynamic team formation and dissolution
 
-use super::graph::{ClusterInfo, ProjectTopology, TopologyGraph};
-use super::engine::TopologyEngine;
-use crate::{Result, TopsiError};
+use std::collections::HashSet;
+
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use std::collections::HashSet;
 use uuid::Uuid;
+
+use super::{
+    engine::TopologyEngine,
+    graph::{ClusterInfo, ProjectTopology, TopologyGraph},
+};
+use crate::{Result, TopsiError};
 
 /// Requirements for forming a cluster
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -85,7 +89,9 @@ impl ClusterManager {
             }
 
             // Calculate score based on capability match
-            let matching_caps = requirements.capabilities.iter()
+            let matching_caps = requirements
+                .capabilities
+                .iter()
                 .filter(|c| node.has_capability(c))
                 .count();
 
@@ -104,7 +110,8 @@ impl ClusterManager {
 
         // Select nodes
         let max_nodes = requirements.max_nodes.unwrap_or(candidate_nodes.len());
-        let selected: Vec<Uuid> = candidate_nodes.iter()
+        let selected: Vec<Uuid> = candidate_nodes
+            .iter()
             .take(max_nodes.max(requirements.min_nodes))
             .map(|(id, _)| *id)
             .collect();
@@ -112,7 +119,9 @@ impl ClusterManager {
         if selected.len() < requirements.min_nodes {
             return Err(TopsiError::ClusterError(format!(
                 "Cannot form cluster '{}': only {} nodes match requirements, {} required",
-                name, selected.len(), requirements.min_nodes
+                name,
+                selected.len(),
+                requirements.min_nodes
             )));
         }
 
@@ -128,7 +137,9 @@ impl ClusterManager {
             }
         }
 
-        let missing_capabilities: Vec<String> = requirements.capabilities.iter()
+        let missing_capabilities: Vec<String> = requirements
+            .capabilities
+            .iter()
             .filter(|c| !covered_capabilities.contains(*c))
             .cloned()
             .collect();
@@ -140,7 +151,8 @@ impl ClusterManager {
         };
 
         // Select leader (highest weighted node)
-        let leader_id = selected.iter()
+        let leader_id = selected
+            .iter()
             .max_by(|a, b| {
                 let a_weight = graph.get_node(**a).map(|n| n.weight).unwrap_or(0.0);
                 let b_weight = graph.get_node(**b).map(|n| n.weight).unwrap_or(0.0);
@@ -149,8 +161,8 @@ impl ClusterManager {
             .copied();
 
         // Create cluster
-        let cluster = ClusterInfo::new(Uuid::new_v4(), &name, selected)
-            .with_purpose(&requirements.purpose);
+        let cluster =
+            ClusterInfo::new(Uuid::new_v4(), &name, selected).with_purpose(&requirements.purpose);
 
         let cluster = if let Some(leader) = leader_id {
             cluster.with_leader(leader)
@@ -167,10 +179,7 @@ impl ClusterManager {
             ));
         }
         if coverage < 0.8 {
-            warnings.push(format!(
-                "Low capability coverage: {:.0}%",
-                coverage * 100.0
-            ));
+            warnings.push(format!("Low capability coverage: {:.0}%", coverage * 100.0));
         }
 
         // Add cluster to topology
@@ -189,11 +198,9 @@ impl ClusterManager {
         topology: &mut ProjectTopology,
         cluster_id: Uuid,
     ) -> Result<ClusterInfo> {
-        let cluster = topology.remove_cluster(cluster_id)
-            .ok_or_else(|| TopsiError::ClusterError(format!(
-                "Cluster {} not found",
-                cluster_id
-            )))?;
+        let cluster = topology
+            .remove_cluster(cluster_id)
+            .ok_or_else(|| TopsiError::ClusterError(format!("Cluster {} not found", cluster_id)))?;
 
         Ok(cluster)
     }
@@ -217,12 +224,11 @@ impl ClusterManager {
         }
 
         // Find and update cluster
-        let cluster = topology.clusters.iter_mut()
+        let cluster = topology
+            .clusters
+            .iter_mut()
             .find(|c| c.id == cluster_id)
-            .ok_or_else(|| TopsiError::ClusterError(format!(
-                "Cluster {} not found",
-                cluster_id
-            )))?;
+            .ok_or_else(|| TopsiError::ClusterError(format!("Cluster {} not found", cluster_id)))?;
 
         if !cluster.node_ids.contains(&node_id) {
             cluster.node_ids.push(node_id);
@@ -238,12 +244,11 @@ impl ClusterManager {
         cluster_id: Uuid,
         node_id: Uuid,
     ) -> Result<()> {
-        let cluster = topology.clusters.iter_mut()
+        let cluster = topology
+            .clusters
+            .iter_mut()
             .find(|c| c.id == cluster_id)
-            .ok_or_else(|| TopsiError::ClusterError(format!(
-                "Cluster {} not found",
-                cluster_id
-            )))?;
+            .ok_or_else(|| TopsiError::ClusterError(format!("Cluster {} not found", cluster_id)))?;
 
         cluster.node_ids.retain(|id| *id != node_id);
 
@@ -275,12 +280,14 @@ impl ClusterManager {
             }
 
             // Analyze the component
-            let node_types: HashSet<String> = component.iter()
+            let node_types: HashSet<String> = component
+                .iter()
                 .filter_map(|id| graph.get_node(*id))
                 .map(|n| n.node_type.clone())
                 .collect();
 
-            let all_capabilities: HashSet<String> = component.iter()
+            let all_capabilities: HashSet<String> = component
+                .iter()
                 .filter_map(|id| graph.get_node(*id))
                 .flat_map(|n| n.capabilities.clone())
                 .collect();
@@ -336,7 +343,9 @@ impl ClusterManager {
 
     /// Get clusters that a node belongs to
     pub fn get_node_clusters(topology: &ProjectTopology, node_id: Uuid) -> Vec<&ClusterInfo> {
-        topology.clusters.iter()
+        topology
+            .clusters
+            .iter()
             .filter(|c| c.is_active && c.node_ids.contains(&node_id))
             .collect()
     }
@@ -353,11 +362,13 @@ impl ClusterManager {
         cluster_b_id: Uuid,
         new_name: impl Into<String>,
     ) -> Result<ClusterInfo> {
-        let cluster_a = topology.get_cluster(cluster_a_id)
+        let cluster_a = topology
+            .get_cluster(cluster_a_id)
             .ok_or_else(|| TopsiError::ClusterError(format!("Cluster {} not found", cluster_a_id)))?
             .clone();
 
-        let cluster_b = topology.get_cluster(cluster_b_id)
+        let cluster_b = topology
+            .get_cluster(cluster_b_id)
             .ok_or_else(|| TopsiError::ClusterError(format!("Cluster {} not found", cluster_b_id)))?
             .clone();
 
@@ -370,16 +381,17 @@ impl ClusterManager {
         }
 
         // Create new cluster
-        let merged = ClusterInfo::new(
-            Uuid::new_v4(),
-            new_name,
-            merged_nodes,
-        )
-        .with_purpose(format!(
-            "Merged from {} and {}",
-            cluster_a.name, cluster_b.name
-        ))
-        .with_leader(cluster_a.leader_node_id.or(cluster_b.leader_node_id).unwrap_or(Uuid::nil()));
+        let merged = ClusterInfo::new(Uuid::new_v4(), new_name, merged_nodes)
+            .with_purpose(format!(
+                "Merged from {} and {}",
+                cluster_a.name, cluster_b.name
+            ))
+            .with_leader(
+                cluster_a
+                    .leader_node_id
+                    .or(cluster_b.leader_node_id)
+                    .unwrap_or(Uuid::nil()),
+            );
 
         // Remove old clusters
         topology.remove_cluster(cluster_a_id);
@@ -398,7 +410,8 @@ impl ClusterManager {
         split_nodes: Vec<Uuid>,
         new_cluster_name: impl Into<String>,
     ) -> Result<(ClusterInfo, ClusterInfo)> {
-        let original = topology.get_cluster(cluster_id)
+        let original = topology
+            .get_cluster(cluster_id)
             .ok_or_else(|| TopsiError::ClusterError(format!("Cluster {} not found", cluster_id)))?
             .clone();
 
@@ -413,33 +426,27 @@ impl ClusterManager {
         }
 
         // Create remaining nodes list
-        let remaining_nodes: Vec<Uuid> = original.node_ids.iter()
+        let remaining_nodes: Vec<Uuid> = original
+            .node_ids
+            .iter()
             .filter(|n| !split_nodes.contains(n))
             .copied()
             .collect();
 
         if remaining_nodes.is_empty() {
             return Err(TopsiError::ClusterError(
-                "Cannot split: all nodes would be moved to new cluster".to_string()
+                "Cannot split: all nodes would be moved to new cluster".to_string(),
             ));
         }
 
         // Update original cluster
         topology.remove_cluster(cluster_id);
 
-        let updated_original = ClusterInfo::new(
-            original.id,
-            &original.name,
-            remaining_nodes,
-        )
-        .with_purpose(original.purpose.unwrap_or_default());
+        let updated_original = ClusterInfo::new(original.id, &original.name, remaining_nodes)
+            .with_purpose(original.purpose.unwrap_or_default());
 
-        let new_cluster = ClusterInfo::new(
-            Uuid::new_v4(),
-            new_cluster_name,
-            split_nodes,
-        )
-        .with_purpose(format!("Split from {}", original.name));
+        let new_cluster = ClusterInfo::new(Uuid::new_v4(), new_cluster_name, split_nodes)
+            .with_purpose(format!("Split from {}", original.name));
 
         topology.add_cluster(updated_original.clone());
         topology.add_cluster(new_cluster.clone());

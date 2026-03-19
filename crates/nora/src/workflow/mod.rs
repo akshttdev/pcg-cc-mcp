@@ -9,9 +9,9 @@ pub mod router;
 pub mod types;
 
 pub use executor::AgentWorkflowExecutor;
-pub use orchestrator::{WorkflowOrchestrator, WorkflowEvent};
+pub use orchestrator::{WorkflowEvent, WorkflowOrchestrator};
 pub use router::WorkflowRouter;
 pub use types::{
-    Deliverable, WorkflowContext, WorkflowInstance, WorkflowResult, WorkflowState,
-    WorkflowStageResult,
+    Deliverable, WorkflowContext, WorkflowInstance, WorkflowResult, WorkflowStageResult,
+    WorkflowState,
 };

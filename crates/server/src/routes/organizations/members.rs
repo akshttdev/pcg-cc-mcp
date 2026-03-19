@@ -6,12 +6,16 @@ pub async fn list_members(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, ApiError> {
-    let id_uuid = DbUuid::parse(&id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let pool = &deployment.db().pool;
     if !access_context.is_admin {
         let role = Organization::get_user_role(pool, &id, access_context.user_id.as_str()).await?;
         if role.is_none() {
-            return Err(ApiError::Forbidden("Not a member of this organization".into()));
+            return Err(ApiError::Forbidden(
+                "Not a member of this organization".into(),
+            ));
         }
     }
 
@@ -76,15 +80,26 @@ pub async fn add_member(
     Json(data): Json<AddMemberRequest>,
 ) -> Result<Json<ApiResponse<OrganizationMember>>, ApiError> {
     if !access_context.is_admin {
-        let role = Organization::get_user_role(&deployment.db().pool, &id, access_context.user_id.as_str()).await?;
+        let role = Organization::get_user_role(
+            &deployment.db().pool,
+            &id,
+            access_context.user_id.as_str(),
+        )
+        .await?;
         match role.as_deref() {
             Some("admin") => {}
-            _ => return Err(ApiError::Forbidden("Only org admins can add members".into())),
+            _ => {
+                return Err(ApiError::Forbidden(
+                    "Only org admins can add members".into(),
+                ));
+            }
         }
     }
 
     let role = data.role.as_deref().unwrap_or("member");
-    let member = Organization::add_member(&deployment.db().pool, &id, &data.user_id.to_string(), role).await?;
+    let member =
+        Organization::add_member(&deployment.db().pool, &id, &data.user_id.to_string(), role)
+            .await?;
     Ok(Json(ApiResponse::success(member)))
 }
 
@@ -101,10 +116,19 @@ pub async fn change_member_role(
     Json(data): Json<ChangeRoleRequest>,
 ) -> Result<Json<ApiResponse<OrganizationMember>>, ApiError> {
     if !access_context.is_admin {
-        let role = Organization::get_user_role(&deployment.db().pool, &id, access_context.user_id.as_str()).await?;
+        let role = Organization::get_user_role(
+            &deployment.db().pool,
+            &id,
+            access_context.user_id.as_str(),
+        )
+        .await?;
         match role.as_deref() {
             Some("admin") => {}
-            _ => return Err(ApiError::Forbidden("Only org admins can change roles".into())),
+            _ => {
+                return Err(ApiError::Forbidden(
+                    "Only org admins can change roles".into(),
+                ));
+            }
         }
     }
 
@@ -121,10 +145,19 @@ pub async fn remove_member(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     if !access_context.is_admin {
-        let role = Organization::get_user_role(&deployment.db().pool, &id, access_context.user_id.as_str()).await?;
+        let role = Organization::get_user_role(
+            &deployment.db().pool,
+            &id,
+            access_context.user_id.as_str(),
+        )
+        .await?;
         match role.as_deref() {
             Some("admin") => {}
-            _ => return Err(ApiError::Forbidden("Only org admins can remove members".into())),
+            _ => {
+                return Err(ApiError::Forbidden(
+                    "Only org admins can remove members".into(),
+                ));
+            }
         }
     }
 
@@ -157,7 +190,9 @@ pub async fn generate_invite(
         return Err(ApiError::Forbidden("Admin only".into()));
     }
 
-    let id_uuid = DbUuid::parse(&id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let pool = &deployment.db().pool;
     let token = Uuid::new_v4().to_string();
 
@@ -174,7 +209,9 @@ pub async fn generate_invite(
         .unwrap_or_else(|_| "https://dashboard.powerclubglobal.com".to_string());
     let invite_url = format!("{}/signup?invite={}", base_url, token);
 
-    Ok(Json(ApiResponse::success(GenerateInviteResponse { invite_url })))
+    Ok(Json(ApiResponse::success(GenerateInviteResponse {
+        invite_url,
+    })))
 }
 
 // ---------------------------------------------------------------------------
@@ -231,7 +268,9 @@ pub async fn get_org_persons(
     if !access_context.is_admin {
         let role = Organization::get_user_role(pool, &id, access_context.user_id.as_str()).await?;
         if role.is_none() {
-            return Err(ApiError::Forbidden("Not a member of this organization".into()));
+            return Err(ApiError::Forbidden(
+                "Not a member of this organization".into(),
+            ));
         }
     }
 
@@ -341,7 +380,9 @@ pub async fn list_org_person_contacts(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<PersonOrgContact>>>, ApiError> {
-    let id = DbUuid::parse(&id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let id = DbUuid::parse(&id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let pool = &deployment.db().pool;
     let contacts = PersonOrgContact::list_for_org(pool, id).await?;
     Ok(Json(ApiResponse::success(contacts)))
@@ -360,7 +401,9 @@ pub async fn add_org_person_contact(
     Path(id): Path<String>,
     Json(data): Json<AddOrgPersonContactBody>,
 ) -> Result<Json<ApiResponse<PersonOrgContact>>, ApiError> {
-    let id = DbUuid::parse(&id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let id = DbUuid::parse(&id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let pool = &deployment.db().pool;
     let upsert_data = UpsertPersonOrgContact {
         organization_id: id,
@@ -377,8 +420,14 @@ pub async fn list_org_companies(
     Path(id): Path<String>,
 ) -> Result<Json<Vec<Company>>, ApiError> {
     let pool = &deployment.db().pool;
-    let companies = Company::list(pool, Some(db::db_uuid::DbUuid::from(id.clone())), None, Some(200)).await
-        .map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let companies = Company::list(
+        pool,
+        Some(db::db_uuid::DbUuid::from(id.clone())),
+        None,
+        Some(200),
+    )
+    .await
+    .map_err(|e| ApiError::InternalError(e.to_string()))?;
     Ok(Json(companies))
 }
 
@@ -409,10 +458,14 @@ pub async fn require_org_admin_access(
     if access_context.is_admin {
         return Ok(());
     }
-    let role = Organization::get_user_role(pool, &org_id.to_string(), access_context.user_id.as_str()).await?;
+    let role =
+        Organization::get_user_role(pool, &org_id.to_string(), access_context.user_id.as_str())
+            .await?;
     match role.as_deref() {
         Some("admin") => Ok(()),
-        _ => Err(ApiError::Forbidden("Only org admins can manage member assignments".into())),
+        _ => Err(ApiError::Forbidden(
+            "Only org admins can manage member assignments".into(),
+        )),
     }
 }
 
@@ -424,7 +477,9 @@ pub async fn require_is_org_member(
 ) -> Result<(), ApiError> {
     let role = Organization::get_user_role(pool, &org_id.to_string(), &user_id.to_string()).await?;
     if role.is_none() {
-        return Err(ApiError::BadRequest("User is not a member of this organization".into()));
+        return Err(ApiError::BadRequest(
+            "User is not a member of this organization".into(),
+        ));
     }
     Ok(())
 }
@@ -436,8 +491,12 @@ pub async fn assign_member(
     State(deployment): State<DeploymentImpl>,
     Json(data): Json<AssignMemberRequest>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
-    let org_id = DbUuid::parse(&org_id).map_err(|e| ApiError::BadRequest(format!("Invalid org UUID: {}", e)))?.to_uuid();
-    let user_id = DbUuid::parse(&user_id).map_err(|e| ApiError::BadRequest(format!("Invalid user UUID: {}", e)))?.to_uuid();
+    let org_id = DbUuid::parse(&org_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid org UUID: {}", e)))?
+        .to_uuid();
+    let user_id = DbUuid::parse(&user_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid user UUID: {}", e)))?
+        .to_uuid();
     let pool = &deployment.db().pool;
     require_org_admin_access(pool, &access_context, org_id).await?;
     require_is_org_member(pool, org_id, user_id).await?;
@@ -457,7 +516,9 @@ pub async fn assign_member(
             .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
             if belongs.is_none() {
-                return Err(ApiError::BadRequest("Project not found in this organization".into()));
+                return Err(ApiError::BadRequest(
+                    "Project not found in this organization".into(),
+                ));
             }
 
             let role = data.role.as_deref().unwrap_or("editor");
@@ -470,7 +531,10 @@ pub async fn assign_member(
             .bind(&target_bytes)
             .bind(user_id.as_bytes().to_vec())
             .bind(role)
-            .bind(db::bind_uuid_blob(&access_context.user_id).map_err(|e| ApiError::InternalError(format!("Invalid UUID: {e}")))?)
+            .bind(
+                db::bind_uuid_blob(&access_context.user_id)
+                    .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {e}")))?,
+            )
             .execute(pool)
             .await
             .map_err(|e| ApiError::InternalError(format!("Failed to assign to project: {}", e)))?;
@@ -495,7 +559,9 @@ pub async fn assign_member(
             .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
             if belongs.is_none() {
-                return Err(ApiError::BadRequest("Client not found in this organization".into()));
+                return Err(ApiError::BadRequest(
+                    "Client not found in this organization".into(),
+                ));
             }
 
             let role = data.role.as_deref().unwrap_or("viewer");
@@ -508,7 +574,10 @@ pub async fn assign_member(
             .bind(&target_bytes)
             .bind(user_id.as_bytes().to_vec())
             .bind(role)
-            .bind(db::bind_uuid_blob(&access_context.user_id).map_err(|e| ApiError::InternalError(format!("Invalid UUID: {e}")))?)
+            .bind(
+                db::bind_uuid_blob(&access_context.user_id)
+                    .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {e}")))?,
+            )
             .execute(pool)
             .await
             .map_err(|e| ApiError::InternalError(format!("Failed to assign to client: {}", e)))?;
@@ -525,7 +594,7 @@ pub async fn assign_member(
             let belongs: Option<i64> = sqlx::query_scalar(
                 r#"SELECT 1 FROM tasks t
                    JOIN projects p ON p.id = t.project_id
-                   WHERE t.id = ? AND p.organization_id = ? AND t.deleted_at IS NULL LIMIT 1"#
+                   WHERE t.id = ? AND p.organization_id = ? AND t.deleted_at IS NULL LIMIT 1"#,
             )
             .bind(data.target_id.to_string())
             .bind(&org_id_bytes)
@@ -534,24 +603,26 @@ pub async fn assign_member(
             .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
             if belongs.is_none() {
-                return Err(ApiError::BadRequest("Task not found in this organization".into()));
+                return Err(ApiError::BadRequest(
+                    "Task not found in this organization".into(),
+                ));
             }
 
-            sqlx::query(
-                "UPDATE tasks SET assignee_id = ?, assignee_type = 'user' WHERE id = ?"
-            )
-            .bind(user_id.to_string())
-            .bind(data.target_id.to_string())
-            .execute(pool)
-            .await
-            .map_err(|e| ApiError::InternalError(format!("Failed to assign task: {}", e)))?;
+            sqlx::query("UPDATE tasks SET assignee_id = ?, assignee_type = 'user' WHERE id = ?")
+                .bind(user_id.to_string())
+                .bind(data.target_id.to_string())
+                .execute(pool)
+                .await
+                .map_err(|e| ApiError::InternalError(format!("Failed to assign task: {}", e)))?;
 
             Ok(Json(ApiResponse::success(serde_json::json!({
                 "assigned": "task",
                 "task_id": data.target_id.to_string(),
             }))))
         }
-        _ => Err(ApiError::BadRequest("Invalid assignment type. Must be 'project', 'client', or 'task'".into())),
+        _ => Err(ApiError::BadRequest(
+            "Invalid assignment type. Must be 'project', 'client', or 'task'".into(),
+        )),
     }
 }
 
@@ -562,14 +633,19 @@ pub async fn watch_task_for_member(
     State(deployment): State<DeploymentImpl>,
     Json(data): Json<WatchTaskRequest>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
-    let org_id = DbUuid::parse(&org_id).map_err(|e| ApiError::BadRequest(format!("Invalid org UUID: {}", e)))?.to_uuid();
-    let user_id = DbUuid::parse(&user_id).map_err(|e| ApiError::BadRequest(format!("Invalid user UUID: {}", e)))?.to_uuid();
+    let org_id = DbUuid::parse(&org_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid org UUID: {}", e)))?
+        .to_uuid();
+    let user_id = DbUuid::parse(&user_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid user UUID: {}", e)))?
+        .to_uuid();
     let pool = &deployment.db().pool;
     require_org_admin_access(pool, &access_context, org_id).await?;
     require_is_org_member(pool, org_id, user_id).await?;
 
     // Use the Task::add_watcher method from Phase 2
-    db::models::task::Task::add_watcher(pool, &data.task_id.to_string(), &user_id.to_string()).await
+    db::models::task::Task::add_watcher(pool, &data.task_id.to_string(), &user_id.to_string())
+        .await
         .map_err(|e| ApiError::InternalError(format!("Failed to add watcher: {}", e)))?;
 
     Ok(Json(ApiResponse::success(serde_json::json!({
@@ -585,8 +661,12 @@ pub async fn get_member_assignments(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
-    let org_id = DbUuid::parse(&org_id).map_err(|e| ApiError::BadRequest(format!("Invalid org UUID: {}", e)))?.to_uuid();
-    let user_id = DbUuid::parse(&user_id).map_err(|e| ApiError::BadRequest(format!("Invalid user UUID: {}", e)))?.to_uuid();
+    let org_id = DbUuid::parse(&org_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid org UUID: {}", e)))?
+        .to_uuid();
+    let user_id = DbUuid::parse(&user_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid user UUID: {}", e)))?
+        .to_uuid();
     let pool = &deployment.db().pool;
 
     // Any org member can view assignments; admins can view anyone's
@@ -679,13 +759,15 @@ pub async fn get_member_assignments(
     .await
     .unwrap_or_default()
     .into_iter()
-    .map(|r| serde_json::json!({
-        "task_id": r.id,
-        "title": r.title,
-        "status": r.status,
-        "project_name": r.project_name,
-        "type": "assignee",
-    }))
+    .map(|r| {
+        serde_json::json!({
+            "task_id": r.id,
+            "title": r.title,
+            "status": r.status,
+            "project_name": r.project_name,
+            "type": "assignee",
+        })
+    })
     .collect();
 
     // Tasks watched by this user within this org
@@ -697,19 +779,24 @@ pub async fn get_member_assignments(
              AND p.organization_id = ? AND t.deleted_at IS NULL
            ORDER BY t.updated_at DESC"#,
     )
-    .bind(format!("%\"user_id\":\"{}\",%\"actor_type\":\"watcher\"%", user_id))
+    .bind(format!(
+        "%\"user_id\":\"{}\",%\"actor_type\":\"watcher\"%",
+        user_id
+    ))
     .bind(&org_id_bytes)
     .fetch_all(pool)
     .await
     .unwrap_or_default()
     .into_iter()
-    .map(|r| serde_json::json!({
-        "task_id": r.id,
-        "title": r.title,
-        "status": r.status,
-        "project_name": r.project_name,
-        "type": "watcher",
-    }))
+    .map(|r| {
+        serde_json::json!({
+            "task_id": r.id,
+            "title": r.title,
+            "status": r.status,
+            "project_name": r.project_name,
+            "type": "watcher",
+        })
+    })
     .collect();
 
     Ok(Json(ApiResponse::success(serde_json::json!({
@@ -726,9 +813,15 @@ pub async fn unassign_project(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    let org_id = DbUuid::parse(&org_id).map_err(|e| ApiError::BadRequest(format!("Invalid org UUID: {}", e)))?.to_uuid();
-    let user_id = DbUuid::parse(&user_id).map_err(|e| ApiError::BadRequest(format!("Invalid user UUID: {}", e)))?.to_uuid();
-    let project_id = DbUuid::parse(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid project UUID: {}", e)))?.to_uuid();
+    let org_id = DbUuid::parse(&org_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid org UUID: {}", e)))?
+        .to_uuid();
+    let user_id = DbUuid::parse(&user_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid user UUID: {}", e)))?
+        .to_uuid();
+    let project_id = DbUuid::parse(&project_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid project UUID: {}", e)))?
+        .to_uuid();
     let pool = &deployment.db().pool;
     require_org_admin_access(pool, &access_context, org_id).await?;
 
@@ -748,9 +841,15 @@ pub async fn unassign_client(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    let org_id = DbUuid::parse(&org_id).map_err(|e| ApiError::BadRequest(format!("Invalid org UUID: {}", e)))?.to_uuid();
-    let user_id = DbUuid::parse(&user_id).map_err(|e| ApiError::BadRequest(format!("Invalid user UUID: {}", e)))?.to_uuid();
-    let client_id = DbUuid::parse(&client_id).map_err(|e| ApiError::BadRequest(format!("Invalid client UUID: {}", e)))?.to_uuid();
+    let org_id = DbUuid::parse(&org_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid org UUID: {}", e)))?
+        .to_uuid();
+    let user_id = DbUuid::parse(&user_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid user UUID: {}", e)))?
+        .to_uuid();
+    let client_id = DbUuid::parse(&client_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid client UUID: {}", e)))?
+        .to_uuid();
     let pool = &deployment.db().pool;
     require_org_admin_access(pool, &access_context, org_id).await?;
 

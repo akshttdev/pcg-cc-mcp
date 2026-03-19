@@ -28,14 +28,15 @@
 //!
 //! All other UUID columns have been migrated to TEXT.
 
-use std::fmt;
-use std::ops::Deref;
+use std::{fmt, ops::Deref};
 
 use serde::{Deserialize, Serialize};
-use sqlx::encode::IsNull;
-use sqlx::error::BoxDynError;
-use sqlx::sqlite::{SqliteArgumentValue, SqliteTypeInfo, SqliteValueRef};
-use sqlx::{Decode, Encode, Sqlite, Type, TypeInfo, ValueRef};
+use sqlx::{
+    Decode, Encode, Sqlite, Type, TypeInfo, ValueRef,
+    encode::IsNull,
+    error::BoxDynError,
+    sqlite::{SqliteArgumentValue, SqliteTypeInfo, SqliteValueRef},
+};
 
 /// A UUID that transparently decodes both BLOB and TEXT from SQLite.
 ///
@@ -192,7 +193,10 @@ impl Decode<'_, Sqlite> for DbUuid {
 }
 
 impl Encode<'_, Sqlite> for DbUuid {
-    fn encode_by_ref(&self, args: &mut Vec<SqliteArgumentValue<'_>>) -> Result<IsNull, BoxDynError> {
+    fn encode_by_ref(
+        &self,
+        args: &mut Vec<SqliteArgumentValue<'_>>,
+    ) -> Result<IsNull, BoxDynError> {
         // Always encode as TEXT
         Encode::<Sqlite>::encode_by_ref(&self.0, args)
     }
@@ -257,9 +261,7 @@ pub fn bind_uuid(uuid: &DbUuid) -> &str {
 ///     .bind(bind_uuid_blob(&user_id)?)
 /// ```
 pub fn bind_uuid_blob(uuid: &DbUuid) -> Result<Vec<u8>, uuid::Error> {
-    Ok(uuid::Uuid::parse_str(uuid.as_str())?
-        .as_bytes()
-        .to_vec())
+    Ok(uuid::Uuid::parse_str(uuid.as_str())?.as_bytes().to_vec())
 }
 
 /// Convert an `Option<DbUuid>` to optional 16-byte BLOB for legacy BLOB columns.

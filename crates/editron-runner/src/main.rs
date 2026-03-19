@@ -6,9 +6,11 @@
 //!   3. Smart Assembly  — Beat-locked timeline with pacing engine
 //!   4. Export           — Premiere Pro XML + FFmpeg render script + MP4
 
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    time::Instant,
+};
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -17,11 +19,11 @@ use tracing::{info, warn};
 #[cfg(feature = "dashboard")]
 mod dashboard;
 
-use services::services::beat_analysis::BeatAnalysisEngine;
-use services::services::editron::music::MusicLibrary;
-use services::services::recap_assembly::{EditTransition, RecapAssemblyEngine, RecapAssemblyResult};
-use services::services::scene_analysis::{
-    assign_energy_quartiles, SceneAnalysisEngine, SceneAnalysisResult,
+use services::services::{
+    beat_analysis::BeatAnalysisEngine,
+    editron::music::MusicLibrary,
+    recap_assembly::{EditTransition, RecapAssemblyEngine, RecapAssemblyResult},
+    scene_analysis::{assign_energy_quartiles, SceneAnalysisEngine, SceneAnalysisResult},
 };
 
 /// Editron Event Recap Pipeline Runner
@@ -143,7 +145,8 @@ async fn main() -> Result<()> {
     // Log music recommendation if event type is specified
     if let Some(ref event_type) = cli.event_type {
         let music_lib = MusicLibrary::new(&cli.output, &PathBuf::from("ffmpeg"));
-        let recommendation = music_lib.recommend_for_content(event_type, cli.duration.unwrap_or(59.0));
+        let recommendation =
+            music_lib.recommend_for_content(event_type, cli.duration.unwrap_or(59.0));
         info!("Event type: {}", event_type);
         info!("Music recommendation:");
         info!("  Rationale: {}", recommendation.rationale);
@@ -215,7 +218,10 @@ async fn main() -> Result<()> {
 
     // Assign energy quartiles after all clips have been analyzed
     assign_energy_quartiles(&mut scene_result.clips);
-    info!("Energy quartiles assigned to {} clips", scene_result.clips.len());
+    info!(
+        "Energy quartiles assigned to {} clips",
+        scene_result.clips.len()
+    );
 
     // Log content type distribution
     {
@@ -336,19 +342,10 @@ async fn main() -> Result<()> {
             .map(|p| p.timeline_out - p.timeline_in)
             .collect();
         if !shot_durs.is_empty() {
-            let min_dur = shot_durs
-                .iter()
-                .cloned()
-                .fold(f64::INFINITY, f64::min);
-            let max_dur = shot_durs
-                .iter()
-                .cloned()
-                .fold(f64::NEG_INFINITY, f64::max);
+            let min_dur = shot_durs.iter().cloned().fold(f64::INFINITY, f64::min);
+            let max_dur = shot_durs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
             let avg_dur = shot_durs.iter().sum::<f64>() / shot_durs.len() as f64;
-            let variance = shot_durs
-                .iter()
-                .map(|d| (d - avg_dur).powi(2))
-                .sum::<f64>()
+            let variance = shot_durs.iter().map(|d| (d - avg_dur).powi(2)).sum::<f64>()
                 / shot_durs.len() as f64;
             let stddev = variance.sqrt();
             info!(
@@ -419,8 +416,7 @@ async fn main() -> Result<()> {
     };
 
     // Generate Premiere Pro XML
-    let xml =
-        RecapAssemblyEngine::generate_premiere_xml(&assembly_result, &placements, &beat_grid);
+    let xml = RecapAssemblyEngine::generate_premiere_xml(&assembly_result, &placements, &beat_grid);
     tokio::fs::write(&xml_path, &xml)
         .await
         .context("Failed to write Premiere XML")?;
@@ -493,10 +489,7 @@ async fn main() -> Result<()> {
         "║ Resolution:   {:<35}║",
         format!("{}x{}", cli.width, cli.height)
     );
-    println!(
-        "║ BPM:          {:<35}║",
-        format!("{:.1}", beat_grid.bpm)
-    );
+    println!("║ BPM:          {:<35}║", format!("{:.1}", beat_grid.bpm));
     println!(
         "║ Clips used:   {:<35}║",
         format!("{}/{}", placements.len(), scene_result.total_usable)

@@ -12,9 +12,7 @@ use serde_json::Value;
 use sqlx::types::Json as SqlxJson;
 use uuid::Uuid;
 
-use super::TaskServer;
-use super::helpers::*;
-use super::types::*;
+use super::{TaskServer, helpers::*, types::*};
 
 impl TaskServer {
     #[tool(
@@ -31,7 +29,12 @@ impl TaskServer {
 
         match Project::exists(&self.pool, &project_uuid.to_string()).await {
             Ok(false) => return Ok(error_result("Project not found", None)),
-            Err(e) => return Ok(error_result("Failed to check project", Some(&e.to_string()))),
+            Err(e) => {
+                return Ok(error_result(
+                    "Failed to check project",
+                    Some(&e.to_string()),
+                ));
+            }
             Ok(true) => {}
         }
 
@@ -39,12 +42,8 @@ impl TaskServer {
         let due_date = req.due_date.as_deref().and_then(parse_iso_datetime);
         let scheduled_start = req.scheduled_start.as_deref().and_then(parse_iso_datetime);
         let scheduled_end = req.scheduled_end.as_deref().and_then(parse_iso_datetime);
-        let parent_task_id = req
-            .parent_task_id
-            .clone();
-        let board_id = req
-            .board_id
-            .clone();
+        let parent_task_id = req.parent_task_id.clone();
+        let board_id = req.board_id.clone();
 
         let task_id = Uuid::new_v4();
         let task_id_str = task_id.to_string();
@@ -104,10 +103,12 @@ impl TaskServer {
         let status_filter = if let Some(ref status_str) = req.status {
             match parse_task_status(status_str) {
                 Some(s) => Some(s),
-                None => return Ok(error_result(
-                    "Invalid status filter. Valid: todo, inprogress, inreview, done, cancelled",
-                    None,
-                )),
+                None => {
+                    return Ok(error_result(
+                        "Invalid status filter. Valid: todo, inprogress, inreview, done, cancelled",
+                        None,
+                    ));
+                }
             }
         } else {
             None
@@ -118,16 +119,28 @@ impl TaskServer {
         let project = match Project::find_by_id(&self.pool, &project_uuid.to_string()).await {
             Ok(Some(p)) => p,
             Ok(None) => return Ok(error_result("Project not found", None)),
-            Err(e) => return Ok(error_result("Failed to check project", Some(&e.to_string()))),
+            Err(e) => {
+                return Ok(error_result(
+                    "Failed to check project",
+                    Some(&e.to_string()),
+                ));
+            }
         };
 
         let task_limit = req.limit.unwrap_or(50).clamp(1, 200);
         let page = req.page.unwrap_or(1).max(1);
-        let sort_by = req.sort_by.clone().unwrap_or_else(|| "created_at".to_string());
-        let sort_dir = req.sort_direction.clone().unwrap_or_else(|| "desc".to_string());
+        let sort_by = req
+            .sort_by
+            .clone()
+            .unwrap_or_else(|| "created_at".to_string());
+        let sort_dir = req
+            .sort_direction
+            .clone()
+            .unwrap_or_else(|| "desc".to_string());
 
         let tasks_result =
-            Task::find_by_project_id_with_attempt_status(&self.pool, &project_uuid.to_string()).await;
+            Task::find_by_project_id_with_attempt_status(&self.pool, &project_uuid.to_string())
+                .await;
 
         match tasks_result {
             Ok(tasks) => {
@@ -242,7 +255,10 @@ impl TaskServer {
                     },
                 }))
             }
-            Err(e) => Ok(error_result("Failed to retrieve tasks", Some(&e.to_string()))),
+            Err(e) => Ok(error_result(
+                "Failed to retrieve tasks",
+                Some(&e.to_string()),
+            )),
         }
     }
 
@@ -265,21 +281,38 @@ impl TaskServer {
         let status_enum = if let Some(ref s) = req.status {
             match parse_task_status(s) {
                 Some(st) => Some(st),
-                None => return Ok(error_result(
-                    "Invalid status. Valid: todo, inprogress, inreview, done, cancelled",
-                    None,
-                )),
+                None => {
+                    return Ok(error_result(
+                        "Invalid status. Valid: todo, inprogress, inreview, done, cancelled",
+                        None,
+                    ));
+                }
             }
         } else {
             None
         };
 
-        let current_task =
-            match Task::find_by_id_and_project_id(&self.pool, &task_uuid.to_string(), &project_uuid.to_string()).await {
-                Ok(Some(t)) => t,
-                Ok(None) => return Ok(error_result("Task not found in the specified project", None)),
-                Err(e) => return Ok(error_result("Failed to retrieve task", Some(&e.to_string()))),
-            };
+        let current_task = match Task::find_by_id_and_project_id(
+            &self.pool,
+            &task_uuid.to_string(),
+            &project_uuid.to_string(),
+        )
+        .await
+        {
+            Ok(Some(t)) => t,
+            Ok(None) => {
+                return Ok(error_result(
+                    "Task not found in the specified project",
+                    None,
+                ));
+            }
+            Err(e) => {
+                return Ok(error_result(
+                    "Failed to retrieve task",
+                    Some(&e.to_string()),
+                ));
+            }
+        };
 
         let new_title = req.title.unwrap_or_else(|| current_task.title.clone());
         let new_description = req.description.or_else(|| current_task.description.clone());
@@ -304,7 +337,9 @@ impl TaskServer {
         };
 
         let new_tags = match &req.tags {
-            Some(t) => serde_json::to_string(t).ok().or_else(|| current_task.tags.clone()),
+            Some(t) => serde_json::to_string(t)
+                .ok()
+                .or_else(|| current_task.tags.clone()),
             None => current_task.tags.clone(),
         };
 
@@ -328,20 +363,32 @@ impl TaskServer {
 
         let new_parent_task_id = match &req.parent_task_id {
             Some(s) if s.is_empty() => None,
-            Some(s) => Uuid::parse_str(s).ok().map(|u| u.to_string()).or(current_task.parent_task_id.clone()),
+            Some(s) => Uuid::parse_str(s)
+                .ok()
+                .map(|u| u.to_string())
+                .or(current_task.parent_task_id.clone()),
             None => current_task.parent_task_id.clone(),
         };
 
         let new_board_id = match &req.board_id {
             Some(s) if s.is_empty() => None,
-            Some(s) => Uuid::parse_str(s).ok().map(|u| u.to_string()).or(current_task.board_id.clone()),
+            Some(s) => Uuid::parse_str(s)
+                .ok()
+                .map(|u| u.to_string())
+                .or(current_task.board_id.clone()),
             None => current_task.board_id.clone(),
         };
 
-        let new_requires_approval = req.requires_approval.unwrap_or(current_task.requires_approval);
+        let new_requires_approval = req
+            .requires_approval
+            .unwrap_or(current_task.requires_approval);
 
-        let new_completion_criteria = req.completion_criteria.or_else(|| current_task.completion_criteria.clone());
-        let new_output_format = req.output_format.or_else(|| current_task.output_format.clone());
+        let new_completion_criteria = req
+            .completion_criteria
+            .or_else(|| current_task.completion_criteria.clone());
+        let new_output_format = req
+            .output_format
+            .or_else(|| current_task.output_format.clone());
 
         let new_custom_properties = match &req.custom_properties {
             Some(Value::Null) => None,
@@ -408,7 +455,13 @@ impl TaskServer {
             Err(r) => return Ok(r),
         };
 
-        match Task::exists(&self.pool, &task_uuid.to_string(), &project_uuid.to_string()).await {
+        match Task::exists(
+            &self.pool,
+            &task_uuid.to_string(),
+            &project_uuid.to_string(),
+        )
+        .await
+        {
             Ok(true) => match Task::delete(&self.pool, &task_uuid.to_string()).await {
                 Ok(rows) if rows > 0 => Ok(success_json(&DeleteTaskResponse {
                     success: true,
@@ -418,8 +471,14 @@ impl TaskServer {
                 Ok(_) => Ok(error_result("Task not found or already deleted", None)),
                 Err(e) => Ok(error_result("Failed to delete task", Some(&e.to_string()))),
             },
-            Ok(false) => Ok(error_result("Task not found in the specified project", None)),
-            Err(e) => Ok(error_result("Failed to check task existence", Some(&e.to_string()))),
+            Ok(false) => Ok(error_result(
+                "Task not found in the specified project",
+                None,
+            )),
+            Err(e) => Ok(error_result(
+                "Failed to check task existence",
+                Some(&e.to_string()),
+            )),
         }
     }
 
@@ -442,8 +501,12 @@ impl TaskServer {
             Err(r) => return Ok(r),
         };
 
-        let task_result =
-            Task::find_by_id_and_project_id(&self.pool, &task_uuid.to_string(), &project_uuid.to_string()).await;
+        let task_result = Task::find_by_id_and_project_id(
+            &self.pool,
+            &task_uuid.to_string(),
+            &project_uuid.to_string(),
+        )
+        .await;
         let project_result = Project::find_by_id(&self.pool, &project_uuid.to_string()).await;
 
         match (task_result, project_result) {
@@ -489,19 +552,24 @@ impl TaskServer {
         };
 
         // Find the task
-        let current_task =
-            match Task::find_by_id_and_project_id(&self.pool, &task_uuid.to_string(), &project_uuid.to_string()).await {
-                Ok(Some(task)) => task,
-                Ok(None) => {
-                    return Ok(CallToolResult::error(vec![Content::text(
-                        r#"{"success": false, "error": "Task not found in project"}"#,
-                    )]));
-                }
-                Err(e) => {
-                    let msg = format!(r#"{{"success": false, "error": "{}"}}"#, e);
-                    return Ok(CallToolResult::error(vec![Content::text(msg)]));
-                }
-            };
+        let current_task = match Task::find_by_id_and_project_id(
+            &self.pool,
+            &task_uuid.to_string(),
+            &project_uuid.to_string(),
+        )
+        .await
+        {
+            Ok(Some(task)) => task,
+            Ok(None) => {
+                return Ok(CallToolResult::error(vec![Content::text(
+                    r#"{"success": false, "error": "Task not found in project"}"#,
+                )]));
+            }
+            Err(e) => {
+                let msg = format!(r#"{{"success": false, "error": "{}"}}"#, e);
+                return Ok(CallToolResult::error(vec![Content::text(msg)]));
+            }
+        };
 
         // Resolve assignee — either "unassign" or a username/UUID
         let assignee_id: Option<String> = if assignee.to_lowercase() == "unassign" {
@@ -513,7 +581,9 @@ impl TaskServer {
                 Err(_) => {
                     // Look up by username
                     #[derive(sqlx::FromRow)]
-                    struct UserId { id: Vec<u8> }
+                    struct UserId {
+                        id: Vec<u8>,
+                    }
                     match sqlx::query_as::<_, UserId>(
                         "SELECT id FROM users WHERE username = ? COLLATE NOCASE AND is_active = 1",
                     )
@@ -601,7 +671,12 @@ impl TaskServer {
 
         match Project::exists(&self.pool, &project_uuid.to_string()).await {
             Ok(false) => return Ok(error_result("Project not found", None)),
-            Err(e) => return Ok(error_result("Failed to check project", Some(&e.to_string()))),
+            Err(e) => {
+                return Ok(error_result(
+                    "Failed to check project",
+                    Some(&e.to_string()),
+                ));
+            }
             Ok(true) => {}
         }
 
@@ -624,9 +699,7 @@ impl TaskServer {
             let task_id = Uuid::new_v4().to_string();
             let priority = item.priority.as_deref().and_then(parse_priority);
             let due_date = item.due_date.as_deref().and_then(parse_iso_datetime);
-            let parent_task_id = item
-                .parent_task_id
-                .clone();
+            let parent_task_id = item.parent_task_id.clone();
 
             let create_data = CreateTask {
                 project_id: project_uuid.to_string(),
@@ -720,24 +793,29 @@ impl TaskServer {
                 }
             };
 
-            let current =
-                match Task::find_by_id_and_project_id(&self.pool, &task_uuid.to_string(), &project_uuid.to_string()).await {
-                    Ok(Some(t)) => t,
-                    Ok(None) => {
-                        results.push(serde_json::json!({
-                            "index": i, "success": false, "task_id": item.task_id,
-                            "error": "Task not found"
-                        }));
-                        continue;
-                    }
-                    Err(e) => {
-                        results.push(serde_json::json!({
-                            "index": i, "success": false, "task_id": item.task_id,
-                            "error": e.to_string()
-                        }));
-                        continue;
-                    }
-                };
+            let current = match Task::find_by_id_and_project_id(
+                &self.pool,
+                &task_uuid.to_string(),
+                &project_uuid.to_string(),
+            )
+            .await
+            {
+                Ok(Some(t)) => t,
+                Ok(None) => {
+                    results.push(serde_json::json!({
+                        "index": i, "success": false, "task_id": item.task_id,
+                        "error": "Task not found"
+                    }));
+                    continue;
+                }
+                Err(e) => {
+                    results.push(serde_json::json!({
+                        "index": i, "success": false, "task_id": item.task_id,
+                        "error": e.to_string()
+                    }));
+                    continue;
+                }
+            };
 
             let new_status = item
                 .status
@@ -760,7 +838,9 @@ impl TaskServer {
                 None => current.assigned_agent.clone(),
             };
             let new_tags = match &item.tags {
-                Some(t) => serde_json::to_string(t).ok().or_else(|| current.tags.clone()),
+                Some(t) => serde_json::to_string(t)
+                    .ok()
+                    .or_else(|| current.tags.clone()),
                 None => current.tags.clone(),
             };
 
@@ -845,11 +925,21 @@ impl TaskServer {
                     // Admin: get all projects
                     match Project::find_all(&self.pool).await {
                         Ok(ps) => ps.into_iter().map(|p| p.id).collect(),
-                        Err(e) => return Ok(error_result("Failed to list projects", Some(&e.to_string()))),
+                        Err(e) => {
+                            return Ok(error_result(
+                                "Failed to list projects",
+                                Some(&e.to_string()),
+                            ));
+                        }
                     }
                 }
                 Ok(Some(ids)) => ids.into_iter().map(|id| id.to_string()).collect(),
-                Err(e) => return Ok(error_result("Failed to determine accessible projects", Some(&e.to_string()))),
+                Err(e) => {
+                    return Ok(error_result(
+                        "Failed to determine accessible projects",
+                        Some(&e.to_string()),
+                    ));
+                }
             }
         };
 

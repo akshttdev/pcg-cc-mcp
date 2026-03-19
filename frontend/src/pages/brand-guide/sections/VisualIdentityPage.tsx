@@ -33,7 +33,7 @@ export function VisualIdentityPage({ primary, secondary, accent, headingFont, bo
         <div className="flex gap-2 flex-wrap">
           {[...primaryTints.map((t, i) => ({ color: t, label: `Primary ${(i + 1) * 25}%` })),
             ...accentTints.map((t, i) => ({ color: t, label: `Accent ${(i + 1) * 25}%` }))
-          ].map(({ color, label: _label }, i) => (
+          ].map(({ color }, i) => (
             <div key={i} className="flex flex-col items-center gap-1">
               <div className="h-10 w-10 rounded-lg border border-black/8 shadow-sm" style={{ background: color }} />
               <p className="text-[8px] font-mono text-gray-400">{color}</p>

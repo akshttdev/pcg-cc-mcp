@@ -197,8 +197,9 @@ pub async fn create_task(
 
 /// Show session history
 pub async fn session_history(_api: &ApiClient, limit: usize) -> Result<()> {
-    use crate::session::ConversationLog;
     use colored::Colorize;
+
+    use crate::session::ConversationLog;
 
     let output = OutputHandler::new(false, false);
     output.print_header(&format!("Recent Sessions (last {})", limit));
@@ -213,14 +214,21 @@ pub async fn session_history(_api: &ApiClient, limit: usize) -> Result<()> {
     println!();
     println!(
         "{}",
-        format!("{:<20} {:<26} {:>8} {:>8}", "Date", "Project", "Messages", "Tokens")
-            .bright_white()
-            .bold()
+        format!(
+            "{:<20} {:<26} {:>8} {:>8}",
+            "Date", "Project", "Messages", "Tokens"
+        )
+        .bright_white()
+        .bold()
     );
     println!("{}", "─".repeat(65).dimmed());
 
     for s in &sessions {
-        let date = s.started_at.get(..16).unwrap_or(&s.started_at).replace('T', " ");
+        let date = s
+            .started_at
+            .get(..16)
+            .unwrap_or(&s.started_at)
+            .replace('T', " ");
         let project = s.project.as_deref().unwrap_or("(no project)");
         let project_display = if project.len() > 24 {
             format!("{}…", &project[..23])

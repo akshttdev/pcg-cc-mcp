@@ -4,6 +4,7 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use db::models::social_account::SocialPlatform;
 use reqwest::Client;
 use serde::Deserialize;
 
@@ -11,7 +12,6 @@ use crate::services::social::{
     EngagementMetrics, OAuthTokens, PlatformConnector, PlatformLimits, PlatformMention,
     ProfileInfo, PublishContent, PublishResult, SocialError,
 };
-use db::models::social_account::SocialPlatform;
 
 const TIKTOK_AUTH_URL: &str = "https://www.tiktok.com/v2/auth/authorize/";
 const TIKTOK_TOKEN_URL: &str = "https://open.tiktokapis.com/v2/oauth/token/";
@@ -51,7 +51,6 @@ struct TikTokUserInfo {
     display_name: String,
     avatar_url: Option<String>,
 }
-
 
 #[derive(Debug, Deserialize)]
 struct TikTokPublishResponse {
@@ -105,7 +104,10 @@ impl PlatformConnector for TikTokConnector {
 
         if !response.status().is_success() {
             let err = response.text().await.unwrap_or_default();
-            return Err(SocialError::AuthError(format!("TikTok token exchange failed: {}", err)));
+            return Err(SocialError::AuthError(format!(
+                "TikTok token exchange failed: {}",
+                err
+            )));
         }
 
         let tok: TikTokTokenResponse = response
@@ -171,7 +173,9 @@ impl PlatformConnector for TikTokConnector {
             .map_err(|e| SocialError::NetworkError(e.to_string()))?;
 
         if !response.status().is_success() {
-            return Err(SocialError::PlatformError("Failed to fetch TikTok profile".into()));
+            return Err(SocialError::PlatformError(
+                "Failed to fetch TikTok profile".into(),
+            ));
         }
 
         let data: serde_json::Value = response
@@ -205,9 +209,10 @@ impl PlatformConnector for TikTokConnector {
         self.validate_content(content)?;
 
         // TikTok requires video URL — use first media URL if provided
-        let video_url = content.media_urls.first().cloned().ok_or_else(|| {
-            SocialError::ValidationError("TikTok requires a video URL".into())
-        })?;
+        let video_url =
+            content.media_urls.first().cloned().ok_or_else(|| {
+                SocialError::ValidationError("TikTok requires a video URL".into())
+            })?;
 
         let body = serde_json::json!({
             "post_info": {
@@ -225,10 +230,7 @@ impl PlatformConnector for TikTokConnector {
 
         let response = self
             .client
-            .post(format!(
-                "{}/post/publish/video/init/",
-                TIKTOK_API_BASE
-            ))
+            .post(format!("{}/post/publish/video/init/", TIKTOK_API_BASE))
             .bearer_auth(access_token)
             .json(&body)
             .send()
@@ -237,7 +239,10 @@ impl PlatformConnector for TikTokConnector {
 
         if !response.status().is_success() {
             let err = response.text().await.unwrap_or_default();
-            return Err(SocialError::PlatformError(format!("TikTok publish failed: {}", err)));
+            return Err(SocialError::PlatformError(format!(
+                "TikTok publish failed: {}",
+                err
+            )));
         }
 
         let result: TikTokPublishResponse = response

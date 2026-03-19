@@ -7,10 +7,10 @@
 //! - Fallback to APN Cloud when primary is offline (e.g., Sirak's laptop)
 //! - Multi-device orchestration for users with multiple compute nodes (e.g., admin)
 
+use std::{collections::HashMap, path::PathBuf};
+
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::PathBuf;
 use sqlx::SqlitePool;
 
 // ============================================================================
@@ -112,18 +112,22 @@ pub struct OrchaRouter {
 impl OrchaRouter {
     /// Load ORCHA configuration from file
     pub fn from_file(path: &str) -> Result<Self> {
-        let config_str = std::fs::read_to_string(path)
-            .context("Failed to read ORCHA config file")?;
+        let config_str =
+            std::fs::read_to_string(path).context("Failed to read ORCHA config file")?;
 
-        let config: OrchaConfig = toml::from_str(&config_str)
-            .context("Failed to parse ORCHA config")?;
+        let config: OrchaConfig =
+            toml::from_str(&config_str).context("Failed to parse ORCHA config")?;
 
         // Build lookup maps
-        let user_map: HashMap<String, UserConfig> = config.users.iter()
+        let user_map: HashMap<String, UserConfig> = config
+            .users
+            .iter()
             .map(|u| (u.username.clone(), u.clone()))
             .collect();
 
-        let device_map: HashMap<String, DeviceConfig> = config.devices.iter()
+        let device_map: HashMap<String, DeviceConfig> = config
+            .devices
+            .iter()
             .map(|d| (d.id.clone(), d.clone()))
             .collect();
 
@@ -136,37 +140,40 @@ impl OrchaRouter {
 
     /// Route user to their Topsi instance
     pub async fn route_user(&self, username: &str, pool: &SqlitePool) -> Result<TopsiRoute> {
-        let user_config = self.user_map.get(username)
+        let user_config = self
+            .user_map
+            .get(username)
             .context(format!("User '{}' not found in ORCHA config", username))?;
 
         // Check if primary device is online
-        let primary_online = self.is_device_online(pool, &user_config.primary_device).await?;
+        let primary_online = self
+            .is_device_online(pool, &user_config.primary_device)
+            .await?;
 
         let (serving_device_id, topsi_db_path, using_fallback) = if primary_online {
             // Use primary device
             (
                 user_config.primary_device.clone(),
                 PathBuf::from(&user_config.topsi_db_path),
-                false
+                false,
             )
         } else if let Some(fallback_id) = &user_config.fallback_device {
             // Use fallback device (e.g., APN Cloud for Sirak)
             let fallback_online = self.is_device_online(pool, fallback_id).await?;
 
             if fallback_online {
-                let fallback_path = user_config.cloud_backup_path.clone()
+                let fallback_path = user_config
+                    .cloud_backup_path
+                    .clone()
                     .unwrap_or_else(|| user_config.topsi_db_path.clone());
 
                 tracing::info!(
                     "Routing user '{}' to fallback device '{}' (primary offline)",
-                    username, fallback_id
+                    username,
+                    fallback_id
                 );
 
-                (
-                    fallback_id.clone(),
-                    PathBuf::from(fallback_path),
-                    true
-                )
+                (fallback_id.clone(), PathBuf::from(fallback_path), true)
             } else {
                 anyhow::bail!(
                     "Both primary and fallback devices offline for user '{}'",
@@ -176,7 +183,8 @@ impl OrchaRouter {
         } else {
             anyhow::bail!(
                 "Primary device '{}' offline and no fallback configured for user '{}'",
-                user_config.primary_device, username
+                user_config.primary_device,
+                username
             );
         };
 
@@ -193,13 +201,12 @@ impl OrchaRouter {
 
     /// Check if a device is online
     async fn is_device_online(&self, pool: &SqlitePool, device_id: &str) -> Result<bool> {
-        let result: Option<(i32,)> = sqlx::query_as(
-            "SELECT is_online FROM device_registry WHERE id = ?"
-        )
-        .bind(device_id)
-        .fetch_optional(pool)
-        .await
-        .context("Failed to query device status")?;
+        let result: Option<(i32,)> =
+            sqlx::query_as("SELECT is_online FROM device_registry WHERE id = ?")
+                .bind(device_id)
+                .fetch_optional(pool)
+                .await
+                .context("Failed to query device status")?;
 
         Ok(result.map(|(online,)| online == 1).unwrap_or(false))
     }
@@ -229,7 +236,8 @@ pub fn resolve_db_path_for_user(username: &str, config_path: Option<&str>) -> Re
     let config_file = config_path.unwrap_or("orcha_config.toml");
     let router = OrchaRouter::from_file(config_file)?;
 
-    let user_config = router.get_user(username)
+    let user_config = router
+        .get_user(username)
         .context(format!("User '{}' not found in ORCHA config", username))?;
 
     Ok(PathBuf::from(&user_config.topsi_db_path))
@@ -239,8 +247,7 @@ pub fn resolve_db_path_for_user(username: &str, config_path: Option<&str>) -> Re
 pub async fn ensure_user_topsi_db(db_path: &PathBuf) -> Result<SqlitePool> {
     // Create parent directory if needed
     if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent)
-            .context("Failed to create Topsi database directory")?;
+        std::fs::create_dir_all(parent).context("Failed to create Topsi database directory")?;
     }
 
     let db_url = format!("sqlite://{}?mode=rwc", db_path.display());

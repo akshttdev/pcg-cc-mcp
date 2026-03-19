@@ -7,8 +7,9 @@
 //! - `pcg.pulse.config.{project}.alerts.updated` — alert rule changes
 //! - `pcg.pulse.command.{project}.collect` — manual collection trigger
 
-use serde::Serialize;
 use std::sync::{Arc, OnceLock};
+
+use serde::Serialize;
 use tracing::{error, info, warn};
 
 /// Global singleton for the Pulse publisher.

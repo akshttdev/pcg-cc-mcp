@@ -116,8 +116,14 @@ impl BrandProfile {
         data: &UpsertBrandProfile,
     ) -> Result<Self, sqlx::Error> {
         let id = Uuid::new_v4();
-        let primary_color = data.primary_color.clone().unwrap_or_else(|| "#2563EB".to_string());
-        let secondary_color = data.secondary_color.clone().unwrap_or_else(|| "#EC4899".to_string());
+        let primary_color = data
+            .primary_color
+            .clone()
+            .unwrap_or_else(|| "#2563EB".to_string());
+        let secondary_color = data
+            .secondary_color
+            .clone()
+            .unwrap_or_else(|| "#EC4899".to_string());
 
         sqlx::query_as!(
             BrandProfile,

@@ -14,13 +14,18 @@
 //!   - No clip used more than 2x in a 59s edit
 //!   - Source folder diversity maximized
 
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
+
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
-use super::beat_analysis::{BeatGridResult, BeatMarker, MusicSection, SuggestedContent};
-use super::scene_analysis::{ClipAnalysis, ContentType, SceneAnalysisResult};
+use super::{
+    beat_analysis::{BeatGridResult, BeatMarker, MusicSection, SuggestedContent},
+    scene_analysis::{ClipAnalysis, ContentType, SceneAnalysisResult},
+};
 
 /// Default recap duration in seconds
 const DEFAULT_RECAP_DURATION: f64 = 59.0;
@@ -114,10 +119,7 @@ fn bpm_scaled_duration(base: f64, beat_interval: f64) -> f64 {
 impl RecapAssemblyEngine {
     /// Select the best N-second window from the full track.
     /// Searches at half-bar granularity for best narrative arc.
-    pub fn select_music_window(
-        beat_grid: &BeatGridResult,
-        target_duration: f64,
-    ) -> MusicWindow {
+    pub fn select_music_window(beat_grid: &BeatGridResult, target_duration: f64) -> MusicWindow {
         let track_dur = beat_grid.duration;
         let dur = target_duration.min(track_dur);
 
@@ -216,8 +218,8 @@ impl RecapAssemblyEngine {
             let first_q: f64 = energies[..quarter].iter().sum::<f64>() / quarter as f64;
             let mid_q: f64 =
                 energies[quarter..quarter * 3].iter().sum::<f64>() / (quarter * 2) as f64;
-            let last_q: f64 = energies[quarter * 3..].iter().sum::<f64>()
-                / (energies.len() - quarter * 3) as f64;
+            let last_q: f64 =
+                energies[quarter * 3..].iter().sum::<f64>() / (energies.len() - quarter * 3) as f64;
 
             if mid_q > first_q {
                 score += (mid_q - first_q) * 3.0;
@@ -270,7 +272,7 @@ impl RecapAssemblyEngine {
     /// narrative position within the entire edit, and section energy.
     fn calculate_beats_per_shot(
         section: &MusicSection,
-        shot_position: f64,    // 0.0-1.0 within section
+        shot_position: f64,      // 0.0-1.0 within section
         narrative_position: f64, // 0.0-1.0 within entire edit
         beat_interval: f64,
     ) -> u32 {
@@ -279,8 +281,8 @@ impl RecapAssemblyEngine {
             SuggestedContent::Establishing => 6.0, // was 8
             SuggestedContent::Building => 4.0,
             SuggestedContent::Peak => 2.0,
-            SuggestedContent::HeroMoment => 3.0,   // was 4
-            SuggestedContent::Resolution => 5.0,    // was 6
+            SuggestedContent::HeroMoment => 3.0, // was 4
+            SuggestedContent::Resolution => 5.0, // was 6
             SuggestedContent::FlashCut => 1.0,
         };
 
@@ -423,8 +425,7 @@ impl RecapAssemblyEngine {
                 let energy_delta = section.energy_level - prev.energy_level;
 
                 // Rising into Peak — alternate WhipDissolve / WhipRight
-                if energy_delta > 0.0
-                    && matches!(section.suggested_content, SuggestedContent::Peak)
+                if energy_delta > 0.0 && matches!(section.suggested_content, SuggestedContent::Peak)
                 {
                     return if section_idx % 2 == 0 {
                         EditTransition::WhipDissolve {
@@ -526,9 +527,7 @@ impl RecapAssemblyEngine {
         let window_beats: Vec<BeatMarker> = beat_grid
             .beats
             .iter()
-            .filter(|b| {
-                b.timestamp >= window.start - 0.01 && b.timestamp <= window.end + 0.01
-            })
+            .filter(|b| b.timestamp >= window.start - 0.01 && b.timestamp <= window.end + 0.01)
             .map(|b| BeatMarker {
                 timestamp: b.timestamp - window.start,
                 ..b.clone()
@@ -590,12 +589,8 @@ impl RecapAssemblyEngine {
             }
 
             // Build recent_content_types window (last 2)
-            let recent_types_window: Vec<ContentType> = recent_content_types
-                .iter()
-                .rev()
-                .take(2)
-                .cloned()
-                .collect();
+            let recent_types_window: Vec<ContentType> =
+                recent_content_types.iter().rev().take(2).cloned().collect();
 
             // Find best clip for this slot (multi-factor scoring)
             let best_clip = Self::pick_clip_for_slot(
@@ -648,9 +643,7 @@ impl RecapAssemblyEngine {
                 });
 
                 *used_clip_counts.entry(clip.filename.clone()).or_insert(0) += 1;
-                *folder_counts
-                    .entry(clip.source_folder.clone())
-                    .or_insert(0) += 1;
+                *folder_counts.entry(clip.source_folder.clone()).or_insert(0) += 1;
                 used_source_ranges
                     .entry(clip.filename.clone())
                     .or_default()
@@ -815,8 +808,7 @@ impl RecapAssemblyEngine {
 
                 for (pos, &idx) in indices.iter().enumerate() {
                     if pos < clip_data.len() {
-                        let (ref name, ref path, src_in, src_out, energy, speed) =
-                            clip_data[pos];
+                        let (ref name, ref path, src_in, src_out, energy, speed) = clip_data[pos];
                         placements[idx].clip_filename = name.clone();
                         placements[idx].source_path = path.clone();
                         placements[idx].source_in = src_in;
@@ -854,25 +846,22 @@ impl RecapAssemblyEngine {
 
                 // Quality score factor (0 to +0.3, 1.5x multiplier in Peak sections)
                 let quality_bonus = clip.quality_score * 0.3;
-                let quality_multiplier = if matches!(
-                    section.suggested_content,
-                    SuggestedContent::Peak
-                ) {
-                    1.5
-                } else {
-                    1.0
-                };
+                let quality_multiplier =
+                    if matches!(section.suggested_content, SuggestedContent::Peak) {
+                        1.5
+                    } else {
+                        1.0
+                    };
                 score += quality_bonus * quality_multiplier;
 
                 // Energy quartile fitness (0 to +0.4)
                 let quartile_bonus = match (clip.energy_quartile, &section.suggested_content) {
                     (4, SuggestedContent::Peak) | (4, SuggestedContent::FlashCut) => 0.4,
                     (3, SuggestedContent::Peak) | (3, SuggestedContent::HeroMoment) => 0.3,
-                    (1, SuggestedContent::Establishing)
-                    | (2, SuggestedContent::Establishing) => 0.3,
-                    (1, SuggestedContent::Resolution) | (2, SuggestedContent::Resolution) => {
-                        0.25
+                    (1, SuggestedContent::Establishing) | (2, SuggestedContent::Establishing) => {
+                        0.3
                     }
+                    (1, SuggestedContent::Resolution) | (2, SuggestedContent::Resolution) => 0.25,
                     (2, SuggestedContent::Building) | (3, SuggestedContent::Building) => 0.2,
                     _ => 0.0,
                 };
@@ -882,8 +871,7 @@ impl RecapAssemblyEngine {
                 if total_folders > 0 {
                     let folder_use_count =
                         folder_counts.get(&clip.source_folder).copied().unwrap_or(0);
-                    let total_placed: f64 =
-                        used_counts.values().sum::<u32>() as f64 + 1.0;
+                    let total_placed: f64 = used_counts.values().sum::<u32>() as f64 + 1.0;
                     let expected_per_folder = total_placed / total_folders as f64;
 
                     if folder_use_count == 0 {
@@ -931,7 +919,9 @@ impl RecapAssemblyEngine {
 
                 // Enhancement 3: Triple-repeat penalty — avoid 3 consecutive same content type
                 if recent_content_types.len() >= 2
-                    && recent_content_types.iter().all(|t| *t == clip.dominant_content_type)
+                    && recent_content_types
+                        .iter()
+                        .all(|t| *t == clip.dominant_content_type)
                 {
                     score -= 0.6;
                 }
@@ -968,10 +958,7 @@ impl RecapAssemblyEngine {
             })
             .collect();
 
-        candidates.sort_by(|a, b| {
-            b.1.partial_cmp(&a.1)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         candidates.first().map(|(clip, _)| *clip)
     }
 
@@ -1003,16 +990,14 @@ impl RecapAssemblyEngine {
             start
         };
 
-        let not_overlapping = |s: f64, e: f64| -> bool {
-            !prev_ranges.iter().any(|(ps, pe)| s < *pe && e > *ps)
-        };
+        let not_overlapping =
+            |s: f64, e: f64| -> bool { !prev_ranges.iter().any(|(ps, pe)| s < *pe && e > *ps) };
 
         // Section-type-specific source range selection
         match section.suggested_content {
             SuggestedContent::Peak | SuggestedContent::HeroMoment => {
                 // Use clip's peak_energy_timestamp as center
-                let peak_start =
-                    (clip.peak_energy_timestamp - target_dur / 2.0).max(0.0);
+                let peak_start = (clip.peak_energy_timestamp - target_dur / 2.0).max(0.0);
                 let peak_start = avoid_hard_cuts(peak_start);
                 let (s, e) = clamp_range(peak_start);
                 if not_overlapping(s, e) {
@@ -1047,8 +1032,7 @@ impl RecapAssemblyEngine {
             }
             SuggestedContent::Resolution => {
                 // Use segment near end of clip or with falling energy
-                let start =
-                    ((clip.duration * 0.66) - target_dur / 2.0).max(0.0);
+                let start = ((clip.duration * 0.66) - target_dur / 2.0).max(0.0);
                 let start = avoid_hard_cuts(start);
                 let (s, e) = clamp_range(start);
                 if not_overlapping(s, e) {
@@ -1069,10 +1053,7 @@ impl RecapAssemblyEngine {
             .collect();
 
         // Sort by score descending
-        candidates.sort_by(|a, b| {
-            b.1.partial_cmp(&a.1)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         // Try each candidate, skip ones that overlap with previously used ranges
         for (ts, _score) in &candidates {
@@ -1093,9 +1074,7 @@ impl RecapAssemblyEngine {
         // All segments overlap — pick the one furthest from any previous use
         let best_start = if clip.duration >= target_dur * 2.0 {
             let mut starts: Vec<f64> = prev_ranges.iter().map(|(s, _)| *s).collect();
-            starts.sort_by(|a, b| {
-                a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
-            });
+            starts.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
             let options = [
                 0.0,
@@ -1188,10 +1167,7 @@ impl RecapAssemblyEngine {
         // Build input list
         let mut inputs = Vec::new();
         for (_i, p) in placements.iter().enumerate() {
-            inputs.push(format!(
-                "  -i \"{}\" \\",
-                p.source_path.to_string_lossy()
-            ));
+            inputs.push(format!("  -i \"{}\" \\", p.source_path.to_string_lossy()));
         }
         // Music input is the last one
         let music_idx = n;
@@ -1400,10 +1376,7 @@ impl RecapAssemblyEngine {
         xml.push_str("<!DOCTYPE xmeml>\n");
         xml.push_str("<xmeml version=\"5\">\n");
         xml.push_str("  <project>\n");
-        xml.push_str(&format!(
-            "    <name>{}</name>\n",
-            escape_xml(&result.name)
-        ));
+        xml.push_str(&format!("    <name>{}</name>\n", escape_xml(&result.name)));
         xml.push_str("    <children>\n");
 
         // === Footage Bin ===
@@ -1466,12 +1439,8 @@ impl RecapAssemblyEngine {
                     result.height
                 ));
                 xml.push_str("                      <anamorphic>FALSE</anamorphic>\n");
-                xml.push_str(
-                    "                      <pixelaspectratio>Square</pixelaspectratio>\n",
-                );
-                xml.push_str(
-                    "                      <fielddominance>none</fielddominance>\n",
-                );
+                xml.push_str("                      <pixelaspectratio>Square</pixelaspectratio>\n");
+                xml.push_str("                      <fielddominance>none</fielddominance>\n");
                 xml.push_str("                    </samplecharacteristics></video>\n");
                 xml.push_str("                    <audio><samplecharacteristics>\n");
                 xml.push_str("                      <samplerate>48000</samplerate>\n");
@@ -1486,20 +1455,14 @@ impl RecapAssemblyEngine {
         }
 
         // Music master clip
-        let music_url = format!(
-            "file:///{}",
-            result.music_path.replace(' ', "%20")
-        );
+        let music_url = format!("file:///{}", result.music_path.replace(' ', "%20"));
         xml.push_str("          <clip id=\"clip-music\">\n");
         xml.push_str(&format!(
             "            <name>Music - {}</name>\n",
             escape_xml(&result.name)
         ));
         xml.push_str("            <media><audio><track><clipitem>\n");
-        xml.push_str(&format!(
-            "              <file id=\"{}\">\n",
-            music_file_id
-        ));
+        xml.push_str(&format!("              <file id=\"{}\">\n", music_file_id));
         xml.push_str(&format!(
             "                <name>{}</name>\n",
             escape_xml(
@@ -1519,9 +1482,7 @@ impl RecapAssemblyEngine {
             timebase
         ));
         xml.push_str("                <media><audio><samplecharacteristics>\n");
-        xml.push_str(
-            "                  <samplerate>44100</samplerate><depth>16</depth>\n",
-        );
+        xml.push_str("                  <samplerate>44100</samplerate><depth>16</depth>\n");
         xml.push_str("                </samplecharacteristics></audio></media>\n");
         xml.push_str("              </file>\n");
         xml.push_str("            </clipitem></track></audio></media>\n");
@@ -1537,10 +1498,7 @@ impl RecapAssemblyEngine {
             "        <name>{}</name>\n",
             escape_xml(&result.name)
         ));
-        xml.push_str(&format!(
-            "        <duration>{}</duration>\n",
-            total_frames
-        ));
+        xml.push_str(&format!("        <duration>{}</duration>\n", total_frames));
         xml.push_str(&format!(
             "        <rate><timebase>{}</timebase><ntsc>TRUE</ntsc></rate>\n",
             timebase
@@ -1559,18 +1517,13 @@ impl RecapAssemblyEngine {
         // Video track
         xml.push_str("          <video>\n");
         xml.push_str("            <format><samplecharacteristics>\n");
-        xml.push_str(&format!(
-            "              <width>{}</width>\n",
-            result.width
-        ));
+        xml.push_str(&format!("              <width>{}</width>\n", result.width));
         xml.push_str(&format!(
             "              <height>{}</height>\n",
             result.height
         ));
         xml.push_str("              <anamorphic>FALSE</anamorphic>\n");
-        xml.push_str(
-            "              <pixelaspectratio>Square</pixelaspectratio>\n",
-        );
+        xml.push_str("              <pixelaspectratio>Square</pixelaspectratio>\n");
         xml.push_str("              <fielddominance>none</fielddominance>\n");
         xml.push_str(&format!(
             "              <rate><timebase>{}</timebase><ntsc>TRUE</ntsc></rate>\n",
@@ -1611,10 +1564,7 @@ impl RecapAssemblyEngine {
                 "                <out>{}</out>\n",
                 secs_to_frames(p.source_out)
             ));
-            xml.push_str(&format!(
-                "                <file id=\"{}\"/>\n",
-                fid
-            ));
+            xml.push_str(&format!("                <file id=\"{}\"/>\n", fid));
 
             // Speed/rate for non-1.0 speed clips
             if (p.speed - 1.0).abs() > 0.01 {
@@ -1642,7 +1592,9 @@ impl RecapAssemblyEngine {
                         EditTransition::Dissolve { duration } => ("Cross Dissolve", *duration),
                         EditTransition::DipToBlack { duration } => ("Dip to Black", *duration),
                         EditTransition::WhipDissolve { duration } => ("Wipe", *duration),
-                        EditTransition::AdditiveMix { duration } => ("Additive Dissolve", *duration),
+                        EditTransition::AdditiveMix { duration } => {
+                            ("Additive Dissolve", *duration)
+                        }
                         EditTransition::WhipRight { duration } => ("Wipe", *duration),
                         EditTransition::SlideLeft { duration } => ("Slide", *duration),
                         EditTransition::SlideRight { duration } => ("Slide", *duration),
@@ -1675,9 +1627,7 @@ impl RecapAssemblyEngine {
         xml.push_str("          <audio>\n");
         xml.push_str("            <numOutputChannels>2</numOutputChannels>\n");
         xml.push_str("            <format><samplecharacteristics>\n");
-        xml.push_str(
-            "              <samplerate>48000</samplerate><depth>16</depth>\n",
-        );
+        xml.push_str("              <samplerate>48000</samplerate><depth>16</depth>\n");
         xml.push_str("            </samplecharacteristics></format>\n");
         xml.push_str("            <track>\n");
         xml.push_str("              <clipitem id=\"tl-a1-music\">\n");
@@ -1691,10 +1641,7 @@ impl RecapAssemblyEngine {
             timebase
         ));
         xml.push_str("                <start>0</start>\n");
-        xml.push_str(&format!(
-            "                <end>{}</end>\n",
-            total_frames
-        ));
+        xml.push_str(&format!("                <end>{}</end>\n", total_frames));
 
         if let Some(ref win) = result.music_window {
             xml.push_str(&format!(
@@ -1707,10 +1654,7 @@ impl RecapAssemblyEngine {
             ));
         } else {
             xml.push_str("                <in>0</in>\n");
-            xml.push_str(&format!(
-                "                <out>{}</out>\n",
-                total_frames
-            ));
+            xml.push_str(&format!("                <out>{}</out>\n", total_frames));
         }
 
         xml.push_str(&format!(
@@ -1725,20 +1669,14 @@ impl RecapAssemblyEngine {
         // Beat markers (only within window)
         if let Some(ref win) = result.music_window {
             for beat in &beat_grid.beats {
-                if beat.is_downbeat
-                    && beat.timestamp >= win.start
-                    && beat.timestamp <= win.end
-                {
+                if beat.is_downbeat && beat.timestamp >= win.start && beat.timestamp <= win.end {
                     let rebased = beat.timestamp - win.start;
                     xml.push_str("        <marker>\n");
                     xml.push_str(&format!(
                         "          <name>Beat {}</name>\n",
                         beat.beat_number
                     ));
-                    xml.push_str(&format!(
-                        "          <in>{}</in>\n",
-                        secs_to_frames(rebased)
-                    ));
+                    xml.push_str(&format!("          <in>{}</in>\n", secs_to_frames(rebased)));
                     xml.push_str(&format!(
                         "          <out>{}</out>\n",
                         secs_to_frames(rebased)
@@ -1799,8 +1737,7 @@ fn escape_xml(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::beat_analysis::EnergyDirection;
-    use crate::services::scene_analysis::SegmentAnalysis;
+    use crate::services::{beat_analysis::EnergyDirection, scene_analysis::SegmentAnalysis};
 
     fn make_beat(ts: f64, num: u32, bar: u32, beat_in_bar: u32) -> BeatMarker {
         BeatMarker {
@@ -1839,8 +1776,7 @@ mod tests {
             .map(|i| make_beat(i as f64 * 0.632, i + 1, i / 4 + 1, i % 4 + 1))
             .collect();
 
-        let cuts =
-            RecapAssemblyEngine::generate_section_cuts(&peak, &beats, 0.632, 59.0);
+        let cuts = RecapAssemblyEngine::generate_section_cuts(&peak, &beats, 0.632, 59.0);
         // Dynamic pacing: peak section should still have many cuts
         assert!(
             cuts.len() >= 3,
@@ -1863,8 +1799,7 @@ mod tests {
             .map(|i| make_beat(i as f64 * 0.632, i + 1, i / 4 + 1, i % 4 + 1))
             .collect();
 
-        let cuts =
-            RecapAssemblyEngine::generate_section_cuts(&intro, &beats, 0.632, 59.0);
+        let cuts = RecapAssemblyEngine::generate_section_cuts(&intro, &beats, 0.632, 59.0);
         // Establishing sections should have fewer, longer shots
         assert!(
             cuts.len() <= 4,
@@ -1888,9 +1823,11 @@ mod tests {
             .map(|i| make_beat(i as f64 * 0.632, i + 1, i / 4 + 1, i % 4 + 1))
             .collect();
 
-        let cuts =
-            RecapAssemblyEngine::generate_section_cuts(&section, &beats, 0.632, 59.0);
-        assert!(cuts.len() >= 3, "Should have multiple cuts to verify variation");
+        let cuts = RecapAssemblyEngine::generate_section_cuts(&section, &beats, 0.632, 59.0);
+        assert!(
+            cuts.len() >= 3,
+            "Should have multiple cuts to verify variation"
+        );
 
         // First shot should be longer than later shots (progressive acceleration)
         if cuts.len() >= 2 {

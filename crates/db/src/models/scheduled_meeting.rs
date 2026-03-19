@@ -100,21 +100,19 @@ impl ScheduledMeeting {
             .execute(pool)
             .await?;
 
-            let row: ScheduledMeetingInvitee = sqlx::query_as(
-                "SELECT * FROM scheduled_meeting_invitees WHERE id = ?1",
-            )
-            .bind(inv_id.to_string())
-            .fetch_one(pool)
-            .await?;
+            let row: ScheduledMeetingInvitee =
+                sqlx::query_as("SELECT * FROM scheduled_meeting_invitees WHERE id = ?1")
+                    .bind(inv_id.to_string())
+                    .fetch_one(pool)
+                    .await?;
             invitees.push(row);
         }
 
-        let meeting: ScheduledMeeting = sqlx::query_as(
-            "SELECT * FROM scheduled_meetings WHERE id = ?1",
-        )
-        .bind(id.to_string())
-        .fetch_one(pool)
-        .await?;
+        let meeting: ScheduledMeeting =
+            sqlx::query_as("SELECT * FROM scheduled_meetings WHERE id = ?1")
+                .bind(id.to_string())
+                .fetch_one(pool)
+                .await?;
 
         Ok(ScheduledMeetingWithInvitees { meeting, invitees })
     }
@@ -139,15 +137,15 @@ impl ScheduledMeeting {
             .fetch_all(pool)
             .await
             .unwrap_or_default();
-            result.push(ScheduledMeetingWithInvitees { meeting: m, invitees });
+            result.push(ScheduledMeetingWithInvitees {
+                meeting: m,
+                invitees,
+            });
         }
         Ok(result)
     }
 
-    pub async fn mark_invitee_sent(
-        pool: &SqlitePool,
-        invitee_id: &str,
-    ) -> sqlx::Result<()> {
+    pub async fn mark_invitee_sent(pool: &SqlitePool, invitee_id: &str) -> sqlx::Result<()> {
         sqlx::query(
             "UPDATE scheduled_meeting_invitees SET status='sent', sent_at=datetime('now','subsec') WHERE id=?1",
         )
@@ -157,11 +155,7 @@ impl ScheduledMeeting {
         Ok(())
     }
 
-    pub async fn update_status(
-        pool: &SqlitePool,
-        id: &str,
-        status: &str,
-    ) -> sqlx::Result<()> {
+    pub async fn update_status(pool: &SqlitePool, id: &str, status: &str) -> sqlx::Result<()> {
         sqlx::query(
             "UPDATE scheduled_meetings SET invite_status=?2, invite_sent_at=datetime('now','subsec'), updated_at=datetime('now','subsec') WHERE id=?1",
         )

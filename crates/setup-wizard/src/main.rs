@@ -3,11 +3,12 @@
 //! Beautiful interactive terminal-based setup for new ORCHA nodes.
 //! Guides users through initial configuration and database initialization.
 
+use std::path::PathBuf;
+
 use anyhow::{Context, Result};
 use colored::*;
 use inquire::{Confirm, Password, Select, Text};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 use sysinfo::System;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -61,10 +62,22 @@ fn is_already_configured() -> bool {
 }
 
 async fn run_signin() -> Result<()> {
-    println!("{}", "\n┌─────────────────────────────────────────────────────┐".bright_blue());
-    println!("{}", "│  Sign In to ORCHA                                  │".bright_blue());
-    println!("{}", "│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ │".bright_blue());
-    println!("{}", "└─────────────────────────────────────────────────────┘".bright_blue());
+    println!(
+        "{}",
+        "\n┌─────────────────────────────────────────────────────┐".bright_blue()
+    );
+    println!(
+        "{}",
+        "│  Sign In to ORCHA                                  │".bright_blue()
+    );
+    println!(
+        "{}",
+        "│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ │".bright_blue()
+    );
+    println!(
+        "{}",
+        "└─────────────────────────────────────────────────────┘".bright_blue()
+    );
     println!();
 
     let username = Text::new("Username:")
@@ -80,11 +93,12 @@ async fn run_signin() -> Result<()> {
         .join(".local/share/duck-kanban/db.sqlite");
 
     let db_url = format!("sqlite://{}?mode=rw", shared_db.display());
-    let pool = sqlx::SqlitePool::connect(&db_url).await
+    let pool = sqlx::SqlitePool::connect(&db_url)
+        .await
         .context("Could not connect to ORCHA database")?;
 
     let row: Option<(Vec<u8>, String, i64)> = sqlx::query_as(
-        "SELECT id, password_hash, is_active FROM users WHERE LOWER(username) = LOWER(?)"
+        "SELECT id, password_hash, is_active FROM users WHERE LOWER(username) = LOWER(?)",
     )
     .bind(&username)
     .fetch_optional(&pool)
@@ -102,13 +116,16 @@ async fn run_signin() -> Result<()> {
                 println!("\n{}", "  ✗ Account is inactive.".bright_red());
                 anyhow::bail!("Account inactive");
             }
-            let valid = bcrypt::verify(&password, &hash)
-                .unwrap_or(false);
+            let valid = bcrypt::verify(&password, &hash).unwrap_or(false);
             if !valid {
                 println!("\n{}", "  ✗ Incorrect password.".bright_red());
                 anyhow::bail!("Authentication failed");
             }
-            println!("\n  {} Welcome back, {}!", "✓".bright_green(), username.bright_cyan().bold());
+            println!(
+                "\n  {} Welcome back, {}!",
+                "✓".bright_green(),
+                username.bright_cyan().bold()
+            );
             println!("  {} This device is recognized.", "✓".bright_green());
         }
     }
@@ -136,7 +153,10 @@ async fn main() -> Result<()> {
             return run_signin().await;
         }
         println!();
-        println!("{}", "  ⚠  Re-running setup will overwrite device configuration.".bright_yellow());
+        println!(
+            "{}",
+            "  ⚠  Re-running setup will overwrite device configuration.".bright_yellow()
+        );
         println!();
     }
 
@@ -153,10 +173,24 @@ async fn main() -> Result<()> {
 }
 
 fn print_welcome() {
-    println!("\n{}", "═══════════════════════════════════════════════════════".bright_cyan());
-    println!("{}", "                   🌟 Welcome to ORCHA                   ".bright_cyan().bold());
-    println!("{}", "              Orchestration Application                ".bright_cyan());
-    println!("{}", "═══════════════════════════════════════════════════════".bright_cyan());
+    println!(
+        "\n{}",
+        "═══════════════════════════════════════════════════════".bright_cyan()
+    );
+    println!(
+        "{}",
+        "                   🌟 Welcome to ORCHA                   "
+            .bright_cyan()
+            .bold()
+    );
+    println!(
+        "{}",
+        "              Orchestration Application                ".bright_cyan()
+    );
+    println!(
+        "{}",
+        "═══════════════════════════════════════════════════════".bright_cyan()
+    );
     println!();
     println!("{}", "Let's set up your sovereign node.".white());
     println!("{}", "This will only take a few minutes.".white().dimmed());
@@ -165,10 +199,22 @@ fn print_welcome() {
 
 async fn run_wizard() -> Result<SetupConfig> {
     // Step 1: User Account
-    println!("{}", "\n┌─────────────────────────────────────────────────────┐".bright_blue());
-    println!("{}", "│  Step 1: User Account                              │".bright_blue());
-    println!("{}", "│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ │".bright_blue());
-    println!("{}", "└─────────────────────────────────────────────────────┘".bright_blue());
+    println!(
+        "{}",
+        "\n┌─────────────────────────────────────────────────────┐".bright_blue()
+    );
+    println!(
+        "{}",
+        "│  Step 1: User Account                              │".bright_blue()
+    );
+    println!(
+        "{}",
+        "│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ │".bright_blue()
+    );
+    println!(
+        "{}",
+        "└─────────────────────────────────────────────────────┘".bright_blue()
+    );
     println!();
 
     let username = Text::new("Username:")
@@ -191,10 +237,22 @@ async fn run_wizard() -> Result<SetupConfig> {
     let password_hash = bcrypt::hash(&password, bcrypt::DEFAULT_COST)?;
 
     // Step 2: Device Configuration
-    println!("{}", "\n┌─────────────────────────────────────────────────────┐".bright_blue());
-    println!("{}", "│  Step 2: Device Configuration                      │".bright_blue());
-    println!("{}", "│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ │".bright_blue());
-    println!("{}", "└─────────────────────────────────────────────────────┘".bright_blue());
+    println!(
+        "{}",
+        "\n┌─────────────────────────────────────────────────────┐".bright_blue()
+    );
+    println!(
+        "{}",
+        "│  Step 2: Device Configuration                      │".bright_blue()
+    );
+    println!(
+        "{}",
+        "│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ │".bright_blue()
+    );
+    println!(
+        "{}",
+        "└─────────────────────────────────────────────────────┘".bright_blue()
+    );
     println!();
 
     let hostname = whoami::fallible::hostname().unwrap_or_default();
@@ -247,10 +305,22 @@ async fn run_wizard() -> Result<SetupConfig> {
     );
 
     // Step 3: Projects & Storage
-    println!("{}", "\n┌─────────────────────────────────────────────────────┐".bright_blue());
-    println!("{}", "│  Step 3: Projects & Storage                        │".bright_blue());
-    println!("{}", "│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ │".bright_blue());
-    println!("{}", "└─────────────────────────────────────────────────────┘".bright_blue());
+    println!(
+        "{}",
+        "\n┌─────────────────────────────────────────────────────┐".bright_blue()
+    );
+    println!(
+        "{}",
+        "│  Step 3: Projects & Storage                        │".bright_blue()
+    );
+    println!(
+        "{}",
+        "│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ │".bright_blue()
+    );
+    println!(
+        "{}",
+        "└─────────────────────────────────────────────────────┘".bright_blue()
+    );
     println!();
 
     let home_dir = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
@@ -273,10 +343,22 @@ async fn run_wizard() -> Result<SetupConfig> {
     let topsi_db_path = PathBuf::from(topsi_db_path_str);
 
     // Step 4: APN Network
-    println!("{}", "\n┌─────────────────────────────────────────────────────┐".bright_blue());
-    println!("{}", "│  Step 4: Alpha Protocol Network                    │".bright_blue());
-    println!("{}", "│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ │".bright_blue());
-    println!("{}", "└─────────────────────────────────────────────────────┘".bright_blue());
+    println!(
+        "{}",
+        "\n┌─────────────────────────────────────────────────────┐".bright_blue()
+    );
+    println!(
+        "{}",
+        "│  Step 4: Alpha Protocol Network                    │".bright_blue()
+    );
+    println!(
+        "{}",
+        "│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ │".bright_blue()
+    );
+    println!(
+        "{}",
+        "└─────────────────────────────────────────────────────┘".bright_blue()
+    );
     println!();
 
     let apn_enabled = Confirm::new("Connect to Alpha Protocol Network?")
@@ -317,9 +399,18 @@ async fn run_wizard() -> Result<SetupConfig> {
 }
 
 async fn initialize_system(config: &SetupConfig) -> Result<()> {
-    println!("{}", "\n┌─────────────────────────────────────────────────────┐".bright_magenta());
-    println!("{}", "│  Initializing ORCHA...                             │".bright_magenta());
-    println!("{}", "└─────────────────────────────────────────────────────┘".bright_magenta());
+    println!(
+        "{}",
+        "\n┌─────────────────────────────────────────────────────┐".bright_magenta()
+    );
+    println!(
+        "{}",
+        "│  Initializing ORCHA...                             │".bright_magenta()
+    );
+    println!(
+        "{}",
+        "└─────────────────────────────────────────────────────┘".bright_magenta()
+    );
     println!();
 
     // 1. Create directories
@@ -454,12 +545,11 @@ async fn initialize_topsi_database(config: &SetupConfig) -> Result<()> {
     let pool = sqlx::SqlitePool::connect(&db_url).await?;
 
     // Check if database is already initialized (tables exist)
-    let table_exists: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='projects'"
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap_or((0,));
+    let table_exists: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='projects'")
+            .fetch_one(&pool)
+            .await
+            .unwrap_or((0,));
 
     if table_exists.0 == 0 {
         // Fresh database — run migrations
@@ -548,19 +638,30 @@ async fn register_device(config: &SetupConfig) -> Result<()> {
 }
 
 fn print_success(config: &SetupConfig) {
-    println!("{}", "\n┌─────────────────────────────────────────────────────┐".bright_green());
-    println!("{}", "│  🎉 Setup Complete!                                 │".bright_green());
-    println!("{}", "└─────────────────────────────────────────────────────┘".bright_green());
+    println!(
+        "{}",
+        "\n┌─────────────────────────────────────────────────────┐".bright_green()
+    );
+    println!(
+        "{}",
+        "│  🎉 Setup Complete!                                 │".bright_green()
+    );
+    println!(
+        "{}",
+        "└─────────────────────────────────────────────────────┘".bright_green()
+    );
     println!();
     println!("{}", "  Your ORCHA node is configured:".white().bold());
     println!("    • User: {}", config.user.username.bright_cyan());
-    println!(
-        "    • Device: {}",
-        config.device.device_name.bright_cyan()
-    );
+    println!("    • Device: {}", config.device.device_name.bright_cyan());
     println!(
         "    • Projects: {}",
-        config.storage.projects_path.display().to_string().bright_cyan()
+        config
+            .storage
+            .projects_path
+            .display()
+            .to_string()
+            .bright_cyan()
     );
     println!(
         "    • APN: {}",
@@ -574,10 +675,7 @@ fn print_success(config: &SetupConfig) {
     println!("{}", "  To start ORCHA:".white().bold());
     println!("    {}", "orcha start".bright_cyan());
     println!();
-    println!(
-        "{}",
-        "  Or install as a system service:".white().bold()
-    );
+    println!("{}", "  Or install as a system service:".white().bold());
     println!("    {}", "sudo orcha install-service".bright_cyan());
     println!();
 }
@@ -597,9 +695,7 @@ fn detect_gpu() -> Option<String> {
     }
 
     // Try to detect AMD GPU (Linux)
-    if let Ok(output) = std::process::Command::new("lspci")
-        .output()
-    {
+    if let Ok(output) = std::process::Command::new("lspci").output() {
         if output.status.success() {
             if let Ok(pci_info) = String::from_utf8(output.stdout) {
                 for line in pci_info.lines() {

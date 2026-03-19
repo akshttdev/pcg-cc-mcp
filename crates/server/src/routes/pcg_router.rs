@@ -12,17 +12,16 @@
 //!   DELETE /pcg-router/models/:id      — remove a model
 
 use axum::{
-    Router,
+    Json, Router,
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, patch, post},
-    Json,
 };
 use db::models::pcg_router_model::PcgRouterModel;
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -274,14 +273,21 @@ pub async fn route_completion(
 
     for model in &candidates {
         let Some(api_key) = model.resolve_api_key() else {
-            tracing::warn!("[PCG_ROUTER] No API key for model '{}', skipping", model.name);
+            tracing::warn!(
+                "[PCG_ROUTER] No API key for model '{}', skipping",
+                model.name
+            );
             continue;
         };
 
         let result = forward_to_provider(&http, model, &request, &api_key).await;
         match result {
             Ok(resp) => {
-                tracing::info!("[PCG_ROUTER] Routed to '{}' ({})", model.name, model.provider);
+                tracing::info!(
+                    "[PCG_ROUTER] Routed to '{}' ({})",
+                    model.name,
+                    model.provider
+                );
 
                 // Extract token usage from response
                 let input_tokens = resp["usage"]["prompt_tokens"].as_i64();
@@ -290,8 +296,10 @@ pub async fn route_completion(
                 // Estimate cost in microdollars (millionths of a dollar)
                 let estimated_cost_micros = match (input_tokens, output_tokens) {
                     (Some(inp), Some(out)) => {
-                        let input_cost = (inp as f64 / 1_000_000.0) * model.cost_per_million_input as f64;
-                        let output_cost = (out as f64 / 1_000_000.0) * model.cost_per_million_output as f64;
+                        let input_cost =
+                            (inp as f64 / 1_000_000.0) * model.cost_per_million_input as f64;
+                        let output_cost =
+                            (out as f64 / 1_000_000.0) * model.cost_per_million_output as f64;
                         Some(((input_cost + output_cost) * 1_000_000.0) as i64)
                     }
                     _ => None,
@@ -308,7 +316,11 @@ pub async fn route_completion(
                 return Ok((resp, metadata));
             }
             Err(e) => {
-                tracing::warn!("[PCG_ROUTER] '{}' failed: {}, trying next model", model.name, e);
+                tracing::warn!(
+                    "[PCG_ROUTER] '{}' failed: {}, trying next model",
+                    model.name,
+                    e
+                );
             }
         }
     }
@@ -512,15 +524,15 @@ async fn list_provider_keys(
         std::collections::BTreeMap::new();
 
     for model in &models {
-        let entry = providers.entry(model.provider.clone()).or_insert_with(|| {
-            ProviderKeyStatus {
+        let entry = providers
+            .entry(model.provider.clone())
+            .or_insert_with(|| ProviderKeyStatus {
                 provider: model.provider.clone(),
                 has_key: false,
                 model_count: 0,
                 enabled_count: 0,
                 env_var: model.api_key_env_var.clone(),
-            }
-        });
+            });
         entry.model_count += 1;
         if model.is_enabled {
             entry.enabled_count += 1;
@@ -594,8 +606,17 @@ async fn delete_provider_key(
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/pcg-router/models", get(list_models).post(create_model))
-        .route("/pcg-router/models/{id}", patch(patch_model).delete(delete_model))
-        .route("/pcg-router/provider-keys", get(list_provider_keys).post(set_provider_key))
-        .route("/pcg-router/provider-keys/{provider}", delete(delete_provider_key))
+        .route(
+            "/pcg-router/models/{id}",
+            patch(patch_model).delete(delete_model),
+        )
+        .route(
+            "/pcg-router/provider-keys",
+            get(list_provider_keys).post(set_provider_key),
+        )
+        .route(
+            "/pcg-router/provider-keys/{provider}",
+            delete(delete_provider_key),
+        )
         .route("/pcg-router/v1/chat/completions", post(chat_completions))
 }

@@ -45,9 +45,9 @@ pub struct TaskAttempt {
     // "GEMINI", etc.)
     pub worktree_deleted: bool, // Flag indicating if worktree has been cleaned up
     pub setup_completed_at: Option<DateTime<Utc>>, // When setup script was last completed
-    pub archived: bool,          // Whether this workspace is archived
-    pub pinned: bool,            // Whether this workspace is pinned
-    pub name: Option<String>,    // Auto-generated or user-set name (max 60 chars)
+    pub archived: bool,         // Whether this workspace is archived
+    pub pinned: bool,           // Whether this workspace is pinned
+    pub name: Option<String>,   // Auto-generated or user-set name (max 60 chars)
     pub seen_at: Option<DateTime<Utc>>, // When the user last viewed this workspace
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -484,10 +484,7 @@ impl TaskAttempt {
     }
 
     /// Mark a workspace as seen (user viewed it)
-    pub async fn mark_seen(
-        pool: &SqlitePool,
-        attempt_id: Uuid,
-    ) -> Result<(), sqlx::Error> {
+    pub async fn mark_seen(pool: &SqlitePool, attempt_id: Uuid) -> Result<(), sqlx::Error> {
         let now = Utc::now();
         sqlx::query!(
             "UPDATE task_attempts SET seen_at = $1, updated_at = datetime('now', 'subsec') WHERE id = $2",

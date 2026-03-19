@@ -1,13 +1,16 @@
-use std::sync::Arc;
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::{
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc,
+    },
+};
 
 use byteorder::{LittleEndian, WriteBytesExt};
 use serenity::all::*;
 use songbird::{
-    CoreEvent, Event, EventContext, EventHandler as VoiceEventHandler,
     input::{Input, RawAdapter},
-    Call,
+    Call, CoreEvent, Event, EventContext, EventHandler as VoiceEventHandler,
 };
 use tokio::sync::{Mutex, RwLock};
 use tracing::{info, warn};
@@ -64,11 +67,7 @@ struct AudioBuffer {
 }
 
 impl VoiceManager {
-    pub fn new(
-        backend: Arc<BackendClient>,
-        agent_name: &str,
-        config: VoiceServiceConfig,
-    ) -> Self {
+    pub fn new(backend: Arc<BackendClient>, agent_name: &str, config: VoiceServiceConfig) -> Self {
         Self {
             config,
             backend,
@@ -163,9 +162,7 @@ impl VoiceManager {
         ctx: &Context,
         guild_id: GuildId,
     ) -> Result<Option<crate::backend::EndMeetingResponse>, String> {
-        let manager = songbird::get(ctx)
-            .await
-            .ok_or("Songbird not initialized")?;
+        let manager = songbird::get(ctx).await.ok_or("Songbird not initialized")?;
 
         manager
             .leave(guild_id)
@@ -178,11 +175,7 @@ impl VoiceManager {
                 "[{} VOICE] Ending meeting session {}",
                 self.agent_name, meeting.session_id
             );
-            match self
-                .backend
-                .end_meeting(&meeting.session_id, true)
-                .await
-            {
+            match self.backend.end_meeting(&meeting.session_id, true).await {
                 Ok(resp) => {
                     info!(
                         "[{} VOICE] Meeting ended — {} segments, {} participants, {}s duration",
@@ -265,12 +258,7 @@ impl VoiceManager {
             // Backend handles: STT, wake word detection, transcript storage
             match self
                 .backend
-                .meeting_audio_chunk(
-                    &meeting.session_id,
-                    &audio_b64,
-                    chunk_index,
-                    duration_ms,
-                )
+                .meeting_audio_chunk(&meeting.session_id, &audio_b64, chunk_index, duration_ms)
                 .await
             {
                 Ok(resp) => {
@@ -409,22 +397,29 @@ impl VoiceManager {
         let session_id = format!(
             "discord-voice-{}-{}",
             self.agent_name.to_lowercase(),
-            user_id.map(|u| u.get().to_string()).unwrap_or_else(|| "unknown".to_string())
+            user_id
+                .map(|u| u.get().to_string())
+                .unwrap_or_else(|| "unknown".to_string())
         );
 
         let response_text = if self.agent_name == "Nora" {
-            self.backend.chat_nora(&text, &session_id).await.ok().map(|r| r.content)
+            self.backend
+                .chat_nora(&text, &session_id)
+                .await
+                .ok()
+                .map(|r| r.content)
         } else {
-            self.backend.chat_topsi(&text, &session_id).await.ok().map(|r| r.content)
+            self.backend
+                .chat_topsi(&text, &session_id)
+                .await
+                .ok()
+                .map(|r| r.content)
         };
 
         if let Some(response_text) = response_text {
             if let Ok(audio_bytes) = self.synthesize(&response_text).await {
-                let input = Input::from(RawAdapter::new(
-                    std::io::Cursor::new(audio_bytes),
-                    48000,
-                    2,
-                ));
+                let input =
+                    Input::from(RawAdapter::new(std::io::Cursor::new(audio_bytes), 48000, 2));
                 let mut call_lock = call.lock().await;
                 call_lock.play_input(input);
             }

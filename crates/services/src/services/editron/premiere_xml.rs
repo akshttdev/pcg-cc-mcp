@@ -3,11 +3,14 @@
 //! Generates Final Cut Pro XML 1.0 format which Adobe Premiere Pro can import.
 //! This format is widely supported and allows full timeline reconstruction.
 
-use std::path::{Path, PathBuf};
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
+
 use uuid::Uuid;
 
-use super::edit_assembly::{AssembledEdit, TimelineClip, AudioClip, EditMarker, MarkerType};
+use super::edit_assembly::{AssembledEdit, AudioClip, EditMarker, MarkerType, TimelineClip};
 
 /// XML Generator for Premiere Pro import
 pub struct PremiereXmlExporter {
@@ -132,33 +135,51 @@ impl PremiereXmlExporter {
         let clip_id = Uuid::new_v4();
         let file_id = Uuid::new_v4();
 
-        let filename = path.file_name()
+        let filename = path
+            .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "Unknown".to_string());
 
-        let is_video = path.extension()
+        let is_video = path
+            .extension()
             .map(|e| {
                 let ext = e.to_string_lossy().to_lowercase();
                 matches!(ext.as_str(), "mp4" | "mov" | "avi" | "mxf" | "mkv" | "m4v")
             })
             .unwrap_or(false);
 
-        let is_audio = path.extension()
+        let is_audio = path
+            .extension()
             .map(|e| {
                 let ext = e.to_string_lossy().to_lowercase();
-                matches!(ext.as_str(), "mp3" | "wav" | "aif" | "aiff" | "m4a" | "flac")
+                matches!(
+                    ext.as_str(),
+                    "mp3" | "wav" | "aif" | "aiff" | "m4a" | "flac"
+                )
             })
             .unwrap_or(false);
 
         xml.push_str(&format!(r#"          <clip id="{}">"#, clip_id));
         xml.push('\n');
-        xml.push_str(&format!("            <name>{}</name>\n", escape_xml(&filename)));
-        xml.push_str(&format!("            <duration>{}</duration>\n", self.seconds_to_frames(edit.duration)));
+        xml.push_str(&format!(
+            "            <name>{}</name>\n",
+            escape_xml(&filename)
+        ));
+        xml.push_str(&format!(
+            "            <duration>{}</duration>\n",
+            self.seconds_to_frames(edit.duration)
+        ));
 
         // Rate
         xml.push_str("            <rate>\n");
-        xml.push_str(&format!("              <timebase>{}</timebase>\n", self.timebase));
-        xml.push_str(&format!("              <ntsc>{}</ntsc>\n", if self.ntsc { "TRUE" } else { "FALSE" }));
+        xml.push_str(&format!(
+            "              <timebase>{}</timebase>\n",
+            self.timebase
+        ));
+        xml.push_str(&format!(
+            "              <ntsc>{}</ntsc>\n",
+            if self.ntsc { "TRUE" } else { "FALSE" }
+        ));
         xml.push_str("            </rate>\n");
 
         // Media
@@ -167,9 +188,15 @@ impl PremiereXmlExporter {
         if is_video {
             xml.push_str("              <video>\n");
             xml.push_str("                <track>\n");
-            xml.push_str(&format!(r#"                  <clipitem id="{}_video">"#, clip_id));
+            xml.push_str(&format!(
+                r#"                  <clipitem id="{}_video">"#,
+                clip_id
+            ));
             xml.push('\n');
-            xml.push_str(&format!("                    <name>{}</name>\n", escape_xml(&filename)));
+            xml.push_str(&format!(
+                "                    <name>{}</name>\n",
+                escape_xml(&filename)
+            ));
             xml.push_str(&self.generate_file_reference(&file_id, path, edit));
             xml.push_str("                  </clipitem>\n");
             xml.push_str("                </track>\n");
@@ -179,9 +206,15 @@ impl PremiereXmlExporter {
         if is_audio || is_video {
             xml.push_str("              <audio>\n");
             xml.push_str("                <track>\n");
-            xml.push_str(&format!(r#"                  <clipitem id="{}_audio">"#, clip_id));
+            xml.push_str(&format!(
+                r#"                  <clipitem id="{}_audio">"#,
+                clip_id
+            ));
             xml.push('\n');
-            xml.push_str(&format!("                    <name>{}</name>\n", escape_xml(&filename)));
+            xml.push_str(&format!(
+                "                    <name>{}</name>\n",
+                escape_xml(&filename)
+            ));
             xml.push_str(&self.generate_file_reference(&file_id, path, edit));
             xml.push_str("                  </clipitem>\n");
             xml.push_str("                </track>\n");
@@ -197,27 +230,52 @@ impl PremiereXmlExporter {
     fn generate_file_reference(&self, file_id: &Uuid, path: &Path, edit: &AssembledEdit) -> String {
         let mut xml = String::new();
 
-        let filename = path.file_name()
+        let filename = path
+            .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "Unknown".to_string());
 
         // Convert path to file:// URL
-        let file_url = format!("file://localhost{}", path.to_string_lossy().replace(" ", "%20"));
+        let file_url = format!(
+            "file://localhost{}",
+            path.to_string_lossy().replace(" ", "%20")
+        );
 
         xml.push_str(&format!(r#"                    <file id="{}">"#, file_id));
         xml.push('\n');
-        xml.push_str(&format!("                      <name>{}</name>\n", escape_xml(&filename)));
-        xml.push_str(&format!("                      <pathurl>{}</pathurl>\n", escape_xml(&file_url)));
+        xml.push_str(&format!(
+            "                      <name>{}</name>\n",
+            escape_xml(&filename)
+        ));
+        xml.push_str(&format!(
+            "                      <pathurl>{}</pathurl>\n",
+            escape_xml(&file_url)
+        ));
         xml.push_str("                      <rate>\n");
-        xml.push_str(&format!("                        <timebase>{}</timebase>\n", self.timebase));
-        xml.push_str(&format!("                        <ntsc>{}</ntsc>\n", if self.ntsc { "TRUE" } else { "FALSE" }));
+        xml.push_str(&format!(
+            "                        <timebase>{}</timebase>\n",
+            self.timebase
+        ));
+        xml.push_str(&format!(
+            "                        <ntsc>{}</ntsc>\n",
+            if self.ntsc { "TRUE" } else { "FALSE" }
+        ));
         xml.push_str("                      </rate>\n");
-        xml.push_str(&format!("                      <duration>{}</duration>\n", self.seconds_to_frames(edit.duration)));
+        xml.push_str(&format!(
+            "                      <duration>{}</duration>\n",
+            self.seconds_to_frames(edit.duration)
+        ));
         xml.push_str("                      <media>\n");
         xml.push_str("                        <video>\n");
         xml.push_str("                          <samplecharacteristics>\n");
-        xml.push_str(&format!("                            <width>{}</width>\n", edit.width));
-        xml.push_str(&format!("                            <height>{}</height>\n", edit.height));
+        xml.push_str(&format!(
+            "                            <width>{}</width>\n",
+            edit.width
+        ));
+        xml.push_str(&format!(
+            "                            <height>{}</height>\n",
+            edit.height
+        ));
         xml.push_str("                          </samplecharacteristics>\n");
         xml.push_str("                        </video>\n");
         xml.push_str("                        <audio>\n");
@@ -239,20 +297,38 @@ impl PremiereXmlExporter {
 
         xml.push_str(&format!(r#"      <sequence id="{}">"#, seq_id));
         xml.push('\n');
-        xml.push_str(&format!("        <name>{}</name>\n", escape_xml(&edit.name)));
-        xml.push_str(&format!("        <duration>{}</duration>\n", self.seconds_to_frames(edit.duration)));
+        xml.push_str(&format!(
+            "        <name>{}</name>\n",
+            escape_xml(&edit.name)
+        ));
+        xml.push_str(&format!(
+            "        <duration>{}</duration>\n",
+            self.seconds_to_frames(edit.duration)
+        ));
 
         // Rate
         xml.push_str("        <rate>\n");
-        xml.push_str(&format!("          <timebase>{}</timebase>\n", self.timebase));
-        xml.push_str(&format!("          <ntsc>{}</ntsc>\n", if self.ntsc { "TRUE" } else { "FALSE" }));
+        xml.push_str(&format!(
+            "          <timebase>{}</timebase>\n",
+            self.timebase
+        ));
+        xml.push_str(&format!(
+            "          <ntsc>{}</ntsc>\n",
+            if self.ntsc { "TRUE" } else { "FALSE" }
+        ));
         xml.push_str("        </rate>\n");
 
         // Timecode
         xml.push_str("        <timecode>\n");
         xml.push_str("          <rate>\n");
-        xml.push_str(&format!("            <timebase>{}</timebase>\n", self.timebase));
-        xml.push_str(&format!("            <ntsc>{}</ntsc>\n", if self.ntsc { "TRUE" } else { "FALSE" }));
+        xml.push_str(&format!(
+            "            <timebase>{}</timebase>\n",
+            self.timebase
+        ));
+        xml.push_str(&format!(
+            "            <ntsc>{}</ntsc>\n",
+            if self.ntsc { "TRUE" } else { "FALSE" }
+        ));
         xml.push_str("          </rate>\n");
         xml.push_str("          <string>00:00:00:00</string>\n");
         xml.push_str("          <frame>0</frame>\n");
@@ -293,13 +369,22 @@ impl PremiereXmlExporter {
         xml.push_str("            <format>\n");
         xml.push_str("              <samplecharacteristics>\n");
         xml.push_str(&format!("                <width>{}</width>\n", edit.width));
-        xml.push_str(&format!("                <height>{}</height>\n", edit.height));
+        xml.push_str(&format!(
+            "                <height>{}</height>\n",
+            edit.height
+        ));
         xml.push_str("                <anamorphic>FALSE</anamorphic>\n");
         xml.push_str("                <pixelaspectratio>square</pixelaspectratio>\n");
         xml.push_str("                <fielddominance>none</fielddominance>\n");
         xml.push_str("                <rate>\n");
-        xml.push_str(&format!("                  <timebase>{}</timebase>\n", self.timebase));
-        xml.push_str(&format!("                  <ntsc>{}</ntsc>\n", if self.ntsc { "TRUE" } else { "FALSE" }));
+        xml.push_str(&format!(
+            "                  <timebase>{}</timebase>\n",
+            self.timebase
+        ));
+        xml.push_str(&format!(
+            "                  <ntsc>{}</ntsc>\n",
+            if self.ntsc { "TRUE" } else { "FALSE" }
+        ));
         xml.push_str("                </rate>\n");
         xml.push_str("                <colordepth>24</colordepth>\n");
         xml.push_str("                <codec>\n");
@@ -315,13 +400,12 @@ impl PremiereXmlExporter {
         let mut xml = String::new();
 
         // Group clips by track
-        let max_track = edit.video_clips.iter()
-            .map(|c| c.track)
-            .max()
-            .unwrap_or(1);
+        let max_track = edit.video_clips.iter().map(|c| c.track).max().unwrap_or(1);
 
         for track_num in 1..=max_track {
-            let track_clips: Vec<&TimelineClip> = edit.video_clips.iter()
+            let track_clips: Vec<&TimelineClip> = edit
+                .video_clips
+                .iter()
                 .filter(|c| c.track == track_num)
                 .collect();
 
@@ -342,38 +426,79 @@ impl PremiereXmlExporter {
         let clipitem_id = Uuid::new_v4();
         let file_id = Uuid::new_v4();
 
-        let filename = clip.source.file_name()
+        let filename = clip
+            .source
+            .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "Unknown".to_string());
 
-        let file_url = format!("file://localhost{}", clip.source.to_string_lossy().replace(" ", "%20"));
+        let file_url = format!(
+            "file://localhost{}",
+            clip.source.to_string_lossy().replace(" ", "%20")
+        );
 
         xml.push_str(&format!(r#"              <clipitem id="{}">"#, clipitem_id));
         xml.push('\n');
-        xml.push_str(&format!("                <name>{}</name>\n", escape_xml(&filename)));
+        xml.push_str(&format!(
+            "                <name>{}</name>\n",
+            escape_xml(&filename)
+        ));
         xml.push_str("                <enabled>TRUE</enabled>\n");
-        xml.push_str(&format!("                <start>{}</start>\n", self.seconds_to_frames(clip.timeline_in)));
-        xml.push_str(&format!("                <end>{}</end>\n", self.seconds_to_frames(clip.timeline_out)));
-        xml.push_str(&format!("                <in>{}</in>\n", self.seconds_to_frames(clip.source_in)));
-        xml.push_str(&format!("                <out>{}</out>\n", self.seconds_to_frames(clip.source_out)));
+        xml.push_str(&format!(
+            "                <start>{}</start>\n",
+            self.seconds_to_frames(clip.timeline_in)
+        ));
+        xml.push_str(&format!(
+            "                <end>{}</end>\n",
+            self.seconds_to_frames(clip.timeline_out)
+        ));
+        xml.push_str(&format!(
+            "                <in>{}</in>\n",
+            self.seconds_to_frames(clip.source_in)
+        ));
+        xml.push_str(&format!(
+            "                <out>{}</out>\n",
+            self.seconds_to_frames(clip.source_out)
+        ));
 
         // Master clip reference
-        xml.push_str(&format!("                <masterclipid>{}</masterclipid>\n", clipitem_id));
+        xml.push_str(&format!(
+            "                <masterclipid>{}</masterclipid>\n",
+            clipitem_id
+        ));
 
         // File reference
         xml.push_str(&format!(r#"                <file id="{}">"#, file_id));
         xml.push('\n');
-        xml.push_str(&format!("                  <name>{}</name>\n", escape_xml(&filename)));
-        xml.push_str(&format!("                  <pathurl>{}</pathurl>\n", escape_xml(&file_url)));
+        xml.push_str(&format!(
+            "                  <name>{}</name>\n",
+            escape_xml(&filename)
+        ));
+        xml.push_str(&format!(
+            "                  <pathurl>{}</pathurl>\n",
+            escape_xml(&file_url)
+        ));
         xml.push_str("                  <rate>\n");
-        xml.push_str(&format!("                    <timebase>{}</timebase>\n", self.timebase));
-        xml.push_str(&format!("                    <ntsc>{}</ntsc>\n", if self.ntsc { "TRUE" } else { "FALSE" }));
+        xml.push_str(&format!(
+            "                    <timebase>{}</timebase>\n",
+            self.timebase
+        ));
+        xml.push_str(&format!(
+            "                    <ntsc>{}</ntsc>\n",
+            if self.ntsc { "TRUE" } else { "FALSE" }
+        ));
         xml.push_str("                  </rate>\n");
         xml.push_str("                  <media>\n");
         xml.push_str("                    <video>\n");
         xml.push_str("                      <samplecharacteristics>\n");
-        xml.push_str(&format!("                        <width>{}</width>\n", edit.width));
-        xml.push_str(&format!("                        <height>{}</height>\n", edit.height));
+        xml.push_str(&format!(
+            "                        <width>{}</width>\n",
+            edit.width
+        ));
+        xml.push_str(&format!(
+            "                        <height>{}</height>\n",
+            edit.height
+        ));
         xml.push_str("                      </samplecharacteristics>\n");
         xml.push_str("                    </video>\n");
         xml.push_str("                  </media>\n");
@@ -396,7 +521,10 @@ impl PremiereXmlExporter {
             xml.push_str("                    <effecttype>motion</effecttype>\n");
             xml.push_str("                    <parameter>\n");
             xml.push_str("                      <parameterid>speed</parameterid>\n");
-            xml.push_str(&format!("                      <value>{}</value>\n", clip.speed * 100.0));
+            xml.push_str(&format!(
+                "                      <value>{}</value>\n",
+                clip.speed * 100.0
+            ));
             xml.push_str("                    </parameter>\n");
             xml.push_str("                  </effect>\n");
             xml.push_str("                </filter>\n");
@@ -411,7 +539,10 @@ impl PremiereXmlExporter {
             xml.push_str("                    <effecttype>motion</effecttype>\n");
             xml.push_str("                    <parameter>\n");
             xml.push_str("                      <parameterid>opacity</parameterid>\n");
-            xml.push_str(&format!("                      <value>{}</value>\n", clip.opacity * 100.0));
+            xml.push_str(&format!(
+                "                      <value>{}</value>\n",
+                clip.opacity * 100.0
+            ));
             xml.push_str("                    </parameter>\n");
             xml.push_str("                  </effect>\n");
             xml.push_str("                </filter>\n");
@@ -422,15 +553,25 @@ impl PremiereXmlExporter {
         xml
     }
 
-    fn generate_transition(&self, transition: &super::edit_assembly::TransitionSpec, is_start: bool) -> String {
+    fn generate_transition(
+        &self,
+        transition: &super::edit_assembly::TransitionSpec,
+        is_start: bool,
+    ) -> String {
         let mut xml = String::new();
 
         let alignment = if is_start { "start" } else { "end" };
 
         xml.push_str("                <transitionitem>\n");
         xml.push_str(&format!("                  <start>{}</start>\n", 0));
-        xml.push_str(&format!("                  <end>{}</end>\n", self.seconds_to_frames(transition.duration)));
-        xml.push_str(&format!("                  <alignment>{}</alignment>\n", alignment));
+        xml.push_str(&format!(
+            "                  <end>{}</end>\n",
+            self.seconds_to_frames(transition.duration)
+        ));
+        xml.push_str(&format!(
+            "                  <alignment>{}</alignment>\n",
+            alignment
+        ));
 
         xml.push_str("                  <effect>\n");
 
@@ -492,13 +633,12 @@ impl PremiereXmlExporter {
         xml.push_str("            </outputs>\n");
 
         // Group clips by track
-        let max_track = edit.audio_clips.iter()
-            .map(|c| c.track)
-            .max()
-            .unwrap_or(1);
+        let max_track = edit.audio_clips.iter().map(|c| c.track).max().unwrap_or(1);
 
         for track_num in 1..=max_track {
-            let track_clips: Vec<&AudioClip> = edit.audio_clips.iter()
+            let track_clips: Vec<&AudioClip> = edit
+                .audio_clips
+                .iter()
                 .filter(|c| c.track == track_num)
                 .collect();
 
@@ -518,34 +658,74 @@ impl PremiereXmlExporter {
         xml
     }
 
-    fn generate_audio_clipitem(&self, clip: &AudioClip, channel: u32, _edit: &AssembledEdit) -> String {
+    fn generate_audio_clipitem(
+        &self,
+        clip: &AudioClip,
+        channel: u32,
+        _edit: &AssembledEdit,
+    ) -> String {
         let mut xml = String::new();
         let clipitem_id = Uuid::new_v4();
         let file_id = Uuid::new_v4();
 
-        let filename = clip.source.file_name()
+        let filename = clip
+            .source
+            .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "Unknown".to_string());
 
-        let file_url = format!("file://localhost{}", clip.source.to_string_lossy().replace(" ", "%20"));
+        let file_url = format!(
+            "file://localhost{}",
+            clip.source.to_string_lossy().replace(" ", "%20")
+        );
 
-        xml.push_str(&format!(r#"              <clipitem id="{}_{}">"#, clipitem_id, channel));
+        xml.push_str(&format!(
+            r#"              <clipitem id="{}_{}">"#,
+            clipitem_id, channel
+        ));
         xml.push('\n');
-        xml.push_str(&format!("                <name>{}</name>\n", escape_xml(&filename)));
+        xml.push_str(&format!(
+            "                <name>{}</name>\n",
+            escape_xml(&filename)
+        ));
         xml.push_str("                <enabled>TRUE</enabled>\n");
-        xml.push_str(&format!("                <start>{}</start>\n", self.seconds_to_frames(clip.timeline_in)));
-        xml.push_str(&format!("                <end>{}</end>\n", self.seconds_to_frames(clip.timeline_out)));
-        xml.push_str(&format!("                <in>{}</in>\n", self.seconds_to_frames(clip.source_in)));
-        xml.push_str(&format!("                <out>{}</out>\n", self.seconds_to_frames(clip.source_out)));
+        xml.push_str(&format!(
+            "                <start>{}</start>\n",
+            self.seconds_to_frames(clip.timeline_in)
+        ));
+        xml.push_str(&format!(
+            "                <end>{}</end>\n",
+            self.seconds_to_frames(clip.timeline_out)
+        ));
+        xml.push_str(&format!(
+            "                <in>{}</in>\n",
+            self.seconds_to_frames(clip.source_in)
+        ));
+        xml.push_str(&format!(
+            "                <out>{}</out>\n",
+            self.seconds_to_frames(clip.source_out)
+        ));
 
         // File reference
         xml.push_str(&format!(r#"                <file id="{}">"#, file_id));
         xml.push('\n');
-        xml.push_str(&format!("                  <name>{}</name>\n", escape_xml(&filename)));
-        xml.push_str(&format!("                  <pathurl>{}</pathurl>\n", escape_xml(&file_url)));
+        xml.push_str(&format!(
+            "                  <name>{}</name>\n",
+            escape_xml(&filename)
+        ));
+        xml.push_str(&format!(
+            "                  <pathurl>{}</pathurl>\n",
+            escape_xml(&file_url)
+        ));
         xml.push_str("                  <rate>\n");
-        xml.push_str(&format!("                    <timebase>{}</timebase>\n", self.timebase));
-        xml.push_str(&format!("                    <ntsc>{}</ntsc>\n", if self.ntsc { "TRUE" } else { "FALSE" }));
+        xml.push_str(&format!(
+            "                    <timebase>{}</timebase>\n",
+            self.timebase
+        ));
+        xml.push_str(&format!(
+            "                    <ntsc>{}</ntsc>\n",
+            if self.ntsc { "TRUE" } else { "FALSE" }
+        ));
         xml.push_str("                  </rate>\n");
         xml.push_str("                  <media>\n");
         xml.push_str("                    <audio>\n");
@@ -561,7 +741,10 @@ impl PremiereXmlExporter {
         // Source channel
         xml.push_str(&format!("                <sourcetrack>\n"));
         xml.push_str(&format!("                  <mediatype>audio</mediatype>\n"));
-        xml.push_str(&format!("                  <trackindex>{}</trackindex>\n", channel));
+        xml.push_str(&format!(
+            "                  <trackindex>{}</trackindex>\n",
+            channel
+        ));
         xml.push_str(&format!("                </sourcetrack>\n"));
 
         // Volume/Level
@@ -591,7 +774,10 @@ impl PremiereXmlExporter {
             xml.push_str("                    <effecttype>filter</effecttype>\n");
             xml.push_str("                    <parameter>\n");
             xml.push_str("                      <parameterid>duration</parameterid>\n");
-            xml.push_str(&format!("                      <value>{}</value>\n", self.seconds_to_frames(fade_duration)));
+            xml.push_str(&format!(
+                "                      <value>{}</value>\n",
+                self.seconds_to_frames(fade_duration)
+            ));
             xml.push_str("                    </parameter>\n");
             xml.push_str("                  </effect>\n");
             xml.push_str("                </filter>\n");
@@ -606,7 +792,10 @@ impl PremiereXmlExporter {
             xml.push_str("                    <effecttype>filter</effecttype>\n");
             xml.push_str("                    <parameter>\n");
             xml.push_str("                      <parameterid>duration</parameterid>\n");
-            xml.push_str(&format!("                      <value>{}</value>\n", self.seconds_to_frames(fade_duration)));
+            xml.push_str(&format!(
+                "                      <value>{}</value>\n",
+                self.seconds_to_frames(fade_duration)
+            ));
             xml.push_str("                    </parameter>\n");
             xml.push_str("                  </effect>\n");
             xml.push_str("                </filter>\n");
@@ -621,18 +810,30 @@ impl PremiereXmlExporter {
         let mut xml = String::new();
 
         xml.push_str("        <marker>\n");
-        xml.push_str(&format!("          <name>{}</name>\n", escape_xml(&marker.name)));
-        xml.push_str(&format!("          <in>{}</in>\n", self.seconds_to_frames(marker.time)));
-        xml.push_str(&format!("          <out>{}</out>\n", self.seconds_to_frames(marker.time)));
+        xml.push_str(&format!(
+            "          <name>{}</name>\n",
+            escape_xml(&marker.name)
+        ));
+        xml.push_str(&format!(
+            "          <in>{}</in>\n",
+            self.seconds_to_frames(marker.time)
+        ));
+        xml.push_str(&format!(
+            "          <out>{}</out>\n",
+            self.seconds_to_frames(marker.time)
+        ));
 
         // Marker color (Premiere uses color index 0-7)
         let _color_index = match marker.marker_type {
-            MarkerType::Chapter => 0,   // Green
-            MarkerType::Beat => 1,      // Red
-            MarkerType::Section => 2,   // Purple
-            MarkerType::Note => 3,      // Orange
+            MarkerType::Chapter => 0, // Green
+            MarkerType::Beat => 1,    // Red
+            MarkerType::Section => 2, // Purple
+            MarkerType::Note => 3,    // Orange
         };
-        xml.push_str(&format!("          <comment>{}</comment>\n", escape_xml(&marker.color)));
+        xml.push_str(&format!(
+            "          <comment>{}</comment>\n",
+            escape_xml(&marker.color)
+        ));
 
         xml.push_str("        </marker>\n");
 

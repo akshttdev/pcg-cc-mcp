@@ -72,11 +72,7 @@ impl BackendClient {
     }
 
     /// Chat with Nora via the backend API
-    pub async fn chat_nora(
-        &self,
-        message: &str,
-        session_id: &str,
-    ) -> Result<NoraChatResponse> {
+    pub async fn chat_nora(&self, message: &str, session_id: &str) -> Result<NoraChatResponse> {
         let request = ChatRequest {
             message: message.to_string(),
             session_id: Some(session_id.to_string()),
@@ -100,11 +96,7 @@ impl BackendClient {
     }
 
     /// Chat with Topsi via the backend API
-    pub async fn chat_topsi(
-        &self,
-        message: &str,
-        session_id: &str,
-    ) -> Result<TopsiChatResponse> {
+    pub async fn chat_topsi(&self, message: &str, session_id: &str) -> Result<TopsiChatResponse> {
         let request = ChatRequest {
             message: message.to_string(),
             session_id: Some(session_id.to_string()),

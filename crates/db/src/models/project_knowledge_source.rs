@@ -177,10 +177,7 @@ impl ProjectKnowledgeSource {
     }
 
     /// Mark a source as stale
-    pub async fn mark_stale(
-        pool: &SqlitePool,
-        id: Uuid,
-    ) -> Result<(), sqlx::Error> {
+    pub async fn mark_stale(pool: &SqlitePool, id: Uuid) -> Result<(), sqlx::Error> {
         let id_bytes = id.to_string();
         sqlx::query(
             "UPDATE project_knowledge_sources SET is_stale = 1, updated_at = datetime('now', 'subsec') WHERE id = ?",
@@ -192,10 +189,7 @@ impl ProjectKnowledgeSource {
     }
 
     /// Mark a source as refreshed (not stale)
-    pub async fn mark_refreshed(
-        pool: &SqlitePool,
-        id: Uuid,
-    ) -> Result<(), sqlx::Error> {
+    pub async fn mark_refreshed(pool: &SqlitePool, id: Uuid) -> Result<(), sqlx::Error> {
         let id_bytes = id.to_string();
         sqlx::query(
             "UPDATE project_knowledge_sources SET is_stale = 0, last_refreshed_at = datetime('now', 'subsec'), updated_at = datetime('now', 'subsec') WHERE id = ?",
@@ -290,13 +284,9 @@ impl ProjectKnowledgeSource {
         }
         let kc_rows = kc_q.fetch_all(pool).await.unwrap_or_default();
 
-        let mut kc_map: std::collections::HashMap<String, f64> =
-            std::collections::HashMap::new();
+        let mut kc_map: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
         for row in &kc_rows {
-            kc_map.insert(
-                row.project_id.to_string(),
-                row.knowledge_completeness,
-            );
+            kc_map.insert(row.project_id.to_string(), row.knowledge_completeness);
         }
 
         // Query last activity timestamps

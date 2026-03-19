@@ -68,8 +68,10 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     }
 
     // Add external auth routes (always available)
-    router = router
-        .route("/auth/external/validate", post(external_auth::validate_external_token));
+    router = router.route(
+        "/auth/external/validate",
+        post(external_auth::validate_external_token),
+    );
 
     router.layer(from_fn_with_state(
         deployment.clone(),

@@ -151,11 +151,16 @@ pub struct SmsStats {
 }
 
 impl SmsMessage {
-    pub async fn create(pool: &SqlitePool, data: CreateSmsMessage) -> Result<Self, SmsMessageError> {
+    pub async fn create(
+        pool: &SqlitePool,
+        data: CreateSmsMessage,
+    ) -> Result<Self, SmsMessageError> {
         let id = Uuid::new_v4();
         let direction = data.direction.to_string();
         let status = data.status.to_string();
-        let media_urls = data.media_urls.map(|v| serde_json::to_string(&v).unwrap_or_default());
+        let media_urls = data
+            .media_urls
+            .map(|v| serde_json::to_string(&v).unwrap_or_default());
 
         let msg = sqlx::query_as::<_, SmsMessage>(
             r#"
@@ -196,7 +201,10 @@ impl SmsMessage {
             .ok_or(SmsMessageError::NotFound)
     }
 
-    pub async fn find_by_message_sid(pool: &SqlitePool, message_sid: &str) -> Result<Self, SmsMessageError> {
+    pub async fn find_by_message_sid(
+        pool: &SqlitePool,
+        message_sid: &str,
+    ) -> Result<Self, SmsMessageError> {
         sqlx::query_as::<_, SmsMessage>(r#"SELECT * FROM sms_messages WHERE message_sid = ?1"#)
             .bind(message_sid)
             .fetch_optional(pool)
@@ -338,7 +346,10 @@ impl SmsMessage {
         .ok_or(SmsMessageError::NotFound)
     }
 
-    pub async fn get_stats(pool: &SqlitePool, project_id: Uuid) -> Result<SmsStats, SmsMessageError> {
+    pub async fn get_stats(
+        pool: &SqlitePool,
+        project_id: Uuid,
+    ) -> Result<SmsStats, SmsMessageError> {
         #[derive(FromRow)]
         struct StatsRow {
             total: i64,

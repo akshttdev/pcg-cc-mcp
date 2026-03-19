@@ -14,12 +14,13 @@
 //! - Node.js 18+
 //! - Playwright: `pnpm add -D playwright && npx playwright install chromium`
 
+use std::process::Command;
+
+use db::DBService;
+use serde::Deserialize;
 use services::services::bowser::BowserService;
 use sqlx::SqlitePool;
 use uuid::Uuid;
-use db::DBService;
-use serde::Deserialize;
-use std::process::Command;
 
 /// A page rendered via Playwright/Bowser
 #[derive(Debug, Clone)]
@@ -71,7 +72,11 @@ impl BowserBridge {
         // Find the render-page.js script
         let script_path = Self::find_render_script();
 
-        Self { bowser, pool, script_path }
+        Self {
+            bowser,
+            pool,
+            script_path,
+        }
     }
 
     /// Create a new BowserBridge with an existing DBService
@@ -130,8 +135,14 @@ impl BowserBridge {
     ///
     /// This uses the Node.js script with Playwright to render the page.
     /// Falls back to an error if Playwright isn't installed.
-    pub async fn render_page(&self, url: &str, _execution_id: Uuid) -> Result<RenderedPage, String> {
-        let script_path = self.script_path.as_ref()
+    pub async fn render_page(
+        &self,
+        url: &str,
+        _execution_id: Uuid,
+    ) -> Result<RenderedPage, String> {
+        let script_path = self
+            .script_path
+            .as_ref()
             .ok_or("Render script not found. Ensure scripts/render-page.js exists.")?;
 
         tracing::info!("[BOWSER_BRIDGE] Rendering JavaScript page: {}", url);
@@ -155,7 +166,9 @@ impl BowserBridge {
             let stderr = String::from_utf8_lossy(&output.stderr);
 
             // Check if Playwright is not installed
-            if stderr.contains("Cannot find package 'playwright'") || stderr.contains("Cannot find module 'playwright'") {
+            if stderr.contains("Cannot find package 'playwright'")
+                || stderr.contains("Cannot find module 'playwright'")
+            {
                 return Err(
                     "Playwright not installed. Run: pnpm add -D playwright && npx playwright install chromium".to_string()
                 );
@@ -163,7 +176,9 @@ impl BowserBridge {
 
             // Try to parse the JSON error output
             if let Ok(result) = serde_json::from_slice::<RenderScriptOutput>(&output.stdout) {
-                return Err(result.error.unwrap_or_else(|| "Unknown render error".to_string()));
+                return Err(result
+                    .error
+                    .unwrap_or_else(|| "Unknown render error".to_string()));
             }
 
             return Err(format!("Render script failed: {}", stderr));
@@ -177,8 +192,12 @@ impl BowserBridge {
             return Err(result.error.unwrap_or_else(|| "Render failed".to_string()));
         }
 
-        tracing::info!("[BOWSER_BRIDGE] Successfully rendered: {} -> {} ({} chars)",
-            url, result.url, result.html.len());
+        tracing::info!(
+            "[BOWSER_BRIDGE] Successfully rendered: {} -> {} ({} chars)",
+            url,
+            result.url,
+            result.html.len()
+        );
 
         // Convert HTML to text
         let text = html_to_text(&result.html);
@@ -212,12 +231,20 @@ impl BowserBridge {
                 Ok(page) => return Ok(page),
                 Err(e) => {
                     last_error = e;
-                    tracing::warn!("[BOWSER_BRIDGE] Attempt {} failed: {}", attempt + 1, last_error);
+                    tracing::warn!(
+                        "[BOWSER_BRIDGE] Attempt {} failed: {}",
+                        attempt + 1,
+                        last_error
+                    );
                 }
             }
         }
 
-        Err(format!("All {} attempts failed. Last error: {}", max_retries + 1, last_error))
+        Err(format!(
+            "All {} attempts failed. Last error: {}",
+            max_retries + 1,
+            last_error
+        ))
     }
 }
 

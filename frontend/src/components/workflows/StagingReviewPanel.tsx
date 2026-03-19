@@ -324,7 +324,7 @@ export function StagingReviewContent({
       const data = JSON.parse(record.record_data);
       data[fieldKey] = newValue;
       updateMutation.mutate({ id: recordId, data: { record_data: data } });
-    } catch {}
+    } catch { /* intentionally empty */ }
   }, [records, updateMutation]);
 
   const commitMutation = useMutation({
@@ -494,7 +494,7 @@ export function StagingReviewContent({
     for (const [targetType, groupRecords] of Object.entries(grouped)) {
       for (const record of groupRecords) {
         let data: Record<string, unknown> = {};
-        try { data = JSON.parse(record.record_data); } catch {}
+        try { data = JSON.parse(record.record_data); } catch { /* intentionally empty */ }
         const displayName = data.first_name
           ? `${String(data.first_name)} ${String(data.last_name || '')}`
           : String(data.name || data.title || 'Untitled');
@@ -671,7 +671,7 @@ export function StagingReviewContent({
 
               let validationErrs: string[] = [];
               if (record.validation_errors) {
-                try { validationErrs = JSON.parse(record.validation_errors); } catch {}
+                try { validationErrs = JSON.parse(record.validation_errors); } catch { /* intentionally empty */ }
               }
 
               return (

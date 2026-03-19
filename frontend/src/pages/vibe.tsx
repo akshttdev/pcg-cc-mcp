@@ -123,7 +123,7 @@ export default function VibePage() {
                 budgetLimit = balResult.data.total_deposited || 0;
               }
             }
-          } catch {}
+          } catch { /* intentionally empty */ }
 
           try {
             const txResp = await fetch(resolveApiUrl(`/api/projects/${projectId}/vibe/transactions?limit=50`));
@@ -133,7 +133,7 @@ export default function VibePage() {
                 setTransactions(txResult.data);
               }
             }
-          } catch {}
+          } catch { /* intentionally empty */ }
         }
 
         setStats({

@@ -1,14 +1,14 @@
 use axum::{
+    Router,
     body::Bytes,
     extract::{Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Json},
     routing::{get, post},
-    Router,
 };
 use chrono::Utc;
+use db::models::dropbox_source::{DropboxSource, render_reference_name};
 use deployment::Deployment;
-use db::models::dropbox_source::{render_reference_name, DropboxSource};
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use services::services::media_pipeline::{MediaBatchIngestRequest, MediaStorageTier};
@@ -65,9 +65,7 @@ pub struct WebhookResponse {
 
 /// GET /api/webhooks/dropbox - Verification endpoint
 /// Dropbox sends a challenge parameter that we must echo back
-pub async fn dropbox_webhook_verify(
-    Query(params): Query<DropboxChallenge>,
-) -> impl IntoResponse {
+pub async fn dropbox_webhook_verify(Query(params): Query<DropboxChallenge>) -> impl IntoResponse {
     info!("Dropbox webhook verification challenge received");
 
     // Dropbox requires us to echo back the challenge
@@ -172,10 +170,7 @@ pub async fn dropbox_webhook_handler(
                         "Failed to auto-ingest Dropbox batch {}: {}",
                         hint.source_url, err
                     );
-                    errors.push(format!(
-                        "{}: failed to ingest ({})",
-                        hint.source_url, err
-                    ));
+                    errors.push(format!("{}: failed to ingest ({})", hint.source_url, err));
                 }
             }
         }
@@ -244,10 +239,7 @@ pub async fn dropbox_webhook_handler(
                                 "Failed to auto-ingest Dropbox source '{}': {}",
                                 source.label, err
                             );
-                            errors.push(format!(
-                                "{}: failed to ingest ({})",
-                                source.label, err
-                            ));
+                            errors.push(format!("{}: failed to ingest ({})", source.label, err));
                         }
                     }
                 }
@@ -363,9 +355,13 @@ async fn github_webhook_handler(
                 .map(|v| v == "development")
                 .unwrap_or(false);
             if is_dev {
-                warn!("GITHUB_WEBHOOK_SECRET not set — accepting unvalidated webhook (development mode)");
+                warn!(
+                    "GITHUB_WEBHOOK_SECRET not set — accepting unvalidated webhook (development mode)"
+                );
             } else {
-                error!("GITHUB_WEBHOOK_SECRET not set — rejecting webhook. Set the secret or use RUST_ENV=development to bypass.");
+                error!(
+                    "GITHUB_WEBHOOK_SECRET not set — rejecting webhook. Set the secret or use RUST_ENV=development to bypass."
+                );
                 return Err(StatusCode::INTERNAL_SERVER_ERROR);
             }
         }
@@ -445,8 +441,7 @@ async fn handle_github_issue_event(
 
     // Scope to ORCHA Platform project's organization
     let org_id = {
-        use db::constants::BUGREPORTS_PROJECT_ID;
-        use db::models::project::Project;
+        use db::{constants::BUGREPORTS_PROJECT_ID, models::project::Project};
         Project::find_by_id(pool, &BUGREPORTS_PROJECT_ID.to_string())
             .await
             .ok()
@@ -520,7 +515,12 @@ async fn handle_github_issue_event(
     let trigger_pool = pool.clone();
     let ds_id = ds.id.clone();
     tokio::spawn(async move {
-        super::data_source_workflows::fire_triggers_for_data_source(trigger_pool, ds_id, deployment).await;
+        super::data_source_workflows::fire_triggers_for_data_source(
+            trigger_pool,
+            ds_id,
+            deployment,
+        )
+        .await;
     });
 
     info!(

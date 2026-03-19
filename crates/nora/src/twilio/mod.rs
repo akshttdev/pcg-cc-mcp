@@ -107,7 +107,10 @@ impl TwilioConfig {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or_else(default_max_call_duration),
-            speech_language: get_env_or_default("TWILIO_SPEECH_LANGUAGE", default_speech_language()),
+            speech_language: get_env_or_default(
+                "TWILIO_SPEECH_LANGUAGE",
+                default_speech_language(),
+            ),
             tts_voice: get_env_or_default("TWILIO_TTS_VOICE", default_tts_voice()),
             recording_enabled: std::env::var("TWILIO_RECORDING_ENABLED")
                 .map(|v| v == "true" || v == "1")

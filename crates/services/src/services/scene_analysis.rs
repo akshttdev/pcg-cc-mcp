@@ -9,9 +9,12 @@
 //! - Per-clip content map for intelligent shot selection
 //! - Quality scoring (sharpness, exposure, stability)
 
+use std::{
+    path::{Path, PathBuf},
+    process::Stdio,
+};
+
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
-use std::process::Stdio;
 use thiserror::Error;
 use tokio::process::Command;
 
@@ -112,11 +115,16 @@ impl SceneAnalysisEngine {
     }
 
     /// Probe a video file for metadata
-    pub async fn probe_clip(&self, path: &Path) -> Result<(f64, u32, u32, f64), SceneAnalysisError> {
+    pub async fn probe_clip(
+        &self,
+        path: &Path,
+    ) -> Result<(f64, u32, u32, f64), SceneAnalysisError> {
         let output = Command::new(&self.ffprobe_path)
             .args([
-                "-v", "quiet",
-                "-print_format", "json",
+                "-v",
+                "quiet",
+                "-print_format",
+                "json",
                 "-show_streams",
                 "-show_format",
             ])
@@ -177,15 +185,15 @@ impl SceneAnalysisEngine {
             }
 
             let output = Command::new(&self.ffmpeg_path)
-                .args([
-                    "-ss", &format!("{:.3}", ts),
-                    "-i",
-                ])
+                .args(["-ss", &format!("{:.3}", ts), "-i"])
                 .arg(path)
                 .args([
-                    "-vframes", "1",
-                    "-vf", "signalstats=stat=tout+vrep+brng,metadata=print",
-                    "-f", "null",
+                    "-vframes",
+                    "1",
+                    "-vf",
+                    "signalstats=stat=tout+vrep+brng,metadata=print",
+                    "-f",
+                    "null",
                     "-",
                 ])
                 .stdout(Stdio::piped())
@@ -197,9 +205,11 @@ impl SceneAnalysisEngine {
 
             // Parse YAVG (average brightness 0-255) and SATAVG (saturation/complexity)
             let brightness = Self::parse_metadata_value(&stderr, "lavfi.signalstats.YAVG")
-                .unwrap_or(128.0) / 255.0;
+                .unwrap_or(128.0)
+                / 255.0;
             let complexity = Self::parse_metadata_value(&stderr, "lavfi.signalstats.SATAVG")
-                .unwrap_or(50.0) / 255.0;
+                .unwrap_or(50.0)
+                / 255.0;
 
             results.push((ts, brightness, complexity));
         }
@@ -262,10 +272,16 @@ impl SceneAnalysisEngine {
                 }
             }
             if line.contains("lavfi.signalstats.YAVG=") {
-                current_yavg = line.split('=').last().and_then(|v| v.trim().parse::<f64>().ok());
+                current_yavg = line
+                    .split('=')
+                    .last()
+                    .and_then(|v| v.trim().parse::<f64>().ok());
             }
             if line.contains("lavfi.signalstats.HUEAVG=") {
-                current_hueavg = line.split('=').last().and_then(|v| v.trim().parse::<f64>().ok());
+                current_hueavg = line
+                    .split('=')
+                    .last()
+                    .and_then(|v| v.trim().parse::<f64>().ok());
             }
         }
 
@@ -312,8 +328,10 @@ impl SceneAnalysisEngine {
             .args([
                 "-vf",
                 "select='gte(scene,0.08)',metadata=print",
-                "-vsync", "vfr",
-                "-f", "null",
+                "-vsync",
+                "vfr",
+                "-f",
+                "null",
                 "-",
             ])
             .stdout(Stdio::piped())
@@ -423,16 +441,14 @@ impl SceneAnalysisEngine {
                     .map(|m| m.motion)
                     .unwrap_or(0.2)
             } else {
-                segment_motions.iter().map(|m| m.motion).sum::<f64>()
-                    / segment_motions.len() as f64
+                segment_motions.iter().map(|m| m.motion).sum::<f64>() / segment_motions.len() as f64
             };
 
             // Camera movement: variance of HUEAVG within this segment
             // High hue variance = camera scanning across differently-colored areas
             let camera_movement = if segment_motions.len() >= 2 {
                 let hue_values: Vec<f64> = segment_motions.iter().map(|m| m.hue_avg).collect();
-                let mean_hue =
-                    hue_values.iter().sum::<f64>() / hue_values.len() as f64;
+                let mean_hue = hue_values.iter().sum::<f64>() / hue_values.len() as f64;
                 let variance = hue_values
                     .iter()
                     .map(|h| (h - mean_hue).powi(2))

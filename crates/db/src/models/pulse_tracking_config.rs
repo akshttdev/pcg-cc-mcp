@@ -34,12 +34,10 @@ impl PulseTrackingConfig {
         pool: &SqlitePool,
         project_id: Uuid,
     ) -> Result<Option<Self>, sqlx::Error> {
-        sqlx::query_as::<_, Self>(
-            "SELECT * FROM pulse_tracking_configs WHERE project_id = ?",
-        )
-        .bind(project_id)
-        .fetch_optional(pool)
-        .await
+        sqlx::query_as::<_, Self>("SELECT * FROM pulse_tracking_configs WHERE project_id = ?")
+            .bind(project_id)
+            .fetch_optional(pool)
+            .await
     }
 
     pub async fn upsert(
@@ -96,10 +94,7 @@ impl PulseTrackingConfig {
                 .unwrap_or_else(|| "{}".to_string());
             let llm_enabled = data.llm_enabled.unwrap_or(false);
             let llm_model = data.llm_model.as_deref().unwrap_or("llama3.2");
-            let notification_config = data
-                .notification_config
-                .as_ref()
-                .map(|v| v.to_string());
+            let notification_config = data.notification_config.as_ref().map(|v| v.to_string());
 
             sqlx::query_as::<_, Self>(
                 r#"INSERT INTO pulse_tracking_configs (id, project_id, organization_id, keywords, entities, llm_enabled, llm_model, notification_config)

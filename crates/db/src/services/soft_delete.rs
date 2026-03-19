@@ -127,10 +127,7 @@ impl SoftDeleteService {
     }
 
     /// Restore a soft-deleted project
-    pub async fn restore_project(
-        pool: &SqlitePool,
-        project_id: Uuid,
-    ) -> Result<u64, sqlx::Error> {
+    pub async fn restore_project(pool: &SqlitePool, project_id: Uuid) -> Result<u64, sqlx::Error> {
         let result = sqlx::query(
             r#"UPDATE projects
                SET deleted_at = NULL, deleted_by = NULL
@@ -143,10 +140,7 @@ impl SoftDeleteService {
     }
 
     /// Restore a soft-deleted task
-    pub async fn restore_task(
-        pool: &SqlitePool,
-        task_id: Uuid,
-    ) -> Result<u64, sqlx::Error> {
+    pub async fn restore_task(pool: &SqlitePool, task_id: Uuid) -> Result<u64, sqlx::Error> {
         let result = sqlx::query(
             r#"UPDATE tasks
                SET deleted_at = NULL, deleted_by = NULL

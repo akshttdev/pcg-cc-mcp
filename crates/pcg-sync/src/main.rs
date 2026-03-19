@@ -19,7 +19,7 @@ use clap::{Parser, Subcommand};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use reqwest::{
     header::{self, HeaderMap, HeaderValue},
-    Client, multipart,
+    multipart, Client,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -43,9 +43,15 @@ enum Command {
     Status,
     /// Configure sync settings interactively
     Configure {
-        #[arg(long, help = "PCG server URL (e.g. https://dashboard.powerclubglobal.com)")]
+        #[arg(
+            long,
+            help = "PCG server URL (e.g. https://dashboard.powerclubglobal.com)"
+        )]
         server: Option<String>,
-        #[arg(long, help = "Session token (copy from browser DevTools → Application → Cookies → session)")]
+        #[arg(
+            long,
+            help = "Session token (copy from browser DevTools → Application → Cookies → session)"
+        )]
         token: Option<String>,
         #[arg(long, help = "Local folder to sync into (default: ~/PCG Files)")]
         folder: Option<String>,
@@ -78,8 +84,12 @@ struct SyncConfig {
     max_auto_download_bytes: u64,
 }
 
-fn default_poll_interval() -> u64 { 60 }
-fn default_max_size() -> u64 { 100 * 1024 * 1024 }
+fn default_poll_interval() -> u64 {
+    60
+}
+fn default_max_size() -> u64 {
+    100 * 1024 * 1024
+}
 
 fn config_path() -> PathBuf {
     dirs::home_dir()
@@ -97,8 +107,12 @@ fn state_path() -> PathBuf {
 
 fn load_config() -> Result<SyncConfig> {
     let path = config_path();
-    let content = fs::read_to_string(&path)
-        .with_context(|| format!("Config not found at {}. Run: pcg-sync configure --server <url> --token <session>", path.display()))?;
+    let content = fs::read_to_string(&path).with_context(|| {
+        format!(
+            "Config not found at {}. Run: pcg-sync configure --server <url> --token <session>",
+            path.display()
+        )
+    })?;
     toml::from_str(&content).context("Invalid config file")
 }
 
@@ -172,7 +186,10 @@ fn build_client(token: &str) -> Result<Client> {
 
 async fn fetch_data_sources(client: &Client, cfg: &SyncConfig) -> Result<Vec<DataSource>> {
     let url = if let Some(ref org_id) = cfg.org_id {
-        format!("{}/api/organizations/{}/data-sources", cfg.server_url, org_id)
+        format!(
+            "{}/api/organizations/{}/data-sources",
+            cfg.server_url, org_id
+        )
     } else {
         format!("{}/api/data-sources", cfg.server_url)
     };
@@ -185,7 +202,13 @@ async fn fetch_data_sources(client: &Client, cfg: &SyncConfig) -> Result<Vec<Dat
 /// Sanitize a filename to be filesystem-safe
 fn safe_filename(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || ".-_ ()[]{}".contains(c) { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || ".-_ ()[]{}".contains(c) {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect::<String>()
         .trim()
         .to_string()
@@ -196,7 +219,8 @@ fn local_path_for(source: &DataSource, sync_folder: &Path) -> PathBuf {
     let meta: serde_json::Value = serde_json::from_str(&source.metadata).unwrap_or_default();
 
     // Try to reconstruct folder context from Dropbox path
-    let folder_context = meta.get("folder_context")
+    let folder_context = meta
+        .get("folder_context")
         .and_then(|v| v.as_str())
         .or_else(|| {
             meta.get("dropbox_path")
@@ -227,7 +251,9 @@ fn local_path_for(source: &DataSource, sync_folder: &Path) -> PathBuf {
 
 /// Check if a data source has a locally downloadable file
 fn is_downloadable(source: &DataSource) -> bool {
-    if source.source_type == "text" { return true; }
+    if source.source_type == "text" {
+        return true;
+    }
     let meta: serde_json::Value = serde_json::from_str(&source.metadata).unwrap_or_default();
     meta.get("file_path").is_some()
 }
@@ -258,7 +284,10 @@ async fn pull_all(client: &Client, cfg: &SyncConfig, state: &mut SyncState) -> R
         // Skip if too large
         if let Some(size) = source.file_size {
             if size > 0 && size as u64 > cfg.max_auto_download_bytes {
-                warn!("Skipping {} ({} bytes — exceeds {} limit)", source.title, size, cfg.max_auto_download_bytes);
+                warn!(
+                    "Skipping {} ({} bytes — exceeds {} limit)",
+                    source.title, size, cfg.max_auto_download_bytes
+                );
                 continue;
             }
         }
@@ -267,42 +296,46 @@ async fn pull_all(client: &Client, cfg: &SyncConfig, state: &mut SyncState) -> R
 
         // Skip if file already exists at path
         if local_path.exists() {
-            state.downloaded.insert(source.id.clone(), local_path.to_string_lossy().into_owned());
+            state
+                .downloaded
+                .insert(source.id.clone(), local_path.to_string_lossy().into_owned());
             continue;
         }
 
         // Download
         let url = format!("{}/api/data-sources/{}/download", cfg.server_url, source.id);
         match client.get(&url).send().await {
-            Ok(resp) if resp.status().is_success() => {
-                match resp.bytes().await {
-                    Ok(bytes) => {
-                        if let Some(parent) = local_path.parent() {
-                            if let Err(e) = fs::create_dir_all(parent) {
-                                error!("Failed to create directory {}: {}", parent.display(), e);
-                                errors += 1;
-                                continue;
-                            }
-                        }
-                        if let Err(e) = fs::write(&local_path, &bytes) {
-                            error!("Failed to write {}: {}", local_path.display(), e);
+            Ok(resp) if resp.status().is_success() => match resp.bytes().await {
+                Ok(bytes) => {
+                    if let Some(parent) = local_path.parent() {
+                        if let Err(e) = fs::create_dir_all(parent) {
+                            error!("Failed to create directory {}: {}", parent.display(), e);
                             errors += 1;
-                        } else {
-                            info!("Downloaded: {} → {}", source.title, local_path.display());
-                            state.downloaded.insert(source.id.clone(), local_path.to_string_lossy().into_owned());
-                            downloaded += 1;
+                            continue;
                         }
                     }
-                    Err(e) => {
-                        error!("Failed to read response for {}: {}", source.title, e);
+                    if let Err(e) = fs::write(&local_path, &bytes) {
+                        error!("Failed to write {}: {}", local_path.display(), e);
                         errors += 1;
+                    } else {
+                        info!("Downloaded: {} → {}", source.title, local_path.display());
+                        state
+                            .downloaded
+                            .insert(source.id.clone(), local_path.to_string_lossy().into_owned());
+                        downloaded += 1;
                     }
                 }
-            }
+                Err(e) => {
+                    error!("Failed to read response for {}: {}", source.title, e);
+                    errors += 1;
+                }
+            },
             Ok(resp) => {
                 // 404 means no local file on server (Dropbox metadata only) — mark as known
                 if resp.status().as_u16() == 404 {
-                    state.downloaded.insert(source.id.clone(), "cloud-only".to_string());
+                    state
+                        .downloaded
+                        .insert(source.id.clone(), "cloud-only".to_string());
                 }
             }
             Err(e) => {
@@ -313,7 +346,10 @@ async fn pull_all(client: &Client, cfg: &SyncConfig, state: &mut SyncState) -> R
     }
 
     state.save()?;
-    info!("Pull complete: {} downloaded, {} already synced, {} errors", downloaded, skipped, errors);
+    info!(
+        "Pull complete: {} downloaded, {} already synced, {} errors",
+        downloaded, skipped, errors
+    );
     Ok(())
 }
 
@@ -326,23 +362,32 @@ fn file_hash(path: &Path) -> Option<String> {
     Some(hex::encode(hasher.finalize()))
 }
 
-async fn push_file(client: &Client, cfg: &SyncConfig, path: &Path, state: &mut SyncState) -> Result<()> {
+async fn push_file(
+    client: &Client,
+    cfg: &SyncConfig,
+    path: &Path,
+    state: &mut SyncState,
+) -> Result<()> {
     let hash = file_hash(path).context("Failed to hash file")?;
     if state.uploaded_hashes.contains(&hash) {
         return Ok(()); // already uploaded
     }
 
-    let filename = path.file_name()
+    let filename = path
+        .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("file")
         .to_string();
 
     let bytes = fs::read(path)?;
-    let mime = mime_guess::from_path(path).first_or_octet_stream().to_string();
+    let mime = mime_guess::from_path(path)
+        .first_or_octet_stream()
+        .to_string();
 
     // Determine org context from path
     let relative = path.strip_prefix(&cfg.sync_folder).unwrap_or(path);
-    let _parts: Vec<&str> = relative.components()
+    let _parts: Vec<&str> = relative
+        .components()
         .filter_map(|c| c.as_os_str().to_str())
         .collect();
 
@@ -350,11 +395,18 @@ async fn push_file(client: &Client, cfg: &SyncConfig, path: &Path, state: &mut S
         .text("title", filename.clone())
         .text("source_type", "upload")
         .text("data_type", "document")
-        .part("file", multipart::Part::bytes(bytes).file_name(filename).mime_str(&mime)?);
+        .part(
+            "file",
+            multipart::Part::bytes(bytes)
+                .file_name(filename)
+                .mime_str(&mime)?,
+        );
 
     let form = if let Some(ref org_id) = cfg.org_id {
         form.text("organization_id", org_id.clone())
-    } else { form };
+    } else {
+        form
+    };
 
     let url = format!("{}/api/data-sources/upload", cfg.server_url);
     let resp = client.post(&url).multipart(form).send().await?;
@@ -366,7 +418,12 @@ async fn push_file(client: &Client, cfg: &SyncConfig, path: &Path, state: &mut S
     } else {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        error!("Upload failed for {}: {} — {}", path.display(), status, body);
+        error!(
+            "Upload failed for {}: {} — {}",
+            path.display(),
+            status,
+            body
+        );
     }
 
     Ok(())
@@ -381,7 +438,9 @@ async fn push_all(client: &Client, cfg: &SyncConfig, state: &mut SyncState) -> R
     }
 
     // Known downloaded files — don't re-upload them
-    let known_paths: HashSet<String> = state.downloaded.values()
+    let known_paths: HashSet<String> = state
+        .downloaded
+        .values()
         .filter(|p| *p != "cloud-only")
         .cloned()
         .collect();
@@ -402,7 +461,10 @@ async fn push_all(client: &Client, cfg: &SyncConfig, state: &mut SyncState) -> R
         }
     }
 
-    info!("Push complete: {} uploaded, {} already known", uploaded, skipped);
+    info!(
+        "Push complete: {} uploaded, {} already known",
+        uploaded, skipped
+    );
     Ok(())
 }
 
@@ -511,15 +573,29 @@ fn print_status() {
             println!("  Sync folder: {}", cfg.sync_folder.display());
             println!("  Org filter:  {}", cfg.org_id.as_deref().unwrap_or("all"));
             println!("  Poll:        every {}s", cfg.poll_interval_secs);
-            println!("  Max dl size: {} MB", cfg.max_auto_download_bytes / 1024 / 1024);
+            println!(
+                "  Max dl size: {} MB",
+                cfg.max_auto_download_bytes / 1024 / 1024
+            );
 
             let state = SyncState::load();
-            let local_count = state.downloaded.values().filter(|p| *p != "cloud-only").count();
-            let cloud_only = state.downloaded.values().filter(|p| *p == "cloud-only").count();
+            let local_count = state
+                .downloaded
+                .values()
+                .filter(|p| *p != "cloud-only")
+                .count();
+            let cloud_only = state
+                .downloaded
+                .values()
+                .filter(|p| *p == "cloud-only")
+                .count();
             let uploaded = state.uploaded_hashes.len();
             println!("\nSync State:");
             println!("  Local files: {}", local_count);
-            println!("  Cloud-only:  {} (metadata only, no local file on server)", cloud_only);
+            println!(
+                "  Cloud-only:  {} (metadata only, no local file on server)",
+                cloud_only
+            );
             println!("  Uploaded:    {}", uploaded);
 
             if cfg.sync_folder.exists() {
@@ -548,21 +624,28 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Configure { server, token, folder, org_id } => {
-            let sync_folder = folder
-                .map(PathBuf::from)
-                .unwrap_or_else(|| {
-                    dirs::home_dir()
-                        .unwrap_or_else(|| PathBuf::from("."))
-                        .join("PCG Files")
-                });
+        Command::Configure {
+            server,
+            token,
+            folder,
+            org_id,
+        } => {
+            let sync_folder = folder.map(PathBuf::from).unwrap_or_else(|| {
+                dirs::home_dir()
+                    .unwrap_or_else(|| PathBuf::from("."))
+                    .join("PCG Files")
+            });
 
             let server_url = server.unwrap_or_else(|| {
                 eprint!("Server URL [https://dashboard.powerclubglobal.com]: ");
                 let mut s = String::new();
                 std::io::stdin().read_line(&mut s).ok();
                 let s = s.trim().to_string();
-                if s.is_empty() { "https://dashboard.powerclubglobal.com".to_string() } else { s }
+                if s.is_empty() {
+                    "https://dashboard.powerclubglobal.com".to_string()
+                } else {
+                    s
+                }
             });
 
             let session_token = token.unwrap_or_else(|| {

@@ -5,12 +5,14 @@ use axum::{
     response::Json as ResponseJson,
     routing::{get, put},
 };
-use db::models::cms_faq_item::{CmsFaqItem, CreateCmsFaqItem, UpdateCmsFaqItem, ReorderFaqItems};
-use db::models::cms_site::CmsSite;
+use db::models::{
+    cms_faq_item::{CmsFaqItem, CreateCmsFaqItem, ReorderFaqItems, UpdateCmsFaqItem},
+    cms_site::CmsSite,
+};
+use deployment::Deployment;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use deployment::Deployment;
 use crate::{DeploymentImpl, error::ApiError, middleware::require_auth};
 
 pub async fn list_faq_items(
@@ -113,8 +115,5 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
                 .patch(update_faq_item)
                 .delete(delete_faq_item),
         )
-        .layer(from_fn_with_state(
-            deployment.clone(),
-            require_auth,
-        ))
+        .layer(from_fn_with_state(deployment.clone(), require_auth))
 }

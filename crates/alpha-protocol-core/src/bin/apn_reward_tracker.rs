@@ -3,12 +3,13 @@
 //! Listens to heartbeats on NATS and creates reward records in the database.
 //! This service should run on the master node only.
 
+use std::sync::Arc;
+
 use alpha_protocol_core::{
-    reward_tracker::{RewardTracker, RewardTrackerConfig},
     economics::RewardRates,
+    reward_tracker::{RewardTracker, RewardTrackerConfig},
 };
 use sqlx::sqlite::SqlitePoolOptions;
-use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -27,8 +28,8 @@ async fn main() -> anyhow::Result<()> {
     println!("╚══════════════════════════════════════════════════════════════════╝\n");
 
     // Connect to database
-    let db_path = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "sqlite:dev_assets/db.sqlite".to_string());
+    let db_path =
+        std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:dev_assets/db.sqlite".to_string());
 
     println!("📊 Connecting to database: {}", db_path);
     let db_pool = SqlitePoolOptions::new()
@@ -41,8 +42,10 @@ async fn main() -> anyhow::Result<()> {
     // Setup reward rates
     let rates = RewardRates::default();
     println!("\n💰 Reward Configuration:");
-    println!("   Base: {} VIBE per heartbeat",
-        alpha_protocol_core::economics::vibe_to_display(rates.heartbeat_base));
+    println!(
+        "   Base: {} VIBE per heartbeat",
+        alpha_protocol_core::economics::vibe_to_display(rates.heartbeat_base)
+    );
     println!("   GPU Multiplier: {}x", rates.gpu_multiplier);
     println!("   High CPU Multiplier: {}x", rates.high_cpu_multiplier);
     println!("   High RAM Multiplier: {}x", rates.high_ram_multiplier);
@@ -60,11 +63,7 @@ async fn main() -> anyhow::Result<()> {
     println!("   Reward Interval: {}s", config.reward_interval_secs);
 
     // Create tracker
-    let mut tracker = RewardTracker::new_with_config(
-        db_pool.clone(),
-        config,
-        rates,
-    );
+    let mut tracker = RewardTracker::new_with_config(db_pool.clone(), config, rates);
 
     // Initialize tracker (connect to NATS)
     println!("\n🚀 Initializing reward tracker...");

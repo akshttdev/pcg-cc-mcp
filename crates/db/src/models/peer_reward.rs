@@ -112,10 +112,7 @@ pub struct PeerRewardSummary {
 
 impl PeerReward {
     /// Create a new peer reward
-    pub async fn create(
-        pool: &SqlitePool,
-        data: CreatePeerReward,
-    ) -> Result<Self, sqlx::Error> {
+    pub async fn create(pool: &SqlitePool, data: CreatePeerReward) -> Result<Self, sqlx::Error> {
         let id = Uuid::new_v4();
         let reward_type_str = data.reward_type.to_string();
         let final_amount = (data.base_amount as f64 * data.multiplier) as i64;
@@ -255,10 +252,7 @@ impl PeerReward {
     }
 
     /// Mark reward as confirmed
-    pub async fn mark_confirmed(
-        pool: &SqlitePool,
-        id: Uuid,
-    ) -> Result<Self, sqlx::Error> {
+    pub async fn mark_confirmed(pool: &SqlitePool, id: Uuid) -> Result<Self, sqlx::Error> {
         sqlx::query_as::<_, PeerReward>(
             r#"
             UPDATE peer_rewards

@@ -3,37 +3,35 @@ use axum::{
     extract::{Path, Query, State},
     routing::{delete, get, patch, post, put},
 };
-use serde_json::Value;
-use db::models::person::Person;
-use db::models::user::{
-    CreateOrganization, Organization, OrganizationMember, UpdateOrganization,
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        brand_intake_token::BrandIntakeToken,
+        company::Company,
+        org_brand_profile::{OrgBrandProfile, UpsertOrgBrandProfile},
+        person::Person,
+        person_association::{PersonOrgContact, UpsertPersonOrgContact},
+        user::{CreateOrganization, Organization, OrganizationMember, UpdateOrganization},
+    },
 };
-use db::models::company::Company;
-use db::models::person_association::{PersonOrgContact, UpsertPersonOrgContact};
-use db::models::org_brand_profile::{OrgBrandProfile, UpsertOrgBrandProfile};
-use db::models::brand_intake_token::BrandIntakeToken;
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use utils::response::ApiResponse;
 use uuid::Uuid;
-use db::db_uuid::DbUuid;
 
-use crate::{
-    DeploymentImpl,
-    error::ApiError,
-    middleware::access_control::AccessContext,
-};
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
-pub mod members;
 pub mod brand;
-pub mod knowledge;
 pub mod intake;
+pub mod knowledge;
+pub mod members;
 
 // Re-export public items from sub-modules so callers don't break
-pub use members::*;
 pub use brand::*;
-pub use knowledge::*;
 pub use intake::*;
+pub use knowledge::*;
+pub use members::*;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CRUD handlers (create, get, update, delete, list organizations)
@@ -64,9 +62,16 @@ pub async fn get_organization(
 
     // Check user has access (is admin or org member)
     if !access_context.is_admin {
-        let role = Organization::get_user_role(&deployment.db().pool, &id, access_context.user_id.as_str()).await?;
+        let role = Organization::get_user_role(
+            &deployment.db().pool,
+            &id,
+            access_context.user_id.as_str(),
+        )
+        .await?;
         if role.is_none() {
-            return Err(ApiError::Forbidden("Not a member of this organization".into()));
+            return Err(ApiError::Forbidden(
+                "Not a member of this organization".into(),
+            ));
         }
     }
 
@@ -109,10 +114,19 @@ pub async fn update_organization(
 ) -> Result<Json<ApiResponse<Organization>>, ApiError> {
     // Only org admins or system admins can update
     if !access_context.is_admin {
-        let role = Organization::get_user_role(&deployment.db().pool, &id, access_context.user_id.as_str()).await?;
+        let role = Organization::get_user_role(
+            &deployment.db().pool,
+            &id,
+            access_context.user_id.as_str(),
+        )
+        .await?;
         match role.as_deref() {
             Some("admin") => {}
-            _ => return Err(ApiError::Forbidden("Only org admins can update organizations".into())),
+            _ => {
+                return Err(ApiError::Forbidden(
+                    "Only org admins can update organizations".into(),
+                ));
+            }
         }
     }
 
@@ -127,7 +141,9 @@ pub async fn activate_organization(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     if !access_context.is_admin {
-        return Err(ApiError::Forbidden("Only system admins can activate organizations".into()));
+        return Err(ApiError::Forbidden(
+            "Only system admins can activate organizations".into(),
+        ));
     }
     Organization::activate(&deployment.db().pool, &id).await?;
     Ok(Json(ApiResponse::success(())))
@@ -140,7 +156,9 @@ pub async fn deactivate_organization(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     if !access_context.is_admin {
-        return Err(ApiError::Forbidden("Only system admins can deactivate organizations".into()));
+        return Err(ApiError::Forbidden(
+            "Only system admins can deactivate organizations".into(),
+        ));
     }
     Organization::deactivate(&deployment.db().pool, &id).await?;
     Ok(Json(ApiResponse::success(())))
@@ -153,10 +171,19 @@ pub async fn delete_organization(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     if !access_context.is_admin {
-        let role = Organization::get_user_role(&deployment.db().pool, &id, access_context.user_id.as_str()).await?;
+        let role = Organization::get_user_role(
+            &deployment.db().pool,
+            &id,
+            access_context.user_id.as_str(),
+        )
+        .await?;
         match role.as_deref() {
             Some("admin") => {}
-            _ => return Err(ApiError::Forbidden("Only org admins can delete organizations".into())),
+            _ => {
+                return Err(ApiError::Forbidden(
+                    "Only org admins can delete organizations".into(),
+                ));
+            }
         }
     }
 
@@ -178,10 +205,21 @@ pub fn uuid_from_bytes(bytes: &[u8]) -> Option<Uuid> {
 
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
-        .route("/organizations", get(list_organizations).post(create_organization))
-        .route("/organizations/{id}", get(get_organization).put(update_organization).delete(delete_organization))
+        .route(
+            "/organizations",
+            get(list_organizations).post(create_organization),
+        )
+        .route(
+            "/organizations/{id}",
+            get(get_organization)
+                .put(update_organization)
+                .delete(delete_organization),
+        )
         .route("/organizations/{id}/activate", patch(activate_organization))
-        .route("/organizations/{id}/deactivate", patch(deactivate_organization))
+        .route(
+            "/organizations/{id}/deactivate",
+            patch(deactivate_organization),
+        )
         .route(
             "/organizations/{id}/members",
             get(members::list_members).post(members::add_member),
@@ -194,9 +232,15 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/organizations/{id}/members/{uid}",
             delete(members::remove_member),
         )
-        .route("/organizations/{id}/generate-invite", post(members::generate_invite))
+        .route(
+            "/organizations/{id}/generate-invite",
+            post(members::generate_invite),
+        )
         .route("/organizations/{id}/persons", get(members::get_org_persons))
-        .route("/organizations/{id}/data-sources", get(members::list_org_data_sources))
+        .route(
+            "/organizations/{id}/data-sources",
+            get(members::list_org_data_sources),
+        )
         .route("/data-sources", get(members::list_data_sources))
         .route(
             "/organizations/{id}/members/{uid}/assign",
@@ -222,7 +266,10 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/organizations/{id}/person-contacts",
             get(members::list_org_person_contacts).post(members::add_org_person_contact),
         )
-        .route("/organizations/{id}/companies", get(members::list_org_companies))
+        .route(
+            "/organizations/{id}/companies",
+            get(members::list_org_companies),
+        )
         .route(
             "/organizations/{id}/brand-profile",
             get(brand::get_org_brand_profile).put(brand::upsert_org_brand_profile),
@@ -251,6 +298,8 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
 
 /// Public router — no auth required (intake form submissions)
 pub fn public_router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
-    Router::new()
-        .route("/intake/{token}", get(intake::get_intake_context).post(intake::submit_intake))
+    Router::new().route(
+        "/intake/{token}",
+        get(intake::get_intake_context).post(intake::submit_intake),
+    )
 }

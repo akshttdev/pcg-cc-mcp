@@ -925,7 +925,8 @@ impl AgentDefinitions {
             designation: "Personal Orchestration Agent".to_string(),
             description: Some(
                 "Your personal orchestration agent. Orcha helps you manage projects, \
-                create tasks, search the web, and coordinate work within your workspace.".to_string()
+                create tasks, search the web, and coordinate work within your workspace."
+                    .to_string(),
             ),
             personality: Some(AgentPersonality {
                 traits: vec![
@@ -934,8 +935,11 @@ impl AgentDefinitions {
                     "Responsive".to_string(),
                     "Efficient".to_string(),
                 ],
-                communication_style: "Friendly and concise, focused on getting things done".to_string(),
-                problem_solving_approach: "Understands user intent quickly and takes action using available tools".to_string(),
+                communication_style: "Friendly and concise, focused on getting things done"
+                    .to_string(),
+                problem_solving_approach:
+                    "Understands user intent quickly and takes action using available tools"
+                        .to_string(),
                 interaction_preferences: vec![
                     "Quick task execution".to_string(),
                     "Clear confirmations".to_string(),
@@ -943,7 +947,8 @@ impl AgentDefinitions {
                 ],
                 backstory: Some(
                     "Orcha is your dedicated assistant within the TOPOS platform. Each user gets \
-                    their own Orcha agent that knows their projects and preferences.".to_string()
+                    their own Orcha agent that knows their projects and preferences."
+                        .to_string(),
                 ),
                 signature_phrases: vec![
                     "Done! I've taken care of that.".to_string(),
@@ -1144,12 +1149,18 @@ impl AgentRegistryService {
                             seeded_agents.push(updated);
                         }
                         Err(e) => {
-                            warn!("Failed to update agent '{}' model config: {}", existing.short_name, e);
+                            warn!(
+                                "Failed to update agent '{}' model config: {}",
+                                existing.short_name, e
+                            );
                             seeded_agents.push(existing);
                         }
                     }
                 } else {
-                    info!("Agent '{}' already registered (ID: {})", existing.short_name, existing.id);
+                    info!(
+                        "Agent '{}' already registered (ID: {})",
+                        existing.short_name, existing.id
+                    );
                     seeded_agents.push(existing);
                 }
             } else {
@@ -1192,7 +1203,10 @@ impl AgentRegistryService {
     }
 
     /// Get existing Orcha for a user, or create one if none exists
-    pub async fn get_or_create_user_orcha(pool: &SqlitePool, user_id: Uuid) -> anyhow::Result<Agent> {
+    pub async fn get_or_create_user_orcha(
+        pool: &SqlitePool,
+        user_id: Uuid,
+    ) -> anyhow::Result<Agent> {
         // Look for existing orcha owned by this user
         let existing = sqlx::query_as::<_, Agent>(
             r#"SELECT

@@ -76,7 +76,10 @@ pub(super) async fn process_with_nora(
                     "pcg_admin" => format!("[PCG Admin: {}] ", name),
                     "pcg_team" => format!("[PCG Team: {}] ", name),
                     "returning_client" => {
-                        let prev = c.get("previous_calls").and_then(|v| v.as_i64()).unwrap_or(0);
+                        let prev = c
+                            .get("previous_calls")
+                            .and_then(|v| v.as_i64())
+                            .unwrap_or(0);
                         format!("[Returning client: {}, {} previous calls] ", name, prev)
                     }
                     _ => format!("[New caller: {}] ", name),
@@ -113,11 +116,18 @@ pub(super) async fn process_with_nora(
         Ok(Err(e)) => return Err(format!("HTTP error: {}", e)),
         Err(_) => {
             warn!("LLM timeout after {:?}", LLM_TIMEOUT);
-            return Ok(("I'm just pulling that information up — could you give me one moment?".to_string(), 0, 0));
+            return Ok((
+                "I'm just pulling that information up — could you give me one moment?".to_string(),
+                0,
+                0,
+            ));
         }
     };
 
-    let data: serde_json::Value = resp.json().await.map_err(|e| format!("JSON parse error: {}", e))?;
+    let data: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("JSON parse error: {}", e))?;
 
     let input_tokens = data["usage"]["input_tokens"].as_i64().unwrap_or(0);
     let output_tokens = data["usage"]["output_tokens"].as_i64().unwrap_or(0);
@@ -172,29 +182,47 @@ pub(super) async fn process_sms_with_nora(
             content: full_content.clone(),
             context: context.clone(),
             voice_enabled: false,
-            priority: if is_team { RequestPriority::High } else { RequestPriority::Normal },
+            priority: if is_team {
+                RequestPriority::High
+            } else {
+                RequestPriority::Normal
+            },
             timestamp: chrono::Utc::now(),
         };
 
         match timeout(Duration::from_secs(55), nora.process_request(nora_req)).await {
             Ok(Ok(response)) => Some(response.content),
-            Ok(Err(e)) => { error!("Nora agent error on SMS from {}: {}", from_number, e); None }
-            Err(_) => { warn!("Nora agent timed out on SMS from {}", from_number); None }
+            Ok(Err(e)) => {
+                error!("Nora agent error on SMS from {}: {}", from_number, e);
+                None
+            }
+            Err(_) => {
+                warn!("Nora agent timed out on SMS from {}", from_number);
+                None
+            }
         }
-    }.await;
+    }
+    .await;
 
     if let Some(text) = nora_result {
         return Ok(text);
     }
 
     // ── Fallback: direct Claude API call ──────────────────────────────────────
-    info!("Falling back to direct Claude API for SMS from {}", from_number);
+    info!(
+        "Falling back to direct Claude API for SMS from {}",
+        from_number
+    );
 
     let api_key = std::env::var("ANTHROPIC_API_KEY")
         .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
         .map_err(|_| "ANTHROPIC_API_KEY not set".to_string())?;
 
-    let system_prompt = if is_team { NORA_PCG_TEAM_SYSTEM } else { NORA_CLIENT_SYSTEM };
+    let system_prompt = if is_team {
+        NORA_PCG_TEAM_SYSTEM
+    } else {
+        NORA_CLIENT_SYSTEM
+    };
     let sms_instruction = "[SMS channel — reply as plain text, no markdown, \
         keep under 300 characters. British English.]";
 
@@ -220,7 +248,10 @@ pub(super) async fn process_sms_with_nora(
         Err(_) => return Ok("I'm just catching up — please send again in a moment.".into()),
     };
 
-    let data: serde_json::Value = resp.json().await.map_err(|e| format!("JSON parse: {}", e))?;
+    let data: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("JSON parse: {}", e))?;
     let text = data["content"][0]["text"]
         .as_str()
         .unwrap_or("Sorry, I didn't quite catch that. Could you rephrase?")

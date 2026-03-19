@@ -3,10 +3,10 @@
 //! When direct P2P connections fail due to NAT, the NATS relay at
 //! nonlocal.info:4222 provides message routing.
 
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use async_nats::{Client, ConnectOptions};
 use futures::StreamExt;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
 use crate::mesh::MeshMessage;
@@ -125,10 +125,10 @@ impl NatsRelay {
 
     /// Publish a message to a subject
     pub async fn publish(&self, subject: &str, payload: &[u8]) -> Result<()> {
-        let client = self.client.as_ref()
-            .context("Not connected to NATS")?;
+        let client = self.client.as_ref().context("Not connected to NATS")?;
 
-        client.publish(subject.to_string(), payload.to_vec().into())
+        client
+            .publish(subject.to_string(), payload.to_vec().into())
             .await
             .context("Failed to publish message")?;
 
@@ -144,10 +144,10 @@ impl NatsRelay {
 
     /// Subscribe to a subject
     pub async fn subscribe(&self, subject: &str) -> Result<async_nats::Subscriber> {
-        let client = self.client.as_ref()
-            .context("Not connected to NATS")?;
+        let client = self.client.as_ref().context("Not connected to NATS")?;
 
-        let subscriber = client.subscribe(subject.to_string())
+        let subscriber = client
+            .subscribe(subject.to_string())
             .await
             .context("Failed to subscribe")?;
 
@@ -156,7 +156,13 @@ impl NatsRelay {
     }
 
     /// Announce this node to the network
-    pub async fn announce(&self, wallet_address: &str, capabilities: &[String], resources: Option<&crate::wire::NodeResources>, device_name: Option<&str>) -> Result<()> {
+    pub async fn announce(
+        &self,
+        wallet_address: &str,
+        capabilities: &[String],
+        resources: Option<&crate::wire::NodeResources>,
+        device_name: Option<&str>,
+    ) -> Result<()> {
         let announcement = PeerAnnouncement {
             node_id: self.config.node_id.clone(),
             wallet_address: wallet_address.to_string(),
@@ -170,7 +176,8 @@ impl NatsRelay {
         let payload = serde_json::to_vec(&announcement)?;
 
         // Publish to registry
-        self.publish(&subjects::registry(&self.config.node_id), &payload).await?;
+        self.publish(&subjects::registry(&self.config.node_id), &payload)
+            .await?;
 
         // Broadcast to discovery
         self.publish(subjects::DISCOVERY, &payload).await?;
@@ -179,7 +186,10 @@ impl NatsRelay {
     }
 
     /// Send heartbeat with resource status
-    pub async fn send_heartbeat(&self, resources: Option<&crate::wire::NodeResources>) -> Result<()> {
+    pub async fn send_heartbeat(
+        &self,
+        resources: Option<&crate::wire::NodeResources>,
+    ) -> Result<()> {
         let heartbeat = serde_json::json!({
             "node_id": self.config.node_id,
             "timestamp": chrono::Utc::now().to_rfc3339(),
@@ -201,10 +211,10 @@ impl NatsRelay {
 
     /// Request-reply pattern for signaling
     pub async fn request(&self, subject: &str, payload: &[u8]) -> Result<Vec<u8>> {
-        let client = self.client.as_ref()
-            .context("Not connected to NATS")?;
+        let client = self.client.as_ref().context("Not connected to NATS")?;
 
-        let response = client.request(subject.to_string(), payload.to_vec().into())
+        let response = client
+            .request(subject.to_string(), payload.to_vec().into())
             .await
             .context("Request failed")?;
 
@@ -213,8 +223,7 @@ impl NatsRelay {
 
     /// Run the relay event loop (processes incoming messages)
     pub async fn run(&self) -> Result<()> {
-        let client = self.client.as_ref()
-            .context("Not connected to NATS")?;
+        let client = self.client.as_ref().context("Not connected to NATS")?;
 
         // Subscribe to our direct message subject
         let dm_subject = subjects::direct_message(&self.config.node_id);
@@ -230,7 +239,13 @@ impl NatsRelay {
         // Subscribe to heartbeat
         let mut heartbeat_subscriber = client.subscribe(subjects::HEARTBEAT.to_string()).await?;
 
-        tracing::info!("Relay listening on: {}, {}, {}, {}", dm_subject, signal_subject, subjects::DISCOVERY, subjects::HEARTBEAT);
+        tracing::info!(
+            "Relay listening on: {}, {}, {}, {}",
+            dm_subject,
+            signal_subject,
+            subjects::DISCOVERY,
+            subjects::HEARTBEAT
+        );
 
         loop {
             tokio::select! {

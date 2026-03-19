@@ -71,6 +71,9 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         "/scratch",
         Router::new()
             .route("/", get(get_scratches).post(upsert_scratch))
-            .route("/{id}", get(get_scratch).put(update_scratch).delete(delete_scratch)),
+            .route(
+                "/{id}",
+                get(get_scratch).put(update_scratch).delete(delete_scratch),
+            ),
     )
 }

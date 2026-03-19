@@ -29,14 +29,13 @@ pub async fn chat_with_nora(
         Some(pid) => Some(pid),
         None => {
             // Fall back to user's home project
-            let home: Option<Vec<u8>> = sqlx::query_scalar(
-                "SELECT home_project_id FROM users WHERE id = ?",
-            )
-            .bind(access_ctx.user_id.as_str())
-            .fetch_optional(&pool)
-            .await
-            .ok()
-            .flatten();
+            let home: Option<Vec<u8>> =
+                sqlx::query_scalar("SELECT home_project_id FROM users WHERE id = ?")
+                    .bind(access_ctx.user_id.as_str())
+                    .fetch_optional(&pool)
+                    .await
+                    .ok()
+                    .flatten();
             home.and_then(|bytes| Uuid::from_slice(&bytes).ok())
         }
     };
@@ -101,10 +100,17 @@ pub async fn chat_with_nora(
     // Record VIBE cost (estimate tokens if not available)
     if let Some(project_id) = billing_project_id {
         crate::helpers::billing::record_llm_vibe_usage(
-            &pool, project_id, "claude-sonnet-4-20250514",
-            response.input_tokens.unwrap_or(2000), response.output_tokens.unwrap_or(500),
-            None, None, None, "Nora",
-        ).await;
+            &pool,
+            project_id,
+            "claude-sonnet-4-20250514",
+            response.input_tokens.unwrap_or(2000),
+            response.output_tokens.unwrap_or(500),
+            None,
+            None,
+            None,
+            "Nora",
+        )
+        .await;
     }
 
     // Persist conversation (non-blocking — fire and forget)
@@ -119,11 +125,19 @@ pub async fn chat_with_nora(
             let nora_agent_id = Uuid::parse_str("0907dc4f-3f7f-4c40-93cf-f36a833eaa78")
                 .unwrap_or_else(|_| Uuid::new_v4());
             crate::helpers::conversations::persist_chat_exchange(
-                &pool_conv, nora_agent_id, &session_id, None,
-                &user_msg, &assistant_msg,
-                Some("claude-sonnet-4-20250514"), Some("anthropic"),
-                resp_input, resp_output, "Nora",
-            ).await;
+                &pool_conv,
+                nora_agent_id,
+                &session_id,
+                None,
+                &user_msg,
+                &assistant_msg,
+                Some("claude-sonnet-4-20250514"),
+                Some("anthropic"),
+                resp_input,
+                resp_output,
+                "Nora",
+            )
+            .await;
         });
     }
 
@@ -137,7 +151,11 @@ pub async fn chat_with_nora_stream(
     request_id: Option<axum::extract::Extension<crate::middleware::RequestId>>,
     Json(request): Json<ChatRequest>,
 ) -> Result<
-    axum::response::sse::Sse<impl futures::stream::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>>,
+    axum::response::sse::Sse<
+        impl futures::stream::Stream<
+            Item = Result<axum::response::sse::Event, std::convert::Infallible>,
+        >,
+    >,
     ApiError,
 > {
     use futures::stream::StreamExt;
@@ -161,14 +179,13 @@ pub async fn chat_with_nora_stream(
     let billing_project_id = match request.project_id {
         Some(pid) => Some(pid),
         None => {
-            let home: Option<Vec<u8>> = sqlx::query_scalar(
-                "SELECT home_project_id FROM users WHERE id = ?",
-            )
-            .bind(access_ctx.user_id.as_str())
-            .fetch_optional(&pool)
-            .await
-            .ok()
-            .flatten();
+            let home: Option<Vec<u8>> =
+                sqlx::query_scalar("SELECT home_project_id FROM users WHERE id = ?")
+                    .bind(access_ctx.user_id.as_str())
+                    .fetch_optional(&pool)
+                    .await
+                    .ok()
+                    .flatten();
             home.and_then(|bytes| Uuid::from_slice(&bytes).ok())
         }
     };

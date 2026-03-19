@@ -93,7 +93,10 @@ impl CheckpointDefinition {
     ) -> Result<Self, CheckpointDefinitionError> {
         let id = Uuid::new_v4();
         let checkpoint_type_str = data.checkpoint_type.to_string();
-        let config_str = data.config.map(|v| v.to_string()).unwrap_or_else(|| "{}".to_string());
+        let config_str = data
+            .config
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "{}".to_string());
 
         let def = sqlx::query_as::<_, CheckpointDefinition>(
             r#"
@@ -182,10 +185,7 @@ impl CheckpointDefinition {
 
         let name = data.name.unwrap_or(current.name);
         let description = data.description.or(current.description);
-        let config = data
-            .config
-            .map(|v| v.to_string())
-            .unwrap_or(current.config);
+        let config = data.config.map(|v| v.to_string()).unwrap_or(current.config);
         let requires_approval = data.requires_approval.unwrap_or(current.requires_approval);
         let auto_approve = data
             .auto_approve_after_minutes

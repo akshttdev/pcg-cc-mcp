@@ -243,7 +243,9 @@ impl CrmContact {
             .map(|s| s.to_string())
             .unwrap_or_else(|| "lead".to_string());
         let full_name = Self::compute_full_name(&data.first_name, &data.last_name);
-        let tags = data.tags.map(|v| serde_json::to_string(&v).unwrap_or_default());
+        let tags = data
+            .tags
+            .map(|v| serde_json::to_string(&v).unwrap_or_default());
         let custom_fields = data.custom_fields.map(|v| v.to_string());
 
         let contact = sqlx::query_as::<_, CrmContact>(
@@ -289,13 +291,11 @@ impl CrmContact {
     }
 
     pub async fn find_by_id(pool: &SqlitePool, id: &DbUuid) -> Result<Self, CrmContactError> {
-        sqlx::query_as::<_, CrmContact>(
-            r#"SELECT * FROM crm_contacts WHERE id = ?1"#,
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await?
-        .ok_or(CrmContactError::NotFound)
+        sqlx::query_as::<_, CrmContact>(r#"SELECT * FROM crm_contacts WHERE id = ?1"#)
+            .bind(id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or(CrmContactError::NotFound)
     }
 
     /// Find contact by email within an organization (primary scope)
@@ -413,7 +413,9 @@ impl CrmContact {
 
         if let Some(ref q) = params.query {
             let idx = bindings.len() + 2;
-            query.push_str(&format!(" AND (full_name LIKE ?{idx} OR email LIKE ?{idx} OR company_name LIKE ?{idx})"));
+            query.push_str(&format!(
+                " AND (full_name LIKE ?{idx} OR email LIKE ?{idx} OR company_name LIKE ?{idx})"
+            ));
             bindings.push(format!("%{}%", q));
         }
 
@@ -466,7 +468,9 @@ impl CrmContact {
 
         let source = data.source.map(|s| s.to_string());
         let lifecycle_stage = data.lifecycle_stage.map(|s| s.to_string());
-        let tags = data.tags.map(|v| serde_json::to_string(&v).unwrap_or_default());
+        let tags = data
+            .tags
+            .map(|v| serde_json::to_string(&v).unwrap_or_default());
         let custom_fields = data.custom_fields.map(|v| v.to_string());
         let email_opt_in = data.email_opt_in.map(|b| if b { 1 } else { 0 });
         let sms_opt_in = data.sms_opt_in.map(|b| if b { 1 } else { 0 });
@@ -548,10 +552,7 @@ impl CrmContact {
         .ok_or(CrmContactError::NotFound)
     }
 
-    pub async fn record_activity(
-        pool: &SqlitePool,
-        id: &DbUuid,
-    ) -> Result<(), CrmContactError> {
+    pub async fn record_activity(pool: &SqlitePool, id: &DbUuid) -> Result<(), CrmContactError> {
         sqlx::query(
             r#"
             UPDATE crm_contacts SET
@@ -666,28 +667,32 @@ impl CrmContact {
             (None, None)
         };
 
-        Self::create(pool, CreateCrmContact {
-            organization_id: organization_id.clone(),
-            client_id: None,
-            first_name,
-            last_name,
-            email: Some(email.to_string()),
-            phone: None,
-            mobile: None,
-            avatar_url: None,
-            company_name: None,
-            job_title: None,
-            department: None,
-            linkedin_url: None,
-            twitter_handle: None,
-            website: None,
-            source: Some(source),
-            lifecycle_stage: Some(LifecycleStage::Lead),
-            tags: None,
-            custom_fields: None,
-            zoho_contact_id: None,
-            gmail_contact_id: None,
-        }).await
+        Self::create(
+            pool,
+            CreateCrmContact {
+                organization_id: organization_id.clone(),
+                client_id: None,
+                first_name,
+                last_name,
+                email: Some(email.to_string()),
+                phone: None,
+                mobile: None,
+                avatar_url: None,
+                company_name: None,
+                job_title: None,
+                department: None,
+                linkedin_url: None,
+                twitter_handle: None,
+                website: None,
+                source: Some(source),
+                lifecycle_stage: Some(LifecycleStage::Lead),
+                tags: None,
+                custom_fields: None,
+                zoho_contact_id: None,
+                gmail_contact_id: None,
+            },
+        )
+        .await
     }
 
     /// Find contacts subscribed to a given tag (e.g. "pulse:project-name")

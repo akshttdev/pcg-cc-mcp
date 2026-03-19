@@ -1,10 +1,9 @@
 use axum::{
-    Router,
+    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, put},
-    Json,
 };
 use db::models::model_pricing::{ModelPricing, infer_provider};
 use deployment::Deployment;
@@ -68,14 +67,21 @@ async fn estimate_cost(
     State(deployment): State<DeploymentImpl>,
     Query(query): Query<CostEstimateQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let provider = query.provider.as_deref().unwrap_or_else(|| infer_provider(&query.model));
+    let provider = query
+        .provider
+        .as_deref()
+        .unwrap_or_else(|| infer_provider(&query.model));
 
     let pricing = ModelPricing::get_with_fallback(&deployment.db().pool, &query.model, provider)
         .await
         .map_err(|e| match e {
-            db::models::model_pricing::ModelPricingError::NotFound(_, _) => {
-                (StatusCode::NOT_FOUND, format!("No pricing found for model '{}' with provider '{}'", query.model, provider))
-            }
+            db::models::model_pricing::ModelPricingError::NotFound(_, _) => (
+                StatusCode::NOT_FOUND,
+                format!(
+                    "No pricing found for model '{}' with provider '{}'",
+                    query.model, provider
+                ),
+            ),
             _ => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
         })?;
 
@@ -92,7 +98,9 @@ async fn upsert_pricing(
     let multiplier = data.multiplier.unwrap_or(2.0);
 
     // Check if pricing exists for this model/provider
-    let existing = ModelPricing::get(pool, &data.model, &data.provider).await.ok();
+    let existing = ModelPricing::get(pool, &data.model, &data.provider)
+        .await
+        .ok();
 
     if let Some(existing) = existing {
         // Update existing
@@ -168,5 +176,8 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/model-pricing", get(list_pricing).post(upsert_pricing))
         .route("/model-pricing/estimate", get(estimate_cost))
         .route("/model-pricing/{model}/{provider}", get(get_pricing))
-        .route("/model-pricing/{id}", put(upsert_pricing).delete(delete_pricing))
+        .route(
+            "/model-pricing/{id}",
+            put(upsert_pricing).delete(delete_pricing),
+        )
 }

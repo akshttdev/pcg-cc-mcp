@@ -8,10 +8,11 @@
 use reqwest::Client;
 use serde_json::Value;
 
+use super::{
+    transcript::{levenshtein_ratio, TranscriptProcessor},
+    types::*,
+};
 use crate::{NoraError, Result};
-
-use super::transcript::{levenshtein_ratio, TranscriptProcessor};
-use super::types::*;
 
 /// Generates EditDirective from all accumulated pipeline artifacts.
 pub struct DirectiveGenerator {
@@ -122,7 +123,10 @@ impl DirectiveGenerator {
              ({} with clean sentence boundaries)",
             verified.len(),
             transcript.segments.len(),
-            verified.iter().filter(|s| s.starts_at_sentence && s.ends_at_sentence).count()
+            verified
+                .iter()
+                .filter(|s| s.starts_at_sentence && s.ends_at_sentence)
+                .count()
         );
 
         verified
@@ -144,7 +148,8 @@ impl DirectiveGenerator {
         );
 
         // Select top soundbites (limit to ~10 for a 2:30 video)
-        let selected = self.select_soundbites(verified_soundbites, client_spec.max_duration_seconds);
+        let selected =
+            self.select_soundbites(verified_soundbites, client_spec.max_duration_seconds);
 
         // Mark emotional beats: first, strongest, and last soundbites show subject on camera
         let selected = self.mark_emotional_beats(selected);
@@ -166,19 +171,16 @@ impl DirectiveGenerator {
         let broll_ratio = 1.0 - interview_ratio;
 
         // Find music track
-        let music_track = catalog
-            .music_assets
-            .first()
-            .map(|&idx| {
-                let asset = &catalog.assets[idx];
-                MusicTrackDirective {
-                    asset_index: idx,
-                    filename: asset.filename.clone(),
-                    ducked_db: client_spec.music_behavior.ducked_db,
-                    full_db: client_spec.music_behavior.full_db,
-                    full_regions: Vec::new(), // Populated by LLM in production
-                }
-            });
+        let music_track = catalog.music_assets.first().map(|&idx| {
+            let asset = &catalog.assets[idx];
+            MusicTrackDirective {
+                asset_index: idx,
+                filename: asset.filename.clone(),
+                ducked_db: client_spec.music_behavior.ducked_db,
+                full_db: client_spec.music_behavior.full_db,
+                full_regions: Vec::new(), // Populated by LLM in production
+            }
+        });
 
         // Identify vertical clips that need blur-fill treatment
         let vertical_treatment = VerticalTreatment {
@@ -273,7 +275,8 @@ impl DirectiveGenerator {
         // Greedily select, respecting budget and ensuring act diversity
         let mut selected = Vec::new();
         let mut accumulated = 0.0;
-        let mut acts_covered: std::collections::HashSet<ActLabel> = std::collections::HashSet::new();
+        let mut acts_covered: std::collections::HashSet<ActLabel> =
+            std::collections::HashSet::new();
 
         // First pass: ensure at least one soundbite per act
         for (_, sb) in &scored {
@@ -317,7 +320,10 @@ impl DirectiveGenerator {
             selected.len(),
             selected.iter().map(|s| s.duration_seconds).sum::<f64>(),
             budget,
-            selected.iter().filter(|s| s.starts_at_sentence && s.ends_at_sentence).count(),
+            selected
+                .iter()
+                .filter(|s| s.starts_at_sentence && s.ends_at_sentence)
+                .count(),
             acts_covered.len()
         );
 
@@ -325,7 +331,10 @@ impl DirectiveGenerator {
     }
 
     /// Mark 3 emotional beats where the subject appears on camera.
-    fn mark_emotional_beats(&self, mut soundbites: Vec<VerifiedSoundbite>) -> Vec<VerifiedSoundbite> {
+    fn mark_emotional_beats(
+        &self,
+        mut soundbites: Vec<VerifiedSoundbite>,
+    ) -> Vec<VerifiedSoundbite> {
         let len = soundbites.len();
         if len == 0 {
             return soundbites;
@@ -374,20 +383,44 @@ impl DirectiveGenerator {
 
         // Preferred energy levels per act
         let act_energy_prefs: Vec<(&ActLabel, &[EnergyLevel])> = vec![
-            (&ActLabel::Act1Intro, &[EnergyLevel::Low, EnergyLevel::Medium]),
+            (
+                &ActLabel::Act1Intro,
+                &[EnergyLevel::Low, EnergyLevel::Medium],
+            ),
             (&ActLabel::Act2Challenge, &[EnergyLevel::Medium]),
-            (&ActLabel::Act3Solution, &[EnergyLevel::Medium, EnergyLevel::High]),
+            (
+                &ActLabel::Act3Solution,
+                &[EnergyLevel::Medium, EnergyLevel::High],
+            ),
             (&ActLabel::Act4Results, &[EnergyLevel::High]),
-            (&ActLabel::Act5Close, &[EnergyLevel::Medium, EnergyLevel::Low]),
+            (
+                &ActLabel::Act5Close,
+                &[EnergyLevel::Medium, EnergyLevel::Low],
+            ),
         ];
 
         // Preferred media types per act
         let act_type_prefs: Vec<(&ActLabel, &[MediaType])> = vec![
-            (&ActLabel::Act1Intro, &[MediaType::Drone, MediaType::Cinematic]),
-            (&ActLabel::Act2Challenge, &[MediaType::BTS, MediaType::Cinematic]),
-            (&ActLabel::Act3Solution, &[MediaType::Cinematic, MediaType::EventAction]),
-            (&ActLabel::Act4Results, &[MediaType::EventAction, MediaType::VerticalHighlight]),
-            (&ActLabel::Act5Close, &[MediaType::Drone, MediaType::Cinematic]),
+            (
+                &ActLabel::Act1Intro,
+                &[MediaType::Drone, MediaType::Cinematic],
+            ),
+            (
+                &ActLabel::Act2Challenge,
+                &[MediaType::BTS, MediaType::Cinematic],
+            ),
+            (
+                &ActLabel::Act3Solution,
+                &[MediaType::Cinematic, MediaType::EventAction],
+            ),
+            (
+                &ActLabel::Act4Results,
+                &[MediaType::EventAction, MediaType::VerticalHighlight],
+            ),
+            (
+                &ActLabel::Act5Close,
+                &[MediaType::Drone, MediaType::Cinematic],
+            ),
         ];
 
         act_labels
@@ -400,9 +433,8 @@ impl DirectiveGenerator {
                     .map(|s| s.id.clone())
                     .collect();
 
-                let has_emotional_beat = soundbites
-                    .iter()
-                    .any(|s| &s.act == act && s.emotional_beat);
+                let has_emotional_beat =
+                    soundbites.iter().any(|s| &s.act == act && s.emotional_beat);
 
                 // Score and rank available B-roll for this act (9-signal scoring)
                 let energy_prefs = act_energy_prefs[act_idx].1;
@@ -446,11 +478,19 @@ impl DirectiveGenerator {
                         // 5. Scene content type match (2.0 pts)
                         if let Some(ref scene) = asset.scene_analysis {
                             let content_prefs: &[SceneContentType] = match act {
-                                ActLabel::Act1Intro => &[SceneContentType::Establishing, SceneContentType::Ambient],
-                                ActLabel::Act2Challenge => &[SceneContentType::Intimate, SceneContentType::Ambient],
-                                ActLabel::Act3Solution => &[SceneContentType::HighEnergy, SceneContentType::Intimate],
+                                ActLabel::Act1Intro => {
+                                    &[SceneContentType::Establishing, SceneContentType::Ambient]
+                                }
+                                ActLabel::Act2Challenge => {
+                                    &[SceneContentType::Intimate, SceneContentType::Ambient]
+                                }
+                                ActLabel::Act3Solution => {
+                                    &[SceneContentType::HighEnergy, SceneContentType::Intimate]
+                                }
                                 ActLabel::Act4Results => &[SceneContentType::HighEnergy],
-                                ActLabel::Act5Close => &[SceneContentType::Establishing, SceneContentType::Ambient],
+                                ActLabel::Act5Close => {
+                                    &[SceneContentType::Establishing, SceneContentType::Ambient]
+                                }
                             };
                             if content_prefs.contains(&scene.dominant_content_type) {
                                 score += 2.0;
@@ -471,10 +511,16 @@ impl DirectiveGenerator {
 
                         // 8. Semantic tag match (2.0 pts)
                         let tag_prefs: &[&str] = match act {
-                            ActLabel::Act1Intro => &["aerial", "establishing", "wide-shot", "exterior"],
-                            ActLabel::Act2Challenge => &["team", "behind-the-scenes", "intimate", "person"],
+                            ActLabel::Act1Intro => {
+                                &["aerial", "establishing", "wide-shot", "exterior"]
+                            }
+                            ActLabel::Act2Challenge => {
+                                &["team", "behind-the-scenes", "intimate", "person"]
+                            }
                             ActLabel::Act3Solution => &["cinematic", "well-composed", "energetic"],
-                            ActLabel::Act4Results => &["high-energy", "crowd", "peak-energy", "fast-motion"],
+                            ActLabel::Act4Results => {
+                                &["high-energy", "crowd", "peak-energy", "fast-motion"]
+                            }
                             ActLabel::Act5Close => &["aerial", "establishing", "calm", "wide-shot"],
                         };
                         let tag_hits = asset
@@ -502,7 +548,8 @@ impl DirectiveGenerator {
                     })
                     .collect();
 
-                scored_broll.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+                scored_broll
+                    .sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
                 // Take top clips for this act (typically 3-5 per act for variety)
                 let clips_needed = 4.min(scored_broll.len());
@@ -519,13 +566,18 @@ impl DirectiveGenerator {
                             .as_ref()
                             .map(|qc| qc.best_in_point)
                             .or_else(|| {
-                                asset.scene_analysis.as_ref().map(|s| s.peak_energy_timestamp)
+                                asset
+                                    .scene_analysis
+                                    .as_ref()
+                                    .map(|s| s.peak_energy_timestamp)
                             })
                             .unwrap_or(0.0);
 
                         let out_point = (in_point
-                            + asset.duration_seconds.min(per_act_duration / clips_needed as f64))
-                            .min(asset.duration_seconds);
+                            + asset
+                                .duration_seconds
+                                .min(per_act_duration / clips_needed as f64))
+                        .min(asset.duration_seconds);
 
                         // Beat-snap: align in/out to nearest strong beat if beat grid available
                         let (snapped_in, snapped_out) =
@@ -745,14 +797,78 @@ fn extract_themes(text: &str) -> Vec<String> {
     let mut themes = Vec::new();
 
     let theme_keywords: &[(&str, &[&str])] = &[
-        ("scale", &["massive", "huge", "scale", "large", "big", "multi-day", "hundreds"]),
-        ("credibility", &["experience", "years", "professional", "background", "director", "producer"]),
-        ("trust", &["trust", "reliable", "partner", "relationship", "depend"]),
-        ("quality", &["quality", "professional", "production value", "cinematic", "amazing"]),
-        ("speed", &["same-day", "turnaround", "fast", "quick", "overnight", "immediately"]),
-        ("teamwork", &["team", "crew", "together", "collaborate", "support"]),
-        ("innovation", &["never done before", "nobody", "first time", "innovative", "cutting edge"]),
-        ("capability", &["multi-camera", "production", "capability", "equipment", "gear"]),
+        (
+            "scale",
+            &[
+                "massive",
+                "huge",
+                "scale",
+                "large",
+                "big",
+                "multi-day",
+                "hundreds",
+            ],
+        ),
+        (
+            "credibility",
+            &[
+                "experience",
+                "years",
+                "professional",
+                "background",
+                "director",
+                "producer",
+            ],
+        ),
+        (
+            "trust",
+            &["trust", "reliable", "partner", "relationship", "depend"],
+        ),
+        (
+            "quality",
+            &[
+                "quality",
+                "professional",
+                "production value",
+                "cinematic",
+                "amazing",
+            ],
+        ),
+        (
+            "speed",
+            &[
+                "same-day",
+                "turnaround",
+                "fast",
+                "quick",
+                "overnight",
+                "immediately",
+            ],
+        ),
+        (
+            "teamwork",
+            &["team", "crew", "together", "collaborate", "support"],
+        ),
+        (
+            "innovation",
+            &[
+                "never done before",
+                "nobody",
+                "first time",
+                "innovative",
+                "cutting edge",
+            ],
+        ),
+        (
+            "capability",
+            &[
+                "multi-camera",
+                "production",
+                "capability",
+                "equipment",
+                "gear",
+            ],
+        ),
     ];
 
     for (theme, keywords) in theme_keywords {
@@ -848,18 +964,22 @@ mod tests {
         // Exact match in haystack
         let ratio = find_best_match(
             "multi-camera production like nobody",
-            "and turn it into a multi-camera production like nobody has ever seen before"
+            "and turn it into a multi-camera production like nobody has ever seen before",
         );
         assert!(ratio >= 0.9, "Expected >=0.9 got {}", ratio);
 
         // No match
-        let ratio = find_best_match("completely unrelated text", "the quick brown fox jumps over");
+        let ratio = find_best_match(
+            "completely unrelated text",
+            "the quick brown fox jumps over",
+        );
         assert!(ratio < 0.5, "Expected <0.5 got {}", ratio);
     }
 
     #[test]
     fn test_extract_themes() {
-        let themes = extract_themes("We had a massive multi-camera production with a professional team");
+        let themes =
+            extract_themes("We had a massive multi-camera production with a professional team");
         assert!(themes.contains(&"scale".to_string()));
         assert!(themes.contains(&"capability".to_string()));
         assert!(themes.contains(&"teamwork".to_string()));
@@ -877,7 +997,9 @@ mod tests {
             duration_seconds: 5.0,
             timeline_position_seconds: 0.0,
         };
-        assert!((valid_point.audio_source_timecode - valid_point.video_source_timecode).abs() < 0.01);
+        assert!(
+            (valid_point.audio_source_timecode - valid_point.video_source_timecode).abs() < 0.01
+        );
 
         // Invalid lip sync (the v5 bug: video at 45.6, audio at 40.6)
         let invalid_point = LipSyncPoint {
@@ -887,7 +1009,10 @@ mod tests {
             duration_seconds: 5.0,
             timeline_position_seconds: 0.0,
         };
-        assert!((invalid_point.audio_source_timecode - invalid_point.video_source_timecode).abs() > 0.01);
+        assert!(
+            (invalid_point.audio_source_timecode - invalid_point.video_source_timecode).abs()
+                > 0.01
+        );
     }
 
     #[test]

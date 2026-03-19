@@ -3,18 +3,29 @@
 //! Scans existing data_sources, execution_artifacts, and physical filesystem
 //! volumes to populate the cloud_files index for an organization.
 
-use crate::error::ApiError;
-use sqlx::SqlitePool;
 use std::path::{Path, PathBuf};
+
+use sqlx::SqlitePool;
 use uuid::Uuid;
+
+use crate::error::ApiError;
 
 /// Guess MIME type from file extension
 fn mime_from_extension(path: &Path) -> &'static str {
-    match path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).as_deref() {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .as_deref()
+    {
         Some("pdf") => "application/pdf",
-        Some("doc" | "docx") => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        Some("doc" | "docx") => {
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        }
         Some("xls" | "xlsx") => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        Some("ppt" | "pptx") => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        Some("ppt" | "pptx") => {
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        }
         Some("csv") => "text/csv",
         Some("txt" | "md") => "text/plain",
         Some("json") => "application/json",
@@ -110,11 +121,19 @@ async fn index_filesystem_volumes(pool: &SqlitePool, org_id: &str) -> Result<i64
 
     for (name, base_path) in &volumes {
         if !base_path.exists() {
-            tracing::debug!("[CLOUD_INDEX] Volume {} not found at {:?}, skipping", name, base_path);
+            tracing::debug!(
+                "[CLOUD_INDEX] Volume {} not found at {:?}, skipping",
+                name,
+                base_path
+            );
             continue;
         }
 
-        tracing::info!("[CLOUD_INDEX] Scanning volume '{}' at {:?}", name, base_path);
+        tracing::info!(
+            "[CLOUD_INDEX] Scanning volume '{}' at {:?}",
+            name,
+            base_path
+        );
         let count = index_directory(pool, org_id, name, base_path).await?;
         tracing::info!("[CLOUD_INDEX] Indexed {} files from '{}'", count, name);
         total += count;
@@ -197,7 +216,8 @@ async fn index_directory(
                     Err(_) => continue,
                 };
 
-                let file_name = path.file_name()
+                let file_name = path
+                    .file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("unknown")
                     .to_string();
@@ -276,7 +296,10 @@ async fn index_data_sources(pool: &SqlitePool, org_id: &str) -> Result<i64, ApiE
         };
 
         let id = Uuid::new_v4().to_string();
-        let mime = row.file_type.as_deref().unwrap_or("application/octet-stream");
+        let mime = row
+            .file_type
+            .as_deref()
+            .unwrap_or("application/octet-stream");
 
         let result = sqlx::query(
             r#"INSERT OR IGNORE INTO cloud_files
@@ -354,7 +377,10 @@ async fn index_execution_artifacts(pool: &SqlitePool, org_id: &str) -> Result<i6
         let file_name = row.title.as_deref().unwrap_or("artifact");
 
         let id = Uuid::new_v4().to_string();
-        let mime = row.content_type.as_deref().unwrap_or("application/octet-stream");
+        let mime = row
+            .content_type
+            .as_deref()
+            .unwrap_or("application/octet-stream");
 
         let result = sqlx::query(
             r#"INSERT OR IGNORE INTO cloud_files

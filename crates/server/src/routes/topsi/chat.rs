@@ -17,14 +17,13 @@ pub async fn chat_with_topsi(
     let billing_project_id = match request.project_id {
         Some(pid) => Some(pid),
         None => {
-            let home: Option<Vec<u8>> = sqlx::query_scalar(
-                "SELECT home_project_id FROM users WHERE id = ?",
-            )
-            .bind(access_ctx.user_id.as_str())
-            .fetch_optional(&pool)
-            .await
-            .ok()
-            .flatten();
+            let home: Option<Vec<u8>> =
+                sqlx::query_scalar("SELECT home_project_id FROM users WHERE id = ?")
+                    .bind(access_ctx.user_id.as_str())
+                    .fetch_optional(&pool)
+                    .await
+                    .ok()
+                    .flatten();
             home.and_then(|bytes| Uuid::from_slice(&bytes).ok())
         }
     };
@@ -68,10 +67,17 @@ pub async fn chat_with_topsi(
     // Record VIBE cost
     if let Some(project_id) = billing_project_id {
         crate::helpers::billing::record_llm_vibe_usage(
-            &pool, project_id, "claude-sonnet-4-20250514",
-            response.input_tokens.unwrap_or(0), response.output_tokens.unwrap_or(0),
-            None, None, None, "Topsi",
-        ).await;
+            &pool,
+            project_id,
+            "claude-sonnet-4-20250514",
+            response.input_tokens.unwrap_or(0),
+            response.output_tokens.unwrap_or(0),
+            None,
+            None,
+            None,
+            "Topsi",
+        )
+        .await;
     }
 
     // Persist conversation (non-blocking)
@@ -84,11 +90,19 @@ pub async fn chat_with_topsi(
         let resp_output = response.output_tokens;
         tokio::spawn(async move {
             crate::helpers::conversations::persist_chat_exchange(
-                &pool_conv, topsi_agent_id, &sess, None,
-                &user_msg, &assistant_msg,
-                Some("claude-sonnet-4-20250514"), Some("anthropic"),
-                resp_input, resp_output, "Topsi",
-            ).await;
+                &pool_conv,
+                topsi_agent_id,
+                &sess,
+                None,
+                &user_msg,
+                &assistant_msg,
+                Some("claude-sonnet-4-20250514"),
+                Some("anthropic"),
+                resp_input,
+                resp_output,
+                "Topsi",
+            )
+            .await;
         });
     }
 

@@ -3,9 +3,10 @@
 //! Usage: apn_send <recipient_node_id> <message>
 //! Example: apn_send apn_09465b95 "Hello from Omega 1!"
 
-use async_nats::ConnectOptions;
-use serde::{Serialize, Deserialize};
 use std::env;
+
+use async_nats::ConnectOptions;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct DirectMessage {
@@ -33,8 +34,9 @@ async fn main() -> anyhow::Result<()> {
     // Connect to NATS relay
     let client = async_nats::connect_with_options(
         "nats://nonlocal.info:4222",
-        ConnectOptions::new().name("apn_sender")
-    ).await?;
+        ConnectOptions::new().name("apn_sender"),
+    )
+    .await?;
 
     println!("✅ Connected to NATS relay");
 
@@ -63,10 +65,12 @@ async fn main() -> anyhow::Result<()> {
         "timestamp": chrono::Utc::now().to_rfc3339(),
     });
 
-    client.publish(
-        "apn.discovery".to_string(),
-        serde_json::to_vec(&discovery_msg)?.into()
-    ).await?;
+    client
+        .publish(
+            "apn.discovery".to_string(),
+            serde_json::to_vec(&discovery_msg)?.into(),
+        )
+        .await?;
 
     client.flush().await?;
 

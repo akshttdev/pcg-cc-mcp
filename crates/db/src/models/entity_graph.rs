@@ -126,10 +126,7 @@ impl EntityGraphEdge {
         .await
     }
 
-    pub async fn find_from(
-        pool: &SqlitePool,
-        node_id: Uuid,
-    ) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn find_from(pool: &SqlitePool, node_id: Uuid) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, Self>(
             "SELECT id, from_node_id, to_node_id, edge_type, weight, metadata, created_at \
              FROM entity_graph_edges WHERE from_node_id = ?",
@@ -139,10 +136,7 @@ impl EntityGraphEdge {
         .await
     }
 
-    pub async fn find_to(
-        pool: &SqlitePool,
-        node_id: Uuid,
-    ) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn find_to(pool: &SqlitePool, node_id: Uuid) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, Self>(
             "SELECT id, from_node_id, to_node_id, edge_type, weight, metadata, created_at \
              FROM entity_graph_edges WHERE to_node_id = ?",
@@ -165,7 +159,7 @@ pub async fn company_subgraph(
             return Ok(EntitySubgraph {
                 nodes: vec![],
                 edges: vec![],
-            })
+            });
         }
     };
 

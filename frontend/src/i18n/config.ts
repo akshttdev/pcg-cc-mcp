@@ -65,6 +65,7 @@ i18n
 
 // Debug logging in development
 if (import.meta.env.DEV) {
+  // intentionally empty — placeholder for debug logging
 }
 
 // Function to update language from config

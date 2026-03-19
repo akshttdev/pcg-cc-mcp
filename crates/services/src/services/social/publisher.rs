@@ -3,13 +3,15 @@
 //! Handles publishing content to multiple platforms with retry logic,
 //! rate limiting, and error handling.
 
+use db::models::{
+    social_account::{SocialAccount, SocialPlatform},
+    social_post::{PostStatus, SocialPost, UpdateSocialPost},
+};
 use sqlx::SqlitePool;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use super::{get_connector, PublishContent, PublishResult, SocialError};
-use db::models::social_account::{SocialAccount, SocialPlatform};
-use db::models::social_post::{SocialPost, UpdateSocialPost, PostStatus};
+use super::{PublishContent, PublishResult, SocialError, get_connector};
 
 /// Publisher configuration
 pub struct PublisherConfig {

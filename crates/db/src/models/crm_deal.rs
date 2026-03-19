@@ -4,9 +4,8 @@ use sqlx::{FromRow, SqlitePool};
 use thiserror::Error;
 use ts_rs::TS;
 
-use crate::db_uuid::DbUuid;
-
 use super::crm_pipeline::CrmPipelineStage;
+use crate::db_uuid::DbUuid;
 
 #[derive(Debug, Error)]
 pub enum CrmDealError {
@@ -185,7 +184,9 @@ impl CrmDeal {
     pub async fn create(pool: &SqlitePool, data: CreateCrmDeal) -> Result<Self, CrmDealError> {
         let id = DbUuid::new();
         let currency = data.currency.unwrap_or_else(|| "USD".to_string());
-        let tags = data.tags.map(|v| serde_json::to_string(&v).unwrap_or_default());
+        let tags = data
+            .tags
+            .map(|v| serde_json::to_string(&v).unwrap_or_default());
         let custom_fields = data.custom_fields.map(|v| v.to_string());
 
         // Get stage probability if stage is specified
@@ -340,7 +341,9 @@ impl CrmDeal {
         id: &DbUuid,
         data: UpdateCrmDeal,
     ) -> Result<Self, CrmDealError> {
-        let tags = data.tags.map(|v| serde_json::to_string(&v).unwrap_or_default());
+        let tags = data
+            .tags
+            .map(|v| serde_json::to_string(&v).unwrap_or_default());
         let custom_fields = data.custom_fields.map(|v| v.to_string());
 
         sqlx::query_as::<_, CrmDeal>(
@@ -522,7 +525,10 @@ impl CrmDeal {
             .bind(&updated_deal.id)
             .bind(activity_type)
             .bind(format!("Moved to {}", stage_name))
-            .bind(format!("Deal moved from {} to {}", old_stage_name, stage_name))
+            .bind(format!(
+                "Deal moved from {} to {}",
+                old_stage_name, stage_name
+            ))
             .execute(pool)
             .await?;
         }
@@ -595,12 +601,13 @@ impl CrmDeal {
                 .ok()
                 .flatten();
 
-        let task_total: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE project_id = ? AND deleted_at IS NULL")
-                .bind(project_id)
-                .fetch_one(pool)
-                .await
-                .unwrap_or(0);
+        let task_total: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND deleted_at IS NULL",
+        )
+        .bind(project_id)
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
 
         let task_done: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = 'done' AND deleted_at IS NULL",
@@ -639,18 +646,26 @@ impl CrmDeal {
         deal_id: &DbUuid,
         person_id: Option<&DbUuid>,
     ) -> (
-        Option<String>, Option<String>, Option<f64>, Option<i64>,
-        Option<String>, Option<String>,
-        Option<DbUuid>, Option<String>, Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<f64>,
+        Option<i64>,
+        Option<String>,
+        Option<String>,
+        Option<DbUuid>,
+        Option<String>,
+        Option<String>,
     ) {
         Self::fetch_intel_data(pool, deal_id, person_id).await
     }
 
     async fn report_id_for_person(pool: &SqlitePool, person_id: &DbUuid) -> Option<DbUuid> {
         #[derive(sqlx::FromRow)]
-        struct Row { id: DbUuid }
+        struct Row {
+            id: DbUuid,
+        }
         sqlx::query_as::<_, Row>(
-            "SELECT id FROM business_reports WHERE person_id = ? ORDER BY created_at DESC LIMIT 1"
+            "SELECT id FROM business_reports WHERE person_id = ? ORDER BY created_at DESC LIMIT 1",
         )
         .bind(person_id)
         .fetch_optional(pool)
@@ -669,21 +684,31 @@ impl CrmDeal {
         deal_id: &DbUuid,
         person_id: Option<&DbUuid>,
     ) -> (
-        Option<String>, Option<String>, Option<f64>, Option<i64>,
-        Option<String>, Option<String>,
-        Option<DbUuid>, Option<String>, Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<f64>,
+        Option<i64>,
+        Option<String>,
+        Option<String>,
+        Option<DbUuid>,
+        Option<String>,
+        Option<String>,
     ) {
         // Person intelligence
-        let (intelligence_status, intelligence_summary, intelligence_confidence, research_pass_count) =
-            if let Some(pid) = person_id {
-                #[derive(sqlx::FromRow)]
-                struct PersonIntel {
-                    intelligence_status: Option<String>,
-                    intelligence_summary: Option<String>,
-                    intelligence_confidence: Option<f64>,
-                    research_pass_count: Option<i64>,
-                }
-                if let Ok(Some(intel)) = sqlx::query_as::<_, PersonIntel>(
+        let (
+            intelligence_status,
+            intelligence_summary,
+            intelligence_confidence,
+            research_pass_count,
+        ) = if let Some(pid) = person_id {
+            #[derive(sqlx::FromRow)]
+            struct PersonIntel {
+                intelligence_status: Option<String>,
+                intelligence_summary: Option<String>,
+                intelligence_confidence: Option<f64>,
+                research_pass_count: Option<i64>,
+            }
+            if let Ok(Some(intel)) = sqlx::query_as::<_, PersonIntel>(
                     "SELECT intelligence_status, intelligence_summary, intelligence_confidence, research_pass_count FROM persons WHERE id = ?"
                 )
                 .bind(pid)
@@ -694,9 +719,9 @@ impl CrmDeal {
                 } else {
                     (None, None, None, None)
                 }
-            } else {
-                (None, None, None, None)
-            };
+        } else {
+            (None, None, None, None)
+        };
 
         // Business report status (via deal id bridge)
         let (report_status, report_review_status) = {
@@ -736,7 +761,7 @@ impl CrmDeal {
                   AND t.deleted_at IS NULL
                 ORDER BY t.created_at ASC
                 LIMIT 1
-                "#
+                "#,
             )
             .bind(deal_id)
             .fetch_optional(pool)
@@ -749,9 +774,15 @@ impl CrmDeal {
         };
 
         (
-            intelligence_status, intelligence_summary, intelligence_confidence, research_pass_count,
-            report_status, report_review_status,
-            review_task_id, review_task_status, review_task_assignee,
+            intelligence_status,
+            intelligence_summary,
+            intelligence_confidence,
+            research_pass_count,
+            report_status,
+            report_review_status,
+            review_task_id,
+            review_task_status,
+            review_task_assignee,
         )
     }
 
@@ -760,7 +791,9 @@ impl CrmDeal {
         pool: &SqlitePool,
         company_name: Option<&str>,
     ) -> (Option<String>, Option<DbUuid>, Option<String>) {
-        let Some(company_name) = company_name else { return (None, None, None) };
+        let Some(company_name) = company_name else {
+            return (None, None, None);
+        };
         if company_name.is_empty() {
             return (None, None, None);
         }
@@ -787,8 +820,7 @@ impl CrmDeal {
         pool: &SqlitePool,
         pipeline_id: &DbUuid,
     ) -> Result<KanbanBoardData, CrmDealError> {
-        use super::crm_contact::CrmContact;
-        use super::crm_pipeline::CrmPipeline;
+        use super::{crm_contact::CrmContact, crm_pipeline::CrmPipeline};
 
         let pipeline = CrmPipeline::find_by_id(pool, pipeline_id)
             .await
@@ -815,15 +847,26 @@ impl CrmDeal {
 
                 // Fetch person_id from the contact (bridge to persons table)
                 let person_id: Option<DbUuid> = if let Some(ref contact_id) = deal.crm_contact_id {
-                    #[derive(sqlx::FromRow)] struct Row { id: DbUuid }
+                    #[derive(sqlx::FromRow)]
+                    struct Row {
+                        id: DbUuid,
+                    }
                     sqlx::query_as::<_, Row>("SELECT id FROM persons WHERE crm_contact_id = ?")
                         .bind(contact_id)
-                        .fetch_optional(pool).await.ok().flatten().map(|r| r.id)
-                } else { None };
+                        .fetch_optional(pool)
+                        .await
+                        .ok()
+                        .flatten()
+                        .map(|r| r.id)
+                } else {
+                    None
+                };
 
                 let report_id = if let Some(ref pid) = person_id {
                     Self::report_id_for_person(pool, pid).await
-                } else { None };
+                } else {
+                    None
+                };
 
                 let (project_name, task_total, task_done, deliverable_count) =
                     if let Some(ref pid) = deal.project_id {
@@ -833,15 +876,25 @@ impl CrmDeal {
                     };
 
                 let (
-                    intelligence_status, intelligence_summary, intelligence_confidence, research_pass_count,
-                    report_status, report_review_status,
-                    review_task_id, review_task_status, review_task_assignee,
+                    intelligence_status,
+                    intelligence_summary,
+                    intelligence_confidence,
+                    research_pass_count,
+                    report_status,
+                    report_review_status,
+                    review_task_id,
+                    review_task_status,
+                    review_task_assignee,
                 ) = Self::fetch_intel_data(pool, &deal.id, person_id.as_ref()).await;
 
-                let (company_intel_status, company_id_val, company_intel_summary) = Self::fetch_company_intel_status(
-                    pool,
-                    contact_info.as_ref().and_then(|c| c.company_name.as_deref()),
-                ).await;
+                let (company_intel_status, company_id_val, company_intel_summary) =
+                    Self::fetch_company_intel_status(
+                        pool,
+                        contact_info
+                            .as_ref()
+                            .and_then(|c| c.company_name.as_deref()),
+                    )
+                    .await;
                 deals_with_contacts.push(CrmDealWithContact {
                     contact_name: contact_info.as_ref().and_then(|c| c.full_name.clone()),
                     contact_email: contact_info.as_ref().and_then(|c| c.email.clone()),
@@ -895,8 +948,10 @@ impl CrmDeal {
         organization_id: &DbUuid,
         pipeline_id: &DbUuid,
     ) -> Result<KanbanBoardData, CrmDealError> {
-        use super::crm_contact::CrmContact;
-        use super::crm_pipeline::{CrmPipeline, PipelineType};
+        use super::{
+            crm_contact::CrmContact,
+            crm_pipeline::{CrmPipeline, PipelineType},
+        };
 
         // Get the reference pipeline (determines stages/layout)
         let ref_pipeline = CrmPipeline::find_by_id(pool, pipeline_id)
@@ -942,8 +997,7 @@ impl CrmDeal {
                     stage_deals.push(deal.clone());
                 } else if let Some(ref deal_stage_id) = deal.crm_stage_id {
                     // Check if this deal's stage has the same name as our reference stage
-                    if let Ok(deal_stage) =
-                        CrmPipelineStage::find_by_id(pool, deal_stage_id).await
+                    if let Ok(deal_stage) = CrmPipelineStage::find_by_id(pool, deal_stage_id).await
                     {
                         if deal_stage.name == stage.name {
                             stage_deals.push(deal.clone());
@@ -964,15 +1018,26 @@ impl CrmDeal {
                 };
 
                 let person_id: Option<DbUuid> = if let Some(ref contact_id) = deal.crm_contact_id {
-                    #[derive(sqlx::FromRow)] struct Row { id: DbUuid }
+                    #[derive(sqlx::FromRow)]
+                    struct Row {
+                        id: DbUuid,
+                    }
                     sqlx::query_as::<_, Row>("SELECT id FROM persons WHERE crm_contact_id = ?")
                         .bind(contact_id)
-                        .fetch_optional(pool).await.ok().flatten().map(|r| r.id)
-                } else { None };
+                        .fetch_optional(pool)
+                        .await
+                        .ok()
+                        .flatten()
+                        .map(|r| r.id)
+                } else {
+                    None
+                };
 
                 let report_id = if let Some(ref pid) = person_id {
                     Self::report_id_for_person(pool, pid).await
-                } else { None };
+                } else {
+                    None
+                };
 
                 let (project_name, task_total, task_done, deliverable_count) =
                     if let Some(ref pid) = deal.project_id {
@@ -982,15 +1047,25 @@ impl CrmDeal {
                     };
 
                 let (
-                    intelligence_status, intelligence_summary, intelligence_confidence, research_pass_count,
-                    report_status, report_review_status,
-                    review_task_id, review_task_status, review_task_assignee,
+                    intelligence_status,
+                    intelligence_summary,
+                    intelligence_confidence,
+                    research_pass_count,
+                    report_status,
+                    report_review_status,
+                    review_task_id,
+                    review_task_status,
+                    review_task_assignee,
                 ) = Self::fetch_intel_data(pool, &deal.id, person_id.as_ref()).await;
 
-                let (company_intel_status, company_id_val, company_intel_summary) = Self::fetch_company_intel_status(
-                    pool,
-                    contact_info.as_ref().and_then(|c| c.company_name.as_deref()),
-                ).await;
+                let (company_intel_status, company_id_val, company_intel_summary) =
+                    Self::fetch_company_intel_status(
+                        pool,
+                        contact_info
+                            .as_ref()
+                            .and_then(|c| c.company_name.as_deref()),
+                    )
+                    .await;
                 deals_with_contacts.push(CrmDealWithContact {
                     contact_name: contact_info.as_ref().and_then(|c| c.full_name.clone()),
                     contact_email: contact_info.as_ref().and_then(|c| c.email.clone()),

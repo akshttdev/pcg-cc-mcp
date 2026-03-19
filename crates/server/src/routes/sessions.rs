@@ -75,6 +75,9 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         "/sessions",
         Router::new()
             .route("/", get(get_sessions).post(create_session))
-            .route("/{id}", get(get_session).put(update_session).delete(delete_session)),
+            .route(
+                "/{id}",
+                get(get_session).put(update_session).delete(delete_session),
+            ),
     )
 }

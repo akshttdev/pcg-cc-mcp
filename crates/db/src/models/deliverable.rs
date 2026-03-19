@@ -93,7 +93,10 @@ impl Deliverable {
             .ok_or_else(|| sqlx::Error::RowNotFound)
     }
 
-    pub async fn list_for_project(pool: &SqlitePool, project_id: Uuid) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn list_for_project(
+        pool: &SqlitePool,
+        project_id: Uuid,
+    ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as("SELECT * FROM deliverables WHERE project_id = ? ORDER BY created_at ASC")
             .bind(project_id)
             .fetch_all(pool)
@@ -108,13 +111,27 @@ impl Deliverable {
         let mut qb = sqlx::QueryBuilder::new(
             "UPDATE deliverables SET updated_at = datetime('now','subsec')",
         );
-        if let Some(v) = input.title              { qb.push(", title = ").push_bind(v); }
-        if let Some(v) = input.description        { qb.push(", description = ").push_bind(v); }
-        if let Some(v) = input.deliverable_type   { qb.push(", deliverable_type = ").push_bind(v); }
-        if let Some(v) = input.revision_rounds_allowed { qb.push(", revision_rounds_allowed = ").push_bind(v); }
-        if let Some(v) = input.working_file_url   { qb.push(", working_file_url = ").push_bind(v); }
-        if let Some(v) = input.final_link         { qb.push(", final_link = ").push_bind(v); }
-        if let Some(v) = input.due_date           { qb.push(", due_date = ").push_bind(v); }
+        if let Some(v) = input.title {
+            qb.push(", title = ").push_bind(v);
+        }
+        if let Some(v) = input.description {
+            qb.push(", description = ").push_bind(v);
+        }
+        if let Some(v) = input.deliverable_type {
+            qb.push(", deliverable_type = ").push_bind(v);
+        }
+        if let Some(v) = input.revision_rounds_allowed {
+            qb.push(", revision_rounds_allowed = ").push_bind(v);
+        }
+        if let Some(v) = input.working_file_url {
+            qb.push(", working_file_url = ").push_bind(v);
+        }
+        if let Some(v) = input.final_link {
+            qb.push(", final_link = ").push_bind(v);
+        }
+        if let Some(v) = input.due_date {
+            qb.push(", due_date = ").push_bind(v);
+        }
         qb.push(" WHERE id = ").push_bind(id);
         qb.build().execute(pool).await?;
         Self::find_by_id(pool, id).await
@@ -127,19 +144,26 @@ impl Deliverable {
         new_status: &str,
     ) -> Result<Option<Self>, sqlx::Error> {
         let sql = match new_status {
-            "done" =>
+            "done" => {
                 "UPDATE deliverables SET status = ?, delivered_at = datetime('now','subsec'), \
-                 updated_at = datetime('now','subsec') WHERE id = ?",
-            "revision" | "client_revision" =>
+                 updated_at = datetime('now','subsec') WHERE id = ?"
+            }
+            "revision" | "client_revision" => {
                 "UPDATE deliverables SET status = ?, \
                  revision_rounds_used = revision_rounds_used + 1, \
-                 updated_at = datetime('now','subsec') WHERE id = ?",
-            _ =>
+                 updated_at = datetime('now','subsec') WHERE id = ?"
+            }
+            _ => {
                 "UPDATE deliverables SET status = ?, \
-                 updated_at = datetime('now','subsec') WHERE id = ?",
+                 updated_at = datetime('now','subsec') WHERE id = ?"
+            }
         };
 
-        sqlx::query(sql).bind(new_status).bind(id).execute(pool).await?;
+        sqlx::query(sql)
+            .bind(new_status)
+            .bind(id)
+            .execute(pool)
+            .await?;
         Self::find_by_id(pool, id).await
     }
 

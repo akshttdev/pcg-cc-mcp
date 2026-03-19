@@ -368,6 +368,7 @@ export function TemplatePipelineView({ template }: { template: WorkflowTemplate 
 
 // ── Legacy Pipelines View ────────────────────────────────────────────────────
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars, unused-imports/no-unused-vars
 export function LegacyPipelinesView({ orgId: _orgId }: { orgId: string }) {
   const [selected, setSelected] = useState<string | null>(null);
 

@@ -6,13 +6,15 @@ use axum::{
     response::Response,
     routing::{get, post},
 };
-use db::models::data_source::{CreateDataSource, DataSource, UpdateDataSource, metadata_template};
+use db::{
+    db_uuid::DbUuid,
+    models::data_source::{CreateDataSource, DataSource, UpdateDataSource, metadata_template},
+};
 use deployment::Deployment;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use utils::response::ApiResponse;
 use uuid::Uuid;
-use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 
@@ -55,7 +57,15 @@ async fn create_data_source(
 ) -> Result<Json<ApiResponse<DataSource>>, ApiError> {
     let pool = &deployment.db().pool;
 
-    let valid_types = ["conversation", "document", "transcript", "report", "dataset", "media", "other"];
+    let valid_types = [
+        "conversation",
+        "document",
+        "transcript",
+        "report",
+        "dataset",
+        "media",
+        "other",
+    ];
     if !valid_types.contains(&body.data_type.as_str()) {
         return Err(ApiError::BadRequest(format!(
             "Invalid data_type '{}'. Must be one of: {}",
@@ -108,11 +118,19 @@ async fn create_data_source(
             pool,
             &source.id,
             UpdateDataSource {
-                title: None, description: None, data_type: None,
-                source_type: None, content: None, metadata: None,
-                status: Some("ready".to_string()), processing_error: None, folder: None,
+                title: None,
+                description: None,
+                data_type: None,
+                source_type: None,
+                content: None,
+                metadata: None,
+                status: Some("ready".to_string()),
+                processing_error: None,
+                folder: None,
             },
-        ).await.map_err(|e| ApiError::InternalError(format!("{e}")))?
+        )
+        .await
+        .map_err(|e| ApiError::InternalError(format!("{e}")))?
         .unwrap_or(source)
     } else {
         source
@@ -123,7 +141,12 @@ async fn create_data_source(
     let trigger_ds_id = source.id.clone();
     let trigger_dep = deployment.clone();
     tokio::spawn(async move {
-        super::data_source_workflows::fire_triggers_for_data_source(trigger_pool, trigger_ds_id, trigger_dep).await;
+        super::data_source_workflows::fire_triggers_for_data_source(
+            trigger_pool,
+            trigger_ds_id,
+            trigger_dep,
+        )
+        .await;
     });
 
     Ok(Json(ApiResponse::success(source)))
@@ -146,9 +169,11 @@ async fn upload_data_source(
     let mut folder_field: Option<String> = None;
     let mut file_data: Option<(String, Vec<u8>)> = None; // (filename, bytes)
 
-    while let Some(field) = multipart.next_field().await.map_err(|e| {
-        ApiError::BadRequest(format!("Multipart error: {e}"))
-    })? {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("Multipart error: {e}")))?
+    {
         let name = field.name().unwrap_or("").to_string();
         match name.as_str() {
             "file" => {
@@ -156,36 +181,81 @@ async fn upload_data_source(
                     .file_name()
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| "upload".to_string());
-                let bytes = field.bytes().await.map_err(|e| {
-                    ApiError::BadRequest(format!("Failed to read file: {e}"))
-                })?;
+                let bytes = field
+                    .bytes()
+                    .await
+                    .map_err(|e| ApiError::BadRequest(format!("Failed to read file: {e}")))?;
                 file_data = Some((filename, bytes.to_vec()));
             }
             "title" => {
-                title = Some(field.text().await.map_err(|e| ApiError::BadRequest(format!("{e}")))?);
+                title = Some(
+                    field
+                        .text()
+                        .await
+                        .map_err(|e| ApiError::BadRequest(format!("{e}")))?,
+                );
             }
             "description" => {
-                description = Some(field.text().await.map_err(|e| ApiError::BadRequest(format!("{e}")))?);
+                description = Some(
+                    field
+                        .text()
+                        .await
+                        .map_err(|e| ApiError::BadRequest(format!("{e}")))?,
+                );
             }
             "data_type" => {
-                data_type = Some(field.text().await.map_err(|e| ApiError::BadRequest(format!("{e}")))?);
+                data_type = Some(
+                    field
+                        .text()
+                        .await
+                        .map_err(|e| ApiError::BadRequest(format!("{e}")))?,
+                );
             }
             "file_type" => {
-                file_type_field = Some(field.text().await.map_err(|e| ApiError::BadRequest(format!("{e}")))?);
+                file_type_field = Some(
+                    field
+                        .text()
+                        .await
+                        .map_err(|e| ApiError::BadRequest(format!("{e}")))?,
+                );
             }
             "organization_id" => {
-                let val = field.text().await.map_err(|e| ApiError::BadRequest(format!("{e}")))?;
-                organization_id = Some(DbUuid::parse(&val).map_err(|e| ApiError::BadRequest(format!("Invalid org ID: {e}")))?.to_uuid());
+                let val = field
+                    .text()
+                    .await
+                    .map_err(|e| ApiError::BadRequest(format!("{e}")))?;
+                organization_id = Some(
+                    DbUuid::parse(&val)
+                        .map_err(|e| ApiError::BadRequest(format!("Invalid org ID: {e}")))?
+                        .to_uuid(),
+                );
             }
             "project_id" => {
-                let val = field.text().await.map_err(|e| ApiError::BadRequest(format!("{e}")))?;
-                project_id = Some(DbUuid::parse(&val).map_err(|e| ApiError::BadRequest(format!("Invalid project ID: {e}")))?.to_uuid());
+                let val = field
+                    .text()
+                    .await
+                    .map_err(|e| ApiError::BadRequest(format!("{e}")))?;
+                project_id = Some(
+                    DbUuid::parse(&val)
+                        .map_err(|e| ApiError::BadRequest(format!("Invalid project ID: {e}")))?
+                        .to_uuid(),
+                );
             }
             "metadata" => {
-                metadata_str = Some(field.text().await.map_err(|e| ApiError::BadRequest(format!("{e}")))?);
+                metadata_str = Some(
+                    field
+                        .text()
+                        .await
+                        .map_err(|e| ApiError::BadRequest(format!("{e}")))?,
+                );
             }
             "folder" => {
-                folder_field = Some(field.text().await.map_err(|e| ApiError::BadRequest(format!("{e}")))?);
+                folder_field = Some(
+                    field
+                        .text()
+                        .await
+                        .map_err(|e| ApiError::BadRequest(format!("{e}")))?,
+                );
             }
             _ => {}
         }
@@ -247,7 +317,8 @@ async fn upload_data_source(
     // Store file if provided — write to sovereign stack
     if let Some((filename, bytes)) = file_data {
         let hash = format!("{:x}", Sha256::digest(&bytes));
-        let uploads_dir = std::path::PathBuf::from("E:/topos/sovereign_stack/Sirak Studios/Uploads");
+        let uploads_dir =
+            std::path::PathBuf::from("E:/topos/sovereign_stack/Sirak Studios/Uploads");
         std::fs::create_dir_all(&uploads_dir)
             .map_err(|e| ApiError::InternalError(format!("Failed to create uploads dir: {e}")))?;
 
@@ -274,7 +345,8 @@ async fn upload_data_source(
 
         // Merge file info into metadata — store sovereign volume reference
         let relative_path = format!("Uploads/{}", stored_name);
-        let mut meta: serde_json::Value = serde_json::from_str(&source.metadata).unwrap_or(serde_json::json!({}));
+        let mut meta: serde_json::Value =
+            serde_json::from_str(&source.metadata).unwrap_or(serde_json::json!({}));
         if let Some(obj) = meta.as_object_mut() {
             obj.insert("file_name".into(), serde_json::json!(filename));
             obj.insert("file_path".into(), serde_json::json!(relative_path));
@@ -291,20 +363,32 @@ async fn upload_data_source(
             pool,
             &source.id,
             UpdateDataSource {
-                title: None, description: None, data_type: None,
+                title: None,
+                description: None,
+                data_type: None,
                 source_type: None,
                 content: file_content,
                 metadata: Some(serde_json::to_string(&meta).unwrap_or_else(|_| "{}".to_string())),
                 status: Some("ready".to_string()),
-                processing_error: None, folder: None,
+                processing_error: None,
+                folder: None,
             },
-        ).await.map_err(|e| ApiError::InternalError(format!("{e}")))?;
+        )
+        .await
+        .map_err(|e| ApiError::InternalError(format!("{e}")))?;
 
         // Update file columns
         DataSource::set_file_info(
-            pool, &source.id, &filename, &relative_path,
-            bytes.len() as i64, &hash, file_type.as_deref(),
-        ).await.map_err(|e| ApiError::InternalError(format!("Failed to update file info: {e}")))?;
+            pool,
+            &source.id,
+            &filename,
+            &relative_path,
+            bytes.len() as i64,
+            &hash,
+            file_type.as_deref(),
+        )
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to update file info: {e}")))?;
 
         let updated = DataSource::find_by_id(pool, &source.id)
             .await
@@ -316,7 +400,12 @@ async fn upload_data_source(
         let trigger_ds_id = updated.id.clone();
         let trigger_dep = deployment.clone();
         tokio::spawn(async move {
-            super::data_source_workflows::fire_triggers_for_data_source(trigger_pool, trigger_ds_id, trigger_dep).await;
+            super::data_source_workflows::fire_triggers_for_data_source(
+                trigger_pool,
+                trigger_ds_id,
+                trigger_dep,
+            )
+            .await;
         });
 
         return Ok(Json(ApiResponse::success(updated)));
@@ -327,9 +416,15 @@ async fn upload_data_source(
         pool,
         &source.id,
         UpdateDataSource {
-            title: None, description: None, data_type: None,
-            source_type: None, content: None, metadata: None,
-            status: Some("ready".to_string()), processing_error: None, folder: None,
+            title: None,
+            description: None,
+            data_type: None,
+            source_type: None,
+            content: None,
+            metadata: None,
+            status: Some("ready".to_string()),
+            processing_error: None,
+            folder: None,
         },
     )
     .await
@@ -345,7 +440,12 @@ async fn upload_data_source(
     let trigger_ds_id = updated.id.clone();
     let trigger_dep = deployment.clone();
     tokio::spawn(async move {
-        super::data_source_workflows::fire_triggers_for_data_source(trigger_pool, trigger_ds_id, trigger_dep).await;
+        super::data_source_workflows::fire_triggers_for_data_source(
+            trigger_pool,
+            trigger_ds_id,
+            trigger_dep,
+        )
+        .await;
     });
 
     Ok(Json(ApiResponse::success(updated)))
@@ -407,7 +507,10 @@ async fn download_data_source(
             let bytes = content.clone().into_bytes();
             let file_name = format!("{}.txt", source.title.replace(['/', '\\', ':'], "_"));
             let mut headers = HeaderMap::new();
-            headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/plain; charset=utf-8"));
+            headers.insert(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("text/plain; charset=utf-8"),
+            );
             headers.insert(
                 header::CONTENT_DISPOSITION,
                 HeaderValue::from_str(&format!("attachment; filename=\"{}\"", file_name))
@@ -416,14 +519,18 @@ async fn download_data_source(
             return Ok(Response::builder()
                 .status(200)
                 .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
-                .header(header::CONTENT_DISPOSITION, format!("attachment; filename=\"{}\"", file_name))
+                .header(
+                    header::CONTENT_DISPOSITION,
+                    format!("attachment; filename=\"{}\"", file_name),
+                )
                 .body(Body::from(bytes))
                 .map_err(|e| ApiError::InternalError(format!("{e}")))?);
         }
     }
 
     // For file uploads, read from disk
-    let meta: serde_json::Value = serde_json::from_str(&source.metadata).unwrap_or(serde_json::json!({}));
+    let meta: serde_json::Value =
+        serde_json::from_str(&source.metadata).unwrap_or(serde_json::json!({}));
 
     // Check if this is a cloud-indexed file with a storage_volume
     let storage_volume = meta.get("storage_volume").and_then(|v| v.as_str());
@@ -442,7 +549,9 @@ async fn download_data_source(
         let base = match volume {
             "sovereign_personal" => std::path::PathBuf::from(&stack_root).join("Personal"),
             "sovereign_org" => std::path::PathBuf::from(&stack_root).join(&org_name),
-            "media_pipeline" => std::path::PathBuf::from(&stack_root).join(&org_name).join("Media Pipeline"),
+            "media_pipeline" => std::path::PathBuf::from(&stack_root)
+                .join(&org_name)
+                .join("Media Pipeline"),
             "sovereign" => {
                 let storage_root = std::env::var("SOVEREIGN_STORAGE_ROOT")
                     .unwrap_or_else(|_| "E:/topos/sovereign_storage".to_string());
@@ -455,7 +564,8 @@ async fn download_data_source(
         base.join(rel_path)
     } else {
         // Legacy: look in cache_dir/data_sources
-        let stored_name = meta.get("file_path")
+        let stored_name = meta
+            .get("file_path")
             .and_then(|v| v.as_str())
             .or(source.file_path.as_deref())
             .ok_or_else(|| ApiError::NotFound("File not stored locally".to_string()))?;
@@ -469,19 +579,25 @@ async fn download_data_source(
     let bytes = std::fs::read(&file_path)
         .map_err(|e| ApiError::InternalError(format!("Failed to read file: {e}")))?;
 
-    let original_name = meta.get("file_name")
+    let original_name = meta
+        .get("file_name")
         .and_then(|v| v.as_str())
         .or(source.file_name.as_deref())
         .unwrap_or(&source.title);
 
-    let mime = source.file_type.as_deref()
+    let mime = source
+        .file_type
+        .as_deref()
         .or_else(|| meta.get("file_mime").and_then(|v| v.as_str()))
         .unwrap_or("application/octet-stream");
 
     Ok(Response::builder()
         .status(200)
         .header(header::CONTENT_TYPE, mime)
-        .header(header::CONTENT_DISPOSITION, format!("attachment; filename=\"{}\"", original_name))
+        .header(
+            header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"{}\"", original_name),
+        )
         .header(header::CONTENT_LENGTH, bytes.len())
         .body(Body::from(bytes))
         .map_err(|e| ApiError::InternalError(format!("{e}")))?)
@@ -492,8 +608,14 @@ async fn get_metadata_template(
     Path(data_type): Path<String>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> Json<ApiResponse<serde_json::Value>> {
-    let source_type = params.get("source_type").map(|s| s.as_str()).unwrap_or("text");
-    Json(ApiResponse::success(metadata_template(&data_type, source_type)))
+    let source_type = params
+        .get("source_type")
+        .map(|s| s.as_str())
+        .unwrap_or("text");
+    Json(ApiResponse::success(metadata_template(
+        &data_type,
+        source_type,
+    )))
 }
 
 // ── Router ──────────────────────────────────────────────────────────────────
@@ -506,7 +628,15 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/data-sources/upload",
             post(upload_data_source).layer(DefaultBodyLimit::max(50 * 1024 * 1024)), // 50MB
         )
-        .route("/data-sources/metadata-template/{data_type}", get(get_metadata_template))
-        .route("/data-sources/{id}", get(get_data_source).put(update_data_source).delete(delete_data_source))
+        .route(
+            "/data-sources/metadata-template/{data_type}",
+            get(get_metadata_template),
+        )
+        .route(
+            "/data-sources/{id}",
+            get(get_data_source)
+                .put(update_data_source)
+                .delete(delete_data_source),
+        )
         .route("/data-sources/{id}/download", get(download_data_source))
 }

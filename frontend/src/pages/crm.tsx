@@ -594,6 +594,7 @@ function ContactCard({
 function ContactFormDialog({
   open,
   onOpenChange,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars, unused-imports/no-unused-vars
   projectId: _projectId,
   contact,
   onSubmit,

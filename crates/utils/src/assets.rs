@@ -35,7 +35,10 @@ pub fn topos_dir() -> Option<PathBuf> {
         if path.exists() && path.is_dir() {
             return Some(path);
         }
-        tracing::warn!("TOPOS_DIR '{}' does not exist or is not a directory", path.display());
+        tracing::warn!(
+            "TOPOS_DIR '{}' does not exist or is not a directory",
+            path.display()
+        );
     }
     None
 }
@@ -43,14 +46,18 @@ pub fn topos_dir() -> Option<PathBuf> {
 /// Get session logs directory for a specific project within topos
 pub fn project_session_logs_dir(project_name: &str) -> Option<PathBuf> {
     topos_dir().map(|topos| {
-        topos.join(project_name).join(topos_structure::SESSION_LOGS_DIR)
+        topos
+            .join(project_name)
+            .join(topos_structure::SESSION_LOGS_DIR)
     })
 }
 
 /// Get artifacts directory for a specific project within topos
 pub fn project_artifacts_dir(project_name: &str) -> Option<PathBuf> {
     topos_dir().map(|topos| {
-        topos.join(project_name).join(topos_structure::ARTIFACTS_DIR)
+        topos
+            .join(project_name)
+            .join(topos_structure::ARTIFACTS_DIR)
     })
 }
 

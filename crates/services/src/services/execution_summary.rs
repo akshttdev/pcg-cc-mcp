@@ -1,6 +1,8 @@
 use chrono::Utc;
-use db::models::execution_summary::{CompletionStatus, CreateExecutionSummary, ExecutionSummary};
-use db::models::execution_process::{ExecutionProcess, ExecutionProcessStatus};
+use db::models::{
+    execution_process::{ExecutionProcess, ExecutionProcessStatus},
+    execution_summary::{CompletionStatus, CreateExecutionSummary, ExecutionSummary},
+};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
@@ -41,7 +43,10 @@ impl ExecutionSummaryService {
                 }
                 ExecutionProcessStatus::Failed => (
                     CompletionStatus::Failed,
-                    Some(format!("Execution failed with exit code: {}", ep.exit_code.unwrap_or(-1))),
+                    Some(format!(
+                        "Execution failed with exit code: {}",
+                        ep.exit_code.unwrap_or(-1)
+                    )),
                 ),
                 ExecutionProcessStatus::Killed => (
                     CompletionStatus::Partial,
@@ -73,7 +78,7 @@ impl ExecutionSummaryService {
             files_modified: diff_stats.files_modified,
             files_created: diff_stats.files_created,
             files_deleted: diff_stats.files_deleted,
-            commands_run: 0,  // Will be enhanced later with log parsing
+            commands_run: 0, // Will be enhanced later with log parsing
             commands_failed: 0,
             tools_used,
             completion_status,
@@ -107,7 +112,8 @@ impl ExecutionSummaryService {
     pub async fn get_latest_for_attempt(
         pool: &SqlitePool,
         task_attempt_id: Uuid,
-    ) -> Result<Option<ExecutionSummary>, db::models::execution_summary::ExecutionSummaryError> {
+    ) -> Result<Option<ExecutionSummary>, db::models::execution_summary::ExecutionSummaryError>
+    {
         ExecutionSummary::find_by_task_attempt_id(pool, task_attempt_id).await
     }
 }

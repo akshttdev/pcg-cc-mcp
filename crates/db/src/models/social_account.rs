@@ -191,13 +191,11 @@ impl SocialAccount {
     }
 
     pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Self, SocialAccountError> {
-        sqlx::query_as::<_, SocialAccount>(
-            r#"SELECT * FROM social_accounts WHERE id = ?1"#,
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await?
-        .ok_or(SocialAccountError::NotFound)
+        sqlx::query_as::<_, SocialAccount>(r#"SELECT * FROM social_accounts WHERE id = ?1"#)
+            .bind(id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or(SocialAccountError::NotFound)
     }
 
     pub async fn find_by_project(
@@ -329,9 +327,10 @@ impl SocialAccount {
 
 #[cfg(test)]
 mod tests {
+    use chrono::Utc;
+
     use super::*;
     use crate::models::test_utils::{create_test_project, setup_test_pool};
-    use chrono::Utc;
 
     #[tokio::test]
     async fn create_and_query_accounts() {
@@ -371,9 +370,10 @@ mod tests {
             .expect("project lookup failed");
         assert_eq!(by_project.len(), 1);
 
-        let by_platform = SocialAccount::find_by_platform(&pool, project_id, SocialPlatform::LinkedIn)
-            .await
-            .expect("platform lookup failed");
+        let by_platform =
+            SocialAccount::find_by_platform(&pool, project_id, SocialPlatform::LinkedIn)
+                .await
+                .expect("platform lookup failed");
         assert_eq!(by_platform.len(), 1);
 
         let active = SocialAccount::find_active(&pool)

@@ -4,15 +4,16 @@
 //! POST /internal/topsi/chat — call Topsi with X-Admin-Key (no JWT required)
 
 use axum::{Json, Router, http::HeaderMap, routing::post};
+use nora::agent::{NoraRequest, NoraRequestType, RequestPriority};
 use serde::{Deserialize, Serialize};
+use topsi::{TopsiRequest, TopsiRequestType, UserContext};
 use uuid::Uuid;
 
-use nora::agent::{NoraRequest, NoraRequestType, RequestPriority};
-use topsi::{TopsiRequest, TopsiRequestType, UserContext};
-
-use crate::{DeploymentImpl, error::ApiError};
-use crate::routes::nora::get_nora_instance;
-use crate::routes::topsi::get_topsi_instance;
+use crate::{
+    DeploymentImpl,
+    error::ApiError,
+    routes::{nora::get_nora_instance, topsi::get_topsi_instance},
+};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -70,7 +71,9 @@ async fn bot_chat_nora(
         .await
         .map_err(|e| ApiError::InternalError(format!("Nora error: {}", e)))?;
 
-    Ok(Json(BotChatResponse { response: resp.content }))
+    Ok(Json(BotChatResponse {
+        response: resp.content,
+    }))
 }
 
 async fn bot_chat_topsi(
@@ -85,8 +88,7 @@ async fn bot_chat_topsi(
         .as_ref()
         .ok_or_else(|| ApiError::NotFound("Topsi not initialized".into()))?;
 
-    let user_ctx = UserContext::user("discord-bot")
-        .with_session(req.session_id.clone());
+    let user_ctx = UserContext::user("discord-bot").with_session(req.session_id.clone());
 
     let topsi_req = TopsiRequest::new(TopsiRequestType::Chat {
         message: req.message,
@@ -97,7 +99,9 @@ async fn bot_chat_topsi(
         .await
         .map_err(|e| ApiError::InternalError(format!("Topsi error: {}", e)))?;
 
-    Ok(Json(BotChatResponse { response: resp.message }))
+    Ok(Json(BotChatResponse {
+        response: resp.message,
+    }))
 }
 
 pub fn router() -> Router<DeploymentImpl> {

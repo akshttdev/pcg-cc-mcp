@@ -6,6 +6,10 @@ use axum::{
     response::Response,
     routing::{get, post, put},
 };
+use db::models::cloud_file::{
+    CloudBrowseParams, CloudContribution, CloudFile, CreateCloudContribution, CreateCloudFile,
+    OrgCloudSettings, UpdateCloudFile, UpdateOrgCloudSettings,
+};
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -15,15 +19,7 @@ use utils::response::ApiResponse;
 // TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 
-use crate::{
-    DeploymentImpl,
-    error::ApiError,
-    middleware::access_control::AccessContext,
-};
-use db::models::cloud_file::{
-    CloudBrowseParams, CloudContribution, CloudFile, CreateCloudContribution, CreateCloudFile,
-    OrgCloudSettings, UpdateCloudFile, UpdateOrgCloudSettings,
-};
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
 // ── Permission helper ──────────────────────────────────────────────────────
 
@@ -111,7 +107,10 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             post(contribute_file).layer(DefaultBodyLimit::max(100 * 1024 * 1024)),
         )
         .route("/org-cloud/{org_id}/stats", get(get_stats))
-        .route("/org-cloud/{org_id}/settings", get(get_settings).put(update_settings))
+        .route(
+            "/org-cloud/{org_id}/settings",
+            get(get_settings).put(update_settings),
+        )
         .route("/org-cloud/{org_id}/contributions", get(list_contributions))
         .route("/org-cloud/{org_id}/index", post(trigger_index))
         .route("/org-cloud/{org_id}/files/{file_id}", put(update_file))
@@ -150,14 +149,9 @@ async fn browse_files(
         None
     };
 
-    let files = CloudFile::browse(
-        pool,
-        &org_id,
-        &params,
-        visible_projects.as_deref(),
-    )
-    .await
-    .map_err(|e| ApiError::InternalError(format!("Failed to browse files: {}", e)))?;
+    let files = CloudFile::browse(pool, &org_id, &params, visible_projects.as_deref())
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to browse files: {}", e)))?;
 
     let total = CloudFile::count(pool, &org_id)
         .await
@@ -235,7 +229,10 @@ async fn download_file(
         .header(header::CONTENT_LENGTH, file_size)
         .header(
             header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{}\"", file.file_name.replace('"', "_").replace('\\', "_")),
+            format!(
+                "attachment; filename=\"{}\"",
+                file.file_name.replace('"', "_").replace('\\', "_")
+            ),
         )
         .body(Body::from_stream(stream))
         .map_err(|e| ApiError::InternalError(e.to_string()))
@@ -322,10 +319,7 @@ async fn contribute_file(
         let name = field.name().unwrap_or("").to_string();
         match name.as_str() {
             "file" => {
-                let filename = field
-                    .file_name()
-                    .map(|s| s.to_string())
-                    .unwrap_or_default();
+                let filename = field.file_name().map(|s| s.to_string()).unwrap_or_default();
                 let bytes = field
                     .bytes()
                     .await

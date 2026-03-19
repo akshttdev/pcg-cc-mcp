@@ -272,7 +272,9 @@ impl WideResearchSession {
         let status_str = status.to_string();
         let completed_at = if matches!(
             status,
-            ResearchSessionStatus::Completed | ResearchSessionStatus::Failed | ResearchSessionStatus::Cancelled
+            ResearchSessionStatus::Completed
+                | ResearchSessionStatus::Failed
+                | ResearchSessionStatus::Cancelled
         ) {
             Some("datetime('now', 'subsec')")
         } else {
@@ -331,10 +333,7 @@ impl WideResearchSession {
     }
 
     /// Update counters after subagent failure
-    pub async fn increment_failed(
-        pool: &SqlitePool,
-        id: Uuid,
-    ) -> Result<Self, WideResearchError> {
+    pub async fn increment_failed(pool: &SqlitePool, id: Uuid) -> Result<Self, WideResearchError> {
         let session = sqlx::query_as::<_, WideResearchSession>(
             r#"
             UPDATE wide_research_sessions
@@ -379,7 +378,8 @@ impl WideResearchSession {
         if self.total_subagents == 0 {
             return 0.0;
         }
-        ((self.completed_subagents + self.failed_subagents) as f64 / self.total_subagents as f64) * 100.0
+        ((self.completed_subagents + self.failed_subagents) as f64 / self.total_subagents as f64)
+            * 100.0
     }
 }
 

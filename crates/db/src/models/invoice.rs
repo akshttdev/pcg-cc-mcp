@@ -92,27 +92,20 @@ impl Invoice {
     }
 
     pub async fn list_for_person(pool: &SqlitePool, person_id: Uuid) -> sqlx::Result<Vec<Self>> {
-        sqlx::query_as(
-            "SELECT * FROM invoices WHERE person_id = ?1 ORDER BY created_at DESC",
-        )
-        .bind(person_id.to_string())
-        .fetch_all(pool)
-        .await
+        sqlx::query_as("SELECT * FROM invoices WHERE person_id = ?1 ORDER BY created_at DESC")
+            .bind(person_id.to_string())
+            .fetch_all(pool)
+            .await
     }
 
     pub async fn list_for_project(pool: &SqlitePool, project_id: Uuid) -> sqlx::Result<Vec<Self>> {
-        sqlx::query_as(
-            "SELECT * FROM invoices WHERE project_id = ?1 ORDER BY created_at DESC",
-        )
-        .bind(project_id.to_string())
-        .fetch_all(pool)
-        .await
+        sqlx::query_as("SELECT * FROM invoices WHERE project_id = ?1 ORDER BY created_at DESC")
+            .bind(project_id.to_string())
+            .fetch_all(pool)
+            .await
     }
 
-    pub async fn create(
-        pool: &SqlitePool,
-        data: CreateInvoice,
-    ) -> sqlx::Result<Self> {
+    pub async fn create(pool: &SqlitePool, data: CreateInvoice) -> sqlx::Result<Self> {
         let id = Uuid::new_v4();
 
         // Generate sequential invoice number
@@ -123,7 +116,8 @@ impl Invoice {
         let prefix = if invoice_type == "ap" { "AP" } else { "AR" };
         let invoice_number = format!("{}-{:05}", prefix, count + 1);
 
-        let line_items = data.line_items
+        let line_items = data
+            .line_items
             .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".into()))
             .unwrap_or_else(|| "[]".into());
 
@@ -157,7 +151,11 @@ impl Invoice {
         Ok(Self::find_by_id(pool, id).await?.expect("just inserted"))
     }
 
-    pub async fn update(pool: &SqlitePool, id: Uuid, data: UpdateInvoice) -> sqlx::Result<Option<Self>> {
+    pub async fn update(
+        pool: &SqlitePool,
+        id: Uuid,
+        data: UpdateInvoice,
+    ) -> sqlx::Result<Option<Self>> {
         let existing = match Self::find_by_id(pool, id).await? {
             Some(i) => i,
             None => return Ok(None),
@@ -166,7 +164,8 @@ impl Invoice {
         let status = data.status.unwrap_or(existing.status);
         let amount_usd = data.amount_usd.unwrap_or(existing.amount_usd);
         let amount_vibe = data.amount_vibe.unwrap_or(existing.amount_vibe);
-        let line_items = data.line_items
+        let line_items = data
+            .line_items
             .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".into()))
             .unwrap_or(existing.line_items);
 

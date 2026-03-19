@@ -14,27 +14,24 @@
 //! The frontend polls GET /api/persons/:id/intelligence-status.
 
 use axum::{
-    Router,
+    Json, Router,
     extract::{Path, State},
     routing::{get, post},
-    Json,
 };
-use db::models::person::Person;
-use db::models::project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource};
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        person::Person,
+        project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource},
+    },
+};
 use deployment::Deployment;
+use nora::agent::{NoraRequest, NoraRequestType, RequestPriority};
 use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{
-    DeploymentImpl,
-    error::ApiError,
-    routes::nora::get_nora_instance,
-};
-use db::db_uuid::DbUuid;
-
-
-use nora::agent::{NoraRequest, NoraRequestType, RequestPriority};
+use crate::{DeploymentImpl, error::ApiError, routes::nora::get_nora_instance};
 
 // ── Request / Response types ──────────────────────────────────────────────────
 
@@ -72,14 +69,14 @@ pub async fn trigger_research(
     Path(person_id): Path<String>,
     Json(body): Json<ResearchRequest>,
 ) -> Result<Json<ApiResponse<ResearchJobResponse>>, ApiError> {
-    let person_id = DbUuid::parse(&person_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let person_id = DbUuid::parse(&person_id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     let pool = &d.db().pool;
-
 
     let person = Person::find_by_id(pool, person_id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Person not found".into()))?;
-
 
     sqlx::query(
         "UPDATE persons SET intelligence_status = 'queued', \
@@ -110,15 +107,14 @@ pub async fn trigger_research(
     let person_clone = person.clone();
 
     tokio::spawn(async move {
-        let result = run_research_direct(
-            &pool_clone,
-            &person_clone,
-            project_id,
-        )
-        .await;
+        let result = run_research_direct(&pool_clone, &person_clone, project_id).await;
 
         if let Err(e) = result {
-            tracing::error!("Intelligence research failed for person {}: {}", person_id, e);
+            tracing::error!(
+                "Intelligence research failed for person {}: {}",
+                person_id,
+                e
+            );
             let _ = sqlx::query(
                 "UPDATE persons SET intelligence_status = 'failed', updated_at = datetime('now','subsec') WHERE id = ?",
             )
@@ -143,7 +139,9 @@ pub async fn get_intelligence_status(
     State(d): State<DeploymentImpl>,
     Path(person_id): Path<String>,
 ) -> Result<Json<ApiResponse<IntelligenceStatusResponse>>, ApiError> {
-    let person_id = DbUuid::parse(&person_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let person_id = DbUuid::parse(&person_id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     let pool = &d.db().pool;
 
     #[derive(sqlx::FromRow)]
@@ -244,11 +242,16 @@ async fn run_research_via_nora(
         || response.content.contains("completed multiple actions")
         || response.content.contains("completed the requested")
         || response.content.starts_with("✅")
-        || (response.content.contains("\"success\":true,\"url\"") && !response.content.contains("\"summary\""))
-        || (response.content.contains("\"results\":[{\"title\"") && !response.content.contains("\"summary\""));
+        || (response.content.contains("\"success\":true,\"url\"")
+            && !response.content.contains("\"summary\""))
+        || (response.content.contains("\"results\":[{\"title\"")
+            && !response.content.contains("\"summary\""));
 
     if is_failure_response || is_action_log {
-        tracing::warn!("Nora research produced unusable output for person {}, falling back to direct Anthropic research", person_id);
+        tracing::warn!(
+            "Nora research produced unusable output for person {}, falling back to direct Anthropic research",
+            person_id
+        );
         return run_research_direct(pool, &person, project_id).await;
     }
 
@@ -256,7 +259,16 @@ async fn run_research_via_nora(
     let summary = extract_summary_from_response(&response.content);
     let confidence = extract_confidence_from_response(&response.content);
 
-    write_intelligence_results(pool, &person_id.to_string(), &summary, confidence, &response.content, project_id, &full_name).await?;
+    write_intelligence_results(
+        pool,
+        &person_id.to_string(),
+        &summary,
+        confidence,
+        &response.content,
+        project_id,
+        &full_name,
+    )
+    .await?;
     Ok(())
 }
 
@@ -313,12 +325,19 @@ async fn run_research_direct(
                 if let Ok(val) = resp.json::<serde_json::Value>().await {
                     if let Some(text) = val["choices"][0]["message"]["content"].as_str() {
                         response_text = text.to_string();
-                        tracing::info!("[Scout] OpenAI response for {}: {} chars", person.full_name, response_text.len());
+                        tracing::info!(
+                            "[Scout] OpenAI response for {}: {} chars",
+                            person.full_name,
+                            response_text.len()
+                        );
                     }
                 }
             }
             Ok(resp) => {
-                tracing::warn!("[Scout] OpenAI returned {}, falling back to Anthropic", resp.status());
+                tracing::warn!(
+                    "[Scout] OpenAI returned {}, falling back to Anthropic",
+                    resp.status()
+                );
             }
             Err(e) => {
                 tracing::warn!("[Scout] OpenAI failed: {}, falling back to Anthropic", e);
@@ -364,8 +383,14 @@ async fn run_research_direct(
     }
 
     // Check for error responses — reset status to idle for retry
-    if response_text.contains("rate_limit_error") || response_text.contains("rate limit") || response_text.contains("credit balance") {
-        tracing::warn!("Research hit API limit for person {}, resetting to idle for retry", person.id);
+    if response_text.contains("rate_limit_error")
+        || response_text.contains("rate limit")
+        || response_text.contains("credit balance")
+    {
+        tracing::warn!(
+            "Research hit API limit for person {}, resetting to idle for retry",
+            person.id
+        );
         let _ = sqlx::query(
             "UPDATE persons SET intelligence_status = 'idle', updated_at = datetime('now','subsec') WHERE id = ?",
         )
@@ -378,7 +403,16 @@ async fn run_research_direct(
     let summary = extract_summary_from_response(&response_text);
     let confidence = extract_confidence_from_response(&response_text);
 
-    write_intelligence_results(pool, &person.id.to_string(), &summary, confidence, &response_text, project_id, &person.full_name).await?;
+    write_intelligence_results(
+        pool,
+        &person.id.to_string(),
+        &summary,
+        confidence,
+        &response_text,
+        project_id,
+        &person.full_name,
+    )
+    .await?;
     Ok(())
 }
 
@@ -428,7 +462,11 @@ pub async fn write_intelligence_results(
         .await;
     }
 
-    tracing::info!("Intelligence research complete for person {} (confidence: {:.0}%)", person_id, confidence * 100.0);
+    tracing::info!(
+        "Intelligence research complete for person {} (confidence: {:.0}%)",
+        person_id,
+        confidence * 100.0
+    );
     Ok(())
 }
 
@@ -478,10 +516,15 @@ fn extract_summary_from_response(text: &str) -> String {
         }
         // Move past this brace and keep searching
         search = &search[start + 1..];
-        if search.is_empty() { break; }
+        if search.is_empty() {
+            break;
+        }
     }
     // Fall back to first 300 chars of text (strip markdown fences)
-    let clean = text.trim_start_matches("```json").trim_start_matches("```").trim();
+    let clean = text
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim();
     clean.chars().take(300).collect()
 }
 
@@ -519,7 +562,13 @@ fn extract_confidence_from_response(text: &str) -> f64 {
         }
     }
     // Heuristic: longer responses tend to be more confident
-    if text.len() > 500 { 0.7 } else if text.len() > 200 { 0.5 } else { 0.3 }
+    if text.len() > 500 {
+        0.7
+    } else if text.len() > 200 {
+        0.5
+    } else {
+        0.3
+    }
 }
 
 fn parse_research_json(text: &str) -> serde_json::Value {
@@ -602,7 +651,9 @@ pub async fn trigger_company_research(
     Path(company_id): Path<String>,
     Json(body): Json<CompanyResearchRequest>,
 ) -> Result<Json<ApiResponse<CompanyResearchJobResponse>>, ApiError> {
-    let company_id = DbUuid::parse(&company_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let company_id = DbUuid::parse(&company_id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     use db::models::company::Company;
     let pool = d.db().pool.clone();
     let company_db_id = DbUuid::from(company_id);
@@ -631,7 +682,10 @@ pub async fn trigger_company_research(
     Ok(Json(ApiResponse::success(CompanyResearchJobResponse {
         company_id,
         status: "queued".into(),
-        message: format!("Research queued for {} — Astra will gather company intelligence.", company.name),
+        message: format!(
+            "Research queued for {} — Astra will gather company intelligence.",
+            company.name
+        ),
     })))
 }
 
@@ -640,7 +694,9 @@ pub async fn get_company_intelligence_status(
     State(d): State<DeploymentImpl>,
     Path(company_id): Path<String>,
 ) -> Result<Json<ApiResponse<CompanyIntelligenceStatusResponse>>, ApiError> {
-    let company_id = DbUuid::parse(&company_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let company_id = DbUuid::parse(&company_id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     #[derive(sqlx::FromRow)]
     struct Row {
         intelligence_status: String,
@@ -659,14 +715,16 @@ pub async fn get_company_intelligence_status(
     .await?;
 
     let row = row.ok_or_else(|| ApiError::NotFound("Company not found".into()))?;
-    Ok(Json(ApiResponse::success(CompanyIntelligenceStatusResponse {
-        company_id,
-        status: row.intelligence_status,
-        summary: row.intelligence_summary,
-        confidence: row.intelligence_confidence.unwrap_or(0.0),
-        agent: row.intelligence_agent,
-        last_run_at: row.intelligence_last_run_at,
-    })))
+    Ok(Json(ApiResponse::success(
+        CompanyIntelligenceStatusResponse {
+            company_id,
+            status: row.intelligence_status,
+            summary: row.intelligence_summary,
+            confidence: row.intelligence_confidence.unwrap_or(0.0),
+            agent: row.intelligence_agent,
+            last_run_at: row.intelligence_last_run_at,
+        },
+    )))
 }
 
 async fn run_company_research(
@@ -692,7 +750,11 @@ pub async fn run_company_research_direct(
     company_name: &str,
     project_id: Option<Uuid>,
 ) {
-    tracing::info!("[Scout] Starting direct company research for {} (id: {})", company_name, company_id);
+    tracing::info!(
+        "[Scout] Starting direct company research for {} (id: {})",
+        company_name,
+        company_id
+    );
     let client = reqwest::Client::new();
 
     let prompt = format!(
@@ -733,11 +795,20 @@ pub async fn run_company_research_direct(
                 if let Ok(val) = resp.json::<serde_json::Value>().await {
                     if let Some(text) = val["choices"][0]["message"]["content"].as_str() {
                         response_text = text.to_string();
-                        tracing::info!("[Scout] OpenAI company research for {}: {} chars", company_name, response_text.len());
+                        tracing::info!(
+                            "[Scout] OpenAI company research for {}: {} chars",
+                            company_name,
+                            response_text.len()
+                        );
                     }
                 }
             }
-            _ => { tracing::warn!("[Scout] OpenAI failed for company {}, trying Anthropic", company_name); }
+            _ => {
+                tracing::warn!(
+                    "[Scout] OpenAI failed for company {}, trying Anthropic",
+                    company_name
+                );
+            }
         }
     }
 
@@ -746,7 +817,8 @@ pub async fn run_company_research_direct(
         let api_key = match std::env::var("ANTHROPIC_API_KEY") {
             Ok(k) => k,
             Err(_) => {
-                write_company_intel_results(pool, company_id, "No LLM API key configured", 0.0).await;
+                write_company_intel_results(pool, company_id, "No LLM API key configured", 0.0)
+                    .await;
                 return;
             }
         };
@@ -775,7 +847,10 @@ pub async fn run_company_research_direct(
             }
             Ok(r) => {
                 let text = r.text().await.unwrap_or_default();
-                tracing::error!("Company research Anthropic error: {}", &text[..text.len().min(200)]);
+                tracing::error!(
+                    "Company research Anthropic error: {}",
+                    &text[..text.len().min(200)]
+                );
             }
             Err(e) => {
                 tracing::error!("Company research HTTP error: {}", e);
@@ -784,11 +859,15 @@ pub async fn run_company_research_direct(
     }
 
     let parsed = parse_research_json(&response_text);
-    let confidence = parsed.get("confidence").and_then(|c| c.as_f64()).unwrap_or_else(|| {
-        if response_text.len() > 300 { 0.75 } else { 0.3 }
-    }).clamp(0.0, 1.0);
+    let confidence = parsed
+        .get("confidence")
+        .and_then(|c| c.as_f64())
+        .unwrap_or_else(|| if response_text.len() > 300 { 0.75 } else { 0.3 })
+        .clamp(0.0, 1.0);
     let summary = if response_text.len() > 50 {
-        parsed.get("summary").and_then(|s| s.as_str())
+        parsed
+            .get("summary")
+            .and_then(|s| s.as_str())
             .unwrap_or(&response_text[..response_text.len().min(2000)])
             .to_string()
     } else {
@@ -796,9 +875,18 @@ pub async fn run_company_research_direct(
     };
 
     // Update company record with found data
-    let website = parsed.get("website").and_then(|v| v.as_str()).unwrap_or_default();
-    let description = parsed.get("description").and_then(|v| v.as_str()).unwrap_or_default();
-    let industry = parsed.get("industry").and_then(|v| v.as_str()).unwrap_or_default();
+    let website = parsed
+        .get("website")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    let description = parsed
+        .get("description")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    let industry = parsed
+        .get("industry")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
 
     let _ = sqlx::query(
         "UPDATE companies SET \
@@ -828,9 +916,9 @@ pub async fn run_company_research_direct(
     // Add social profiles as contact methods
     let social_keys: &[(&str, &str)] = &[
         ("instagram", "Instagram"),
-        ("linkedin",  "LinkedIn"),
-        ("twitter",   "Twitter"),
-        ("facebook",  "Facebook"),
+        ("linkedin", "LinkedIn"),
+        ("twitter", "Twitter"),
+        ("facebook", "Facebook"),
     ];
     for (key, label) in social_keys {
         if let Some(val) = parsed.get(*key).and_then(|v| v.as_str()) {
@@ -863,7 +951,11 @@ pub async fn run_company_research_direct(
         .await;
     }
 
-    tracing::info!("Company research complete for {} (confidence: {:.0}%)", company_name, confidence * 100.0);
+    tracing::info!(
+        "Company research complete for {} (confidence: {:.0}%)",
+        company_name,
+        confidence * 100.0
+    );
 }
 
 async fn write_company_intel_results(
@@ -887,7 +979,6 @@ async fn write_company_intel_results(
     .execute(pool)
     .await;
 }
-
 
 // ── Internal helpers (called from other routes) ──────────────────────────────
 
@@ -941,16 +1032,20 @@ pub async fn trigger_research_for_person(
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/persons/{id}/research", post(trigger_research))
-        .route("/persons/{id}/intelligence-status", get(get_intelligence_status))
-        .route("/companies/{id}/intelligence-status", get(get_company_intelligence_status))
-
+        .route(
+            "/persons/{id}/intelligence-status",
+            get(get_intelligence_status),
+        )
+        .route(
+            "/companies/{id}/intelligence-status",
+            get(get_company_intelligence_status),
+        )
         .with_state(deployment.clone())
 }
 
 // ── Iterative research pass endpoints ────────────────────────────────────────
 
-use db::models::person_research_pass::PersonResearchPass;
-use db::models::business_report::BusinessReport;
+use db::models::{business_report::BusinessReport, person_research_pass::PersonResearchPass};
 
 #[derive(Debug, Deserialize)]
 pub struct NextPassRequest {
@@ -965,7 +1060,9 @@ pub async fn list_research_passes(
     State(d): State<DeploymentImpl>,
     Path(person_id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<PersonResearchPass>>>, ApiError> {
-    let person_id = DbUuid::parse(&person_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let person_id = DbUuid::parse(&person_id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     let passes = PersonResearchPass::list_for_person(&d.db().pool, person_id).await?;
     Ok(Json(ApiResponse::success(passes)))
 }
@@ -977,7 +1074,9 @@ pub async fn trigger_next_research_pass(
     Path(person_id): Path<String>,
     Json(body): Json<NextPassRequest>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
-    let person_id = DbUuid::parse(&person_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let person_id = DbUuid::parse(&person_id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     let pool = &d.db().pool;
 
     let person = Person::find_by_id(pool, person_id)
@@ -986,28 +1085,48 @@ pub async fn trigger_next_research_pass(
 
     // Determine next pass number and auto-select focus
     let pass_number = PersonResearchPass::next_pass_number(pool, person_id).await;
-    let focus = body.focus.clone().unwrap_or_else(|| auto_focus(pass_number));
+    let focus = body
+        .focus
+        .clone()
+        .unwrap_or_else(|| auto_focus(pass_number));
 
     // Collect prior pass summaries for context
     let prior_passes = PersonResearchPass::list_for_person(pool, person_id).await?;
-    let prior_context: String = prior_passes.iter()
+    let prior_context: String = prior_passes
+        .iter()
         .filter(|p| p.status == "done")
-        .map(|p| format!(
-            "Pass {} ({}): {}",
-            p.pass_number,
-            p.research_focus,
-            p.summary.as_deref().unwrap_or("(no summary)")
-        ))
+        .map(|p| {
+            format!(
+                "Pass {} ({}): {}",
+                p.pass_number,
+                p.research_focus,
+                p.summary.as_deref().unwrap_or("(no summary)")
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n\n");
 
-    let pass = PersonResearchPass::create(pool, person_id, pass_number, &focus, body.custom_prompt.as_deref()).await?;
+    let pass = PersonResearchPass::create(
+        pool,
+        person_id,
+        pass_number,
+        &focus,
+        body.custom_prompt.as_deref(),
+    )
+    .await?;
     let pass_id = pass.id;
 
     // Build research prompt incorporating all prior context
-    let intel = person.intelligence_summary.as_deref().unwrap_or("").to_string();
+    let intel = person
+        .intelligence_summary
+        .as_deref()
+        .unwrap_or("")
+        .to_string();
     let name = person.full_name.clone();
-    let company = person.company_name.clone().unwrap_or_else(|| "Unknown company".into());
+    let company = person
+        .company_name
+        .clone()
+        .unwrap_or_else(|| "Unknown company".into());
     let project_id = body.project_id;
     let pool_clone = pool.clone();
     let pool_for_err = pool.clone();
@@ -1015,9 +1134,19 @@ pub async fn trigger_next_research_pass(
 
     tokio::spawn(async move {
         if let Err(e) = run_research_pass(
-            pool_clone, pass_id, person_id, pass_number,
-            &focus, &name, &company, &intel, &prior_context, project_id,
-        ).await {
+            pool_clone,
+            pass_id,
+            person_id,
+            pass_number,
+            &focus,
+            &name,
+            &company,
+            &intel,
+            &prior_context,
+            project_id,
+        )
+        .await
+        {
             tracing::error!("Research pass failed for {}: {}", pass_id, e);
             let _ = sqlx::query(
                 "UPDATE person_research_passes SET status = 'failed', error = ?, completed_at = datetime('now','subsec') WHERE id = ?",
@@ -1042,7 +1171,9 @@ pub async fn list_person_reports(
     State(d): State<DeploymentImpl>,
     Path(person_id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<BusinessReport>>>, ApiError> {
-    let person_id = DbUuid::parse(&person_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let person_id = DbUuid::parse(&person_id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     let reports = BusinessReport::list_by_person(&d.db().pool, person_id).await?;
     Ok(Json(ApiResponse::success(reports)))
 }
@@ -1074,12 +1205,10 @@ async fn run_research_pass(
     use serde_json::Value;
 
     // Mark running
-    sqlx::query(
-        "UPDATE person_research_passes SET status = 'running' WHERE id = ?",
-    )
-    .bind(pass_id)
-    .execute(&pool)
-    .await?;
+    sqlx::query("UPDATE person_research_passes SET status = 'running' WHERE id = ?")
+        .bind(pass_id)
+        .execute(&pool)
+        .await?;
 
     let api_key = std::env::var("ANTHROPIC_API_KEY")
         .map_err(|_| anyhow::anyhow!("ANTHROPIC_API_KEY not set"))?;
@@ -1116,13 +1245,19 @@ async fn run_research_pass(
     let prior_section = if prior_context.is_empty() {
         String::new()
     } else {
-        format!("\n\nPRIOR RESEARCH (build on this, don't repeat):\n{}", prior_context)
+        format!(
+            "\n\nPRIOR RESEARCH (build on this, don't repeat):\n{}",
+            prior_context
+        )
     };
 
     let existing_section = if existing_intel.is_empty() {
         String::new()
     } else {
-        format!("\n\nEXISTING INTELLIGENCE:\n{}", &existing_intel[..existing_intel.len().min(2000)])
+        format!(
+            "\n\nEXISTING INTELLIGENCE:\n{}",
+            &existing_intel[..existing_intel.len().min(2000)]
+        )
     };
 
     let system = "You are an expert business intelligence researcher. Conduct thorough web research \
@@ -1178,14 +1313,23 @@ async fn run_research_pass(
         .trim_end_matches("```")
         .trim();
 
-    let parsed: Value = serde_json::from_str(json_str)
-        .map_err(|e| anyhow::anyhow!("JSON parse error: {e}\nRaw: {}", &json_str[..json_str.len().min(300)]))?;
+    let parsed: Value = serde_json::from_str(json_str).map_err(|e| {
+        anyhow::anyhow!(
+            "JSON parse error: {e}\nRaw: {}",
+            &json_str[..json_str.len().min(300)]
+        )
+    })?;
 
     let summary = parsed["summary"].as_str().unwrap_or("").to_string();
-    let updated_intel = parsed["updated_intelligence"].as_str().unwrap_or("").to_string();
+    let updated_intel = parsed["updated_intelligence"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
     let confidence_score = parsed["confidence_score"].as_f64().unwrap_or(0.5);
-    let key_findings = serde_json::to_string(&parsed["key_findings"]).unwrap_or_else(|_| "[]".into());
-    let search_queries = serde_json::to_string(&parsed["search_queries"]).unwrap_or_else(|_| "[]".into());
+    let key_findings =
+        serde_json::to_string(&parsed["key_findings"]).unwrap_or_else(|_| "[]".into());
+    let search_queries =
+        serde_json::to_string(&parsed["search_queries"]).unwrap_or_else(|_| "[]".into());
 
     // Save pass results
     sqlx::query(
@@ -1240,7 +1384,12 @@ async fn run_research_pass(
 
     // Register each key finding in the project knowledge graph
     if let Some(pid) = project_id {
-        let title = format!("Research Pass #{}: {} — {}", pass_number, focus, &name[..name.len().min(40)]);
+        let title = format!(
+            "Research Pass #{}: {} — {}",
+            pass_number,
+            focus,
+            &name[..name.len().min(40)]
+        );
         let _ = ProjectKnowledgeSource::upsert_source(
             &pool,
             pid,
@@ -1256,7 +1405,9 @@ async fn run_research_pass(
     // Also register in the org-level knowledge graph (owner_type='organization')
     // Find org from person's associations
     #[derive(sqlx::FromRow)]
-    struct OrgRow { org_id: Option<Uuid> }
+    struct OrgRow {
+        org_id: Option<Uuid>,
+    }
     if let Ok(Some(row)) = sqlx::query_as::<_, OrgRow>(
         "SELECT poc.organization_id AS org_id FROM person_org_contacts poc WHERE poc.person_id = ? LIMIT 1",
     )
@@ -1282,7 +1433,11 @@ async fn run_research_pass(
         }
     }
 
-    tracing::info!("Research pass #{} complete for person {} ({})", pass_number, person_id, focus);
+    tracing::info!(
+        "Research pass #{} complete for person {} ({})",
+        pass_number,
+        person_id,
+        focus
+    );
     Ok(())
 }
-

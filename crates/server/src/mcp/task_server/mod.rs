@@ -1,38 +1,31 @@
-mod helpers;
-mod types;
-mod task_ops;
-mod project_ops;
-mod knowledge;
-mod topology;
 mod deps;
+mod helpers;
+mod knowledge;
 mod policy;
+mod project_ops;
+mod task_ops;
+mod topology;
+mod types;
 
 use std::future::Future;
 
-use db::models::{
-    project::Project,
-    project_knowledge_source::ProjectKnowledgeSource,
-    task::Task,
-};
+use db::models::{project::Project, project_knowledge_source::ProjectKnowledgeSource, task::Task};
+use helpers::*;
 use rmcp::{
     ErrorData, ServerHandler,
     handler::server::tool::ToolRouter,
     model::{
-        Annotated, Implementation, ProtocolVersion,
-        ReadResourceRequestParam, ReadResourceResult, ResourceContents,
-        ResourceTemplate, RawResourceTemplate, ServerCapabilities, ServerInfo,
-        ListResourceTemplatesResult,
+        Annotated, Implementation, ListResourceTemplatesResult, ProtocolVersion,
+        RawResourceTemplate, ReadResourceRequestParam, ReadResourceResult, ResourceContents,
+        ResourceTemplate, ServerCapabilities, ServerInfo,
     },
     tool_handler, tool_router,
 };
 use serde_json::Value;
 use sqlx::SqlitePool;
-use uuid::Uuid;
-
-use helpers::*;
-
 // Re-export all public types for external consumers
 pub use types::*;
+use uuid::Uuid;
 
 // ─── Server ─────────────────────────────────────────────────────────────────
 
@@ -81,12 +74,11 @@ impl TaskServer {
             project_id: String,
         }
 
-        let rows: Vec<ProjId> = sqlx::query_as(
-            "SELECT DISTINCT project_id FROM project_members WHERE user_id = ?",
-        )
-        .bind(&user_id_bytes)
-        .fetch_all(&self.pool)
-        .await?;
+        let rows: Vec<ProjId> =
+            sqlx::query_as("SELECT DISTINCT project_id FROM project_members WHERE user_id = ?")
+                .bind(&user_id_bytes)
+                .fetch_all(&self.pool)
+                .await?;
 
         let ids: Vec<Uuid> = rows
             .into_iter()
@@ -115,23 +107,50 @@ impl TaskServer {
 /// Build the 6 MCP resource templates
 fn orcha_resource_templates() -> Vec<ResourceTemplate> {
     let templates = vec![
-        ("orcha://projects/{project_id}", "Project Detail", "Get project details including VIBE budget and configuration"),
-        ("orcha://projects/{project_id}/tasks", "Project Tasks", "List all tasks in a project"),
-        ("orcha://projects/{project_id}/tasks/{task_id}", "Task Detail", "Get detailed information about a specific task"),
-        ("orcha://projects/{project_id}/knowledge", "Project Knowledge", "List knowledge sources for a project"),
-        ("orcha://projects/{project_id}/topology", "Project Topology", "Get the topology graph (nodes, edges, clusters)"),
-        ("orcha://projects/{project_id}/health", "Project Health", "Get health summary including issues and knowledge completeness"),
+        (
+            "orcha://projects/{project_id}",
+            "Project Detail",
+            "Get project details including VIBE budget and configuration",
+        ),
+        (
+            "orcha://projects/{project_id}/tasks",
+            "Project Tasks",
+            "List all tasks in a project",
+        ),
+        (
+            "orcha://projects/{project_id}/tasks/{task_id}",
+            "Task Detail",
+            "Get detailed information about a specific task",
+        ),
+        (
+            "orcha://projects/{project_id}/knowledge",
+            "Project Knowledge",
+            "List knowledge sources for a project",
+        ),
+        (
+            "orcha://projects/{project_id}/topology",
+            "Project Topology",
+            "Get the topology graph (nodes, edges, clusters)",
+        ),
+        (
+            "orcha://projects/{project_id}/health",
+            "Project Health",
+            "Get health summary including issues and knowledge completeness",
+        ),
     ];
 
     templates
         .into_iter()
         .map(|(uri, name, desc)| {
-            Annotated::new(RawResourceTemplate {
-                uri_template: uri.to_string(),
-                name: name.to_string(),
-                description: Some(desc.to_string()),
-                mime_type: Some("application/json".to_string()),
-            }, None)
+            Annotated::new(
+                RawResourceTemplate {
+                    uri_template: uri.to_string(),
+                    name: name.to_string(),
+                    description: Some(desc.to_string()),
+                    mime_type: Some("application/json".to_string()),
+                },
+                None,
+            )
         })
         .collect()
 }
@@ -169,8 +188,7 @@ impl ServerHandler for TaskServer {
         &self,
         _request: Option<rmcp::model::PaginatedRequestParam>,
         _context: rmcp::service::RequestContext<rmcp::service::RoleServer>,
-    ) -> impl Future<Output = Result<ListResourceTemplatesResult, ErrorData>> + Send + '_
-    {
+    ) -> impl Future<Output = Result<ListResourceTemplatesResult, ErrorData>> + Send + '_ {
         std::future::ready(Ok(ListResourceTemplatesResult {
             resource_templates: orcha_resource_templates(),
             next_cursor: None,
@@ -181,8 +199,7 @@ impl ServerHandler for TaskServer {
         &self,
         request: ReadResourceRequestParam,
         _context: rmcp::service::RequestContext<rmcp::service::RoleServer>,
-    ) -> impl Future<Output = Result<ReadResourceResult, ErrorData>> + Send + '_
-    {
+    ) -> impl Future<Output = Result<ReadResourceResult, ErrorData>> + Send + '_ {
         let pool = self.pool.clone();
         let uri = request.uri.clone();
 
@@ -210,8 +227,8 @@ async fn resolve_resource(pool: &SqlitePool, uri: &str) -> Result<Value, String>
         .ok_or_else(|| format!("Unknown resource URI: {}", uri))?;
 
     let parts: Vec<&str> = path.splitn(3, '/').collect();
-    let project_uuid = Uuid::parse_str(parts[0])
-        .map_err(|_| "Invalid project_id in URI".to_string())?;
+    let project_uuid =
+        Uuid::parse_str(parts[0]).map_err(|_| "Invalid project_id in URI".to_string())?;
 
     let project = Project::find_by_id(pool, &project_uuid.to_string())
         .await
@@ -239,18 +256,23 @@ async fn resolve_resource(pool: &SqlitePool, uri: &str) -> Result<Value, String>
         "tasks" => {
             if parts.len() == 3 {
                 // Single task detail
-                let task_uuid = Uuid::parse_str(parts[2])
-                    .map_err(|_| "Invalid task_id in URI".to_string())?;
-                let task = Task::find_by_id_and_project_id(pool, &task_uuid.to_string(), &project_uuid.to_string())
-                    .await
-                    .map_err(|e| e.to_string())?
-                    .ok_or_else(|| "Task not found".to_string())?;
+                let task_uuid =
+                    Uuid::parse_str(parts[2]).map_err(|_| "Invalid task_id in URI".to_string())?;
+                let task = Task::find_by_id_and_project_id(
+                    pool,
+                    &task_uuid.to_string(),
+                    &project_uuid.to_string(),
+                )
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| "Task not found".to_string())?;
                 Ok(to_json_value(&task_to_summary(&task)))
             } else {
                 // Task list
-                let tasks = Task::find_by_project_id_with_attempt_status(pool, &project_uuid.to_string())
-                    .await
-                    .map_err(|e| e.to_string())?;
+                let tasks =
+                    Task::find_by_project_id_with_attempt_status(pool, &project_uuid.to_string())
+                        .await
+                        .map_err(|e| e.to_string())?;
                 let summaries: Vec<Value> = tasks
                     .iter()
                     .map(|t| to_json_value(&task_with_status_to_summary(t)))
@@ -269,15 +291,17 @@ async fn resolve_resource(pool: &SqlitePool, uri: &str) -> Result<Value, String>
                 .map_err(|e| e.to_string())?;
             let items: Vec<Value> = sources
                 .iter()
-                .map(|s| serde_json::json!({
-                    "id": s.id.to_string(),
-                    "source_type": s.source_type,
-                    "source_id": s.source_id,
-                    "source_title": s.source_title,
-                    "source_summary": s.source_summary,
-                    "coverage_score": s.coverage_score,
-                    "is_stale": s.is_stale,
-                }))
+                .map(|s| {
+                    serde_json::json!({
+                        "id": s.id.to_string(),
+                        "source_type": s.source_type,
+                        "source_id": s.source_id,
+                        "source_title": s.source_title,
+                        "source_summary": s.source_summary,
+                        "coverage_score": s.coverage_score,
+                        "is_stale": s.is_stale,
+                    })
+                })
                 .collect();
             Ok(serde_json::json!({
                 "project_id": project.id.to_string(),
@@ -289,7 +313,9 @@ async fn resolve_resource(pool: &SqlitePool, uri: &str) -> Result<Value, String>
             let pid_hex = hex::encode(project_uuid.as_bytes()).to_uppercase();
 
             #[derive(sqlx::FromRow)]
-            struct CountRow { cnt: i64 }
+            struct CountRow {
+                cnt: i64,
+            }
 
             let node_count: i64 = sqlx::query_as::<_, CountRow>(
                 &format!("SELECT COUNT(*) as cnt FROM topology_nodes WHERE project_id = '{}' AND status = 'active'", pid_hex)
@@ -324,13 +350,12 @@ async fn resolve_resource(pool: &SqlitePool, uri: &str) -> Result<Value, String>
             }))
         }
         "health" => {
-            let health_map = ProjectKnowledgeSource::get_health_batch(pool, &[project_uuid.to_string()])
-                .await
-                .unwrap_or_default();
+            let health_map =
+                ProjectKnowledgeSource::get_health_batch(pool, &[project_uuid.to_string()])
+                    .await
+                    .unwrap_or_default();
 
-            let health = health_map
-                .get(&project.id.to_string())
-                .cloned();
+            let health = health_map.get(&project.id.to_string()).cloned();
 
             match health {
                 Some(h) => Ok(to_json_value(&h)),

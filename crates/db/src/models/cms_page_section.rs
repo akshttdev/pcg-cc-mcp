@@ -210,13 +210,20 @@ impl CmsPageSection {
         data: &CreateCmsPageSection,
     ) -> Result<Self, sqlx::Error> {
         // Check if section exists
-        if let Some(existing) = Self::find_by_key(pool, site_id, &data.page_slug, &data.section_key).await? {
+        if let Some(existing) =
+            Self::find_by_key(pool, site_id, &data.page_slug, &data.section_key).await?
+        {
             // Update existing
-            Self::update(pool, existing.id, &UpdateCmsPageSection {
-                content: Some(data.content.clone()),
-                sort_order: data.sort_order,
-                is_active: None,
-            }).await
+            Self::update(
+                pool,
+                existing.id,
+                &UpdateCmsPageSection {
+                    content: Some(data.content.clone()),
+                    sort_order: data.sort_order,
+                    is_active: None,
+                },
+            )
+            .await
         } else {
             // Create new
             Self::create(pool, site_id, data).await
@@ -228,7 +235,9 @@ impl CmsPageSection {
         id: Uuid,
         data: &UpdateCmsPageSection,
     ) -> Result<Self, sqlx::Error> {
-        let current = Self::find_by_id(pool, id).await?.ok_or(sqlx::Error::RowNotFound)?;
+        let current = Self::find_by_id(pool, id)
+            .await?
+            .ok_or(sqlx::Error::RowNotFound)?;
 
         let content = data.content.as_ref().unwrap_or(&current.content);
         let sort_order = data.sort_order.unwrap_or(current.sort_order);

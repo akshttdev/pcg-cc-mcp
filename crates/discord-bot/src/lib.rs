@@ -44,8 +44,7 @@ pub fn session_key(guild_id: u64, agent: &str) -> String {
 }
 
 /// Active Discord voice sessions: "{guild_id}:{agent}" → session
-pub static DISCORD_SESSIONS: Lazy<DashMap<String, DiscordVoiceSession>> =
-    Lazy::new(DashMap::new);
+pub static DISCORD_SESSIONS: Lazy<DashMap<String, DiscordVoiceSession>> = Lazy::new(DashMap::new);
 
 /// Per-session broadcast channels for SSE streaming: meeting_session_id → Sender
 pub static TRANSCRIPT_CHANNELS: Lazy<DashMap<String, broadcast::Sender<TranscriptEvent>>> =
@@ -55,8 +54,12 @@ pub static TRANSCRIPT_CHANNELS: Lazy<DashMap<String, broadcast::Sender<Transcrip
 /// Reads DISCORD_BOT_TOKEN (Nora) and DISCORD_TOPSI_BOT_TOKEN (Topsi).
 /// Safe to call unconditionally — silently skips any token not set.
 pub async fn spawn_discord_bot(pool: sqlx::SqlitePool, server_port: u16) {
-    let nora_token = std::env::var("DISCORD_BOT_TOKEN").ok().filter(|t| !t.is_empty());
-    let topsi_token = std::env::var("DISCORD_TOPSI_BOT_TOKEN").ok().filter(|t| !t.is_empty());
+    let nora_token = std::env::var("DISCORD_BOT_TOKEN")
+        .ok()
+        .filter(|t| !t.is_empty());
+    let topsi_token = std::env::var("DISCORD_TOPSI_BOT_TOKEN")
+        .ok()
+        .filter(|t| !t.is_empty());
 
     if nora_token.is_none() && topsi_token.is_none() {
         info!("No Discord bot tokens set — Discord bot disabled");
@@ -85,7 +88,9 @@ pub async fn spawn_discord_bot(pool: sqlx::SqlitePool, server_port: u16) {
 }
 
 /// Subscribe to live transcript events for a given meeting session
-pub fn subscribe_transcript(meeting_session_id: &str) -> Option<broadcast::Receiver<TranscriptEvent>> {
+pub fn subscribe_transcript(
+    meeting_session_id: &str,
+) -> Option<broadcast::Receiver<TranscriptEvent>> {
     TRANSCRIPT_CHANNELS
         .get(meeting_session_id)
         .map(|tx| tx.subscribe())

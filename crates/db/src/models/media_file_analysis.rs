@@ -252,10 +252,7 @@ impl MediaFileTag {
         .await
     }
 
-    pub async fn find_by_tag(
-        pool: &SqlitePool,
-        tag: &str,
-    ) -> sqlx::Result<Vec<MediaFileTag>> {
+    pub async fn find_by_tag(pool: &SqlitePool, tag: &str) -> sqlx::Result<Vec<MediaFileTag>> {
         sqlx::query_as::<_, MediaFileTag>(
             r#"SELECT id, media_file_id, batch_id, tag, source, confidence, created_at
                FROM media_file_tags

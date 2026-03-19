@@ -158,8 +158,8 @@ impl ApprovalGate {
     ) -> Result<Self, ApprovalGateError> {
         let id = Uuid::new_v4();
         let gate_type_str = data.gate_type.to_string();
-        let required_approvers_str = serde_json::to_string(&data.required_approvers)
-            .unwrap_or_else(|_| "[]".to_string());
+        let required_approvers_str =
+            serde_json::to_string(&data.required_approvers).unwrap_or_else(|_| "[]".to_string());
         let conditions_str = data.conditions.map(|v| v.to_string());
 
         let gate = sqlx::query_as::<_, ApprovalGate>(
@@ -187,13 +187,15 @@ impl ApprovalGate {
     }
 
     /// Find by ID
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, ApprovalGateError> {
-        let gate = sqlx::query_as::<_, ApprovalGate>(
-            r#"SELECT * FROM approval_gates WHERE id = ?1"#,
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await?;
+    pub async fn find_by_id(
+        pool: &SqlitePool,
+        id: Uuid,
+    ) -> Result<Option<Self>, ApprovalGateError> {
+        let gate =
+            sqlx::query_as::<_, ApprovalGate>(r#"SELECT * FROM approval_gates WHERE id = ?1"#)
+                .bind(id)
+                .fetch_optional(pool)
+                .await?;
 
         Ok(gate)
     }
@@ -286,13 +288,15 @@ impl PendingGate {
     }
 
     /// Find by ID
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, ApprovalGateError> {
-        let pending = sqlx::query_as::<_, PendingGate>(
-            r#"SELECT * FROM pending_gates WHERE id = ?1"#,
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await?;
+    pub async fn find_by_id(
+        pool: &SqlitePool,
+        id: Uuid,
+    ) -> Result<Option<Self>, ApprovalGateError> {
+        let pending =
+            sqlx::query_as::<_, PendingGate>(r#"SELECT * FROM pending_gates WHERE id = ?1"#)
+                .bind(id)
+                .fetch_optional(pool)
+                .await?;
 
         Ok(pending)
     }

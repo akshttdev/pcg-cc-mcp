@@ -1,10 +1,13 @@
 //! Topology-enhanced context building
 
-use crate::{TopologySummary, DetectedIssue};
-use crate::topology::{ProjectTopology, TopologyGraph};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use uuid::Uuid;
+
+use crate::{
+    topology::{ProjectTopology, TopologyGraph},
+    DetectedIssue, TopologySummary,
+};
 
 /// Context for topology-aware operations
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -76,7 +79,11 @@ impl TopologyContext {
             node_count: graph.nodes.len(),
             edge_count: graph.edges.len(),
             cluster_count: topology.clusters.len(),
-            active_routes: topology.routes.iter().filter(|r| r.status == "executing").count(),
+            active_routes: topology
+                .routes
+                .iter()
+                .filter(|r| r.status == "executing")
+                .count(),
             unresolved_issues: issues.len(),
             nodes_by_type: Self::count_nodes_by_type(graph),
             edges_by_type: Self::count_edges_by_type(graph),
@@ -84,12 +91,18 @@ impl TopologyContext {
         };
 
         // Get key nodes (sorted by connectivity)
-        let mut key_nodes: Vec<NodeSummary> = graph.nodes.values()
+        let mut key_nodes: Vec<NodeSummary> = graph
+            .nodes
+            .values()
             .map(|n| {
-                let in_degree = graph.edges.values()
+                let in_degree = graph
+                    .edges
+                    .values()
                     .filter(|e| e.to_node_id == n.id)
                     .count();
-                let out_degree = graph.edges.values()
+                let out_degree = graph
+                    .edges
+                    .values()
                     .filter(|e| e.from_node_id == n.id)
                     .count();
                 NodeSummary {
@@ -113,7 +126,9 @@ impl TopologyContext {
         key_nodes.truncate(max_nodes);
 
         // Get active clusters
-        let active_clusters: Vec<ClusterSummary> = topology.clusters.iter()
+        let active_clusters: Vec<ClusterSummary> = topology
+            .clusters
+            .iter()
             .filter(|c| c.is_active)
             .map(|c| ClusterSummary {
                 id: c.id,
@@ -125,7 +140,9 @@ impl TopologyContext {
             .collect();
 
         // Get executing routes
-        let executing_routes: Vec<RouteSummary> = topology.routes.iter()
+        let executing_routes: Vec<RouteSummary> = topology
+            .routes
+            .iter()
             .filter(|r| r.status == "executing")
             .map(|r| RouteSummary {
                 id: r.id,
@@ -181,14 +198,18 @@ impl TopologyContext {
         }
 
         // Deduct for inactive/degraded nodes
-        let inactive_count = graph.nodes.values()
+        let inactive_count = graph
+            .nodes
+            .values()
             .filter(|n| n.status != "active")
             .count();
         let inactive_ratio = inactive_count as f64 / graph.nodes.len() as f64;
         score -= inactive_ratio * 0.3;
 
         // Deduct for degraded edges
-        let degraded_edges = graph.edges.values()
+        let degraded_edges = graph
+            .edges
+            .values()
             .filter(|e| e.status != "active")
             .count();
         if !graph.edges.is_empty() {
@@ -252,10 +273,7 @@ impl TopologyContext {
         }
 
         if !self.issues.is_empty() {
-            context.push_str(&format!(
-                "\n**Issues Detected**: {}\n",
-                self.issues.len()
-            ));
+            context.push_str(&format!("\n**Issues Detected**: {}\n", self.issues.len()));
             for issue in &self.issues {
                 context.push_str(&format!(
                     "  - [{}] {}: {}\n",
@@ -330,7 +348,11 @@ impl TopologyContextBuilder {
         TopologyContext::from_topology(
             self.project_id,
             topology,
-            if self.include_issues { issues } else { Vec::new() },
+            if self.include_issues {
+                issues
+            } else {
+                Vec::new()
+            },
             self.max_nodes,
         )
     }

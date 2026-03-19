@@ -65,10 +65,14 @@ pub async fn create_task_attempt_record(
 
     // Use a single connection with FK checks disabled to avoid TEXT/BLOB
     // mismatch between task_attempts.task_id (Uuid->BLOB) and tasks.id (TEXT).
-    let mut conn = pool.acquire().await
+    let mut conn = pool
+        .acquire()
+        .await
         .map_err(|e| ApiError::InternalError(format!("Pool acquire: {e}")))?;
 
-    sqlx::query("PRAGMA foreign_keys = OFF").execute(&mut *conn).await
+    sqlx::query("PRAGMA foreign_keys = OFF")
+        .execute(&mut *conn)
+        .await
         .map_err(|e| ApiError::InternalError(format!("FK pragma: {e}")))?;
 
     let attempt_id = Uuid::new_v4();
@@ -90,7 +94,9 @@ pub async fn create_task_attempt_record(
     .await;
 
     // Re-enable FK checks on this connection before returning it to pool
-    let _ = sqlx::query("PRAGMA foreign_keys = ON").execute(&mut *conn).await;
+    let _ = sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&mut *conn)
+        .await;
 
     let task_attempt = result
         .map_err(|e| ApiError::InternalError(format!("Failed to create task attempt: {e}")))?;

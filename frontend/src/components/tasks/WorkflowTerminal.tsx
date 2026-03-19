@@ -195,6 +195,7 @@ function StageBlock({
 
 export function WorkflowTerminal({
   events,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars, unused-imports/no-unused-vars
   taskId: _taskId,
   onSendMessage,
   className,

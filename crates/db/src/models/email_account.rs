@@ -167,7 +167,9 @@ impl EmailAccount {
             .map(|t| format!("{:?}", t).to_lowercase())
             .unwrap_or_else(|| "primary".to_string());
         let metadata = data.metadata.map(|v| v.to_string());
-        let granted_scopes = data.granted_scopes.map(|v| serde_json::to_string(&v).unwrap_or_default());
+        let granted_scopes = data
+            .granted_scopes
+            .map(|v| serde_json::to_string(&v).unwrap_or_default());
         let use_ssl = data.use_ssl.map(|b| if b { 1 } else { 0 }).unwrap_or(1);
 
         let account = sqlx::query_as::<_, EmailAccount>(
@@ -206,13 +208,11 @@ impl EmailAccount {
     }
 
     pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Self, EmailAccountError> {
-        sqlx::query_as::<_, EmailAccount>(
-            r#"SELECT * FROM email_accounts WHERE id = ?1"#,
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await?
-        .ok_or(EmailAccountError::NotFound)
+        sqlx::query_as::<_, EmailAccount>(r#"SELECT * FROM email_accounts WHERE id = ?1"#)
+            .bind(id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or(EmailAccountError::NotFound)
     }
 
     pub async fn find_by_project(
@@ -336,7 +336,9 @@ impl EmailAccount {
     ) -> Result<Self, EmailAccountError> {
         let status = data.status.map(|s| format!("{:?}", s).to_lowercase());
         let metadata = data.metadata.map(|v| v.to_string());
-        let granted_scopes = data.granted_scopes.map(|v| serde_json::to_string(&v).unwrap_or_default());
+        let granted_scopes = data
+            .granted_scopes
+            .map(|v| serde_json::to_string(&v).unwrap_or_default());
         let use_ssl = data.use_ssl.map(|b| if b { 1 } else { 0 }).unwrap_or(1);
         let sync_enabled = data.sync_enabled.map(|b| if b { 1 } else { 0 });
         let auto_reply_enabled = data.auto_reply_enabled.map(|b| if b { 1 } else { 0 });
@@ -577,9 +579,10 @@ mod tests {
             .expect("project lookup failed");
         assert_eq!(by_project.len(), 1);
 
-        let by_provider = EmailAccount::find_by_provider(&pool, project_id.unwrap(), EmailProvider::Gmail)
-            .await
-            .expect("provider lookup failed");
+        let by_provider =
+            EmailAccount::find_by_provider(&pool, project_id.unwrap(), EmailProvider::Gmail)
+                .await
+                .expect("provider lookup failed");
         assert_eq!(by_provider.len(), 1);
     }
 

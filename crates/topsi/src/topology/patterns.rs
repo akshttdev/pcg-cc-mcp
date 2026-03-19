@@ -1,11 +1,15 @@
 //! Pattern detection - Find bottlenecks, holes, and emerging patterns in the topology
 
-use super::graph::{ProjectTopology, TopologyGraph};
-use super::engine::TopologyEngine;
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use uuid::Uuid;
-use std::collections::HashMap;
+
+use super::{
+    engine::TopologyEngine,
+    graph::{ProjectTopology, TopologyGraph},
+};
 
 /// A bottleneck in the topology (overloaded node)
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -191,7 +195,11 @@ impl PatternDetector {
     }
 
     /// Detect holes (missing capabilities) in the topology
-    pub fn detect_holes(&self, graph: &TopologyGraph, required_capabilities: &[String]) -> Vec<Hole> {
+    pub fn detect_holes(
+        &self,
+        graph: &TopologyGraph,
+        required_capabilities: &[String],
+    ) -> Vec<Hole> {
         let mut holes = Vec::new();
 
         // Collect all available capabilities from active nodes
@@ -367,7 +375,8 @@ impl PatternDetector {
         let mut degraded = Vec::new();
 
         // Find edges that are degraded
-        let degraded_edges: Vec<Uuid> = graph.edges
+        let degraded_edges: Vec<Uuid> = graph
+            .edges
             .values()
             .filter(|e| e.status == "degraded")
             .map(|e| e.id)
@@ -378,13 +387,15 @@ impl PatternDetector {
         }
 
         // For each pair of important nodes, check if the path includes degraded edges
-        let active_agents: Vec<Uuid> = graph.nodes
+        let active_agents: Vec<Uuid> = graph
+            .nodes
             .iter()
             .filter(|(_, n)| n.node_type == "agent" && n.is_active())
             .map(|(id, _)| *id)
             .collect();
 
-        let tasks: Vec<Uuid> = graph.nodes
+        let tasks: Vec<Uuid> = graph
+            .nodes
             .iter()
             .filter(|(_, n)| n.node_type == "task" && n.is_active())
             .map(|(id, _)| *id)
@@ -393,7 +404,8 @@ impl PatternDetector {
         for agent in &active_agents {
             for task in &tasks {
                 if let Some(path) = TopologyEngine::find_shortest_path(graph, *agent, *task) {
-                    let path_degraded: Vec<Uuid> = path.edges
+                    let path_degraded: Vec<Uuid> = path
+                        .edges
                         .iter()
                         .filter(|e| degraded_edges.contains(e))
                         .copied()
@@ -410,7 +422,11 @@ impl PatternDetector {
     }
 
     /// Run all pattern detection and return a comprehensive report
-    pub fn full_analysis(&self, topology: &ProjectTopology, required_capabilities: &[String]) -> PatternAnalysisReport {
+    pub fn full_analysis(
+        &self,
+        topology: &ProjectTopology,
+        required_capabilities: &[String],
+    ) -> PatternAnalysisReport {
         let graph = &topology.graph;
 
         PatternAnalysisReport {
@@ -445,8 +461,13 @@ pub struct PatternAnalysisReport {
 impl PatternAnalysisReport {
     /// Check if the topology is healthy
     pub fn is_healthy(&self) -> bool {
-        self.bottlenecks.iter().all(|b| b.severity != BottleneckSeverity::Critical)
-            && self.holes.iter().all(|h| h.severity != HoleSeverity::Critical)
+        self.bottlenecks
+            .iter()
+            .all(|b| b.severity != BottleneckSeverity::Critical)
+            && self
+                .holes
+                .iter()
+                .all(|h| h.severity != HoleSeverity::Critical)
             && self.cycles.is_empty()
             && self.orphans.is_empty()
     }

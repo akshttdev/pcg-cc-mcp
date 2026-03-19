@@ -9,6 +9,7 @@ use std::{
 };
 
 use chrono::{DateTime, Duration, Utc};
+use cinematics::CinematicsService;
 use db::models::{
     project::{CreateProject, Project},
     task::Priority,
@@ -16,8 +17,10 @@ use db::models::{
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use services::services::agent_channels::{AgentChannelService, ChannelOwner};
-use services::services::media_pipeline::MediaPipelineService;
+use services::services::{
+    agent_channels::{AgentChannelService, ChannelOwner},
+    media_pipeline::MediaPipelineService,
+};
 use sqlx::SqlitePool;
 use tokio::sync::RwLock;
 use ts_rs::TS;
@@ -27,7 +30,7 @@ use crate::{
     brain::LLMClient,
     coordination::CoordinationManager,
     executor::{TaskDefinition, TaskExecutor},
-    graph::{GraphOrchestrator, GraphPlan, GraphPlanSummary, GraphNodeStatus},
+    graph::{GraphNodeStatus, GraphOrchestrator, GraphPlan, GraphPlanSummary},
     memory::{
         BudgetStatus, ConversationMemory, ExecutiveContext, ExecutivePriority, Milestone,
         MilestoneStatus, PriorityImpact, PriorityStatus, PriorityUrgency, ProjectContext,
@@ -39,7 +42,6 @@ use crate::{
     voice::VoiceEngine,
     NoraConfig, NoraError, Result,
 };
-use cinematics::CinematicsService;
 
 /// Main Nora agent structure
 pub struct NoraAgent {
@@ -230,7 +232,9 @@ impl NoraAgent {
         // Initialize unified execution engine (new architecture)
         let execution_engine = crate::execution::ExecutionEngine::new(default_agent_profiles());
         // Wire coordination manager for SSE event broadcasting
-        execution_engine.set_coordination_manager(coordination_manager.clone()).await;
+        execution_engine
+            .set_coordination_manager(coordination_manager.clone())
+            .await;
 
         // Initialize graph orchestrator for task dependencies
         let graph_orchestrator = Arc::new(GraphOrchestrator::new());
@@ -311,7 +315,7 @@ impl NoraAgent {
             tokio::spawn(async move {
                 let _ = sqlx::query(
                     "UPDATE email_accounts SET owner_id = ? \
-                     WHERE email_address = 'nora@powerclubglobal.com' AND owner_type = 'agent'"
+                     WHERE email_address = 'nora@powerclubglobal.com' AND owner_type = 'agent'",
                 )
                 .bind(&nora_id_hex)
                 .execute(&stamp_pool)
@@ -332,7 +336,9 @@ impl NoraAgent {
             execution_engine.set_database(db_pool_for_engine).await;
             // Wire executive tools so media agents (Editron) can execute real tool implementations
             execution_engine.set_executive_tools(tools_for_engine).await;
-            tracing::info!("[NORA] TaskCreator, database, and ExecutiveTools wired to ExecutionEngine");
+            tracing::info!(
+                "[NORA] TaskCreator, database, and ExecutiveTools wired to ExecutionEngine"
+            );
         });
 
         // Configure workflow orchestrator with database and executor
@@ -368,7 +374,9 @@ impl NoraAgent {
         let workflow_orchestrator = self.workflow_orchestrator.clone();
         let cinematics_for_orchestrator = cinematics.clone();
         tokio::spawn(async move {
-            workflow_orchestrator.set_cinematics(cinematics_for_orchestrator).await;
+            workflow_orchestrator
+                .set_cinematics(cinematics_for_orchestrator)
+                .await;
         });
 
         // Set in execution engine SYNCHRONOUSLY - this must complete before workflows can run
@@ -377,7 +385,9 @@ impl NoraAgent {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
                 execution_engine.set_cinematics(cinematics).await;
-                tracing::info!("[NORA] CinematicsService wired to ExecutionEngine for image/video generation");
+                tracing::info!(
+                    "[NORA] CinematicsService wired to ExecutionEngine for image/video generation"
+                );
             });
         });
 
@@ -607,11 +617,18 @@ impl NoraAgent {
                 )
                 .await
             {
-                Ok(crate::brain::LLMResponse::Text { content: response, usage }) => {
+                Ok(crate::brain::LLMResponse::Text {
+                    content: response,
+                    usage,
+                }) => {
                     // LLM responded directly without needing tools
                     tracing::info!("[TOOL_FLOW] LLM returned text response (no tools needed)");
                     if let Some(u) = &usage {
-                        tracing::info!("[TOOL_FLOW] Token usage: {} input, {} output", u.input_tokens, u.output_tokens);
+                        tracing::info!(
+                            "[TOOL_FLOW] Token usage: {} input, {} output",
+                            u.input_tokens,
+                            u.output_tokens
+                        );
                     }
                     tracing::debug!(
                         "[TOOL_FLOW] Response: {}",
@@ -622,7 +639,10 @@ impl NoraAgent {
                         .await;
                     return Ok(response);
                 }
-                Ok(crate::brain::LLMResponse::ToolCalls { calls: tool_calls, usage: _ }) => {
+                Ok(crate::brain::LLMResponse::ToolCalls {
+                    calls: tool_calls,
+                    usage: _,
+                }) => {
                     // LLM wants to call tools - execute them
                     tracing::info!("[TOOL_FLOW] ========== TOOL CALLS REQUESTED ==========");
                     tracing::info!(
@@ -769,23 +789,37 @@ impl NoraAgent {
                             )
                             .await
                         {
-                            Ok(crate::brain::LLMResponse::Text { content: final_response, usage }) => {
+                            Ok(crate::brain::LLMResponse::Text {
+                                content: final_response,
+                                usage,
+                            }) => {
                                 tracing::info!(
                                     "[TOOL_FLOW] ========== FINAL RESPONSE RECEIVED =========="
                                 );
                                 if let Some(u) = &usage {
-                                    tracing::info!("[TOOL_FLOW] Token usage: {} input, {} output", u.input_tokens, u.output_tokens);
+                                    tracing::info!(
+                                        "[TOOL_FLOW] Token usage: {} input, {} output",
+                                        u.input_tokens,
+                                        u.output_tokens
+                                    );
                                 }
                                 tracing::debug!(
                                     "[TOOL_FLOW] Final response: {}",
                                     &final_response[..final_response.len().min(300)]
                                 );
                                 // Add to conversation history
-                                self.add_to_conversation_history(session_id, original, &final_response)
-                                    .await;
+                                self.add_to_conversation_history(
+                                    session_id,
+                                    original,
+                                    &final_response,
+                                )
+                                .await;
                                 return Ok(final_response);
                             }
-                            Ok(crate::brain::LLMResponse::ToolCalls { calls: new_tool_calls, usage: _ }) => {
+                            Ok(crate::brain::LLMResponse::ToolCalls {
+                                calls: new_tool_calls,
+                                usage: _,
+                            }) => {
                                 // LLM wants to chain more tool calls
                                 tracing::info!(
                                     "[TOOL_FLOW] ========== CHAINED TOOL CALLS (depth {}) ==========",
@@ -799,11 +833,21 @@ impl NoraAgent {
                                 // Execute the new tool calls
                                 let mut new_results = Vec::new();
                                 for tc in &new_tool_calls {
-                                    tracing::info!("[TOOL_FLOW] Executing chained tool: {} (id: {})", tc.name, tc.id);
-                                    tracing::debug!("[TOOL_FLOW] Chained tool arguments: {}", tc.arguments);
+                                    tracing::info!(
+                                        "[TOOL_FLOW] Executing chained tool: {} (id: {})",
+                                        tc.name,
+                                        tc.id
+                                    );
+                                    tracing::debug!(
+                                        "[TOOL_FLOW] Chained tool arguments: {}",
+                                        tc.arguments
+                                    );
 
                                     if let Some(nora_tool) =
-                                        crate::tools::ExecutiveTools::parse_tool_call(&tc.name, &tc.arguments)
+                                        crate::tools::ExecutiveTools::parse_tool_call(
+                                            &tc.name,
+                                            &tc.arguments,
+                                        )
                                     {
                                         match self
                                             .executive_tools
@@ -820,13 +864,15 @@ impl NoraAgent {
                                                         .result_data
                                                         .map(|d| {
                                                             serde_json::to_string(&d)
-                                                                .unwrap_or_else(|_| "Success".to_string())
+                                                                .unwrap_or_else(|_| {
+                                                                    "Success".to_string()
+                                                                })
                                                         })
                                                         .unwrap_or_else(|| "Success".to_string())
                                                 } else {
-                                                    result
-                                                        .error_message
-                                                        .unwrap_or_else(|| "Unknown error".to_string())
+                                                    result.error_message.unwrap_or_else(|| {
+                                                        "Unknown error".to_string()
+                                                    })
                                                 };
                                                 tracing::info!("[TOOL_FLOW] Chained tool SUCCESS");
                                                 new_results.push(crate::brain::ToolResult {
@@ -836,7 +882,10 @@ impl NoraAgent {
                                                 });
                                             }
                                             Err(e) => {
-                                                tracing::error!("[TOOL_FLOW] Chained tool FAILED: {}", e);
+                                                tracing::error!(
+                                                    "[TOOL_FLOW] Chained tool FAILED: {}",
+                                                    e
+                                                );
                                                 new_results.push(crate::brain::ToolResult {
                                                     tool_call_id: tc.id.clone(),
                                                     result: format!("Error: {}", e),
@@ -845,7 +894,10 @@ impl NoraAgent {
                                             }
                                         }
                                     } else {
-                                        tracing::warn!("[TOOL_FLOW] Failed to parse chained tool: {}", tc.name);
+                                        tracing::warn!(
+                                            "[TOOL_FLOW] Failed to parse chained tool: {}",
+                                            tc.name
+                                        );
                                         new_results.push(crate::brain::ToolResult {
                                             tool_call_id: tc.id.clone(),
                                             result: format!("Unknown tool: {}", tc.name),
@@ -890,7 +942,10 @@ impl NoraAgent {
                     }
 
                     // Max chain depth reached
-                    tracing::warn!("[TOOL_FLOW] Max tool chain depth ({}) reached", max_chain_depth);
+                    tracing::warn!(
+                        "[TOOL_FLOW] Max tool chain depth ({}) reached",
+                        max_chain_depth
+                    );
                     let summary: Vec<String> = current_tool_results
                         .iter()
                         .map(|r| {
@@ -901,22 +956,29 @@ impl NoraAgent {
                             }
                         })
                         .collect();
-                    let fallback_response = format!(
-                        "I've completed multiple actions:\n\n{}",
-                        summary.join("\n")
-                    );
-                    self.add_to_conversation_history(session_id, original, &fallback_response).await;
+                    let fallback_response =
+                        format!("I've completed multiple actions:\n\n{}", summary.join("\n"));
+                    self.add_to_conversation_history(session_id, original, &fallback_response)
+                        .await;
                     return Ok(fallback_response);
                 }
                 Err(e) => {
                     let error_str = e.to_string();
-                    tracing::warn!("[TOOL_FLOW] LLM with tools FAILED: {} - checking error type", error_str);
+                    tracing::warn!(
+                        "[TOOL_FLOW] LLM with tools FAILED: {} - checking error type",
+                        error_str
+                    );
 
                     // Check if this is a rate limit error - give a specific message instead of generic fallback
-                    if error_str.contains("429") || error_str.to_lowercase().contains("rate limit") {
+                    if error_str.contains("429") || error_str.to_lowercase().contains("rate limit")
+                    {
                         let rate_limit_response = "I'm currently experiencing high demand from the AI service (rate limited). Please wait a moment and try again. If this persists, you may need to check your OpenAI API quota at https://platform.openai.com/usage".to_string();
-                        self.add_to_conversation_history(session_id, original, &rate_limit_response)
-                            .await;
+                        self.add_to_conversation_history(
+                            session_id,
+                            original,
+                            &rate_limit_response,
+                        )
+                        .await;
                         return Ok(rate_limit_response);
                     }
 
@@ -1229,7 +1291,9 @@ impl NoraAgent {
                     if chars.peek() == Some(&'(') {
                         chars.next();
                         while let Some(ch) = chars.next() {
-                            if ch == ')' { break; }
+                            if ch == ')' {
+                                break;
+                            }
                         }
                     }
                 }
@@ -1299,7 +1363,11 @@ impl NoraAgent {
             // Skip extraction for SMS/phone messages to avoid false matches on instruction text
             let is_channel_message = request.content.starts_with("[SMS from")
                 || request.content.starts_with("[PHONE CALL");
-            if let Some(project_name) = if is_channel_message { None } else { self.extract_project_name(&request.content) } {
+            if let Some(project_name) = if is_channel_message {
+                None
+            } else {
+                self.extract_project_name(&request.content)
+            } {
                 tracing::info!("Extracted project name: {}", project_name);
                 // Fetch specific project data
                 match executor.find_project_by_name(&project_name).await {
@@ -1694,7 +1762,10 @@ Provide concise, insight-driven British executive responses. Surface actionable 
         context.last_updated = Utc::now();
     }
 
-    async fn resolve_project_for_task(&self, project_hint: Option<&str>) -> Option<(String, String)> {
+    async fn resolve_project_for_task(
+        &self,
+        project_hint: Option<&str>,
+    ) -> Option<(String, String)> {
         if let Some(executor) = &self.executor {
             if let Some(hint) = project_hint {
                 if let Ok(Some(project)) = executor.find_project_record_by_name(hint).await {
@@ -2004,10 +2075,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
             || utterance.contains("pipeline")
             || utterance.contains("roadmap")
         {
-            if let Some(summary) = self
-                .generate_live_project_summary_from_db(user_text)
-                .await
-            {
+            if let Some(summary) = self.generate_live_project_summary_from_db(user_text).await {
                 return Some(summary);
             }
 
@@ -2085,10 +2153,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
         None
     }
 
-    async fn generate_live_project_summary_from_db(
-        &self,
-        user_text: &str,
-    ) -> Option<String> {
+    async fn generate_live_project_summary_from_db(&self, user_text: &str) -> Option<String> {
         let executor = self.executor.as_ref()?;
         let project_name = self.extract_project_name(user_text)?;
         let project_id = executor.find_project_by_name(&project_name).await.ok()?;
@@ -2135,8 +2200,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
         ));
 
         if !details.boards.is_empty() {
-            let board_list: Vec<String> =
-                details.boards.iter().map(|b| b.name.clone()).collect();
+            let board_list: Vec<String> = details.boards.iter().map(|b| b.name.clone()).collect();
             lines.push(format!("Boards live: {}", board_list.join(", ")));
         } else {
             lines.push("Boards live: none configured yet — ready to spin up".to_string());
@@ -2156,9 +2220,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
                     .unwrap_or("No description provided");
                 lines.push(format!(
                     "- [{}] {} — {}",
-                    task.status,
-                    task.title,
-                    description
+                    task.status, task.title, description
                 ));
             }
         } else {
@@ -2418,7 +2480,9 @@ Provide concise, insight-driven British executive responses. Surface actionable 
                         })
                         .collect();
 
-                    let created_tasks = executor.create_tasks_batch(project_id.to_string(), task_defs).await?;
+                    let created_tasks = executor
+                        .create_tasks_batch(project_id.to_string(), task_defs)
+                        .await?;
 
                     let task_list = created_tasks
                         .iter()
@@ -2738,7 +2802,10 @@ Provide concise, insight-driven British executive responses. Surface actionable 
 
                 for workflow_instance in workflows {
                     // Skip if not running
-                    if !matches!(workflow_instance.state, crate::workflow::WorkflowState::Running { .. }) {
+                    if !matches!(
+                        workflow_instance.state,
+                        crate::workflow::WorkflowState::Running { .. }
+                    ) {
                         continue;
                     }
 
@@ -2764,7 +2831,9 @@ Provide concise, insight-driven British executive responses. Surface actionable 
                         &workflow_instance.context,
                         &tools,
                         &executor,
-                    ).await {
+                    )
+                    .await
+                    {
                         Ok(output) => {
                             tracing::info!(
                                 "[NORA_WORKFLOW_MONITOR] Stage '{}' completed successfully",
@@ -2772,7 +2841,10 @@ Provide concise, insight-driven British executive responses. Surface actionable 
                             );
 
                             // Advance workflow in the orchestrator
-                            if let Err(e) = orchestrator.advance_workflow_stage(workflow_instance.id, output).await {
+                            if let Err(e) = orchestrator
+                                .advance_workflow_stage(workflow_instance.id, output)
+                                .await
+                            {
                                 tracing::error!(
                                     "[NORA_WORKFLOW_MONITOR] Failed to advance workflow: {}",
                                     e
@@ -2787,7 +2859,10 @@ Provide concise, insight-driven British executive responses. Surface actionable 
                             );
 
                             // Mark workflow as failed in the orchestrator
-                            if let Err(err) = orchestrator.fail_workflow_stage(workflow_instance.id, e.to_string()).await {
+                            if let Err(err) = orchestrator
+                                .fail_workflow_stage(workflow_instance.id, e.to_string())
+                                .await
+                            {
                                 tracing::error!(
                                     "[NORA_WORKFLOW_MONITOR] Failed to mark workflow as failed: {}",
                                     err
@@ -2812,37 +2887,63 @@ Provide concise, insight-driven British executive responses. Surface actionable 
         let stage_lower = stage.name.to_lowercase();
         let desc_lower = stage.description.to_lowercase();
 
-        tracing::info!("[NORA_WORKFLOW_MONITOR] Executing stage: {} - {}", stage.name, stage.description);
+        tracing::info!(
+            "[NORA_WORKFLOW_MONITOR] Executing stage: {} - {}",
+            stage.name,
+            stage.description
+        );
 
         // Map stage descriptions to tool executions (Editron-specific for now)
-        if desc_lower.contains("ingest") || desc_lower.contains("download") || stage_lower.contains("batch intake") || stage_lower.contains("intake") {
+        if desc_lower.contains("ingest")
+            || desc_lower.contains("download")
+            || stage_lower.contains("batch intake")
+            || stage_lower.contains("intake")
+        {
             // Ingest media stage
             let source_url = context
                 .inputs
                 .get("source_url")
                 .or_else(|| context.inputs.get("dropbox_url"))
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| NoraError::ToolExecutionError("Missing source_url in context".to_string()))?;
+                .ok_or_else(|| {
+                    NoraError::ToolExecutionError("Missing source_url in context".to_string())
+                })?;
 
-            tracing::info!("[NORA_WORKFLOW_MONITOR] Ingesting media from: {}", source_url);
+            tracing::info!(
+                "[NORA_WORKFLOW_MONITOR] Ingesting media from: {}",
+                source_url
+            );
 
             let tool = NoraExecutiveTool::IngestMediaBatch {
                 source_url: source_url.to_string(),
-                reference_name: context.inputs.get("reference_name").and_then(|v| v.as_str()).map(String::from),
-                storage_tier: context.inputs.get("storage_tier")
+                reference_name: context
+                    .inputs
+                    .get("reference_name")
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
+                storage_tier: context
+                    .inputs
+                    .get("storage_tier")
                     .and_then(|v| v.as_str())
                     .unwrap_or("hot")
                     .to_string(),
                 checksum_required: true,
                 project_id: context.project_id.map(|id| id.to_string()),
-                task_id: context.inputs.get("task_id").and_then(|v| v.as_str()).map(String::from),
+                task_id: context
+                    .inputs
+                    .get("task_id")
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
             };
 
             let result = tools.execute_tool_implementation(tool).await?;
             return Ok(result);
         }
 
-        if desc_lower.contains("analyze") || desc_lower.contains("storyboard") || stage_lower.contains("analysis") {
+        if desc_lower.contains("analyze")
+            || desc_lower.contains("storyboard")
+            || stage_lower.contains("analysis")
+        {
             // Analysis stage - needs batch_id from previous stage
             tracing::info!("[NORA_WORKFLOW_MONITOR] Analysis stage - checking for batch_id from previous stage");
 
@@ -2855,7 +2956,10 @@ Provide concise, insight-driven British executive responses. Surface actionable 
         }
 
         // Generic stage execution
-        tracing::info!("[NORA_WORKFLOW_MONITOR] Generic stage execution: {}", stage.name);
+        tracing::info!(
+            "[NORA_WORKFLOW_MONITOR] Generic stage execution: {}",
+            stage.name
+        );
         Ok(serde_json::json!({
             "stage": stage.name,
             "output": stage.output,
@@ -2870,7 +2974,10 @@ Provide concise, insight-driven British executive responses. Surface actionable 
     }
 
     /// Run rapid playbook
-    pub async fn run_rapid_playbook(&self, _request: RapidPlaybookRequest) -> Result<RapidPlaybookResult> {
+    pub async fn run_rapid_playbook(
+        &self,
+        _request: RapidPlaybookRequest,
+    ) -> Result<RapidPlaybookResult> {
         // Stub implementation - will be implemented when needed
         Ok(RapidPlaybookResult {
             summary: "Rapid playbook functionality not yet implemented".to_string(),
@@ -2903,7 +3010,6 @@ Provide concise, insight-driven British executive responses. Surface actionable 
             .map_err(|e| NoraError::CoordinationError(e.to_string()))
     }
 }
-
 
 fn title_case(value: &str) -> String {
     let mut chars = value.chars();

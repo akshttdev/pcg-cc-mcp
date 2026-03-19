@@ -100,12 +100,10 @@ impl ReviewToken {
         .await?;
 
         if let Some(rt) = row {
-            sqlx::query(
-                "UPDATE review_tokens SET view_count = view_count + 1 WHERE id = ?",
-            )
-            .bind(rt.id)
-            .execute(pool)
-            .await?;
+            sqlx::query("UPDATE review_tokens SET view_count = view_count + 1 WHERE id = ?")
+                .bind(rt.id)
+                .execute(pool)
+                .await?;
             Ok(Some(rt))
         } else {
             Ok(None)

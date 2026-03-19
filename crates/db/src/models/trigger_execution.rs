@@ -30,7 +30,10 @@ pub struct CreateTriggerExecution {
 }
 
 impl TriggerExecution {
-    pub async fn create(pool: &SqlitePool, input: CreateTriggerExecution) -> Result<Self, sqlx::Error> {
+    pub async fn create(
+        pool: &SqlitePool,
+        input: CreateTriggerExecution,
+    ) -> Result<Self, sqlx::Error> {
         let id = Uuid::new_v4().to_string();
         sqlx::query_as::<_, Self>(
             r#"INSERT INTO trigger_executions (id, trigger_id, status, source_type, source_id, metadata)
@@ -46,7 +49,11 @@ impl TriggerExecution {
         .await
     }
 
-    pub async fn mark_running(pool: &SqlitePool, id: &str, workflow_run_id: Option<&str>) -> Result<(), sqlx::Error> {
+    pub async fn mark_running(
+        pool: &SqlitePool,
+        id: &str,
+        workflow_run_id: Option<&str>,
+    ) -> Result<(), sqlx::Error> {
         sqlx::query(
             r#"UPDATE trigger_executions
                SET status = 'running', workflow_run_id = ?2
@@ -81,7 +88,12 @@ impl TriggerExecution {
         Ok(())
     }
 
-    pub async fn mark_failed(pool: &SqlitePool, id: &str, error: &str, duration_ms: i64) -> Result<(), sqlx::Error> {
+    pub async fn mark_failed(
+        pool: &SqlitePool,
+        id: &str,
+        error: &str,
+        duration_ms: i64,
+    ) -> Result<(), sqlx::Error> {
         sqlx::query(
             r#"UPDATE trigger_executions
                SET status = 'failed',
@@ -98,7 +110,11 @@ impl TriggerExecution {
         Ok(())
     }
 
-    pub async fn find_by_trigger(pool: &SqlitePool, trigger_id: &str, limit: i64) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn find_by_trigger(
+        pool: &SqlitePool,
+        trigger_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, Self>(
             r#"SELECT * FROM trigger_executions
                WHERE trigger_id = ?1

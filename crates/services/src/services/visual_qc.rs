@@ -249,10 +249,7 @@ impl VisualQcEngine {
             .strip_prefix("```json")
             .or_else(|| response_text.trim().strip_prefix("```"))
             .unwrap_or(response_text.trim());
-        let cleaned = cleaned
-            .strip_suffix("```")
-            .unwrap_or(cleaned)
-            .trim();
+        let cleaned = cleaned.strip_suffix("```").unwrap_or(cleaned).trim();
 
         let json: serde_json::Value = serde_json::from_str(cleaned).map_err(|e| {
             VisualQcError::InvalidFormat(format!(
@@ -262,9 +259,7 @@ impl VisualQcEngine {
             ))
         })?;
 
-        let f = |key: &str| -> f64 {
-            json.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0)
-        };
+        let f = |key: &str| -> f64 { json.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0) };
 
         let subject_region = json.get("subject_region").and_then(|v| {
             if v.is_null() {
@@ -275,7 +270,11 @@ impl VisualQcEngine {
                 y: v.get("y")?.as_f64()?,
                 width: v.get("width")?.as_f64()?,
                 height: v.get("height")?.as_f64()?,
-                label: v.get("label").and_then(|l| l.as_str()).unwrap_or("").to_string(),
+                label: v
+                    .get("label")
+                    .and_then(|l| l.as_str())
+                    .unwrap_or("")
+                    .to_string(),
             })
         });
 
@@ -288,7 +287,11 @@ impl VisualQcEngine {
                 y: v.get("y")?.as_f64()?,
                 width: v.get("width")?.as_f64()?,
                 height: v.get("height")?.as_f64()?,
-                rationale: v.get("rationale").and_then(|r| r.as_str()).unwrap_or("").to_string(),
+                rationale: v
+                    .get("rationale")
+                    .and_then(|r| r.as_str())
+                    .unwrap_or("")
+                    .to_string(),
             })
         });
 
@@ -359,7 +362,11 @@ impl VisualQcEngine {
         let clips_passed = clip_results.iter().filter(|r| r.qc_passed).count() as u32;
         let clips_failed = clips_analyzed - clips_passed;
         let avg_score = if clips_analyzed > 0 {
-            clip_results.iter().map(|r| r.best_composition_score).sum::<f64>() / clips_analyzed as f64
+            clip_results
+                .iter()
+                .map(|r| r.best_composition_score)
+                .sum::<f64>()
+                / clips_analyzed as f64
         } else {
             0.0
         };
@@ -479,8 +486,8 @@ mod tests {
             "notes": "Well-composed frame with good headroom"
         }"#;
 
-        let frame = VisualQcEngine::parse_vision_response(5.0, Path::new("/tmp/frame.jpg"), json)
-            .unwrap();
+        let frame =
+            VisualQcEngine::parse_vision_response(5.0, Path::new("/tmp/frame.jpg"), json).unwrap();
         assert!((frame.composition_score - 0.85).abs() < 0.001);
         assert!((frame.subject_score - 0.9).abs() < 0.001);
         assert!(frame.subject_region.is_some());

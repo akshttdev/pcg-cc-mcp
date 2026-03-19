@@ -1,28 +1,30 @@
 //! Workflow template routes — list templates and convert deals to projects
 
 use axum::{
+    Router,
     extract::{Path, State},
     response::Json as ResponseJson,
     routing::{get, post},
-    Router,
 };
-use db::models::{
-    crm_activity::CrmActivity,
-    crm_contact::CrmContact,
-    project::{CreateProject, Project},
-    project_board::{CreateProjectBoard, ProjectBoard, ProjectBoardType},
-    project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource},
-    task::{CreateTask, Task, Priority},
-    task_dependency::{CreateTaskDependency, DependencyType, TaskDependency},
-    workflow_template::{DealConversionResult, WorkflowTemplate},
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        crm_activity::CrmActivity,
+        crm_contact::CrmContact,
+        project::{CreateProject, Project},
+        project_board::{CreateProjectBoard, ProjectBoard, ProjectBoardType},
+        project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource},
+        task::{CreateTask, Priority, Task},
+        task_dependency::{CreateTaskDependency, DependencyType, TaskDependency},
+        workflow_template::{DealConversionResult, WorkflowTemplate},
+    },
 };
 use deployment::Deployment;
 use serde::Deserialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
-use db::db_uuid::DbUuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 /// GET /api/workflow-templates — list all available templates
 async fn list_templates() -> Result<ResponseJson<ApiResponse<Vec<WorkflowTemplate>>>, ApiError> {
@@ -73,9 +75,9 @@ async fn convert_deal(
     let deal = db::models::crm_deal::CrmDeal::find_by_id(pool, &deal_db_id).await?;
 
     // 3. Create the project
-    let project_name = payload.project_name.unwrap_or_else(|| {
-        format!("{} — {}", deal.name, template.name)
-    });
+    let project_name = payload
+        .project_name
+        .unwrap_or_else(|| format!("{} — {}", deal.name, template.name));
     let git_repo_path = payload.git_repo_path.unwrap_or_else(|| {
         let slug = project_name
             .to_lowercase()
@@ -134,11 +136,14 @@ async fn convert_deal(
                 slug,
                 board_type: ProjectBoardType::Custom,
                 description: Some(phase.description.clone()),
-                metadata: Some(serde_json::json!({
-                    "workflow_phase": phase.position,
-                    "is_recurring": phase.is_recurring,
-                    "template_id": template.id,
-                }).to_string()),
+                metadata: Some(
+                    serde_json::json!({
+                        "workflow_phase": phase.position,
+                        "is_recurring": phase.is_recurring,
+                        "template_id": template.id,
+                    })
+                    .to_string(),
+                ),
             },
         )
         .await
@@ -204,9 +209,7 @@ async fn convert_deal(
 
             Task::create(pool, &create_task, &task_id.to_string())
                 .await
-                .map_err(|e| {
-                    ApiError::InternalError(format!("Failed to create task: {}", e))
-                })?;
+                .map_err(|e| ApiError::InternalError(format!("Failed to create task: {}", e)))?;
 
             task_uuid_map.insert((phase.position, task_tmpl.position), task_id);
             tasks_created += 1;
@@ -285,10 +288,7 @@ async fn convert_deal(
             project_id,
             &KnowledgeSourceType::Entity,
             &format!("workflow_{}", domain),
-            &format!(
-                "Knowledge: {}",
-                domain.replace('_', " "),
-            ),
+            &format!("Knowledge: {}", domain.replace('_', " "),),
             Some(&format!("Auto-registered from {} template", template.name)),
             0.0, // starts at 0 coverage — builds as tasks execute
         )
@@ -357,7 +357,10 @@ async fn seed_deal_knowledge(
     if let Some(amount) = deal.amount {
         deal_parts.push(format!("Value: {} {}", amount, deal.currency));
     }
-    deal_parts.push(format!("Stage: {} ({}% probability)", deal.stage, deal.probability));
+    deal_parts.push(format!(
+        "Stage: {} ({}% probability)",
+        deal.stage, deal.probability
+    ));
     if let Some(ref close) = deal.expected_close_date {
         deal_parts.push(format!("Expected close: {}", close.format("%Y-%m-%d")));
     }
@@ -409,10 +412,7 @@ async fn seed_deal_knowledge(
             }
             let contact_summary = contact_parts.join("\n");
 
-            let contact_title = contact
-                .full_name
-                .as_deref()
-                .unwrap_or("Contact");
+            let contact_title = contact.full_name.as_deref().unwrap_or("Contact");
 
             let _ = ProjectKnowledgeSource::upsert_source(
                 pool,
@@ -434,7 +434,11 @@ async fn seed_deal_knowledge(
                 .iter()
                 .map(|a| {
                     let subject = a.subject.as_deref().unwrap_or("");
-                    let outcome = a.outcome.as_deref().map(|o| format!(" → {}", o)).unwrap_or_default();
+                    let outcome = a
+                        .outcome
+                        .as_deref()
+                        .map(|o| format!(" → {}", o))
+                        .unwrap_or_default();
                     format!(
                         "[{}] {}: {}{}",
                         a.activity_at.format("%Y-%m-%d"),

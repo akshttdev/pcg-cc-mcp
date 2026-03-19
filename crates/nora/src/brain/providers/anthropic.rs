@@ -7,9 +7,8 @@ use futures::{Stream, StreamExt};
 use reqwest::Client;
 
 use super::provider_trait::{
-    ChatMessage, ChatRequest, ContentBlock, LLMProviderTrait, MessageRole,
-    ProviderError, ProviderResponse, ProviderType, StreamChunk, TokenUsage, ToolCallRequest,
-    ToolDefinition,
+    ChatMessage, ChatRequest, ContentBlock, LLMProviderTrait, MessageRole, ProviderError,
+    ProviderResponse, ProviderType, StreamChunk, TokenUsage, ToolCallRequest, ToolDefinition,
 };
 
 /// Anthropic Claude API provider
@@ -263,10 +262,9 @@ impl LLMProviderTrait for AnthropicProvider {
     }
 
     async fn chat(&self, request: ChatRequest) -> Result<ProviderResponse, ProviderError> {
-        let api_key = self
-            .api_key
-            .as_ref()
-            .ok_or_else(|| ProviderError::AuthError("No Anthropic API key configured".to_string()))?;
+        let api_key = self.api_key.as_ref().ok_or_else(|| {
+            ProviderError::AuthError("No Anthropic API key configured".to_string())
+        })?;
 
         // Convert messages
         let (system_prompt, messages) = self.messages_to_anthropic(&request.messages);

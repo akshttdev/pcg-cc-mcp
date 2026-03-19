@@ -33,7 +33,7 @@ export function TaskHeader({
 }: TaskHeaderProps) {
   // Stable callback wrapper for BreadcrumbNav (expects (fs: boolean) => void)
   const handleToggleFullscreen = useMemo(
-    () => onToggleFullscreen ? (_fs: boolean) => onToggleFullscreen() : undefined,
+    () => onToggleFullscreen ? () => onToggleFullscreen() : undefined,
     [onToggleFullscreen]
   );
 

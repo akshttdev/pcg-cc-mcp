@@ -1,9 +1,8 @@
 //! Nora mode presets and LLM configuration overrides.
 
 use nora::{
-    NoraConfig,
+    LLMProvider, NoraConfig,
     brain::{LLMConfig, infer_provider_from_model},
-    LLMProvider,
     personality::PersonalityConfig,
     voice::VoiceConfig,
 };
@@ -70,7 +69,11 @@ pub(crate) fn apply_llm_overrides(config: &mut NoraConfig) {
         let llm = config.llm.get_or_insert_with(LLMConfig::default);
         llm.model = model.clone();
         llm.provider = infer_provider_from_model(&model);
-        tracing::info!("Nora LLM model set to: {} (provider: {:?})", model, llm.provider);
+        tracing::info!(
+            "Nora LLM model set to: {} (provider: {:?})",
+            model,
+            llm.provider
+        );
     }
 
     // Explicit provider override (takes precedence over inference)

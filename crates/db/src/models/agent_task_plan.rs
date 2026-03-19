@@ -117,12 +117,11 @@ impl AgentTaskPlan {
         pool: &SqlitePool,
         id: Uuid,
     ) -> Result<Option<Self>, AgentTaskPlanError> {
-        let plan = sqlx::query_as::<_, AgentTaskPlan>(
-            r#"SELECT * FROM agent_task_plans WHERE id = ?1"#,
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await?;
+        let plan =
+            sqlx::query_as::<_, AgentTaskPlan>(r#"SELECT * FROM agent_task_plans WHERE id = ?1"#)
+                .bind(id)
+                .fetch_optional(pool)
+                .await?;
 
         Ok(plan)
     }

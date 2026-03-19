@@ -4,6 +4,7 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use db::models::social_account::SocialPlatform;
 use reqwest::Client;
 use serde::Deserialize;
 
@@ -11,7 +12,6 @@ use crate::services::social::{
     EngagementMetrics, OAuthTokens, PlatformConnector, PlatformLimits, PlatformMention,
     ProfileInfo, PublishContent, PublishResult, SocialError,
 };
-use db::models::social_account::SocialPlatform;
 
 const THREADS_AUTH_URL: &str = "https://threads.net/oauth/authorize";
 const THREADS_TOKEN_URL: &str = "https://graph.threads.net/oauth/access_token";
@@ -120,7 +120,9 @@ impl PlatformConnector for ThreadsConnector {
             .map_err(|e| SocialError::NetworkError(e.to_string()))?;
 
         if !response.status().is_success() {
-            return Err(SocialError::PlatformError("Failed to fetch Threads profile".into()));
+            return Err(SocialError::PlatformError(
+                "Failed to fetch Threads profile".into(),
+            ));
         }
 
         let data: serde_json::Value = response
@@ -203,10 +205,7 @@ impl PlatformConnector for ThreadsConnector {
             .json()
             .await
             .map_err(|e| SocialError::PlatformError(e.to_string()))?;
-        let container_id = container_data["id"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
+        let container_id = container_data["id"].as_str().unwrap_or("").to_string();
 
         // Step 2: Publish container
         let publish_resp = self

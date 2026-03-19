@@ -112,7 +112,10 @@ pub struct TokenUsageByProject {
 
 impl TokenUsage {
     /// Record new token usage
-    pub async fn create(pool: &SqlitePool, data: CreateTokenUsage) -> Result<Self, TokenUsageError> {
+    pub async fn create(
+        pool: &SqlitePool,
+        data: CreateTokenUsage,
+    ) -> Result<Self, TokenUsageError> {
         let id = Uuid::new_v4();
         let total_tokens = data.input_tokens + data.output_tokens;
         let provider = data.provider.unwrap_or_else(|| "anthropic".to_string());

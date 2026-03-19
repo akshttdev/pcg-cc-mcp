@@ -6,8 +6,8 @@ use axum::{
 };
 use serde::Deserialize;
 use services::services::aptos::{
-    AptosService, AptosBalance, AptosTransaction, FaucetResponse,
-    SendTransactionResponse, EstimateGasResponse, VibeBalance, VibeTransferResponse,
+    AptosBalance, AptosService, AptosTransaction, EstimateGasResponse, FaucetResponse,
+    SendTransactionResponse, VibeBalance, VibeTransferResponse,
 };
 use utils::response::ApiResponse;
 

@@ -23,53 +23,63 @@
 //! └─────────────────────────────────────────────────────────────┘
 //! ```
 
-pub mod ffmpeg;
-pub mod premiere;
-pub mod encoder;
-pub mod color_grading;
-pub mod transitions;
+pub mod artlist;
+pub mod asset_intelligence;
 pub mod audio;
-pub mod proxy;
-pub mod scene_detection;
+pub mod color_grading;
+pub mod edit_assembly;
+pub mod encoder;
+pub mod epidemic;
+pub mod ffmpeg;
 pub mod music;
 pub mod music_automation;
-pub mod edit_assembly;
-pub mod premiere_xml;
+pub mod premiere;
 pub mod premiere_prproj;
-pub mod artlist;
-pub mod epidemic;
+pub mod premiere_xml;
+pub mod proxy;
+pub mod scene_detection;
 pub mod soundstripe;
-pub mod asset_intelligence;
+pub mod transitions;
 // visual_qc lives as a standalone module at services::services::visual_qc
 
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
+pub use artlist::{ArtlistClient, ArtlistConfig, ArtlistError};
+pub use audio::{
+    AudioProcessingEngine, AudioProcessingPreset, CompressionSettings, LoudnessStandard,
+};
+pub use color_grading::{ColorCurves, ColorGradePreset, ColorGradingEngine, ColorWheels, LUT};
+pub use edit_assembly::{
+    AssembledEdit, AssemblyConfig, AudioClip, EditAssemblyEngine, EditMarker, FootageClip,
+    MarkerType, MusicAnalysis as EditMusicAnalysis, MusicSection, PacingStyle, SectionType,
+    TimelineClip, TransitionStyle,
+};
+pub use encoder::MediaEncoderBridge;
+pub use epidemic::{EpidemicSoundClient, EpidemicSoundConfig, EpidemicSoundError};
+pub use ffmpeg::FFmpegClient;
+pub use music::{
+    AudioAnalysis, MusicGenre, MusicLibrary, MusicMood, MusicPlatform, MusicRecommendation,
+    MusicSearchCriteria, MusicTrack,
+};
+pub use premiere::PremiereProBridge;
+pub use premiere_prproj::{PrprojClipEntry, PrprojRecutEngine, PrprojRecutResult};
+pub use premiere_xml::PremiereXmlExporter;
+pub use proxy::{ProxyFile, ProxyPreset, ProxySettings, ProxyWorkflowManager};
+pub use scene_detection::{DetectionMethod, Scene, SceneDetectionEngine, SceneDetectionResult};
 use serde::{Deserialize, Serialize};
+pub use soundstripe::{SoundstripeClient, SoundstripeConfig, SoundstripeError};
 use thiserror::Error;
 use tokio::sync::RwLock;
-
-pub use ffmpeg::FFmpegClient;
-pub use premiere::PremiereProBridge;
-pub use encoder::MediaEncoderBridge;
-pub use color_grading::{ColorGradingEngine, ColorGradePreset, LUT, ColorWheels, ColorCurves};
-pub use transitions::{TransitionEngine, Transition, TransitionPreset, TransitionCategory, EasingCurve};
-pub use audio::{AudioProcessingEngine, AudioProcessingPreset, LoudnessStandard, CompressionSettings};
-pub use proxy::{ProxyWorkflowManager, ProxyPreset, ProxySettings, ProxyFile};
-pub use scene_detection::{SceneDetectionEngine, Scene, SceneDetectionResult, DetectionMethod};
-pub use music::{MusicLibrary, MusicTrack, MusicSearchCriteria, MusicMood, MusicGenre, MusicRecommendation, AudioAnalysis, MusicPlatform};
-pub use artlist::{ArtlistClient, ArtlistConfig, ArtlistError};
-pub use epidemic::{EpidemicSoundClient, EpidemicSoundConfig, EpidemicSoundError};
-pub use soundstripe::{SoundstripeClient, SoundstripeConfig, SoundstripeError};
-pub use edit_assembly::{
-    EditAssemblyEngine, AssembledEdit, FootageClip, MusicAnalysis as EditMusicAnalysis,
-    MusicSection, SectionType, PacingStyle, TimelineClip, AudioClip, AssemblyConfig,
-    TransitionStyle, EditMarker, MarkerType,
+pub use transitions::{
+    EasingCurve, Transition, TransitionCategory, TransitionEngine, TransitionPreset,
 };
-pub use premiere_xml::PremiereXmlExporter;
-pub use premiere_prproj::{PrprojRecutEngine, PrprojClipEntry, PrprojRecutResult};
+
 pub use super::visual_qc::{
-    VisualQcEngine, VisualQcConfig, VisualQcResult, ClipQcResult, AnalyzedFrame,
-    SubjectRegion, CropRegion,
+    AnalyzedFrame, ClipQcResult, CropRegion, SubjectRegion, VisualQcConfig, VisualQcEngine,
+    VisualQcResult,
 };
 
 #[derive(Debug, Error)]
@@ -128,9 +138,9 @@ impl VideoCodec {
 
     pub fn prores_profile(&self) -> Option<&'static str> {
         match self {
-            VideoCodec::ProRes => Some("3"),      // ProRes 422 HQ
-            VideoCodec::ProRes422 => Some("2"),   // ProRes 422
-            VideoCodec::ProRes4444 => Some("4"),  // ProRes 4444
+            VideoCodec::ProRes => Some("3"),     // ProRes 422 HQ
+            VideoCodec::ProRes422 => Some("2"),  // ProRes 422
+            VideoCodec::ProRes4444 => Some("4"), // ProRes 4444
             _ => None,
         }
     }
@@ -276,9 +286,7 @@ pub enum EditOperation {
         end_seconds: f64,
     },
     /// Concatenate multiple clips
-    Concat {
-        clips: Vec<PathBuf>,
-    },
+    Concat { clips: Vec<PathBuf> },
     /// Add text overlay
     TextOverlay {
         text: String,
@@ -300,10 +308,7 @@ pub enum EditOperation {
         maintain_aspect: bool,
     },
     /// Change speed
-    Speed {
-        factor: f32,
-        maintain_pitch: bool,
-    },
+    Speed { factor: f32, maintain_pitch: bool },
     /// Add audio track
     AddAudio {
         audio_path: PathBuf,
@@ -407,15 +412,14 @@ impl EditronService {
 
         let proxy_dir = work_dir.join("proxies");
         tokio::fs::create_dir_all(&proxy_dir).await?;
-        let proxy_manager = Arc::new(RwLock::new(
-            ProxyWorkflowManager::new(&proxy_dir, &ffmpeg_path)
-        ));
+        let proxy_manager = Arc::new(RwLock::new(ProxyWorkflowManager::new(
+            &proxy_dir,
+            &ffmpeg_path,
+        )));
 
         let music_dir = work_dir.join("music");
         tokio::fs::create_dir_all(&music_dir).await?;
-        let music_library = Arc::new(RwLock::new(
-            MusicLibrary::new(&music_dir, &ffmpeg_path)
-        ));
+        let music_library = Arc::new(RwLock::new(MusicLibrary::new(&music_dir, &ffmpeg_path)));
 
         let visual_qc_dir = work_dir.join("visual_qc");
         tokio::fs::create_dir_all(&visual_qc_dir).await?;
@@ -453,7 +457,9 @@ impl EditronService {
         output: P,
         preset: Option<ExportPreset>,
     ) -> EditronResult<PathBuf> {
-        self.ffmpeg.apply_edits(input, operations, output, preset).await
+        self.ffmpeg
+            .apply_edits(input, operations, output, preset)
+            .await
     }
 
     /// Quick trim video
@@ -637,7 +643,11 @@ impl EditronService {
         input: P,
         preset: ProxyPreset,
     ) -> EditronResult<ProxyFile> {
-        self.proxy_manager.read().await.generate_proxy(input.as_ref(), preset).await
+        self.proxy_manager
+            .read()
+            .await
+            .generate_proxy(input.as_ref(), preset)
+            .await
     }
 
     /// Generate proxies for multiple files
@@ -646,7 +656,9 @@ impl EditronService {
         files: Vec<PathBuf>,
         preset: ProxyPreset,
     ) -> Vec<EditronResult<ProxyFile>> {
-        self.proxy_manager.read().await
+        self.proxy_manager
+            .read()
+            .await
             .generate_proxies_batch(files, preset, 4)
             .await
     }
@@ -721,13 +733,23 @@ impl EditronService {
         // Apply combined filters
         let video_filter_str = video_filters.join(",");
         let audio_filter_str = audio_filters.join(",");
-        self.ffmpeg.process_with_filters(
-            input,
-            if video_filters.is_empty() { None } else { Some(video_filter_str.as_str()) },
-            if audio_filters.is_empty() { None } else { Some(audio_filter_str.as_str()) },
-            output,
-            export_preset,
-        ).await
+        self.ffmpeg
+            .process_with_filters(
+                input,
+                if video_filters.is_empty() {
+                    None
+                } else {
+                    Some(video_filter_str.as_str())
+                },
+                if audio_filters.is_empty() {
+                    None
+                } else {
+                    Some(audio_filter_str.as_str())
+                },
+                output,
+                export_preset,
+            )
+            .await
     }
 
     /// Prepare project for Premiere Pro editing
@@ -762,21 +784,31 @@ impl EditronService {
 
         // Detect scenes if requested
         if detect_scenes && !setup.media_files.is_empty() {
-            if let Ok(result) = self.detect_scenes(&setup.media_files[0], DetectionMethod::default()).await {
+            if let Ok(result) = self
+                .detect_scenes(&setup.media_files[0], DetectionMethod::default())
+                .await
+            {
                 setup.scene_detection = Some(result);
             }
         }
 
         // Generate Premiere Pro scripts
         if !setup.proxies.is_empty() {
-            let proxy_script = self.proxy_manager.read().await
+            let proxy_script = self
+                .proxy_manager
+                .read()
+                .await
                 .premiere_attach_proxies_script(&setup.proxies);
-            setup.scripts.push(("attach_proxies.jsx".to_string(), proxy_script));
+            setup
+                .scripts
+                .push(("attach_proxies.jsx".to_string(), proxy_script));
         }
 
         if let Some(ref scenes) = setup.scene_detection {
             let marker_script = self.export_premiere_markers(scenes);
-            setup.scripts.push(("import_markers.jsx".to_string(), marker_script));
+            setup
+                .scripts
+                .push(("import_markers.jsx".to_string(), marker_script));
         }
 
         Ok(setup)
@@ -798,22 +830,16 @@ impl EditronService {
     // ============ MUSIC SELECTION ============
 
     /// Get music recommendation for content type
-    pub async fn recommend_music(
-        &self,
-        content_type: &str,
-        duration: f64,
-    ) -> MusicRecommendation {
-        self.music_library.read().await
+    pub async fn recommend_music(&self, content_type: &str, duration: f64) -> MusicRecommendation {
+        self.music_library
+            .read()
+            .await
             .recommend_for_content(content_type, duration)
     }
 
     /// Analyze audio file for BPM, beats, etc.
-    pub async fn analyze_music<P: AsRef<Path>>(
-        &self,
-        path: P,
-    ) -> EditronResult<AudioAnalysis> {
-        self.music_library.read().await
-            .analyze_audio(path).await
+    pub async fn analyze_music<P: AsRef<Path>>(&self, path: P) -> EditronResult<AudioAnalysis> {
+        self.music_library.read().await.analyze_audio(path).await
     }
 
     /// Register a downloaded music track
@@ -823,7 +849,9 @@ impl EditronService {
 
     /// Search local music library
     pub async fn search_local_music(&self, criteria: &MusicSearchCriteria) -> Vec<MusicTrack> {
-        self.music_library.read().await
+        self.music_library
+            .read()
+            .await
             .search_local(criteria)
             .into_iter()
             .cloned()
@@ -832,7 +860,9 @@ impl EditronService {
 
     /// Export license documentation
     pub async fn export_music_licenses(&self, project_name: &str) -> String {
-        self.music_library.read().await
+        self.music_library
+            .read()
+            .await
             .export_license_doc(project_name)
     }
 
@@ -900,17 +930,23 @@ impl EditronService {
         let mut engine = PrprojRecutEngine::load(source_prproj)?;
 
         // Convert AssembledEdit clips to PrprojClipEntries
-        let edl: Vec<PrprojClipEntry> = edit.video_clips.iter().map(|clip| {
-            let filename = clip.source.file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default();
-            PrprojClipEntry {
-                filename,
-                source_in: clip.source_in,
-                duration: clip.timeline_out - clip.timeline_in,
-                label: None,
-            }
-        }).collect();
+        let edl: Vec<PrprojClipEntry> = edit
+            .video_clips
+            .iter()
+            .map(|clip| {
+                let filename = clip
+                    .source
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                PrprojClipEntry {
+                    filename,
+                    source_in: clip.source_in,
+                    duration: clip.timeline_out - clip.timeline_in,
+                    label: None,
+                }
+            })
+            .collect();
 
         let mut result = engine.apply_edl(&edl)?;
         let file_size = engine.write(output_path)?;
@@ -927,7 +963,8 @@ impl EditronService {
         output_path: &Path,
     ) -> EditronResult<PathBuf> {
         let exporter = PremiereXmlExporter::new(edit.frame_rate);
-        exporter.export(edit, output_path)
+        exporter
+            .export(edit, output_path)
             .map_err(|e| EditronError::Io(e))
     }
 
@@ -970,9 +1007,13 @@ impl EditronService {
         // Analyze footage for energy/motion (simplified - uses duration as proxy)
         for clip in &mut footage {
             // Estimate energy based on clip duration (shorter = higher energy content typically)
-            let energy = if clip.duration < 5.0 { 0.8 }
-                else if clip.duration < 15.0 { 0.6 }
-                else { 0.4 };
+            let energy = if clip.duration < 5.0 {
+                0.8
+            } else if clip.duration < 15.0 {
+                0.6
+            } else {
+                0.4
+            };
             clip.energy_level = energy;
         }
 
@@ -992,7 +1033,9 @@ impl EditronService {
         };
 
         // Assemble the edit
-        let edit = self.assemble_edit(footage, music_path, music_bpm, config).await?;
+        let edit = self
+            .assemble_edit(footage, music_path, music_bpm, config)
+            .await?;
 
         // Create output directory
         tokio::fs::create_dir_all(output_dir).await?;
@@ -1091,13 +1134,15 @@ impl EditronService {
         let music_dir = self.work_dir.join("music").join("artlist");
         tokio::fs::create_dir_all(&music_dir).await?;
 
-        let safe_filename = filename
-            .map(|f| f.to_string())
-            .unwrap_or_else(|| {
-                let safe_title = track.title.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
-                let safe_artist = track.artist.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
-                format!("{} - {}.mp3", safe_artist, safe_title)
-            });
+        let safe_filename = filename.map(|f| f.to_string()).unwrap_or_else(|| {
+            let safe_title = track
+                .title
+                .replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+            let safe_artist = track
+                .artist
+                .replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+            format!("{} - {}.mp3", safe_artist, safe_title)
+        });
 
         let output_path = music_dir.join(&safe_filename);
 
@@ -1250,13 +1295,15 @@ impl EditronService {
         let music_dir = self.work_dir.join("music").join("epidemic");
         tokio::fs::create_dir_all(&music_dir).await?;
 
-        let safe_filename = filename
-            .map(|f| f.to_string())
-            .unwrap_or_else(|| {
-                let safe_title = track.title.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
-                let safe_artist = track.artist.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
-                format!("{} - {}.mp3", safe_artist, safe_title)
-            });
+        let safe_filename = filename.map(|f| f.to_string()).unwrap_or_else(|| {
+            let safe_title = track
+                .title
+                .replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+            let safe_artist = track
+                .artist
+                .replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+            format!("{} - {}.mp3", safe_artist, safe_title)
+        });
 
         let output_path = music_dir.join(&safe_filename);
 
@@ -1392,18 +1439,25 @@ impl EditronService {
         clip_path: &Path,
         config: &VisualQcConfig,
     ) -> EditronResult<Vec<(f64, PathBuf)>> {
-        self.visual_qc.extract_candidate_frames(clip_path, config).await
+        self.visual_qc
+            .extract_candidate_frames(clip_path, config)
+            .await
             .map_err(|e| EditronError::Process(format!("Visual QC error: {}", e)))
     }
 
     /// Read a frame JPEG and return base64 for vision API
     pub async fn get_frame_base64(&self, path: &Path) -> EditronResult<String> {
-        VisualQcEngine::frame_to_base64(path).await
+        VisualQcEngine::frame_to_base64(path)
+            .await
             .map_err(|e| EditronError::Process(format!("Visual QC error: {}", e)))
     }
 
     /// Apply visual QC results to a set of QC footage clips
-    pub fn apply_visual_qc(&self, clips: &mut [super::visual_qc::QcFootageClip], qc_result: &VisualQcResult) {
+    pub fn apply_visual_qc(
+        &self,
+        clips: &mut [super::visual_qc::QcFootageClip],
+        qc_result: &VisualQcResult,
+    ) {
         VisualQcEngine::apply_qc_to_clips(clips, qc_result);
     }
 

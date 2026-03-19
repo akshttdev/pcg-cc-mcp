@@ -35,12 +35,42 @@ impl OutputHandler {
     /// Print the welcome banner
     pub fn print_banner(&self, project_name: Option<&str>, session_id: &str) {
         println!();
-        println!("{}", "  ██████╗ ██████╗  ██████╗██╗  ██╗ █████╗ ".bright_cyan().bold());
-        println!("{}", " ██╔═══██╗██╔══██╗██╔════╝██║  ██║██╔══██╗".bright_cyan().bold());
-        println!("{}", " ██║   ██║██████╔╝██║     ███████║███████║".bright_cyan().bold());
-        println!("{}", " ██║   ██║██╔══██╗██║     ██╔══██║██╔══██║".bright_cyan().bold());
-        println!("{}", " ╚██████╔╝██║  ██║╚██████╗██║  ██║██║  ██║".bright_cyan().bold());
-        println!("{}", "  ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝".bright_cyan().bold());
+        println!(
+            "{}",
+            "  ██████╗ ██████╗  ██████╗██╗  ██╗ █████╗ "
+                .bright_cyan()
+                .bold()
+        );
+        println!(
+            "{}",
+            " ██╔═══██╗██╔══██╗██╔════╝██║  ██║██╔══██╗"
+                .bright_cyan()
+                .bold()
+        );
+        println!(
+            "{}",
+            " ██║   ██║██████╔╝██║     ███████║███████║"
+                .bright_cyan()
+                .bold()
+        );
+        println!(
+            "{}",
+            " ██║   ██║██╔══██╗██║     ██╔══██║██╔══██║"
+                .bright_cyan()
+                .bold()
+        );
+        println!(
+            "{}",
+            " ╚██████╔╝██║  ██║╚██████╗██║  ██║██║  ██║"
+                .bright_cyan()
+                .bold()
+        );
+        println!(
+            "{}",
+            "  ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝"
+                .bright_cyan()
+                .bold()
+        );
         println!();
         println!(
             "  {}  {}",
@@ -51,7 +81,10 @@ impl OutputHandler {
             "  {}",
             "AI-Native Development + Multi-Agent Coordination".dimmed()
         );
-        println!("{}", "  ─────────────────────────────────────────────────".dimmed());
+        println!(
+            "{}",
+            "  ─────────────────────────────────────────────────".dimmed()
+        );
 
         if let Some(name) = project_name {
             println!(
@@ -69,7 +102,10 @@ impl OutputHandler {
             );
         }
 
-        println!("{}", "  ─────────────────────────────────────────────────".dimmed());
+        println!(
+            "{}",
+            "  ─────────────────────────────────────────────────".dimmed()
+        );
         println!(
             "  {}  {}  {}  {}",
             "/help".bright_yellow(),
@@ -178,7 +214,13 @@ impl OutputHandler {
     }
 
     /// Print the cost/status bar
-    pub fn print_status_bar(&self, tokens: i64, vibe: i64, tasks_created: i32, tasks_completed: i32) {
+    pub fn print_status_bar(
+        &self,
+        tokens: i64,
+        vibe: i64,
+        tasks_created: i32,
+        tasks_completed: i32,
+    ) {
         if !self.show_cost_bar {
             return;
         }
@@ -212,7 +254,9 @@ impl OutputHandler {
         println!();
         println!(
             "{}",
-            format!("▶ Task Board — {}", project_name).bright_yellow().bold()
+            format!("▶ Task Board — {}", project_name)
+                .bright_yellow()
+                .bold()
         );
         println!("{}", "─".repeat(70).dimmed());
         println!();
@@ -228,10 +272,10 @@ impl OutputHandler {
                 println!("{}", "  (empty)".dimmed());
             } else {
                 let icon = match *status {
-                    "TODO"        => "○".bright_yellow(),
+                    "TODO" => "○".bright_yellow(),
                     "IN PROGRESS" => "→".bright_blue(),
-                    "DONE"        => "✓".bright_green(),
-                    _             => "•".normal(),
+                    "DONE" => "✓".bright_green(),
+                    _ => "•".normal(),
                 };
                 // Show max 12 per column to keep it readable
                 for (id, title) in tasks.iter().take(12) {
@@ -301,9 +345,12 @@ impl OutputHandler {
         println!();
         println!(
             "{}",
-            format!("{:<36} {:<40} {:>10} {:>12}", "ID", "Title", "Status", "Updated")
-                .bright_white()
-                .bold()
+            format!(
+                "{:<36} {:<40} {:>10} {:>12}",
+                "ID", "Title", "Status", "Updated"
+            )
+            .bright_white()
+            .bold()
         );
         println!("{}", "─".repeat(100).dimmed());
 
@@ -350,18 +397,15 @@ impl OutputHandler {
         println!();
         println!(
             "{}",
-            "╔═══════════════════════════════════════════════════════════════╗"
-                .bright_green()
+            "╔═══════════════════════════════════════════════════════════════╗".bright_green()
         );
         println!(
             "{}",
-            "║                    SESSION COMPLETED                          ║"
-                .bright_green()
+            "║                    SESSION COMPLETED                          ║".bright_green()
         );
         println!(
             "{}",
-            "╠═══════════════════════════════════════════════════════════════╣"
-                .bright_green()
+            "╠═══════════════════════════════════════════════════════════════╣".bright_green()
         );
 
         println!(
@@ -388,8 +432,7 @@ impl OutputHandler {
             "║".bright_green(),
             format!("+{}", lines_added).green(),
             format!("-{}", lines_removed).red(),
-            " ".repeat(40 - lines_added.to_string().len() - lines_removed.to_string().len())
-                + "║"
+            " ".repeat(40 - lines_added.to_string().len() - lines_removed.to_string().len()) + "║"
         );
         println!(
             "{}  Commits: {:<51}{}",
@@ -456,8 +499,7 @@ impl OutputHandler {
         );
         println!(
             "{}",
-            "╚═══════════════════════════════════════════════════════════════╝"
-                .bright_green()
+            "╚═══════════════════════════════════════════════════════════════╝".bright_green()
         );
         println!();
     }
@@ -477,10 +519,7 @@ impl OutputHandler {
 
         let mut result = line.clone();
         for kw in keywords {
-            result = result.replace(
-                &format!(" {} ", kw),
-                &format!(" {} ", kw.bright_magenta()),
-            );
+            result = result.replace(&format!(" {} ", kw), &format!(" {} ", kw.bright_magenta()));
         }
 
         result

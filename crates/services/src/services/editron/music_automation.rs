@@ -7,13 +7,19 @@
 //! - Downloading and cataloging tracks
 //! - Matching music to video edit points
 
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
+
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use tokio::process::Command;
-use super::{EditronError, EditronResult};
-use super::music::{MusicMood, MusicGenre, MusicSearchCriteria, MusicTrack, MusicPlatform};
-use super::scene_detection::SceneDetectionResult;
+
+use super::{
+    EditronError, EditronResult,
+    music::{MusicGenre, MusicMood, MusicPlatform, MusicSearchCriteria, MusicTrack},
+    scene_detection::SceneDetectionResult,
+};
 
 /// Video content analysis for music matching
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,10 +47,10 @@ pub struct VideoContentAnalysis {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PacingLevel {
-    Slow,      // < 1 cut per 5 seconds
-    Medium,    // 1-2 cuts per 5 seconds
-    Fast,      // 2-4 cuts per 5 seconds
-    VeryFast,  // > 4 cuts per 5 seconds
+    Slow,     // < 1 cut per 5 seconds
+    Medium,   // 1-2 cuts per 5 seconds
+    Fast,     // 2-4 cuts per 5 seconds
+    VeryFast, // > 4 cuts per 5 seconds
 }
 
 impl PacingLevel {
@@ -150,7 +156,8 @@ impl MusicAutomationEngine {
             let pacing = PacingLevel::from_cuts_per_minute(cuts_per_minute);
 
             // Find high-energy moments (short cuts in succession)
-            let key_moments: Vec<f64> = scene_result.scenes
+            let key_moments: Vec<f64> = scene_result
+                .scenes
                 .windows(3)
                 .filter(|w| {
                     // Look for rapid cuts
@@ -165,7 +172,9 @@ impl MusicAutomationEngine {
         };
 
         // Analyze color temperature
-        let color_temperature = self.analyze_color_temperature(video_path).await
+        let color_temperature = self
+            .analyze_color_temperature(video_path)
+            .await
             .unwrap_or(ColorTemperature::Neutral);
 
         // Determine visual moods based on analysis
@@ -307,34 +316,74 @@ impl MusicAutomationEngine {
         for category in categories {
             match category.to_lowercase().as_str() {
                 "fashion" | "lifestyle" | "beauty" => {
-                    genres.extend(vec![MusicGenre::Electronic, MusicGenre::Pop, MusicGenre::House]);
+                    genres.extend(vec![
+                        MusicGenre::Electronic,
+                        MusicGenre::Pop,
+                        MusicGenre::House,
+                    ]);
                 }
                 "fitness" | "sports" | "workout" => {
-                    genres.extend(vec![MusicGenre::Electronic, MusicGenre::HipHop, MusicGenre::Trap]);
+                    genres.extend(vec![
+                        MusicGenre::Electronic,
+                        MusicGenre::HipHop,
+                        MusicGenre::Trap,
+                    ]);
                 }
                 "corporate" | "business" | "tech" => {
-                    genres.extend(vec![MusicGenre::Electronic, MusicGenre::Ambient, MusicGenre::Pop]);
+                    genres.extend(vec![
+                        MusicGenre::Electronic,
+                        MusicGenre::Ambient,
+                        MusicGenre::Pop,
+                    ]);
                 }
                 "travel" | "nature" | "documentary" => {
-                    genres.extend(vec![MusicGenre::Acoustic, MusicGenre::World, MusicGenre::Orchestral]);
+                    genres.extend(vec![
+                        MusicGenre::Acoustic,
+                        MusicGenre::World,
+                        MusicGenre::Orchestral,
+                    ]);
                 }
                 "food" | "cooking" | "restaurant" => {
-                    genres.extend(vec![MusicGenre::Jazz, MusicGenre::Acoustic, MusicGenre::LoFi]);
+                    genres.extend(vec![
+                        MusicGenre::Jazz,
+                        MusicGenre::Acoustic,
+                        MusicGenre::LoFi,
+                    ]);
                 }
                 "wedding" | "romantic" | "love" => {
-                    genres.extend(vec![MusicGenre::Acoustic, MusicGenre::Classical, MusicGenre::Indie]);
+                    genres.extend(vec![
+                        MusicGenre::Acoustic,
+                        MusicGenre::Classical,
+                        MusicGenre::Indie,
+                    ]);
                 }
                 "automotive" | "car" | "motorsport" | "racing" => {
-                    genres.extend(vec![MusicGenre::Electronic, MusicGenre::Rock, MusicGenre::Trap]);
+                    genres.extend(vec![
+                        MusicGenre::Electronic,
+                        MusicGenre::Rock,
+                        MusicGenre::Trap,
+                    ]);
                 }
                 "concert" | "festival" | "live music" => {
-                    genres.extend(vec![MusicGenre::Electronic, MusicGenre::House, MusicGenre::Pop]);
+                    genres.extend(vec![
+                        MusicGenre::Electronic,
+                        MusicGenre::House,
+                        MusicGenre::Pop,
+                    ]);
                 }
                 "gala" | "formal" | "awards" => {
-                    genres.extend(vec![MusicGenre::Orchestral, MusicGenre::Electronic, MusicGenre::Pop]);
+                    genres.extend(vec![
+                        MusicGenre::Orchestral,
+                        MusicGenre::Electronic,
+                        MusicGenre::Pop,
+                    ]);
                 }
                 "parade" | "celebration" | "carnival" => {
-                    genres.extend(vec![MusicGenre::Pop, MusicGenre::Funk, MusicGenre::Electronic]);
+                    genres.extend(vec![
+                        MusicGenre::Pop,
+                        MusicGenre::Funk,
+                        MusicGenre::Electronic,
+                    ]);
                 }
                 _ => {}
             }
@@ -379,7 +428,8 @@ impl MusicAutomationEngine {
     ) -> String {
         let search_url = criteria.to_motionarray_url();
 
-        format!(r#"
+        format!(
+            r#"
 // MotionArray Music Selection Automation Script
 // Generated by Editron
 // Platform: Playwright/Puppeteer compatible
@@ -472,7 +522,8 @@ selectMusic().catch(console.error);
     ) -> String {
         let search_url = criteria.to_motionarray_url();
 
-        format!(r#"#!/usr/bin/env python3
+        format!(
+            r#"#!/usr/bin/env python3
 """
 MotionArray Music Selection Automation
 Generated by Editron
@@ -634,7 +685,8 @@ if __name__ == "__main__":
     ) -> String {
         let search_url = criteria.to_motionarray_url();
 
-        format!(r#"#!/bin/bash
+        format!(
+            r#"#!/bin/bash
 # MotionArray Music Selection Helper
 # Generated by Editron
 
@@ -725,9 +777,7 @@ fi
 
         // Generate automation script
         let automation_script = Some(match config.platform {
-            MusicPlatform::MotionArray => {
-                self.generate_python_script(&search_criteria, &config)
-            }
+            MusicPlatform::MotionArray => self.generate_python_script(&search_criteria, &config),
             _ => self.generate_shell_script(&search_criteria, &config.download_path),
         });
 
@@ -743,15 +793,20 @@ fi
     // Helper methods
 
     async fn get_video_duration(&self, path: &Path) -> EditronResult<f64> {
-        let ffprobe = self.ffmpeg_path.parent()
+        let ffprobe = self
+            .ffmpeg_path
+            .parent()
             .map(|p| p.join("ffprobe"))
             .unwrap_or_else(|| PathBuf::from("ffprobe"));
 
         let output = Command::new(ffprobe)
             .args([
-                "-v", "quiet",
-                "-show_entries", "format=duration",
-                "-of", "csv=p=0",
+                "-v",
+                "quiet",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "csv=p=0",
                 &path.to_string_lossy(),
             ])
             .output()
@@ -767,9 +822,14 @@ fi
         // Use FFmpeg's mpdecimate filter to detect motion
         let _output = Command::new(&self.ffmpeg_path)
             .args([
-                "-i", &path.to_string_lossy(),
-                "-vf", "mpdecimate,metadata=print:file=-",
-                "-an", "-f", "null", "-",
+                "-i",
+                &path.to_string_lossy(),
+                "-vf",
+                "mpdecimate,metadata=print:file=-",
+                "-an",
+                "-f",
+                "null",
+                "-",
             ])
             .output()
             .await?;
@@ -881,7 +941,9 @@ fi
     }
 
     fn generate_artlist_url(&self, criteria: &MusicSearchCriteria) -> String {
-        let mood_str = criteria.moods.iter()
+        let mood_str = criteria
+            .moods
+            .iter()
             .map(|m| format!("{:?}", m).to_lowercase())
             .collect::<Vec<_>>()
             .join(",");
@@ -905,7 +967,13 @@ mod tests {
 
     #[test]
     fn test_pacing_from_cuts() {
-        assert!(matches!(PacingLevel::from_cuts_per_minute(5.0), PacingLevel::Slow));
-        assert!(matches!(PacingLevel::from_cuts_per_minute(30.0), PacingLevel::Fast));
+        assert!(matches!(
+            PacingLevel::from_cuts_per_minute(5.0),
+            PacingLevel::Slow
+        ));
+        assert!(matches!(
+            PacingLevel::from_cuts_per_minute(30.0),
+            PacingLevel::Fast
+        ));
     }
 }

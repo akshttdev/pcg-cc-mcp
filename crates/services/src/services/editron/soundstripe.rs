@@ -12,11 +12,13 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use ts_rs::TS;
 
-use super::music::{
-    LicenseInfo, LicenseType, MusicGenre, MusicMood, MusicPlatform, MusicSearchCriteria,
-    MusicTrack,
+use super::{
+    EditronError,
+    music::{
+        LicenseInfo, LicenseType, MusicGenre, MusicMood, MusicPlatform, MusicSearchCriteria,
+        MusicTrack,
+    },
 };
-use super::EditronError;
 
 /// Soundstripe API base URL
 const SS_API_BASE: &str = "https://api.soundstripe.com/v1";
@@ -303,11 +305,7 @@ impl SoundstripeClient {
 
         let url = format!("{}/songs", SS_API_BASE);
 
-        let response = self
-            .authed_get(&url)
-            .query(&params)
-            .send()
-            .await?;
+        let response = self.authed_get(&url).query(&params).send().await?;
 
         if response.status() == 401 || response.status() == 403 {
             return Err(SoundstripeError::AuthFailed);
@@ -498,7 +496,8 @@ impl SoundstripeClient {
 
         // Find matching included resource and extract mp3 URL
         for resource in included {
-            if resource.resource_type == "audio_files" && audio_file_ids.contains(&resource.id.as_str())
+            if resource.resource_type == "audio_files"
+                && audio_file_ids.contains(&resource.id.as_str())
             {
                 // Try versions.mp3 first, then versions.wav
                 if let Some(versions) = resource.attributes.get("versions") {

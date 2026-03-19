@@ -56,11 +56,17 @@ impl MediaPipelineService {
         Self::new_with_options(root, None)
     }
 
-    pub fn new_with_database<P: AsRef<Path>>(root: P, db_pool: SqlitePool) -> Result<Self, MediaPipelineError> {
+    pub fn new_with_database<P: AsRef<Path>>(
+        root: P,
+        db_pool: SqlitePool,
+    ) -> Result<Self, MediaPipelineError> {
         Self::new_with_options(root, Some(db_pool))
     }
 
-    fn new_with_options<P: AsRef<Path>>(root: P, db_pool: Option<SqlitePool>) -> Result<Self, MediaPipelineError> {
+    fn new_with_options<P: AsRef<Path>>(
+        root: P,
+        db_pool: Option<SqlitePool>,
+    ) -> Result<Self, MediaPipelineError> {
         let root = root.as_ref().to_path_buf();
         std::fs::create_dir_all(root.join("batches"))?;
         std::fs::create_dir_all(root.join("sessions"))?;
@@ -296,14 +302,19 @@ impl MediaPipelineService {
 
         // Detect Dropbox shared folder links (scl/fo/) — require API
         let is_dropbox_folder = request.source_url.contains("dropbox.com")
-            && (request.source_url.contains("/scl/fo/")
-                || request.source_url.contains("/sh/"));
+            && (request.source_url.contains("/scl/fo/") || request.source_url.contains("/sh/"));
 
         let files = if is_dropbox_folder {
             match std::env::var("DROPBOX_ACCESS_TOKEN") {
                 Ok(token) if !token.is_empty() => {
-                    self.download_dropbox_folder(&token, &request.source_url, &dest_dir, batch_id, request.checksum_required)
-                        .await?
+                    self.download_dropbox_folder(
+                        &token,
+                        &request.source_url,
+                        &dest_dir,
+                        batch_id,
+                        request.checksum_required,
+                    )
+                    .await?
                 }
                 _ => {
                     let err = MediaPipelineError::Io(std::io::Error::new(
@@ -363,7 +374,8 @@ impl MediaPipelineService {
         batch.updated_at = Utc::now();
         batch.last_error = None;
         if let Some(pool) = self.db_pool() {
-            self.persist_media_files(pool, batch.id, &batch.files).await?;
+            self.persist_media_files(pool, batch.id, &batch.files)
+                .await?;
         }
         self.persist_batch(&batch).await?;
 
@@ -387,8 +399,10 @@ impl MediaPipelineService {
     ) -> Result<Vec<MediaAsset>, MediaPipelineError> {
         use serde_json::json;
 
-        let media_extensions = ["mp4", "mov", "mxf", "avi", "mkv", "m4v", "mts", "mpg", "wmv",
-                                 "MP4", "MOV", "MXF", "AVI", "MKV", "M4V", "MTS", "MPG", "WMV"];
+        let media_extensions = [
+            "mp4", "mov", "mxf", "avi", "mkv", "m4v", "mts", "mpg", "wmv", "MP4", "MOV", "MXF",
+            "AVI", "MKV", "M4V", "MTS", "MPG", "WMV",
+        ];
         let auth_header = format!("Bearer {}", access_token);
 
         // If the source_url is a `dropbox://` URI we cannot enumerate files from it — callers
@@ -401,8 +415,8 @@ impl MediaPipelineService {
         // Otherwise, discover files that are already present in dest_dir.
         let mut file_specs: Vec<(String, String)> = Vec::new(); // (dropbox_path, filename)
 
-        let is_real_dropbox_link = shared_link_url.starts_with("https://") &&
-            shared_link_url.contains("dropbox.com");
+        let is_real_dropbox_link =
+            shared_link_url.starts_with("https://") && shared_link_url.contains("dropbox.com");
 
         if is_real_dropbox_link {
             // List the folder contents (non-recursive, top level only)
@@ -454,7 +468,10 @@ impl MediaPipelineService {
                         .unwrap_or("");
 
                     let ext_lower = ext.to_lowercase();
-                    if !media_extensions.iter().any(|e| e.to_lowercase() == ext_lower) {
+                    if !media_extensions
+                        .iter()
+                        .any(|e| e.to_lowercase() == ext_lower)
+                    {
                         tracing::debug!("[DROPBOX] Skipping non-media file: {}", filename);
                         continue;
                     }
@@ -492,12 +509,12 @@ impl MediaPipelineService {
                     .file_name()
                     .map(|f| f.to_string_lossy().to_string())
                     .unwrap_or_default();
-                let ext = path
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .unwrap_or("");
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
                 let ext_lower = ext.to_lowercase();
-                if !media_extensions.iter().any(|e| e.to_lowercase() == ext_lower) {
+                if !media_extensions
+                    .iter()
+                    .any(|e| e.to_lowercase() == ext_lower)
+                {
                     continue;
                 }
                 // Skip if we already have this file in the download list
@@ -541,7 +558,11 @@ impl MediaPipelineService {
                 }
             }
 
-            tracing::info!("[DROPBOX] Downloading: {} from path {}", filename, dropbox_path);
+            tracing::info!(
+                "[DROPBOX] Downloading: {} from path {}",
+                filename,
+                dropbox_path
+            );
 
             // Use sharing/get_shared_link_file with the full path within the shared folder
             let api_arg = serde_json::to_string(&json!({
@@ -561,7 +582,12 @@ impl MediaPipelineService {
             if !dl_response.status().is_success() {
                 let status = dl_response.status();
                 let body = dl_response.text().await.unwrap_or_default();
-                tracing::warn!("[DROPBOX] Failed to download {}: {} — {}", filename, status, body);
+                tracing::warn!(
+                    "[DROPBOX] Failed to download {}: {} — {}",
+                    filename,
+                    status,
+                    body
+                );
                 continue;
             }
 
@@ -603,7 +629,10 @@ impl MediaPipelineService {
             )));
         }
 
-        tracing::info!("[DROPBOX] Ingested {} media files from shared folder", assets.len());
+        tracing::info!(
+            "[DROPBOX] Ingested {} media files from shared folder",
+            assets.len()
+        );
         Ok(assets)
     }
 
@@ -691,7 +720,11 @@ impl MediaPipelineService {
                             .await
                             .map(|_| ())
                             .unwrap_or_else(|e| {
-                                tracing::warn!("Copy (symlink fallback) failed for {}: {}", filename, e)
+                                tracing::warn!(
+                                    "Copy (symlink fallback) failed for {}: {}",
+                                    filename,
+                                    e
+                                )
                             });
                     }
                 }
@@ -899,11 +932,7 @@ impl MediaPipelineService {
         batch: &MediaBatch,
     ) -> Result<(), MediaPipelineError> {
         let file_count = batch.files.len() as i64;
-        let total_size: i64 = batch
-            .files
-            .iter()
-            .map(|file| file.size_bytes as i64)
-            .sum();
+        let total_size: i64 = batch.files.iter().map(|file| file.size_bytes as i64).sum();
         let relative_paths: Vec<&str> = batch
             .files
             .iter()

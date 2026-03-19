@@ -15,12 +15,15 @@
 //!   SOVEREIGN_STACK_DROPBOX_TEAM     - team subdir (default: "Sirak Studios Team")
 //!   SOVEREIGN_STACK_SCAN_INTERVAL    - seconds between scans (default: 300)
 
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    time::{Duration, SystemTime},
+};
+
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
 use tokio::time;
 use tokio_util::sync::CancellationToken;
 
@@ -167,8 +170,7 @@ impl Manifest {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("Failed to create manifest dir: {:?}", parent))?;
         }
-        let json = serde_json::to_string_pretty(self)
-            .context("Failed to serialize manifest")?;
+        let json = serde_json::to_string_pretty(self).context("Failed to serialize manifest")?;
         std::fs::write(path, json)
             .with_context(|| format!("Failed to write manifest: {:?}", path))?;
         Ok(())
@@ -189,10 +191,7 @@ fn should_skip(name: &str) -> bool {
     }
 
     // System/cache files
-    matches!(
-        lower.as_str(),
-        "desktop.ini" | "thumbs.db" | ".ds_store"
-    )
+    matches!(lower.as_str(), "desktop.ini" | "thumbs.db" | ".ds_store")
 }
 
 /// Directory names to skip
@@ -306,7 +305,12 @@ impl SovereignStackService {
         let dest_personal = self.config.sovereign_personal();
         if source_personal.exists() {
             let (copied, skipped) = self
-                .scrape_directory(&source_personal, &dest_personal, "sovereign_personal", &mut manifest)
+                .scrape_directory(
+                    &source_personal,
+                    &dest_personal,
+                    "sovereign_personal",
+                    &mut manifest,
+                )
                 .await?;
             total_copied += copied;
             total_skipped += skipped;
@@ -459,12 +463,11 @@ impl SovereignStackService {
                         Ok(_) => {
                             // Compute SHA-256 hash (on blocking thread to avoid starving async runtime)
                             let path_for_hash = path.clone();
-                            let hash = tokio::task::spawn_blocking(move || {
-                                compute_sha256(&path_for_hash)
-                            })
-                            .await
-                            .unwrap_or_else(|_| Ok("hash_error".to_string()))
-                            .unwrap_or_else(|_| "hash_error".to_string());
+                            let hash =
+                                tokio::task::spawn_blocking(move || compute_sha256(&path_for_hash))
+                                    .await
+                                    .unwrap_or_else(|_| Ok("hash_error".to_string()))
+                                    .unwrap_or_else(|_| "hash_error".to_string());
 
                             manifest.files.insert(
                                 manifest_key,

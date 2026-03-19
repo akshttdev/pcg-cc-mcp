@@ -57,7 +57,10 @@ impl PcgRepl {
         project: Option<String>,
         resume_session: Option<String>,
     ) -> Result<Self> {
-        let output = OutputHandler::new(config.display.show_cost_bar, config.display.markdown_rendering);
+        let output = OutputHandler::new(
+            config.display.show_cost_bar,
+            config.display.markdown_rendering,
+        );
 
         let editor = Editor::new()?;
 
@@ -78,9 +81,8 @@ impl PcgRepl {
         // If resuming, parse session ID
         if let Some(session_id) = resume_session {
             if let Ok(id) = Uuid::parse_str(&session_id) {
-                let resumed = tokio::runtime::Handle::current().block_on(async {
-                    DevSession::resume(&repl.api, id).await
-                });
+                let resumed = tokio::runtime::Handle::current()
+                    .block_on(async { DevSession::resume(&repl.api, id).await });
                 match resumed {
                     Ok(session) => repl.session = Some(session),
                     Err(e) => panic!("Failed to resume session {}: {}", session_id, e),
@@ -105,7 +107,11 @@ impl PcgRepl {
         // Display welcome banner
         self.output.print_banner(
             self.project_name.as_deref(),
-            &self.session.as_ref().map(|s| s.id.to_string()).unwrap_or_default(),
+            &self
+                .session
+                .as_ref()
+                .map(|s| s.id.to_string())
+                .unwrap_or_default(),
         );
 
         // Main REPL loop
@@ -144,7 +150,8 @@ impl PcgRepl {
                 }
                 Err(ReadlineError::Interrupted) => {
                     println!();
-                    self.output.print_info("Use /exit to quit or /session complete to save session.");
+                    self.output
+                        .print_info("Use /exit to quit or /session complete to save session.");
                     continue;
                 }
                 Err(ReadlineError::Eof) => {
@@ -165,7 +172,9 @@ impl PcgRepl {
                     "Session saved ({} messages). View with: orcha history",
                     self.conversation_log.len()
                 )),
-                Err(e) => self.output.print_warning(&format!("Could not save session log: {}", e)),
+                Err(e) => self
+                    .output
+                    .print_warning(&format!("Could not save session log: {}", e)),
             }
         }
 
@@ -187,12 +196,16 @@ impl PcgRepl {
                     self.project_name = Some(project.name);
                 }
                 Ok(None) => {
-                    self.output
-                        .print_warning(&format!("Project '{}' not found. Running without project context.", name));
+                    self.output.print_warning(&format!(
+                        "Project '{}' not found. Running without project context.",
+                        name
+                    ));
                 }
                 Err(e) => {
-                    self.output
-                        .print_warning(&format!("Could not load project: {}. Running without project context.", e));
+                    self.output.print_warning(&format!(
+                        "Could not load project: {}. Running without project context.",
+                        e
+                    ));
                 }
             }
         }
@@ -207,7 +220,10 @@ impl PcgRepl {
         }
 
         if let Some(project_id) = self.project_id {
-            let title = format!("Development Session - {}", chrono::Local::now().format("%Y-%m-%d %H:%M"));
+            let title = format!(
+                "Development Session - {}",
+                chrono::Local::now().format("%Y-%m-%d %H:%M")
+            );
 
             self.session = Some(
                 DevSession::start(
@@ -315,7 +331,10 @@ impl PcgRepl {
             }
 
             _ => {
-                self.output.print_error(&format!("Unknown command: {}. Use /help for available commands.", command));
+                self.output.print_error(&format!(
+                    "Unknown command: {}. Use /help for available commands.",
+                    command
+                ));
             }
         }
 
@@ -330,13 +349,25 @@ impl PcgRepl {
         println!();
 
         println!("{}", "Session Commands:".bright_cyan());
-        println!("  {}         Show current session info", "/session".bright_yellow());
-        println!("  {}    Pause current session", "/session pause".bright_yellow());
-        println!("  {} Complete session and generate report", "/session complete".bright_yellow());
+        println!(
+            "  {}         Show current session info",
+            "/session".bright_yellow()
+        );
+        println!(
+            "  {}    Pause current session",
+            "/session pause".bright_yellow()
+        );
+        println!(
+            "  {} Complete session and generate report",
+            "/session complete".bright_yellow()
+        );
         println!();
 
         println!("{}", "Task Commands:".bright_cyan());
-        println!("  {}            List tasks in current project", "/tasks".bright_yellow());
+        println!(
+            "  {}            List tasks in current project",
+            "/tasks".bright_yellow()
+        );
         println!(
             "  {} Create a new task",
             "/task create <title>".bright_yellow()
@@ -352,7 +383,10 @@ impl PcgRepl {
         println!();
 
         println!("{}", "Agent Commands:".bright_cyan());
-        println!("  {}          List available agents", "/agent list".bright_yellow());
+        println!(
+            "  {}          List available agents",
+            "/agent list".bright_yellow()
+        );
         println!(
             "  {}  Switch primary agent",
             "/agent switch <name>".bright_yellow()
@@ -360,10 +394,22 @@ impl PcgRepl {
         println!();
 
         println!("{}", "Model Commands:".bright_cyan());
-        println!("  {}            Show current model/provider", "/model".bright_yellow());
-        println!("  {}   Switch to local Ollama LLM", "/model ollama".bright_yellow());
-        println!("  {}  Switch to OpenAI GPT-4o", "/model openai".bright_yellow());
-        println!("  {} Switch to Anthropic Claude", "/model anthropic".bright_yellow());
+        println!(
+            "  {}            Show current model/provider",
+            "/model".bright_yellow()
+        );
+        println!(
+            "  {}   Switch to local Ollama LLM",
+            "/model ollama".bright_yellow()
+        );
+        println!(
+            "  {}  Switch to OpenAI GPT-4o",
+            "/model openai".bright_yellow()
+        );
+        println!(
+            "  {} Switch to Anthropic Claude",
+            "/model anthropic".bright_yellow()
+        );
         println!(
             "  {}  Use a specific model",
             "/model set <model>".bright_yellow()
@@ -371,8 +417,14 @@ impl PcgRepl {
         println!();
 
         println!("{}", "Project Commands:".bright_cyan());
-        println!("  {}           Show current project", "/project".bright_yellow());
-        println!("  {}      List all projects", "/project list".bright_yellow());
+        println!(
+            "  {}           Show current project",
+            "/project".bright_yellow()
+        );
+        println!(
+            "  {}      List all projects",
+            "/project list".bright_yellow()
+        );
         println!(
             "  {} Create a new project",
             "/project create <name>".bright_yellow()
@@ -384,12 +436,21 @@ impl PcgRepl {
         println!();
 
         println!("{}", "Board Commands:".bright_cyan());
-        println!("  {}           Task board for current project", "/boards".bright_yellow());
-        println!("  {}          Show recent session history", "/history".bright_yellow());
+        println!(
+            "  {}           Task board for current project",
+            "/boards".bright_yellow()
+        );
+        println!(
+            "  {}          Show recent session history",
+            "/history".bright_yellow()
+        );
         println!();
 
         println!("{}", "Other Commands:".bright_cyan());
-        println!("  {}             Show cost breakdown", "/cost".bright_yellow());
+        println!(
+            "  {}             Show cost breakdown",
+            "/cost".bright_yellow()
+        );
         println!("  {}            Clear screen", "/clear".bright_yellow());
         println!("  {}             Show this help", "/help".bright_yellow());
         println!("  {}             Exit the CLI", "/exit".bright_yellow());
@@ -399,7 +460,8 @@ impl PcgRepl {
     /// Handle task subcommands
     async fn handle_task_command(&mut self, args: &[&str]) -> Result<()> {
         if args.is_empty() {
-            self.output.print_error("Usage: /task <create|complete|link> [args]");
+            self.output
+                .print_error("Usage: /task <create|complete|link> [args]");
             return Ok(());
         }
 
@@ -421,7 +483,11 @@ impl PcgRepl {
 
                     match self.api.create_task(project_id, None, &request).await {
                         Ok(task) => {
-                            self.output.print_task("created", &task.title, Some(&task.id.to_string()));
+                            self.output.print_task(
+                                "created",
+                                &task.title,
+                                Some(&task.id.to_string()),
+                            );
 
                             // Record in session
                             if let Some(session) = &self.session {
@@ -429,11 +495,13 @@ impl PcgRepl {
                             }
                         }
                         Err(e) => {
-                            self.output.print_error(&format!("Failed to create task: {}", e));
+                            self.output
+                                .print_error(&format!("Failed to create task: {}", e));
                         }
                     }
                 } else {
-                    self.output.print_error("No project selected. Use /project <name> first.");
+                    self.output
+                        .print_error("No project selected. Use /project <name> first.");
                 }
             }
 
@@ -453,7 +521,11 @@ impl PcgRepl {
 
                     match self.api.update_task(id, &update).await {
                         Ok(task) => {
-                            self.output.print_task("completed", &task.title, Some(&task.id.to_string()));
+                            self.output.print_task(
+                                "completed",
+                                &task.title,
+                                Some(&task.id.to_string()),
+                            );
 
                             // Record in session
                             if let Some(session) = &self.session {
@@ -461,7 +533,8 @@ impl PcgRepl {
                             }
                         }
                         Err(e) => {
-                            self.output.print_error(&format!("Failed to complete task: {}", e));
+                            self.output
+                                .print_error(&format!("Failed to complete task: {}", e));
                         }
                     }
                 } else {
@@ -470,11 +543,14 @@ impl PcgRepl {
             }
 
             "link" => {
-                self.output.print_info("Task linking will be available once DevelopmentSession is fully implemented.");
+                self.output.print_info(
+                    "Task linking will be available once DevelopmentSession is fully implemented.",
+                );
             }
 
             _ => {
-                self.output.print_error("Unknown task command. Use: create, complete, link");
+                self.output
+                    .print_error("Unknown task command. Use: create, complete, link");
             }
         }
 
@@ -510,7 +586,8 @@ impl PcgRepl {
 
             self.output.print_tasks_table(&task_data);
         } else {
-            self.output.print_error("No project selected. Use /project <name> first.");
+            self.output
+                .print_error("No project selected. Use /project <name> first.");
         }
 
         Ok(())
@@ -548,11 +625,13 @@ impl PcgRepl {
 
                 let name = args[1];
                 self.config.agents.default = name.to_string();
-                self.output.print_success(&format!("Switched to agent: {}", name));
+                self.output
+                    .print_success(&format!("Switched to agent: {}", name));
             }
 
             _ => {
-                self.output.print_error("Unknown agent command. Use: list, switch");
+                self.output
+                    .print_error("Unknown agent command. Use: list, switch");
             }
         }
 
@@ -564,7 +643,10 @@ impl PcgRepl {
         if args.is_empty() {
             // Show current model info
             let model = self.current_model.as_deref().unwrap_or("(agent default)");
-            let provider = self.current_provider.as_deref().unwrap_or("(agent default)");
+            let provider = self
+                .current_provider
+                .as_deref()
+                .unwrap_or("(agent default)");
 
             self.output.print_header("Model Configuration");
             println!();
@@ -572,9 +654,18 @@ impl PcgRepl {
             println!("  {} {}", "Model:".dimmed(), model.bright_cyan());
             println!();
             println!("{}", "Available Providers:".bright_white());
-            println!("  {} - Local LLM via Ollama (free, private)", "ollama".bright_green());
-            println!("  {} - OpenAI GPT models (requires API key)", "openai".bright_yellow());
-            println!("  {} - Anthropic Claude models (requires API key)", "anthropic".bright_yellow());
+            println!(
+                "  {} - Local LLM via Ollama (free, private)",
+                "ollama".bright_green()
+            );
+            println!(
+                "  {} - OpenAI GPT models (requires API key)",
+                "openai".bright_yellow()
+            );
+            println!(
+                "  {} - Anthropic Claude models (requires API key)",
+                "anthropic".bright_yellow()
+            );
             println!();
             println!("{}", "Usage:".dimmed());
             println!("  /model ollama              Switch to local Ollama");
@@ -589,7 +680,8 @@ impl PcgRepl {
             "ollama" | "local" => {
                 self.current_provider = Some("ollama".to_string());
                 self.current_model = Some("llama3.2:3b".to_string());
-                self.output.print_success("Switched to Ollama (local) with llama3.2:3b");
+                self.output
+                    .print_success("Switched to Ollama (local) with llama3.2:3b");
             }
             "openai" | "gpt" => {
                 self.current_provider = Some("openai".to_string());
@@ -599,7 +691,8 @@ impl PcgRepl {
             "anthropic" | "claude" => {
                 self.current_provider = Some("anthropic".to_string());
                 self.current_model = Some("claude-sonnet-4".to_string());
-                self.output.print_success("Switched to Anthropic with claude-sonnet-4");
+                self.output
+                    .print_success("Switched to Anthropic with claude-sonnet-4");
             }
             "set" => {
                 if args.len() < 2 {
@@ -610,22 +703,29 @@ impl PcgRepl {
                 // Infer provider from model name
                 let provider = if model.starts_with("claude") {
                     "anthropic"
-                } else if model.starts_with("gpt-4") || model.starts_with("gpt-3") || model.starts_with("o1") {
+                } else if model.starts_with("gpt-4")
+                    || model.starts_with("gpt-3")
+                    || model.starts_with("o1")
+                {
                     "openai"
                 } else {
                     "ollama"
                 };
                 self.current_model = Some(model.to_string());
                 self.current_provider = Some(provider.to_string());
-                self.output.print_success(&format!("Model set to {} ({})", model, provider));
+                self.output
+                    .print_success(&format!("Model set to {} ({})", model, provider));
             }
             "reset" => {
                 self.current_model = None;
                 self.current_provider = None;
-                self.output.print_success("Reset to agent default model/provider");
+                self.output
+                    .print_success("Reset to agent default model/provider");
             }
             _ => {
-                self.output.print_error("Unknown model command. Use: ollama, openai, anthropic, set <model>, reset");
+                self.output.print_error(
+                    "Unknown model command. Use: ollama, openai, anthropic, set <model>, reset",
+                );
             }
         }
 
@@ -651,11 +751,7 @@ impl PcgRepl {
                 format_num(metrics.total_vibe_cost),
                 metrics.total_vibe_cost as f64 * 0.01
             );
-            println!(
-                "  {} {}",
-                "Duration:".dimmed(),
-                session.duration_string()
-            );
+            println!("  {} {}", "Duration:".dimmed(), session.duration_string());
             println!(
                 "  {} {} created, {} completed",
                 "Tasks:".dimmed(),
@@ -678,7 +774,11 @@ impl PcgRepl {
                 println!();
                 println!("  {} {}", "ID:".dimmed(), &session.id.to_string()[..8]);
                 println!("  {} {}", "Project:".dimmed(), session.project_name);
-                println!("  {} {}", "Started:".dimmed(), session.started_at.format("%Y-%m-%d %H:%M"));
+                println!(
+                    "  {} {}",
+                    "Started:".dimmed(),
+                    session.started_at.format("%Y-%m-%d %H:%M")
+                );
                 println!("  {} {}", "Duration:".dimmed(), session.duration_string());
 
                 if let Some(branch) = &session.git_branch {
@@ -690,8 +790,16 @@ impl PcgRepl {
 
                 let metrics = session.get_metrics();
                 println!();
-                println!("  {} {}", "Tokens:".dimmed(), format_num(metrics.total_tokens));
-                println!("  {} {}", "VIBE:".dimmed(), format_num(metrics.total_vibe_cost));
+                println!(
+                    "  {} {}",
+                    "Tokens:".dimmed(),
+                    format_num(metrics.total_tokens)
+                );
+                println!(
+                    "  {} {}",
+                    "VIBE:".dimmed(),
+                    format_num(metrics.total_vibe_cost)
+                );
                 println!(
                     "  {} {} created, {} completed",
                     "Tasks:".dimmed(),
@@ -733,11 +841,13 @@ impl PcgRepl {
             }
 
             "pause" => {
-                self.output.print_info("Session paused. Resume later with: orcha --resume <session-id>");
+                self.output
+                    .print_info("Session paused. Resume later with: orcha --resume <session-id>");
             }
 
             _ => {
-                self.output.print_error("Unknown session command. Use: complete, pause");
+                self.output
+                    .print_error("Unknown session command. Use: complete, pause");
             }
         }
 
@@ -755,7 +865,8 @@ impl PcgRepl {
                 }
                 println!();
             } else {
-                self.output.print_info("No project selected. Use /project <name> to select one.");
+                self.output
+                    .print_info("No project selected. Use /project <name> to select one.");
             }
             return Ok(());
         }
@@ -772,11 +883,15 @@ impl PcgRepl {
                 let git_path = self.work_dir.join(&name.replace(' ', "-").to_lowercase());
                 let git_path_str = git_path.to_string_lossy().to_string();
 
-                self.output.print_info(&format!("Creating project '{}' at {}...", name, git_path_str));
+                self.output.print_info(&format!(
+                    "Creating project '{}' at {}...",
+                    name, git_path_str
+                ));
 
                 match self.api.create_project(&name, &git_path_str, None).await {
                     Ok(project) => {
-                        self.output.print_success(&format!("Project '{}' created!", project.name));
+                        self.output
+                            .print_success(&format!("Project '{}' created!", project.name));
                         self.project_id = Some(project.id);
                         self.project_name = Some(project.name);
 
@@ -785,7 +900,8 @@ impl PcgRepl {
                         self.init_session().await?;
                     }
                     Err(e) => {
-                        self.output.print_error(&format!("Failed to create project: {}", e));
+                        self.output
+                            .print_error(&format!("Failed to create project: {}", e));
                     }
                 }
             }
@@ -799,7 +915,11 @@ impl PcgRepl {
 
                 self.output.print_header("Projects");
                 for project in &projects {
-                    let marker = if self.project_id == Some(project.id) { " (active)" } else { "" };
+                    let marker = if self.project_id == Some(project.id) {
+                        " (active)"
+                    } else {
+                        ""
+                    };
                     println!(
                         "  {} {}{}",
                         project.name.bright_cyan(),
@@ -816,17 +936,22 @@ impl PcgRepl {
                     Ok(Some(project)) => {
                         self.project_id = Some(project.id);
                         self.project_name = Some(project.name.clone());
-                        self.output.print_success(&format!("Switched to project: {}", project.name));
+                        self.output
+                            .print_success(&format!("Switched to project: {}", project.name));
 
                         // Start new session for this project
                         self.session = None;
                         self.init_session().await?;
                     }
                     Ok(None) => {
-                        self.output.print_error(&format!("Project '{}' not found. Use /project create {} to create it.", name, name));
+                        self.output.print_error(&format!(
+                            "Project '{}' not found. Use /project create {} to create it.",
+                            name, name
+                        ));
                     }
                     Err(e) => {
-                        self.output.print_error(&format!("Error finding project: {}", e));
+                        self.output
+                            .print_error(&format!("Error finding project: {}", e));
                     }
                 }
             }
@@ -852,18 +977,14 @@ impl PcgRepl {
                 let entry = (t.id.to_string()[..8].to_string(), t.title.clone());
                 match t.status.as_str() {
                     "inprogress" | "in-progress" | "in_progress" => inprogress.push(entry),
-                    "done" | "completed"                         => done.push(entry),
-                    _                                            => todo.push(entry),
+                    "done" | "completed" => done.push(entry),
+                    _ => todo.push(entry),
                 }
             }
 
             self.output.print_task_board(
                 &project_name,
-                &[
-                    ("TODO",        todo),
-                    ("IN PROGRESS", inprogress),
-                    ("DONE",        done),
-                ],
+                &[("TODO", todo), ("IN PROGRESS", inprogress), ("DONE", done)],
             );
         } else {
             // ── Platform-wide overview ──
@@ -877,7 +998,10 @@ impl PcgRepl {
 
             // Fetch tasks for all projects in parallel (cap at 20 to keep it fast)
             let active_projects: Vec<_> = projects.iter().take(20).collect();
-            self.output.print_info(&format!("Loading tasks for {} projects…", active_projects.len()));
+            self.output.print_info(&format!(
+                "Loading tasks for {} projects…",
+                active_projects.len()
+            ));
 
             let task_futures: Vec<_> = active_projects
                 .iter()
@@ -887,19 +1011,25 @@ impl PcgRepl {
             let task_results = futures::future::join_all(task_futures).await;
 
             println!();
-            println!("{}", "▶ Platform Board — All Projects".bright_yellow().bold());
+            println!(
+                "{}",
+                "▶ Platform Board — All Projects".bright_yellow().bold()
+            );
             println!("{}", "─".repeat(80).dimmed());
             println!();
             println!(
                 "{}",
-                format!("{:<32} {:>6} {:>12} {:>6}", "Project", "TODO", "IN PROGRESS", "DONE")
-                    .bright_white()
-                    .bold()
+                format!(
+                    "{:<32} {:>6} {:>12} {:>6}",
+                    "Project", "TODO", "IN PROGRESS", "DONE"
+                )
+                .bright_white()
+                .bold()
             );
             println!("{}", "─".repeat(60).dimmed());
 
             let mut total_todo = 0usize;
-            let mut total_ip   = 0usize;
+            let mut total_ip = 0usize;
             let mut total_done = 0usize;
 
             for (project, tasks_result) in active_projects.iter().zip(task_results.iter()) {
@@ -908,14 +1038,35 @@ impl PcgRepl {
                     Err(_) => continue,
                 };
 
-                let todo  = tasks.iter().filter(|t| !matches!(t.status.as_str(), "inprogress"|"in-progress"|"in_progress"|"done"|"completed")).count();
-                let ip    = tasks.iter().filter(|t|  matches!(t.status.as_str(), "inprogress"|"in-progress"|"in_progress")).count();
-                let done  = tasks.iter().filter(|t|  matches!(t.status.as_str(), "done"|"completed")).count();
+                let todo = tasks
+                    .iter()
+                    .filter(|t| {
+                        !matches!(
+                            t.status.as_str(),
+                            "inprogress" | "in-progress" | "in_progress" | "done" | "completed"
+                        )
+                    })
+                    .count();
+                let ip = tasks
+                    .iter()
+                    .filter(|t| {
+                        matches!(
+                            t.status.as_str(),
+                            "inprogress" | "in-progress" | "in_progress"
+                        )
+                    })
+                    .count();
+                let done = tasks
+                    .iter()
+                    .filter(|t| matches!(t.status.as_str(), "done" | "completed"))
+                    .count();
 
-                if tasks.is_empty() { continue; }
+                if tasks.is_empty() {
+                    continue;
+                }
 
                 total_todo += todo;
-                total_ip   += ip;
+                total_ip += ip;
                 total_done += done;
 
                 let name = if project.name.len() > 30 {
@@ -924,14 +1075,26 @@ impl PcgRepl {
                     project.name.clone()
                 };
 
-                let ip_display = if ip > 0 { ip.to_string().bright_blue().to_string() } else { ip.to_string() };
+                let ip_display = if ip > 0 {
+                    ip.to_string().bright_blue().to_string()
+                } else {
+                    ip.to_string()
+                };
 
                 println!(
                     "{:<32} {:>6} {:>12} {:>6}",
                     name.bright_white(),
-                    if todo > 0 { todo.to_string().bright_yellow().to_string() } else { todo.to_string() },
+                    if todo > 0 {
+                        todo.to_string().bright_yellow().to_string()
+                    } else {
+                        todo.to_string()
+                    },
                     ip_display,
-                    if done > 0 { done.to_string().bright_green().to_string() } else { done.to_string() },
+                    if done > 0 {
+                        done.to_string().bright_green().to_string()
+                    } else {
+                        done.to_string()
+                    },
                 );
             }
 
@@ -944,7 +1107,10 @@ impl PcgRepl {
                 total_done.to_string().bright_green().bold(),
             );
             println!();
-            println!("{}", "Tip: /project <name> then /boards for a full kanban view".dimmed());
+            println!(
+                "{}",
+                "Tip: /project <name> then /boards for a full kanban view".dimmed()
+            );
             println!();
         }
 
@@ -958,7 +1124,8 @@ impl PcgRepl {
         let sessions = ConversationLog::list_saved(20);
 
         if sessions.is_empty() {
-            self.output.print_info("No sessions saved yet. Sessions are saved when you exit orcha.");
+            self.output
+                .print_info("No sessions saved yet. Sessions are saved when you exit orcha.");
             return Ok(());
         }
 
@@ -966,9 +1133,12 @@ impl PcgRepl {
         println!();
         println!(
             "{}",
-            format!("{:<20} {:<24} {:>8} {:>7}", "Date", "Project", "Messages", "Tokens")
-                .bright_white()
-                .bold()
+            format!(
+                "{:<20} {:<24} {:>8} {:>7}",
+                "Date", "Project", "Messages", "Tokens"
+            )
+            .bright_white()
+            .bold()
         );
         println!("{}", "─".repeat(65).dimmed());
 
@@ -1005,12 +1175,23 @@ impl PcgRepl {
         if self.config.session.auto_create_tasks {
             // Simple heuristic: if input looks like a task request, create a task
             let task_indicators = [
-                "add", "implement", "create", "build", "fix", "update", "refactor",
-                "remove", "delete", "change", "modify",
+                "add",
+                "implement",
+                "create",
+                "build",
+                "fix",
+                "update",
+                "refactor",
+                "remove",
+                "delete",
+                "change",
+                "modify",
             ];
 
             let input_lower = input.to_lowercase();
-            let is_task_request = task_indicators.iter().any(|ind| input_lower.starts_with(ind));
+            let is_task_request = task_indicators
+                .iter()
+                .any(|ind| input_lower.starts_with(ind));
 
             if is_task_request {
                 if let Some(project_id) = self.project_id {
@@ -1021,7 +1202,8 @@ impl PcgRepl {
                     };
 
                     if let Ok(task) = self.api.create_task(project_id, None, &request).await {
-                        self.output.print_task("created", &task.title, Some(&task.id.to_string()));
+                        self.output
+                            .print_task("created", &task.title, Some(&task.id.to_string()));
 
                         if let Some(session) = &self.session {
                             session.record_task_created(task.id);
@@ -1055,9 +1237,14 @@ impl PcgRepl {
 
         if agent_name == "topsi" {
             // Topsi has a dedicated high-level endpoint
-            match self.api.chat_with_topsi(input, &session_id, self.project_id, Some(dir_context)).await {
+            match self
+                .api
+                .chat_with_topsi(input, &session_id, self.project_id, Some(dir_context))
+                .await
+            {
                 Ok(response) => {
-                    let tokens = response.input_tokens.unwrap_or(0) + response.output_tokens.unwrap_or(0);
+                    let tokens =
+                        response.input_tokens.unwrap_or(0) + response.output_tokens.unwrap_or(0);
 
                     // Show tool calls inline (Claude Code-style)
                     if !response.tool_calls.is_empty() {
@@ -1113,14 +1300,16 @@ impl PcgRepl {
                 .await
             {
                 Ok(response) => {
-                    let tokens = response.input_tokens.unwrap_or(0) + response.output_tokens.unwrap_or(0);
+                    let tokens =
+                        response.input_tokens.unwrap_or(0) + response.output_tokens.unwrap_or(0);
 
                     if let Some(session) = &self.session {
                         let vibe = (tokens as f64 * 0.05) as i64;
                         session.update_cost(tokens, vibe);
                     }
 
-                    self.conversation_log.add("assistant", &response.content, tokens, vec![]);
+                    self.conversation_log
+                        .add("assistant", &response.content, tokens, vec![]);
                     self.output.print_response(&response.content);
 
                     if let Some(session) = &self.session {

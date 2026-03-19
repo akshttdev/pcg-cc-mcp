@@ -1,26 +1,31 @@
+use std::{convert::Infallible, time::Duration};
+
 use axum::{
     Router,
     extract::{Path, Query, State},
-    response::Json as ResponseJson,
-    response::sse::{Event, Sse},
+    response::{
+        Json as ResponseJson,
+        sse::{Event, Sse},
+    },
     routing::{get, post, put},
 };
-use db::models::{
-    pulse_alert::PulseAlert,
-    pulse_alert_rule::{CreatePulseAlertRule, PulseAlertRule, UpdatePulseAlertRule},
-    pulse_collection_run::PulseCollectionRun,
-    pulse_content_item::{ContentActionRequest, PulseContentItem},
-    pulse_source::{CreatePulseSource, PulseSource, UpdatePulseSource},
-    pulse_tracking_config::{PulseTrackingConfig, UpdatePulseTrackingConfig},
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        pulse_alert::PulseAlert,
+        pulse_alert_rule::{CreatePulseAlertRule, PulseAlertRule, UpdatePulseAlertRule},
+        pulse_collection_run::PulseCollectionRun,
+        pulse_content_item::{ContentActionRequest, PulseContentItem},
+        pulse_source::{CreatePulseSource, PulseSource, UpdatePulseSource},
+        pulse_tracking_config::{PulseTrackingConfig, UpdatePulseTrackingConfig},
+    },
 };
 use deployment::Deployment;
 use futures::stream::{self, Stream};
 use serde::{Deserialize, Serialize};
-use std::{convert::Infallible, time::Duration};
 use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
-use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError, pulse_publisher};
 
@@ -97,9 +102,9 @@ async fn list_sources(
     Path(project_id): Path<String>,
 ) -> Result<ResponseJson<ApiResponse<Vec<PulseSource>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let sources = PulseSource::find_by_project(pool, &project_id).await.map_err(|e| {
-        ApiError::InternalError(format!("Failed to fetch sources: {}", e))
-    })?;
+    let sources = PulseSource::find_by_project(pool, &project_id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to fetch sources: {}", e)))?;
     Ok(ResponseJson(ApiResponse::success(sources)))
 }
 
@@ -110,9 +115,9 @@ async fn create_source(
 ) -> Result<ResponseJson<ApiResponse<PulseSource>>, ApiError> {
     data.project_id = project_id;
     let pool = &deployment.db().pool;
-    let source = PulseSource::create(pool, &data).await.map_err(|e| {
-        ApiError::InternalError(format!("Failed to create source: {}", e))
-    })?;
+    let source = PulseSource::create(pool, &data)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to create source: {}", e)))?;
     Ok(ResponseJson(ApiResponse::success(source)))
 }
 
@@ -122,9 +127,9 @@ async fn update_source(
     ResponseJson(data): ResponseJson<UpdatePulseSource>,
 ) -> Result<ResponseJson<ApiResponse<PulseSource>>, ApiError> {
     let pool = &deployment.db().pool;
-    let source = PulseSource::update(pool, &source_id, &data).await.map_err(|e| {
-        ApiError::InternalError(format!("Failed to update source: {}", e))
-    })?;
+    let source = PulseSource::update(pool, &source_id, &data)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to update source: {}", e)))?;
     Ok(ResponseJson(ApiResponse::success(source)))
 }
 
@@ -133,10 +138,12 @@ async fn delete_source(
     Path((_project_id, source_id)): Path<(String, String)>,
 ) -> Result<ResponseJson<ApiResponse<serde_json::Value>>, ApiError> {
     let pool = &deployment.db().pool;
-    PulseSource::delete(pool, &source_id).await.map_err(|e| {
-        ApiError::InternalError(format!("Failed to delete source: {}", e))
-    })?;
-    Ok(ResponseJson(ApiResponse::success(serde_json::json!({"deleted": true}))))
+    PulseSource::delete(pool, &source_id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to delete source: {}", e)))?;
+    Ok(ResponseJson(ApiResponse::success(
+        serde_json::json!({"deleted": true}),
+    )))
 }
 
 // ========================
@@ -148,7 +155,9 @@ async fn list_content(
     Path(project_id): Path<String>,
     Query(query): Query<ContentQueryParams>,
 ) -> Result<ResponseJson<ApiResponse<PulseContentResponse>>, ApiError> {
-    let project_id = DbUuid::parse(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let project_id = DbUuid::parse(&project_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let pool = &deployment.db().pool;
     let limit = query.limit.unwrap_or(50);
     let items = PulseContentItem::search(
@@ -163,7 +172,10 @@ async fn list_content(
     .map_err(|e| ApiError::InternalError(format!("Failed to fetch content: {}", e)))?;
 
     let count = items.len();
-    Ok(ResponseJson(ApiResponse::success(PulseContentResponse { items, count })))
+    Ok(ResponseJson(ApiResponse::success(PulseContentResponse {
+        items,
+        count,
+    })))
 }
 
 async fn get_latest_content(
@@ -171,7 +183,9 @@ async fn get_latest_content(
     Path(project_id): Path<String>,
     Query(query): Query<LimitQuery>,
 ) -> Result<ResponseJson<ApiResponse<PulseContentResponse>>, ApiError> {
-    let project_id = DbUuid::parse(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let project_id = DbUuid::parse(&project_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let pool = &deployment.db().pool;
     let limit = query.limit.unwrap_or(20);
     let items = PulseContentItem::find_latest(pool, project_id, limit)
@@ -179,7 +193,10 @@ async fn get_latest_content(
         .map_err(|e| ApiError::InternalError(format!("Failed to fetch latest content: {}", e)))?;
 
     let count = items.len();
-    Ok(ResponseJson(ApiResponse::success(PulseContentResponse { items, count })))
+    Ok(ResponseJson(ApiResponse::success(PulseContentResponse {
+        items,
+        count,
+    })))
 }
 
 async fn get_content_item(
@@ -215,7 +232,9 @@ async fn content_action(
             Ok(ResponseJson(ApiResponse::success(item)))
         }
         "create-task" => {
-            let title = action.task_title.unwrap_or_else(|| format!("[Pulse] Content review"));
+            let title = action
+                .task_title
+                .unwrap_or_else(|| format!("[Pulse] Content review"));
             let task_id = Uuid::new_v4();
             let _content_item = PulseContentItem::find_by_id(pool, &content_id)
                 .await
@@ -241,15 +260,20 @@ async fn content_action(
             Ok(ResponseJson(ApiResponse::success(item)))
         }
         "link-crm" => {
-            let contact_id = action.crm_contact_id.ok_or(
-                ApiError::BadRequest("crm_contact_id required for link-crm action".to_string()),
-            )?;
+            let contact_id = action.crm_contact_id.ok_or(ApiError::BadRequest(
+                "crm_contact_id required for link-crm action".to_string(),
+            ))?;
             let item = PulseContentItem::link_crm_contact(pool, &content_id, contact_id)
                 .await
-                .map_err(|e| ApiError::InternalError(format!("Failed to link CRM contact: {}", e)))?;
+                .map_err(|e| {
+                    ApiError::InternalError(format!("Failed to link CRM contact: {}", e))
+                })?;
             Ok(ResponseJson(ApiResponse::success(item)))
         }
-        _ => Err(ApiError::BadRequest(format!("Unknown action: {}", action.action))),
+        _ => Err(ApiError::BadRequest(format!(
+            "Unknown action: {}",
+            action.action
+        ))),
     }
 }
 
@@ -262,7 +286,9 @@ async fn list_alerts(
     Path(project_id): Path<String>,
     Query(query): Query<LimitQuery>,
 ) -> Result<ResponseJson<ApiResponse<Vec<PulseAlert>>>, ApiError> {
-    let project_id = DbUuid::parse(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let project_id = DbUuid::parse(&project_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let pool = &deployment.db().pool;
     let limit = query.limit.unwrap_or(50);
     let alerts = PulseAlert::find_by_project(pool, project_id, limit)
@@ -275,7 +301,9 @@ async fn list_alert_rules(
     State(deployment): State<DeploymentImpl>,
     Path(project_id): Path<String>,
 ) -> Result<ResponseJson<ApiResponse<Vec<PulseAlertRule>>>, ApiError> {
-    let project_id = DbUuid::parse(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let project_id = DbUuid::parse(&project_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let pool = &deployment.db().pool;
     let rules = PulseAlertRule::find_by_project(pool, project_id)
         .await
@@ -288,7 +316,9 @@ async fn create_alert_rule(
     Path(project_id): Path<String>,
     ResponseJson(mut data): ResponseJson<CreatePulseAlertRule>,
 ) -> Result<ResponseJson<ApiResponse<PulseAlertRule>>, ApiError> {
-    let project_id = DbUuid::parse(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let project_id = DbUuid::parse(&project_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     data.project_id = project_id;
     let pool = &deployment.db().pool;
     let rule = PulseAlertRule::create(pool, &data)
@@ -317,7 +347,9 @@ async fn delete_alert_rule(
     PulseAlertRule::delete(pool, &rule_id)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to delete alert rule: {}", e)))?;
-    Ok(ResponseJson(ApiResponse::success(serde_json::json!({"deleted": true}))))
+    Ok(ResponseJson(ApiResponse::success(
+        serde_json::json!({"deleted": true}),
+    )))
 }
 
 // ========================
@@ -336,15 +368,22 @@ async fn trigger_collection(
     }
 
     // Also proxy to the Pulse Engine HTTP API
-    let url = format!("{}/api/v1/collect?project_id={}", pulse_api_url(), project_id);
+    let url = format!(
+        "{}/api/v1/collect?project_id={}",
+        pulse_api_url(),
+        project_id
+    );
     let client = reqwest::Client::new();
-    let resp = client.post(&url).send().await.map_err(|e| {
-        ApiError::InternalError(format!("Failed to reach Pulse Engine: {}", e))
-    })?;
+    let resp = client
+        .post(&url)
+        .send()
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to reach Pulse Engine: {}", e)))?;
 
-    let data: serde_json::Value = resp.json().await.map_err(|e| {
-        ApiError::InternalError(format!("Failed to parse Pulse response: {}", e))
-    })?;
+    let data: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to parse Pulse response: {}", e)))?;
 
     Ok(ResponseJson(ApiResponse::success(data)))
 }
@@ -354,7 +393,9 @@ async fn list_runs(
     Path(project_id): Path<String>,
     Query(query): Query<LimitQuery>,
 ) -> Result<ResponseJson<ApiResponse<Vec<PulseCollectionRun>>>, ApiError> {
-    let project_id = DbUuid::parse(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let project_id = DbUuid::parse(&project_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let pool = &deployment.db().pool;
     let limit = query.limit.unwrap_or(50);
     let runs = PulseCollectionRun::find_by_project(pool, project_id, limit)
@@ -371,7 +412,9 @@ async fn get_tracking_config(
     State(deployment): State<DeploymentImpl>,
     Path(project_id): Path<String>,
 ) -> Result<ResponseJson<ApiResponse<Option<PulseTrackingConfig>>>, ApiError> {
-    let project_id = DbUuid::parse(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let project_id = DbUuid::parse(&project_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let pool = &deployment.db().pool;
     let config = PulseTrackingConfig::find_by_project(pool, project_id)
         .await
@@ -384,7 +427,9 @@ async fn update_tracking_config(
     Path(project_id): Path<String>,
     ResponseJson(data): ResponseJson<UpdatePulseTrackingConfig>,
 ) -> Result<ResponseJson<ApiResponse<PulseTrackingConfig>>, ApiError> {
-    let project_id = DbUuid::parse(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let project_id = DbUuid::parse(&project_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let pool = &deployment.db().pool;
     let config = PulseTrackingConfig::upsert(pool, project_id, None, &data)
         .await
@@ -404,15 +449,16 @@ async fn engine_status(
     let client = reqwest::Client::new();
     match client.get(&url).send().await {
         Ok(resp) => {
-            let data: serde_json::Value = resp.json().await.unwrap_or(serde_json::json!({"status": "unknown"}));
+            let data: serde_json::Value = resp
+                .json()
+                .await
+                .unwrap_or(serde_json::json!({"status": "unknown"}));
             Ok(ResponseJson(ApiResponse::success(data)))
         }
-        Err(_) => {
-            Ok(ResponseJson(ApiResponse::success(serde_json::json!({
-                "status": "offline",
-                "message": "Pulse Engine is not reachable"
-            }))))
-        }
+        Err(_) => Ok(ResponseJson(ApiResponse::success(serde_json::json!({
+            "status": "offline",
+            "message": "Pulse Engine is not reachable"
+        })))),
     }
 }
 
@@ -424,7 +470,9 @@ async fn dashboard_stats(
     State(deployment): State<DeploymentImpl>,
     Path(project_id): Path<String>,
 ) -> Result<ResponseJson<ApiResponse<PulseDashboardStats>>, ApiError> {
-    let project_uuid = DbUuid::parse(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let project_uuid = DbUuid::parse(&project_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let pool = &deployment.db().pool;
 
     let total_content = PulseContentItem::count_by_project(pool, project_uuid)
@@ -438,7 +486,8 @@ async fn dashboard_stats(
 
     if sources.is_empty() {
         // Look up the project's organization_id and query org-scoped sources
-        if let Ok(Some(project)) = db::models::project::Project::find_by_id(pool, &project_id).await {
+        if let Ok(Some(project)) = db::models::project::Project::find_by_id(pool, &project_id).await
+        {
             if let Some(ref org_id) = project.organization_id {
                 sources = PulseSource::find_by_organization(pool, org_id)
                     .await
@@ -448,7 +497,10 @@ async fn dashboard_stats(
     }
 
     let total_sources = sources.len();
-    let active_sources = sources.iter().filter(|s| s.status == "active" && s.enabled).count();
+    let active_sources = sources
+        .iter()
+        .filter(|s| s.status == "active" && s.enabled)
+        .count();
 
     let unacknowledged_alerts = PulseAlert::count_unacknowledged(pool, project_uuid)
         .await
@@ -478,12 +530,10 @@ async fn legacy_list_projects(
             })?;
             Ok(ResponseJson(ApiResponse::success(data)))
         }
-        Err(_) => {
-            Ok(ResponseJson(ApiResponse::success(PulseProjectsResponse {
-                projects: vec![],
-                count: 0,
-            })))
-        }
+        Err(_) => Ok(ResponseJson(ApiResponse::success(PulseProjectsResponse {
+            projects: vec![],
+            count: 0,
+        }))),
     }
 }
 
@@ -515,12 +565,10 @@ async fn legacy_get_latest_content(
             })?;
             Ok(ResponseJson(ApiResponse::success(data)))
         }
-        Err(_) => {
-            Ok(ResponseJson(ApiResponse::success(PulseContentResponse {
-                items: vec![],
-                count: 0,
-            })))
-        }
+        Err(_) => Ok(ResponseJson(ApiResponse::success(PulseContentResponse {
+            items: vec![],
+            count: 0,
+        }))),
     }
 }
 
@@ -560,8 +608,8 @@ async fn stream_pulse_content(
 
                     if !new_items.is_empty() {
                         last_id = new_items[0].id.clone();
-                        let json = serde_json::to_string(&new_items)
-                            .unwrap_or_else(|_| "[]".to_string());
+                        let json =
+                            serde_json::to_string(&new_items).unwrap_or_else(|_| "[]".to_string());
                         let event = Event::default().data(json).event("pulse_content");
                         Some((Ok(event), (pool, project_id, last_id)))
                     } else {
@@ -589,22 +637,61 @@ async fn stream_pulse_content(
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         // Project-scoped routes (new API)
-        .route("/api/pulse/projects/{project_id}/stats", get(dashboard_stats))
-        .route("/api/pulse/projects/{project_id}/sources", get(list_sources).post(create_source))
-        .route("/api/pulse/projects/{project_id}/sources/{source_id}", put(update_source).delete(delete_source))
-        .route("/api/pulse/projects/{project_id}/content", get(list_content))
-        .route("/api/pulse/projects/{project_id}/content/latest", get(get_latest_content))
-        .route("/api/pulse/projects/{project_id}/content/{content_id}", get(get_content_item))
-        .route("/api/pulse/projects/{project_id}/content/{content_id}/action", post(content_action))
+        .route(
+            "/api/pulse/projects/{project_id}/stats",
+            get(dashboard_stats),
+        )
+        .route(
+            "/api/pulse/projects/{project_id}/sources",
+            get(list_sources).post(create_source),
+        )
+        .route(
+            "/api/pulse/projects/{project_id}/sources/{source_id}",
+            put(update_source).delete(delete_source),
+        )
+        .route(
+            "/api/pulse/projects/{project_id}/content",
+            get(list_content),
+        )
+        .route(
+            "/api/pulse/projects/{project_id}/content/latest",
+            get(get_latest_content),
+        )
+        .route(
+            "/api/pulse/projects/{project_id}/content/{content_id}",
+            get(get_content_item),
+        )
+        .route(
+            "/api/pulse/projects/{project_id}/content/{content_id}/action",
+            post(content_action),
+        )
         .route("/api/pulse/projects/{project_id}/alerts", get(list_alerts))
-        .route("/api/pulse/projects/{project_id}/alert-rules", get(list_alert_rules).post(create_alert_rule))
-        .route("/api/pulse/projects/{project_id}/alert-rules/{rule_id}", put(update_alert_rule).delete(delete_alert_rule))
-        .route("/api/pulse/projects/{project_id}/collect", post(trigger_collection))
+        .route(
+            "/api/pulse/projects/{project_id}/alert-rules",
+            get(list_alert_rules).post(create_alert_rule),
+        )
+        .route(
+            "/api/pulse/projects/{project_id}/alert-rules/{rule_id}",
+            put(update_alert_rule).delete(delete_alert_rule),
+        )
+        .route(
+            "/api/pulse/projects/{project_id}/collect",
+            post(trigger_collection),
+        )
         .route("/api/pulse/projects/{project_id}/runs", get(list_runs))
-        .route("/api/pulse/projects/{project_id}/tracking", get(get_tracking_config).put(update_tracking_config))
-        .route("/api/pulse/projects/{project_id}/engine/status", get(engine_status))
+        .route(
+            "/api/pulse/projects/{project_id}/tracking",
+            get(get_tracking_config).put(update_tracking_config),
+        )
+        .route(
+            "/api/pulse/projects/{project_id}/engine/status",
+            get(engine_status),
+        )
         // SSE real-time stream
-        .route("/api/pulse/projects/{project_id}/stream", get(stream_pulse_content))
+        .route(
+            "/api/pulse/projects/{project_id}/stream",
+            get(stream_pulse_content),
+        )
         // Legacy routes (backwards compat)
         .route("/api/pulse/projects", get(legacy_list_projects))
         .route("/api/pulse/content/latest", get(legacy_get_latest_content))

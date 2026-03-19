@@ -138,7 +138,9 @@ impl CmsSite {
         id: Uuid,
         data: &UpdateCmsSite,
     ) -> Result<Self, sqlx::Error> {
-        let current = Self::find_by_id(pool, id).await?.ok_or(sqlx::Error::RowNotFound)?;
+        let current = Self::find_by_id(pool, id)
+            .await?
+            .ok_or(sqlx::Error::RowNotFound)?;
 
         let name = data.name.as_ref().unwrap_or(&current.name);
         let domain = data.domain.as_ref().unwrap_or(&current.domain);

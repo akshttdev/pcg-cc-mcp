@@ -1,9 +1,4 @@
-use axum::{
-    Router,
-    extract::State,
-    response::Json as ResponseJson,
-    routing::get,
-};
+use axum::{Router, extract::State, response::Json as ResponseJson, routing::get};
 use serde::Serialize;
 use sysinfo::{CpuRefreshKind, Disks, MemoryRefreshKind, RefreshKind, System};
 use ts_rs::TS;

@@ -1,7 +1,15 @@
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     routing::{delete, get, post},
-    Json, Router,
+};
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        company::{Company, CreateCompany, UpdateCompany},
+        person_association::{CompanyContactMethod, CreateCompanyContactMethod},
+        proposal::Proposal,
+    },
 };
 use deployment::Deployment;
 use nora::agent::{NoraRequest, NoraRequestType, RequestPriority};
@@ -9,11 +17,7 @@ use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, routes::nora::get_nora_instance, DeploymentImpl};
-use db::db_uuid::DbUuid;
-use db::models::company::{Company, CreateCompany, UpdateCompany};
-use db::models::proposal::Proposal;
-use db::models::person_association::{CompanyContactMethod, CreateCompanyContactMethod};
+use crate::{DeploymentImpl, error::ApiError, routes::nora::get_nora_instance};
 
 #[derive(Debug, Deserialize)]
 pub struct ListCompaniesQuery {
@@ -95,7 +99,8 @@ async fn list_company_proposals(
     Query(q): Query<ListCompanyProposalsQuery>,
 ) -> Result<Json<ApiResponse<Vec<Proposal>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
+    let id =
+        DbUuid::parse(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     let proposals = Proposal::list_by_company(pool, id.to_uuid(), q.limit).await?;
     Ok(Json(ApiResponse::success(proposals)))
 }
@@ -128,7 +133,8 @@ async fn list_contact_methods(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<CompanyContactMethod>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
+    let id =
+        DbUuid::parse(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     let methods = CompanyContactMethod::list_for_company(pool, id.to_uuid()).await?;
     Ok(Json(ApiResponse::success(methods)))
 }
@@ -140,7 +146,8 @@ async fn add_contact_method(
     Json(data): Json<CreateCompanyContactMethod>,
 ) -> Result<Json<ApiResponse<CompanyContactMethod>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
+    let id =
+        DbUuid::parse(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     let method = CompanyContactMethod::create(pool, id.to_uuid(), data).await?;
     Ok(Json(ApiResponse::success(method)))
 }
@@ -151,7 +158,8 @@ async fn delete_contact_method(
     Path((_id, method_id)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    let method_id = DbUuid::parse(&method_id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", method_id)))?;
+    let method_id = DbUuid::parse(&method_id)
+        .map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", method_id)))?;
     let deleted = CompanyContactMethod::delete(pool, method_id.to_uuid()).await?;
     if !deleted {
         return Err(ApiError::NotFound("Contact method not found".into()));
@@ -174,7 +182,8 @@ async fn trigger_company_research(
     Path(company_id): Path<String>,
 ) -> Result<Json<ApiResponse<CompanyResearchResponse>>, ApiError> {
     let pool = &deployment.db().pool;
-    let db_company_id = DbUuid::parse(&company_id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", company_id)))?;
+    let db_company_id = DbUuid::parse(&company_id)
+        .map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", company_id)))?;
     let company_id = db_company_id.to_uuid();
     let company = Company::find_by_id(pool, &db_company_id)
         .await?
@@ -193,13 +202,22 @@ async fn trigger_company_research(
 
     tokio::spawn(async move {
         // Use direct research with OpenAI-first fallback
-        crate::routes::intelligence::run_company_research_direct(&pool_clone, company_id, &name, None).await;
+        crate::routes::intelligence::run_company_research_direct(
+            &pool_clone,
+            company_id,
+            &name,
+            None,
+        )
+        .await;
     });
 
     Ok(Json(ApiResponse::success(CompanyResearchResponse {
         company_id,
         status: "running".into(),
-        message: format!("Research started for {} — Scout is gathering intelligence.", company.name),
+        message: format!(
+            "Research started for {} — Scout is gathering intelligence.",
+            company.name
+        ),
     })))
 }
 
@@ -246,7 +264,8 @@ async fn run_company_research(
             nora.process_request(req),
         )
         .await
-        .ok()?.ok()
+        .ok()?
+        .ok()
     })()
     .await;
 
@@ -274,7 +293,11 @@ async fn run_company_research(
     .execute(pool)
     .await?;
 
-    tracing::info!("Company research complete for {} (confidence: {:.0}%)", name, confidence * 100.0);
+    tracing::info!(
+        "Company research complete for {} (confidence: {:.0}%)",
+        name,
+        confidence * 100.0
+    );
     Ok(())
 }
 
@@ -296,7 +319,9 @@ async fn run_company_research_direct(
          Return structured JSON with: summary, industry, founded_year, \
          founder_name, employee_count, social_profiles, key_clients, brand_positioning, confidence.",
         name = name,
-        website_ctx = website.map(|w| format!(" (website: {})", w)).unwrap_or_default(),
+        website_ctx = website
+            .map(|w| format!(" (website: {})", w))
+            .unwrap_or_default(),
     );
 
     let body = json!({
@@ -516,7 +541,9 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/companies", get(list_companies).post(create_company))
         .route(
             "/companies/{id}",
-            get(get_company).patch(update_company).delete(delete_company),
+            get(get_company)
+                .patch(update_company)
+                .delete(delete_company),
         )
         .route("/companies/{id}/research", post(trigger_company_research))
         .route("/companies/{id}/proposals", get(list_company_proposals))

@@ -1,13 +1,16 @@
 //! FFmpeg wrapper for video processing operations
 
-use std::path::{Path, PathBuf};
-use std::process::Stdio;
-use tokio::process::Command;
+use std::{
+    path::{Path, PathBuf},
+    process::Stdio,
+};
+
 use serde_json::Value;
+use tokio::process::Command;
 
 use super::{
-    AudioCodec, EditOperation, EditronError, EditronResult, ExportPreset, TextPosition,
-    VideoCodec, VideoMetadata,
+    AudioCodec, EditOperation, EditronError, EditronResult, ExportPreset, TextPosition, VideoCodec,
+    VideoMetadata,
 };
 
 /// FFmpeg client for video processing
@@ -32,7 +35,11 @@ impl FFmpegClient {
         // Check common paths
         let paths = [
             format!("{}/bin/{}", std::env::var("HOME").unwrap_or_default(), name),
-            format!("{}/.local/bin/{}", std::env::var("HOME").unwrap_or_default(), name),
+            format!(
+                "{}/.local/bin/{}",
+                std::env::var("HOME").unwrap_or_default(),
+                name
+            ),
             format!("/usr/local/bin/{}", name),
             format!("/opt/homebrew/bin/{}", name),
             name.to_string(),
@@ -46,10 +53,7 @@ impl FFmpegClient {
         }
 
         // Try which command
-        let output = std::process::Command::new("which")
-            .arg(name)
-            .output()
-            .ok();
+        let output = std::process::Command::new("which").arg(name).output().ok();
 
         if let Some(output) = output {
             if output.status.success() {
@@ -72,8 +76,10 @@ impl FFmpegClient {
 
         let output = Command::new(&self.ffprobe_path)
             .args([
-                "-v", "quiet",
-                "-print_format", "json",
+                "-v",
+                "quiet",
+                "-print_format",
+                "json",
                 "-show_format",
                 "-show_streams",
             ])
@@ -92,14 +98,17 @@ impl FFmpegClient {
             .map_err(|e| EditronError::FFmpeg(e.to_string()))?;
 
         // Extract video stream info
-        let streams = json["streams"].as_array()
+        let streams = json["streams"]
+            .as_array()
             .ok_or_else(|| EditronError::FFmpeg("No streams found".to_string()))?;
 
-        let video_stream = streams.iter()
+        let video_stream = streams
+            .iter()
             .find(|s| s["codec_type"].as_str() == Some("video"))
             .ok_or_else(|| EditronError::FFmpeg("No video stream found".to_string()))?;
 
-        let audio_stream = streams.iter()
+        let audio_stream = streams
+            .iter()
             .find(|s| s["codec_type"].as_str() == Some("audio"));
 
         let format = &json["format"];
@@ -150,9 +159,7 @@ impl FFmpegClient {
             audio_sample_rate: audio_stream
                 .and_then(|s| s["sample_rate"].as_str())
                 .and_then(|s| s.parse().ok()),
-            bitrate: format["bit_rate"]
-                .as_str()
-                .and_then(|s| s.parse().ok()),
+            bitrate: format["bit_rate"].as_str().and_then(|s| s.parse().ok()),
             file_size,
         })
     }
@@ -182,13 +189,20 @@ impl FFmpegClient {
 
         for op in operations {
             match op {
-                EditOperation::Trim { start_seconds, end_seconds } => {
+                EditOperation::Trim {
+                    start_seconds,
+                    end_seconds,
+                } => {
                     args.push("-ss".to_string());
                     args.push(format!("{:.3}", start_seconds));
                     args.push("-to".to_string());
                     args.push(format!("{:.3}", end_seconds));
                 }
-                EditOperation::Scale { width, height, maintain_aspect } => {
+                EditOperation::Scale {
+                    width,
+                    height,
+                    maintain_aspect,
+                } => {
                     if maintain_aspect {
                         filter_complex.push(format!(
                             "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2",
@@ -198,7 +212,10 @@ impl FFmpegClient {
                         filter_complex.push(format!("scale={}:{}", width, height));
                     }
                 }
-                EditOperation::Fade { fade_in_seconds, fade_out_seconds } => {
+                EditOperation::Fade {
+                    fade_in_seconds,
+                    fade_out_seconds,
+                } => {
                     if let Some(fi) = fade_in_seconds {
                         filter_complex.push(format!("fade=t=in:st=0:d={:.2}", fi));
                     }
@@ -207,31 +224,55 @@ impl FFmpegClient {
                         filter_complex.push(format!("fade=t=out:d={:.2}", fo));
                     }
                 }
-                EditOperation::Speed { factor, maintain_pitch } => {
+                EditOperation::Speed {
+                    factor,
+                    maintain_pitch,
+                } => {
                     filter_complex.push(format!("setpts={:.3}*PTS", 1.0 / factor));
                     if maintain_pitch {
                         filter_complex.push(format!("atempo={:.3}", factor));
                     } else {
-                        filter_complex.push(format!("asetrate=44100*{:.3},aresample=44100", factor));
+                        filter_complex
+                            .push(format!("asetrate=44100*{:.3},aresample=44100", factor));
                     }
                 }
-                EditOperation::ColorCorrect { brightness, contrast, saturation, gamma } => {
+                EditOperation::ColorCorrect {
+                    brightness,
+                    contrast,
+                    saturation,
+                    gamma,
+                } => {
                     filter_complex.push(format!(
                         "eq=brightness={:.2}:contrast={:.2}:saturation={:.2}:gamma={:.2}",
                         brightness, contrast, saturation, gamma
                     ));
                 }
-                EditOperation::TextOverlay { text, position, font_size, color, start_seconds, duration_seconds } => {
+                EditOperation::TextOverlay {
+                    text,
+                    position,
+                    font_size,
+                    color,
+                    start_seconds,
+                    duration_seconds,
+                } => {
                     let (x, y) = match position {
                         TextPosition::TopLeft => ("10".to_string(), "10".to_string()),
                         TextPosition::TopCenter => ("(w-text_w)/2".to_string(), "10".to_string()),
                         TextPosition::TopRight => ("w-text_w-10".to_string(), "10".to_string()),
                         TextPosition::MiddleLeft => ("10".to_string(), "(h-text_h)/2".to_string()),
-                        TextPosition::Center => ("(w-text_w)/2".to_string(), "(h-text_h)/2".to_string()),
-                        TextPosition::MiddleRight => ("w-text_w-10".to_string(), "(h-text_h)/2".to_string()),
+                        TextPosition::Center => {
+                            ("(w-text_w)/2".to_string(), "(h-text_h)/2".to_string())
+                        }
+                        TextPosition::MiddleRight => {
+                            ("w-text_w-10".to_string(), "(h-text_h)/2".to_string())
+                        }
                         TextPosition::BottomLeft => ("10".to_string(), "h-text_h-10".to_string()),
-                        TextPosition::BottomCenter => ("(w-text_w)/2".to_string(), "h-text_h-10".to_string()),
-                        TextPosition::BottomRight => ("w-text_w-10".to_string(), "h-text_h-10".to_string()),
+                        TextPosition::BottomCenter => {
+                            ("(w-text_w)/2".to_string(), "h-text_h-10".to_string())
+                        }
+                        TextPosition::BottomRight => {
+                            ("w-text_w-10".to_string(), "h-text_h-10".to_string())
+                        }
                         TextPosition::Custom { x, y } => (x.to_string(), y.to_string()),
                     };
                     filter_complex.push(format!(
@@ -289,7 +330,8 @@ impl FFmpegClient {
         let output = output.as_ref();
 
         // Create concat file
-        let concat_file = output.parent()
+        let concat_file = output
+            .parent()
             .unwrap_or(Path::new("."))
             .join("concat_list.txt");
 
@@ -400,10 +442,14 @@ impl FFmpegClient {
 
         let args = [
             "-y",
-            "-ss", &format!("{:.3}", time_seconds),
-            "-i", &input.to_string_lossy(),
-            "-vframes", "1",
-            "-q:v", "2",
+            "-ss",
+            &format!("{:.3}", time_seconds),
+            "-i",
+            &input.to_string_lossy(),
+            "-vframes",
+            "1",
+            "-q:v",
+            "2",
             &output.to_string_lossy(),
         ];
 
@@ -438,9 +484,11 @@ impl FFmpegClient {
 
         let args = [
             "-y",
-            "-i", &input.to_string_lossy(),
+            "-i",
+            &input.to_string_lossy(),
             "-vn",
-            "-acodec", codec.ffmpeg_codec(),
+            "-acodec",
+            codec.ffmpeg_codec(),
             &output.to_string_lossy(),
         ];
 
@@ -527,9 +575,12 @@ impl FFmpegClient {
 
         let status = Command::new(&self.ffmpeg_path)
             .args([
-                "-i", &input.to_string_lossy(),
-                "-vf", filter,
-                "-c:a", "copy",
+                "-i",
+                &input.to_string_lossy(),
+                "-vf",
+                filter,
+                "-c:a",
+                "copy",
                 "-y",
                 &output.to_string_lossy(),
             ])
@@ -540,7 +591,9 @@ impl FFmpegClient {
             .map_err(|e| EditronError::Process(e.to_string()))?;
 
         if !status.success() {
-            return Err(EditronError::FFmpeg("Filter application failed".to_string()));
+            return Err(EditronError::FFmpeg(
+                "Filter application failed".to_string(),
+            ));
         }
 
         Ok(output.to_path_buf())
@@ -558,9 +611,12 @@ impl FFmpegClient {
 
         let status = Command::new(&self.ffmpeg_path)
             .args([
-                "-i", &input.to_string_lossy(),
-                "-af", filter,
-                "-c:v", "copy",
+                "-i",
+                &input.to_string_lossy(),
+                "-af",
+                filter,
+                "-c:v",
+                "copy",
                 "-y",
                 &output.to_string_lossy(),
             ])
@@ -571,7 +627,9 @@ impl FFmpegClient {
             .map_err(|e| EditronError::Process(e.to_string()))?;
 
         if !status.success() {
-            return Err(EditronError::FFmpeg("Audio filter application failed".to_string()));
+            return Err(EditronError::FFmpeg(
+                "Audio filter application failed".to_string(),
+            ));
         }
 
         Ok(output.to_path_buf())
@@ -589,10 +647,7 @@ impl FFmpegClient {
         let input = input.as_ref();
         let output = output.as_ref();
 
-        let mut args = vec![
-            "-i".to_string(),
-            input.to_string_lossy().to_string(),
-        ];
+        let mut args = vec!["-i".to_string(), input.to_string_lossy().to_string()];
 
         // Add video filter
         if let Some(vf) = video_filter {

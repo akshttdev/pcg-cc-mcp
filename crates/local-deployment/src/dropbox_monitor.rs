@@ -2,11 +2,9 @@ use std::time::Duration;
 
 use anyhow::Context;
 use chrono::{Duration as ChronoDuration, Utc};
-use db::models::dropbox_source::{render_reference_name, DropboxSource};
+use db::models::dropbox_source::{DropboxSource, render_reference_name};
 use services::services::media_pipeline::{
-    MediaBatchIngestRequest,
-    MediaPipelineService,
-    MediaStorageTier,
+    MediaBatchIngestRequest, MediaPipelineService, MediaStorageTier,
 };
 use sqlx::SqlitePool;
 use tokio::time::sleep;

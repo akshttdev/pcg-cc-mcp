@@ -9,10 +9,9 @@
 //!   - Closed projects with no invoice (complete + no AR invoice)
 
 use axum::{
-    Router,
+    Json, Router,
     extract::{Query, State},
     routing::get,
-    Json,
 };
 use chrono::{Duration, Utc};
 use deployment::Deployment;

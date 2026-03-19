@@ -51,7 +51,10 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/artifact-reviews/{review_id}",
             get(get_review).delete(delete_review),
         )
-        .route("/artifact-reviews/{review_id}/resolve", post(resolve_review))
+        .route(
+            "/artifact-reviews/{review_id}/resolve",
+            post(resolve_review),
+        )
         .with_state(deployment.clone())
 }
 

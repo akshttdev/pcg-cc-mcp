@@ -11,9 +11,13 @@ pub async fn get_org_knowledge(
     let pool = &deployment.db().pool;
 
     if !access_context.is_admin {
-        let role = Organization::get_user_role(pool, &org_id.to_string(), access_context.user_id.as_str()).await?;
+        let role =
+            Organization::get_user_role(pool, &org_id.to_string(), access_context.user_id.as_str())
+                .await?;
         if role.is_none() {
-            return Err(ApiError::Forbidden("Not a member of this organization".into()));
+            return Err(ApiError::Forbidden(
+                "Not a member of this organization".into(),
+            ));
         }
     }
 
@@ -75,8 +79,14 @@ pub async fn get_org_knowledge(
     .fetch_optional(pool)
     .await?;
 
-    let avg_coverage = if knowledge_entries.is_empty() { 0.0 } else {
-        knowledge_entries.iter().map(|e| e.coverage_score).sum::<f64>() / knowledge_entries.len() as f64
+    let avg_coverage = if knowledge_entries.is_empty() {
+        0.0
+    } else {
+        knowledge_entries
+            .iter()
+            .map(|e| e.coverage_score)
+            .sum::<f64>()
+            / knowledge_entries.len() as f64
     };
 
     Ok(Json(ApiResponse::success(json!({

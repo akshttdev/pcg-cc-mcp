@@ -29,7 +29,11 @@ impl ConfirmationMode {
 
     /// Return the more restrictive of two modes
     pub fn most_restrictive(a: &Self, b: &Self) -> Self {
-        if a.restrictiveness() >= b.restrictiveness() { a.clone() } else { b.clone() }
+        if a.restrictiveness() >= b.restrictiveness() {
+            a.clone()
+        } else {
+            b.clone()
+        }
     }
 
     pub fn from_str(s: &str) -> Self {
@@ -68,9 +72,14 @@ pub fn classify_tool_risk(tool_name: &str) -> ToolRisk {
         "delete_task" | "bulk_update_tasks" => ToolRisk::Red,
 
         // Yellow: create / update single entities
-        "create_project" | "update_project"
-        | "create_task" | "update_task" | "start_task_execution"
-        | "create_crm_contact" | "create_crm_deal" | "update_crm_deal"
+        "create_project"
+        | "update_project"
+        | "create_task"
+        | "update_task"
+        | "start_task_execution"
+        | "create_crm_contact"
+        | "create_crm_deal"
+        | "update_crm_deal"
         | "approve_staged_records"
         | "build_workflow" => ToolRisk::Yellow,
 
@@ -171,8 +180,12 @@ impl TopsiUserSettings {
             // Always confirm = confirm everything Yellow and Red
             (ConfirmationMode::AlwaysConfirm, _) => ConfirmationMode::AlwaysConfirm,
             // Confirm destructive = only confirm Red tools
-            (ConfirmationMode::ConfirmDestructive, ToolRisk::Red) => ConfirmationMode::AlwaysConfirm,
-            (ConfirmationMode::ConfirmDestructive, ToolRisk::Yellow) => ConfirmationMode::Autonomous,
+            (ConfirmationMode::ConfirmDestructive, ToolRisk::Red) => {
+                ConfirmationMode::AlwaysConfirm
+            }
+            (ConfirmationMode::ConfirmDestructive, ToolRisk::Yellow) => {
+                ConfirmationMode::Autonomous
+            }
         }
     }
 

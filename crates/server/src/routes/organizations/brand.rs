@@ -6,7 +6,9 @@ pub async fn get_org_brand_profile(
     Path(org_id): Path<String>,
 ) -> Result<Json<ApiResponse<Option<OrgBrandProfile>>>, ApiError> {
     let _ = access_context;
-    let org_uuid = DbUuid::parse(&org_id).map_err(|_| ApiError::BadRequest("Invalid org ID".into()))?.to_uuid();
+    let org_uuid = DbUuid::parse(&org_id)
+        .map_err(|_| ApiError::BadRequest("Invalid org ID".into()))?
+        .to_uuid();
     let profile = OrgBrandProfile::find_by_org(&deployment.db().pool, org_uuid).await?;
     Ok(Json(ApiResponse::success(profile)))
 }
@@ -19,7 +21,9 @@ pub async fn upsert_org_brand_profile(
     Json(body): Json<UpsertOrgBrandProfile>,
 ) -> Result<Json<ApiResponse<OrgBrandProfile>>, ApiError> {
     let _ = access_context;
-    let org_uuid = DbUuid::parse(&org_id).map_err(|_| ApiError::BadRequest("Invalid org ID".into()))?.to_uuid();
+    let org_uuid = DbUuid::parse(&org_id)
+        .map_err(|_| ApiError::BadRequest("Invalid org ID".into()))?
+        .to_uuid();
     let profile = OrgBrandProfile::upsert(&deployment.db().pool, org_uuid, &body).await?;
     Ok(Json(ApiResponse::success(profile)))
 }
@@ -50,10 +54,13 @@ pub async fn trigger_brand_research(
 ) -> Result<Json<ApiResponse<BrandResearchJobResponse>>, ApiError> {
     let _ = access_context;
     let pool = &deployment.db().pool;
-    let org_uuid = DbUuid::parse(&org_id).map_err(|_| ApiError::BadRequest("Invalid org ID".into()))?.to_uuid();
+    let org_uuid = DbUuid::parse(&org_id)
+        .map_err(|_| ApiError::BadRequest("Invalid org ID".into()))?
+        .to_uuid();
 
     // Fetch org name + existing brand profile
-    let org: Option<Organization> = Organization::find_by_id(pool, &org_id).await
+    let org: Option<Organization> = Organization::find_by_id(pool, &org_id)
+        .await
         .map_err(|e| ApiError::InternalError(format!("DB error: {e}")))?;
 
     let org = org.ok_or_else(|| ApiError::NotFound("Organization not found".into()))?;
@@ -74,17 +81,41 @@ pub async fn trigger_brand_research(
 
     // Build research context
     let org_name = org.name.clone();
-    let website = profile.as_ref().and_then(|p| p.website_url.clone()).unwrap_or_default();
-    let instagram = profile.as_ref().and_then(|p| p.social_instagram.clone()).unwrap_or_default();
-    let linkedin = profile.as_ref().and_then(|p| p.social_linkedin.clone()).unwrap_or_default();
-    let twitter = profile.as_ref().and_then(|p| p.social_twitter.clone()).unwrap_or_default();
-    let competitors = profile.as_ref().and_then(|p| p.competitor_brands.clone()).unwrap_or_default();
+    let website = profile
+        .as_ref()
+        .and_then(|p| p.website_url.clone())
+        .unwrap_or_default();
+    let instagram = profile
+        .as_ref()
+        .and_then(|p| p.social_instagram.clone())
+        .unwrap_or_default();
+    let linkedin = profile
+        .as_ref()
+        .and_then(|p| p.social_linkedin.clone())
+        .unwrap_or_default();
+    let twitter = profile
+        .as_ref()
+        .and_then(|p| p.social_twitter.clone())
+        .unwrap_or_default();
+    let competitors = profile
+        .as_ref()
+        .and_then(|p| p.competitor_brands.clone())
+        .unwrap_or_default();
     let pool_clone = pool.clone();
 
     tokio::spawn(async move {
         if let Err(e) = run_brand_research(
-            &pool_clone, org_uuid, &org_name, &website, &instagram, &linkedin, &twitter, &competitors
-        ).await {
+            &pool_clone,
+            org_uuid,
+            &org_name,
+            &website,
+            &instagram,
+            &linkedin,
+            &twitter,
+            &competitors,
+        )
+        .await
+        {
             tracing::error!("[BRAND_RESEARCH] Failed for org {}: {}", org_uuid, e);
             let _ = sqlx::query(
                 "UPDATE organization_brand_profiles SET research_status = 'failed', updated_at = datetime('now','subsec') WHERE organization_id = ?",
@@ -98,7 +129,10 @@ pub async fn trigger_brand_research(
     Ok(Json(ApiResponse::success(BrandResearchJobResponse {
         org_id: org_uuid,
         status: "queued".into(),
-        message: format!("Brand research queued for {} — Scout is gathering online presence data via Exa.", org.name),
+        message: format!(
+            "Brand research queued for {} — Scout is gathering online presence data via Exa.",
+            org.name
+        ),
     })))
 }
 
@@ -109,7 +143,9 @@ pub async fn get_brand_research_status(
     Path(org_id): Path<String>,
 ) -> Result<Json<ApiResponse<BrandResearchStatusResponse>>, ApiError> {
     let _ = access_context;
-    let org_uuid = DbUuid::parse(&org_id).map_err(|_| ApiError::BadRequest("Invalid org ID".into()))?.to_uuid();
+    let org_uuid = DbUuid::parse(&org_id)
+        .map_err(|_| ApiError::BadRequest("Invalid org ID".into()))?
+        .to_uuid();
 
     #[derive(sqlx::FromRow)]
     struct Row {
@@ -154,15 +190,21 @@ pub async fn seed_brand_project(
         .ok_or_else(|| ApiError::NotFound("Organization not found".into()))?;
 
     if !access_context.is_admin {
-        let role = Organization::get_user_role(pool, &org_id, access_context.user_id.as_str()).await?;
+        let role =
+            Organization::get_user_role(pool, &org_id, access_context.user_id.as_str()).await?;
         if role.is_none() {
-            return Err(ApiError::Forbidden("Not a member of this organization".into()));
+            return Err(ApiError::Forbidden(
+                "Not a member of this organization".into(),
+            ));
         }
     }
 
     // Find or create the brand project for this org
     #[derive(sqlx::FromRow)]
-    struct ProjRow { id: Uuid, name: String }
+    struct ProjRow {
+        id: Uuid,
+        name: String,
+    }
 
     let existing: Option<ProjRow> = sqlx::query_as(
         "SELECT id, name FROM projects WHERE organization_id = ? AND project_status != 'archived' ORDER BY created_at ASC LIMIT 1"
@@ -172,7 +214,11 @@ pub async fn seed_brand_project(
     .await?;
 
     let project_id = if let Some(p) = existing {
-        tracing::info!("[BRAND_PROJECT] Using existing project '{}' for {}", p.name, org.name);
+        tracing::info!(
+            "[BRAND_PROJECT] Using existing project '{}' for {}",
+            p.name,
+            org.name
+        );
         p.id
     } else {
         // Create brand project
@@ -202,37 +248,59 @@ pub async fn seed_brand_project(
         .execute(pool)
         .await;
 
-        tracing::info!("[BRAND_PROJECT] Created project '{}' for {}", proj_name, org.name);
+        tracing::info!(
+            "[BRAND_PROJECT] Created project '{}' for {}",
+            proj_name,
+            org.name
+        );
         proj_id
     };
 
     // Deliverable specs for brand guide production workflow
     let deliverable_specs: &[(&str, &str, &str, i64)] = &[
-        ("document", "Brand Strategy & Research Report",
-         "Comprehensive brand research: market positioning, ICP, competitive landscape, and strategic direction. Generated by Scout research pipeline.",
-         1),
-        ("graphic",  "Visual Identity System",
-         "Complete visual identity: logo suite (primary, reversed, monochrome, icon), colour palette system with tints/shades, typography scale, iconography style guide, and design tokens.",
-         3),
-        ("document", "Brand Guide Document",
-         "Full brand standards document: foundation, visual identity, voice and tone, brand applications (business card, letterhead, social, email), usage rules, and do/don't examples.",
-         2),
-        ("graphic",  "Social Media Template Pack",
-         "10 branded templates for Instagram, LinkedIn, Twitter/X, and Facebook. Includes post, story, cover, and ad formats. Editable in Canva with brand colours and typography pre-loaded.",
-         2),
-        ("graphic",  "Merchandise Specification Sheet",
-         "Print-ready brand spec sheet for all Vistaprint Corporate Store products: business cards, letterhead, apparel, mugs, totes, banners. Includes production-ready colour codes (Pantone, CMYK, RGB, HEX).",
-         1),
-        ("document", "Corporate Store Configuration",
-         "Vistaprint Corporate Store setup: branded product catalogue, pricing tiers, order fulfilment workflow, and partner rate sheet. Enables direct client ordering at PCG partner pricing.",
-         1),
+        (
+            "document",
+            "Brand Strategy & Research Report",
+            "Comprehensive brand research: market positioning, ICP, competitive landscape, and strategic direction. Generated by Scout research pipeline.",
+            1,
+        ),
+        (
+            "graphic",
+            "Visual Identity System",
+            "Complete visual identity: logo suite (primary, reversed, monochrome, icon), colour palette system with tints/shades, typography scale, iconography style guide, and design tokens.",
+            3,
+        ),
+        (
+            "document",
+            "Brand Guide Document",
+            "Full brand standards document: foundation, visual identity, voice and tone, brand applications (business card, letterhead, social, email), usage rules, and do/don't examples.",
+            2,
+        ),
+        (
+            "graphic",
+            "Social Media Template Pack",
+            "10 branded templates for Instagram, LinkedIn, Twitter/X, and Facebook. Includes post, story, cover, and ad formats. Editable in Canva with brand colours and typography pre-loaded.",
+            2,
+        ),
+        (
+            "graphic",
+            "Merchandise Specification Sheet",
+            "Print-ready brand spec sheet for all Vistaprint Corporate Store products: business cards, letterhead, apparel, mugs, totes, banners. Includes production-ready colour codes (Pantone, CMYK, RGB, HEX).",
+            1,
+        ),
+        (
+            "document",
+            "Corporate Store Configuration",
+            "Vistaprint Corporate Store setup: branded product catalogue, pricing tiers, order fulfilment workflow, and partner rate sheet. Enables direct client ordering at PCG partner pricing.",
+            1,
+        ),
     ];
 
     // Create deliverables — skip if title already exists in this project
     let mut created: Vec<serde_json::Value> = vec![];
     for (dtype, title, description, revisions) in deliverable_specs {
         let exists: Option<(Uuid,)> = sqlx::query_as(
-            "SELECT id FROM deliverables WHERE project_id = ? AND title = ? LIMIT 1"
+            "SELECT id FROM deliverables WHERE project_id = ? AND title = ? LIMIT 1",
         )
         .bind(project_id)
         .bind(*title)
@@ -286,7 +354,9 @@ fn merge_json(a: &serde_json::Value, b: &serde_json::Value) -> serde_json::Value
                 serde_json::Value::Null => false,
                 serde_json::Value::String(s) => !s.is_empty(),
                 serde_json::Value::Array(arr) => !arr.is_empty(),
-                serde_json::Value::Number(_) | serde_json::Value::Bool(_) | serde_json::Value::Object(_) => true,
+                serde_json::Value::Number(_)
+                | serde_json::Value::Bool(_)
+                | serde_json::Value::Object(_) => true,
             };
             if should_override {
                 r_obj.insert(key.clone(), b_val.clone());
@@ -377,25 +447,59 @@ async fn run_brand_research(
     .await
     .ok().flatten();
 
-    let iteration: i64 = iter_row.as_ref().map(|r| r.research_iterations).unwrap_or(1);
-    let prev_summary = iter_row.as_ref().and_then(|r| r.research_summary.clone()).unwrap_or_default();
-    let prev_gaps = iter_row.as_ref().and_then(|r| r.brand_gap_notes.clone()).unwrap_or_default();
-    let prev_founder = iter_row.as_ref().and_then(|r| r.founder_name.clone()).unwrap_or_default();
-    let prev_geo = iter_row.as_ref().and_then(|r| r.geographic_focus.clone()).unwrap_or_default();
-    let prev_clients = iter_row.as_ref().and_then(|r| r.key_clients.clone()).unwrap_or_default();
+    let iteration: i64 = iter_row
+        .as_ref()
+        .map(|r| r.research_iterations)
+        .unwrap_or(1);
+    let prev_summary = iter_row
+        .as_ref()
+        .and_then(|r| r.research_summary.clone())
+        .unwrap_or_default();
+    let prev_gaps = iter_row
+        .as_ref()
+        .and_then(|r| r.brand_gap_notes.clone())
+        .unwrap_or_default();
+    let prev_founder = iter_row
+        .as_ref()
+        .and_then(|r| r.founder_name.clone())
+        .unwrap_or_default();
+    let prev_geo = iter_row
+        .as_ref()
+        .and_then(|r| r.geographic_focus.clone())
+        .unwrap_or_default();
+    let prev_clients = iter_row
+        .as_ref()
+        .and_then(|r| r.key_clients.clone())
+        .unwrap_or_default();
 
-    tracing::info!("[BRAND_RESEARCH] Starting iteration {} for {}", iteration, org_name);
+    tracing::info!(
+        "[BRAND_RESEARCH] Starting iteration {} for {}",
+        iteration,
+        org_name
+    );
 
     // Extract domain root (used by Clearbit and Exa searches)
     let domain = if website.starts_with("http") {
-        website.trim_start_matches("https://").trim_start_matches("http://")
-            .split('/').next().unwrap_or("").to_string()
-    } else { String::new() };
+        website
+            .trim_start_matches("https://")
+            .trim_start_matches("http://")
+            .split('/')
+            .next()
+            .unwrap_or("")
+            .to_string()
+    } else {
+        String::new()
+    };
 
     // ── 0. Clearbit logo auto-discovery ──────────────────────────────────────
     if !domain.is_empty() {
         let cb_url = format!("https://logo.clearbit.com/{}", domain);
-        if let Ok(resp) = client.get(&cb_url).timeout(std::time::Duration::from_secs(8)).send().await {
+        if let Ok(resp) = client
+            .get(&cb_url)
+            .timeout(std::time::Duration::from_secs(8))
+            .send()
+            .await
+        {
             if resp.status().is_success() {
                 tracing::info!("[BRAND_RESEARCH] Clearbit logo found for {}", domain);
                 let _ = sqlx::query(
@@ -415,56 +519,117 @@ async fn run_brand_research(
         let short_name = org_name.split_whitespace().next().unwrap_or(org_name);
         let search_queries: Vec<String> = vec![
             // Core identity
-            format!("{} agency overview services capabilities what they do clients", org_name),
-            format!("\"{}\" founder CEO executive team leadership bio background", org_name),
+            format!(
+                "{} agency overview services capabilities what they do clients",
+                org_name
+            ),
+            format!(
+                "\"{}\" founder CEO executive team leadership bio background",
+                org_name
+            ),
             // Press & authority
-            format!("\"{}\" press coverage news article interview feature announcement", org_name),
-            format!("\"{}\" award recognition achievement industry best", org_name),
+            format!(
+                "\"{}\" press coverage news article interview feature announcement",
+                org_name
+            ),
+            format!(
+                "\"{}\" award recognition achievement industry best",
+                org_name
+            ),
             // Events & community
-            format!("\"{}\" conference event speaking appearance sponsor 2024 2025", org_name),
+            format!(
+                "\"{}\" conference event speaking appearance sponsor 2024 2025",
+                org_name
+            ),
             // Competitive
-            format!("{} vs {} competitors alternative comparison web3 marketing agency", org_name, competitors),
-            format!("{} market positioning differentiation value proposition unique", org_name),
+            format!(
+                "{} vs {} competitors alternative comparison web3 marketing agency",
+                org_name, competitors
+            ),
+            format!(
+                "{} market positioning differentiation value proposition unique",
+                org_name
+            ),
             // Social proof
-            format!("\"{}\" client testimonial case study portfolio work results", org_name),
-            format!("\"{}\" review reputation rating glassdoor clutch g2", org_name),
+            format!(
+                "\"{}\" client testimonial case study portfolio work results",
+                org_name
+            ),
+            format!(
+                "\"{}\" review reputation rating glassdoor clutch g2",
+                org_name
+            ),
             // Content & thought leadership
-            format!("{} blog article thought leadership insights content strategy", org_name),
+            format!(
+                "{} blog article thought leadership insights content strategy",
+                org_name
+            ),
             // Business intelligence
-            format!("\"{}\" funding investment revenue growth team size hiring jobs", org_name),
-            format!("site:linkedin.com \"{}\" company employees about", short_name),
+            format!(
+                "\"{}\" funding investment revenue growth team size hiring jobs",
+                org_name
+            ),
+            format!(
+                "site:linkedin.com \"{}\" company employees about",
+                short_name
+            ),
             // Technical & digital
-            format!("{} technology stack infrastructure platform tools", org_name),
+            format!(
+                "{} technology stack infrastructure platform tools",
+                org_name
+            ),
             // Geographic & market
-            format!("{} global offices locations market regions clients geography", org_name),
+            format!(
+                "{} global offices locations market regions clients geography",
+                org_name
+            ),
         ];
 
         // On iterations 2+, add gap-targeted queries replacing the last 2 generic ones
         let mut search_queries = search_queries;
         if iteration >= 2 && !prev_founder.is_empty() {
             search_queries.pop(); // drop last generic query
-            search_queries.push(format!("\"{}\" {} biography background career history portfolio", prev_founder, org_name));
+            search_queries.push(format!(
+                "\"{}\" {} biography background career history portfolio",
+                prev_founder, org_name
+            ));
         }
         if iteration >= 2 && !prev_geo.is_empty() {
             search_queries.pop(); // drop second-to-last
-            search_queries.push(format!("{} office address headquarters city country operations", org_name));
+            search_queries.push(format!(
+                "{} office address headquarters city country operations",
+                org_name
+            ));
         }
         if iteration >= 3 {
             // Third pass: deep-dive on clients and events
-            search_queries.push(format!("{} event production conference summit attendees participants sponsorship", org_name));
-            search_queries.push(format!("{} client success story blockchain nft web3 startup result outcome", org_name));
+            search_queries.push(format!(
+                "{} event production conference summit attendees participants sponsorship",
+                org_name
+            ));
+            search_queries.push(format!(
+                "{} client success story blockchain nft web3 startup result outcome",
+                org_name
+            ));
         }
 
-        tracing::info!("[BRAND_RESEARCH] Running {} parallel Exa searches (iteration {})", search_queries.len(), iteration);
+        tracing::info!(
+            "[BRAND_RESEARCH] Running {} parallel Exa searches (iteration {})",
+            search_queries.len(),
+            iteration
+        );
 
         // First 3 queries (core identity) use full text; rest use highlights
-        let search_futures: Vec<_> = search_queries.iter().enumerate().map(|(i, query)| {
-            let client = client.clone();
-            let key = exa_key.clone();
-            let q = query.clone();
-            let deep = i < 3;
-            async move {
-                client
+        let search_futures: Vec<_> = search_queries
+            .iter()
+            .enumerate()
+            .map(|(i, query)| {
+                let client = client.clone();
+                let key = exa_key.clone();
+                let q = query.clone();
+                let deep = i < 3;
+                async move {
+                    client
                     .post("https://api.exa.ai/search")
                     .header("Authorization", format!("Bearer {}", key))
                     .header("Content-Type", "application/json")
@@ -483,8 +648,9 @@ async fn run_brand_research(
                     .send()
                     .await
                     .ok()
-            }
-        }).collect();
+                }
+            })
+            .collect();
 
         let results = futures::future::join_all(search_futures).await;
 
@@ -495,14 +661,20 @@ async fn run_brand_research(
                         for r in items {
                             let title = r["title"].as_str().unwrap_or("");
                             let url = r["url"].as_str().unwrap_or("");
-                            let snippet = r["text"].as_str()
-                                .or_else(|| r["highlights"].as_array()
-                                    .and_then(|h| h.first())
-                                    .and_then(|h| h.as_str()))
+                            let snippet = r["text"]
+                                .as_str()
+                                .or_else(|| {
+                                    r["highlights"]
+                                        .as_array()
+                                        .and_then(|h| h.first())
+                                        .and_then(|h| h.as_str())
+                                })
                                 .unwrap_or("");
                             exa_context.push_str(&format!(
                                 "\n---\nTitle: {}\nURL: {}\nContent: {}\n",
-                                title, url, &snippet[..snippet.len().min(600)]
+                                title,
+                                url,
+                                &snippet[..snippet.len().min(600)]
                             ));
                         }
                     }
@@ -528,20 +700,32 @@ async fn run_brand_research(
             {
                 if let Ok(data) = resp.json::<serde_json::Value>().await {
                     if let Some(items) = data["results"].as_array() {
-                        exa_context.push_str("\n\n## SIMILAR BRANDS / COMPETITORS (Exa findSimilar):\n");
+                        exa_context
+                            .push_str("\n\n## SIMILAR BRANDS / COMPETITORS (Exa findSimilar):\n");
                         for r in items {
                             let title = r["title"].as_str().unwrap_or("");
                             let url = r["url"].as_str().unwrap_or("");
-                            let snip = r["highlights"].as_array()
-                                .and_then(|h| h.first()).and_then(|h| h.as_str()).unwrap_or("");
-                            exa_context.push_str(&format!("- {} ({}): {}\n", title, url, &snip[..snip.len().min(200)]));
+                            let snip = r["highlights"]
+                                .as_array()
+                                .and_then(|h| h.first())
+                                .and_then(|h| h.as_str())
+                                .unwrap_or("");
+                            exa_context.push_str(&format!(
+                                "- {} ({}): {}\n",
+                                title,
+                                url,
+                                &snip[..snip.len().min(200)]
+                            ));
                         }
                     }
                 }
             }
         }
 
-        tracing::info!("[BRAND_RESEARCH] Exa Phase 1 complete — {} chars", exa_context.len());
+        tracing::info!(
+            "[BRAND_RESEARCH] Exa Phase 1 complete — {} chars",
+            exa_context.len()
+        );
     } else {
         tracing::warn!("[BRAND_RESEARCH] EXA_API_KEY not set — skipping Exa");
     }
@@ -555,21 +739,37 @@ async fn run_brand_research(
         let mut in_style = false;
         let mut tag_buf = String::new();
         for c in html.chars() {
-            if out.len() >= max_chars { break; }
+            if out.len() >= max_chars {
+                break;
+            }
             match c {
-                '<' => { in_tag = true; tag_buf.clear(); }
+                '<' => {
+                    in_tag = true;
+                    tag_buf.clear();
+                }
                 '>' => {
                     let t = tag_buf.trim().to_lowercase();
-                    if t.starts_with("script") { in_script = true; }
-                    else if t.starts_with("/script") { in_script = false; }
-                    else if t.starts_with("style") { in_style = true; }
-                    else if t.starts_with("/style") { in_style = false; }
-                    in_tag = false; tag_buf.clear();
-                    if !in_script && !in_style { out.push(' '); }
+                    if t.starts_with("script") {
+                        in_script = true;
+                    } else if t.starts_with("/script") {
+                        in_script = false;
+                    } else if t.starts_with("style") {
+                        in_style = true;
+                    } else if t.starts_with("/style") {
+                        in_style = false;
+                    }
+                    in_tag = false;
+                    tag_buf.clear();
+                    if !in_script && !in_style {
+                        out.push(' ');
+                    }
                 }
                 _ => {
-                    if in_tag { tag_buf.push(c); }
-                    else if !in_script && !in_style { out.push(c); }
+                    if in_tag {
+                        tag_buf.push(c);
+                    } else if !in_script && !in_style {
+                        out.push(c);
+                    }
                 }
             }
         }
@@ -579,28 +779,68 @@ async fn run_brand_research(
     fn extract_tech_stack(html: &str, headers: &[String]) -> Vec<String> {
         let mut stack: std::collections::HashSet<String> = std::collections::HashSet::new();
         let lhtml = html.to_lowercase();
-        if lhtml.contains("__next") || lhtml.contains("/_next/") { stack.insert("Next.js".into()); }
-        if lhtml.contains("nuxt") { stack.insert("Nuxt.js".into()); }
-        if lhtml.contains("gatsby") { stack.insert("Gatsby".into()); }
-        if lhtml.contains("wordpress") || lhtml.contains("wp-content") { stack.insert("WordPress".into()); }
-        if lhtml.contains("webflow") { stack.insert("Webflow".into()); }
-        if lhtml.contains("shopify") { stack.insert("Shopify".into()); }
-        if lhtml.contains("react") { stack.insert("React".into()); }
-        if lhtml.contains("vue") { stack.insert("Vue.js".into()); }
-        if lhtml.contains("tailwind") { stack.insert("Tailwind CSS".into()); }
-        if lhtml.contains("framer") { stack.insert("Framer".into()); }
-        if lhtml.contains("hubspot") { stack.insert("HubSpot".into()); }
-        if lhtml.contains("intercom") { stack.insert("Intercom".into()); }
-        if lhtml.contains("google-analytics") || lhtml.contains("gtag") { stack.insert("Google Analytics".into()); }
-        if lhtml.contains("hotjar") { stack.insert("Hotjar".into()); }
-        if lhtml.contains("crisp.chat") { stack.insert("Crisp Chat".into()); }
-        if lhtml.contains("typeform") { stack.insert("Typeform".into()); }
+        if lhtml.contains("__next") || lhtml.contains("/_next/") {
+            stack.insert("Next.js".into());
+        }
+        if lhtml.contains("nuxt") {
+            stack.insert("Nuxt.js".into());
+        }
+        if lhtml.contains("gatsby") {
+            stack.insert("Gatsby".into());
+        }
+        if lhtml.contains("wordpress") || lhtml.contains("wp-content") {
+            stack.insert("WordPress".into());
+        }
+        if lhtml.contains("webflow") {
+            stack.insert("Webflow".into());
+        }
+        if lhtml.contains("shopify") {
+            stack.insert("Shopify".into());
+        }
+        if lhtml.contains("react") {
+            stack.insert("React".into());
+        }
+        if lhtml.contains("vue") {
+            stack.insert("Vue.js".into());
+        }
+        if lhtml.contains("tailwind") {
+            stack.insert("Tailwind CSS".into());
+        }
+        if lhtml.contains("framer") {
+            stack.insert("Framer".into());
+        }
+        if lhtml.contains("hubspot") {
+            stack.insert("HubSpot".into());
+        }
+        if lhtml.contains("intercom") {
+            stack.insert("Intercom".into());
+        }
+        if lhtml.contains("google-analytics") || lhtml.contains("gtag") {
+            stack.insert("Google Analytics".into());
+        }
+        if lhtml.contains("hotjar") {
+            stack.insert("Hotjar".into());
+        }
+        if lhtml.contains("crisp.chat") {
+            stack.insert("Crisp Chat".into());
+        }
+        if lhtml.contains("typeform") {
+            stack.insert("Typeform".into());
+        }
         for h in headers {
             let hl = h.to_lowercase();
-            if hl.contains("vercel") { stack.insert("Vercel".into()); }
-            if hl.contains("netlify") { stack.insert("Netlify".into()); }
-            if hl.contains("cloudflare") { stack.insert("Cloudflare".into()); }
-            if hl.contains("aws") || hl.contains("amazon") { stack.insert("AWS".into()); }
+            if hl.contains("vercel") {
+                stack.insert("Vercel".into());
+            }
+            if hl.contains("netlify") {
+                stack.insert("Netlify".into());
+            }
+            if hl.contains("cloudflare") {
+                stack.insert("Cloudflare".into());
+            }
+            if hl.contains("aws") || hl.contains("amazon") {
+                stack.insert("AWS".into());
+            }
         }
         let mut out: Vec<String> = stack.into_iter().collect();
         out.sort();
@@ -627,7 +867,8 @@ async fn run_brand_research(
             while let Some(pos) = lower[search_start..].find(pattern) {
                 let abs = search_start + pos;
                 let after = &html[abs + pattern.len()..];
-                let handle: String = after.chars()
+                let handle: String = after
+                    .chars()
                     .take_while(|c| !matches!(c, '"' | '\'' | '?' | ' ' | '>' | '/'))
                     .collect();
                 if !handle.is_empty() && !seen.contains(&handle) {
@@ -635,7 +876,9 @@ async fn run_brand_research(
                     found.push((platform.to_string(), handle));
                 }
                 search_start = abs + 1;
-                if search_start >= lower.len() { break; }
+                if search_start >= lower.len() {
+                    break;
+                }
             }
         }
         found
@@ -681,14 +924,17 @@ async fn run_brand_research(
 
         let ps_future = client
             .get("https://www.googleapis.com/pagespeedonline/v5/runPagespeed")
-            .query(&[("url", website), ("strategy", "mobile"), ("category", "performance"), ("category", "seo")])
+            .query(&[
+                ("url", website),
+                ("strategy", "mobile"),
+                ("category", "performance"),
+                ("category", "seo"),
+            ])
             .timeout(std::time::Duration::from_secs(25))
             .send();
 
-        let (page_results, ps_result) = futures::future::join(
-            futures::future::join_all(page_futures),
-            ps_future,
-        ).await;
+        let (page_results, ps_result) =
+            futures::future::join(futures::future::join_all(page_futures), ps_future).await;
 
         let mut social_links_extracted = false;
         for (i, result) in page_results.into_iter().enumerate() {
@@ -697,7 +943,8 @@ async fn run_brand_research(
                     if !social_links_extracted {
                         let social_links = extract_social_links(&html);
                         if !social_links.is_empty() {
-                            website_content.push_str("\n\n## SOCIAL LINKS EXTRACTED FROM WEBSITE:\n");
+                            website_content
+                                .push_str("\n\n## SOCIAL LINKS EXTRACTED FROM WEBSITE:\n");
                             for (platform, handle) in &social_links {
                                 website_content.push_str(&format!("- {}: {}\n", platform, handle));
                             }
@@ -706,33 +953,58 @@ async fn run_brand_research(
                     }
                     detected_tech_stack = extract_tech_stack(&html, &headers);
                     if !detected_tech_stack.is_empty() {
-                        website_content.push_str(&format!("\n\n## DETECTED TECH STACK: {}\n", detected_tech_stack.join(", ")));
+                        website_content.push_str(&format!(
+                            "\n\n## DETECTED TECH STACK: {}\n",
+                            detected_tech_stack.join(", ")
+                        ));
                     }
                 }
                 let stripped = strip_html(&html, 2500);
                 if !stripped.is_empty() {
                     let page_label = sub_pages.get(i).map(|u| u.as_str()).unwrap_or("page");
-                    let page_label = page_label.trim_start_matches("https://").trim_start_matches("http://");
-                    website_content.push_str(&format!("\n\n=== PAGE: {} ===\n{}", page_label, stripped));
+                    let page_label = page_label
+                        .trim_start_matches("https://")
+                        .trim_start_matches("http://");
+                    website_content
+                        .push_str(&format!("\n\n=== PAGE: {} ===\n{}", page_label, stripped));
                 }
             }
         }
 
         if let Ok(ps_resp) = ps_result {
             if let Ok(ps_json) = ps_resp.json::<serde_json::Value>().await {
-                let perf = ps_json["lighthouseResult"]["categories"]["performance"]["score"].as_f64().unwrap_or(0.0) * 100.0;
-                let seo  = ps_json["lighthouseResult"]["categories"]["seo"]["score"].as_f64().unwrap_or(0.0) * 100.0;
-                let fcp  = ps_json["lighthouseResult"]["audits"]["first-contentful-paint"]["displayValue"].as_str().unwrap_or("?");
-                pagespeed_context = format!("PageSpeed (mobile): Performance={:.0}/100, SEO={:.0}/100, FCP={}", perf, seo, fcp);
+                let perf = ps_json["lighthouseResult"]["categories"]["performance"]["score"]
+                    .as_f64()
+                    .unwrap_or(0.0)
+                    * 100.0;
+                let seo = ps_json["lighthouseResult"]["categories"]["seo"]["score"]
+                    .as_f64()
+                    .unwrap_or(0.0)
+                    * 100.0;
+                let fcp =
+                    ps_json["lighthouseResult"]["audits"]["first-contentful-paint"]["displayValue"]
+                        .as_str()
+                        .unwrap_or("?");
+                pagespeed_context = format!(
+                    "PageSpeed (mobile): Performance={:.0}/100, SEO={:.0}/100, FCP={}",
+                    perf, seo, fcp
+                );
                 tracing::info!("[BRAND_RESEARCH] {}", pagespeed_context);
             }
         }
 
-        tracing::info!("[BRAND_RESEARCH] Website scrape complete — {} chars, tech: {:?}", website_content.len(), detected_tech_stack);
+        tracing::info!(
+            "[BRAND_RESEARCH] Website scrape complete — {} chars, tech: {:?}",
+            website_content.len(),
+            detected_tech_stack
+        );
     }
 
     // ── 3. PASS 1: Claude synthesis — extract all facts ──────────────────────
-    let known_handles = format!("Instagram: {}, LinkedIn: {}, Twitter: {}", instagram, linkedin, twitter);
+    let known_handles = format!(
+        "Instagram: {}, LinkedIn: {}, Twitter: {}",
+        instagram, linkedin, twitter
+    );
 
     let synthesis_prompt = format!(
         r#"You are an elite brand intelligence analyst with deep expertise in creative agencies, marketing technology, and startup ecosystems.
@@ -801,20 +1073,58 @@ KNOWN HANDLES (current DB):
 {handles}
 {prior}"#,
         name = org_name,
-        website = if website_content.is_empty() { "Not fetched".into() } else { website_content.chars().take(9000).collect::<String>() },
-        pagespeed = if pagespeed_context.is_empty() { String::new() } else { format!("\nPAGESPEED: {}", pagespeed_context) },
-        tech = if detected_tech_stack.is_empty() { "None detected".into() } else { detected_tech_stack.join(", ") },
-        exa = if exa_context.is_empty() { "No Exa results".into() } else { exa_context.chars().take(11000).collect::<String>() },
+        website = if website_content.is_empty() {
+            "Not fetched".into()
+        } else {
+            website_content.chars().take(9000).collect::<String>()
+        },
+        pagespeed = if pagespeed_context.is_empty() {
+            String::new()
+        } else {
+            format!("\nPAGESPEED: {}", pagespeed_context)
+        },
+        tech = if detected_tech_stack.is_empty() {
+            "None detected".into()
+        } else {
+            detected_tech_stack.join(", ")
+        },
+        exa = if exa_context.is_empty() {
+            "No Exa results".into()
+        } else {
+            exa_context.chars().take(11000).collect::<String>()
+        },
         handles = known_handles,
-        prior = if iteration <= 1 { String::new() } else {
+        prior = if iteration <= 1 {
+            String::new()
+        } else {
             format!(
                 "\n\nPRIOR KNOWLEDGE (from {} previous iterations — build on this, do not lose it):\nSummary: {}\nFounder: {}\nGeo: {}\nClients: {}\nKnown gaps to resolve:\n{}",
                 iteration - 1,
-                if prev_summary.is_empty() { "None yet".to_string() } else { prev_summary.chars().take(800).collect() },
-                if prev_founder.is_empty() { "Unknown".to_string() } else { prev_founder },
-                if prev_geo.is_empty() { "Unknown".to_string() } else { prev_geo },
-                if prev_clients.is_empty() { "[]".to_string() } else { prev_clients },
-                if prev_gaps.is_empty() { "None identified".to_string() } else { prev_gaps.chars().take(1500).collect() },
+                if prev_summary.is_empty() {
+                    "None yet".to_string()
+                } else {
+                    prev_summary.chars().take(800).collect()
+                },
+                if prev_founder.is_empty() {
+                    "Unknown".to_string()
+                } else {
+                    prev_founder
+                },
+                if prev_geo.is_empty() {
+                    "Unknown".to_string()
+                } else {
+                    prev_geo
+                },
+                if prev_clients.is_empty() {
+                    "[]".to_string()
+                } else {
+                    prev_clients
+                },
+                if prev_gaps.is_empty() {
+                    "None identified".to_string()
+                } else {
+                    prev_gaps.chars().take(1500).collect()
+                },
             )
         },
     );
@@ -825,7 +1135,11 @@ KNOWN HANDLES (current DB):
         "messages": [{"role": "user", "content": synthesis_prompt}]
     });
 
-    tracing::info!("[BRAND_RESEARCH] Pass 1 synthesis for {} (iteration {})", org_name, iteration);
+    tracing::info!(
+        "[BRAND_RESEARCH] Pass 1 synthesis for {} (iteration {})",
+        org_name,
+        iteration
+    );
     let pass1_resp = client
         .post("https://api.anthropic.com/v1/messages")
         .header("x-api-key", &anthropic_key)
@@ -850,65 +1164,118 @@ KNOWN HANDLES (current DB):
                     return serde_json::from_str(&pass1_text[start..=end]);
                 }
             }
-            Err(serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::InvalidData, "no JSON")))
+            Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "no JSON",
+            )))
         })
         .unwrap_or_default();
 
-    tracing::info!("[BRAND_RESEARCH] Pass 1 complete — confidence: {:.2}", parsed["confidence"].as_f64().unwrap_or(0.0));
+    tracing::info!(
+        "[BRAND_RESEARCH] Pass 1 complete — confidence: {:.2}",
+        parsed["confidence"].as_f64().unwrap_or(0.0)
+    );
 
     // ── 4. PASS 2: Gap analysis — targeted searches + refinement ─────────────
     let confidence = parsed["confidence"].as_f64().unwrap_or(0.0);
-    let gaps: Vec<String> = parsed["research_gaps"].as_array()
-        .map(|g| g.iter().filter_map(|v| v.as_str()).map(String::from).collect())
+    let gaps: Vec<String> = parsed["research_gaps"]
+        .as_array()
+        .map(|g| {
+            g.iter()
+                .filter_map(|v| v.as_str())
+                .map(String::from)
+                .collect()
+        })
         .unwrap_or_default();
 
     let mut final_data = parsed.clone();
 
     if !exa_key.is_empty() && (confidence < 0.8 || !gaps.is_empty() || iteration > 1) {
-        tracing::info!("[BRAND_RESEARCH] Pass 2 gap analysis — {} gaps, confidence {:.2}", gaps.len(), confidence);
+        tracing::info!(
+            "[BRAND_RESEARCH] Pass 2 gap analysis — {} gaps, confidence {:.2}",
+            gaps.len(),
+            confidence
+        );
 
         let mut gap_queries: Vec<String> = vec![];
 
         if iteration >= 2 || parsed["founder_name"].is_null() {
-            gap_queries.push(format!("\"{}\" CEO founder president director leadership team executive", org_name));
+            gap_queries.push(format!(
+                "\"{}\" CEO founder president director leadership team executive",
+                org_name
+            ));
         }
-        if iteration >= 2 || parsed["key_clients_mentioned"].as_array().map(|a| a.len()).unwrap_or(0) == 0 {
-            gap_queries.push(format!("\"{}\" client project portfolio case study work brand campaign", org_name));
+        if iteration >= 2
+            || parsed["key_clients_mentioned"]
+                .as_array()
+                .map(|a| a.len())
+                .unwrap_or(0)
+                == 0
+        {
+            gap_queries.push(format!(
+                "\"{}\" client project portfolio case study work brand campaign",
+                org_name
+            ));
         }
-        if iteration >= 2 || parsed["awards_recognition"].as_array().map(|a| a.len()).unwrap_or(0) == 0 {
-            gap_queries.push(format!("\"{}\" award recognition achievement winner best agency 2023 2024", org_name));
+        if iteration >= 2
+            || parsed["awards_recognition"]
+                .as_array()
+                .map(|a| a.len())
+                .unwrap_or(0)
+                == 0
+        {
+            gap_queries.push(format!(
+                "\"{}\" award recognition achievement winner best agency 2023 2024",
+                org_name
+            ));
         }
         for gap in gaps.iter().take(4) {
-            gap_queries.push(format!("{} {} site evidence", org_name, gap.chars().take(60).collect::<String>()));
+            gap_queries.push(format!(
+                "{} {} site evidence",
+                org_name,
+                gap.chars().take(60).collect::<String>()
+            ));
         }
-        if let Some(li_handle) = parsed["social_profiles"].as_array()
-            .and_then(|arr| arr.iter().find(|p| p["platform"].as_str() == Some("linkedin")))
+        if let Some(li_handle) = parsed["social_profiles"]
+            .as_array()
+            .and_then(|arr| {
+                arr.iter()
+                    .find(|p| p["platform"].as_str() == Some("linkedin"))
+            })
             .and_then(|p| p["handle"].as_str())
         {
-            gap_queries.push(format!("site:linkedin.com/company/{} employees size about overview", li_handle));
+            gap_queries.push(format!(
+                "site:linkedin.com/company/{} employees size about overview",
+                li_handle
+            ));
         }
 
         if !gap_queries.is_empty() {
-            let gap_futures: Vec<_> = gap_queries.iter().map(|q| {
-                let client = client.clone();
-                let key = exa_key.clone();
-                let query = q.clone();
-                async move {
-                    client
-                        .post("https://api.exa.ai/search")
-                        .header("Authorization", format!("Bearer {}", key))
-                        .header("Content-Type", "application/json")
-                        .timeout(std::time::Duration::from_secs(20))
-                        .json(&json!({
-                            "query": query,
-                            "num_results": 3,
-                            "use_autoprompt": true,
-                            "type": "neural",
-                            "contents": { "text": { "maxCharacters": 1000 } }
-                        }))
-                        .send().await.ok()
-                }
-            }).collect();
+            let gap_futures: Vec<_> = gap_queries
+                .iter()
+                .map(|q| {
+                    let client = client.clone();
+                    let key = exa_key.clone();
+                    let query = q.clone();
+                    async move {
+                        client
+                            .post("https://api.exa.ai/search")
+                            .header("Authorization", format!("Bearer {}", key))
+                            .header("Content-Type", "application/json")
+                            .timeout(std::time::Duration::from_secs(20))
+                            .json(&json!({
+                                "query": query,
+                                "num_results": 3,
+                                "use_autoprompt": true,
+                                "type": "neural",
+                                "contents": { "text": { "maxCharacters": 1000 } }
+                            }))
+                            .send()
+                            .await
+                            .ok()
+                    }
+                })
+                .collect();
 
             let gap_results = futures::future::join_all(gap_futures).await;
 
@@ -923,7 +1290,9 @@ KNOWN HANDLES (current DB):
                                 let content = r["text"].as_str().unwrap_or("");
                                 gap_context.push_str(&format!(
                                     "\n---\nTitle: {}\nURL: {}\nContent: {}\n",
-                                    title, url, &content[..content.len().min(500)]
+                                    title,
+                                    url,
+                                    &content[..content.len().min(500)]
                                 ));
                             }
                         }
@@ -931,7 +1300,10 @@ KNOWN HANDLES (current DB):
                 }
             }
 
-            tracing::info!("[BRAND_RESEARCH] Gap pass complete — {} chars", gap_context.len());
+            tracing::info!(
+                "[BRAND_RESEARCH] Gap pass complete — {} chars",
+                gap_context.len()
+            );
 
             if !gap_context.is_empty() {
                 let pass2_prompt = format!(
@@ -945,7 +1317,11 @@ NEW GAP RESEARCH:
 
 Using the new research, extend and correct the existing data. Return a JSON object with ONLY the fields that have new or improved data. Use the same schema as the original. Focus on: founder_name, founding_year, key_clients_mentioned, awards_recognition, estimated_team_size, geographic_focus, funding_stage, thought_leadership_topics, confidence (update to reflect total knowledge)."#,
                     org_name,
-                    serde_json::to_string_pretty(&parsed).unwrap_or_default().chars().take(3000).collect::<String>(),
+                    serde_json::to_string_pretty(&parsed)
+                        .unwrap_or_default()
+                        .chars()
+                        .take(3000)
+                        .collect::<String>(),
                     gap_context.chars().take(6000).collect::<String>(),
                 );
 
@@ -973,18 +1349,24 @@ Using the new research, extend and correct the existing data. Return a JSON obje
                             .and_then(|c| c["text"].as_str())
                             .unwrap_or("");
 
-                        if let Ok(pass2_data) = serde_json::from_str::<serde_json::Value>(pass2_text)
-                            .or_else(|_| {
+                        if let Ok(pass2_data) =
+                            serde_json::from_str::<serde_json::Value>(pass2_text).or_else(|_| {
                                 if let Some(s) = pass2_text.find('{') {
                                     if let Some(e) = pass2_text.rfind('}') {
                                         return serde_json::from_str(&pass2_text[s..=e]);
                                     }
                                 }
-                                Err(serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::InvalidData, "no JSON")))
+                                Err(serde_json::Error::io(std::io::Error::new(
+                                    std::io::ErrorKind::InvalidData,
+                                    "no JSON",
+                                )))
                             })
                         {
                             final_data = merge_json(&parsed, &pass2_data);
-                            tracing::info!("[BRAND_RESEARCH] Pass 2 merged — final confidence: {:.2}", final_data["confidence"].as_f64().unwrap_or(confidence));
+                            tracing::info!(
+                                "[BRAND_RESEARCH] Pass 2 merged — final confidence: {:.2}",
+                                final_data["confidence"].as_f64().unwrap_or(confidence)
+                            );
                         }
                     }
                 }
@@ -994,14 +1376,28 @@ Using the new research, extend and correct the existing data. Return a JSON obje
 
     // ── 5. Write results back to brand profile ────────────────────────────────
     // Resolve confidence robustly — Claude may return it as number or string
-    let final_confidence = final_data["confidence"].as_f64()
-        .or_else(|| final_data["confidence"].as_str().and_then(|s| s.parse::<f64>().ok()))
+    let final_confidence = final_data["confidence"]
+        .as_f64()
+        .or_else(|| {
+            final_data["confidence"]
+                .as_str()
+                .and_then(|s| s.parse::<f64>().ok())
+        })
         .unwrap_or(confidence); // fall back to Pass 1 confidence
-    let depth_this_run = if final_confidence >= 0.85 { 3i64 } else if final_confidence >= 0.65 { 2 } else { 1 };
+    let depth_this_run = if final_confidence >= 0.85 {
+        3i64
+    } else if final_confidence >= 0.65 {
+        2
+    } else {
+        1
+    };
     // Preserve the highest depth ever achieved across iterations
     let prev_depth = iter_row.as_ref().map(|r| r.research_depth).unwrap_or(0);
     let depth = depth_this_run.max(prev_depth);
-    let summary = final_data["online_summary"].as_str().unwrap_or("Research complete").to_string();
+    let summary = final_data["online_summary"]
+        .as_str()
+        .unwrap_or("Research complete")
+        .to_string();
 
     let mut updates: Vec<(&str, String)> = vec![];
 
@@ -1017,7 +1413,11 @@ Using the new research, extend and correct the existing data. Return a JSON obje
     macro_rules! push_arr {
         ($field:expr, $key:expr) => {
             if let Some(arr) = final_data[$key].as_array() {
-                let v: Vec<String> = arr.iter().filter_map(|x| x.as_str()).map(String::from).collect();
+                let v: Vec<String> = arr
+                    .iter()
+                    .filter_map(|x| x.as_str())
+                    .map(String::from)
+                    .collect();
                 if !v.is_empty() {
                     updates.push(($field, serde_json::to_string(&v).unwrap_or_default()));
                 }
@@ -1051,9 +1451,14 @@ Using the new research, extend and correct the existing data. Return a JSON obje
 
     // Tech stack (combine detected + Claude-found)
     {
-        let mut tech: std::collections::HashSet<String> = detected_tech_stack.iter().cloned().collect();
+        let mut tech: std::collections::HashSet<String> =
+            detected_tech_stack.iter().cloned().collect();
         if let Some(arr) = final_data["tech_stack_detected"].as_array() {
-            for v in arr { if let Some(s) = v.as_str() { tech.insert(s.to_string()); } }
+            for v in arr {
+                if let Some(s) = v.as_str() {
+                    tech.insert(s.to_string());
+                }
+            }
         }
         if !tech.is_empty() {
             let mut tv: Vec<String> = tech.into_iter().collect();
@@ -1064,7 +1469,11 @@ Using the new research, extend and correct the existing data. Return a JSON obje
 
     // Gap notes
     if let Some(gaps_arr) = final_data["research_gaps"].as_array() {
-        let gap_list: Vec<String> = gaps_arr.iter().filter_map(|v| v.as_str()).map(String::from).collect();
+        let gap_list: Vec<String> = gaps_arr
+            .iter()
+            .filter_map(|v| v.as_str())
+            .map(String::from)
+            .collect();
         if !gap_list.is_empty() {
             updates.push(("brand_gap_notes", gap_list.join("; ")));
         }
@@ -1076,27 +1485,62 @@ Using the new research, extend and correct the existing data. Return a JSON obje
         for p in profiles {
             let platform = p["platform"].as_str().unwrap_or("");
             let handle = p["handle"].as_str().unwrap_or("");
-            if handle.is_empty() || handle == "unknown" { continue; }
+            if handle.is_empty() || handle == "unknown" {
+                continue;
+            }
             let col: Option<&'static str> = match platform {
                 "instagram" => Some("social_instagram"),
-                "linkedin"  => Some("social_linkedin"),
-                "twitter"   => Some("social_twitter"),
-                "facebook"  => Some("social_facebook"),
-                "youtube"   => Some("social_youtube"),
-                "tiktok"    => Some("social_tiktok"),
+                "linkedin" => Some("social_linkedin"),
+                "twitter" => Some("social_twitter"),
+                "facebook" => Some("social_facebook"),
+                "youtube" => Some("social_youtube"),
+                "tiktok" => Some("social_tiktok"),
                 _ => None,
             };
-            if let Some(col) = col { social_updates.push((col, handle.to_string())); }
+            if let Some(col) = col {
+                social_updates.push((col, handle.to_string()));
+            }
         }
     }
     updates.extend(social_updates.into_iter().map(|(col, val)| (col, val)));
 
     if !updates.is_empty() {
-        let social_cols = ["social_instagram","social_linkedin","social_twitter","social_facebook","social_youtube","social_tiktok"];
-        let array_cols  = ["icp_industries","competitor_brands","differentiators","content_pillars","brand_values","key_clients","awards_and_recognition"];
-        let direct_cols = ["brand_voice","market_position","industry","tagline","target_audience","icp_description","icp_company_size",
-                           "founder_name","founding_year","estimated_team_size","geographic_focus","funding_stage","content_strategy_notes",
-                           "mission_statement","vision_statement","tech_stack","brand_gap_notes"];
+        let social_cols = [
+            "social_instagram",
+            "social_linkedin",
+            "social_twitter",
+            "social_facebook",
+            "social_youtube",
+            "social_tiktok",
+        ];
+        let array_cols = [
+            "icp_industries",
+            "competitor_brands",
+            "differentiators",
+            "content_pillars",
+            "brand_values",
+            "key_clients",
+            "awards_and_recognition",
+        ];
+        let direct_cols = [
+            "brand_voice",
+            "market_position",
+            "industry",
+            "tagline",
+            "target_audience",
+            "icp_description",
+            "icp_company_size",
+            "founder_name",
+            "founding_year",
+            "estimated_team_size",
+            "geographic_focus",
+            "funding_stage",
+            "content_strategy_notes",
+            "mission_statement",
+            "vision_statement",
+            "tech_stack",
+            "brand_gap_notes",
+        ];
 
         let set_clauses: Vec<String> = updates.iter().map(|(col, _)| {
             if social_cols.contains(col) {
@@ -1115,7 +1559,9 @@ Using the new research, extend and correct the existing data. Return a JSON obje
             set_clauses.join(", ")
         );
         let mut q = sqlx::query(&sql);
-        for (_, val) in &updates { q = q.bind(val); }
+        for (_, val) in &updates {
+            q = q.bind(val);
+        }
         q = q.bind(&summary).bind(depth).bind(org_id.to_string());
         q.execute(pool).await?;
     } else {
@@ -1214,21 +1660,29 @@ Using the new research, extend and correct the existing data. Return a JSON obje
 
     // ── 6. Store research as deduplicated data source ─────────────────────────
     let report_title = format!("Brand Intelligence Report — {}", org_name);
-    let pagespeed_section = if pagespeed_context.is_empty() { String::new() } else {
+    let pagespeed_section = if pagespeed_context.is_empty() {
+        String::new()
+    } else {
         format!("\n\n## Website Performance\n{}", pagespeed_context)
     };
     let research_doc = format!(
         "# Brand Intelligence Report: {}\n\nIteration: {}\nGenerated: {}\nConfidence: {:.0}%\nDepth: {}/3\n\n## Summary\n{}{}\n\n## Full Research Data\n```json\n{}\n```",
-        org_name, iteration,
+        org_name,
+        iteration,
         chrono::Utc::now().format("%Y-%m-%d"),
-        final_confidence * 100.0, depth,
-        summary, pagespeed_section,
+        final_confidence * 100.0,
+        depth,
+        summary,
+        pagespeed_section,
         serde_json::to_string_pretty(&final_data).unwrap_or_default()
     );
 
     let org_id_bytes = org_id.to_string();
     sqlx::query("DELETE FROM data_sources WHERE organization_id = ? AND title = ?")
-        .bind(&org_id_bytes).bind(&report_title).execute(pool).await?;
+        .bind(&org_id_bytes)
+        .bind(&report_title)
+        .execute(pool)
+        .await?;
 
     sqlx::query(
         "INSERT INTO data_sources (id, organization_id, title, description, data_type, source_type, content, status, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, 'report', 'text', ?, 'ready', '{}', datetime('now','subsec'), datetime('now','subsec'))"
@@ -1264,7 +1718,10 @@ Using the new research, extend and correct the existing data. Return a JSON obje
                 .bind(last)
                 .bind(if bio.is_empty() { None } else { Some(bio) })
                 .execute(pool).await;
-                tracing::info!("[BRAND_RESEARCH] Created CRM person record for founder: {}", founder);
+                tracing::info!(
+                    "[BRAND_RESEARCH] Created CRM person record for founder: {}",
+                    founder
+                );
             } else {
                 tracing::info!("[BRAND_RESEARCH] Founder {} already in CRM", founder);
             }
@@ -1273,7 +1730,9 @@ Using the new research, extend and correct the existing data. Return a JSON obje
 
     // ── 8. Knowledge graph — 8 entity types ──────────────────────────────────
     #[derive(sqlx::FromRow)]
-    struct ProjIdRow { id: Uuid }
+    struct ProjIdRow {
+        id: Uuid,
+    }
     if let Ok(Some(proj)) = sqlx::query_as::<_, ProjIdRow>(
         "SELECT id FROM projects WHERE organization_id = ? AND project_status != 'archived' ORDER BY created_at ASC LIMIT 1"
     )
@@ -1394,6 +1853,11 @@ Using the new research, extend and correct the existing data. Return a JSON obje
         tracing::info!("[BRAND_RESEARCH] No project found for org {} — knowledge stored in data_sources only", org_name);
     }
 
-    tracing::info!("[BRAND_RESEARCH] Completed {} — iteration {}, confidence {:.2}", org_name, iteration, final_confidence);
+    tracing::info!(
+        "[BRAND_RESEARCH] Completed {} — iteration {}, confidence {:.2}",
+        org_name,
+        iteration,
+        final_confidence
+    );
     Ok(())
 }

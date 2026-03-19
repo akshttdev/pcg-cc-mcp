@@ -8,9 +8,8 @@ use std::path::{Path, PathBuf};
 
 use tokio::process::Command;
 
-use crate::{NoraError, Result};
-
 use super::types::*;
+use crate::{NoraError, Result};
 
 /// Handles final video rendering and Premiere XML generation.
 pub struct AssemblyProcessor {
@@ -19,7 +18,9 @@ pub struct AssemblyProcessor {
 
 impl AssemblyProcessor {
     pub fn new(output_bitrate_mbps: u32) -> Self {
-        Self { output_bitrate_mbps }
+        Self {
+            output_bitrate_mbps,
+        }
     }
 
     /// Produce both rendered video and Premiere XML from the directive.
@@ -287,8 +288,14 @@ impl AssemblyProcessor {
                     brightness_parts.push(format!(
                         "if(between(t,{:.2},{:.2}),-(t-{:.2})/{:.1},\
                          if(between(t,{:.2},{:.2}),-({:.2}-t)/{:.1}",
-                        fade_start, fade_end, fade_start, transition_dur,
-                        fade_end, fade_in_end, fade_in_end, transition_dur
+                        fade_start,
+                        fade_end,
+                        fade_start,
+                        transition_dur,
+                        fade_end,
+                        fade_in_end,
+                        fade_in_end,
+                        transition_dur
                     ));
                 }
             }
@@ -297,10 +304,7 @@ impl AssemblyProcessor {
                 for _ in 0..brightness_parts.len() {
                     expr.push_str("))");
                 }
-                filter_parts.push(format!(
-                    "[outv]eq=brightness='{}'[outv2]",
-                    expr
-                ));
+                filter_parts.push(format!("[outv]eq=brightness='{}'[outv2]", expr));
                 // Use outv2 as final output
                 let filter_complex = filter_parts.join(";\n");
                 let script = format!(
@@ -436,7 +440,8 @@ ffmpeg -y \
                 let asset = &catalog.assets[idx];
                 // Timeline position
                 let start_frame = (lsp.timeline_position_seconds * fps) as u64;
-                let end_frame = ((lsp.timeline_position_seconds + lsp.duration_seconds) * fps) as u64;
+                let end_frame =
+                    ((lsp.timeline_position_seconds + lsp.duration_seconds) * fps) as u64;
                 // Source in/out: use audio_source_timecode which MUST == video_source_timecode
                 let in_frame = (lsp.audio_source_timecode * fps) as u64;
                 let out_frame = ((lsp.audio_source_timecode + lsp.duration_seconds) * fps) as u64;
@@ -490,7 +495,10 @@ ffmpeg -y \
             </file>
           </clipitem>
 "#,
-                asset.filename, end_frame, end_frame, asset.path.display()
+                asset.filename,
+                end_frame,
+                end_frame,
+                asset.path.display()
             ));
         }
         xml.push_str("        </track>\n");

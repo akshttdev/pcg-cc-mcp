@@ -7,7 +7,10 @@ use std::sync::Arc;
 
 use axum::{
     Router,
-    extract::{State, WebSocketUpgrade, ws::{Message, WebSocket}},
+    extract::{
+        State, WebSocketUpgrade,
+        ws::{Message, WebSocket},
+    },
     response::{Json, Response},
     routing::{get, post},
 };
@@ -15,7 +18,7 @@ use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use tokio::sync::{broadcast, RwLock, mpsc};
+use tokio::sync::{RwLock, broadcast, mpsc};
 use ts_rs::TS;
 
 use crate::{DeploymentImpl, error::ApiError};
@@ -166,7 +169,10 @@ impl MultiplayerState {
     }
 
     pub fn get_all_players(&self) -> Vec<PlayerState> {
-        self.players.iter().map(|entry| entry.value().clone()).collect()
+        self.players
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect()
     }
 
     pub fn add_player(&self, player: PlayerState) {
@@ -198,11 +204,7 @@ impl MultiplayerState {
         }
     }
 
-    pub fn update_player_equipment(
-        &self,
-        player_id: &str,
-        equipment: PlayerEquipment,
-    ) -> bool {
+    pub fn update_player_equipment(&self, player_id: &str, equipment: PlayerEquipment) -> bool {
         if let Some(mut player) = self.players.get_mut(player_id) {
             player.equipment = equipment;
             player.last_update = Utc::now();
@@ -247,13 +249,21 @@ async fn get_multiplayer_state() -> Arc<MultiplayerState> {
 /// Known spawn locations
 fn get_spawn_position(destination: &str) -> Option<PlayerPosition> {
     match destination {
-        "command-center" => Some(PlayerPosition { x: 15.0, y: 81.0, z: 15.0 }),
+        "command-center" => Some(PlayerPosition {
+            x: 15.0,
+            y: 81.0,
+            z: 15.0,
+        }),
         // Project buildings are dynamically positioned, but we can provide default interior spawn
         // For project interiors, the position is relative to the building's interior coordinate system
         _ => {
             // For project slugs, spawn inside the building interior
             // Interior spawn point: center of room, slightly elevated
-            Some(PlayerPosition { x: 0.0, y: 1.5, z: 10.0 })
+            Some(PlayerPosition {
+                x: 0.0,
+                y: 1.5,
+                z: 10.0,
+            })
         }
     }
 }
@@ -372,16 +382,23 @@ async fn handle_multiplayer_socket(socket: WebSocket) {
                     // Admins spawn at command center
                     get_spawn_position("command-center").unwrap()
                 } else if let Some(ref pref) = effective_spawn {
-                    get_spawn_position(pref).unwrap_or(PlayerPosition { x: 0.0, y: 1.5, z: 10.0 })
+                    get_spawn_position(pref).unwrap_or(PlayerPosition {
+                        x: 0.0,
+                        y: 1.5,
+                        z: 10.0,
+                    })
                 } else {
                     // Default spawn for non-admin without preference - matches frontend SPAWN_USER [0, 1, 60]
-                    PlayerPosition { x: 0.0, y: 1.0, z: 60.0 }
+                    PlayerPosition {
+                        x: 0.0,
+                        y: 1.0,
+                        z: 60.0,
+                    }
                 };
 
                 // Use default avatar for users without one
-                let effective_avatar = avatar_url.or_else(|| {
-                    Some("/avatars/default-avatar.png".to_string())
-                });
+                let effective_avatar =
+                    avatar_url.or_else(|| Some("/avatars/default-avatar.png".to_string()));
 
                 let new_player = PlayerState {
                     id: user_id.clone(),
@@ -392,7 +409,11 @@ async fn handle_multiplayer_socket(socket: WebSocket) {
                     equipment,
                     position: spawn_pos.clone(),
                     rotation: PlayerRotation { y: 0.0 },
-                    current_zone: if is_admin { "command_center".to_string() } else { "ground".to_string() },
+                    current_zone: if is_admin {
+                        "command_center".to_string()
+                    } else {
+                        "ground".to_string()
+                    },
                     is_moving: false,
                     last_update: Utc::now(),
                     spawn_preference: effective_spawn,
@@ -400,7 +421,9 @@ async fn handle_multiplayer_socket(socket: WebSocket) {
 
                 // Send current players snapshot to the new player BEFORE adding them
                 let existing_players = mp_state_for_recv.get_all_players();
-                let snapshot = ServerMessage::PlayersSnapshot { players: existing_players };
+                let snapshot = ServerMessage::PlayersSnapshot {
+                    players: existing_players,
+                };
                 if let Err(e) = client_tx.send(snapshot) {
                     tracing::warn!("Failed to send players snapshot: {}", e);
                 }
@@ -411,7 +434,11 @@ async fn handle_multiplayer_socket(socket: WebSocket) {
                 // Broadcast player joined to all (including the new player so they see themselves)
                 mp_state_for_recv.broadcast(ServerMessage::PlayerJoined { player: new_player });
 
-                tracing::info!("Player joined: {} (avatar: {:?})", user_id, effective_avatar);
+                tracing::info!(
+                    "Player joined: {} (avatar: {:?})",
+                    user_id,
+                    effective_avatar
+                );
             }
 
             ClientMessage::PositionUpdate {
@@ -481,7 +508,8 @@ async fn handle_multiplayer_socket(socket: WebSocket) {
                     let is_admin = player.as_ref().map(|p| p.is_admin).unwrap_or(false);
 
                     // Check if destination requires admin access
-                    let requires_admin = matches!(destination.as_str(), "command-center" | "admin-zone");
+                    let requires_admin =
+                        matches!(destination.as_str(), "command-center" | "admin-zone");
 
                     if requires_admin && !is_admin {
                         // Non-admins cannot teleport to admin-only zones
@@ -489,7 +517,10 @@ async fn handle_multiplayer_socket(socket: WebSocket) {
                             success: false,
                             destination,
                             position: None,
-                            error: Some("Access denied: Admin privileges required for this zone".to_string()),
+                            error: Some(
+                                "Access denied: Admin privileges required for this zone"
+                                    .to_string(),
+                            ),
                         });
                         continue;
                     }
@@ -541,7 +572,9 @@ async fn handle_multiplayer_socket(socket: WebSocket) {
     if let Some(ref pid) = *pid {
         let mp_state = get_multiplayer_state().await;
         mp_state.remove_player(pid);
-        mp_state.broadcast(ServerMessage::PlayerLeft { player_id: pid.clone() });
+        mp_state.broadcast(ServerMessage::PlayerLeft {
+            player_id: pid.clone(),
+        });
         tracing::info!("Player left: {}", pid);
     }
 
@@ -586,7 +619,9 @@ pub async fn set_spawn_preference(
 ) -> Result<Json<SpawnPreferenceResponse>, ApiError> {
     let mp_state = get_multiplayer_state().await;
     mp_state.set_spawn_preference(&req.user_id, req.project_slug.clone());
-    Ok(Json(SpawnPreferenceResponse { project_slug: req.project_slug }))
+    Ok(Json(SpawnPreferenceResponse {
+        project_slug: req.project_slug,
+    }))
 }
 
 // ========== Router ==========

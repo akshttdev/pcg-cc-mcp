@@ -54,7 +54,7 @@ export function ResizableDrawer({
   useEffect(() => {
     try {
       localStorage.setItem(storageKey, String(width));
-    } catch {}
+    } catch { /* intentionally empty */ }
   }, [width, storageKey]);
 
   // Clamp when sidebar state changes

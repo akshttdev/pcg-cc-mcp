@@ -6,19 +6,17 @@
 //! - Gossipsub for pub/sub messaging
 //! - Noise protocol for encrypted transport
 
-use anyhow::{Result, Context};
+use std::{collections::HashMap, time::Duration};
+
+use anyhow::{Context, Result};
 use libp2p::{
     futures::StreamExt,
     gossipsub, identify, kad, mdns, noise, ping,
-    swarm::SwarmEvent,
-    tcp, PeerId, Swarm, SwarmBuilder, Multiaddr,
+    swarm::{NetworkBehaviour, SwarmEvent},
+    tcp, Multiaddr, PeerId, Swarm, SwarmBuilder,
 };
-use libp2p::swarm::NetworkBehaviour;
-use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
-use std::time::Duration;
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
-
 
 /// Gossipsub topics for the Alpha Protocol Network
 pub mod topics {
@@ -64,10 +62,7 @@ pub enum MeshMessage {
         worker_peer_id: String,
     },
     /// Task completed
-    TaskCompleted {
-        task_id: String,
-        result: String,
-    },
+    TaskCompleted { task_id: String, result: String },
     /// Heartbeat
     Heartbeat {
         timestamp: i64,
@@ -138,10 +133,7 @@ impl MeshNode {
 
         // Create mDNS behaviour for local discovery
         #[allow(deprecated)]
-        let mdns = mdns::tokio::Behaviour::new(
-            mdns::Config::default(),
-            local_peer_id,
-        )?;
+        let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), local_peer_id)?;
 
         // Create Kademlia DHT
         let mut kad_config = kad::Config::default();
@@ -170,11 +162,9 @@ impl MeshNode {
         // Build the Swarm
         let swarm = SwarmBuilder::with_existing_identity(local_key)
             .with_tokio()
-            .with_tcp(
-                tcp::Config::default(),
-                noise::Config::new,
-                || libp2p::yamux::Config::default(),
-            )?
+            .with_tcp(tcp::Config::default(), noise::Config::new, || {
+                libp2p::yamux::Config::default()
+            })?
             .with_behaviour(|_| behaviour)?
             .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(60)))
             .build();
@@ -251,7 +241,12 @@ impl MeshNode {
     }
 
     /// Broadcast peer announcement
-    pub fn announce(&mut self, wallet_address: String, capabilities: Vec<String>, resources: Option<crate::wire::NodeResources>) -> Result<()> {
+    pub fn announce(
+        &mut self,
+        wallet_address: String,
+        capabilities: Vec<String>,
+        resources: Option<crate::wire::NodeResources>,
+    ) -> Result<()> {
         let message = MeshMessage::PeerAnnouncement {
             wallet_address,
             capabilities,
@@ -280,8 +275,14 @@ impl MeshNode {
     pub async fn run(&mut self) -> Result<()> {
         loop {
             match self.swarm.select_next_some().await {
-                SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
-                    tracing::info!("Connected to peer: {} at {}", peer_id, endpoint.get_remote_address());
+                SwarmEvent::ConnectionEstablished {
+                    peer_id, endpoint, ..
+                } => {
+                    tracing::info!(
+                        "Connected to peer: {} at {}",
+                        peer_id,
+                        endpoint.get_remote_address()
+                    );
 
                     let peer_info = PeerInfo {
                         peer_id: peer_id.to_string(),
@@ -300,27 +301,45 @@ impl MeshNode {
                 SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
                     tracing::info!("Disconnected from peer: {} (cause: {:?})", peer_id, cause);
                     self.peers.remove(&peer_id);
-                    let _ = self.event_tx.send(MeshEvent::PeerDisconnected(peer_id.to_string()));
+                    let _ = self
+                        .event_tx
+                        .send(MeshEvent::PeerDisconnected(peer_id.to_string()));
                 }
 
-                SwarmEvent::Behaviour(AlphaBehaviourEvent::Mdns(mdns::Event::Discovered(peers))) => {
+                SwarmEvent::Behaviour(AlphaBehaviourEvent::Mdns(mdns::Event::Discovered(
+                    peers,
+                ))) => {
                     for (peer_id, addr) in peers {
                         tracing::info!("mDNS discovered peer: {} at {}", peer_id, addr);
                         let _ = self.swarm.dial(addr.clone());
-                        self.swarm.behaviour_mut().kademlia.add_address(&peer_id, addr);
+                        self.swarm
+                            .behaviour_mut()
+                            .kademlia
+                            .add_address(&peer_id, addr);
                     }
                 }
 
-                SwarmEvent::Behaviour(AlphaBehaviourEvent::Gossipsub(gossipsub::Event::Message {
-                    propagation_source,
-                    message,
-                    ..
-                })) => {
+                SwarmEvent::Behaviour(AlphaBehaviourEvent::Gossipsub(
+                    gossipsub::Event::Message {
+                        propagation_source,
+                        message,
+                        ..
+                    },
+                )) => {
                     if let Ok(mesh_message) = serde_json::from_slice::<MeshMessage>(&message.data) {
-                        tracing::debug!("Received message from {}: {:?}", propagation_source, mesh_message);
+                        tracing::debug!(
+                            "Received message from {}: {:?}",
+                            propagation_source,
+                            mesh_message
+                        );
 
                         // Update peer info if it's an announcement
-                        if let MeshMessage::PeerAnnouncement { wallet_address, capabilities, .. } = &mesh_message {
+                        if let MeshMessage::PeerAnnouncement {
+                            wallet_address,
+                            capabilities,
+                            ..
+                        } = &mesh_message
+                        {
                             if let Some(peer) = self.peers.get_mut(&propagation_source) {
                                 peer.wallet_address = Some(wallet_address.clone());
                                 peer.capabilities = capabilities.clone();
@@ -335,7 +354,11 @@ impl MeshNode {
                     }
                 }
 
-                SwarmEvent::Behaviour(AlphaBehaviourEvent::Ping(ping::Event { peer, result, .. })) => {
+                SwarmEvent::Behaviour(AlphaBehaviourEvent::Ping(ping::Event {
+                    peer,
+                    result,
+                    ..
+                })) => {
                     if let Ok(rtt) = result {
                         if let Some(peer_info) = self.peers.get_mut(&peer) {
                             peer_info.latency_ms = Some(rtt.as_millis() as u64);
