@@ -1,9 +1,9 @@
 # ORCHA Architecture Gaps Analysis
 
-**Date:** 2026-03-19
+**Date:** 2026-03-19 (updated with codebase verification pass)
 **Branch:** `research/5-year-product-roadmap`
 **Scope:** Comprehensive review of current implementation vs roadmap targets
-**Based on:** 13 parallel research agents (codebase analysis + web research)
+**Based on:** 25 research reports (codebase analysis + web research), verified against actual code
 
 ---
 
@@ -13,9 +13,17 @@ ORCHA is a **155K-line frontend + 44K-line backend** platform with production-gr
 
 **Key findings:**
 - **1 P0 blocker** (Agent Flow Orchestration Engine) blocks Stage 0 exit
-- **12 critical gaps** block revenue readiness (billing, rate limiting, production deployment, etc.)
-- **23 significant gaps** affect pilot readiness (Stage 1)
+- **11 critical gaps** block revenue readiness (billing, rate limiting, production deployment, etc.)
+- **20 significant gaps** affect pilot readiness (Stage 1)
 - **40+ strategic gaps** mapped to Stages 2-5
+
+**Corrections from verification pass (2026-03-19):**
+- MCP servers: ORCHA has **4 MCP servers** (TaskServer, TopsiServer, NoraServer, PulseServer) with 26+ tools — previously reported as "missing"
+- Workflow scheduling: `spawn_workflow_schedule_loop()` runs every 5 min — previously reported as "manual-only"
+- Node types: **19+ implemented** (not "11 of 17") — conditional, http_request, CRM nodes all exist
+- Cost tracking: **Dual system** — VibeTransaction records costs properly; TokenUsage.cost_cents is never populated (ai-usage page shows $0)
+- Marketplace: **functional** with VIBE ledger charging — not a stub
+- billing_helpers: **backend business logic** (ledger checks, transaction recording) — not UI-only
 
 ---
 
@@ -44,55 +52,72 @@ ORCHA is a **155K-line frontend + 44K-line backend** platform with production-gr
 **Gap:** Without a background worker that monitors flow state, evaluates phase transitions, and triggers agent execution, the entire multi-agent workflow concept is UI-only. This is the single blocker for Stage 0 exit.
 
 **What's needed:**
-- Tokio background task polling for eligible flows (similar pattern to existing `TaskScheduler` in `crates/server/src/task_scheduler.rs`)
+- Tokio background task polling for eligible flows (similar pattern to `spawn_workflow_schedule_loop()` in `data_source_workflows.rs` which already runs every 5 min for workflow triggers)
 - Phase transition logic with guard conditions
 - Agent dispatch (selecting executor, passing context)
 - Event emission for SSE streaming to frontend
 - Error recovery with retry/fallback/circuit-break patterns
 
+> **Note:** `TaskScheduler` in `crates/server/src/task_scheduler.rs` (310 lines) is **dead code** — never called from `main.rs`. It monitors tasks with `assigned_agent` but was never wired into the startup sequence. Could be adapted or replaced.
+
 **Industry context:** The Jido framework (Elixir) demonstrates OTP-style supervision for agent processes — each agent as a lightweight supervised process with crash recovery. Translatable to Rust/Tokio with structured concurrency patterns. Microsoft Agent Framework uses graph-based orchestration with declarative definitions.
 
 **Estimated effort:** 2-3 weeks
 
-### GAP-S0-01: Workflow Trigger System (Cron + Event)
+### GAP-S0-01: Workflow Trigger System — Hardening (Partially Implemented)
 
-**Current state:** Workflow execution is manual-only. `WorkflowTriggersPanel.tsx` exists on frontend, `workflow_triggers.rs` route exists, but no cron scheduler or event listener backend.
+**Current state:** ~~Workflow execution is manual-only.~~ **CORRECTION:** Scheduled workflow execution IS implemented:
+- `spawn_workflow_schedule_loop()` in `data_source_workflows.rs` (lines 1556-1661) runs as a background Tokio task
+- Polls every 5 minutes via `tokio::time::interval(Duration::from_secs(300))`
+- Calls `WorkflowTrigger::find_due_schedules()` for due workflows
+- Supports intervals: `every_5m`, `every_15m`, `every_30m`, `hourly`, `daily`, `weekly`
+- Webhook triggers work with HMAC-SHA256 validation (`x-webhook-signature` header)
+- `data_source_created` and `data_source_updated` event triggers also exist
 
-**Gap:** 6 of 17 planned workflow node types are missing. No scheduled execution. No webhook-triggered execution.
+**Remaining gaps:**
+- **Cooldown race condition**: cooldown check happens before async spawn, but `last_triggered_at` updates after execution starts — concurrent webhooks can double-fire (no database-level lock)
+- **No event bus** for internal triggers (e.g., task status change → workflow start)
+- **No durable execution** — if server restarts mid-workflow, state is lost
+
+**Industry context:** Temporal.io provides durable workflow execution with built-in cron scheduling and signal-based triggers. The cooldown race condition is a common pattern — Inngest solves it with idempotency keys.
+
+### GAP-S0-02: Workflow Node Type Completeness — Mostly Resolved
+
+**Current state:** ~~11 of 17 planned node types implemented.~~ **CORRECTION:** **19+ node types verified** in codebase:
+
+**Implemented (verified in `node-types.ts` + `workflow_execution.rs`):**
+- LLM: `llm_extract`, `llm_analyze`, `llm_summarize`
+- Data: `data_source`, `transform`, `filter`, `merge`
+- CRM Output: `output_crm_contacts`, `output_crm_companies`, `output_crm_deals`, `output_tasks`
+- Control: `conditional` (if/then/else branching)
+- Actions: `send_notification`, `assign_to_agent`, `http_request` (external API calls), `update_crm_contact`, `update_crm_deal`, `update_crm_company`
+
+**Still missing:**
+- ❌ Loop/iteration nodes (for processing arrays)
+- ❌ Parallel execution (fan-out/fan-in)
+- ❌ Human approval gates / manual review nodes
+- ❌ Sub-workflow invocation
+- ❌ Wait/delay nodes
+- ❌ Error handling/catch nodes
+
+**Impact:** Core workflow operations are well-covered. Missing nodes matter for advanced automation (batch processing, multi-path execution, human-in-the-loop).
+
+### GAP-S0-03: Per-Task Cost Tracking (CAPO) — Dual System Misalignment
+
+**Current state:** Two parallel cost systems exist but are **not connected**:
+
+1. **TokenUsage table** (`token_usage.rs`): Has `cost_cents` field and aggregation queries (`total_cost_cents` via SUM), but `cost_cents` is **never populated during INSERT** — defaults to NULL. The `ai-usage.tsx` page reads from this table and **displays $0.00 for all costs**.
+
+2. **VibeTransaction table** (`vibe_pricing.rs`, `billing.rs` helpers): Properly calculates costs via `ModelPricing.calculate_cost()` (input tokens × price per million), records to `VibeTransaction` with `calculated_cost_cents`. Backend helpers `ensure_vibe_balance()` and `record_llm_vibe_usage()` do real cost tracking.
+
+**Gap:** The frontend cost dashboard reads from the wrong table. Cost data exists in VibeTransactions but the ai-usage page queries TokenUsage.cost_cents (always NULL).
 
 **What's needed:**
-- Cron scheduler (tokio-cron or similar) for time-based triggers
-- Webhook listener for event-based triggers (partially implemented — HMAC validation exists but cooldown race condition unresolved)
-- Event bus for internal triggers (task status change → workflow start)
+- **Bridge the dual system**: Either populate `TokenUsage.cost_cents` at insert time using `ModelPricing.calculate_cost()`, or rewrite `ai-usage.tsx` to query `VibeTransaction` aggregates
+- Aggregation by task, agent, workflow, organization (VibeTransaction already has project-level tracking)
+- CAPO formula: sum(VibeTransaction.cost_cents) / count(completed_actions) per period
 
-**Industry context:** Temporal.io provides durable workflow execution with built-in cron scheduling and signal-based triggers. Inngest offers event-driven workflows with automatic retries. The pattern of separating trigger definition from execution engine is universal.
-
-### GAP-S0-02: Workflow Node Type Completeness
-
-**Current state:** 11 of 17 planned node types implemented.
-
-**Missing node types (per current-state-assessment.md):**
-- Conditional branching (if/then/else based on data)
-- Loop/iteration nodes
-- Parallel execution (fan-out/fan-in)
-- Human approval gates
-- External webhook call nodes
-- Sub-workflow invocation
-
-**Impact:** Cannot build complex real-world workflows for PCG client delivery without these primitives.
-
-### GAP-S0-03: Per-Task Cost Tracking (CAPO)
-
-**Current state:** `token_usage.rs` model exists, token tracking in agent chat, but no aggregated cost-per-action calculation, no cost dashboard.
-
-**Gap:** Cannot measure CAPO (Cost-per-Action Output) which is a Stage 0 exit criterion (< $1/action).
-
-**What's needed:**
-- Cost attribution per model call (input tokens × price + output tokens × price)
-- Aggregation by task, agent, workflow, organization
-- Frontend dashboard (`ai-usage.tsx` page exists but needs cost data)
-
-**Industry context:** Helicone, LangSmith, and Braintrust all provide per-call cost tracking. The pattern is: intercept LLM calls → record token counts + model ID → multiply by pricing table → aggregate.
+**Industry context:** Helicone, LangSmith, and Braintrust all provide per-call cost tracking. The pattern is: intercept LLM calls → record token counts + model ID → multiply by pricing table → aggregate. ORCHA's VibeTransaction system already follows this pattern — it just needs to feed the dashboard.
 
 ### GAP-S0-04: Cost-Tiered Model Routing
 
@@ -124,11 +149,16 @@ ORCHA is a **155K-line frontend + 44K-line backend** platform with production-gr
 **Target:** External validation with 3-5 paying pilot clients, raise pre-seed
 **Key requirements:** Multi-tenant hardening, billing, documentation, production deployment
 
-### GAP-S1-01: Billing System (Missing Entirely)
+### GAP-S1-01: Billing System (Stripe Integration Missing)
 
-**Current state:** No billing infrastructure. No Stripe integration. No usage metering. No subscription management. `billing_helpers` extracted (PR #42) but these are UI helpers only.
+**Current state:** No Stripe integration. No subscription management. No external payment processing. However, **internal billing infrastructure exists**:
+- `billing.rs` helpers (backend, not UI): `ensure_vibe_balance()` pre-chat balance checks, `record_llm_vibe_usage()` post-chat VibeTransaction recording
+- `model_pricing.rs`: Per-model pricing with `input_cost_per_million`, `output_cost_per_million`, and `multiplier` fields, plus `calculate_cost()` and `calculate_vibe_cost()` methods
+- `vibe_pricing.rs`: `VibePricingService` with `estimate_cost()`, `record_llm_usage()`, budget checking
+- `marketplace.rs` (546 lines): **Functional APN marketplace** with VIBE ledger — consumer deducts `vibe_cost`, provider credited 85%, usage history tracked
+- `VibeTransaction` table records actual cost per LLM call
 
-**Gap:** Cannot charge customers. This is the #1 blocker for revenue.
+**Gap:** Internal VIBE economy works, but **cannot charge real money**. No Stripe, no credit card processing, no subscription tiers, no invoicing.
 
 **What's needed:**
 - Stripe integration: subscriptions, usage-based metering, invoicing
@@ -229,11 +259,11 @@ ORCHA is a **155K-line frontend + 44K-line backend** platform with production-gr
 
 ### GAP-S1-09: Nora Voice MVP
 
-**Current state:** Nora voice controls exist (`NoraVoiceControls.tsx`, 688 lines). Voice routes (`voice.rs`, 657 lines). Chatterbox TTS configured. Discord voice integration.
+**Current state:** Nora voice controls exist (`NoraVoiceControls.tsx`, 688 lines). Voice routes (`topsi/voice.rs`, 638 lines). VoiceGateway is **ACTIVE** (`crates/nora/src/voice/gateway.rs`). Chatterbox TTS configured. Discord voice integration via serenity.
 
-**Gap per roadmap:** "Nora voice MVP" is a Stage 1 deliverable. Current state unclear on whether end-to-end voice conversations work reliably.
+**Gap per roadmap:** "Nora voice MVP" is a Stage 1 deliverable. Current state unclear on whether end-to-end voice conversations work reliably outside of Discord context.
 
-**Needs verification:** End-to-end test of voice input → Nora processing → voice output.
+**Needs verification:** End-to-end test of voice input → Nora processing → voice output (web, not just Discord).
 
 ### GAP-S1-10: Website/Hosting MVP
 
@@ -288,12 +318,12 @@ ORCHA is a **155K-line frontend + 44K-line backend** platform with production-gr
 
 ### GAP-S2-03: Workflow Marketplace/Templates
 
-**Current state:** `workflow_template.rs` model exists. `marketplace.rs` route exists. Frontend `marketplace` concept referenced.
+**Current state:** `workflow_template.rs` model exists. `marketplace.rs` (546 lines) is a **functional APN service marketplace** with VIBE ledger (not workflow templates). It handles service listings, subscriptions, gateway routing, and cost tracking (85% provider credit).
 
-**Gap:** No shareable workflow templates. No template discovery UI. No import/export.
+**Gap:** The existing marketplace is for **APN services**, not workflow templates. No shareable workflow templates. No template discovery UI. No import/export.
 
 **What's needed:**
-- Workflow template CRUD with versioning
+- Workflow template CRUD with versioning (separate from APN marketplace)
 - Template gallery UI
 - One-click install into organization
 - Template categories and search
@@ -354,10 +384,10 @@ These are strategic gaps mapped to later roadmap stages. Listed for completeness
 
 | Gap | Current State | Target |
 |-----|--------------|--------|
-| APN mesh production | Phase 1 (libp2p + NATS stub) | 100+ compute nodes, real workload distribution |
-| VIBE token economy | Testnet stubs only | Live token settlement, BME economics |
+| APN mesh production | Phase 1 (libp2p + NATS relay, functional bridge) | 100+ compute nodes, real workload distribution |
+| VIBE token economy | Internal ledger functional (VibeTransaction, marketplace 85% split) | Live token settlement, BME economics |
 | VIBELAND virtual environment | `virtual-environment/` page exists | Full 3D collaborative workspace |
-| Federated agent marketplace | `marketplace.rs` exists | Cross-org agent sharing with VIBE payments |
+| Federated agent marketplace | `marketplace.rs` functional (APN services, VIBE ledger) | Cross-org agent sharing with VIBE payments |
 | Self-hosted deployment | Docker Compose | One-click sovereign deployment package |
 
 ---
@@ -407,18 +437,33 @@ These are strategic gaps mapped to later roadmap stages. Listed for completeness
 - Consistent validation errors (structured, actionable)
 - Input sanitization for user-provided content entering LLM prompts (prompt injection defense)
 
-### GAP-XC-05: MCP Server Architecture
+### ~~GAP-XC-05: MCP Server Architecture~~ — RESOLVED (Previously Misreported)
 
-**Current state:** MCP client integration exists in executors. No MCP servers exposing ORCHA capabilities.
+**Current state:** ~~No MCP servers exposing ORCHA capabilities.~~ **CORRECTION: ORCHA has 4 fully implemented MCP servers:**
 
-**Gap per roadmap/research:** ORCHA should expose its capabilities (CRM, tasks, workflows, artifacts) as MCP servers so external AI tools can interact with the platform.
+1. **TaskServer** (`crates/server/src/mcp/task_server/`, 2,400+ lines across 6 modules):
+   - Binary: `crates/server/src/bin/mcp_task_server.rs`
+   - **26+ tools**: `create_task`, `list_tasks`, `update_task`, `delete_task`, `assign_task`, `bulk_create_tasks`, `bulk_update_tasks`, `search_tasks`, `list_projects`, `list_project_members`, `scaffold_project`, `manage_task_dependencies`, `check_dependencies`, `add_knowledge`, `list_knowledge`, `manage_knowledge`, search across all entities
+   - User-scoped access: `TaskServer::new_for_user(pool, user_id, is_admin)`
+   - Registered in `default_mcp.json` as `orcha_task_server`
 
-**What's needed:**
-- MCP servers for: task management, CRM operations, workflow execution, artifact queries
-- Rust MCP SDK (`modelcontextprotocol/rust-sdk`) — 180ms response vs 3.2s for TypeScript under concurrent load
-- Streamable HTTP transport for remote access
-- MCP Server Cards (`.well-known` metadata) for registry discovery
-- Register in official MCP Registry (18,000+ servers)
+2. **TopsiServer** (`crates/server/src/mcp/topsi_server.rs`, ~27K bytes):
+   - Binary: `crates/server/src/bin/mcp_topsi_server.rs`
+   - Topology intelligence, orchestration, monitoring, policy enforcement
+
+3. **NoraServer** (`crates/server/src/mcp/nora_server.rs`, ~26K bytes):
+   - Strategic planning, task coordination, performance analysis
+
+4. **PulseServer** (`crates/server/src/mcp/pulse_server.rs`, ~16K bytes):
+   - Real-time metrics and event streaming
+
+All use the `rmcp` crate (v0.5.0) with stdio transport per MCP spec. Frontend has MCP management UI (`McpSettings.tsx`). API endpoint `GET/POST /api/mcp-config` for configuration.
+
+**Remaining gaps (smaller than originally assessed):**
+- No Streamable HTTP transport (only stdio — limits remote access)
+- No `.well-known` MCP Server Cards for registry discovery
+- Not registered in official MCP Registry
+- CRM operations not yet exposed as MCP tools (only task/project/knowledge)
 
 ### GAP-XC-06: A2A Protocol (Agent-to-Agent)
 
@@ -491,15 +536,15 @@ These are strategic gaps mapped to later roadmap stages. Listed for completeness
 | Domain | Stage 0 | Stage 1 | Stage 2 | Stage 3+ |
 |--------|---------|---------|---------|----------|
 | **Agent Orchestration** | P0 flow engine, model routing | Voice MVP, supervision | BDI/Contract Net, A2A | Memory tiers, OTP supervision |
-| **Workflows** | Triggers, missing nodes | Templates | Marketplace, versioning | FSM engine, event sourcing |
+| **Workflows** | Loop/parallel/approval nodes | Templates | Marketplace, versioning | FSM engine, event sourcing |
 | **CRM** | — (85% complete) | Multi-tenant hardening | Self-service setup | Relationship intelligence |
 | **Task Management** | Cost tracking (CAPO) | Dependency visualization | DAG traversal engine | ATLAS graph, cross-project |
 | **Database** | — | Audit queries, null org cleanup | PostgreSQL + RLS migration | Multi-region, graph patterns |
 | **Infrastructure** | — | Deploy pipeline, monitoring, secrets | Auto-scaling, staging env | Container-per-agent, GPU |
-| **Billing** | — | Stripe integration | Usage metering, tiers | Marketplace transactions |
+| **Billing** | Bridge VIBE→dashboard | Stripe integration | Usage metering, tiers | Marketplace transactions |
 | **Security** | — | Rate limiting, input validation | RLS, SAST/DAST | WAF, SOC2 |
 | **Observability** | — | OpenTelemetry, alerting | Cost dashboards | Agent performance analytics |
-| **MCP/Protocols** | — | Expose MCP servers | A2A implementation | Registry presence |
+| **MCP/Protocols** | 4 servers exist (stdio) | HTTP transport, CRM tools | A2A implementation | Registry presence |
 | **APN/Mesh** | — | — | Testnet validation | Production mesh, VIBE tokens |
 | **Frontend** | — | Component splits, docs | i18n, mobile, a11y | VIBELAND 3D |
 
@@ -512,7 +557,7 @@ Based on web research across AI orchestration, CRM, PM, and sovereign compute:
 ### Unique Positioning (Defensible)
 1. **Full-stack integration** — No competitor combines CRM + PM + agents + workflows + sovereign deployment. Notion adds agents but has no CRM. Asana adds AI but has no workflow orchestration. CrewAI/LangGraph are pure frameworks.
 2. **Sovereign/self-hosted** — $22.58B market growing 14.6% YoY. EU AI Act + data residency requirements driving demand. Microsoft investing heavily in sovereign cloud.
-3. **MCP-native** — MCP has won the protocol war (97M monthly SDK downloads, 18K+ servers, AAIF governance). Being MCP-native from day 1 is a strong technical bet.
+3. **MCP-native** — MCP has won the protocol war (97M monthly SDK downloads, 18K+ servers, AAIF governance). ORCHA already has **4 MCP servers** (26+ tools) and MCP client integration in all executors — this is ahead of most competitors.
 4. **Rust performance** — Rust MCP servers show 180ms response vs 3.2s for TypeScript under concurrent load. Backend performance is a structural advantage.
 5. **Categorical architecture** — TOPOS theory foundation provides formal composability claims that no competitor can match.
 
@@ -527,25 +572,26 @@ Based on web research across AI orchestration, CRM, PM, and sovereign compute:
 
 ### Immediate (Weeks 1-4) — Unblock Stage 0
 
-1. **Agent Flow Orchestration Engine** — background worker, phase transitions, SSE events
-2. **Workflow triggers** — cron scheduler + event triggers
-3. **CAPO tracking** — cost attribution per model call, aggregation dashboard
+1. **Agent Flow Orchestration Engine** — background worker, phase transitions, SSE events (P0 blocker)
+2. **CAPO tracking** — bridge VibeTransaction cost data to ai-usage dashboard (data exists, just wrong table)
+3. **CI strictness** — remove `continue-on-error: true` from clippy/test steps (P0 quality gate)
 4. **Topology system** — uncomment models, run sqlx prepare
+5. **Workflow cooldown fix** — database-level lock for trigger deduplication
 
 ### Short-term (Weeks 5-12) — Revenue Readiness
 
-5. **Stripe billing integration** — subscriptions + usage metering
-6. **Rate limiting** — global + per-tenant + per-endpoint
-7. **Production deployment pipeline** — CI/CD to hosted instance
-8. **Monitoring** — OpenTelemetry + alerting
-9. **User documentation** — API docs + onboarding guide
-10. **Multi-tenant audit** — verify org scoping, fix NULL org projects
+6. **Stripe billing integration** — subscriptions + usage metering (bridge to existing VIBE economy)
+7. **Rate limiting** — global + per-tenant + per-endpoint
+8. **Production deployment pipeline** — CI/CD to hosted instance
+9. **Monitoring** — OpenTelemetry + alerting (extend existing Sentry with metrics)
+10. **User documentation** — API docs + onboarding guide
+11. **Multi-tenant audit** — verify org scoping, fix NULL org projects
 
 ### Medium-term (Months 3-6) — Pilot Scale
 
 11. **Model routing** — automatic cheap→expensive escalation
 12. **PostgreSQL migration** — pgloader, RLS, connection pooling
-13. **MCP servers** — expose ORCHA capabilities via Rust MCP SDK
+13. **MCP server HTTP transport** — add Streamable HTTP to existing 4 MCP servers for remote access; add CRM tools to TaskServer
 14. **Error recovery** — 5-level recovery model (retry→fallback→reassign→circuit break→escalate)
 15. **Task dependency DAG** — recursive CTEs + Cytoscape.js visualization
 
@@ -561,23 +607,34 @@ Based on web research across AI orchestration, CRM, PM, and sovereign compute:
 
 ## Supporting Research Files
 
-All underlying research is available in `planning/roadmap/`:
+All underlying research is available in `planning/roadmap/research/`:
 
-| File | Content |
-|------|---------|
-| `research--planning-docs-summary.md` | Full roadmap, state assessment, backlog synthesis |
-| `research--backend-architecture.md` | 20 crates, 130+ routes, 140+ models, auth, real-time |
-| `research--frontend-architecture.md` | 765 files, 62 pages, 88 component dirs, state management |
-| `research--infra-cicd-gaps.md` | CI/CD, Docker, security, production readiness |
-| `research--mcp-protocol-ecosystem.md` | MCP spec, 18K+ servers, AAIF governance, Rust SDK |
-| `research--ai-agent-orchestration.md` | CrewAI/LangGraph/AutoGen, A2A, OTP supervision, cost optimization |
-| `research--decentralized-compute.md` | Akash/Render/Nosana, DePIN, token economics, libp2p, NATS |
-| `research--database-migration.md` | SQLite→PostgreSQL, RLS, connection pooling, analytics |
-| `research--graph-databases.md` | Neo4j, SurrealDB, AGE, GraphRAG, visualization libraries |
-| `research--saas-billing-patterns.md` | Hybrid billing, Stripe metering, free tier economics, PLG |
-| `research--observability-monitoring.md` | OpenTelemetry Rust, AI observability, circuit breakers, rate limiting |
-| `research--workflow-engines.md` | Temporal, Inngest, Restate, FSM, event sourcing, DAG execution |
-| `research--postgresql-graph-patterns.md` | *(in progress)* |
-| `research--oss-agent-workflow-tools.md` | *(in progress — MCP/ACP compatible OSS tools)* |
-| `research--oss-infra-billing-tools.md` | *(in progress — permissive license infra tools)* |
-| `research--oss-p2p-mesh-tools.md` | *(in progress — permissive license P2P/crypto tools)* |
+| # | File | Content |
+|---|------|---------|
+| 01 | `01-state--planning-docs-summary.md` | Full roadmap, state assessment, backlog synthesis |
+| 02 | `02-arch--backend.md` | 20 workspace members, 120 routes, 140+ models, auth, real-time |
+| 03 | `03-arch--frontend.md` | 765 files, ~60 pages, 68 component dirs, state management |
+| 04 | `04-infra--cicd-gaps.md` | CI/CD, Docker, security, production readiness |
+| 05 | `05-infra--deployment-hosting.md` | Fly.io, Cloudflare Tunnel, Docker Compose, hosting options |
+| 06 | `06-data--database-migration.md` | SQLite→PostgreSQL, RLS, connection pooling, analytics |
+| 07 | `07-data--graph-databases.md` | Neo4j, SurrealDB, AGE, GraphRAG, visualization libraries |
+| 07b | `07b-data--postgresql-graph-patterns.md` | PostgreSQL recursive CTEs, graph patterns, AGE extension |
+| 08 | `08-legal--compliance-security.md` | GDPR, SOC2, AI Act, prompt injection, dependency scanning |
+| 09 | `09-oss--infra-billing-tools.md` | Permissive license infra & billing tools |
+| 10 | `10-ai--mcp-protocol-ecosystem.md` | MCP spec, 18K+ servers, AAIF governance, Rust SDK |
+| 11 | `11-ai--agent-orchestration.md` | CrewAI/LangGraph/AutoGen, A2A, OTP supervision, cost optimization |
+| 12 | `12-ai--workflow-engines.md` | Temporal, Inngest, Restate, FSM, event sourcing, DAG execution |
+| 13 | `13-oss--agent-workflow-tools.md` | MCP/ACP compatible OSS tools (permissive license) |
+| 14 | `14-ux--voice-email-desktop.md` | Voice UX, email integration, desktop app patterns |
+| 15 | `15-biz--saas-billing-patterns.md` | Hybrid billing, Stripe metering, free tier economics, PLG |
+| 15b | `15b-biz--saas-billing-supplemental.md` | Supplemental billing research |
+| 16 | `16-ops--observability-monitoring.md` | OpenTelemetry Rust, AI observability, circuit breakers |
+| 17 | `17-p2p--decentralized-compute.md` | Akash/Render/Nosana, DePIN, token economics, libp2p, NATS |
+| 18 | `18-p2p--oss-mesh-tools.md` | Permissive license P2P/crypto/mesh tools |
+| 19 | `19-ops--testing-strategy.md` | Testing strategy, E2E, integration, unit test gaps |
+| 20 | `20-data--onboarding-etl.md` | Onboarding flows, data ETL patterns |
+| 21 | `21-infra--build-performance-dx.md` | Build performance, DX improvements, cargo-chef |
+| 22 | `22-biz--product-analytics.md` | Product analytics, telemetry, usage tracking |
+| 23 | `23-arch--offline-local-first.md` | Offline/local-first architecture patterns |
+| 24 | `24-ai--safety-guardrails.md` | AI safety, guardrails, alignment, red teaming |
+| 25 | `25-team--scaling-api-design.md` | API versioning, team scaling, rate limiting |
