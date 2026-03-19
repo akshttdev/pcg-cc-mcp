@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { TabPanel, TabsContent } from '@/components/ui/tabs';
+import type { TabDefinition } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { cn } from '@/lib/utils';
 import { DealHeader, PipelineStepper } from './DealHeader';
 import { OverviewTab } from './tabs/OverviewTab';
 import { IntelTab } from './tabs/IntelTab';
@@ -75,43 +75,24 @@ export function CrmDealDetailPanel({
           <PipelineStepper currentStage={effectiveStageName} allStages={allStages} />
 
           {/* Tabs */}
-          <Tabs
+          <TabPanel
+            tabs={[
+              { value: 'overview', label: 'Overview' },
+              { value: 'intel', label: 'Intel', indicator: intelDone ? 'green' : null },
+              { value: 'review', label: 'Review', indicator: hasActiveReview ? 'amber' : null },
+              { value: 'transcripts', label: 'Transcripts' },
+              { value: 'proposal', label: 'Proposal', indicator: proposalDot as TabDefinition['indicator'] },
+              { value: 'deck', label: 'Deck & Close', indicator: deckDot as TabDefinition['indicator'] },
+              { value: 'projects', label: 'Projects' },
+              { value: 'activity', label: 'Activity' },
+            ] satisfies TabDefinition[]}
             value={activeTab}
             onValueChange={setActiveTab}
             className="flex-1 flex flex-col min-h-0"
+            listClassName="mx-5 mt-3 mb-0 h-9 bg-transparent p-0 border-b rounded-none justify-start gap-0 w-auto shrink-0"
+            triggerClassName="h-9 rounded-none px-3 text-xs font-medium border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-foreground data-[state=active]:shadow-none bg-transparent"
+            testId="deal-detail-tabs"
           >
-            <TabsList className="mx-5 mt-3 mb-0 h-9 bg-transparent p-0 border-b rounded-none justify-start gap-0 w-auto shrink-0">
-              {[
-                { value: 'overview', label: 'Overview' },
-                { value: 'intel', label: 'Intel', dot: intelDone ? 'green' : undefined },
-                {
-                  value: 'review',
-                  label: 'Review',
-                  dot: hasActiveReview ? 'amber' : undefined,
-                },
-                { value: 'transcripts', label: 'Transcripts' },
-                { value: 'proposal', label: 'Proposal', dot: proposalDot },
-                { value: 'deck', label: 'Deck & Close', dot: deckDot },
-                { value: 'projects', label: 'Projects' },
-                { value: 'activity', label: 'Activity' },
-              ].map(({ value, label, dot }) => (
-                <TabsTrigger
-                  key={value}
-                  value={value}
-                  className="relative h-9 rounded-none px-3 text-xs font-medium border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-foreground data-[state=active]:shadow-none bg-transparent"
-                >
-                  {label}
-                  {dot && (
-                    <span
-                      className={cn(
-                        'absolute top-1.5 right-1 w-1.5 h-1.5 rounded-full',
-                        dot === 'green' ? 'bg-green-500' : 'bg-amber-500 animate-pulse'
-                      )}
-                    />
-                  )}
-                </TabsTrigger>
-              ))}
-            </TabsList>
 
             <div className="flex-1 min-h-0 overflow-hidden">
               <TabsContent value="overview" className="h-full m-0">
@@ -167,7 +148,7 @@ export function CrmDealDetailPanel({
                 </ScrollArea>
               </TabsContent>
             </div>
-          </Tabs>
+          </TabPanel>
         </SheetContent>
       </Sheet>
 
