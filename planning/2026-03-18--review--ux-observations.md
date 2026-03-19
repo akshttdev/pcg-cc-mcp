@@ -88,3 +88,30 @@ Add error handling in CompanyBrandGuidePage: if `company` query returns null/err
 - E2-3: Brand guide not linked from companies list
 - E3-1: Sidebar org context when scrolled
 - E3-2: Persistent org scope indicator
+
+---
+
+## MCP Manual Walkthrough (2026-03-19)
+
+### Pipeline Kanban Board
+- **Working well**: 9 stages rendered (Lead, Intel, BA, Discovery, Proposal, Polish, Present, Won, Lost)
+- **Agent labels per stage**: Scout, Astra, Account Manager + Nora, Cash, Lux, Team
+- **Deal count + value**: "12 deals $25,000" in header
+- **Deal cards show**: initials, deal name, company link (clickable → /companies/:id), status badges, intel preview text, probability %, deal value
+- **"Ready for review" + "Proposal draft" badges** visible on Hudson deal — stage automation working
+- **"+ Add deal" buttons** in each column
+
+### Deal Detail Panel
+- **Opens on card click**: slide-in panel from right
+- **Stage stepper**: visual progress bar at top showing current stage (Intel) with color gradient
+- **Tabs**: Overview, Intel (green dot), Review, Transcripts, Proposal (orange dot), Deck & Close, Projects, Activities
+- **Overview content**: Operator Context (with F7 gate warning), Expedite toggle, Probability/Deal Value, Contact card (View profile, Co. Profile links), Organization card (Open, Profile links), Timeline, Convert to Project button, Ask Topsi button
+
+### Issues Found
+
+| ID | Severity | Description | Category |
+|----|----------|-------------|----------|
+| MCP-1 | **NOT A BUG** | Deal panel tabs don't switch via Playwright MCP `evaluate()` click — this is a Radix UI + MCP limitation, not an app bug. Radix Tabs need real pointer events (Playwright native `.click()` works fine, as proven by 104 passing E2E tests). The tabs use controlled state (`value={activeTab}` + `onValueChange`) and work correctly in real browsers. | MCP tooling limitation |
+| MCP-2 | LOW | Stale test deals visible in Lead column — cleaned up (deleted 6 duplicate Devon Franklin + 2 test deals). **Fixed.** | Cleanup — done |
+| MCP-3 | LOW | Probability shows "—" and Deal Value shows "—" for Hudson deal despite having data | Data display |
+| MCP-4 | LOW | Topsi shows "Disconnected" then "Connected" inconsistently between page loads | Topsi connection |
