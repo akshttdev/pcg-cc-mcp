@@ -128,15 +128,21 @@ export function OverviewTab({ deal, stageColor, onConvert, orgId }: OverviewTabP
   const [contextText, setContextText] = useState(deal.description ?? '');
   const [editingContext, setEditingContext] = useState(false);
 
+  const invalidateKanban = () => {
+    qc.invalidateQueries({ queryKey: crmKeys.kanbanAll() });
+    qc.invalidateQueries({ queryKey: crmKeys.orgKanbanAll() });
+    qc.invalidateQueries({ queryKey: crmKeys.kanbanLegacy() });
+  };
+
   const saveContext = useMutation({
     mutationFn: () => crmDealsApi.updateDeal(deal.id, { description: contextText }),
-    onSuccess: () => { toast.success('Context saved'); setEditingContext(false); qc.invalidateQueries({ queryKey: crmKeys.kanbanLegacy() }); },
-    onError: () => toast.error('Failed to save'),
+    onSuccess: () => { toast.success('Context saved'); setEditingContext(false); invalidateKanban(); },
+    onError: () => toast.error('Failed to save context — please try again.'),
   });
 
   const toggleExpedite = useMutation({
     mutationFn: () => crmDealsApi.updateDeal(deal.id, { expedited: deal.expedited ? 0 : 1 } as any),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: crmKeys.kanbanLegacy() }); },
+    onSuccess: () => { invalidateKanban(); },
   });
 
   // Parse call scheduling from custom_fields

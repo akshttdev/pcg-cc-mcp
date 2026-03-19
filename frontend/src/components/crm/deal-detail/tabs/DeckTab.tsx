@@ -21,31 +21,37 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
   const generateDeck = useMutation({
     mutationFn: () => crmDealsApi.generateDeck(deal.id),
     onSuccess: () => {
-      toast.success('Lux generated your deck script');
+      toast.success('Deck script generated successfully');
+      qc.invalidateQueries({ queryKey: crmKeys.kanbanAll() });
+      qc.invalidateQueries({ queryKey: crmKeys.orgKanbanAll() });
       qc.invalidateQueries({ queryKey: crmKeys.kanbanLegacy() });
     },
-    onError: (e: Error) => toast.error(e.message ?? 'Deck generation failed'),
+    onError: (e: Error) => toast.error(e.message ?? 'Deck generation failed — check that the LLM backend is available and try again.'),
   });
 
   const sendInvoice = useMutation({
     mutationFn: () => crmDealsApi.sendInvoice(deal.id, { due_days: 14 }),
     onSuccess: (res) => {
       toast.success(`Invoice ${res.invoice_number} sent ($${res.amount_usd.toFixed(0)})`);
+      qc.invalidateQueries({ queryKey: crmKeys.kanbanAll() });
+      qc.invalidateQueries({ queryKey: crmKeys.orgKanbanAll() });
       qc.invalidateQueries({ queryKey: crmKeys.kanbanLegacy() });
       setInvoiceSending(false);
     },
-    onError: () => { toast.error('Failed to send invoice'); setInvoiceSending(false); },
+    onError: () => { toast.error('Failed to send invoice — verify the deal amount is set and try again.'); setInvoiceSending(false); },
   });
 
   const markWon = useMutation({
     mutationFn: () => crmDealsApi.markWon(deal.id),
     onSuccess: (res) => {
-      toast.success(`🏆 Deal Won! Project "${res.project_name}" created with ${res.tasks_created} tasks.`);
+      toast.success(`Deal won! Project "${res.project_name}" created with ${res.tasks_created} tasks.`);
+      qc.invalidateQueries({ queryKey: crmKeys.kanbanAll() });
+      qc.invalidateQueries({ queryKey: crmKeys.orgKanbanAll() });
       qc.invalidateQueries({ queryKey: crmKeys.kanbanLegacy() });
       setMarkingWon(false);
       onMarkWon?.();
     },
-    onError: () => { toast.error('Failed to mark deal as Won'); setMarkingWon(false); },
+    onError: () => { toast.error('Failed to mark deal as won — check that the proposal is approved and try again.'); setMarkingWon(false); },
   });
 
   const deckScript = (() => {
@@ -71,7 +77,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
             <div>
               <p className="text-sm font-medium">No deck generated yet</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Lux will create a branded slide-by-slide deck script from your approved proposal.
+                The deck agent will create a branded slide-by-slide deck script from your approved proposal.
                 {!deal.proposal_text && (
                   <span className="block mt-1 text-amber-400">Generate and approve the proposal first.</span>
                 )}
@@ -84,7 +90,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
               disabled={generateDeck.isPending || !deal.proposal_text}
             >
               {generateDeck.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
-              {generateDeck.isPending ? 'Lux is designing…' : 'Generate Deck'}
+              {generateDeck.isPending ? 'Generating…' : 'Generate Deck'}
             </Button>
           </div>
         ) : (

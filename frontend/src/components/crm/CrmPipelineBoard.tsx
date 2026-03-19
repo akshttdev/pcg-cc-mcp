@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   KanbanBoard,
   KanbanCards,
@@ -125,6 +125,18 @@ export function CrmPipelineBoard({
   const orgKanbanResult = useOrgCrmKanban(orgId || '', isOrgMode ? pipeline?.id : undefined);
   const { data: kanbanData, isLoading: isKanbanLoading, isRefetching } =
     isOrgMode ? orgKanbanResult : projectKanban;
+
+  // Sync selectedDeal with latest kanban data (e.g. after proposal generation refetch)
+  useEffect(() => {
+    if (!selectedDeal || !kanbanData?.stages) return;
+    for (const stageData of kanbanData.stages) {
+      const updated = stageData.deals.find((d) => d.id === selectedDeal.id);
+      if (updated && updated !== selectedDeal) {
+        setSelectedDeal(updated);
+        return;
+      }
+    }
+  }, [kanbanData, selectedDeal]);
 
   const moveDeal = useMoveDeal();
   const createDeal = useCreateDeal();

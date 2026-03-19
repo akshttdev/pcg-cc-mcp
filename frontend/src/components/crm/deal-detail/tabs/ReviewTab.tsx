@@ -30,7 +30,7 @@ const STAGE_CHECKLIST: Record<string, { item: string; description?: string }[]> 
   lead: [
     {
       item: 'Person research complete',
-      description: 'Nora has run "Who Is" research on this contact',
+      description: '"Who Is" research completed on this contact',
     },
     { item: 'Company research complete', description: 'Company intelligence is available' },
     {
