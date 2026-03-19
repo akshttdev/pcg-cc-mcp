@@ -13,7 +13,7 @@ use db::models::{
     quickbooks_account::QuickBooksAccountError, social_account::SocialAccountError,
     social_mention::SocialMentionError, social_post::SocialPostError,
     task_artifact::TaskArtifactError, task_attempt::TaskAttemptError, token_usage::TokenUsageError,
-    wide_research::WideResearchError,
+    vibe_transaction::VibeTransactionError, wide_research::WideResearchError,
 };
 use deployment::DeploymentError;
 use executors::executors::ExecutorError;
@@ -160,6 +160,20 @@ impl From<ExecutionArtifactError> for ApiError {
                 ApiError::NotFound("Execution artifact not found".into())
             }
             ExecutionArtifactError::InvalidType(msg) => ApiError::BadRequest(msg),
+        }
+    }
+}
+
+impl From<VibeTransactionError> for ApiError {
+    fn from(err: VibeTransactionError) -> Self {
+        match err {
+            VibeTransactionError::Database(e) => ApiError::Database(e),
+            VibeTransactionError::NotFound => {
+                ApiError::NotFound("VIBE transaction not found".into())
+            }
+            VibeTransactionError::InvalidSourceType(s) => {
+                ApiError::BadRequest(format!("Invalid source type: {}", s))
+            }
         }
     }
 }

@@ -370,6 +370,78 @@ impl VibeTransaction {
         Ok(tx)
     }
 
+    /// Get cost aggregation for an organization (joins via projects.organization_id)
+    pub async fn org_cost_summary(
+        pool: &SqlitePool,
+        org_id: &str,
+    ) -> Result<OrgCostSummary, VibeTransactionError> {
+        let row = sqlx::query_as::<_, OrgCostSummary>(
+            r#"SELECT
+                COALESCE(SUM(vt.amount_vibe), 0) as total_vibe,
+                COALESCE(SUM(vt.calculated_cost_cents), 0) as total_cost_cents,
+                COUNT(*) as transaction_count,
+                COALESCE(SUM(vt.input_tokens), 0) as total_input_tokens,
+                COALESCE(SUM(vt.output_tokens), 0) as total_output_tokens
+            FROM vibe_transactions vt
+            JOIN projects p ON CAST(vt.source_id AS TEXT) = p.id
+            WHERE p.organization_id = ?1 AND vt.source_type = 'project'"#,
+        )
+        .bind(org_id)
+        .fetch_one(pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// Get cost breakdown by model for an organization
+    pub async fn org_cost_by_model(
+        pool: &SqlitePool,
+        org_id: &str,
+    ) -> Result<Vec<ModelCostRow>, VibeTransactionError> {
+        let rows = sqlx::query_as::<_, ModelCostRow>(
+            r#"SELECT
+                COALESCE(vt.model, 'unknown') as model,
+                COALESCE(vt.provider, 'unknown') as provider,
+                COALESCE(SUM(vt.amount_vibe), 0) as total_vibe,
+                COALESCE(SUM(vt.calculated_cost_cents), 0) as total_cost_cents,
+                COUNT(*) as transaction_count,
+                COALESCE(SUM(vt.input_tokens), 0) as input_tokens,
+                COALESCE(SUM(vt.output_tokens), 0) as output_tokens
+            FROM vibe_transactions vt
+            JOIN projects p ON CAST(vt.source_id AS TEXT) = p.id
+            WHERE p.organization_id = ?1 AND vt.source_type = 'project'
+            GROUP BY vt.model, vt.provider
+            ORDER BY total_vibe DESC"#,
+        )
+        .bind(org_id)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Get cost breakdown by project for an organization
+    pub async fn org_cost_by_project(
+        pool: &SqlitePool,
+        org_id: &str,
+    ) -> Result<Vec<ProjectCostRow>, VibeTransactionError> {
+        let rows = sqlx::query_as::<_, ProjectCostRow>(
+            r#"SELECT
+                p.id as project_id,
+                p.name as project_name,
+                COALESCE(SUM(vt.amount_vibe), 0) as total_vibe,
+                COALESCE(SUM(vt.calculated_cost_cents), 0) as total_cost_cents,
+                COUNT(*) as transaction_count
+            FROM vibe_transactions vt
+            JOIN projects p ON CAST(vt.source_id AS TEXT) = p.id
+            WHERE p.organization_id = ?1 AND vt.source_type = 'project'
+            GROUP BY p.id, p.name
+            ORDER BY total_vibe DESC"#,
+        )
+        .bind(org_id)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows)
+    }
+
     /// Mark a transaction sync as failed
     pub async fn mark_sync_failed(
         pool: &SqlitePool,
@@ -398,4 +470,36 @@ impl VibeTransaction {
 
         Ok(tx)
     }
+}
+
+#[derive(Debug, FromRow, Serialize, TS)]
+#[ts(export)]
+pub struct OrgCostSummary {
+    pub total_vibe: i64,
+    pub total_cost_cents: i64,
+    pub transaction_count: i64,
+    pub total_input_tokens: i64,
+    pub total_output_tokens: i64,
+}
+
+#[derive(Debug, FromRow, Serialize, TS)]
+#[ts(export)]
+pub struct ModelCostRow {
+    pub model: String,
+    pub provider: String,
+    pub total_vibe: i64,
+    pub total_cost_cents: i64,
+    pub transaction_count: i64,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+}
+
+#[derive(Debug, FromRow, Serialize, TS)]
+#[ts(export)]
+pub struct ProjectCostRow {
+    pub project_id: String,
+    pub project_name: String,
+    pub total_vibe: i64,
+    pub total_cost_cents: i64,
+    pub transaction_count: i64,
 }
