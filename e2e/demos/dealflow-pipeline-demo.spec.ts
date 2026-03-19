@@ -13,7 +13,8 @@
  *   8. Approve proposal via UI
  *   9. Browse Deck & Close tab — verify sections visible
  *  10. Close panel + navigate to companies page
- *  11. Cleanup test deal via API
+ *
+ * Cleanup runs in test.afterAll (not a separate test step).
  *
  * Prerequisites:
  *   - Dev server running on FRONTEND_PORT
@@ -34,9 +35,6 @@ const DEAL_DESCRIPTION =
 
 const OPERATOR_CONTEXT =
   "Met Elena at the Design Summit last week. She mentioned urgency around Q3 rebrand. Key decision-maker; reports directly to CEO. Prefers async communication via email.";
-
-// Shared state across sequential tests
-let dealId: string | undefined;
 
 // ── Test Flow ────────────────────────────────────────────────────────────────
 
@@ -119,25 +117,16 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
     await expect(createBtn).toBeEnabled({ timeout: t(3_000) });
     await createBtn.click();
 
-    // Wait for success and dialog to close
-    await page.waitForTimeout(demoPause.medium);
+    // Wait for the dialog to close (heading disappears)
+    await expect(
+      page.getByRole("heading", { name: "Create Deal" }),
+    ).not.toBeVisible({ timeout: t(10_000) });
+    await page.waitForTimeout(demoPause.short);
 
-    // The dialog may auto-close. Wait for the board to re-render with the new deal.
-    await page
-      .waitForSelector(
-        '[class*="inline-grid"], [class*="kanban"], [class*="pipeline"], [class*="board"]',
-        { timeout: t(15_000) },
-      )
-      .catch(() => null);
-    await page.waitForTimeout(demoPause.medium);
-
-    console.log("[Part 2] Deal created via UI dialog");
-
-    // Verify the deal card appears on the kanban (may need the board to re-query)
-    const bodyText = await page.textContent("body");
-    const dealVisible = bodyText?.includes("Aurora Design");
-    console.log(`[Part 2] Deal visible on board: ${dealVisible}`);
-    expect(dealVisible, "Deal should appear on the pipeline board").toBeTruthy();
+    // Verify the deal card appears on the kanban board
+    await expect(page.getByText("Aurora Design").first()).toBeVisible({
+      timeout: t(10_000),
+    });
 
     console.log("[Part 2] Deal card visible on pipeline board in Lead column");
     await page.waitForTimeout(demoPause.medium);
@@ -148,13 +137,13 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
   test("Part 3: Open deal detail panel", async ({ page }) => {
     test.setTimeout(30_000);
 
-    // Click the deal card to open the slide-in detail panel
-    const dealCard = page
-      .locator("button")
-      .filter({ hasText: /Aurora Design/i })
-      .first();
-    await expect(dealCard).toBeVisible({ timeout: t(10_000) });
-    await dealCard.click();
+    // Shared page is still on the pipeline board from Part 2.
+    // The deal card should already be visible — click it.
+    const dealCard = page.getByRole("button", {
+      name: /Aurora Design/i,
+    });
+    await expect(dealCard.first()).toBeVisible({ timeout: t(10_000) });
+    await dealCard.first().click();
 
     // Wait for the dialog (slide-in panel) to appear
     const dialog = page.locator('[role="dialog"]');
@@ -199,52 +188,39 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
       await page.waitForTimeout(demoPause.short);
     }
 
-    // Click the "No context yet" placeholder to start editing
-    const contextTrigger = page.getByText("No context yet");
-    const hasTrigger = await contextTrigger.isVisible().catch(() => false);
+    // The operator context area pre-fills from the deal description.
+    // Click "Click to edit" to open the edit textarea.
+    const clickToEdit = page.locator('[role="dialog"]').getByText("Click to edit");
+    const noContextYet = page.locator('[role="dialog"]').getByText("No context yet");
 
-    if (hasTrigger) {
-      await contextTrigger.click();
-    } else {
-      // May already have context area — try clicking the operator context section
-      const contextSection = page
-        .locator('[role="dialog"]')
-        .getByText(/operator context/i)
-        .first();
-      if (await contextSection.isVisible().catch(() => false)) {
-        await contextSection.click();
-      }
+    if (await clickToEdit.isVisible().catch(() => false)) {
+      await clickToEdit.click();
+    } else if (await noContextYet.isVisible().catch(() => false)) {
+      await noContextYet.click();
     }
 
     await page.waitForTimeout(demoPause.short);
 
     // Fill the textarea with operator context
     const textarea = page.locator('[role="dialog"] textarea').first();
-    const textareaVisible = await textarea.isVisible().catch(() => false);
+    await expect(textarea).toBeVisible({ timeout: t(5_000) });
+    await textarea.fill(OPERATOR_CONTEXT);
+    await page.waitForTimeout(demoPause.short);
 
-    if (textareaVisible) {
-      await textarea.fill(OPERATOR_CONTEXT);
-      await page.waitForTimeout(demoPause.short);
+    // Click Save Context
+    const saveBtn = page.getByRole("button", { name: /save context/i });
+    if (await saveBtn.isVisible().catch(() => false)) {
+      await saveBtn.click();
 
-      // Click Save Context
-      const saveBtn = page.getByRole("button", { name: /save context/i });
-      if (await saveBtn.isVisible().catch(() => false)) {
-        await saveBtn.click();
+      // Verify the save toast appears
+      await expect(page.getByText(/context saved/i).first()).toBeVisible({
+        timeout: t(5_000),
+      }).catch(() => null);
 
-        // Verify the save toast appears
-        await expect(page.getByText(/context saved/i).first()).toBeVisible({
-          timeout: t(5_000),
-        }).catch(() => null);
-
-        console.log("[Part 4] Operator context saved");
-      } else {
-        console.log(
-          "[Part 4] Save Context button not found — context area may use auto-save",
-        );
-      }
+      console.log("[Part 4] Operator context saved");
     } else {
       console.log(
-        "[Part 4] Context textarea not found — UI may differ from expected",
+        "[Part 4] Save Context button not found — context area may use auto-save",
       );
     }
 
@@ -349,21 +325,28 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
 
     if (hasGenerateBtn) {
       await generateBtn.click();
-      console.log("[Part 7] Clicked Generate Proposal button");
+      console.log("[Part 7] Clicked Generate Proposal — Cash is writing...");
 
-      // Wait for LLM response — proposal text should appear (up to 60s)
-      await page
-        .waitForSelector(
-          '[role="dialog"] [class*="prose"], [role="dialog"] [class*="markdown"]',
-          { timeout: 60_000 },
-        )
-        .catch(() => null);
+      // Wait for the "Generating..." state to appear (confirms mutation fired)
+      await expect(
+        dialog.getByText(/generating…/i),
+      ).toBeVisible({ timeout: t(5_000) }).catch(() => null);
+
+      // Wait for proposal generation to complete (LLM response, up to 90s)
+      // The button text changes back from "Generating..." when done
+      await expect(
+        dialog.getByText(/generating…/i),
+      ).not.toBeVisible({ timeout: 90_000 }).catch(() => null);
+
+      // Re-click Proposal tab to pick up refreshed deal data
+      await proposalTab.click();
+      await page.waitForTimeout(demoPause.medium);
 
       const dialogText = await dialog.textContent();
       const hasProposal =
         (dialogText?.length ?? 0) > 500 ||
-        dialogText?.includes("Draft") ||
-        dialogText?.includes("Proposal");
+        dialogText?.includes("Approve") ||
+        dialogText?.includes("Regenerate");
 
       console.log(
         `[Part 7] Proposal generated: ${hasProposal} (content length: ${dialogText?.length ?? 0})`,
@@ -488,9 +471,11 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
       await page.waitForTimeout(demoPause.short);
     }
 
-    // Navigate to companies page to verify the board is still intact
+    // Navigate to companies page (shared page maintains session)
     await page.goto(`/organizations/${ORG_ID}/crm/companies`);
-    await page.waitForTimeout(demoPause.medium);
+    await expect(
+      page.getByRole("heading", { name: "Companies" }),
+    ).toBeVisible({ timeout: t(10_000) });
 
     const bodyText = await page.textContent("body");
     expect(
@@ -499,12 +484,12 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
     ).toBeGreaterThan(100);
 
     console.log("[Part 10] Navigated to companies page");
-    await page.waitForTimeout(demoPause.medium);
+    await page.waitForTimeout(demoPause.long);
   });
 
-  // ── Part 11: Cleanup ─────────────────────────────────────────────────────
+  // ─── Cleanup ───────────────────────────────────────────────────────────
 
-  test("Part 11: Cleanup test data", async ({ request }) => {
+  test.afterAll(async ({ request }) => {
     await apiLogin(request);
 
     // Find and delete the test deal by name via API
@@ -519,17 +504,10 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
           (deal.name as string | undefined)?.includes("Aurora Design") &&
           (deal.name as string | undefined)?.startsWith(TEST_DATA_PREFIX)
         ) {
-          dealId = deal.id;
           await request.delete(`/api/crm/deals/${deal.id}`).catch(() => {});
-          console.log(`[Part 11] Deleted deal: ${deal.id}`);
+          console.log(`[Cleanup] Deleted deal: ${deal.id}`);
         }
       }
     }
-
-    if (!dealId) {
-      console.log("[Part 11] No test deal found to clean up");
-    }
-
-    console.log("[Part 11] Cleanup complete");
   });
 });

@@ -200,7 +200,7 @@ Add error handling in CompanyBrandGuidePage: if `company` query returns null/err
 - In dark mode: looks acceptable but doesn't follow Tailwind dark mode pattern
 **Impact**: Person profile page is unusable in light mode — poor contrast, wrong visual hierarchy
 **Resolution**: Refactor to use `bg-card`, `border-border`, `text-muted-foreground` semantic tokens that adapt to both modes. ~60 class replacements needed.
-**Status**: DEFERRED — pre-existing issue, not introduced by this PR
+**Status**: FIXED — refactored to semantic tokens (`bg-card`, `border-border`, `text-muted-foreground`, `shadow-md`)
 
 ### Full Workflow Confirmed via MCP (2026-03-19)
 
@@ -217,3 +217,18 @@ Complete walkthrough verified step by step:
 Deal creation via "Add Deal" dialog automatically assigns crm_stage_id from Stage dropdown,
 which ensures deals appear on the kanban board. API-created deals without crm_stage_id don't
 show on the board (confirmed issue, fixed in demo by using UI dialog instead).
+
+### Proposal Tab Cache Fix (2026-03-19)
+
+**Problem**: After generating a proposal via LLM, the deal detail panel didn't re-render with the proposal text. The Approve button never appeared.
+**Root cause**: The ProposalTab's `generate` mutation invalidated `crmKeys.kanbanLegacy()` (`['crm-kanban']`), but the org pipeline uses `crmKeys.orgKanban()` (`['crm', 'org-kanban', orgId, pipelineId]`). Cache miss — the invalidation targeted the wrong query key.
+**Fix**: Updated ProposalTab mutations to use `setQueriesData` with the API return value, patching `crmKeys.kanbanAll()`, `crmKeys.orgKanbanAll()`, and `crmKeys.kanbanLegacy()`. Added `useEffect` sync in CrmPipelineBoard to update `selectedDeal` when kanban data changes.
+**Impact**: Proposal generation, approval, and manual edits now immediately update the deal panel without page reload.
+
+### E2E Demo Patterns (2026-03-19)
+
+**Cleanup**: Use `test.afterAll` (not a separate test step) — matches `workflow-crm-pipeline.spec.ts` pattern.
+**Navigation**: `page.goto()` directly; shared demo fixtures maintain session across serial tests.
+**Pacing**: `demoPause.short/medium/long` after interactions; `t()` scales Playwright timeouts for headed mode.
+**Tab switching**: `page.getByTestId('tab-{value}')` via TabPanel's auto-generated `data-testid` attributes.
+**Dialog close**: `page.locator('[role="dialog"]').getByRole('button', { name: /close/i })`.
