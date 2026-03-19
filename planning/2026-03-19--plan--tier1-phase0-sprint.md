@@ -195,6 +195,8 @@ axum::serve(listener, app_router)
     .await?;
 ```
 Add `shutdown_signal()` using `tokio::signal` for SIGTERM + SIGINT.
+Add drain timeout (30s) via `tokio::time::timeout` to prevent hanging on long-running LLM streams.
+**Note**: `CancellationToken` + Axum may have edge cases (axum issue #3326) — test thoroughly.
 
 **5b. Shutdown registry** — new `crates/server/src/workers/mod.rs`
 - `ShutdownRegistry` with root CancellationToken that cascades to children
@@ -241,6 +243,18 @@ Add `shutdown_signal()` using `tokio::signal` for SIGTERM + SIGINT.
 
 Implements `BackgroundWorker` trait from #5c. Polls every 15s.
 
+**Config** (follows existing service config pattern):
+```rust
+pub struct AgentFlowExecutorConfig {
+    pub enabled: bool,           // env: ENABLE_AGENT_FLOW_ENGINE (default: false)
+    pub poll_interval_secs: u64, // env: AGENT_FLOW_POLL_INTERVAL (default: 15)
+    pub max_concurrent: usize,   // env: AGENT_FLOW_MAX_CONCURRENT (default: 3)
+    pub cooldown_secs: u64,      // env: AGENT_FLOW_COOLDOWN (default: 60)
+}
+```
+
+**Frontend**: No new hooks needed — `useAgentFlows`, `useAgentFlowEvents`, `useAgentFlowsAwaitingApproval` already exist in `frontend/src/hooks/useAgentFlows.ts` with appropriate staleTime (30s/15s/10s). Phase 1 focuses on backend only.
+
 **State machine**:
 ```
 Planning → [emit PhaseStarted] → Executing →
@@ -256,6 +270,8 @@ Any phase → Failed → [emit FlowFailed]
 - `flow_config` JSON stores `dispatch_mode: "api" | "executor"` — default "api" for Phase 1
 - Phase 2 adds automatic routing based on task complexity
 
+**Scope note**: Full agent orchestration engine estimated at 2-3 weeks (per architecture-gaps-analysis.md). Phase 1 deliberately scopes to MVP: single-agent progression through phases with API dispatch. Multi-agent delegation, retry/circuit-break, and wide research orchestration deferred to Phase 2.
+
 **Phase 1 scope**:
 1. Poll `agent_flows` with `status IN ('planning', 'executing', 'verifying')`
 2. Dispatch agent via `pcg_router.rs` (API mode) or executor service (CLI mode) based on `flow_config.dispatch_mode`
@@ -269,7 +285,7 @@ Any phase → Failed → [emit FlowFailed]
 - `AgentFlow::find_by_status()` — queries by status (agent_flow.rs)
 - `AgentFlow::transition_to_phase()` — phase advancement (agent_flow.rs)
 - `AgentFlowEvent::emit_phase_started()` — convenience emitter (agent_flow_event.rs)
-- `TaskScheduler` (task_scheduler.rs:1-311) — adapt concurrent execution tracking
+- `TaskScheduler` (task_scheduler.rs:1-311) — dead code, never called. Adapt its `RwLock`-based concurrent execution tracking and `max_concurrent_executions` config pattern
 - `pcg_router.rs` (622 lines) — model routing for LLM calls
 - `spawn_workflow_schedule_loop()` — proven tokio interval pattern
 
@@ -422,6 +438,12 @@ FRONTEND_PORT=3000 npx playwright test --reporter=list
 
 ---
 
+## Known Limitations (Phase 1)
+
+- **SSE is polling-based** (`event_stream.rs` queries DB every 500ms per connected client). O(clients) database load. Adequate for internal dogfooding (<10 concurrent users). Phase 2: replace with `tokio::sync::broadcast` channel for O(1) DB queries.
+- **No internal pub/sub** for state changes — CRM automations still poll hourly. DomainEvent broadcast (Arch C) is first step but won't replace all polling in Phase 1.
+- **SQLite single-writer** limits concurrent agent executions. `max_concurrent` config (default 3) keeps this safe. Phase 2: PostgreSQL if scale demands it.
+
 ## Out of Scope (Deferred)
 
 - Wide research orchestration (agent engine phase 2)
@@ -434,6 +456,10 @@ FRONTEND_PORT=3000 npx playwright test --reporter=list
 - Rate limiting (S0-17) — internal only
 - DbUuid Phase C/D — style debt
 - Editron/social media workflow migration — needs engine first
+- A2A (Agent-to-Agent) Protocol — Google's emerging standard for agent discovery/delegation (v0.3 with gRPC). Future direction for agent registry, not Phase 1
+- OpenTelemetry distributed tracing — `tracing-opentelemetry` crate + OTLP export. Needed for Stage 1 pilot, not Phase 0
+- Three-endpoint health checks (live/ready/startup) — Kubernetes-style, needed for production deploy
+- JSON structured log output for production — `tracing-subscriber` with `fmt::layer().json()`
 
 ---
 

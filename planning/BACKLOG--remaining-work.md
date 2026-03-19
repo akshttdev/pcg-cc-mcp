@@ -39,7 +39,7 @@
 ### S0-06. Agent Flow Orchestration Engine [ROI: 9.0]
 **Source:** `archive/2026-03-12--plan--agent-task-mcp-wiring.md`, [`roadmap/5-year-product-roadmap.md` §Priority 1](roadmap/5-year-product-roadmap.md)
 **What:** Background worker to progress agent flows through phases, enforce gates, handle delegation and retry. #1 architectural gap. Data model complete (agent_flow.rs 406 lines, agent_flow_event.rs 350 lines). Proven pattern: `spawn_workflow_schedule_loop()`.
-**Effort:** 5 days | **Sprint:** 0.2 | **Depends on:** S0-03, S0-04 | **Status:** NOT STARTED
+**Effort:** 5 days | **Sprint:** 0.1 | **Depends on:** S0-03, S0-04 | **Status:** NOT STARTED
 
 ### S0-07. CAPO Per-Task Tracking [ROI: 8.0]
 **Source:** [`roadmap/research/20-ai--unit-economics-agent-metrics.md`](roadmap/research/20-ai--unit-economics-agent-metrics.md), research-derived-backlog #40
@@ -66,10 +66,10 @@
 **What:** Formal project vision document for agent alignment. Prevents drift toward speculative features.
 **Effort:** 1 day | **Sprint:** 0.1 | **Status:** NOT STARTED
 
-### S0-12. Graceful Shutdown [ROI: 4.5]
+### S0-12. Graceful Shutdown + Worker Registry [ROI: 4.5]
 **Source:** [`roadmap/architecture-gaps-analysis.md`](roadmap/architecture-gaps-analysis.md)
-**What:** Replace bare `axum::serve()` with `with_graceful_shutdown()`. Drain period for in-flight executions.
-**Effort:** 1 day | **Sprint:** 0.1 | **Status:** NOT STARTED
+**What:** Replace bare `axum::serve()` with `with_graceful_shutdown()`. Add ShutdownRegistry + BackgroundWorker trait. Drain period for in-flight executions. Combined with worker abstraction (sprint item #5).
+**Effort:** 1.5 days | **Sprint:** 0.1 | **Status:** NOT STARTED
 
 ### S0-13. Input Validation Framework [ROI: 4.0]
 **Source:** [`roadmap/research/08-legal--compliance-security.md`](roadmap/research/08-legal--compliance-security.md)
