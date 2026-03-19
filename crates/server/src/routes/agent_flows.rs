@@ -67,6 +67,10 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             post(request_approval),
         )
         .route("/agent-flows/{flow_id}/approve", post(approve_flow))
+        .route(
+            "/agent-flows/{flow_id}/respond-clarification",
+            post(respond_clarification),
+        )
         .with_state(deployment.clone())
 }
 
@@ -250,4 +254,67 @@ async fn approve_flow(
         .to_uuid();
     let flow = AgentFlow::approve(&deployment.db().pool, flow_id, &payload.approved_by).await?;
     Ok(Json(ApiResponse::success(flow)))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RespondClarificationPayload {
+    pub response: String,
+    /// Resume to this status after clarification (default: previous status before NeedsClarification)
+    pub resume_status: Option<FlowStatus>,
+}
+
+/// POST /agent-flows/:flow_id/respond-clarification
+/// Provide a response to a clarification request, clearing the request and resuming the flow.
+async fn respond_clarification(
+    State(deployment): State<DeploymentImpl>,
+    Path(flow_id): Path<String>,
+    Json(payload): Json<RespondClarificationPayload>,
+) -> Result<Json<ApiResponse<AgentFlow>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let flow_id = DbUuid::parse(&flow_id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
+
+    let flow = AgentFlow::find_by_id(pool, flow_id).await?;
+
+    if flow.status != FlowStatus::NeedsClarification {
+        return Err(ApiError::BadRequest(format!(
+            "Flow is not awaiting clarification (current status: {})",
+            flow.status
+        )));
+    }
+
+    let resume_to = payload
+        .resume_status
+        .unwrap_or(FlowStatus::Executing);
+
+    if !FlowStatus::NeedsClarification.can_transition_to(&resume_to) {
+        return Err(ApiError::BadRequest(format!(
+            "Cannot resume to status '{}' from NeedsClarification",
+            resume_to
+        )));
+    }
+
+    // Store the clarification response in metadata and clear the request
+    let response_json = serde_json::json!({
+        "clarification_response": payload.response,
+        "responded_at": chrono::Utc::now().to_rfc3339(),
+    });
+
+    let updated = sqlx::query_as::<_, AgentFlow>(
+        r#"UPDATE agent_flows
+           SET status = ?2,
+               clarification_request = NULL,
+               flow_config = json_patch(COALESCE(flow_config, '{}'), ?3),
+               updated_at = datetime('now', 'subsec')
+           WHERE id = ?1
+           RETURNING *"#,
+    )
+    .bind(flow_id)
+    .bind(resume_to.to_string())
+    .bind(response_json.to_string())
+    .fetch_one(pool)
+    .await?;
+
+    Ok(Json(ApiResponse::success(updated)))
 }
