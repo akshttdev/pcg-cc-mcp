@@ -862,31 +862,43 @@ export type ConvertEntityRequest = { source_type: string, source_id: string, tar
 
 export type ConvertEntityResponse = { new_id: string, new_type: string, };
 
-export type SubmitFeedbackRequest = { 
+export type SubmitFeedbackRequest = {
 /**
- * Type of feedback: bug, feature, improvement, question, other
+ * Type of feedback: bug, feature, improvement, question, friction, other
  */
-feedback_type: string, 
+feedback_type: string,
 /**
  * Brief title/summary
  */
-title: string, 
+title: string,
 /**
  * Detailed description
  */
-description: string, 
+description: string,
 /**
  * Reporter's email (optional)
  */
-email: string | null, 
+email: string | null,
 /**
  * Severity for bugs: low, medium, high, critical
  */
-severity: string | null, 
+severity: string | null,
 /**
  * Base64 encoded screenshot image (optional)
  */
-screenshot: string | null, };
+screenshot: string | null,
+/** Page/route where friction occurred */
+page_url?: string,
+/** What the user was trying to do */
+user_intent?: string,
+/** What went wrong or felt slow/confusing */
+friction_point?: string,
+/** What the user expected to happen */
+expected_behavior?: string,
+/** Time spent blocked (seconds, self-reported) */
+time_lost_seconds?: number,
+/** Frustration level: 1 (minor) to 5 (show-stopper) */
+frustration_level?: number, };
 
 export type SubmitFeedbackResponse = { task_id: string, message: string, };
 

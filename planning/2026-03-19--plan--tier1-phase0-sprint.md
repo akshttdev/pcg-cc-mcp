@@ -439,6 +439,109 @@ All decisions resolved during planning — captured here for reference.
 
 ---
 
+## PR #51 Regression Analysis (2026-03-19)
+
+Full regression analysis performed against `main`. Findings and fixes below.
+
+### P0 Bugs Found & Fixed
+
+| Bug | File | Fix |
+|-----|------|-----|
+| `duration_ms` always 0 — `Instant::now().elapsed()` instead of using `start` | `workflow_triggers.rs:388` | Added `start` timer before `execute_workflow_nodes`, use `start.elapsed()` |
+| `'in_progress'` should be `'inprogress'` (no underscore) | `crm_deal_automations.rs:165,180,448` | Replaced all 3 occurrences |
+| `BrandSetupWizard` saves to org API when used on company page | `CompanyBrandGuidePage.tsx` | Added `apiOverride` prop to `BrandSetupWizard`, passed `companiesApi` from company page |
+| `UpdateCrmDeal` missing `expedited` field — required `as any` cast | `crm_deal.rs`, `crm.ts`, `OverviewTab.tsx` | Added `expedited: Option<i32>` to Rust struct, `expedited?: number` to TS type, updated SQL + bindings, removed `as any` |
+
+### P0 Remaining — `'in_progress'` in 6+ more SQL queries across crates
+
+Same root cause as above — hardcoded status strings with no shared constant. Affects:
+
+| File | Lines | Impact |
+|------|-------|--------|
+| `crates/topsi/src/agent.rs` | 901, 1381, 1463, 2005 | Task counts always 0, stale detection broken |
+| `crates/nora/src/executor.rs` | 744 | `in_progress_tasks` always 0 |
+| `crates/editron-runner/src/dashboard.rs` | 325 | Creates tasks with wrong status |
+
+### P1 — LLM tool schemas advertise wrong status value
+
+| File | Lines | Impact |
+|------|-------|--------|
+| `crates/nora/src/tools/schemas.rs` | 106, 828, 850 | LLMs told to use `in_progress` |
+| `crates/topsi/src/tools/mod.rs` | 287, 370, 407, 454 | LLMs told to use `in_progress` |
+
+### P1 — Access control changes (intentional, verify frontend)
+
+All CRM contacts (12 endpoints) and pipelines (13 endpoints) now enforce org membership → non-org-members get 403. Frontend must pass correct org context.
+
+### P2 — Migration risks
+
+- BLOB-to-TEXT migration dedup uses `MIN(rowid)` — could lose stage associations
+- `trigger_type = 'scheduled'` → `'schedule'` rename — verified no Rust code references old value
+
+### P2 — UX / Quality
+
+- ~20 mutations migrated to `useMutationWithToast` — adds toast notifications where none existed (verified: no spam risk for batch ops)
+- Person profile: slate hardcodes → semantic tokens (visual may shift slightly)
+
+### P3 — CI/Config
+
+- ESLint `--max-warnings` 110 → 180 (masks new warnings)
+- lint-staged configured but no git hook wired (husky missing)
+- `frontend/pnpm-lock.yaml` deleted — root workspace lockfile covers it
+- `build-release.yml` uses `grep -v` for lld flags (fragile)
+- Playwright `.env` parser is hand-rolled (no multiline support)
+
+### Commits 3afa105..85687d8 — Regression Findings (2026-03-19)
+
+**Fixed (medium):**
+- `.expect()` in `workers/mod.rs:88,93` → replaced with `match`/error logging
+- Schedule loop in `data_source_workflows.rs:1612` → migrated to `try_claim_trigger()` (was still using old `increment_trigger_count`)
+- Generated types stale → manually updated `shared/types.ts` and `bindings/SubmitFeedbackRequest.ts` with friction fields
+
+**Remaining (low — tracked for follow-up):**
+- `workflow_triggers.rs:172` — manual-fire webhook still uses racy `is_past_cooldown()`. Should migrate to `try_claim_trigger()`. Lower risk: user-initiated, not concurrent.
+- `workers/mod.rs:53` — `JoinHandle` dropped from `tokio::spawn`. Worker panics silently lost. Add `.inspect_err()` or store handles.
+- `main.rs:604-606` — no drain timeout on `axum::serve`. Stuck connections block exit. Add `tokio::time::timeout`.
+
+### Clean Areas
+
+- CRM deals split — all 9 routes correctly re-wired
+- ~90+ file renames (docs/, scripts/) — references updated
+- `fetch()` → `makeRequest()` migration — consistent
+- Query key factory migration — correct
+- No Cargo dependency changes
+- `trigger_type` rename — no remaining `'scheduled'` in workflow code
+- Atomic cooldown SQL pattern correct for SQLite
+- Shutdown signal handler correctly wired
+- Feedback friction fields all `Option<T>` — no breaking API changes
+- FeedbackDialog public interface unchanged
+
+### Applied Fix: Status String Corrections + Normalization
+
+**Quick-fix (applied now):** Replaced all 13+ `'in_progress'` → `'inprogress'` across 5 crates. Added `canonical_status` normalization in Topsi/Nora tool handlers so LLMs sending `in_progress`/`in-progress` are mapped to `inprogress` before DB writes/queries.
+
+**Files fixed:**
+- `crates/topsi/src/agent.rs` — 4 SQL queries
+- `crates/nora/src/executor.rs` — 1 SQL query
+- `crates/editron-runner/src/dashboard.rs` — 1 INSERT
+- `crates/nora/src/tools/schemas.rs` — 3 enum definitions
+- `crates/topsi/src/tools/mod.rs` — 4 description strings
+- `crates/topsi/src/platform_data.rs` — 2 normalization points (update_task, list_tasks)
+- `crates/nora/src/tools/user_scoped.rs` — 1 normalization point (get_project_tasks)
+
+### Deferred: TaskStatus Enum Constants + Potential snake_case Migration
+
+The proper fix is `impl TaskStatus { pub fn as_str(&self) -> &'static str }` so all crates reference the enum instead of hardcoded strings.
+
+**Open decision**: Current serialization is `#[serde(rename_all = "lowercase")]` → `inprogress`, `inreview`. snake_case (`in_progress`, `in_review`) is more natural and what LLMs default to. A future migration could:
+1. Change serde to `#[serde(rename_all = "snake_case")]` → `in_progress`, `in_review`
+2. Add a DB migration: `UPDATE tasks SET status = 'in_progress' WHERE status = 'inprogress'`
+3. Update all hardcoded strings, frontend constants, and normalization layers
+
+This is a cross-cutting change touching DB + all crates + frontend — scope for a dedicated PR, not embedded in #51.
+
+---
+
 ## In-Sprint Modularity Extractions (~4h, embedded in PRs)
 
 | Extraction | Effort | PR |

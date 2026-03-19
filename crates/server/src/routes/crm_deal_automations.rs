@@ -162,7 +162,7 @@ pub async fn trigger_who_is_research(
                     if let Some(ref name) = pd.full_name {
                         let task_id = DbUuid::new();
                         let _ = sqlx::query(
-                            "INSERT INTO tasks (id, title, description, status, crm_deal_id, project_id, created_at, updated_at) VALUES (?, ?, ?, 'in_progress', ?, ?, datetime('now','subsec'), datetime('now','subsec'))",
+                            "INSERT INTO tasks (id, title, description, status, crm_deal_id, project_id, created_at, updated_at) VALUES (?, ?, ?, 'inprogress', ?, ?, datetime('now','subsec'), datetime('now','subsec'))",
                         )
                         .bind(&task_id)
                         .bind(format!("Phase 1 Research: {} (Person)", name))
@@ -177,7 +177,7 @@ pub async fn trigger_who_is_research(
                 if let Some(ref cn) = intel_company.as_ref().filter(|n| !n.is_empty()) {
                     let task_id = DbUuid::new();
                     let _ = sqlx::query(
-                        "INSERT INTO tasks (id, title, description, status, crm_deal_id, project_id, created_at, updated_at) VALUES (?, ?, ?, 'in_progress', ?, ?, datetime('now','subsec'), datetime('now','subsec'))",
+                        "INSERT INTO tasks (id, title, description, status, crm_deal_id, project_id, created_at, updated_at) VALUES (?, ?, ?, 'inprogress', ?, ?, datetime('now','subsec'), datetime('now','subsec'))",
                     )
                     .bind(&task_id)
                     .bind(format!("Phase 1 Research: {} (Company)", cn))
@@ -445,7 +445,7 @@ pub async fn generate_phase1_business_report(
 
     // Mark Phase 1 research tasks as done
     let _ = sqlx::query(
-        "UPDATE tasks SET status = 'done', updated_at = datetime('now','subsec') WHERE crm_deal_id = ? AND title LIKE 'Phase 1 Research:%' AND status = 'in_progress' AND deleted_at IS NULL",
+        "UPDATE tasks SET status = 'done', updated_at = datetime('now','subsec') WHERE crm_deal_id = ? AND title LIKE 'Phase 1 Research:%' AND status = 'inprogress' AND deleted_at IS NULL",
     )
     .bind(&deal_id)
     .execute(pool)

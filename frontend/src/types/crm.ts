@@ -1,7 +1,12 @@
 // CRM Types
 
 // Pipeline types for Kanban boards
-export type PipelineType = 'conferences' | 'clients' | 'sales' | 'delivery' | 'custom';
+export type PipelineType =
+  | 'conferences'
+  | 'clients'
+  | 'sales'
+  | 'delivery'
+  | 'custom';
 
 // Pipeline stage (matches backend CrmPipelineStage)
 export interface CrmPipelineStage {
@@ -136,7 +141,7 @@ export interface CrmDealWithContact {
   company_id?: string;
   // Dealflow pipeline artifacts
   proposal_text?: string;
-  proposal_status?: string;  // 'draft' | 'approved' | 'sent'
+  proposal_status?: string; // 'draft' | 'approved' | 'sent'
   deck_url?: string;
   invoice_id?: string;
   won_at?: string;
@@ -192,6 +197,7 @@ export interface UpdateCrmDeal {
   proposal_status?: string;
   deck_url?: string;
   invoice_id?: string;
+  expedited?: number;
 }
 
 export interface DealTranscript {
@@ -480,12 +486,15 @@ export interface ContactStats {
 }
 
 // Lifecycle stage display info
-export const LIFECYCLE_STAGE_INFO: Record<LifecycleStage, {
-  label: string;
-  description: string;
-  color: string;
-  icon: string;
-}> = {
+export const LIFECYCLE_STAGE_INFO: Record<
+  LifecycleStage,
+  {
+    label: string;
+    description: string;
+    color: string;
+    icon: string;
+  }
+> = {
   subscriber: {
     label: 'Subscriber',
     description: 'Opted in to receive communications',
@@ -537,12 +546,15 @@ export const LIFECYCLE_STAGE_INFO: Record<LifecycleStage, {
 };
 
 // Deal stage display info
-export const DEAL_STAGE_INFO: Record<DealStage, {
-  label: string;
-  description: string;
-  color: string;
-  probability: number;
-}> = {
+export const DEAL_STAGE_INFO: Record<
+  DealStage,
+  {
+    label: string;
+    description: string;
+    color: string;
+    probability: number;
+  }
+> = {
   qualification: {
     label: 'Qualification',
     description: 'Initial qualification of the opportunity',
@@ -582,10 +594,13 @@ export const DEAL_STAGE_INFO: Record<DealStage, {
 };
 
 // Contact source display info
-export const CONTACT_SOURCE_INFO: Record<ContactSource, {
-  label: string;
-  icon: string;
-}> = {
+export const CONTACT_SOURCE_INFO: Record<
+  ContactSource,
+  {
+    label: string;
+    icon: string;
+  }
+> = {
   manual: { label: 'Manual Entry', icon: 'edit' },
   email: { label: 'Email', icon: 'mail' },
   social: { label: 'Social Media', icon: 'share-2' },

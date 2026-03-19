@@ -1,42 +1,43 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { formatDistanceToNow } from 'date-fns';
+import {
+  BarChart3,
+  Building2,
+  Calendar,
+  CheckCircle2,
+  CheckSquare,
+  Clock,
+  DollarSign,
+  ExternalLink,
+  FileText,
+  FolderKanban,
+  ListTodo,
+  Mail,
+  MessageSquare,
+  Phone,
+  Rocket,
+  Tag,
+  TrendingUp,
+  User,
+  Users,
+  Video,
+  Workflow,
+  Zap,
+} from 'lucide-react';
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Link, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
+
 import { AskTopsiButton } from '@/components/topsi/AskTopsiButton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import {
-  Calendar,
-  Mail,
-  Building2,
-  ExternalLink,
-  FolderKanban,
-  Tag,
-  BarChart3,
-  Rocket,
-  ListTodo,
-  FileText,
-  Workflow,
-  CheckCircle2,
-  Clock,
-  TrendingUp,
-  DollarSign,
-  User,
-  CheckSquare,
-  Users,
-  MessageSquare,
-  Zap,
-  Phone,
-  Video,
-} from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
-import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
+import { Textarea } from '@/components/ui/textarea';
 import { organizationsApi } from '@/lib/api';
-import { crmKeys, organizationKeys } from '@/lib/query-keys';
 import { crmDealsApi } from '@/lib/api/crm';
+import { crmKeys, organizationKeys } from '@/lib/query-keys';
+import { cn } from '@/lib/utils';
 import type { CrmDealWithContact } from '@/types/crm';
 
 // ── MetricCard (local helper) ────────────────────────────────────────────────
@@ -79,7 +80,12 @@ interface OverviewTabProps {
   orgId?: string;
 }
 
-export function OverviewTab({ deal, stageColor, onConvert, orgId }: OverviewTabProps) {
+export function OverviewTab({
+  deal,
+  stageColor,
+  onConvert,
+  orgId,
+}: OverviewTabProps) {
   const navigate = useNavigate();
   const taskTotal = deal.task_total ?? 0;
   const currentStage = (deal.stage ?? '').toLowerCase().replace(/\s+/g, '_');
@@ -106,7 +112,8 @@ export function OverviewTab({ deal, stageColor, onConvert, orgId }: OverviewTabP
     }
   }
 
-  let sourceInfo: { dataSourceId?: string; workflowRunId?: string } | null = null;
+  let sourceInfo: { dataSourceId?: string; workflowRunId?: string } | null =
+    null;
   if (deal.custom_fields) {
     try {
       const cf =
@@ -135,20 +142,33 @@ export function OverviewTab({ deal, stageColor, onConvert, orgId }: OverviewTabP
   };
 
   const saveContext = useMutation({
-    mutationFn: () => crmDealsApi.updateDeal(deal.id, { description: contextText }),
-    onSuccess: () => { toast.success('Context saved'); setEditingContext(false); invalidateKanban(); },
+    mutationFn: () =>
+      crmDealsApi.updateDeal(deal.id, { description: contextText }),
+    onSuccess: () => {
+      toast.success('Context saved');
+      setEditingContext(false);
+      invalidateKanban();
+    },
     onError: () => toast.error('Failed to save context — please try again.'),
   });
 
   const toggleExpedite = useMutation({
-    mutationFn: () => crmDealsApi.updateDeal(deal.id, { expedited: deal.expedited ? 0 : 1 } as any),
-    onSuccess: () => { invalidateKanban(); },
+    mutationFn: () =>
+      crmDealsApi.updateDeal(deal.id, { expedited: deal.expedited ? 0 : 1 }),
+    onSuccess: () => {
+      invalidateKanban();
+    },
   });
 
   // Parse call scheduling from custom_fields
   const customFields = (() => {
-    try { return typeof deal.custom_fields === 'string' ? JSON.parse(deal.custom_fields) : deal.custom_fields ?? {}; }
-    catch { return {}; }
+    try {
+      return typeof deal.custom_fields === 'string'
+        ? JSON.parse(deal.custom_fields)
+        : (deal.custom_fields ?? {});
+    } catch {
+      return {};
+    }
   })();
 
   return (
@@ -168,27 +188,54 @@ export function OverviewTab({ deal, stageColor, onConvert, orgId }: OverviewTabP
                 className="min-h-[100px] text-sm"
               />
               <div className="flex gap-1.5">
-                <Button size="sm" className="h-7 text-xs gap-1" onClick={() => saveContext.mutate()} disabled={saveContext.isPending}>
+                <Button
+                  size="sm"
+                  className="h-7 text-xs gap-1"
+                  onClick={() => saveContext.mutate()}
+                  disabled={saveContext.isPending}
+                >
                   Save Context
                 </Button>
-                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setEditingContext(false); setContextText(deal.description ?? ''); }}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs"
+                  onClick={() => {
+                    setEditingContext(false);
+                    setContextText(deal.description ?? '');
+                  }}
+                >
                   Cancel
                 </Button>
               </div>
             </CardContent>
           </Card>
         ) : deal.description ? (
-          <Card className="bg-muted/30 border-border/60 cursor-pointer hover:border-primary/40 transition-colors" onClick={() => setEditingContext(true)}>
+          <Card
+            className="bg-muted/30 border-border/60 cursor-pointer hover:border-primary/40 transition-colors"
+            onClick={() => setEditingContext(true)}
+          >
             <CardContent className="p-3">
-              <p className="text-sm whitespace-pre-wrap leading-relaxed">{deal.description}</p>
-              <p className="text-[10px] text-muted-foreground mt-2">Click to edit</p>
+              <p className="text-sm whitespace-pre-wrap leading-relaxed">
+                {deal.description}
+              </p>
+              <p className="text-[10px] text-muted-foreground mt-2">
+                Click to edit
+              </p>
             </CardContent>
           </Card>
         ) : (
-          <Card className="bg-muted/30 border-dashed border-amber-500/30 cursor-pointer hover:border-amber-500/60 transition-colors" onClick={() => setEditingContext(true)}>
+          <Card
+            className="bg-muted/30 border-dashed border-amber-500/30 cursor-pointer hover:border-amber-500/60 transition-colors"
+            onClick={() => setEditingContext(true)}
+          >
             <CardContent className="p-3 text-center">
-              <p className="text-sm text-muted-foreground">No context yet — add notes about this lead</p>
-              <p className="text-xs text-amber-500 mt-1">Required before advancing from Intel</p>
+              <p className="text-sm text-muted-foreground">
+                No context yet — add notes about this lead
+              </p>
+              <p className="text-xs text-amber-500 mt-1">
+                Required before advancing from Intel
+              </p>
             </CardContent>
           </Card>
         )}
@@ -207,7 +254,9 @@ export function OverviewTab({ deal, stageColor, onConvert, orgId }: OverviewTabP
       </div>
 
       {/* Call Scheduling (Discovery stage) */}
-      {(currentStage === 'discovery' || currentStage === 'proposal' || currentStage === 'present') && (
+      {(currentStage === 'discovery' ||
+        currentStage === 'proposal' ||
+        currentStage === 'present') && (
         <div>
           <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5">
             <Phone className="h-3 w-3" /> Scheduled Calls
@@ -219,9 +268,15 @@ export function OverviewTab({ deal, stageColor, onConvert, orgId }: OverviewTabP
                   <Phone className="h-3.5 w-3.5 text-muted-foreground" />
                   <span>Discovery Call</span>
                 </div>
-                <Badge variant="outline" className={cn('text-[10px]',
-                  customFields.discovery_call_status === 'done' ? 'text-green-500 border-green-500/30' : 'text-muted-foreground'
-                )}>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    'text-[10px]',
+                    customFields.discovery_call_status === 'done'
+                      ? 'text-green-500 border-green-500/30'
+                      : 'text-muted-foreground'
+                  )}
+                >
                   {customFields.discovery_call_date || 'Not scheduled'}
                 </Badge>
               </div>
@@ -230,9 +285,15 @@ export function OverviewTab({ deal, stageColor, onConvert, orgId }: OverviewTabP
                   <Video className="h-3.5 w-3.5 text-muted-foreground" />
                   <span>Presentation Call</span>
                 </div>
-                <Badge variant="outline" className={cn('text-[10px]',
-                  customFields.presentation_call_status === 'done' ? 'text-green-500 border-green-500/30' : 'text-muted-foreground'
-                )}>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    'text-[10px]',
+                    customFields.presentation_call_status === 'done'
+                      ? 'text-green-500 border-green-500/30'
+                      : 'text-muted-foreground'
+                  )}
+                >
                   {customFields.presentation_call_date || 'Not scheduled'}
                 </Badge>
               </div>
@@ -253,7 +314,10 @@ export function OverviewTab({ deal, stageColor, onConvert, orgId }: OverviewTabP
               <div className="mt-1.5 h-1 bg-muted rounded-full overflow-hidden">
                 <div
                   className="h-full rounded-full"
-                  style={{ width: `${deal.probability}%`, backgroundColor: stageColor }}
+                  style={{
+                    width: `${deal.probability}%`,
+                    backgroundColor: stageColor,
+                  }}
                 />
               </div>
             ) : undefined
@@ -263,7 +327,11 @@ export function OverviewTab({ deal, stageColor, onConvert, orgId }: OverviewTabP
           label="Deal Value"
           value={
             deal.amount
-              ? deal.amount.toLocaleString('en-US', { style: 'currency', currency: deal.currency || 'USD', maximumFractionDigits: 0 })
+              ? deal.amount.toLocaleString('en-US', {
+                  style: 'currency',
+                  currency: deal.currency || 'USD',
+                  maximumFractionDigits: 0,
+                })
               : '—'
           }
           icon={DollarSign}
@@ -309,7 +377,9 @@ export function OverviewTab({ deal, stageColor, onConvert, orgId }: OverviewTabP
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0">
                   <FolderKanban className="h-4 w-4 text-primary shrink-0" />
-                  <span className="text-sm font-medium truncate">{deal.project_name}</span>
+                  <span className="text-sm font-medium truncate">
+                    {deal.project_name}
+                  </span>
                 </div>
                 <Button
                   variant="ghost"
@@ -330,7 +400,9 @@ export function OverviewTab({ deal, stageColor, onConvert, orgId }: OverviewTabP
                     <span
                       className={cn(
                         'font-medium',
-                        taskPct === 100 ? 'text-green-600' : 'text-muted-foreground'
+                        taskPct === 100
+                          ? 'text-green-600'
+                          : 'text-muted-foreground'
                       )}
                     >
                       {taskPct}%
@@ -395,7 +467,12 @@ export function OverviewTab({ deal, stageColor, onConvert, orgId }: OverviewTabP
                 <Building2 className="h-3.5 w-3.5 shrink-0" />
                 <span className="truncate">{deal.contact_company}</span>
                 {deal.company_id && (
-                  <Button variant="ghost" size="sm" className="h-5 text-[10px] px-1 ml-auto gap-0.5" asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 text-[10px] px-1 ml-auto gap-0.5"
+                    asChild
+                  >
                     <Link to={`/companies/${deal.company_id}`}>
                       Co. Profile <ExternalLink className="h-2.5 w-2.5" />
                     </Link>
@@ -422,7 +499,12 @@ export function OverviewTab({ deal, stageColor, onConvert, orgId }: OverviewTabP
                     {orgData?.name ?? 'Loading…'}
                   </span>
                 </div>
-                <Button variant="ghost" size="sm" className="h-6 text-[10px] px-1.5 shrink-0 gap-0.5" asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-[10px] px-1.5 shrink-0 gap-0.5"
+                  asChild
+                >
                   <Link to={`/organizations/${effectiveOrgId}`}>
                     Open <ExternalLink className="h-2.5 w-2.5" />
                   </Link>
@@ -432,14 +514,22 @@ export function OverviewTab({ deal, stageColor, onConvert, orgId }: OverviewTabP
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Building2 className="h-3 w-3 shrink-0" />
                   {deal.company_id ? (
-                    <Link to={`/companies/${deal.company_id}`} className="truncate hover:text-primary transition-colors">
+                    <Link
+                      to={`/companies/${deal.company_id}`}
+                      className="truncate hover:text-primary transition-colors"
+                    >
                       {deal.contact_company}
                     </Link>
                   ) : (
                     <span className="truncate">{deal.contact_company}</span>
                   )}
                   {deal.company_id && (
-                    <Button variant="ghost" size="sm" className="h-5 text-[10px] px-1 ml-auto gap-0.5 shrink-0" asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-5 text-[10px] px-1 ml-auto gap-0.5 shrink-0"
+                      asChild
+                    >
                       <Link to={`/companies/${deal.company_id}`}>
                         Profile <ExternalLink className="h-2.5 w-2.5" />
                       </Link>
@@ -450,8 +540,15 @@ export function OverviewTab({ deal, stageColor, onConvert, orgId }: OverviewTabP
               {deal.project_id && (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <FolderKanban className="h-3 w-3 shrink-0" />
-                  <span className="truncate">{deal.project_name ?? 'Linked project'}</span>
-                  <Button variant="ghost" size="sm" className="h-5 text-[10px] px-1 ml-auto gap-0.5 shrink-0" asChild>
+                  <span className="truncate">
+                    {deal.project_name ?? 'Linked project'}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 text-[10px] px-1 ml-auto gap-0.5 shrink-0"
+                    asChild
+                  >
                     <Link to={`/organizations/${effectiveOrgId}`}>
                       CRM <ExternalLink className="h-2.5 w-2.5" />
                     </Link>
@@ -481,7 +578,9 @@ export function OverviewTab({ deal, stageColor, onConvert, orgId }: OverviewTabP
               <BarChart3 className="h-3.5 w-3.5 shrink-0" />
               <span className="text-muted-foreground/70">Last activity</span>
               <span className="ml-auto text-foreground">
-                {formatDistanceToNow(new Date(deal.last_activity_at), { addSuffix: true })}
+                {formatDistanceToNow(new Date(deal.last_activity_at), {
+                  addSuffix: true,
+                })}
               </span>
             </div>
           )}
@@ -490,11 +589,14 @@ export function OverviewTab({ deal, stageColor, onConvert, orgId }: OverviewTabP
               <Clock className="h-3.5 w-3.5 shrink-0" />
               <span className="text-muted-foreground/70">Expected close</span>
               <span className="ml-auto text-foreground">
-                {new Date(deal.expected_close_date).toLocaleDateString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric',
-                })}
+                {new Date(deal.expected_close_date).toLocaleDateString(
+                  'en-US',
+                  {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  }
+                )}
               </span>
             </div>
           )}

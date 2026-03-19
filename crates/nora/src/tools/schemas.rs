@@ -103,7 +103,7 @@ impl ExecutiveTools {
                             },
                             "status_filter": {
                                 "type": "string",
-                                "enum": ["todo", "in_progress", "done", "blocked"],
+                                "enum": ["todo", "inprogress", "done", "blocked"],
                                 "description": "Optional filter to only get tasks with this status"
                             }
                         },
@@ -825,7 +825,7 @@ impl ExecutiveTools {
                             },
                             "status_filter": {
                                 "type": "string",
-                                "enum": ["todo", "in_progress", "done", "blocked"],
+                                "enum": ["todo", "inprogress", "done", "blocked"],
                                 "description": "Optional status filter"
                             }
                         },
@@ -847,7 +847,7 @@ impl ExecutiveTools {
                             },
                             "status": {
                                 "type": "string",
-                                "enum": ["todo", "in_progress", "done", "blocked"],
+                                "enum": ["todo", "inprogress", "done", "blocked"],
                                 "description": "The new status"
                             }
                         },

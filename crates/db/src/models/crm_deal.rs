@@ -95,6 +95,7 @@ pub struct UpdateCrmDeal {
     pub proposal_status: Option<String>,
     pub deck_url: Option<String>,
     pub invoice_id: Option<String>,
+    pub expedited: Option<i32>,
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
@@ -369,6 +370,7 @@ impl CrmDeal {
                 proposal_status = COALESCE(?19, proposal_status),
                 deck_url = COALESCE(?20, deck_url),
                 invoice_id = COALESCE(?21, invoice_id),
+                expedited = COALESCE(?22, expedited),
                 last_activity_at = datetime('now', 'subsec'),
                 updated_at = datetime('now', 'subsec')
             WHERE id = ?1
@@ -396,6 +398,7 @@ impl CrmDeal {
         .bind(&data.proposal_status)
         .bind(&data.deck_url)
         .bind(&data.invoice_id)
+        .bind(data.expedited)
         .fetch_optional(pool)
         .await?
         .ok_or(CrmDealError::NotFound)

@@ -83,17 +83,20 @@ impl Default for ShutdownRegistry {
 /// Create a shutdown signal future that listens for SIGTERM/SIGINT.
 pub async fn shutdown_signal(registry: ShutdownRegistry) {
     let ctrl_c = async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("failed to install Ctrl+C handler");
+        if let Err(e) = tokio::signal::ctrl_c().await {
+            tracing::error!("[Shutdown] Failed to install Ctrl+C handler: {e}");
+        }
     };
 
     #[cfg(unix)]
     let terminate = async {
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("failed to install SIGTERM handler")
-            .recv()
-            .await;
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut signal) => { signal.recv().await; }
+            Err(e) => {
+                tracing::error!("[Shutdown] Failed to install SIGTERM handler: {e}");
+                std::future::pending::<()>().await;
+            }
+        }
     };
 
     #[cfg(not(unix))]
