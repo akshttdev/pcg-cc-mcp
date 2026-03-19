@@ -167,3 +167,12 @@ Add error handling in CompanyBrandGuidePage: if `company` query returns null/err
 - **WORKS**: Deal count and pipeline value in header
 - **WORKS**: "+ Add deal" buttons in each column
 - **GAP**: "Add Deal" button in header — not tested (creates deal without contact?)
+
+#### Person Profile Navigation
+- **BUG (MCP-6, HIGH)**: "View profile" link from deal panel → /people/p-joshua-marotta-001 shows "Person not found." with 4 API errors. The person exists in DB but the page can't load it. Likely issue: person ID is a custom string format not UUID, and the API/page expects UUID format. This breaks the core navigation flow from deal → person profile.
+- **Breadcrumb**: Shows "Sirak Studios > People" — correct
+- **Impact**: Operator can't navigate from deal detail to person profile page. The Intel tab shows person data correctly (via crm_contact_id join), but the dedicated profile page is broken for non-UUID person IDs.
+- **Resolution**: Either use UUID for person IDs in seed data, or fix the person profile page to handle non-UUID IDs.
+
+#### Invoice Button (Deck & Close Tab)  
+- **GAP (MCP-7, MEDIUM)**: "Send Invoice" button is disabled with message "Amount: not set" even though the deal has amount=$25,000 in the database. The DeckTab component may read amount from a different field or the amount isn't being passed to the component correctly.
