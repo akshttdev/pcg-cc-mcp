@@ -51,9 +51,8 @@ pub async fn org_to_client(
     .fetch_optional(pool)
     .await?;
 
-    let (name, slug, description, avatar_url) = org.ok_or_else(|| {
-        ConversionError::NotFound("Organization not found".into())
-    })?;
+    let (name, slug, description, avatar_url) =
+        org.ok_or_else(|| ConversionError::NotFound("Organization not found".into()))?;
 
     // Create client
     sqlx::query(
@@ -99,12 +98,11 @@ pub async fn org_to_project(
 ) -> Result<Uuid, ConversionError> {
     let new_project_id = Uuid::new_v4();
 
-    let org: Option<(String,)> = sqlx::query_as(
-        "SELECT name FROM organizations WHERE id = ? AND is_active = 1",
-    )
-    .bind(org_id)
-    .fetch_optional(pool)
-    .await?;
+    let org: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM organizations WHERE id = ? AND is_active = 1")
+            .bind(org_id)
+            .fetch_optional(pool)
+            .await?;
 
     let (name,) = org.ok_or_else(|| ConversionError::NotFound("Organization not found".into()))?;
 
@@ -143,10 +141,7 @@ pub async fn org_to_project(
 }
 
 /// Convert a Client into an Organization
-pub async fn client_to_org(
-    pool: &SqlitePool,
-    client_id: Uuid,
-) -> Result<Uuid, ConversionError> {
+pub async fn client_to_org(pool: &SqlitePool, client_id: Uuid) -> Result<Uuid, ConversionError> {
     let new_org_id = Uuid::new_v4();
 
     let client: Option<(String, String, Option<String>, Option<String>)> = sqlx::query_as(
@@ -156,9 +151,8 @@ pub async fn client_to_org(
     .fetch_optional(pool)
     .await?;
 
-    let (name, slug, description, logo_url) = client.ok_or_else(|| {
-        ConversionError::NotFound("Client not found".into())
-    })?;
+    let (name, slug, description, logo_url) =
+        client.ok_or_else(|| ConversionError::NotFound("Client not found".into()))?;
 
     // Create org
     sqlx::query(
@@ -186,12 +180,10 @@ pub async fn client_to_org(
     migrate_client_members_to_org(pool, client_id, new_org_id).await?;
 
     // Soft delete client
-    sqlx::query(
-        "UPDATE clients SET deleted_at = datetime('now', 'subsec') WHERE id = ?",
-    )
-    .bind(client_id)
-    .execute(pool)
-    .await?;
+    sqlx::query("UPDATE clients SET deleted_at = datetime('now', 'subsec') WHERE id = ?")
+        .bind(client_id)
+        .execute(pool)
+        .await?;
 
     Ok(new_org_id)
 }
@@ -211,8 +203,10 @@ pub async fn client_to_project(
     .fetch_optional(pool)
     .await?;
 
-    let (name, org_id_bytes) = client.ok_or_else(|| ConversionError::NotFound("Client not found".into()))?;
-    let org_id = Uuid::from_slice(&org_id_bytes).map_err(|_| ConversionError::InvalidConversion("Invalid org ID".into()))?;
+    let (name, org_id_bytes) =
+        client.ok_or_else(|| ConversionError::NotFound("Client not found".into()))?;
+    let org_id = Uuid::from_slice(&org_id_bytes)
+        .map_err(|_| ConversionError::InvalidConversion("Invalid org ID".into()))?;
 
     // Create container project
     sqlx::query(
@@ -239,12 +233,10 @@ pub async fn client_to_project(
     migrate_client_members_to_project(pool, client_id, new_project_id).await?;
 
     // Soft delete client
-    sqlx::query(
-        "UPDATE clients SET deleted_at = datetime('now', 'subsec') WHERE id = ?",
-    )
-    .bind(client_id)
-    .execute(pool)
-    .await?;
+    sqlx::query("UPDATE clients SET deleted_at = datetime('now', 'subsec') WHERE id = ?")
+        .bind(client_id)
+        .execute(pool)
+        .await?;
 
     Ok(new_project_id)
 }
@@ -263,10 +255,13 @@ pub async fn project_to_client(
     .fetch_optional(pool)
     .await?;
 
-    let (name, org_id_bytes) = project.ok_or_else(|| ConversionError::NotFound("Project not found".into()))?;
+    let (name, org_id_bytes) =
+        project.ok_or_else(|| ConversionError::NotFound("Project not found".into()))?;
     let org_id = org_id_bytes
         .and_then(|b| Uuid::from_slice(&b).ok())
-        .ok_or_else(|| ConversionError::InvalidConversion("Project must belong to an organization".into()))?;
+        .ok_or_else(|| {
+            ConversionError::InvalidConversion("Project must belong to an organization".into())
+        })?;
 
     let slug = slugify(&name);
 
@@ -295,29 +290,23 @@ pub async fn project_to_client(
     migrate_project_members_to_client(pool, project_id, new_client_id).await?;
 
     // Soft delete project
-    sqlx::query(
-        "UPDATE projects SET deleted_at = datetime('now', 'subsec') WHERE id = ?",
-    )
-    .bind(project_id)
-    .execute(pool)
-    .await?;
+    sqlx::query("UPDATE projects SET deleted_at = datetime('now', 'subsec') WHERE id = ?")
+        .bind(project_id)
+        .execute(pool)
+        .await?;
 
     Ok(new_client_id)
 }
 
 /// Convert a Project into an Organization
-pub async fn project_to_org(
-    pool: &SqlitePool,
-    project_id: Uuid,
-) -> Result<Uuid, ConversionError> {
+pub async fn project_to_org(pool: &SqlitePool, project_id: Uuid) -> Result<Uuid, ConversionError> {
     let new_org_id = Uuid::new_v4();
 
-    let project: Option<(String,)> = sqlx::query_as(
-        "SELECT name FROM projects WHERE id = ? AND deleted_at IS NULL",
-    )
-    .bind(project_id)
-    .fetch_optional(pool)
-    .await?;
+    let project: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM projects WHERE id = ? AND deleted_at IS NULL")
+            .bind(project_id)
+            .fetch_optional(pool)
+            .await?;
 
     let (name,) = project.ok_or_else(|| ConversionError::NotFound("Project not found".into()))?;
     let slug = slugify(&name);
@@ -346,12 +335,10 @@ pub async fn project_to_org(
     migrate_project_members_to_org(pool, project_id, new_org_id).await?;
 
     // Soft delete project
-    sqlx::query(
-        "UPDATE projects SET deleted_at = datetime('now', 'subsec') WHERE id = ?",
-    )
-    .bind(project_id)
-    .execute(pool)
-    .await?;
+    sqlx::query("UPDATE projects SET deleted_at = datetime('now', 'subsec') WHERE id = ?")
+        .bind(project_id)
+        .execute(pool)
+        .await?;
 
     Ok(new_org_id)
 }
@@ -366,14 +353,16 @@ async fn migrate_org_members_to_client(
     client_id: Uuid,
 ) -> Result<(), ConversionError> {
     #[derive(sqlx::FromRow)]
-    struct MemberRow { user_id: Vec<u8>, role: String }
+    struct MemberRow {
+        user_id: Vec<u8>,
+        role: String,
+    }
 
-    let members: Vec<MemberRow> = sqlx::query_as(
-        "SELECT user_id, role FROM organization_members WHERE organization_id = ?",
-    )
-    .bind(org_id)
-    .fetch_all(pool)
-    .await?;
+    let members: Vec<MemberRow> =
+        sqlx::query_as("SELECT user_id, role FROM organization_members WHERE organization_id = ?")
+            .bind(org_id)
+            .fetch_all(pool)
+            .await?;
 
     for m in &members {
         let id = Uuid::new_v4();
@@ -397,14 +386,16 @@ async fn migrate_org_members_to_project(
     project_id: Uuid,
 ) -> Result<(), ConversionError> {
     #[derive(sqlx::FromRow)]
-    struct MemberRow { user_id: Vec<u8>, role: String }
+    struct MemberRow {
+        user_id: Vec<u8>,
+        role: String,
+    }
 
-    let members: Vec<MemberRow> = sqlx::query_as(
-        "SELECT user_id, role FROM organization_members WHERE organization_id = ?",
-    )
-    .bind(org_id)
-    .fetch_all(pool)
-    .await?;
+    let members: Vec<MemberRow> =
+        sqlx::query_as("SELECT user_id, role FROM organization_members WHERE organization_id = ?")
+            .bind(org_id)
+            .fetch_all(pool)
+            .await?;
 
     let project_id_str = project_id.to_string();
     for m in &members {
@@ -430,14 +421,16 @@ async fn migrate_client_members_to_org(
     org_id: Uuid,
 ) -> Result<(), ConversionError> {
     #[derive(sqlx::FromRow)]
-    struct MemberRow { user_id: Vec<u8>, role: String }
+    struct MemberRow {
+        user_id: Vec<u8>,
+        role: String,
+    }
 
-    let members: Vec<MemberRow> = sqlx::query_as(
-        "SELECT user_id, role FROM client_members WHERE client_id = ?",
-    )
-    .bind(client_id)
-    .fetch_all(pool)
-    .await?;
+    let members: Vec<MemberRow> =
+        sqlx::query_as("SELECT user_id, role FROM client_members WHERE client_id = ?")
+            .bind(client_id)
+            .fetch_all(pool)
+            .await?;
 
     for m in &members {
         let id = Uuid::new_v4();
@@ -460,14 +453,16 @@ async fn migrate_client_members_to_project(
     project_id: Uuid,
 ) -> Result<(), ConversionError> {
     #[derive(sqlx::FromRow)]
-    struct MemberRow { user_id: Vec<u8>, role: String }
+    struct MemberRow {
+        user_id: Vec<u8>,
+        role: String,
+    }
 
-    let members: Vec<MemberRow> = sqlx::query_as(
-        "SELECT user_id, role FROM client_members WHERE client_id = ?",
-    )
-    .bind(client_id)
-    .fetch_all(pool)
-    .await?;
+    let members: Vec<MemberRow> =
+        sqlx::query_as("SELECT user_id, role FROM client_members WHERE client_id = ?")
+            .bind(client_id)
+            .fetch_all(pool)
+            .await?;
 
     let project_id_str = project_id.to_string();
     for m in &members {
@@ -493,15 +488,17 @@ async fn migrate_project_members_to_client(
     client_id: Uuid,
 ) -> Result<(), ConversionError> {
     #[derive(sqlx::FromRow)]
-    struct MemberRow { user_id: Vec<u8>, role: String }
+    struct MemberRow {
+        user_id: Vec<u8>,
+        role: String,
+    }
 
     let project_id_str = project_id.to_string();
-    let members: Vec<MemberRow> = sqlx::query_as(
-        "SELECT user_id, role FROM project_members WHERE project_id = ?",
-    )
-    .bind(&project_id_str)
-    .fetch_all(pool)
-    .await?;
+    let members: Vec<MemberRow> =
+        sqlx::query_as("SELECT user_id, role FROM project_members WHERE project_id = ?")
+            .bind(&project_id_str)
+            .fetch_all(pool)
+            .await?;
 
     for m in &members {
         let id = Uuid::new_v4();
@@ -526,15 +523,17 @@ async fn migrate_project_members_to_org(
     org_id: Uuid,
 ) -> Result<(), ConversionError> {
     #[derive(sqlx::FromRow)]
-    struct MemberRow { user_id: Vec<u8>, role: String }
+    struct MemberRow {
+        user_id: Vec<u8>,
+        role: String,
+    }
 
     let project_id_str = project_id.to_string();
-    let members: Vec<MemberRow> = sqlx::query_as(
-        "SELECT user_id, role FROM project_members WHERE project_id = ?",
-    )
-    .bind(&project_id_str)
-    .fetch_all(pool)
-    .await?;
+    let members: Vec<MemberRow> =
+        sqlx::query_as("SELECT user_id, role FROM project_members WHERE project_id = ?")
+            .bind(&project_id_str)
+            .fetch_all(pool)
+            .await?;
 
     for m in &members {
         let id = Uuid::new_v4();

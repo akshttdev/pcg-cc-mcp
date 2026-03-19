@@ -16,8 +16,8 @@ pub struct WorkflowStagingRecord {
     pub organization_id: Option<Uuid>,
     pub project_id: Option<Uuid>,
     pub target_type: String,
-    pub record_data: String,        // JSON string
-    pub status: String,             // pending_review, approved, rejected, committed, error
+    pub record_data: String, // JSON string
+    pub status: String,      // pending_review, approved, rejected, committed, error
     pub duplicate_of_id: Option<Uuid>,
     pub duplicate_of_type: Option<String>,
     pub confidence: Option<f64>,
@@ -25,7 +25,7 @@ pub struct WorkflowStagingRecord {
     pub reviewed_by: Option<Uuid>,
     pub reviewed_at: Option<DateTime<Utc>>,
     pub committed_at: Option<DateTime<Utc>>,
-    pub validation_errors: Option<String>,  // JSON array string of validation errors, or null
+    pub validation_errors: Option<String>, // JSON array string of validation errors, or null
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -50,9 +50,9 @@ impl WorkflowStagingRecord {
     pub async fn create(pool: &SqlitePool, data: CreateStagingRecord) -> Result<Self, sqlx::Error> {
         let id = Uuid::new_v4();
         let record_data_str = data.record_data.to_string();
-        let validation_errors_str = data.validation_errors.map(|errs| {
-            serde_json::to_string(&errs).unwrap_or_else(|_| "[]".to_string())
-        });
+        let validation_errors_str = data
+            .validation_errors
+            .map(|errs| serde_json::to_string(&errs).unwrap_or_else(|_| "[]".to_string()));
 
         sqlx::query_as::<_, Self>(
             r#"INSERT INTO workflow_output_staging
@@ -78,7 +78,10 @@ impl WorkflowStagingRecord {
         .await
     }
 
-    pub async fn find_by_run(pool: &SqlitePool, workflow_run_id: Uuid) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn find_by_run(
+        pool: &SqlitePool,
+        workflow_run_id: Uuid,
+    ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, Self>(
             "SELECT * FROM workflow_output_staging WHERE workflow_run_id = ?1 ORDER BY created_at ASC",
         )
@@ -87,7 +90,10 @@ impl WorkflowStagingRecord {
         .await
     }
 
-    pub async fn find_by_org_pending(pool: &SqlitePool, organization_id: Uuid) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn find_by_org_pending(
+        pool: &SqlitePool,
+        organization_id: Uuid,
+    ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, Self>(
             "SELECT * FROM workflow_output_staging WHERE organization_id = ?1 AND status = 'pending_review' ORDER BY created_at ASC",
         )
@@ -97,12 +103,10 @@ impl WorkflowStagingRecord {
     }
 
     pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
-        sqlx::query_as::<_, Self>(
-            "SELECT * FROM workflow_output_staging WHERE id = ?1",
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await
+        sqlx::query_as::<_, Self>("SELECT * FROM workflow_output_staging WHERE id = ?1")
+            .bind(id)
+            .fetch_optional(pool)
+            .await
     }
 
     pub async fn update_status(
@@ -151,7 +155,11 @@ impl WorkflowStagingRecord {
         Ok(())
     }
 
-    pub async fn update_record_data(pool: &SqlitePool, id: Uuid, record_data: &Value) -> Result<Self, sqlx::Error> {
+    pub async fn update_record_data(
+        pool: &SqlitePool,
+        id: Uuid,
+        record_data: &Value,
+    ) -> Result<Self, sqlx::Error> {
         let data_str = record_data.to_string();
         sqlx::query_as::<_, Self>(
             r#"UPDATE workflow_output_staging
@@ -165,10 +173,13 @@ impl WorkflowStagingRecord {
         .await
     }
 
-    pub async fn update_validation_errors(pool: &SqlitePool, id: Uuid, errors: Option<&[String]>) -> Result<Self, sqlx::Error> {
-        let errors_str = errors.map(|errs| {
-            serde_json::to_string(errs).unwrap_or_else(|_| "[]".to_string())
-        });
+    pub async fn update_validation_errors(
+        pool: &SqlitePool,
+        id: Uuid,
+        errors: Option<&[String]>,
+    ) -> Result<Self, sqlx::Error> {
+        let errors_str =
+            errors.map(|errs| serde_json::to_string(errs).unwrap_or_else(|_| "[]".to_string()));
         sqlx::query_as::<_, Self>(
             r#"UPDATE workflow_output_staging
                SET validation_errors = ?1, updated_at = datetime('now', 'subsec')
@@ -181,12 +192,14 @@ impl WorkflowStagingRecord {
         .await
     }
 
-
     pub fn parsed_data(&self) -> Option<Value> {
         serde_json::from_str(&self.record_data).ok()
     }
 
-    pub async fn auto_approve_valid(pool: &SqlitePool, workflow_run_id: Uuid) -> Result<u64, sqlx::Error> {
+    pub async fn auto_approve_valid(
+        pool: &SqlitePool,
+        workflow_run_id: Uuid,
+    ) -> Result<u64, sqlx::Error> {
         let result = sqlx::query(
             r#"UPDATE workflow_output_staging
                SET status = 'approved', reviewed_at = datetime('now', 'subsec'), updated_at = datetime('now', 'subsec')
@@ -199,7 +212,10 @@ impl WorkflowStagingRecord {
         Ok(result.rows_affected())
     }
 
-    pub async fn reject_duplicates(pool: &SqlitePool, workflow_run_id: Uuid) -> Result<u64, sqlx::Error> {
+    pub async fn reject_duplicates(
+        pool: &SqlitePool,
+        workflow_run_id: Uuid,
+    ) -> Result<u64, sqlx::Error> {
         let result = sqlx::query(
             r#"UPDATE workflow_output_staging
                SET status = 'rejected', reviewed_at = datetime('now', 'subsec'), updated_at = datetime('now', 'subsec')

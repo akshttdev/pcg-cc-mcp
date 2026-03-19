@@ -2,7 +2,6 @@
 ///
 /// Uses the `org_invitations` table created in the member management migration.
 /// Org admins can create invite links that grant org membership upon acceptance.
-
 use axum::{
     Extension, Router,
     extract::{Path, State},
@@ -11,9 +10,9 @@ use axum::{
 };
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
+use utils::response::ApiResponse;
 // TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
-use utils::response::ApiResponse;
 
 use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
@@ -71,9 +70,11 @@ async fn create_org_invitation(
 
     // Only org admins can create invitations
     #[derive(sqlx::FromRow)]
-    struct RoleRow { role: String }
+    struct RoleRow {
+        role: String,
+    }
     let org_role: Option<RoleRow> = sqlx::query_as(
-        "SELECT role FROM organization_members WHERE organization_id = ? AND user_id = ?"
+        "SELECT role FROM organization_members WHERE organization_id = ? AND user_id = ?",
     )
     .bind(&org_id_bytes)
     .bind(&user_id_bytes)
@@ -83,12 +84,16 @@ async fn create_org_invitation(
 
     let is_org_admin = org_role.map(|r| r.role == "admin").unwrap_or(false);
     if !is_org_admin && !access_context.is_admin {
-        return Err(ApiError::Forbidden("Only org admins can create invitations".into()));
+        return Err(ApiError::Forbidden(
+            "Only org admins can create invitations".into(),
+        ));
     }
 
     let role = body.role.as_deref().unwrap_or("member");
     if !["admin", "member", "viewer"].contains(&role) {
-        return Err(ApiError::BadRequest("Invalid role. Must be admin, member, or viewer".into()));
+        return Err(ApiError::BadRequest(
+            "Invalid role. Must be admin, member, or viewer".into(),
+        ));
     }
 
     let max_uses = body.max_uses.unwrap_or(1);
@@ -119,17 +124,23 @@ async fn create_org_invitation(
 
     let base_url = std::env::var("TWILIO_WEBHOOK_BASE_URL")
         .unwrap_or_else(|_| "https://dashboard.powerclubglobal.com".into());
-    let invite_url = format!("{}/org-invite/{}", base_url.trim_end_matches('/'), invite_code);
+    let invite_url = format!(
+        "{}/org-invite/{}",
+        base_url.trim_end_matches('/'),
+        invite_code
+    );
 
     #[derive(sqlx::FromRow)]
-    struct DatesRow { created_at: String, expires_at: String }
-    let dates: DatesRow = sqlx::query_as(
-        "SELECT created_at, expires_at FROM org_invitations WHERE id = ?"
-    )
-    .bind(&invite_id_bytes)
-    .fetch_one(&pool)
-    .await
-    .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+    struct DatesRow {
+        created_at: String,
+        expires_at: String,
+    }
+    let dates: DatesRow =
+        sqlx::query_as("SELECT created_at, expires_at FROM org_invitations WHERE id = ?")
+            .bind(&invite_id_bytes)
+            .fetch_one(&pool)
+            .await
+            .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
     Ok(ResponseJson(ApiResponse::success(OrgInvitationResponse {
         id: invite_id.to_string(),
@@ -217,8 +228,8 @@ async fn revoke_org_invitation(
     Path((org_id, id)): Path<(String, String)>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
     let pool = deployment.db().pool.clone();
-    let invite_uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::BadRequest("Invalid invitation ID".into()))?;
+    let invite_uuid =
+        Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid invitation ID".into()))?;
     let invite_id_bytes = invite_uuid.to_string();
     let org_uuid = Uuid::parse_str(&org_id)
         .map_err(|_| ApiError::BadRequest("Invalid organization ID".into()))?;
@@ -273,7 +284,9 @@ async fn get_org_invitation(
         return Err(ApiError::BadRequest("Invitation has expired".into()));
     }
     if info.use_count >= info.max_uses {
-        return Err(ApiError::BadRequest("Invitation has reached its usage limit".into()));
+        return Err(ApiError::BadRequest(
+            "Invitation has reached its usage limit".into(),
+        ));
     }
 
     Ok(ResponseJson(ApiResponse::success(serde_json::json!({
@@ -295,8 +308,11 @@ async fn accept_org_invitation(
     let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
     let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
     let access = crate::middleware::access_control::get_current_user(
-        &deployment, auth_header, cookie_header
-    ).await?;
+        &deployment,
+        auth_header,
+        cookie_header,
+    )
+    .await?;
 
     let user_id_bytes = access.user_id.to_string();
 
@@ -323,12 +339,14 @@ async fn accept_org_invitation(
         return Err(ApiError::BadRequest("Invitation has expired".into()));
     }
     if invite.use_count >= invite.max_uses {
-        return Err(ApiError::BadRequest("Invitation has reached its usage limit".into()));
+        return Err(ApiError::BadRequest(
+            "Invitation has reached its usage limit".into(),
+        ));
     }
 
     // Check if user is already a member
     let already_member: Option<i64> = sqlx::query_scalar(
-        "SELECT 1 FROM organization_members WHERE organization_id = ? AND user_id = ? LIMIT 1"
+        "SELECT 1 FROM organization_members WHERE organization_id = ? AND user_id = ? LIMIT 1",
     )
     .bind(&invite.organization_id)
     .bind(&user_id_bytes)
@@ -337,7 +355,9 @@ async fn accept_org_invitation(
     .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
     if already_member.is_some() {
-        return Err(ApiError::BadRequest("You are already a member of this organization".into()));
+        return Err(ApiError::BadRequest(
+            "You are already a member of this organization".into(),
+        ));
     }
 
     // Add user as org member

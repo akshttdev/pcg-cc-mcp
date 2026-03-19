@@ -20,6 +20,7 @@ use axum::{
     },
     routing::{get, post},
 };
+use chrono::{DateTime, Utc};
 use db::models::{
     execution_process::{ExecutionProcess, ExecutionProcessRunReason},
     follow_up_draft::FollowUpDraft,
@@ -41,7 +42,7 @@ use executors::{
 };
 use futures_util::TryStreamExt;
 use git2::BranchType;
-use chrono::{DateTime, Utc};
+use nora::coordination::{AgentStatus, CoordinationEvent};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use services::services::{
@@ -54,10 +55,11 @@ use sqlx::Error as SqlxError;
 use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
-use nora::coordination::{AgentStatus, CoordinationEvent};
-use crate::routes::nora::emit_coordination_event;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::load_task_attempt_middleware};
+use crate::{
+    DeploymentImpl, error::ApiError, middleware::load_task_attempt_middleware,
+    routes::nora::emit_coordination_event,
+};
 
 // --- Shared request/response types ---
 
@@ -291,19 +293,31 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/follow-up-draft",
             get(follow_up::get_follow_up_draft).put(follow_up::save_follow_up_draft),
         )
-        .route("/follow-up-draft/stream/ws", get(streaming::stream_follow_up_draft_ws))
-        .route("/follow-up-draft/queue", post(follow_up::set_follow_up_queue))
+        .route(
+            "/follow-up-draft/stream/ws",
+            get(streaming::stream_follow_up_draft_ws),
+        )
+        .route(
+            "/follow-up-draft/queue",
+            post(follow_up::set_follow_up_queue),
+        )
         .route("/replace-process", post(execution::replace_process))
         .route("/commit-info", get(git_ops::get_commit_info))
         .route("/commit-compare", get(git_ops::compare_commit_to_head))
         .route("/start-dev-server", post(execution::start_dev_server))
-        .route("/branch-status", get(git_ops::get_task_attempt_branch_status))
+        .route(
+            "/branch-status",
+            get(git_ops::get_task_attempt_branch_status),
+        )
         .route("/diff", get(git_ops::get_task_attempt_diff))
         .route("/merge", post(git_ops::merge_task_attempt))
         .route("/link-pr", post(git_ops::link_pr))
         .route("/push", post(git_ops::push_task_attempt_branch))
         .route("/rebase", post(git_ops::rebase_task_attempt))
-        .route("/conflicts/abort", post(git_ops::abort_conflicts_task_attempt))
+        .route(
+            "/conflicts/abort",
+            post(git_ops::abort_conflicts_task_attempt),
+        )
         .route("/pr", post(git_ops::create_github_pr))
         .route("/open-editor", post(execution::open_task_attempt_in_editor))
         .route("/delete-file", post(git_ops::delete_task_attempt_file))
@@ -315,7 +329,10 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         ));
 
     let task_attempts_router = Router::new()
-        .route("/", get(creation::get_task_attempts).post(creation::create_task_attempt))
+        .route(
+            "/",
+            get(creation::get_task_attempts).post(creation::create_task_attempt),
+        )
         .route("/create-record", post(creation::create_task_attempt_record))
         .nest("/{id}", task_attempt_id_router);
 

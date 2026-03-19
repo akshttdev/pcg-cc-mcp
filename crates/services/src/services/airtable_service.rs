@@ -618,17 +618,14 @@ pub fn get_record_name(record: &AirtableRecord, primary_field_name: &str) -> Opt
 
 /// Helper to extract a text field from a record
 pub fn get_record_field_text(record: &AirtableRecord, field_name: &str) -> Option<String> {
-    record
-        .fields
-        .get(field_name)
-        .and_then(|v| {
-            if v.is_string() {
-                v.as_str().map(|s| s.to_string())
-            } else {
-                // Could be rich text or other format
-                Some(v.to_string())
-            }
-        })
+    record.fields.get(field_name).and_then(|v| {
+        if v.is_string() {
+            v.as_str().map(|s| s.to_string())
+        } else {
+            // Could be rich text or other format
+            Some(v.to_string())
+        }
+    })
 }
 
 /// Build a URL to view a record in Airtable

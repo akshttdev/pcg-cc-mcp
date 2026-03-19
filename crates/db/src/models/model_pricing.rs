@@ -120,7 +120,8 @@ impl ModelPricing {
     pub fn calculate_cost(&self, input_tokens: i64, output_tokens: i64) -> CostEstimate {
         // Cost in cents
         let input_cost = (input_tokens as f64 / 1_000_000.0) * self.input_cost_per_million as f64;
-        let output_cost = (output_tokens as f64 / 1_000_000.0) * self.output_cost_per_million as f64;
+        let output_cost =
+            (output_tokens as f64 / 1_000_000.0) * self.output_cost_per_million as f64;
         let total_cents = (input_cost + output_cost).ceil() as i64;
 
         // Convert to USD

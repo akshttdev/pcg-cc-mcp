@@ -1,7 +1,5 @@
 use db::models::{
-    pulse_alert::PulseAlert,
-    pulse_content_item::PulseContentItem,
-    pulse_source::PulseSource,
+    pulse_alert::PulseAlert, pulse_content_item::PulseContentItem, pulse_source::PulseSource,
 };
 use rmcp::{
     ErrorData, ServerHandler,
@@ -101,7 +99,8 @@ impl PulseServer {
             Ok(uuid) => uuid,
             Err(_) => {
                 return Ok(CallToolResult::error(vec![Content::text(
-                    serde_json::json!({"success": false, "error": "Invalid project ID"}).to_string(),
+                    serde_json::json!({"success": false, "error": "Invalid project ID"})
+                        .to_string(),
                 )]));
             }
         };
@@ -154,7 +153,8 @@ impl PulseServer {
             Ok(uuid) => uuid,
             Err(_) => {
                 return Ok(CallToolResult::error(vec![Content::text(
-                    serde_json::json!({"success": false, "error": "Invalid project ID"}).to_string(),
+                    serde_json::json!({"success": false, "error": "Invalid project ID"})
+                        .to_string(),
                 )]));
             }
         };
@@ -193,8 +193,8 @@ impl PulseServer {
         &self,
         Parameters(req): Parameters<TriggerPulseCollectionRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        let pulse_url = std::env::var("PULSE_API_URL")
-            .unwrap_or_else(|_| "http://localhost:8080".to_string());
+        let pulse_url =
+            std::env::var("PULSE_API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
 
         let mut url = format!("{}/api/v1/collect", pulse_url);
         if let Some(ref source_id) = req.source_id {
@@ -231,7 +231,8 @@ impl PulseServer {
             Ok(uuid) => uuid,
             Err(_) => {
                 return Ok(CallToolResult::error(vec![Content::text(
-                    serde_json::json!({"success": false, "error": "Invalid project ID"}).to_string(),
+                    serde_json::json!({"success": false, "error": "Invalid project ID"})
+                        .to_string(),
                 )]));
             }
         };
@@ -247,8 +248,8 @@ impl PulseServer {
             .unwrap_or(0);
 
         // Check engine health
-        let pulse_url = std::env::var("PULSE_API_URL")
-            .unwrap_or_else(|_| "http://localhost:8080".to_string());
+        let pulse_url =
+            std::env::var("PULSE_API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
         let client = reqwest::Client::new();
         let engine_online = client
             .get(&format!("{}/health", pulse_url))
@@ -288,7 +289,8 @@ impl PulseServer {
             Ok(uuid) => uuid,
             Err(_) => {
                 return Ok(CallToolResult::error(vec![Content::text(
-                    serde_json::json!({"success": false, "error": "Invalid project ID"}).to_string(),
+                    serde_json::json!({"success": false, "error": "Invalid project ID"})
+                        .to_string(),
                 )]));
             }
         };
@@ -298,7 +300,8 @@ impl PulseServer {
             Ok(Some(item)) => item,
             Ok(None) => {
                 return Ok(CallToolResult::error(vec![Content::text(
-                    serde_json::json!({"success": false, "error": "Content item not found"}).to_string(),
+                    serde_json::json!({"success": false, "error": "Content item not found"})
+                        .to_string(),
                 )]));
             }
             Err(e) => {
@@ -308,13 +311,17 @@ impl PulseServer {
             }
         };
 
-        let title = req.title.unwrap_or_else(|| format!("[Pulse] {}", item.title));
+        let title = req
+            .title
+            .unwrap_or_else(|| format!("[Pulse] {}", item.title));
         let description = req.description.unwrap_or_else(|| {
             format!(
                 "From Pulse Engine content:\n\nSource: {}\nURL: {}\n\n{}",
                 item.source_id,
                 item.url,
-                item.summary.as_deref().unwrap_or(item.body.as_deref().unwrap_or("")),
+                item.summary
+                    .as_deref()
+                    .unwrap_or(item.body.as_deref().unwrap_or("")),
             )
         });
 
@@ -361,7 +368,8 @@ impl PulseServer {
             Ok(uuid) => uuid,
             Err(_) => {
                 return Ok(CallToolResult::error(vec![Content::text(
-                    serde_json::json!({"success": false, "error": "Invalid project ID"}).to_string(),
+                    serde_json::json!({"success": false, "error": "Invalid project ID"})
+                        .to_string(),
                 )]));
             }
         };

@@ -110,7 +110,10 @@ impl CmsProduct {
         .await
     }
 
-    pub async fn find_active_by_site(pool: &SqlitePool, site_id: Uuid) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn find_active_by_site(
+        pool: &SqlitePool,
+        site_id: Uuid,
+    ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
             CmsProduct,
             r#"SELECT
@@ -272,17 +275,31 @@ impl CmsProduct {
         id: Uuid,
         data: &UpdateCmsProduct,
     ) -> Result<Self, sqlx::Error> {
-        let current = Self::find_by_id(pool, id).await?.ok_or(sqlx::Error::RowNotFound)?;
+        let current = Self::find_by_id(pool, id)
+            .await?
+            .ok_or(sqlx::Error::RowNotFound)?;
 
         let slug = data.slug.as_ref().unwrap_or(&current.slug);
         let name = data.name.as_ref().unwrap_or(&current.name);
-        let short_description = data.short_description.as_ref().or(current.short_description.as_ref());
-        let long_description = data.long_description.as_ref().or(current.long_description.as_ref());
+        let short_description = data
+            .short_description
+            .as_ref()
+            .or(current.short_description.as_ref());
+        let long_description = data
+            .long_description
+            .as_ref()
+            .or(current.long_description.as_ref());
         let price_cents = data.price_cents.unwrap_or(current.price_cents);
         let currency = data.currency.as_ref().unwrap_or(&current.currency);
-        let stripe_price_id = data.stripe_price_id.as_ref().or(current.stripe_price_id.as_ref());
+        let stripe_price_id = data
+            .stripe_price_id
+            .as_ref()
+            .or(current.stripe_price_id.as_ref());
         let image_url = data.image_url.as_ref().or(current.image_url.as_ref());
-        let gallery_images = data.gallery_images.as_ref().or(current.gallery_images.as_ref());
+        let gallery_images = data
+            .gallery_images
+            .as_ref()
+            .or(current.gallery_images.as_ref());
         let specs = data.specs.as_ref().or(current.specs.as_ref());
         let features = data.features.as_ref().or(current.features.as_ref());
         let is_active = data.is_active.unwrap_or(current.is_active);

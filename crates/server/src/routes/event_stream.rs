@@ -1,3 +1,5 @@
+use std::{convert::Infallible, time::Duration};
+
 use axum::{
     Router,
     extract::{Path, Query, State},
@@ -9,7 +11,6 @@ use db::models::agent_flow_event::AgentFlowEvent;
 use deployment::Deployment;
 use futures::stream::{self, Stream};
 use serde::Deserialize;
-use std::{convert::Infallible, time::Duration};
 use uuid::Uuid;
 
 use crate::DeploymentImpl;
@@ -27,7 +28,9 @@ pub async fn stream_flow_events(
     State(deployment): State<DeploymentImpl>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let pool = deployment.db().pool.clone();
-    let last_event_time = query.since.unwrap_or_else(|| Utc::now() - chrono::Duration::hours(1));
+    let last_event_time = query
+        .since
+        .unwrap_or_else(|| Utc::now() - chrono::Duration::hours(1));
 
     let stream = stream::unfold(
         (pool, flow_id, last_event_time),
@@ -76,7 +79,9 @@ pub async fn stream_all_events(
     State(deployment): State<DeploymentImpl>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let pool = deployment.db().pool.clone();
-    let last_check = query.since.unwrap_or_else(|| Utc::now() - chrono::Duration::minutes(5));
+    let last_check = query
+        .since
+        .unwrap_or_else(|| Utc::now() - chrono::Duration::minutes(5));
 
     let stream = stream::unfold((pool, last_check), |(pool, mut since)| async move {
         tokio::time::sleep(Duration::from_millis(500)).await;

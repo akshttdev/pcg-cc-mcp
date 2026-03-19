@@ -29,6 +29,7 @@ import {
   Trophy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Link } from 'react-router-dom';
 import type { CrmDealWithContact } from '@/types/crm';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -156,7 +157,17 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, boa
             {deal.contact_company && (
               <p className="text-[11px] text-muted-foreground truncate flex items-center gap-1 mt-0.5">
                 <Building2 className="h-2.5 w-2.5 shrink-0" />
-                {deal.contact_company}
+                {deal.company_id ? (
+                  <Link
+                    to={`/companies/${deal.company_id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="hover:text-primary transition-colors truncate"
+                  >
+                    {deal.contact_company}
+                  </Link>
+                ) : (
+                  deal.contact_company
+                )}
               </p>
             )}
           </div>

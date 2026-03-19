@@ -3,10 +3,12 @@
 //! Implements the Router phase of the Router-Executor-Observer loop.
 //! Loads agent profiles and matches requests to appropriate workflows.
 
-use crate::profiles::{AgentProfile, AgentWorkflow};
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+
+use crate::profiles::{AgentProfile, AgentWorkflow};
 
 /// Result of routing a request to an agent
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -42,15 +44,24 @@ impl ExecutionRouter {
     /// Get agent by codename (e.g., "Scout", "Maci")
     pub fn get_agent_by_codename(&self, codename: &str) -> Option<&AgentProfile> {
         let codename_lower = codename.to_lowercase();
-        self.agents.iter().find(|a| a.codename.to_lowercase() == codename_lower)
+        self.agents
+            .iter()
+            .find(|a| a.codename.to_lowercase() == codename_lower)
     }
 
     /// Find workflow by agent and workflow ID
-    pub fn get_workflow(&self, agent_id: &str, workflow_id: &str) -> Option<(&AgentProfile, &AgentWorkflow)> {
-        self.agents.iter()
+    pub fn get_workflow(
+        &self,
+        agent_id: &str,
+        workflow_id: &str,
+    ) -> Option<(&AgentProfile, &AgentWorkflow)> {
+        self.agents
+            .iter()
             .find(|a| a.agent_id == agent_id)
             .and_then(|agent| {
-                agent.workflows.iter()
+                agent
+                    .workflows
+                    .iter()
                     .find(|w| w.workflow_id == workflow_id)
                     .map(|workflow| (agent, workflow))
             })
@@ -185,10 +196,15 @@ impl ExecutionRouter {
         self.agents
             .iter()
             .filter(|a| {
-                matches!(a.agent_id.as_str(),
-                    "scout-research" | "oracle-strategy" | "muse-creative" |
-                    "herald-distribution" | "echo-engagement" |
-                    "master-cinematographer" | "editron-post"
+                matches!(
+                    a.agent_id.as_str(),
+                    "scout-research"
+                        | "oracle-strategy"
+                        | "muse-creative"
+                        | "herald-distribution"
+                        | "echo-engagement"
+                        | "master-cinematographer"
+                        | "editron-post"
                 )
             })
             .collect()
@@ -199,7 +215,8 @@ impl ExecutionRouter {
         self.agents
             .iter()
             .filter(|a| {
-                matches!(a.agent_id.as_str(),
+                matches!(
+                    a.agent_id.as_str(),
                     "master-cinematographer" | "editron-post" | "muse-creative"
                 )
             })

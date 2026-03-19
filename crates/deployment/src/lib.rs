@@ -33,7 +33,7 @@ use services::services::{
     media_pipeline::{MediaPipelineError, MediaPipelineService},
     pr_monitor::PrMonitorService,
     sentry::SentryService,
-    topos_scanner::{ToposScannerService, DiscoveredProject},
+    topos_scanner::{DiscoveredProject, ToposScannerService},
     worktree_manager::WorktreeError,
 };
 use sqlx::{Error as SqlxError, types::Uuid};
@@ -393,7 +393,9 @@ pub trait Deployment: Clone + Send + Sync + 'static {
 
         // Check if project already exists with this repo path (including soft-deleted)
         // This prevents recreating projects that were intentionally deleted
-        match Project::exists_by_git_repo_path_including_deleted(&self.db().pool, &repo_path_str).await {
+        match Project::exists_by_git_repo_path_including_deleted(&self.db().pool, &repo_path_str)
+            .await
+        {
             Ok(true) => {
                 tracing::debug!(
                     "Topos project '{}' already exists in database (or was deleted)",

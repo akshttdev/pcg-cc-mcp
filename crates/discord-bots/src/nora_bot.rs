@@ -3,10 +3,12 @@ use std::sync::Arc;
 use serenity::all::*;
 use tracing::{error, info};
 
-use crate::backend::BackendClient;
-use crate::config::BotConfig;
-use crate::utils::{split_message, format_agent_embed};
-use crate::voice::VoiceManager;
+use crate::{
+    backend::BackendClient,
+    config::BotConfig,
+    utils::{format_agent_embed, split_message},
+    voice::VoiceManager,
+};
 
 pub struct NoraHandler {
     backend: Arc<BackendClient>,
@@ -15,8 +17,16 @@ pub struct NoraHandler {
 }
 
 impl NoraHandler {
-    pub fn new(backend: Arc<BackendClient>, config: Arc<BotConfig>, voice: Arc<VoiceManager>) -> Self {
-        Self { backend, config, voice }
+    pub fn new(
+        backend: Arc<BackendClient>,
+        config: Arc<BotConfig>,
+        voice: Arc<VoiceManager>,
+    ) -> Self {
+        Self {
+            backend,
+            config,
+            voice,
+        }
     }
 
     fn is_allowed_channel(&self, channel_id: ChannelId) -> bool {
@@ -57,12 +67,10 @@ impl EventHandler for NoraHandler {
                     )
                     .required(true),
                 ),
-            CreateCommand::new("nora-status")
-                .description("Check Nora's current status"),
+            CreateCommand::new("nora-status").description("Check Nora's current status"),
             CreateCommand::new("nora-join")
                 .description("Nora joins your voice channel to listen and speak"),
-            CreateCommand::new("nora-leave")
-                .description("Nora leaves the voice channel"),
+            CreateCommand::new("nora-leave").description("Nora leaves the voice channel"),
         ];
 
         if let Some(gid) = guild_id {
@@ -162,16 +170,14 @@ impl EventHandler for NoraHandler {
                             .channel_id
                             .send_message(
                                 &ctx.http,
-                                CreateMessage::new()
-                                    .embed(embed)
-                                    .reference_message(&msg),
+                                CreateMessage::new().embed(embed).reference_message(&msg),
                             )
                             .await;
                     } else {
-                        let _ = msg.channel_id.send_message(
-                            &ctx.http,
-                            CreateMessage::new().content(chunk),
-                        ).await;
+                        let _ = msg
+                            .channel_id
+                            .send_message(&ctx.http, CreateMessage::new().content(chunk))
+                            .await;
                     }
                 }
             }
@@ -242,9 +248,7 @@ impl NoraHandler {
         let _ = command
             .create_response(
                 &ctx.http,
-                CreateInteractionResponse::Defer(
-                    CreateInteractionResponseMessage::new(),
-                ),
+                CreateInteractionResponse::Defer(CreateInteractionResponseMessage::new()),
             )
             .await;
 
@@ -273,8 +277,7 @@ impl NoraHandler {
                 let _ = command
                     .edit_response(
                         &ctx.http,
-                        EditInteractionResponse::new()
-                            .content(format!("Error: {}", e)),
+                        EditInteractionResponse::new().content(format!("Error: {}", e)),
                     )
                     .await;
             }
@@ -325,11 +328,12 @@ impl NoraHandler {
         };
 
         // Find the user's voice channel
-        let channel_id = guild_id
-            .to_guild_cached(&ctx.cache)
-            .and_then(|guild| {
-                guild.voice_states.get(&command.user.id).and_then(|vs| vs.channel_id)
-            });
+        let channel_id = guild_id.to_guild_cached(&ctx.cache).and_then(|guild| {
+            guild
+                .voice_states
+                .get(&command.user.id)
+                .and_then(|vs| vs.channel_id)
+        });
 
         let channel_id = match channel_id {
             Some(id) => id,
@@ -352,7 +356,9 @@ impl NoraHandler {
             Ok(_) => {
                 let embed = CreateEmbed::new()
                     .title("Nora Voice Active")
-                    .description("I've joined the voice channel. I'll listen and respond when spoken to.")
+                    .description(
+                        "I've joined the voice channel. I'll listen and respond when spoken to.",
+                    )
                     .color(0x3B82F6)
                     .field("Channel", format!("<#{}>", channel_id), true)
                     .field("STT", &self.voice.config.stt_url, true)
@@ -409,7 +415,11 @@ impl NoraHandler {
                         .color(0x3B82F6)
                         .field("Duration", format!("{}s", meeting.duration_seconds), true)
                         .field("Segments", format!("{}", meeting.segment_count), true)
-                        .field("Participants", format!("{}", meeting.participant_count), true)
+                        .field(
+                            "Participants",
+                            format!("{}", meeting.participant_count),
+                            true,
+                        )
                         .description("Meeting transcript saved to dashboard. Notes generated.")
                         .timestamp(serenity::model::Timestamp::now())
                 } else {

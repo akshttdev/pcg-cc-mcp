@@ -26,14 +26,13 @@ impl UserOnboardingService {
         username: &str,
     ) -> anyhow::Result<OnboardingResult> {
         // 1. Check if user already has projects (via project_members)
-        let has_projects: bool = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM project_members WHERE user_id = ?",
-        )
-        .bind(user_id.to_string())
-        .fetch_one(pool)
-        .await
-        .map(|c| c > 0)
-        .unwrap_or(false);
+        let has_projects: bool =
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM project_members WHERE user_id = ?")
+                .bind(user_id.to_string())
+                .fetch_one(pool)
+                .await
+                .map(|c| c > 0)
+                .unwrap_or(false);
 
         let home_project_id = if !has_projects {
             // 2. Create home project
@@ -89,7 +88,10 @@ impl UserOnboardingService {
                     id
                 }
                 None => {
-                    warn!("User {} has project members but no project_id found", user_id);
+                    warn!(
+                        "User {} has project members but no project_id found",
+                        user_id
+                    );
                     Uuid::nil()
                 }
             }

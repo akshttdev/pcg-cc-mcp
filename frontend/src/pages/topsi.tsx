@@ -67,6 +67,7 @@ export function TopsiPage() {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessingVoice, setIsProcessingVoice] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars, unused-imports/no-unused-vars
   const [isSpeakerOn, _setIsSpeakerOn] = useState(true);
 
   // Voice refs

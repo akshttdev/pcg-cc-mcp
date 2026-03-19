@@ -11,8 +11,10 @@ use serde_json::Value;
 use tracing::{info, warn};
 use uuid::Uuid;
 
-use super::{ExtractedBusiness, ExtractedIndividual, ExtractedIntake, GeneratedReport};
-use super::pipeline::advance_deal_stage;
+use super::{
+    ExtractedBusiness, ExtractedIndividual, ExtractedIntake, GeneratedReport,
+    pipeline::advance_deal_stage,
+};
 
 // ── Stage 1: Extract structure ────────────────────────────────────────────────
 
@@ -131,7 +133,10 @@ pub(super) async fn run_company_research_pass(
         _ => "digital_presence_and_opportunities",
     };
 
-    info!("Company research pass {} ({}) for '{}'", pass_number, focus, company_name);
+    info!(
+        "Company research pass {} ({}) for '{}'",
+        pass_number, focus, company_name
+    );
 
     let pass_id = Uuid::new_v4();
     sqlx::query(
@@ -211,7 +216,8 @@ pub(super) async fn run_company_research_pass(
         })
         .unwrap_or("{}");
 
-    let json_str = text.trim()
+    let json_str = text
+        .trim()
         .trim_start_matches("```json")
         .trim_start_matches("```")
         .trim_end_matches("```")
@@ -222,7 +228,8 @@ pub(super) async fn run_company_research_pass(
     });
 
     let summary = parsed["summary"].as_str().unwrap_or("").to_string();
-    let key_findings = serde_json::to_string(&parsed["key_findings"]).unwrap_or_else(|_| "{}".into());
+    let key_findings =
+        serde_json::to_string(&parsed["key_findings"]).unwrap_or_else(|_| "{}".into());
     let sources = serde_json::to_string(&parsed["sources"]).unwrap_or_else(|_| "[]".into());
     let confidence = parsed["confidence_score"].as_f64().unwrap_or(0.5);
 
@@ -241,7 +248,10 @@ pub(super) async fn run_company_research_pass(
     .execute(pool)
     .await?;
 
-    info!("Company research pass {} complete for '{}'", pass_number, company_name);
+    info!(
+        "Company research pass {} complete for '{}'",
+        pass_number, company_name
+    );
     Ok(())
 }
 
@@ -279,7 +289,8 @@ pub async fn run_report_generation(
         intake_ids.push(item.id.to_string());
         let summary = item.call_summary.as_deref().unwrap_or("");
         let topics: Vec<String> = serde_json::from_str(&item.extracted_topics).unwrap_or_default();
-        let pain_points: Vec<String> = serde_json::from_str(&item.extracted_pain_points).unwrap_or_default();
+        let pain_points: Vec<String> =
+            serde_json::from_str(&item.extracted_pain_points).unwrap_or_default();
 
         call_context.push_str(&format!(
             "\n--- Call/Email ({}) ---\nSummary: {}\nTopics: {}\nPain Points: {}\n",
@@ -312,7 +323,8 @@ pub async fn run_report_generation(
         .unwrap_or_default();
 
         if !passes.is_empty() {
-            company_research_context.push_str(&format!("\n\n=== Company Research: {} ===\n", biz.name));
+            company_research_context
+                .push_str(&format!("\n\n=== Company Research: {} ===\n", biz.name));
             for (focus, summary) in &passes {
                 company_research_context.push_str(&format!("[{}] {}\n", focus, summary));
             }
@@ -334,7 +346,8 @@ pub async fn run_report_generation(
         if !sources_json.is_empty() {
             company_research_context.push_str(&format!(
                 "Sources: {}\n",
-                sources_json.iter()
+                sources_json
+                    .iter()
                     .filter_map(|s| s["url"].as_str().map(|u| u.to_string()))
                     .collect::<Vec<_>>()
                     .join(", ")
@@ -343,25 +356,44 @@ pub async fn run_report_generation(
     }
 
     // Intelligence summary
-    let intel_summary = person.intelligence_summary.as_deref().unwrap_or("No prior research available.");
+    let intel_summary = person
+        .intelligence_summary
+        .as_deref()
+        .unwrap_or("No prior research available.");
     let person_name = &person.full_name;
     let company = person.company_name.as_deref().unwrap_or(
-        businesses.first().map(|b| b.name.as_str()).unwrap_or("Unknown company")
+        businesses
+            .first()
+            .map(|b| b.name.as_str())
+            .unwrap_or("Unknown company"),
     );
 
-    let biz_list = businesses.iter().map(|b| {
-        format!("- {} ({}): {}", b.name,
-            b.website.as_deref().unwrap_or("no website"),
-            b.description.as_deref().unwrap_or(""))
-    }).collect::<Vec<_>>().join("\n");
+    let biz_list = businesses
+        .iter()
+        .map(|b| {
+            format!(
+                "- {} ({}): {}",
+                b.name,
+                b.website.as_deref().unwrap_or("no website"),
+                b.description.as_deref().unwrap_or("")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
 
-    let ind_list = individuals.iter().map(|i| {
-        format!("- {} | {} at {} | {}",
-            i.name,
-            i.role.as_deref().unwrap_or("unknown role"),
-            i.company.as_deref().unwrap_or("unknown company"),
-            i.notes.as_deref().unwrap_or(""))
-    }).collect::<Vec<_>>().join("\n");
+    let ind_list = individuals
+        .iter()
+        .map(|i| {
+            format!(
+                "- {} | {} at {} | {}",
+                i.name,
+                i.role.as_deref().unwrap_or("unknown role"),
+                i.company.as_deref().unwrap_or("unknown company"),
+                i.notes.as_deref().unwrap_or("")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
 
     let generated = generate_report_with_claude(
         person_name,
@@ -372,7 +404,8 @@ pub async fn run_report_generation(
         &biz_list,
         &ind_list,
         &report_type,
-    ).await?;
+    )
+    .await?;
 
     // Collect all sources from company research passes
     let all_sources: Vec<serde_json::Value> = sqlx::query_as::<_, (String,)>(
@@ -391,7 +424,9 @@ pub async fn run_report_generation(
 
     // Resolve the person's primary company for the report
     #[derive(sqlx::FromRow)]
-    struct CompanyIdRow { company_id: Option<Uuid> }
+    struct CompanyIdRow {
+        company_id: Option<Uuid>,
+    }
     let company_id: Option<Uuid> = sqlx::query_as::<_, CompanyIdRow>(
         "SELECT company_id FROM person_company_roles WHERE person_id = ? AND is_primary = 1 LIMIT 1",
     )
@@ -412,37 +447,57 @@ pub async fn run_report_generation(
             title: generated.title.clone(),
             executive_summary: Some(generated.executive_summary),
             company_overview: Some(generated.company_overview),
-            pain_points: Some(serde_json::to_string(&generated.pain_points).unwrap_or_else(|_| "[]".into())),
-            opportunities: Some(serde_json::to_string(&generated.opportunities).unwrap_or_else(|_| "[]".into())),
-            recommended_services: Some(serde_json::to_string(&generated.recommended_services).unwrap_or_else(|_| "[]".into())),
-            next_steps: Some(serde_json::to_string(&generated.next_steps).unwrap_or_else(|_| "[]".into())),
+            pain_points: Some(
+                serde_json::to_string(&generated.pain_points).unwrap_or_else(|_| "[]".into()),
+            ),
+            opportunities: Some(
+                serde_json::to_string(&generated.opportunities).unwrap_or_else(|_| "[]".into()),
+            ),
+            recommended_services: Some(
+                serde_json::to_string(&generated.recommended_services)
+                    .unwrap_or_else(|_| "[]".into()),
+            ),
+            next_steps: Some(
+                serde_json::to_string(&generated.next_steps).unwrap_or_else(|_| "[]".into()),
+            ),
             full_report_md: Some(generated.full_report_md),
-            individual_profiles: Some(serde_json::to_string(&generated.individual_profiles).unwrap_or_else(|_| "[]".into())),
+            individual_profiles: Some(
+                serde_json::to_string(&generated.individual_profiles)
+                    .unwrap_or_else(|_| "[]".into()),
+            ),
             market_analysis: Some(generated.market_analysis),
-            competitor_analysis: Some(serde_json::to_string(&generated.competitor_analysis).unwrap_or_else(|_| "[]".into())),
+            competitor_analysis: Some(
+                serde_json::to_string(&generated.competitor_analysis)
+                    .unwrap_or_else(|_| "[]".into()),
+            ),
             target_clients: Some(generated.target_clients),
             brand_positioning: Some(generated.brand_positioning),
             digital_presence: Some(generated.digital_presence),
             sources: Some(serde_json::to_string(&merged_sources).unwrap_or_else(|_| "[]".into())),
-            intake_item_ids: Some(serde_json::to_string(&intake_ids).unwrap_or_else(|_| "[]".into())),
+            intake_item_ids: Some(
+                serde_json::to_string(&intake_ids).unwrap_or_else(|_| "[]".into()),
+            ),
             call_log_ids: Some("[]".into()),
             created_by: None,
         },
-    ).await?;
+    )
+    .await?;
 
     // Link crm_deal_id to the report
     if let Some(deal_id) = crm_deal_id {
-        let _ = sqlx::query(
-            "UPDATE business_reports SET crm_deal_id = ? WHERE id = ?",
-        )
-        .bind(deal_id)
-        .bind(report.id.as_str())
-        .execute(&pool)
-        .await;
+        let _ = sqlx::query("UPDATE business_reports SET crm_deal_id = ? WHERE id = ?")
+            .bind(deal_id)
+            .bind(report.id.as_str())
+            .execute(&pool)
+            .await;
     }
 
     let report_id_str = report.id.to_string();
-    BusinessReport::mark_ready(&pool, uuid::Uuid::parse_str(&report_id_str).unwrap_or_default()).await?;
+    BusinessReport::mark_ready(
+        &pool,
+        uuid::Uuid::parse_str(&report_id_str).unwrap_or_default(),
+    )
+    .await?;
 
     // Link report back to intake items
     for intake_id in &intake_ids {
@@ -477,7 +532,9 @@ async fn ingest_sources_into_kg(
 ) {
     // Find which org this person belongs to
     #[derive(sqlx::FromRow)]
-    struct Row { organization_id: Uuid }
+    struct Row {
+        organization_id: Uuid,
+    }
 
     let org_id = sqlx::query_as::<_, Row>(
         "SELECT organization_id FROM person_organization_contacts WHERE person_id = ? LIMIT 1",
@@ -491,7 +548,10 @@ async fn ingest_sources_into_kg(
 
     if let Some(org_id) = org_id {
         for src in sources {
-            let url = match src["url"].as_str() { Some(u) if u.starts_with("http") => u, _ => continue };
+            let url = match src["url"].as_str() {
+                Some(u) if u.starts_with("http") => u,
+                _ => continue,
+            };
             let title = src["title"].as_str().unwrap_or(url);
             let excerpt = src["excerpt"].as_str().unwrap_or("");
             let _ = sqlx::query(
@@ -647,8 +707,12 @@ Return a JSON object with these EXACT fields (all required):
         .trim_end_matches("```")
         .trim();
 
-    let report: GeneratedReport = serde_json::from_str(json_str)
-        .map_err(|e| anyhow::anyhow!("Failed to parse report JSON: {e}\nRaw: {}", &json_str[..json_str.len().min(500)]))?;
+    let report: GeneratedReport = serde_json::from_str(json_str).map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to parse report JSON: {e}\nRaw: {}",
+            &json_str[..json_str.len().min(500)]
+        )
+    })?;
 
     Ok(report)
 }

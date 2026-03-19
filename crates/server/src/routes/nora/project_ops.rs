@@ -61,7 +61,12 @@ pub async fn nora_create_board(
         .executor
         .as_ref()
         .ok_or_else(|| ApiError::InternalError("Task executor not initialized".to_string()))?
-        .create_board(&project_id.to_string(), request.name, request.description, board_type)
+        .create_board(
+            &project_id.to_string(),
+            request.name,
+            request.description,
+            board_type,
+        )
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to create board: {}", e)))?;
 

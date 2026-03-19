@@ -18,7 +18,6 @@ pub struct TagQuery {
     pub organization_id: Option<Uuid>,
     /// If true, returns project-specific + org-wide tags for the given project_id
     pub include_org: Option<bool>,
-
 }
 
 pub async fn get_tags(
@@ -31,7 +30,6 @@ pub async fn get_tags(
         (Some(pid), _, _) => Tag::find_by_project_id(pool, pid).await?,
         (_, Some(oid), _) => Tag::find_by_organization_id(pool, oid).await?,
         _ => Tag::find_all(pool).await?,
-
     };
     Ok(ResponseJson(ApiResponse::success(tags)))
 }

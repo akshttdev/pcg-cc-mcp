@@ -8,19 +8,21 @@ use axum::{
     response::Json as ResponseJson,
     routing::{delete, get, post},
 };
-use deployment::Deployment;
-use db::models::{
-    browser_action::BrowserAction,
-    browser_allowlist::{BrowserAllowlist, PatternType},
-    browser_screenshot::BrowserScreenshot,
-    browser_session::{BrowserSession, BrowserType},
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        browser_action::BrowserAction,
+        browser_allowlist::{BrowserAllowlist, PatternType},
+        browser_screenshot::BrowserScreenshot,
+        browser_session::{BrowserSession, BrowserType},
+    },
 };
+use deployment::Deployment;
 use serde::{Deserialize, Serialize};
-use services::services::bowser::{BowserService, BrowserSessionDetails, BowserSummary};
+use services::services::bowser::{BowserService, BowserSummary, BrowserSessionDetails};
 use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
-use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 
@@ -78,7 +80,12 @@ pub async fn start_session(
     };
 
     let session = bowser
-        .start_session(req.execution_process_id, req.browser_type, viewport, req.headless)
+        .start_session(
+            req.execution_process_id,
+            req.browser_type,
+            viewport,
+            req.headless,
+        )
         .await
         .map_err(|e| ApiError::InternalError(e.to_string()))?;
 
@@ -90,7 +97,9 @@ pub async fn get_session(
     Path(session_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<BrowserSession>>, ApiError> {
-    let session_id = DbUuid::parse(&session_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let session_id = DbUuid::parse(&session_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let bowser = BowserService::new(deployment.db().clone());
 
     let session = bowser
@@ -106,7 +115,9 @@ pub async fn get_session_details(
     Path(session_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<BrowserSessionDetails>>, ApiError> {
-    let session_id = DbUuid::parse(&session_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let session_id = DbUuid::parse(&session_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let bowser = BowserService::new(deployment.db().clone());
 
     let details = bowser
@@ -136,7 +147,9 @@ pub async fn close_session(
     Path(session_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<BrowserSession>>, ApiError> {
-    let session_id = DbUuid::parse(&session_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let session_id = DbUuid::parse(&session_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let bowser = BowserService::new(deployment.db().clone());
 
     let session = bowser
@@ -155,7 +168,9 @@ pub async fn navigate(
     State(deployment): State<DeploymentImpl>,
     ResponseJson(req): ResponseJson<NavigateRequest>,
 ) -> Result<ResponseJson<ApiResponse<BrowserAction>>, ApiError> {
-    let session_id = DbUuid::parse(&session_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let session_id = DbUuid::parse(&session_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let bowser = BowserService::new(deployment.db().clone());
 
     let action = bowser
@@ -173,7 +188,9 @@ pub async fn get_screenshots(
     Path(session_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<BrowserScreenshot>>>, ApiError> {
-    let session_id = DbUuid::parse(&session_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let session_id = DbUuid::parse(&session_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let bowser = BowserService::new(deployment.db().clone());
 
     let screenshots = bowser
@@ -189,7 +206,9 @@ pub async fn get_screenshots_with_diffs(
     Path(session_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<BrowserScreenshot>>>, ApiError> {
-    let session_id = DbUuid::parse(&session_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let session_id = DbUuid::parse(&session_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let bowser = BowserService::new(deployment.db().clone());
 
     let screenshots = bowser
@@ -207,7 +226,9 @@ pub async fn get_actions(
     Path(session_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<BrowserAction>>>, ApiError> {
-    let session_id = DbUuid::parse(&session_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let session_id = DbUuid::parse(&session_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let bowser = BowserService::new(deployment.db().clone());
 
     let actions = bowser
@@ -223,7 +244,9 @@ pub async fn get_failed_actions(
     Path(session_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<BrowserAction>>>, ApiError> {
-    let session_id = DbUuid::parse(&session_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let session_id = DbUuid::parse(&session_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let bowser = BowserService::new(deployment.db().clone());
 
     let actions = bowser
@@ -241,7 +264,9 @@ pub async fn get_allowlist(
     Path(project_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<BrowserAllowlist>>>, ApiError> {
-    let project_id = DbUuid::parse(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let project_id = DbUuid::parse(&project_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let bowser = BowserService::new(deployment.db().clone());
 
     let entries = bowser
@@ -279,7 +304,9 @@ pub async fn remove_from_allowlist(
     Path(entry_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
-    let entry_id = DbUuid::parse(&entry_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let entry_id = DbUuid::parse(&entry_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let bowser = BowserService::new(deployment.db().clone());
 
     bowser
@@ -296,7 +323,9 @@ pub async fn check_url(
     State(deployment): State<DeploymentImpl>,
     ResponseJson(req): ResponseJson<CheckUrlRequest>,
 ) -> Result<ResponseJson<ApiResponse<CheckUrlResponse>>, ApiError> {
-    let project_id = DbUuid::parse(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let project_id = DbUuid::parse(&project_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let bowser = BowserService::new(deployment.db().clone());
 
     let allowed = bowser
@@ -334,20 +363,38 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/bowser/sessions", post(start_session))
         .route("/bowser/sessions", get(get_active_sessions))
         .route("/bowser/sessions/{session_id}", get(get_session))
-        .route("/bowser/sessions/{session_id}/details", get(get_session_details))
+        .route(
+            "/bowser/sessions/{session_id}/details",
+            get(get_session_details),
+        )
         .route("/bowser/sessions/{session_id}/close", post(close_session))
         // Navigation
         .route("/bowser/sessions/{session_id}/navigate", post(navigate))
         // Screenshots
-        .route("/bowser/sessions/{session_id}/screenshots", get(get_screenshots))
-        .route("/bowser/sessions/{session_id}/screenshots/diffs", get(get_screenshots_with_diffs))
+        .route(
+            "/bowser/sessions/{session_id}/screenshots",
+            get(get_screenshots),
+        )
+        .route(
+            "/bowser/sessions/{session_id}/screenshots/diffs",
+            get(get_screenshots_with_diffs),
+        )
         // Actions
         .route("/bowser/sessions/{session_id}/actions", get(get_actions))
-        .route("/bowser/sessions/{session_id}/actions/failed", get(get_failed_actions))
+        .route(
+            "/bowser/sessions/{session_id}/actions/failed",
+            get(get_failed_actions),
+        )
         // Allowlist
         .route("/bowser/allowlist", post(add_to_allowlist))
-        .route("/bowser/allowlist/{entry_id}", delete(remove_from_allowlist))
-        .route("/bowser/projects/{project_id}/allowlist", get(get_allowlist))
+        .route(
+            "/bowser/allowlist/{entry_id}",
+            delete(remove_from_allowlist),
+        )
+        .route(
+            "/bowser/projects/{project_id}/allowlist",
+            get(get_allowlist),
+        )
         .route("/bowser/projects/{project_id}/check-url", post(check_url))
         // Summary
         .route("/bowser/summary", get(get_summary))

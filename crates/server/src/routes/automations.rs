@@ -8,7 +8,7 @@
 //!   5. Project marked complete → draft AR invoice
 
 use sqlx::SqlitePool;
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 use tracing::{error, info};
 use uuid::Uuid;
 
@@ -92,7 +92,10 @@ async fn automation_churn_overdue_leads(pool: &SqlitePool) -> Result<(), sqlx::E
     .await?;
 
     if result.rows_affected() > 0 {
-        info!("Auto: churned {} over-followed leads", result.rows_affected());
+        info!(
+            "Auto: churned {} over-followed leads",
+            result.rows_affected()
+        );
     }
     Ok(())
 }
@@ -101,19 +104,20 @@ async fn automation_churn_overdue_leads(pool: &SqlitePool) -> Result<(), sqlx::E
 
 async fn automation_sql_draft_proposal_task(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     #[derive(sqlx::FromRow)]
-    struct Lead { id: Uuid, full_name: Option<String> }
+    struct Lead {
+        id: Uuid,
+        full_name: Option<String>,
+    }
 
-    let leads: Vec<Lead> = sqlx::query_as(
-        "SELECT id, full_name FROM crm_contacts WHERE lifecycle_stage = 'sql'",
-    )
-    .fetch_all(pool)
-    .await?;
+    let leads: Vec<Lead> =
+        sqlx::query_as("SELECT id, full_name FROM crm_contacts WHERE lifecycle_stage = 'sql'")
+            .fetch_all(pool)
+            .await?;
 
-    let admin_id: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM users WHERE is_admin = 1 LIMIT 1",
-    )
-    .fetch_optional(pool)
-    .await?;
+    let admin_id: Option<Uuid> =
+        sqlx::query_scalar("SELECT id FROM users WHERE is_admin = 1 LIMIT 1")
+            .fetch_optional(pool)
+            .await?;
 
     for lead in leads {
         // Check for existing draft-proposal task mentioning this lead
@@ -129,7 +133,10 @@ async fn automation_sql_draft_proposal_task(pool: &SqlitePool) -> Result<(), sql
         if exists == 0 {
             let task_id = Uuid::new_v4();
             let name = lead.full_name.as_deref().unwrap_or("unknown lead");
-            let desc = format!("Lead {} ({}) has reached SQL stage. Draft a proposal.", name, lead.id);
+            let desc = format!(
+                "Lead {} ({}) has reached SQL stage. Draft a proposal.",
+                name, lead.id
+            );
             sqlx::query(
                 "INSERT INTO tasks (id, title, description, status, assignee_id) \
                  VALUES (?, 'Draft proposal', ?, 'todo', ?)",
@@ -149,7 +156,11 @@ async fn automation_sql_draft_proposal_task(pool: &SqlitePool) -> Result<(), sql
 
 async fn automation_signed_proposal_create_project(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     #[derive(sqlx::FromRow)]
-    struct SignedProposal { id: Uuid, title: String, owner_id: Option<Uuid> }
+    struct SignedProposal {
+        id: Uuid,
+        title: String,
+        owner_id: Option<Uuid>,
+    }
 
     let proposals: Vec<SignedProposal> = sqlx::query_as(
         "SELECT id, title, owner_id FROM proposals \
@@ -180,7 +191,10 @@ async fn automation_signed_proposal_create_project(pool: &SqlitePool) -> Result<
         .execute(pool)
         .await?;
 
-        info!("Auto: created project '{}' from signed proposal", project_name);
+        info!(
+            "Auto: created project '{}' from signed proposal",
+            project_name
+        );
     }
     Ok(())
 }
@@ -189,7 +203,11 @@ async fn automation_signed_proposal_create_project(pool: &SqlitePool) -> Result<
 
 async fn automation_complete_project_draft_invoice(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     #[derive(sqlx::FromRow)]
-    struct CompleteProj { id: Uuid, name: String, client_budget_vibe: Option<i64> }
+    struct CompleteProj {
+        id: Uuid,
+        name: String,
+        client_budget_vibe: Option<i64>,
+    }
 
     let projects: Vec<CompleteProj> = sqlx::query_as(
         "SELECT p.id, p.name, p.client_budget_vibe FROM projects p \
@@ -200,9 +218,10 @@ async fn automation_complete_project_draft_invoice(pool: &SqlitePool) -> Result<
     .await?;
 
     for proj in projects {
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM invoices WHERE invoice_type = 'ar'")
-            .fetch_one(pool)
-            .await?;
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM invoices WHERE invoice_type = 'ar'")
+                .fetch_one(pool)
+                .await?;
 
         let invoice_number = format!("AR-{:05}", count + 1);
         let invoice_id = Uuid::new_v4();
@@ -219,16 +238,20 @@ async fn automation_complete_project_draft_invoice(pool: &SqlitePool) -> Result<
         .execute(pool)
         .await?;
 
-        info!("Auto: drafted invoice {} for completed project '{}'", invoice_number, proj.name);
+        info!(
+            "Auto: drafted invoice {} for completed project '{}'",
+            invoice_number, proj.name
+        );
     }
     Ok(())
 }
 
 // ── REST API ──────────────────────────────────────────────────────────────────
 
-use axum::{routing::get, Json, Router};
+use axum::{Json, Router, routing::get};
 use serde::Serialize;
 use utils::response::ApiResponse;
+
 use crate::DeploymentImpl;
 
 #[derive(Serialize)]

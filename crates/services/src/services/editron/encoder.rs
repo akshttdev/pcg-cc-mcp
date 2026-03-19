@@ -2,8 +2,11 @@
 //!
 //! Provides headless rendering capabilities through Adobe Media Encoder.
 
-use std::path::{Path, PathBuf};
-use std::process::Stdio;
+use std::{
+    path::{Path, PathBuf},
+    process::Stdio,
+};
+
 use tokio::process::Command;
 
 use super::{EditronError, EditronResult};
@@ -49,7 +52,10 @@ impl MediaEncoderBridge {
         // Check common preset locations
         let paths = [
             format!("{}/Documents/Adobe/Adobe Media Encoder/Presets", home),
-            format!("{}/Library/Application Support/Adobe/Common/AME/Presets", home),
+            format!(
+                "{}/Library/Application Support/Adobe/Common/AME/Presets",
+                home
+            ),
         ];
 
         for path in paths {
@@ -85,7 +91,9 @@ impl MediaEncoderBridge {
             .await
             .map_err(|e| EditronError::Process(e.to_string()))?;
 
-        let result = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
+        let result = String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .to_lowercase();
         Ok(result == "true")
     }
 
@@ -179,7 +187,8 @@ impl MediaEncoderBridge {
         // Full AME automation requires more complex ExtendScript
 
         // Try using headless render (if available)
-        let headless_path = self.encoder_path
+        let headless_path = self
+            .encoder_path
             .parent()
             .map(|p| p.join("Contents/MacOS/Adobe Media Encoder"))
             .filter(|p| p.exists());

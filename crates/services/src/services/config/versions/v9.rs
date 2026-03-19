@@ -2,7 +2,6 @@ use anyhow::Error;
 use executors::{executors::BaseCodingAgent, profile::ExecutorProfileId};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-
 pub use v8::{
     AptosWalletConfig, EditorConfig, EditorType, GitHubConfig, NotificationConfig, SoundFile,
     ThemeMode, UiLanguage,

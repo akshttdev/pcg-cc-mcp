@@ -4,20 +4,18 @@
 ///   - Only hosts (users with registered hardware) can invite guests
 ///   - Guests spawn in their inviting host's virtual space
 ///   - Invite tokens expire after 7 days
-
 use axum::{
     Extension, Router,
     extract::{Path, State},
     response::Json as ResponseJson,
     routing::{get, post},
 };
+use db::services::AuthService;
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
+use utils::response::ApiResponse;
 // TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
-use utils::response::ApiResponse;
-
-use db::services::AuthService;
 
 use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
@@ -100,13 +98,11 @@ async fn create_invitation(
     let user_id_bytes = access_context.user_id.to_string();
 
     // Check caller is a host
-    let user_role: String = sqlx::query_scalar(
-        "SELECT user_role FROM users WHERE id = ?",
-    )
-    .bind(&user_id_bytes)
-    .fetch_one(&pool)
-    .await
-    .map_err(|_| ApiError::NotFound("User not found".into()))?;
+    let user_role: String = sqlx::query_scalar("SELECT user_role FROM users WHERE id = ?")
+        .bind(&user_id_bytes)
+        .fetch_one(&pool)
+        .await
+        .map_err(|_| ApiError::NotFound("User not found".into()))?;
 
     if user_role != "host" {
         return Err(ApiError::Forbidden(
@@ -115,13 +111,12 @@ async fn create_invitation(
     }
 
     // Check invite email not already registered
-    let existing: Option<i64> = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM users WHERE email = ? AND deleted_at IS NULL",
-    )
-    .bind(&body.invitee_email)
-    .fetch_optional(&pool)
-    .await
-    .unwrap_or(None);
+    let existing: Option<i64> =
+        sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE email = ? AND deleted_at IS NULL")
+            .bind(&body.invitee_email)
+            .fetch_optional(&pool)
+            .await
+            .unwrap_or(None);
 
     if existing.unwrap_or(0) > 0 {
         return Err(ApiError::BadRequest(
@@ -130,14 +125,16 @@ async fn create_invitation(
     }
 
     // Generate a secure token
-    let token = Uuid::new_v4().to_string().replace("-", "") + &Uuid::new_v4().to_string().replace("-", "");
+    let token =
+        Uuid::new_v4().to_string().replace("-", "") + &Uuid::new_v4().to_string().replace("-", "");
 
     let invite_id = Uuid::new_v4();
     let invite_id_bytes = invite_id.to_string();
 
-    let project_id_str: Option<String> = body.project_id.as_ref().and_then(|s| {
-        Uuid::parse_str(s).ok().map(|u| u.to_string())
-    });
+    let project_id_str: Option<String> = body
+        .project_id
+        .as_ref()
+        .and_then(|s| Uuid::parse_str(s).ok().map(|u| u.to_string()));
 
     sqlx::query(
         r#"INSERT INTO user_invitations
@@ -166,21 +163,19 @@ async fn create_invitation(
 
     let invite_url = format!("{}/join/{}", base_url.trim_end_matches('/'), token);
 
-    let expires_at: String = sqlx::query_scalar(
-        "SELECT expires_at FROM user_invitations WHERE id = ?",
-    )
-    .bind(&invite_id_bytes)
-    .fetch_one(&pool)
-    .await
-    .unwrap_or_else(|_| "".into());
+    let expires_at: String =
+        sqlx::query_scalar("SELECT expires_at FROM user_invitations WHERE id = ?")
+            .bind(&invite_id_bytes)
+            .fetch_one(&pool)
+            .await
+            .unwrap_or_else(|_| "".into());
 
-    let created_at: String = sqlx::query_scalar(
-        "SELECT created_at FROM user_invitations WHERE id = ?",
-    )
-    .bind(&invite_id_bytes)
-    .fetch_one(&pool)
-    .await
-    .unwrap_or_else(|_| "".into());
+    let created_at: String =
+        sqlx::query_scalar("SELECT created_at FROM user_invitations WHERE id = ?")
+            .bind(&invite_id_bytes)
+            .fetch_one(&pool)
+            .await
+            .unwrap_or_else(|_| "".into());
 
     Ok(ResponseJson(ApiResponse::success(InvitationResponse {
         id: invite_id.to_string(),
@@ -238,11 +233,7 @@ async fn list_invitations(
         .into_iter()
         .filter_map(|row| {
             let id = Uuid::from_slice(&row.id).ok()?.to_string();
-            let invite_url = format!(
-                "{}/join/{}",
-                base_url.trim_end_matches('/'),
-                row.token
-            );
+            let invite_url = format!("{}/join/{}", base_url.trim_end_matches('/'), row.token);
             Some(InvitationResponse {
                 id,
                 invite_url,
@@ -269,8 +260,8 @@ async fn revoke_invitation(
     let pool = deployment.db().pool.clone();
     let user_id_bytes = access_context.user_id.to_string();
 
-    let invite_id = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::BadRequest("Invalid invitation ID".into()))?;
+    let invite_id =
+        Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid invitation ID".into()))?;
     let invite_id_bytes = invite_id.to_string();
 
     let rows_affected = sqlx::query(
@@ -397,13 +388,12 @@ async fn accept_invitation(
     }
 
     // Check username not taken
-    let username_taken: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM users WHERE username = ? AND deleted_at IS NULL",
-    )
-    .bind(&body.username)
-    .fetch_one(&pool)
-    .await
-    .unwrap_or(0);
+    let username_taken: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE username = ? AND deleted_at IS NULL")
+            .bind(&body.username)
+            .fetch_one(&pool)
+            .await
+            .unwrap_or(0);
 
     if username_taken > 0 {
         return Err(ApiError::BadRequest("Username already taken".into()));
@@ -515,7 +505,9 @@ async fn my_spawn_point(
 
     match spawn {
         Some(s) => Ok(ResponseJson(ApiResponse::success(s))),
-        None => Err(ApiError::NotFound("No virtual space found for this user".into())),
+        None => Err(ApiError::NotFound(
+            "No virtual space found for this user".into(),
+        )),
     }
 }
 
@@ -573,8 +565,8 @@ async fn get_user_space(
 ) -> Result<ResponseJson<ApiResponse<SpawnPoint>>, ApiError> {
     let pool = deployment.db().pool.clone();
 
-    let uid = Uuid::parse_str(&user_id)
-        .map_err(|_| ApiError::BadRequest("Invalid user ID".into()))?;
+    let uid =
+        Uuid::parse_str(&user_id).map_err(|_| ApiError::BadRequest("Invalid user ID".into()))?;
     let uid_bytes = uid.to_string();
 
     let spawn: Option<SpawnPoint> = sqlx::query(
@@ -609,6 +601,8 @@ async fn get_user_space(
 
     match spawn {
         Some(s) => Ok(ResponseJson(ApiResponse::success(s))),
-        None => Err(ApiError::NotFound("No virtual space found for this user".into())),
+        None => Err(ApiError::NotFound(
+            "No virtual space found for this user".into(),
+        )),
     }
 }

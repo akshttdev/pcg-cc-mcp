@@ -58,12 +58,10 @@ pub struct UpdatePeerResources {
 
 impl PeerNode {
     /// Register a new peer node or update existing
-    pub async fn upsert(
-        pool: &SqlitePool,
-        data: CreatePeerNode,
-    ) -> Result<Self, sqlx::Error> {
+    pub async fn upsert(pool: &SqlitePool, data: CreatePeerNode) -> Result<Self, sqlx::Error> {
         let id = Uuid::new_v4();
-        let capabilities_json = data.capabilities
+        let capabilities_json = data
+            .capabilities
             .map(|c| serde_json::to_string(&c).unwrap_or_else(|_| "[]".to_string()));
 
         sqlx::query!(
@@ -108,10 +106,7 @@ impl PeerNode {
     }
 
     /// Find peer by id (UUID)
-    pub async fn find_by_id(
-        pool: &SqlitePool,
-        id: Uuid,
-    ) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as::<_, PeerNode>(
             r#"
             SELECT * FROM peer_nodes WHERE id = ?
@@ -153,10 +148,7 @@ impl PeerNode {
     }
 
     /// Update last heartbeat timestamp
-    pub async fn update_heartbeat(
-        pool: &SqlitePool,
-        node_id: &str,
-    ) -> Result<(), sqlx::Error> {
+    pub async fn update_heartbeat(pool: &SqlitePool, node_id: &str) -> Result<(), sqlx::Error> {
         sqlx::query!(
             r#"
             UPDATE peer_nodes
@@ -214,11 +206,7 @@ impl PeerNode {
     }
 
     /// Ban a peer node
-    pub async fn ban(
-        pool: &SqlitePool,
-        node_id: &str,
-        reason: &str,
-    ) -> Result<(), sqlx::Error> {
+    pub async fn ban(pool: &SqlitePool, node_id: &str, reason: &str) -> Result<(), sqlx::Error> {
         sqlx::query!(
             r#"
             UPDATE peer_nodes
@@ -236,10 +224,7 @@ impl PeerNode {
     }
 
     /// Unban a peer node
-    pub async fn unban(
-        pool: &SqlitePool,
-        node_id: &str,
-    ) -> Result<(), sqlx::Error> {
+    pub async fn unban(pool: &SqlitePool, node_id: &str) -> Result<(), sqlx::Error> {
         sqlx::query!(
             r#"
             UPDATE peer_nodes

@@ -9,6 +9,7 @@ use sqlx::{FromRow, SqlitePool, Type};
 use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
+
 use crate::DbUuid;
 
 // ============================================================================
@@ -170,12 +171,11 @@ impl AgentExecutionProfile {
         pool: &SqlitePool,
         id: &str,
     ) -> Result<Option<Self>, AgentExecutionConfigError> {
-        let profile = sqlx::query_as::<_, Self>(
-            "SELECT * FROM agent_execution_profiles WHERE id = ?1",
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await?;
+        let profile =
+            sqlx::query_as::<_, Self>("SELECT * FROM agent_execution_profiles WHERE id = ?1")
+                .bind(id)
+                .fetch_optional(pool)
+                .await?;
 
         Ok(profile)
     }
@@ -185,23 +185,21 @@ impl AgentExecutionProfile {
         pool: &SqlitePool,
         name: &str,
     ) -> Result<Option<Self>, AgentExecutionConfigError> {
-        let profile = sqlx::query_as::<_, Self>(
-            "SELECT * FROM agent_execution_profiles WHERE name = ?1",
-        )
-        .bind(name)
-        .fetch_optional(pool)
-        .await?;
+        let profile =
+            sqlx::query_as::<_, Self>("SELECT * FROM agent_execution_profiles WHERE name = ?1")
+                .bind(name)
+                .fetch_optional(pool)
+                .await?;
 
         Ok(profile)
     }
 
     /// List all profiles
     pub async fn list_all(pool: &SqlitePool) -> Result<Vec<Self>, AgentExecutionConfigError> {
-        let profiles = sqlx::query_as::<_, Self>(
-            "SELECT * FROM agent_execution_profiles ORDER BY name",
-        )
-        .fetch_all(pool)
-        .await?;
+        let profiles =
+            sqlx::query_as::<_, Self>("SELECT * FROM agent_execution_profiles ORDER BY name")
+                .fetch_all(pool)
+                .await?;
 
         Ok(profiles)
     }
@@ -360,7 +358,9 @@ impl AgentExecutionConfig {
 
         Self::find_by_agent_id(pool, data.agent_id.as_str())
             .await?
-            .ok_or(AgentExecutionConfigError::ConfigNotFound(data.agent_id.to_string()))
+            .ok_or(AgentExecutionConfigError::ConfigNotFound(
+                data.agent_id.to_string(),
+            ))
     }
 
     /// Update config
@@ -500,7 +500,9 @@ impl RalphLoopState {
 
         Self::find_by_id(pool, &id)
             .await?
-            .ok_or(AgentExecutionConfigError::RalphLoopNotFound(data.task_attempt_id.clone()))
+            .ok_or(AgentExecutionConfigError::RalphLoopNotFound(
+                data.task_attempt_id.clone(),
+            ))
     }
 
     /// Find by ID
@@ -520,13 +522,11 @@ impl RalphLoopState {
         pool: &SqlitePool,
         task_attempt_id: &str,
     ) -> Result<Option<Self>, AgentExecutionConfigError> {
-        sqlx::query_as::<_, Self>(
-            "SELECT * FROM ralph_loop_state WHERE task_attempt_id = ?1",
-        )
-        .bind(task_attempt_id)
-        .fetch_optional(pool)
-        .await
-        .map_err(Into::into)
+        sqlx::query_as::<_, Self>("SELECT * FROM ralph_loop_state WHERE task_attempt_id = ?1")
+            .bind(task_attempt_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(Into::into)
     }
 
     /// Update loop state for next iteration
@@ -637,12 +637,10 @@ impl RalphLoopState {
         pool: &SqlitePool,
         id: &str,
     ) -> Result<(), AgentExecutionConfigError> {
-        sqlx::query(
-            "UPDATE ralph_loop_state SET consecutive_failures = 0 WHERE id = ?1",
-        )
-        .bind(id)
-        .execute(pool)
-        .await?;
+        sqlx::query("UPDATE ralph_loop_state SET consecutive_failures = 0 WHERE id = ?1")
+            .bind(id)
+            .execute(pool)
+            .await?;
 
         Ok(())
     }

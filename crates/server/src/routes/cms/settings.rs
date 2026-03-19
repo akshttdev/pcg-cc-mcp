@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use axum::{
     Extension, Json, Router,
     extract::{Path, State},
@@ -5,14 +7,15 @@ use axum::{
     response::Json as ResponseJson,
     routing::get,
 };
-use db::models::cms_site_setting::{CmsSiteSetting, SetCmsSiteSetting};
-use db::models::cms_site::CmsSite;
+use db::models::{
+    cms_site::CmsSite,
+    cms_site_setting::{CmsSiteSetting, SetCmsSiteSetting},
+};
+use deployment::Deployment;
 use serde::Serialize;
 use ts_rs::TS;
 use utils::response::ApiResponse;
-use std::collections::HashMap;
 
-use deployment::Deployment;
 use crate::{DeploymentImpl, error::ApiError, middleware::require_auth};
 
 #[derive(Debug, Serialize, TS)]
@@ -37,7 +40,9 @@ pub async fn get_settings_map(
         .into_iter()
         .map(|s| (s.setting_key, s.setting_value))
         .collect();
-    Ok(ResponseJson(ApiResponse::success(SettingsMap { settings: map })))
+    Ok(ResponseJson(ApiResponse::success(SettingsMap {
+        settings: map,
+    })))
 }
 
 pub async fn get_setting(
@@ -74,12 +79,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/map", get(get_settings_map))
         .route(
             "/{key}",
-            get(get_setting)
-                .put(set_setting)
-                .delete(delete_setting),
+            get(get_setting).put(set_setting).delete(delete_setting),
         )
-        .layer(from_fn_with_state(
-            deployment.clone(),
-            require_auth,
-        ))
+        .layer(from_fn_with_state(deployment.clone(), require_auth))
 }

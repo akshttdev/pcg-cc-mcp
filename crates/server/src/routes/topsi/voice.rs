@@ -38,11 +38,11 @@ pub struct VoiceTranscriptionResponse {
 #[serde(rename_all = "camelCase")]
 pub struct TopsiVoiceInteraction {
     pub session_id: String,
-    pub audio_input: Option<String>,     // Base64 encoded audio input
-    pub text_input: Option<String>,       // Text input (alternative to audio)
-    pub transcription: Option<String>,    // Transcribed text (filled by server)
-    pub response_text: Option<String>,    // Topsi's response (filled by server)
-    pub audio_response: Option<String>,   // Base64 encoded audio response
+    pub audio_input: Option<String>,    // Base64 encoded audio input
+    pub text_input: Option<String>,     // Text input (alternative to audio)
+    pub transcription: Option<String>,  // Transcribed text (filled by server)
+    pub response_text: Option<String>,  // Topsi's response (filled by server)
+    pub audio_response: Option<String>, // Base64 encoded audio response
     pub processing_time_ms: Option<u64>,
     pub timestamp: Option<DateTime<Utc>>,
     /// Action signal for frontend (e.g. "start_meeting", "end_meeting")
@@ -169,7 +169,8 @@ pub(crate) fn sanitize_text_for_tts(text: &str) -> String {
 }
 
 /// Get or initialize the Topsi voice engine
-pub(crate) async fn get_or_init_voice_engine() -> Result<Arc<RwLock<Option<VoiceEngine>>>, ApiError> {
+pub(crate) async fn get_or_init_voice_engine() -> Result<Arc<RwLock<Option<VoiceEngine>>>, ApiError>
+{
     let engine = TOPSI_VOICE_ENGINE
         .get_or_init(|| async {
             tracing::info!("Initializing Topsi voice engine...");
@@ -179,7 +180,8 @@ pub(crate) async fn get_or_init_voice_engine() -> Result<Arc<RwLock<Option<Voice
             let chatterbox_url = std::env::var("CHATTERBOX_URL")
                 .map(|url| format!("{}/health", url.trim_end_matches('/')))
                 .unwrap_or_else(|_| {
-                    let port = std::env::var("CHATTERBOX_PORT").unwrap_or_else(|_| "8100".to_string());
+                    let port =
+                        std::env::var("CHATTERBOX_PORT").unwrap_or_else(|_| "8100".to_string());
                     format!("http://localhost:{}/health", port)
                 });
             let chatterbox_available = reqwest::Client::new()
@@ -337,13 +339,10 @@ pub async fn synthesize_speech(
 
     tracing::info!("Topsi synthesizing speech: {} chars", request.text.len());
 
-    let audio_data = engine
-        .synthesize_speech(&request.text)
-        .await
-        .map_err(|e| {
-            tracing::error!("Topsi speech synthesis error: {}", e);
-            ApiError::InternalError(format!("Speech synthesis failed: {}", e))
-        })?;
+    let audio_data = engine.synthesize_speech(&request.text).await.map_err(|e| {
+        tracing::error!("Topsi speech synthesis error: {}", e);
+        ApiError::InternalError(format!("Speech synthesis failed: {}", e))
+    })?;
 
     let duration = start.elapsed();
     let processing_time_ms = duration.as_millis() as u64;
@@ -420,7 +419,9 @@ pub async fn voice_interaction(
     } else if let Some(text) = &request.text_input {
         text.clone()
     } else {
-        return Err(ApiError::BadRequest("No audio or text input provided".to_string()));
+        return Err(ApiError::BadRequest(
+            "No audio or text input provided".to_string(),
+        ));
     };
 
     // Step 1.5: Check for meeting intent BEFORE sending to Topsi chat
@@ -459,7 +460,9 @@ pub async fn voice_interaction(
                 let response = topsi
                     .process_request(topsi_request, &user_context, None)
                     .await
-                    .map_err(|e| ApiError::InternalError(format!("Failed to start meeting: {}", e)))?;
+                    .map_err(|e| {
+                        ApiError::InternalError(format!("Failed to start meeting: {}", e))
+                    })?;
 
                 // Extract session_id from response
                 let response_json: serde_json::Value = serde_json::from_str(&response.message)
@@ -476,20 +479,26 @@ pub async fn voice_interaction(
                 result.action_project_id = Some(project_id);
 
                 // Synthesize the spoken response
-                let audio_response = engine
-                    .synthesize_speech(spoken_response)
-                    .await
-                    .map_err(|e| ApiError::InternalError(format!("Speech synthesis failed: {}", e)))?;
+                let audio_response =
+                    engine
+                        .synthesize_speech(spoken_response)
+                        .await
+                        .map_err(|e| {
+                            ApiError::InternalError(format!("Speech synthesis failed: {}", e))
+                        })?;
                 result.audio_response = Some(audio_response);
             }
             "end_meeting" => {
                 // Check if there's an active meeting for this user
-                let active_meetings = db::models::meeting_session::MeetingSession::find_active_by_project(
-                    &pool,
-                    &resolve_user_project(&pool, &user_context.user_id).await.unwrap_or_default(),
-                )
-                .await
-                .unwrap_or_default();
+                let active_meetings =
+                    db::models::meeting_session::MeetingSession::find_active_by_project(
+                        &pool,
+                        &resolve_user_project(&pool, &user_context.user_id)
+                            .await
+                            .unwrap_or_default(),
+                    )
+                    .await
+                    .unwrap_or_default();
 
                 if let Some(active) = active_meetings.first() {
                     let topsi_request = TopsiRequest::new(TopsiRequestType::EndMeeting {
@@ -500,26 +509,35 @@ pub async fn voice_interaction(
                     let _response = topsi
                         .process_request(topsi_request, &user_context, None)
                         .await
-                        .map_err(|e| ApiError::InternalError(format!("Failed to end meeting: {}", e)))?;
+                        .map_err(|e| {
+                            ApiError::InternalError(format!("Failed to end meeting: {}", e))
+                        })?;
 
-                    let spoken_response = "Meeting ended. I've generated notes from the transcript.";
+                    let spoken_response =
+                        "Meeting ended. I've generated notes from the transcript.";
                     result.response_text = Some(spoken_response.to_string());
                     result.action = Some("end_meeting".to_string());
                     result.meeting_session_id = Some(active.id.clone());
 
-                    let audio_response = engine
-                        .synthesize_speech(spoken_response)
-                        .await
-                        .map_err(|e| ApiError::InternalError(format!("Speech synthesis failed: {}", e)))?;
+                    let audio_response =
+                        engine
+                            .synthesize_speech(spoken_response)
+                            .await
+                            .map_err(|e| {
+                                ApiError::InternalError(format!("Speech synthesis failed: {}", e))
+                            })?;
                     result.audio_response = Some(audio_response);
                 } else {
                     let spoken_response = "There's no active meeting to end.";
                     result.response_text = Some(spoken_response.to_string());
 
-                    let audio_response = engine
-                        .synthesize_speech(spoken_response)
-                        .await
-                        .map_err(|e| ApiError::InternalError(format!("Speech synthesis failed: {}", e)))?;
+                    let audio_response =
+                        engine
+                            .synthesize_speech(spoken_response)
+                            .await
+                            .map_err(|e| {
+                                ApiError::InternalError(format!("Speech synthesis failed: {}", e))
+                            })?;
                     result.audio_response = Some(audio_response);
                 }
             }
@@ -562,8 +580,11 @@ pub async fn voice_interaction(
         tracing::warn!("TTS text was empty after sanitization, using fallback");
         result.audio_response = None;
     } else {
-        tracing::info!("Synthesizing TTS for {} chars (sanitized from {})",
-            tts_text.len(), response.message.len());
+        tracing::info!(
+            "Synthesizing TTS for {} chars (sanitized from {})",
+            tts_text.len(),
+            response.message.len()
+        );
 
         let audio_response = engine
             .synthesize_speech(&tts_text)
@@ -606,8 +627,12 @@ pub async fn update_voice_config(
     // Full config update would require reinitializing the engine
     Ok(Json(TopsiVoiceConfigResponse {
         tts_provider: request.tts_provider.unwrap_or_else(|| "system".to_string()),
-        stt_provider: request.stt_provider.unwrap_or_else(|| "whisper".to_string()),
-        voice_profile: request.voice_profile.unwrap_or_else(|| "british_executive_female".to_string()),
+        stt_provider: request
+            .stt_provider
+            .unwrap_or_else(|| "whisper".to_string()),
+        voice_profile: request
+            .voice_profile
+            .unwrap_or_else(|| "british_executive_female".to_string()),
         is_ready: true,
     }))
 }

@@ -513,7 +513,10 @@ impl CoordinationManager {
     /// Emit a raw coordination event for external callers
     pub async fn emit_event(&self, event: CoordinationEvent) -> crate::Result<()> {
         let receiver_count = self.event_sender.receiver_count();
-        tracing::info!("[COORDINATION] Broadcasting event to {} subscribers", receiver_count);
+        tracing::info!(
+            "[COORDINATION] Broadcasting event to {} subscribers",
+            receiver_count
+        );
         match self.event_sender.send(event) {
             Ok(n) => tracing::info!("[COORDINATION] Event sent to {} receivers", n),
             Err(e) => tracing::warn!("[COORDINATION] No receivers for event: {}", e),

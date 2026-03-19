@@ -9,8 +9,10 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use chrono::Utc;
 use serde_json::{json, Value};
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
-use sqlx::SqlitePool;
+use sqlx::{
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+    SqlitePool,
+};
 use tracing::{info, warn};
 // TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
@@ -95,7 +97,11 @@ pub async fn register(
         &pool,
         ingest_id,
         "media_ingest_manifest",
-        &format!("Ingest: {} ({} files)", result.project_name, result.source_files.len()),
+        &format!(
+            "Ingest: {} ({} files)",
+            result.project_name,
+            result.source_files.len()
+        ),
         &ingest_content(&batch_id, result),
         None,
         &json!({"phase": "execution", "batch_id": &batch_id}),
@@ -119,7 +125,11 @@ pub async fn register(
         &pool,
         edit_id,
         "video_edit_session",
-        &format!("Edit Session: {} ({} edits)", result.project_name, result.edits.len()),
+        &format!(
+            "Edit Session: {} ({} edits)",
+            result.project_name,
+            result.edits.len()
+        ),
         &edit_session_content(&batch_id, result),
         Some(&result.output_dir),
         &json!({"phase": "execution", "batch_id": &batch_id}),
@@ -131,7 +141,11 @@ pub async fn register(
         &pool,
         render_id,
         "render_deliverable",
-        &format!("Deliverables: {} ({} MP4s)", result.project_name, result.edits.len()),
+        &format!(
+            "Deliverables: {} ({} MP4s)",
+            result.project_name,
+            result.edits.len()
+        ),
         &render_content(&batch_id, result),
         Some(&result.output_dir),
         &json!({"phase": "execution", "batch_id": &batch_id}),
@@ -278,16 +292,18 @@ async fn resolve_or_create_task(
     // 1. Explicit task_id
     if let Some(tid_str) = task_id {
         if let Ok(tid) = Uuid::parse_str(tid_str) {
-            let exists: Option<(Vec<u8>,)> =
-                sqlx::query_as("SELECT id FROM tasks WHERE id = ?1")
-                    .bind(tid.to_string())
-                    .fetch_optional(pool)
-                    .await
-                    .ok()?;
+            let exists: Option<(Vec<u8>,)> = sqlx::query_as("SELECT id FROM tasks WHERE id = ?1")
+                .bind(tid.to_string())
+                .fetch_optional(pool)
+                .await
+                .ok()?;
             if exists.is_some() {
                 return Some(tid);
             }
-            warn!("[DASHBOARD] task_id '{}' not found, creating new task", tid_str);
+            warn!(
+                "[DASHBOARD] task_id '{}' not found, creating new task",
+                tid_str
+            );
         }
     }
 
@@ -362,7 +378,11 @@ async fn link_artifact(
 // ---------------------------------------------------------------------------
 
 fn ingest_content(batch_id: &str, result: &PipelineResult) -> String {
-    let files: Vec<&str> = result.source_files.iter().map(|f| f.filename.as_str()).collect();
+    let files: Vec<&str> = result
+        .source_files
+        .iter()
+        .map(|f| f.filename.as_str())
+        .collect();
     let total_bytes: u64 = result.source_files.iter().map(|f| f.size_bytes).sum();
     json!({
         "batch_id": batch_id,

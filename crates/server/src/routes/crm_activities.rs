@@ -3,17 +3,17 @@
 //! Handles activity listing and creation for the CRM timeline.
 
 use axum::{
-    extract::{Path, Query, State},
-    routing::{get, post, delete},
     Json, Router,
+    extract::{Path, Query, State},
+    routing::{delete, get, post},
 };
+use db::models::crm_activity::{CreateCrmActivity, CrmActivity};
 use deployment::Deployment;
 use serde::Deserialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
-use db::models::crm_activity::{CrmActivity, CreateCrmActivity};
+use crate::{DeploymentImpl, error::ApiError};
 
 #[derive(Debug, Deserialize)]
 pub struct ListActivitiesQuery {
@@ -62,8 +62,8 @@ async fn delete_activity(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id = Uuid::parse_str(&id)
-        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {e}")))?;
+    let id =
+        Uuid::parse_str(&id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {e}")))?;
     CrmActivity::delete(pool, id).await?;
     Ok(Json(ApiResponse::success(())))
 }

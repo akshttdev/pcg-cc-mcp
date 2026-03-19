@@ -20,11 +20,7 @@ pub struct GraphNode {
 }
 
 impl GraphNode {
-    pub fn new(
-        id: Uuid,
-        node_type: impl Into<String>,
-        ref_id: impl Into<String>,
-    ) -> Self {
+    pub fn new(id: Uuid, node_type: impl Into<String>, ref_id: impl Into<String>) -> Self {
         Self {
             id,
             node_type: node_type.into(),
@@ -201,7 +197,8 @@ impl TopologyGraph {
     /// Remove a node and its edges
     pub fn remove_node(&mut self, node_id: Uuid) -> Option<GraphNode> {
         // Remove all edges involving this node
-        self.edges.retain(|_, e| e.from_node_id != node_id && e.to_node_id != node_id);
+        self.edges
+            .retain(|_, e| e.from_node_id != node_id && e.to_node_id != node_id);
         self.nodes.swap_remove(&node_id)
     }
 
@@ -390,6 +387,9 @@ impl ProjectTopology {
 
     /// Get executing routes
     pub fn executing_routes(&self) -> Vec<&RouteInfo> {
-        self.routes.iter().filter(|r| r.status == "executing").collect()
+        self.routes
+            .iter()
+            .filter(|r| r.status == "executing")
+            .collect()
     }
 }

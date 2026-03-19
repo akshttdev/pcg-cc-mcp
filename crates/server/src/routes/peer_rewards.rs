@@ -1,16 +1,15 @@
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     routing::get,
-    Json, Router,
 };
-use db::models::peer_node::PeerNode;
-use db::models::peer_reward::PeerReward;
+use db::models::{peer_node::PeerNode, peer_reward::PeerReward};
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use utils::response::ApiResponse;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError};
 
 #[derive(Debug, Deserialize)]
 pub struct ListQuery {
@@ -203,17 +202,14 @@ async fn get_network_stats(
     let pool = &deployment.db().pool;
 
     // Count total and active peers
-    let (total_peers,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM peer_nodes",
-    )
-    .fetch_one(pool)
-    .await?;
+    let (total_peers,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM peer_nodes")
+        .fetch_one(pool)
+        .await?;
 
-    let (active_peers,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM peer_nodes WHERE is_active = 1 AND is_banned = 0",
-    )
-    .fetch_one(pool)
-    .await?;
+    let (active_peers,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM peer_nodes WHERE is_active = 1 AND is_banned = 0")
+            .fetch_one(pool)
+            .await?;
 
     // Total rewards distributed
     let (total_distributed,): (i64,) = sqlx::query_as(
@@ -230,11 +226,9 @@ async fn get_network_stats(
     let total_pending = PeerReward::total_pending_amount(pool).await?;
 
     // Total batches
-    let (total_batches,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM reward_batches",
-    )
-    .fetch_one(pool)
-    .await?;
+    let (total_batches,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM reward_batches")
+        .fetch_one(pool)
+        .await?;
 
     Ok(Json(ApiResponse::success(NetworkStatsResponse {
         total_peers,

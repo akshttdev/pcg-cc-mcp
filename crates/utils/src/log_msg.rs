@@ -15,7 +15,10 @@ pub enum LogMsg {
     Stderr(String),
     JsonPatch(Patch),
     SessionId(String),
-    TokenCount { input_tokens: u64, output_tokens: u64 },
+    TokenCount {
+        input_tokens: u64,
+        output_tokens: u64,
+    },
     Finished,
 }
 
@@ -40,8 +43,12 @@ impl LogMsg {
                 Event::default().event(EV_JSON_PATCH).data(data)
             }
             LogMsg::SessionId(s) => Event::default().event(EV_SESSION_ID).data(s.clone()),
-            LogMsg::TokenCount { input_tokens, output_tokens } => {
-                let data = format!(r#"{{"input_tokens":{input_tokens},"output_tokens":{output_tokens}}}"#);
+            LogMsg::TokenCount {
+                input_tokens,
+                output_tokens,
+            } => {
+                let data =
+                    format!(r#"{{"input_tokens":{input_tokens},"output_tokens":{output_tokens}}}"#);
                 Event::default().event(EV_TOKEN_COUNT).data(data)
             }
             LogMsg::Finished => Event::default().event(EV_FINISHED).data(""),

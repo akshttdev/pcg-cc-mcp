@@ -204,7 +204,8 @@ impl EventService {
     ) -> Result<(), SqlxError> {
         let task_id_str = task_id.to_string();
         if let Some(task) = Task::find_by_id(pool, &task_id_str).await? {
-            let tasks = Task::find_by_project_id_with_attempt_status(pool, &task.project_id).await?;
+            let tasks =
+                Task::find_by_project_id_with_attempt_status(pool, &task.project_id).await?;
 
             if let Some(task_with_status) = tasks
                 .into_iter()
@@ -561,7 +562,8 @@ impl EventService {
     {
         // Get initial snapshot of tasks
         let project_id_str = project_id.to_string();
-        let tasks = Task::find_by_project_id_with_attempt_status(&self.db.pool, &project_id_str).await?;
+        let tasks =
+            Task::find_by_project_id_with_attempt_status(&self.db.pool, &project_id_str).await?;
 
         // Convert task array to object keyed by task ID
         let tasks_map: serde_json::Map<String, serde_json::Value> = tasks
@@ -648,8 +650,11 @@ impl EventService {
                                         }
                                         RecordTypes::TaskAttempt(attempt) => {
                                             // Check if this task_attempt belongs to a task in our project
-                                            if let Ok(Some(task)) =
-                                                Task::find_by_id(&db_pool, &attempt.task_id.to_string()).await
+                                            if let Ok(Some(task)) = Task::find_by_id(
+                                                &db_pool,
+                                                &attempt.task_id.to_string(),
+                                            )
+                                            .await
                                                 && task.project_id == project_id_str
                                             {
                                                 return Some(Ok(LogMsg::JsonPatch(patch)));
@@ -660,8 +665,11 @@ impl EventService {
                                             ..
                                         } => {
                                             // Check if deleted attempt belonged to a task in our project
-                                            if let Ok(Some(task)) =
-                                                Task::find_by_id(&db_pool, &deleted_task_id.to_string()).await
+                                            if let Ok(Some(task)) = Task::find_by_id(
+                                                &db_pool,
+                                                &deleted_task_id.to_string(),
+                                            )
+                                            .await
                                                 && task.project_id == project_id_str
                                             {
                                                 return Some(Ok(LogMsg::JsonPatch(patch)));

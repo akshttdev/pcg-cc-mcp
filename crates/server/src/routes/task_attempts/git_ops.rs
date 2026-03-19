@@ -73,9 +73,12 @@ pub async fn merge_task_attempt(
         .parent_task(pool)
         .await?
         .ok_or(ApiError::TaskAttempt(TaskAttemptError::TaskNotFound))?;
-    let task_id_uuid = Uuid::parse_str(&task.id).map_err(|e| ApiError::InternalError(e.to_string()))?;
-    let project_id_uuid = Uuid::parse_str(&task.project_id).map_err(|e| ApiError::InternalError(e.to_string()))?;
-    let ctx = TaskAttempt::load_context(pool, task_attempt.id, task_id_uuid, project_id_uuid).await?;
+    let task_id_uuid =
+        Uuid::parse_str(&task.id).map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let project_id_uuid =
+        Uuid::parse_str(&task.project_id).map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let ctx =
+        TaskAttempt::load_context(pool, task_attempt.id, task_id_uuid, project_id_uuid).await?;
 
     let container_ref = deployment
         .container()
@@ -345,9 +348,12 @@ pub async fn get_task_attempt_branch_status(
         .parent_task(pool)
         .await?
         .ok_or(ApiError::TaskAttempt(TaskAttemptError::TaskNotFound))?;
-    let task_id_uuid = Uuid::parse_str(&task.id).map_err(|e| ApiError::InternalError(e.to_string()))?;
-    let project_id_uuid = Uuid::parse_str(&task.project_id).map_err(|e| ApiError::InternalError(e.to_string()))?;
-    let ctx = TaskAttempt::load_context(pool, task_attempt.id, task_id_uuid, project_id_uuid).await?;
+    let task_id_uuid =
+        Uuid::parse_str(&task.id).map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let project_id_uuid =
+        Uuid::parse_str(&task.project_id).map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let ctx =
+        TaskAttempt::load_context(pool, task_attempt.id, task_id_uuid, project_id_uuid).await?;
     let has_uncommitted_changes = deployment
         .container()
         .is_container_clean(&task_attempt)
@@ -487,9 +493,12 @@ pub async fn rebase_task_attempt(
         .parent_task(pool)
         .await?
         .ok_or(ApiError::TaskAttempt(TaskAttemptError::TaskNotFound))?;
-    let task_id_uuid = Uuid::parse_str(&task.id).map_err(|e| ApiError::InternalError(e.to_string()))?;
-    let project_id_uuid = Uuid::parse_str(&task.project_id).map_err(|e| ApiError::InternalError(e.to_string()))?;
-    let ctx = TaskAttempt::load_context(pool, task_attempt.id, task_id_uuid, project_id_uuid).await?;
+    let task_id_uuid =
+        Uuid::parse_str(&task.id).map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let project_id_uuid =
+        Uuid::parse_str(&task.project_id).map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let ctx =
+        TaskAttempt::load_context(pool, task_attempt.id, task_id_uuid, project_id_uuid).await?;
 
     // Use the stored base branch if no new base branch is provided
     let effective_base_branch =

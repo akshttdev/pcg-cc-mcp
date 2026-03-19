@@ -3,25 +3,24 @@
 //! Provides dashboard control over the Discord bot and SSE streaming
 //! of live voice transcripts.
 
+use std::{convert::Infallible, pin::Pin, time::Duration};
+
 use axum::{
-    Router,
+    Json, Router,
     extract::{Path, Query, State},
     response::{
         IntoResponse,
         sse::{Event as SseEvent, KeepAlive, Sse},
     },
     routing::{get, post},
-    Json,
 };
-use futures_util::stream::{Stream, StreamExt};
-use serde::{Deserialize, Serialize};
-use std::{convert::Infallible, pin::Pin, time::Duration};
-use tokio_stream::wrappers::BroadcastStream;
-use tracing::info;
-
 use db::models::meeting_session::MeetingSession;
 use deployment::Deployment;
 use discord_bot::{active_sessions, session_key, subscribe_transcript};
+use futures_util::stream::{Stream, StreamExt};
+use serde::{Deserialize, Serialize};
+use tokio_stream::wrappers::BroadcastStream;
+use tracing::info;
 
 use crate::{DeploymentImpl, error::ApiError};
 
@@ -125,9 +124,10 @@ async fn join_channel(
     // Check if there's already an active session for this guild+agent
     let key = session_key(guild_id, agent);
     if discord_bot::DISCORD_SESSIONS.contains_key(&key) {
-        return Err(ApiError::BadRequest(
-            format!("{} is already in a voice session for this guild.", agent),
-        ));
+        return Err(ApiError::BadRequest(format!(
+            "{} is already in a voice session for this guild.",
+            agent
+        )));
     }
 
     Ok(Json(serde_json::json!({
@@ -188,7 +188,9 @@ async fn leave_channel(
     }
 
     if ended.is_empty() {
-        return Err(ApiError::NotFound("No active session for that guild".into()));
+        return Err(ApiError::NotFound(
+            "No active session for that guild".into(),
+        ));
     }
 
     Ok(Json(serde_json::json!({
@@ -278,9 +280,9 @@ async fn stream_transcript(Path(id): Path<String>) -> impl IntoResponse {
             Some(rx) => {
                 let s = BroadcastStream::new(rx).filter_map(|item| {
                     let result = match item {
-                        Ok(event) => serde_json::to_string(&event).ok().map(|json| {
-                            Ok(SseEvent::default().event("transcript").data(json))
-                        }),
+                        Ok(event) => serde_json::to_string(&event)
+                            .ok()
+                            .map(|json| Ok(SseEvent::default().event("transcript").data(json))),
                         Err(_) => Some(Ok(SseEvent::default()
                             .event("done")
                             .data(r#"{"message":"Session ended"}"#))),

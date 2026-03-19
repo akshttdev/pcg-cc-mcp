@@ -122,9 +122,7 @@ pub fn normalize_model_name(model: &str, provider: &LLMProvider) -> String {
                 "claude-3.5-sonnet" | "claude-3-5-sonnet" => {
                     "claude-3-5-sonnet-20241022".to_string()
                 }
-                "claude-3.5-haiku" | "claude-3-5-haiku" => {
-                    "claude-3-5-haiku-20241022".to_string()
-                }
+                "claude-3.5-haiku" | "claude-3-5-haiku" => "claude-3-5-haiku-20241022".to_string(),
                 "claude-3-opus" => "claude-3-opus-20240229".to_string(),
                 "claude-3-sonnet" => "claude-3-sonnet-20240229".to_string(),
                 "claude-3-haiku" => "claude-3-haiku-20240307".to_string(),
@@ -212,7 +210,7 @@ pub fn create_client_for_agent(agent: &Agent) -> LLMClient {
                 }
             })
         }
-        LLMProvider::OpenAI => None, // Uses default OpenAI endpoint
+        LLMProvider::OpenAI => None,    // Uses default OpenAI endpoint
         LLMProvider::Anthropic => None, // Uses Anthropic SDK
     };
 
@@ -296,9 +294,6 @@ mod tests {
             normalize_model_name("claude-sonnet-4", &LLMProvider::Anthropic),
             "claude-sonnet-4-20250514"
         );
-        assert_eq!(
-            normalize_model_name("gpt4", &LLMProvider::OpenAI),
-            "gpt-4o"
-        );
+        assert_eq!(normalize_model_name("gpt4", &LLMProvider::OpenAI), "gpt-4o");
     }
 }

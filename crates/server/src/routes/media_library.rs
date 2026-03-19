@@ -9,23 +9,25 @@
 //! POST /media/{id}/analyze                     — re-trigger analysis
 //! POST /media/backfill                         — import render_deliverable execution artifacts
 
+use std::path::PathBuf;
+
 use axum::{
-    Router,
+    Json, Router,
     extract::{Multipart, Path, Query, State},
     routing::{get, post},
-    Json,
+};
+use db::{
+    db_uuid::DbUuid,
+    models::media_asset::{CreateMediaAsset, MediaAsset},
 };
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use services::services::editron::asset_intelligence;
 use tokio::io::AsyncWriteExt;
 use utils::response::ApiResponse;
 use uuid::Uuid;
-use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError};
-use db::models::media_asset::{CreateMediaAsset, MediaAsset};
-use services::services::editron::asset_intelligence;
 
 #[derive(Debug, Deserialize)]
 pub struct ListQuery {
@@ -46,7 +48,9 @@ async fn list_assets(
     Path(project_id): Path<String>,
     Query(q): Query<ListQuery>,
 ) -> Result<Json<ApiResponse<Vec<MediaAsset>>>, ApiError> {
-    let project_id = DbUuid::parse(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let project_id = DbUuid::parse(&project_id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     let limit = q.limit.unwrap_or(100);
     let assets = MediaAsset::find_by_project(&d.db().pool, project_id, limit).await?;
     Ok(Json(ApiResponse::success(assets)))
@@ -58,7 +62,9 @@ async fn search_assets(
     Path(project_id): Path<String>,
     Query(q): Query<SearchQuery>,
 ) -> Result<Json<ApiResponse<Vec<MediaAsset>>>, ApiError> {
-    let project_id = DbUuid::parse(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let project_id = DbUuid::parse(&project_id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     let query_str = q.q.unwrap_or_default();
     let limit = q.limit.unwrap_or(50);
 
@@ -77,7 +83,9 @@ async fn upload_asset(
     Path(project_id): Path<String>,
     mut multipart: Multipart,
 ) -> Result<Json<ApiResponse<MediaAsset>>, ApiError> {
-    let project_id = DbUuid::parse(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let project_id = DbUuid::parse(&project_id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     let media_root = std::env::var("MEDIA_ROOT")
         .unwrap_or_else(|_| "/home/pythia/pcg-cc-mcp/dev_assets/media".into());
 
@@ -98,10 +106,7 @@ async fn upload_asset(
     {
         let field_name = field.name().unwrap_or("").to_string();
         if field_name == "file" {
-            let orig_name = field
-                .file_name()
-                .unwrap_or("upload")
-                .to_string();
+            let orig_name = field.file_name().unwrap_or("upload").to_string();
             let content_type = field
                 .content_type()
                 .unwrap_or("application/octet-stream")
@@ -109,7 +114,8 @@ async fn upload_asset(
             mime_type = content_type;
 
             let asset_uuid = Uuid::new_v4();
-            let safe_name = orig_name.replace(|c: char| !c.is_alphanumeric() && c != '.' && c != '-', "_");
+            let safe_name =
+                orig_name.replace(|c: char| !c.is_alphanumeric() && c != '.' && c != '-', "_");
             filename = format!("{}_{}", asset_uuid.simple(), safe_name);
             let dest = project_dir.join(&filename);
 
@@ -167,7 +173,9 @@ async fn get_asset(
     State(d): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<MediaAsset>>, ApiError> {
-    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let id = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     MediaAsset::find_by_id(&d.db().pool, id)
         .await?
         .map(|a| Json(ApiResponse::success(a)))
@@ -179,7 +187,9 @@ async fn delete_asset(
     State(d): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let id = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     let deleted = MediaAsset::delete(&d.db().pool, id).await?;
     if deleted {
         Ok(Json(ApiResponse::success(())))
@@ -193,7 +203,9 @@ async fn retrigger_analysis(
     State(d): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<MediaAsset>>, ApiError> {
-    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let id = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     let asset = MediaAsset::find_by_id(&d.db().pool, id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Asset not found".into()))?;
@@ -309,13 +321,12 @@ async fn backfill_from_artifacts(
             let file_path_str = abs_path.to_string_lossy().into_owned();
 
             // Idempotency check
-            let exists: bool = sqlx::query_scalar(
-                "SELECT EXISTS(SELECT 1 FROM media_assets WHERE file_path = ?)",
-            )
-            .bind(&file_path_str)
-            .fetch_one(pool)
-            .await
-            .unwrap_or(false);
+            let exists: bool =
+                sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM media_assets WHERE file_path = ?)")
+                    .bind(&file_path_str)
+                    .fetch_one(pool)
+                    .await
+                    .unwrap_or(false);
 
             if exists {
                 skipped += 1;
@@ -407,13 +418,9 @@ async fn remote_pull(
         .map_err(|e| ApiError::BadRequest(format!("Cannot create media dir: {}", e)))?;
 
     // Derive filename from URL if not provided
-    let filename = body.filename.unwrap_or_else(|| {
-        body.url
-            .split('/')
-            .last()
-            .unwrap_or("download")
-            .to_string()
-    });
+    let filename = body
+        .filename
+        .unwrap_or_else(|| body.url.split('/').last().unwrap_or("download").to_string());
 
     // Idempotency: check by filename in this project
     let dest = project_dir.join(&filename);
@@ -429,13 +436,12 @@ async fn remote_pull(
     .unwrap_or(false);
 
     if already {
-        let asset: MediaAsset = sqlx::query_as(
-            "SELECT * FROM media_assets WHERE file_path = ? AND project_id = ?",
-        )
-        .bind(&file_path_str)
-        .bind(body.project_id)
-        .fetch_one(pool)
-        .await?;
+        let asset: MediaAsset =
+            sqlx::query_as("SELECT * FROM media_assets WHERE file_path = ? AND project_id = ?")
+                .bind(&file_path_str)
+                .bind(body.project_id)
+                .fetch_one(pool)
+                .await?;
         return Ok(Json(ApiResponse::success(asset)));
     }
 
@@ -519,7 +525,9 @@ async fn import_directory(
     Path(project_id): Path<String>,
     Json(body): Json<ImportDirBody>,
 ) -> Result<Json<ApiResponse<ImportResult>>, ApiError> {
-    let project_id = DbUuid::parse(&project_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let project_id = DbUuid::parse(&project_id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     let pool = &d.db().pool;
     let dir = PathBuf::from(&body.path);
 
@@ -530,7 +538,9 @@ async fn import_directory(
         )));
     }
 
-    const SUPPORTED: &[&str] = &["mp4", "mov", "avi", "mkv", "webm", "jpg", "jpeg", "png", "gif"];
+    const SUPPORTED: &[&str] = &[
+        "mp4", "mov", "avi", "mkv", "webm", "jpg", "jpeg", "png", "gif",
+    ];
 
     let mut entries = Vec::new();
     let mut read_dir = tokio::fs::read_dir(&dir)

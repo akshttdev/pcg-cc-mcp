@@ -15,35 +15,29 @@ use std::sync::Arc;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-
     routing::{get, post},
 };
 use chrono::{DateTime, Utc};
+use db::models::{
+    system_settings::SystemSetting,
+    task_attempt::{CreateTaskAttempt, TaskAttempt},
+    topsi_user_settings::{TopsiUserSettings, classify_tool_risk},
+};
+use deployment::Deployment;
+use executors::{executors::BaseCodingAgent, profile::ExecutorProfileId};
+// Import voice types from Nora
+use nora::voice::{AudioFormat, SpeechResponse, VoiceConfig, VoiceEngine};
 use serde::{Deserialize, Serialize};
+use services::services::container::ContainerService;
+use sqlx;
 use tokio::sync::RwLock;
 use topsi::{
-    TopsiAgent, TopsiConfig, TopsiError, TopsiRequest, TopsiRequestType, TopsiResponse,
-    TopologySummary, DetectedIssue, UserContext, AccessScope, ProjectAccess,
-    RecommendationBatch, TaskExecutionBridge,
-    initialize_topsi,
+    AccessScope, DetectedIssue, ProjectAccess, RecommendationBatch, TaskExecutionBridge,
+    TopologySummary, TopsiAgent, TopsiConfig, TopsiError, TopsiRequest, TopsiRequestType,
+    TopsiResponse, UserContext, initialize_topsi,
 };
 use ts_rs::TS;
 use uuid::Uuid;
-
-use deployment::Deployment;
-use sqlx;
-use db::models::task_attempt::{CreateTaskAttempt, TaskAttempt};
-use executors::executors::BaseCodingAgent;
-use executors::profile::ExecutorProfileId;
-use services::services::container::ContainerService;
-
-// Import voice types from Nora
-use nora::voice::{
-    VoiceConfig, VoiceEngine, SpeechResponse, AudioFormat,
-};
-
-use db::models::system_settings::SystemSetting;
-use db::models::topsi_user_settings::{TopsiUserSettings, classify_tool_risk};
 
 use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
@@ -61,9 +55,12 @@ impl TaskExecutionBridge for DeploymentBridge {
         base_branch: &str,
     ) -> std::result::Result<serde_json::Value, String> {
         // Parse executor name to BaseCodingAgent enum
-        let base_agent: BaseCodingAgent = executor_name
-            .parse()
-            .map_err(|_| format!("Unknown executor '{}'. Available: CLAUDE_CODE, AMP, GEMINI, CODEX", executor_name))?;
+        let base_agent: BaseCodingAgent = executor_name.parse().map_err(|_| {
+            format!(
+                "Unknown executor '{}'. Available: CLAUDE_CODE, AMP, GEMINI, CODEX",
+                executor_name
+            )
+        })?;
 
         let executor_profile_id = ExecutorProfileId::new(base_agent);
 
@@ -122,7 +119,8 @@ pub(crate) static TOPSI_INSTANCE: tokio::sync::OnceCell<Arc<RwLock<Option<TopsiA
     tokio::sync::OnceCell::const_new();
 
 /// Global Topsi initialization timestamp
-pub(crate) static TOPSI_INIT_TIME: tokio::sync::OnceCell<DateTime<Utc>> = tokio::sync::OnceCell::const_new();
+pub(crate) static TOPSI_INIT_TIME: tokio::sync::OnceCell<DateTime<Utc>> =
+    tokio::sync::OnceCell::const_new();
 
 /// Global voice engine instance for Topsi
 pub(crate) static TOPSI_VOICE_ENGINE: tokio::sync::OnceCell<Arc<RwLock<Option<VoiceEngine>>>> =
@@ -154,7 +152,9 @@ impl TopsiManager {
     ) -> Result<TopsiResponse, TopsiError> {
         let agent = self.agent.read().await;
         if let Some(topsi) = agent.as_ref() {
-            topsi.process_request(request, user_context, session_id).await
+            topsi
+                .process_request(request, user_context, session_id)
+                .await
         } else {
             Err(TopsiError::NotInitialized(
                 "Topsi agent not initialized".to_string(),
@@ -204,37 +204,68 @@ pub fn topsi_routes() -> Router<DeploymentImpl> {
         .route("/topsi/status", get(get_topsi_status))
         .route("/topsi/chat", post(chat::chat_with_topsi))
         .route("/topsi/topology", get(topology::get_topology_overview))
-        .route("/topsi/topology/{project_id}", get(topology::get_project_topology))
+        .route(
+            "/topsi/topology/{project_id}",
+            get(topology::get_project_topology),
+        )
         .route("/topsi/issues", get(topology::detect_issues))
-        .route("/topsi/issues/{project_id}", get(topology::detect_project_issues))
+        .route(
+            "/topsi/issues/{project_id}",
+            get(topology::detect_project_issues),
+        )
         .route("/topsi/projects", get(topology::get_accessible_projects))
         .route("/topsi/recommendations", get(topology::get_recommendations))
-        .route("/topsi/recommendations/{project_id}", get(topology::get_project_recommendations))
+        .route(
+            "/topsi/recommendations/{project_id}",
+            get(topology::get_project_recommendations),
+        )
         .route("/topsi/command", post(chat::execute_command))
         // Voice routes for Topsi
         .route("/topsi/voice/synthesize", post(voice::synthesize_speech))
         .route("/topsi/voice/transcribe", post(voice::transcribe_speech))
         .route("/topsi/voice/interaction", post(voice::voice_interaction))
-        .route("/topsi/voice/config", get(voice::get_voice_config).put(voice::update_voice_config))
+        .route(
+            "/topsi/voice/config",
+            get(voice::get_voice_config).put(voice::update_voice_config),
+        )
         // Meeting mode routes
-
         .route("/topsi/meeting/list", get(meetings::list_meetings))
         .route("/topsi/meeting/start", post(meetings::start_meeting))
         .route("/topsi/meeting/join", post(meetings::join_meeting))
-        .route("/topsi/meeting/message", post(meetings::meeting_text_message))
+        .route(
+            "/topsi/meeting/message",
+            post(meetings::meeting_text_message),
+        )
         .route("/topsi/meeting/audio", post(meetings::meeting_audio_chunk))
         .route("/topsi/meeting/end", post(meetings::end_meeting))
-        .route("/topsi/meeting/status/{session_id}", get(meetings::meeting_status))
-        .route("/topsi/meeting/notes/{session_id}", get(meetings::get_meeting_notes).post(meetings::regenerate_meeting_notes))
-        .route("/topsi/meeting/transcript/{session_id}", get(meetings::get_meeting_transcript))
-        .route("/topsi/meeting/share/{session_id}", post(meetings::share_meeting))
+        .route(
+            "/topsi/meeting/status/{session_id}",
+            get(meetings::meeting_status),
+        )
+        .route(
+            "/topsi/meeting/notes/{session_id}",
+            get(meetings::get_meeting_notes).post(meetings::regenerate_meeting_notes),
+        )
+        .route(
+            "/topsi/meeting/transcript/{session_id}",
+            get(meetings::get_meeting_transcript),
+        )
+        .route(
+            "/topsi/meeting/share/{session_id}",
+            post(meetings::share_meeting),
+        )
         // Admin prompt management (production-safe, admin-only)
-        .route("/topsi/admin/prompt", get(admin::get_admin_prompt).put(admin::update_admin_prompt))
+        .route(
+            "/topsi/admin/prompt",
+            get(admin::get_admin_prompt).put(admin::update_admin_prompt),
+        )
         // Per-user settings
-        .route("/topsi/user-settings", get(admin::get_user_settings).put(admin::update_user_settings))
+        .route(
+            "/topsi/user-settings",
+            get(admin::get_user_settings).put(admin::update_user_settings),
+        )
         // Tool metadata (risk classification)
         .route("/topsi/tools", get(admin::get_tool_risk_map))
-
         .layer(axum::middleware::from_fn(
             crate::middleware::request_id_middleware,
         ))
@@ -564,8 +595,7 @@ pub(crate) async fn get_user_context_from_req(
         }
         Err(_) => {
             // No authentication - return restricted context
-            UserContext::user("anonymous")
-                .with_session(Uuid::new_v4().to_string())
+            UserContext::user("anonymous").with_session(Uuid::new_v4().to_string())
         }
     }
 }

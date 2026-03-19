@@ -1,10 +1,13 @@
 //! Call handling: incoming calls, speech input, call status, and fallback.
 
-use super::*;
-use super::audio::{generate_and_cache_audio, build_audio_url};
-use super::nora_integration::process_with_nora;
-use super::onboarding::{
-    create_caller_account, build_pcg_team_context, get_fallback_project_id, lookup_pcg_team_member,
+use super::{
+    audio::{build_audio_url, generate_and_cache_audio},
+    nora_integration::process_with_nora,
+    onboarding::{
+        build_pcg_team_context, create_caller_account, get_fallback_project_id,
+        lookup_pcg_team_member,
+    },
+    *,
 };
 
 // ---------------------------------------------------------------------------
@@ -45,7 +48,8 @@ pub async fn handle_incoming_call(
     // ------------------------------------------------------------------
     // 1. Check if this is a PCG team member (highest priority)
     // ------------------------------------------------------------------
-    let twilio_caller_name = request.caller_name
+    let twilio_caller_name = request
+        .caller_name
         .as_deref()
         .filter(|s| !s.is_empty())
         .unwrap_or("Unknown Caller")
@@ -87,7 +91,9 @@ pub async fn handle_incoming_call(
             .flatten();
             match row.and_then(|(b,)| Uuid::from_slice(&b).ok()) {
                 Some(pid) => pid,
-                None => get_fallback_project_id(pool).await.unwrap_or_else(Uuid::new_v4),
+                None => get_fallback_project_id(pool)
+                    .await
+                    .unwrap_or_else(Uuid::new_v4),
             }
         };
 
@@ -95,17 +101,16 @@ pub async fn handle_incoming_call(
 
         // Look up organization_id from the project
         let organization_id = {
-            let row: Option<(Vec<u8>,)> = sqlx::query_as(
-                "SELECT organization_id FROM projects WHERE id = ?"
-            )
-            .bind(project_id.as_bytes().as_slice())
-            .fetch_optional(pool)
-            .await
-            .ok()
-            .flatten();
-            row.and_then(|(b,)| Uuid::from_slice(&b).ok()).unwrap_or_else(Uuid::new_v4)
+            let row: Option<(Vec<u8>,)> =
+                sqlx::query_as("SELECT organization_id FROM projects WHERE id = ?")
+                    .bind(project_id.as_bytes().as_slice())
+                    .fetch_optional(pool)
+                    .await
+                    .ok()
+                    .flatten();
+            row.and_then(|(b,)| Uuid::from_slice(&b).ok())
+                .unwrap_or_else(Uuid::new_v4)
         };
-
 
         // Ensure CRM contact exists for PCG team member (for call_log FK)
         let crm_contact_id = {
@@ -113,31 +118,44 @@ pub async fn handle_incoming_call(
                 Ok(Some(c)) => c.id,
                 _ => {
                     // Create internal CRM entry for the team member
-                    let first = full_name.split_whitespace().next().unwrap_or(&full_name).to_string();
+                    let first = full_name
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or(&full_name)
+                        .to_string();
                     let last = full_name.split_whitespace().nth(1).map(|s| s.to_string());
-                    match CrmContact::create(pool, CreateCrmContact {
-                        organization_id: DbUuid::from(organization_id),
-                        client_id: None,
+                    match CrmContact::create(
+                        pool,
+                        CreateCrmContact {
+                            organization_id: DbUuid::from(organization_id),
+                            client_id: None,
 
-                        first_name: Some(first),
-                        last_name: last,
-                        email: None,
-                        phone: Some(request.from.clone()),
-                        mobile: None,
-                        avatar_url: None,
-                        company_name: Some("Power Club Global".to_string()),
-                        job_title: if is_admin { Some("Administrator".to_string()) } else { Some("Team Member".to_string()) },
-                        department: None,
-                        linkedin_url: None,
-                        twitter_handle: None,
-                        website: None,
-                        source: Some(ContactSource::Manual),
-                        lifecycle_stage: Some(LifecycleStage::Customer),
-                        tags: Some(vec!["pcg-team".to_string()]),
-                        custom_fields: None,
-                        zoho_contact_id: None,
-                        gmail_contact_id: None,
-                    }).await {
+                            first_name: Some(first),
+                            last_name: last,
+                            email: None,
+                            phone: Some(request.from.clone()),
+                            mobile: None,
+                            avatar_url: None,
+                            company_name: Some("Power Club Global".to_string()),
+                            job_title: if is_admin {
+                                Some("Administrator".to_string())
+                            } else {
+                                Some("Team Member".to_string())
+                            },
+                            department: None,
+                            linkedin_url: None,
+                            twitter_handle: None,
+                            website: None,
+                            source: Some(ContactSource::Manual),
+                            lifecycle_stage: Some(LifecycleStage::Customer),
+                            tags: Some(vec!["pcg-team".to_string()]),
+                            custom_fields: None,
+                            zoho_contact_id: None,
+                            gmail_contact_id: None,
+                        },
+                    )
+                    .await
+                    {
                         Ok(c) => c.id,
                         Err(_) => DbUuid::new(),
                     }
@@ -145,8 +163,18 @@ pub async fn handle_incoming_call(
             }
         };
 
-        info!("PCG team member calling: {} (admin={}), project={}", full_name, is_admin, project_id);
-        CallerBranch::PcgTeam { user_id, full_name, is_admin, project_id, team_context_json: team_context, crm_contact_id }
+        info!(
+            "PCG team member calling: {} (admin={}), project={}",
+            full_name, is_admin, project_id
+        );
+        CallerBranch::PcgTeam {
+            user_id,
+            full_name,
+            is_admin,
+            project_id,
+            team_context_json: team_context,
+            crm_contact_id,
+        }
     } else {
         // External caller — CRM lookup
         let existing_contact = CrmContact::find_by_phone_global(pool, &request.from)
@@ -155,16 +183,26 @@ pub async fn handle_incoming_call(
 
         if let Some(contact) = existing_contact {
             // Returning external client
-            let prev_logs = CallLog::find_by_crm_contact(pool, Uuid::parse_str(&contact.id).unwrap_or(Uuid::nil()), 3)
-                .await
-                .unwrap_or_default();
+            let prev_logs = CallLog::find_by_crm_contact(
+                pool,
+                Uuid::parse_str(&contact.id).unwrap_or(Uuid::nil()),
+                3,
+            )
+            .await
+            .unwrap_or_default();
             let project_id = match prev_logs.first().map(|l| l.project_id) {
                 Some(pid) => pid,
-                None => get_fallback_project_id(pool).await.unwrap_or_else(Uuid::new_v4),
+                None => get_fallback_project_id(pool)
+                    .await
+                    .unwrap_or_else(Uuid::new_v4),
             };
             let call_count = prev_logs.len();
-            let summaries: Vec<String> = prev_logs.iter().filter_map(|l| l.summary.clone()).collect();
-            info!("Returning client {} ({} previous calls)", request.from, call_count);
+            let summaries: Vec<String> =
+                prev_logs.iter().filter_map(|l| l.summary.clone()).collect();
+            info!(
+                "Returning client {} ({} previous calls)",
+                request.from, call_count
+            );
             CallerBranch::External {
                 contact,
                 project_id,
@@ -174,49 +212,64 @@ pub async fn handle_incoming_call(
             }
         } else {
             // New caller — create account + CRM
-            let (_user_id, project_id) = create_caller_account(pool, &request.from, &twilio_caller_name)
-                .await
-                .unwrap_or_else(|e| {
-                    error!("Failed to create caller account: {}", e);
-                    (Uuid::new_v4(), Uuid::new_v4())
-                });
+            let (_user_id, project_id) =
+                create_caller_account(pool, &request.from, &twilio_caller_name)
+                    .await
+                    .unwrap_or_else(|e| {
+                        error!("Failed to create caller account: {}", e);
+                        (Uuid::new_v4(), Uuid::new_v4())
+                    });
 
             // Look up organization_id from the project
             let organization_id = {
-                let row: Option<(Vec<u8>,)> = sqlx::query_as(
-                    "SELECT organization_id FROM projects WHERE id = ?"
-                )
-                .bind(project_id.as_bytes().as_slice())
-                .fetch_optional(pool)
-                .await
-                .ok()
-                .flatten();
-                row.and_then(|(b,)| Uuid::from_slice(&b).ok()).unwrap_or_else(Uuid::new_v4)
+                let row: Option<(Vec<u8>,)> =
+                    sqlx::query_as("SELECT organization_id FROM projects WHERE id = ?")
+                        .bind(project_id.as_bytes().as_slice())
+                        .fetch_optional(pool)
+                        .await
+                        .ok()
+                        .flatten();
+                row.and_then(|(b,)| Uuid::from_slice(&b).ok())
+                    .unwrap_or_else(Uuid::new_v4)
             };
 
-            let contact = match CrmContact::create(pool, CreateCrmContact {
-                organization_id: DbUuid::from(organization_id),
-                client_id: None,
+            let contact = match CrmContact::create(
+                pool,
+                CreateCrmContact {
+                    organization_id: DbUuid::from(organization_id),
+                    client_id: None,
 
-                first_name: Some(twilio_caller_name.split_whitespace().next().unwrap_or(&twilio_caller_name).to_string()),
-                last_name: twilio_caller_name.split_whitespace().nth(1).map(|s| s.to_string()),
-                email: None,
-                phone: Some(request.from.clone()),
-                mobile: None,
-                avatar_url: None,
-                company_name: None,
-                job_title: None,
-                department: None,
-                linkedin_url: None,
-                twitter_handle: None,
-                website: None,
-                source: Some(ContactSource::Manual),
-                lifecycle_stage: Some(LifecycleStage::Lead),
-                tags: None,
-                custom_fields: None,
-                zoho_contact_id: None,
-                gmail_contact_id: None,
-            }).await {
+                    first_name: Some(
+                        twilio_caller_name
+                            .split_whitespace()
+                            .next()
+                            .unwrap_or(&twilio_caller_name)
+                            .to_string(),
+                    ),
+                    last_name: twilio_caller_name
+                        .split_whitespace()
+                        .nth(1)
+                        .map(|s| s.to_string()),
+                    email: None,
+                    phone: Some(request.from.clone()),
+                    mobile: None,
+                    avatar_url: None,
+                    company_name: None,
+                    job_title: None,
+                    department: None,
+                    linkedin_url: None,
+                    twitter_handle: None,
+                    website: None,
+                    source: Some(ContactSource::Manual),
+                    lifecycle_stage: Some(LifecycleStage::Lead),
+                    tags: None,
+                    custom_fields: None,
+                    zoho_contact_id: None,
+                    gmail_contact_id: None,
+                },
+            )
+            .await
+            {
                 Ok(c) => c,
                 Err(e) => {
                     error!("Failed to create CRM contact: {}", e);
@@ -228,7 +281,10 @@ pub async fn handle_incoming_call(
                 }
             };
 
-            info!("New caller {} onboarded: contact={}, project={}", request.from, contact.id, project_id);
+            info!(
+                "New caller {} onboarded: contact={}, project={}",
+                request.from, contact.id, project_id
+            );
             CallerBranch::External {
                 contact,
                 project_id,
@@ -242,24 +298,62 @@ pub async fn handle_incoming_call(
     // ------------------------------------------------------------------
     // 3. Unpack branch into unified variables
     // ------------------------------------------------------------------
-    let (caller_name, caller_role, pcg_user_id, project_id, crm_contact_id, pcg_team_context_json, caller_profile_json) = match branch {
-        CallerBranch::PcgTeam { user_id, full_name, is_admin, project_id, team_context_json, crm_contact_id } => {
-            let role = if is_admin { CallerRole::PcgAdmin } else { CallerRole::PcgTeam };
+    let (
+        caller_name,
+        caller_role,
+        pcg_user_id,
+        project_id,
+        crm_contact_id,
+        pcg_team_context_json,
+        caller_profile_json,
+    ) = match branch {
+        CallerBranch::PcgTeam {
+            user_id,
+            full_name,
+            is_admin,
+            project_id,
+            team_context_json,
+            crm_contact_id,
+        } => {
+            let role = if is_admin {
+                CallerRole::PcgAdmin
+            } else {
+                CallerRole::PcgTeam
+            };
             let profile = json!({
                 "caller_phone": request.from,
                 "caller_name": full_name,
                 "caller_role": if is_admin { "pcg_admin" } else { "pcg_team" },
                 "is_pcg_team": true,
                 "company": "Power Club Global",
-            }).to_string();
-            (full_name, role, Some(user_id), project_id, crm_contact_id, Some(team_context_json), profile)
+            })
+            .to_string();
+            (
+                full_name,
+                role,
+                Some(user_id),
+                project_id,
+                crm_contact_id,
+                Some(team_context_json),
+                profile,
+            )
         }
-        CallerBranch::External { contact, project_id, caller_role, previous_calls, previous_summaries } => {
-            let name = contact.first_name.as_deref()
-                .map(|f| if let Some(l) = &contact.last_name {
-                    format!("{} {}", f, l)
-                } else {
-                    f.to_string()
+        CallerBranch::External {
+            contact,
+            project_id,
+            caller_role,
+            previous_calls,
+            previous_summaries,
+        } => {
+            let name = contact
+                .first_name
+                .as_deref()
+                .map(|f| {
+                    if let Some(l) = &contact.last_name {
+                        format!("{} {}", f, l)
+                    } else {
+                        f.to_string()
+                    }
                 })
                 .unwrap_or_else(|| twilio_caller_name.clone());
             let is_new = caller_role == CallerRole::NewCaller;
@@ -274,8 +368,17 @@ pub async fn handle_incoming_call(
                 "previous_calls": previous_calls,
                 "sponsored_call": is_new,
                 "previous_summaries": previous_summaries,
-            }).to_string();
-            (name, caller_role, None, project_id, contact.id, None, profile)
+            })
+            .to_string();
+            (
+                name,
+                caller_role,
+                None,
+                project_id,
+                contact.id,
+                None,
+                profile,
+            )
         }
     };
 
@@ -339,24 +442,22 @@ pub async fn handle_incoming_call(
             .unwrap_or_else(Uuid::new_v4)
     };
 
-    let conversation = match AgentConversation::get_or_create(
-        pool,
-        nora_agent_id,
-        &session_id,
-        Some(project_id),
-    )
-    .await
-    {
-        Ok(conv) => conv,
-        Err(e) => {
-            error!("Failed to get/create AgentConversation: {}", e);
-            let twiml = TwimlBuilder::new()
-                .say_british("I apologise, I cannot start a conversation right now. Please try again.")
-                .hangup()
-                .build();
-            return (StatusCode::OK, [("Content-Type", "application/xml")], twiml);
-        }
-    };
+    let conversation =
+        match AgentConversation::get_or_create(pool, nora_agent_id, &session_id, Some(project_id))
+            .await
+        {
+            Ok(conv) => conv,
+            Err(e) => {
+                error!("Failed to get/create AgentConversation: {}", e);
+                let twiml = TwimlBuilder::new()
+                    .say_british(
+                        "I apologise, I cannot start a conversation right now. Please try again.",
+                    )
+                    .hangup()
+                    .build();
+                return (StatusCode::OK, [("Content-Type", "application/xml")], twiml);
+            }
+        };
 
     // ------------------------------------------------------------------
     // 6. Store in CALL_DB_CONTEXTS + register phone→call_sid mapping
@@ -389,12 +490,18 @@ pub async fn handle_incoming_call(
     // ------------------------------------------------------------------
     let greeting = match &caller_role {
         CallerRole::PcgAdmin | CallerRole::PcgTeam => {
-            let first = caller_name.split_whitespace().next().unwrap_or(&caller_name);
+            let first = caller_name
+                .split_whitespace()
+                .next()
+                .unwrap_or(&caller_name);
             format!("Hello {}! How can I help you today?", first)
         }
         CallerRole::ReturningClient => {
             let first = caller_name.split_whitespace().next().unwrap_or("there");
-            format!("Welcome back, {}! Lovely to hear from you again. How can I help you today?", first)
+            format!(
+                "Welcome back, {}! Lovely to hear from you again. How can I help you today?",
+                first
+            )
         }
         CallerRole::NewCaller => handler.config().greeting_message.clone(),
     };
@@ -530,17 +637,20 @@ pub async fn handle_speech_input(
     // Drain any SMS messages queued while this call was active
     let queued_sms: Vec<serde_json::Value> = if let Some(ref ctx) = db_ctx {
         let mut queue = ctx.sms_queue.lock().await;
-        queue.drain(..).map(|sms| {
-            let mut entry = json!({
-                "from": sms.from,
-                "received_at": sms.received_at.to_rfc3339(),
-                "body": sms.body,
-            });
-            if let Some(content) = sms.ingested_content {
-                entry["ingested_content"] = json!(content);
-            }
-            entry
-        }).collect()
+        queue
+            .drain(..)
+            .map(|sms| {
+                let mut entry = json!({
+                    "from": sms.from,
+                    "received_at": sms.received_at.to_rfc3339(),
+                    "body": sms.body,
+                });
+                if let Some(content) = sms.ingested_content {
+                    entry["ingested_content"] = json!(content);
+                }
+                entry
+            })
+            .collect()
     } else {
         vec![]
     };
@@ -562,7 +672,8 @@ pub async fn handle_speech_input(
         match &ctx.caller_role {
             CallerRole::PcgAdmin | CallerRole::PcgTeam => {
                 // Full orchestration context for PCG team
-                let team_data: serde_json::Value = ctx.pcg_team_context_json
+                let team_data: serde_json::Value = ctx
+                    .pcg_team_context_json
                     .as_deref()
                     .and_then(|s| serde_json::from_str(s).ok())
                     .unwrap_or_default();
@@ -606,14 +717,19 @@ pub async fn handle_speech_input(
     };
 
     // Process through NORA to get response text
-    let (nora_response_raw, input_tokens, output_tokens) =
-        match process_with_nora(&speech_text, &session_id, Some(phone_context)).await {
-            Ok(result) => result,
-            Err(e) => {
-                error!("Error processing with NORA: {}", e);
-                ("I apologise, I'm having trouble processing your request. Could you please try again?".to_string(), 0i64, 0i64)
-            }
-        };
+    let (nora_response_raw, input_tokens, output_tokens) = match process_with_nora(
+        &speech_text,
+        &session_id,
+        Some(phone_context),
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(e) => {
+            error!("Error processing with NORA: {}", e);
+            ("I apologise, I'm having trouble processing your request. Could you please try again?".to_string(), 0i64, 0i64)
+        }
+    };
     // Strip markdown so neither ElevenLabs TTS nor Twilio <Say> reads symbols aloud
     let nora_response = strip_markdown_for_tts(&nora_response_raw);
 
@@ -625,20 +741,33 @@ pub async fn handle_speech_input(
             let (in_tok, out_tok) = (input_tokens, output_tokens);
             tokio::spawn(async move {
                 let pricing = VibePricingService::new(pool.clone());
-                if let Ok(tx) = pricing.record_llm_usage(
-                    VibeSourceType::Project,
-                    project_id,
-                    "claude-haiku-4-5-20251001",
-                    in_tok,
-                    out_tok,
-                    None,
-                    None,
-                    None,
-                ).await {
-                    if let Err(e) = db::models::project::Project::adjust_vibe_spent(&pool, &project_id.to_string(), tx.amount_vibe).await {
+                if let Ok(tx) = pricing
+                    .record_llm_usage(
+                        VibeSourceType::Project,
+                        project_id,
+                        "claude-haiku-4-5-20251001",
+                        in_tok,
+                        out_tok,
+                        None,
+                        None,
+                        None,
+                    )
+                    .await
+                {
+                    if let Err(e) = db::models::project::Project::adjust_vibe_spent(
+                        &pool,
+                        &project_id.to_string(),
+                        tx.amount_vibe,
+                    )
+                    .await
+                    {
                         tracing::warn!("[VIBE] Failed to adjust project vibe_spent: {e}");
                     }
-                    tracing::info!("[VIBE] Phone turn: {} VIBE charged to project={}", tx.amount_vibe, project_id);
+                    tracing::info!(
+                        "[VIBE] Phone turn: {} VIBE charged to project={}",
+                        tx.amount_vibe,
+                        project_id
+                    );
                 }
             });
         }
@@ -806,10 +935,9 @@ pub async fn handle_call_status(
     };
 
     // Load all messages to build transcript
-    let messages =
-        AgentConversationMessage::find_recent(pool, db_ctx.conversation_id, 200)
-            .await
-            .unwrap_or_default();
+    let messages = AgentConversationMessage::find_recent(pool, db_ctx.conversation_id, 200)
+        .await
+        .unwrap_or_default();
 
     let transcript = messages
         .iter()
@@ -838,19 +966,22 @@ pub async fn handle_call_status(
     }
 
     // Archive AgentConversation
-    if let Err(e) = AgentConversation::update_status(
-        pool,
-        db_ctx.conversation_id,
-        ConversationStatus::Archived,
-    )
-    .await
+    if let Err(e) =
+        AgentConversation::update_status(pool, db_ctx.conversation_id, ConversationStatus::Archived)
+            .await
     {
-        warn!("Failed to archive conversation {}: {}", db_ctx.conversation_id, e);
+        warn!(
+            "Failed to archive conversation {}: {}",
+            db_ctx.conversation_id, e
+        );
     }
 
     // Update CRM last_contacted_at
     if let Err(e) = CrmContact::record_contact_made(pool, &db_ctx.crm_contact_id).await {
-        warn!("Failed to update CRM contact {}: {}", db_ctx.crm_contact_id, e);
+        warn!(
+            "Failed to update CRM contact {}: {}",
+            db_ctx.crm_contact_id, e
+        );
     }
 
     info!(

@@ -5,9 +5,9 @@ use axum::{
     response::Response,
 };
 use db::models::cms_site::CmsSite;
+use deployment::Deployment;
 use uuid::Uuid;
 
-use deployment::Deployment;
 use crate::{DeploymentImpl, error::ApiError, middleware::require_auth};
 
 pub mod faq_items;
@@ -38,17 +38,11 @@ pub fn admin_router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .nest("/faq-items", faq_items::router(deployment))
         .nest("/page-sections", page_sections::router(deployment))
         .nest("/settings", settings::router(deployment))
-        .layer(from_fn_with_state(
-            deployment.clone(),
-            load_site_middleware,
-        ));
+        .layer(from_fn_with_state(deployment.clone(), load_site_middleware));
 
     Router::new()
         .nest("/sites/{site_id}", site_routes)
-        .layer(from_fn_with_state(
-            deployment.clone(),
-            require_auth,
-        ))
+        .layer(from_fn_with_state(deployment.clone(), require_auth))
 }
 
 /// CMS public router (no authentication required)

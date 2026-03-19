@@ -94,22 +94,22 @@ export function ExecutionSummaryCard({ summary, className }: ExecutionSummaryCar
     updateFeedback.mutate({ is_reference_example: !summary.is_reference_example });
   }, [summary, updateFeedback]);
 
-  if (!summary) {
-    return null;
-  }
-
-  const statusConfig = completionStatusConfig[summary.completion_status];
-  const StatusIcon = statusConfig.icon;
-
   const toolsList = useMemo(() => {
-    if (!summary.tools_used) return [];
+    if (!summary?.tools_used) return [];
     try {
       const parsed = JSON.parse(summary.tools_used);
       return Array.isArray(parsed) ? parsed : [];
     } catch {
       return [];
     }
-  }, [summary.tools_used]);
+  }, [summary?.tools_used]);
+
+  if (!summary) {
+    return null;
+  }
+
+  const statusConfig = completionStatusConfig[summary.completion_status];
+  const StatusIcon = statusConfig.icon;
 
   return (
     <Card className={cn('p-4 space-y-3', className)}>

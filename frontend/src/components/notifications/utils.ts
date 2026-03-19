@@ -49,13 +49,13 @@ function extractTitle(item: ActivityItem): string | undefined {
       const m = JSON.parse(item.metadata);
       if (m.title) return m.title;
     }
-  } catch {}
+  } catch { /* intentionally empty */ }
   try {
     if (item.new_state) {
       const s = JSON.parse(item.new_state);
       if (s.title) return s.title;
     }
-  } catch {}
+  } catch { /* intentionally empty */ }
   return undefined;
 }
 
@@ -64,7 +64,7 @@ export function formatAction(item: ActivityItem): string {
   let meta: Record<string, unknown> = {};
   try {
     if (item.metadata) meta = JSON.parse(item.metadata);
-  } catch {}
+  } catch { /* intentionally empty */ }
 
   const title = extractTitle(item);
 
@@ -100,6 +100,6 @@ export function getProjectId(item: ActivityItem): string | null {
       const meta = JSON.parse(item.metadata);
       if (meta.project_id) return meta.project_id;
     }
-  } catch {}
+  } catch { /* intentionally empty */ }
   return null;
 }

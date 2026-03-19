@@ -1,8 +1,10 @@
 //! SMS handling: incoming SMS, thread buffering, and SMS-during-call queuing.
 
-use super::*;
-use super::media::{fetch_and_describe_media, ingest_sms_content, MediaResult};
-use super::nora_integration::process_sms_with_nora;
+use super::{
+    media::{MediaResult, fetch_and_describe_media, ingest_sms_content},
+    nora_integration::process_sms_with_nora,
+    *,
+};
 
 /// POST /twilio/sms — Handle incoming SMS messages
 pub async fn handle_incoming_sms(
@@ -26,7 +28,10 @@ pub async fn handle_incoming_sms(
 
     if let Some(call_sid) = active_call_sid {
         // Caller is mid-call — ingest and queue the SMS for Nora to use
-        info!("SMS from {} received during active call {} — queuing for Nora", request.from, call_sid);
+        info!(
+            "SMS from {} received during active call {} — queuing for Nora",
+            request.from, call_sid
+        );
 
         let sms_queue = {
             let map = CALL_DB_CONTEXTS.lock().await;
@@ -51,23 +56,40 @@ pub async fn handle_incoming_sms(
             let twiml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response>\
                 <Message>Got it — I'll bring that into our conversation now.</Message>\
                 </Response>";
-            return (StatusCode::OK, [("Content-Type", "application/xml")], twiml.to_string());
+            return (
+                StatusCode::OK,
+                [("Content-Type", "application/xml")],
+                twiml.to_string(),
+            );
         }
     }
 
     // ── No active call — SMS thread buffering + Nora orchestration ───────────
     // Collect MMS media attachments (provider sends MediaUrl0..N as form fields)
     let media_attachments: Vec<(String, Option<String>)> = [
-        (request.media_url_0.clone(), request.media_content_type_0.clone()),
-        (request.media_url_1.clone(), request.media_content_type_1.clone()),
-        (request.media_url_2.clone(), request.media_content_type_2.clone()),
+        (
+            request.media_url_0.clone(),
+            request.media_content_type_0.clone(),
+        ),
+        (
+            request.media_url_1.clone(),
+            request.media_content_type_1.clone(),
+        ),
+        (
+            request.media_url_2.clone(),
+            request.media_content_type_2.clone(),
+        ),
     ]
     .into_iter()
     .filter_map(|(url, ct)| url.map(|u| (u, ct)))
     .collect();
 
     if !media_attachments.is_empty() {
-        info!("SMS from {} includes {} media attachment(s)", request.from, media_attachments.len());
+        info!(
+            "SMS from {} includes {} media attachment(s)",
+            request.from,
+            media_attachments.len()
+        );
     }
 
     // Resolve sender identity (persons > CRM > pcg_team)
@@ -83,12 +105,14 @@ pub async fn handle_incoming_sms(
     // spawn so we don't block the webhook response (SignalWire times out after ~15s)
     let msg_count = {
         let mut buffer = SMS_THREAD_BUFFER.lock().await;
-        let entry = buffer.entry(request.from.clone()).or_insert_with(|| SmsThread {
-            messages: Vec::new(),
-            pending_media: Vec::new(),
-            last_received: SystemTime::now(),
-            person_context: person_context.clone(),
-        });
+        let entry = buffer
+            .entry(request.from.clone())
+            .or_insert_with(|| SmsThread {
+                messages: Vec::new(),
+                pending_media: Vec::new(),
+                last_received: SystemTime::now(),
+                person_context: person_context.clone(),
+            });
         entry.messages.push(request.body.clone());
         // Accumulate media from all messages in the thread
         entry.pending_media.extend(media_attachments);
@@ -99,7 +123,10 @@ pub async fn handle_incoming_sms(
         entry.messages.len()
     };
 
-    info!("SMS thread from {}: {} message(s) buffered", request.from, msg_count);
+    info!(
+        "SMS thread from {}: {} message(s) buffered",
+        request.from, msg_count
+    );
 
     // Spawn debounced processor — each message spawns one; only the "last" one processes
     let from_clone = request.from.clone();
@@ -109,27 +136,40 @@ pub async fn handle_incoming_sms(
         // Drain buffer only if we're still the most recent processor
         let thread = {
             let mut buffer = SMS_THREAD_BUFFER.lock().await;
-            let should_process = buffer.get(&from_clone).map(|t| {
-                t.last_received
-                    .elapsed()
-                    .unwrap_or_default()
-                    .as_secs()
-                    >= SMS_THREAD_WINDOW_SECS - 5
-            }).unwrap_or(false);
-            if should_process { buffer.remove(&from_clone) } else { None }
+            let should_process = buffer
+                .get(&from_clone)
+                .map(|t| {
+                    t.last_received.elapsed().unwrap_or_default().as_secs()
+                        >= SMS_THREAD_WINDOW_SECS - 5
+                })
+                .unwrap_or(false);
+            if should_process {
+                buffer.remove(&from_clone)
+            } else {
+                None
+            }
         };
 
         if let Some(thread) = thread {
             // Fetch and process all media attachments (async, outside webhook handler)
             let media_result = if !thread.pending_media.is_empty() {
-                info!("Fetching {} media attachment(s) for SMS thread from {}", thread.pending_media.len(), from_clone);
+                info!(
+                    "Fetching {} media attachment(s) for SMS thread from {}",
+                    thread.pending_media.len(),
+                    from_clone
+                );
                 fetch_and_describe_media(thread.pending_media).await
             } else {
-                MediaResult { text_content: None, image_description: None }
+                MediaResult {
+                    text_content: None,
+                    image_description: None,
+                }
             };
 
             // Build combined message — start with buffered SMS bodies
-            let mut combined = thread.messages.iter()
+            let mut combined = thread
+                .messages
+                .iter()
                 .enumerate()
                 .map(|(i, m)| format!("[{}] {}", i + 1, m))
                 .collect::<Vec<_>>()
@@ -137,7 +177,11 @@ pub async fn handle_incoming_sms(
 
             // Append text content from text/plain media (SignalWire sends message body this way)
             if let Some(text) = media_result.text_content {
-                info!("Recovered text from media attachment ({} chars): {:?}", text.len(), &text[..text.len().min(80)]);
+                info!(
+                    "Recovered text from media attachment ({} chars): {:?}",
+                    text.len(),
+                    &text[..text.len().min(80)]
+                );
                 combined = if combined.trim().is_empty() {
                     text
                 } else {
@@ -147,11 +191,15 @@ pub async fn handle_incoming_sms(
 
             // Append image description
             if let Some(desc) = media_result.image_description {
-                info!("Image described ({} chars), appending to thread", desc.len());
+                info!(
+                    "Image described ({} chars), appending to thread",
+                    desc.len()
+                );
                 combined = format!("{}\n\n[Attached image: {}]", combined, desc);
             }
 
-            let sender_label = thread.person_context
+            let sender_label = thread
+                .person_context
                 .as_ref()
                 .and_then(|c| c.get("name").and_then(|v| v.as_str()))
                 .map(|n| format!("{} ({})", n, from_clone))
@@ -166,7 +214,13 @@ pub async fn handle_incoming_sms(
                 combined
             );
 
-            let reply = match process_sms_with_nora(&nora_content, &from_clone, thread.person_context).await {
+            let reply = match process_sms_with_nora(
+                &nora_content,
+                &from_clone,
+                thread.person_context,
+            )
+            .await
+            {
                 Ok(text) => truncate_for_sms(&text, 320),
                 Err(e) => {
                     error!("SMS Nora processing failed for {}: {}", from_clone, e);
@@ -181,5 +235,9 @@ pub async fn handle_incoming_sms(
     });
 
     // Return empty TwiML immediately — Nora replies via outbound SMS only
-    (StatusCode::OK, [("Content-Type", "application/xml")], "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response/>".to_string())
+    (
+        StatusCode::OK,
+        [("Content-Type", "application/xml")],
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response/>".to_string(),
+    )
 }

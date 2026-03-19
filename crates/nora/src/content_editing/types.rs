@@ -3,9 +3,9 @@
 //! Defines structures for every phase: intake, transcription, research,
 //! shot cataloging, directive synthesis, and assembly.
 
+use std::{collections::HashMap, path::PathBuf};
+
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::PathBuf;
 use ts_rs::TS;
 
 // ---------------------------------------------------------------------------

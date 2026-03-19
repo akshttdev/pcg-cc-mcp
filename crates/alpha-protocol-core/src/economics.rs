@@ -6,9 +6,12 @@
 //! - Vibe token rewards
 //! - Staking and reputation
 
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
+
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::time::{Duration, Instant};
 
 /// Vibe token amount (smallest unit = 1e-8 VIBE)
 pub type VibeAmount = u64;
@@ -64,8 +67,13 @@ impl ResourceContribution {
         let uptime_score = (self.uptime_seconds / 3600) * 10;
         let task_score = self.tasks_completed * 100;
 
-        cpu_score + gpu_score + bandwidth_score + storage_score +
-        relay_score + uptime_score + task_score
+        cpu_score
+            + gpu_score
+            + bandwidth_score
+            + storage_score
+            + relay_score
+            + uptime_score
+            + task_score
     }
 
     /// Merge another contribution into this one
@@ -130,15 +138,22 @@ impl Default for RewardRates {
 pub fn calculate_rewards(contribution: &ResourceContribution, rates: &RewardRates) -> VibeAmount {
     let cpu_reward = (contribution.cpu_units / 1_000_000) * rates.cpu_rate;
     let gpu_reward = (contribution.gpu_units / 1_000_000) * rates.gpu_rate;
-    let bandwidth_reward = (contribution.bandwidth_bytes / (1024 * 1024 * 1024)) * rates.bandwidth_rate;
-    let storage_hours = (contribution.storage_bytes / (1024 * 1024 * 1024)) * (contribution.uptime_seconds / 3600);
+    let bandwidth_reward =
+        (contribution.bandwidth_bytes / (1024 * 1024 * 1024)) * rates.bandwidth_rate;
+    let storage_hours =
+        (contribution.storage_bytes / (1024 * 1024 * 1024)) * (contribution.uptime_seconds / 3600);
     let storage_reward = storage_hours * rates.storage_rate;
     let relay_reward = contribution.relay_messages * rates.relay_rate;
     let uptime_reward = (contribution.uptime_seconds / 3600) * rates.uptime_rate;
     let task_reward = contribution.tasks_completed * rates.task_rate;
 
-    cpu_reward + gpu_reward + bandwidth_reward + storage_reward +
-    relay_reward + uptime_reward + task_reward
+    cpu_reward
+        + gpu_reward
+        + bandwidth_reward
+        + storage_reward
+        + relay_reward
+        + uptime_reward
+        + task_reward
 }
 
 /// Node reputation score (affects task assignment priority)
@@ -268,7 +283,12 @@ impl StakePool {
     }
 
     /// Request unstake (starts cooldown)
-    pub fn request_unstake(&mut self, delegator: Option<String>, amount: VibeAmount, cooldown_hours: u64) {
+    pub fn request_unstake(
+        &mut self,
+        delegator: Option<String>,
+        amount: VibeAmount,
+        cooldown_hours: u64,
+    ) {
         let now = chrono::Utc::now().timestamp();
         let available = now + (cooldown_hours * 3600) as i64;
 

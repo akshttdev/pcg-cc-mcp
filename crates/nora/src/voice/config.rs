@@ -56,18 +56,18 @@ impl TTSConfig {
     pub fn british_executive() -> Self {
         Self {
             provider: TTSProvider::Chatterbox, // Use local Coqui TTS (on Chatterbox port)
-            voice_id: "p225".to_string(), // VCTK p225 - young British female
+            voice_id: "p225".to_string(),      // VCTK p225 - young British female
             speed: 1.0,
             volume: 0.85,
             pitch: 1.0,
             quality: TTSQuality::High,
             british_voice_preferences: vec![
-                "p225".to_string(),              // Coqui VCTK young British female
-                "fable".to_string(),             // OpenAI British-leaning female
-                "nova".to_string(),              // OpenAI warm female
-                "echo".to_string(),              // OpenAI clear male
+                "p225".to_string(),                 // Coqui VCTK young British female
+                "fable".to_string(),                // OpenAI British-leaning female
+                "nova".to_string(),                 // OpenAI warm female
+                "echo".to_string(),                 // OpenAI clear male
                 "ZtcPZrt9K4w8e1OB9M6w".to_string(), // ElevenLabs: Mia Moore - Studio Presenter
-                "en-GB-SoniaNeural".to_string(), // Azure British
+                "en-GB-SoniaNeural".to_string(),    // Azure British
             ],
             fallback_providers: vec![
                 TTSProvider::OpenAI,
@@ -92,10 +92,10 @@ impl TTSConfig {
                 quality: TTSQuality::Premium,
                 british_voice_preferences: vec![
                     "ZtcPZrt9K4w8e1OB9M6w".to_string(), // ElevenLabs: Mia Moore - Studio Presenter
-                    "p225".to_string(),              // Coqui VCTK young British female
-                    "fable".to_string(),             // OpenAI British-leaning female
-                    "nova".to_string(),              // OpenAI warm female
-                    "en-GB-SoniaNeural".to_string(), // Azure British
+                    "p225".to_string(),                 // Coqui VCTK young British female
+                    "fable".to_string(),                // OpenAI British-leaning female
+                    "nova".to_string(),                 // OpenAI warm female
+                    "en-GB-SoniaNeural".to_string(),    // Azure British
                 ],
                 fallback_providers: vec![
                     TTSProvider::OpenAI,
@@ -112,7 +112,7 @@ impl TTSConfig {
         Self {
             provider: TTSProvider::Chatterbox, // Use local Chatterbox for dev too
             voice_id: "british_female".to_string(), // British voice reference
-            speed: 1.0,                    // Normal speed for better comprehension
+            speed: 1.0,                        // Normal speed for better comprehension
             volume: 0.8,
             pitch: 1.0,
             quality: TTSQuality::High, // Use high quality even in dev
@@ -143,8 +143,8 @@ pub struct STTConfig {
 impl STTConfig {
     pub fn high_accuracy() -> Self {
         Self {
-            provider: STTProvider::LocalWhisper,  // Force local Whisper (Sovereign Stack)
-            model: "base".to_string(),  // Use base model for local Whisper
+            provider: STTProvider::LocalWhisper, // Force local Whisper (Sovereign Stack)
+            model: "base".to_string(),           // Use base model for local Whisper
             language: "en-GB".to_string(),
             british_dialect_support: true,
             executive_vocabulary: true,

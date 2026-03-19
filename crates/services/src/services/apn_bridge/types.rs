@@ -1,8 +1,8 @@
 //! APN Bridge Types - Data structures for mesh network integration
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
 /// Request to distribute a task to the mesh network
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -200,14 +200,9 @@ pub enum APNEvent {
         capabilities: Vec<String>,
     },
     /// Peer disconnected
-    PeerDisconnected {
-        node_id: String,
-    },
+    PeerDisconnected { node_id: String },
     /// Vibe balance changed
-    VibeBalanceChanged {
-        new_balance: f64,
-        delta: f64,
-    },
+    VibeBalanceChanged { new_balance: f64, delta: f64 },
 }
 
 /// Peer information

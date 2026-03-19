@@ -250,13 +250,12 @@ impl TaskArtifact {
         task_id: Uuid,
         artifact_id: Uuid,
     ) -> Result<bool, TaskArtifactError> {
-        let result = sqlx::query(
-            r#"DELETE FROM task_artifacts WHERE task_id = ?1 AND artifact_id = ?2"#,
-        )
-        .bind(task_id)
-        .bind(artifact_id)
-        .execute(pool)
-        .await?;
+        let result =
+            sqlx::query(r#"DELETE FROM task_artifacts WHERE task_id = ?1 AND artifact_id = ?2"#)
+                .bind(task_id)
+                .bind(artifact_id)
+                .execute(pool)
+                .await?;
 
         Ok(result.rows_affected() > 0)
     }

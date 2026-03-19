@@ -1,13 +1,12 @@
 use axum::{
-    Json,
-    Router,
+    Json, Router,
     extract::{Path, Query, State},
     response::Json as ResponseJson,
     routing::{get, post},
 };
 use cinematics::{CinematicsConfig, CinematicsService, Cinematographer};
-use deployment::Deployment;
 use db::models::cinematic_brief::{CinematicBrief, CinematicShotPlan, CreateCinematicBrief};
+use deployment::Deployment;
 use serde::Deserialize;
 use serde_json::Value;
 use utils::response::ApiResponse;
@@ -57,10 +56,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             post(create_brief).get(list_briefs),
         )
         .route("/nora/cinematics/briefs/{id}", get(get_brief))
-        .route(
-            "/nora/cinematics/briefs/{id}/render",
-            post(trigger_render),
-        )
+        .route("/nora/cinematics/briefs/{id}/render", post(trigger_render))
         .route("/nora/cinematics/briefs/{id}/shots", get(list_shots))
         .with_state(deployment.clone())
 }

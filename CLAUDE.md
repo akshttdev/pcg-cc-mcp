@@ -2,20 +2,36 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Worktree Awareness
+
+This repo may use **git worktrees** for parallel development. Before making changes:
+1. Run `git worktree list` and `pwd` to confirm which worktree you're in
+2. Each worktree has its own `.env` with distinct `FRONTEND_PORT` / `BACKEND_PORT`
+3. **Never switch worktrees without user approval** — staged changes are per-worktree
+4. If a planning doc exists for the current branch, check its `Worktree` field matches your `pwd`
+
+Not all developers use worktrees — single-repo workflows work normally. The checks above only matter when multiple worktrees exist.
+
 ## Essential Commands
 
-### Development
+### Local Development
 ```bash
 # Start development servers with hot reload (frontend + backend)
 pnpm run dev
 
 # Individual dev servers
-npm run frontend:dev    # Frontend only (port 3000)
-npm run backend:dev     # Backend only (port auto-assigned)
+npm run frontend:dev    # Frontend only (uses FRONTEND_PORT from .env, default 3000)
+npm run backend:dev     # Backend only (uses BACKEND_PORT from .env, default auto-assign)
 
 # Build production version
 ./scripts/build-npm-package.sh
 ```
+
+**Worktree port isolation**: Each worktree's `.env` defines unique ports to avoid conflicts:
+- Root worktree: `FRONTEND_PORT=3000`, `BACKEND_PORT=3002`
+- Agent worktrees: e.g., `FRONTEND_PORT=3010`, `BACKEND_PORT=3012`
+
+Before starting servers, check `lsof -i :<port>` — kill only processes on **your** ports, never another worktree's servers.
 
 ### Testing & Validation
 ```bash
@@ -104,10 +120,13 @@ shared/types.ts    # Auto-generated TypeScript types from Rust
 
 ### Development Workflow
 
-1. **Backend changes first**: When modifying both frontend and backend, start with backend
-2. **Type generation**: Run `npm run generate-types` after modifying Rust types
-3. **Database migrations**: Create in `crates/db/migrations/`, apply with `sqlx migrate run`
-4. **Component patterns**: Follow existing patterns in `frontend/src/components/`
+1. **Confirm worktree**: `pwd` + `git worktree list` — verify you're in the right place
+2. **Check .env**: Each worktree has its own `.env` with `FRONTEND_PORT`, `BACKEND_PORT`, `DATABASE_URL`
+3. **Backend changes first**: When modifying both frontend and backend, start with backend
+4. **Type generation**: Run `npm run generate-types` after modifying Rust types
+5. **Database migrations**: Create in `crates/db/migrations/`, apply with `sqlx migrate run`
+6. **Component patterns**: Follow existing patterns in `frontend/src/components/`
+7. **Before starting servers**: `lsof -i :<your-port>` — only kill processes on YOUR ports
 
 ### Testing Strategy
 
@@ -155,5 +174,23 @@ Runtime:
 - `BACKEND_PORT`: Backend server port (default: auto-assign)
 - `FRONTEND_PORT`: Frontend dev port (default: 3000)
 - `HOST`: Backend host (default: 127.0.0.1)
+- `DATABASE_URL`: SQLite database path (default: `sqlite://dev_assets/db.sqlite`). Override for test isolation: `DATABASE_URL=sqlite:dev_assets/test-db.sqlite`
 - `DISABLE_WORKTREE_ORPHAN_CLEANUP`: Debug flag for worktrees
 - `VITE_SKIP_ONBOARDING`: Set to `1` to bypass all onboarding dialogs (for E2E testing)
+
+### E2E Testing
+```bash
+# Run main test suite (excludes quarantine/ and demos/)
+npx playwright test --reporter=list
+
+# Run quarantined tests individually (verification before promotion)
+npx playwright test e2e/quarantine/<test>.spec.ts --reporter=list
+
+# Run demo tests
+FRONTEND_PORT=<port> npx playwright test e2e/demos/ --reporter=list
+
+# Create fresh test seed database
+./scripts/create-test-seed.sh
+```
+
+Test seed: `dev_assets_seed/test-seed.sqlite` — minimal fixtures (admin user, org, pipeline stages, no entity data). Tests create their own data via API using helpers in `e2e/helpers/seed.ts`.

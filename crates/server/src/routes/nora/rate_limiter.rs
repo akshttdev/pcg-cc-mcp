@@ -1,6 +1,7 @@
 //! Chat and voice rate limiters for Nora endpoints.
 
 use std::sync::Arc;
+
 use crate::middleware::rate_limit::TokenBucket;
 
 /// Global rate limiter for chat endpoints (20 req/min, refill 1 per 3 seconds)

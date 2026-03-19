@@ -80,7 +80,9 @@ impl MarketplaceListing {
     pub async fn create(pool: &SqlitePool, data: CreateListing) -> anyhow::Result<Self> {
         let id = Uuid::new_v4();
         let provider_type = data.provider_type.unwrap_or_else(|| "apn_node".to_string());
-        let pricing_model = data.pricing_model.unwrap_or_else(|| "per-request".to_string());
+        let pricing_model = data
+            .pricing_model
+            .unwrap_or_else(|| "per-request".to_string());
         let tags = serde_json::to_string(&data.tags.unwrap_or_default())?;
         let metadata = serde_json::to_string(&data.metadata.unwrap_or(serde_json::json!({})))?;
         let min_vibe = data.min_vibe.unwrap_or(0.0);
@@ -92,7 +94,7 @@ impl MarketplaceListing {
               pricing_model, price_vibe, min_vibe, max_concurrent,
               endpoint_url, region, status, metadata)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
-             RETURNING *"
+             RETURNING *",
         )
         .bind(id)
         .bind(&provider_type)
@@ -124,7 +126,7 @@ impl MarketplaceListing {
         if let Some(stype) = service_type {
             sqlx::query_as::<_, Self>(
                 "SELECT * FROM marketplace_listings WHERE status = 'active' AND service_type = ?
-                 ORDER BY price_vibe ASC LIMIT ?"
+                 ORDER BY price_vibe ASC LIMIT ?",
             )
             .bind(stype)
             .bind(limit)
@@ -134,7 +136,7 @@ impl MarketplaceListing {
         } else {
             sqlx::query_as::<_, Self>(
                 "SELECT * FROM marketplace_listings WHERE status = 'active'
-                 ORDER BY service_type ASC, price_vibe ASC LIMIT ?"
+                 ORDER BY service_type ASC, price_vibe ASC LIMIT ?",
             )
             .bind(limit)
             .fetch_all(pool)
@@ -170,7 +172,7 @@ impl MarketplaceListing {
             "SELECT * FROM marketplace_listings
              WHERE status = 'active' AND service_type = ?
              ORDER BY price_vibe ASC, avg_response_ms ASC NULLS LAST
-             LIMIT 1"
+             LIMIT 1",
         )
         .bind(service_type)
         .fetch_optional(pool)
@@ -184,12 +186,16 @@ impl MarketplaceListing {
         data: UpdateListing,
     ) -> anyhow::Result<Option<Self>> {
         let current = Self::find_by_id(pool, id).await?;
-        let Some(current) = current else { return Ok(None) };
+        let Some(current) = current else {
+            return Ok(None);
+        };
 
-        let tags = data.tags
+        let tags = data
+            .tags
             .map(|t| serde_json::to_string(&t).unwrap_or_else(|_| current.tags.clone()))
             .unwrap_or(current.tags);
-        let metadata = data.metadata
+        let metadata = data
+            .metadata
             .map(|m| serde_json::to_string(&m).unwrap_or_else(|_| current.metadata.clone()))
             .unwrap_or(current.metadata);
 
@@ -208,7 +214,7 @@ impl MarketplaceListing {
              metadata = ?,
              updated_at = datetime('now','subsec')
              WHERE id = ?
-             RETURNING *"
+             RETURNING *",
         )
         .bind(data.service_name)
         .bind(data.service_description)
@@ -239,7 +245,7 @@ impl MarketplaceListing {
              uptime_pct = COALESCE(?, uptime_pct),
              avg_response_ms = COALESCE(?, avg_response_ms),
              updated_at = datetime('now','subsec')
-             WHERE id = ?"
+             WHERE id = ?",
         )
         .bind(uptime_pct)
         .bind(avg_response_ms)

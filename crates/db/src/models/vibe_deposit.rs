@@ -89,22 +89,21 @@ impl VibeDeposit {
 
     /// Find deposit by ID
     pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
-        sqlx::query_as::<_, VibeDeposit>(
-            r#"SELECT * FROM vibe_deposits WHERE id = ?"#,
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await
+        sqlx::query_as::<_, VibeDeposit>(r#"SELECT * FROM vibe_deposits WHERE id = ?"#)
+            .bind(id)
+            .fetch_optional(pool)
+            .await
     }
 
     /// Find deposit by transaction hash
-    pub async fn find_by_tx_hash(pool: &SqlitePool, tx_hash: &str) -> Result<Option<Self>, sqlx::Error> {
-        sqlx::query_as::<_, VibeDeposit>(
-            r#"SELECT * FROM vibe_deposits WHERE tx_hash = ?"#,
-        )
-        .bind(tx_hash)
-        .fetch_optional(pool)
-        .await
+    pub async fn find_by_tx_hash(
+        pool: &SqlitePool,
+        tx_hash: &str,
+    ) -> Result<Option<Self>, sqlx::Error> {
+        sqlx::query_as::<_, VibeDeposit>(r#"SELECT * FROM vibe_deposits WHERE tx_hash = ?"#)
+            .bind(tx_hash)
+            .fetch_optional(pool)
+            .await
     }
 
     /// List deposits for a project
@@ -234,7 +233,10 @@ pub struct CreateVibeWithdrawal {
 
 impl VibeWithdrawal {
     /// Create a new withdrawal request
-    pub async fn create(pool: &SqlitePool, data: CreateVibeWithdrawal) -> Result<Self, sqlx::Error> {
+    pub async fn create(
+        pool: &SqlitePool,
+        data: CreateVibeWithdrawal,
+    ) -> Result<Self, sqlx::Error> {
         let id = Uuid::new_v4();
 
         let payment_method = data.payment_method.as_deref().unwrap_or("aptos_vibe");
@@ -258,12 +260,10 @@ impl VibeWithdrawal {
 
     /// Find withdrawal by ID
     pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
-        sqlx::query_as::<_, VibeWithdrawal>(
-            r#"SELECT * FROM vibe_withdrawals WHERE id = ?"#,
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await
+        sqlx::query_as::<_, VibeWithdrawal>(r#"SELECT * FROM vibe_withdrawals WHERE id = ?"#)
+            .bind(id)
+            .fetch_optional(pool)
+            .await
     }
 
     /// List withdrawals for a project

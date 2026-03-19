@@ -58,16 +58,15 @@ pub(super) fn parse_iso_datetime(s: &str) -> Option<DateTime<Utc>> {
         return Some(dt.and_utc());
     }
     if let Ok(d) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
-        return d
-            .and_hms_opt(0, 0, 0)
-            .map(|dt| dt.and_utc());
+        return d.and_hms_opt(0, 0, 0).map(|dt| dt.and_utc());
     }
     None
 }
 
 /// Serialize a value to a pretty-printed JSON string, falling back to the error message on failure.
 pub(super) fn to_json_pretty<T: Serialize>(value: &T) -> String {
-    serde_json::to_string_pretty(value).unwrap_or_else(|e| format!(r#"{{"error": "JSON serialization failed: {}"}}"#, e))
+    serde_json::to_string_pretty(value)
+        .unwrap_or_else(|e| format!(r#"{{"error": "JSON serialization failed: {}"}}"#, e))
 }
 
 /// Serialize a value to a serde_json::Value, falling back to a null on failure.
@@ -116,7 +115,10 @@ pub(super) fn task_to_summary(task: &Task) -> TaskSummary {
         due_date: task.due_date.map(|d| d.to_rfc3339()),
         parent_task_id: task.parent_task_id.clone(),
         requires_approval: task.requires_approval,
-        approval_status: task.approval_status.as_ref().map(|s| format!("{:?}", s).to_lowercase()),
+        approval_status: task
+            .approval_status
+            .as_ref()
+            .map(|s| format!("{:?}", s).to_lowercase()),
         created_by: task.created_by.clone(),
         vibe_cost: None,
         created_at: task.created_at.to_rfc3339(),
@@ -131,7 +133,10 @@ pub(super) fn task_to_summary(task: &Task) -> TaskSummary {
 
 /// Build TaskSummary from TaskWithAttemptStatus
 pub(super) fn task_with_status_to_summary(task: &TaskWithAttemptStatus) -> TaskSummary {
-    let tags: Option<Vec<String>> = task.tags.as_deref().and_then(|s| serde_json::from_str(s).ok());
+    let tags: Option<Vec<String>> = task
+        .tags
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok());
 
     TaskSummary {
         id: task.id.to_string(),
@@ -145,7 +150,10 @@ pub(super) fn task_with_status_to_summary(task: &TaskWithAttemptStatus) -> TaskS
         due_date: task.due_date.map(|d| d.to_rfc3339()),
         parent_task_id: task.parent_task_id.clone(),
         requires_approval: task.requires_approval,
-        approval_status: task.approval_status.as_ref().map(|s| format!("{:?}", s).to_lowercase()),
+        approval_status: task
+            .approval_status
+            .as_ref()
+            .map(|s| format!("{:?}", s).to_lowercase()),
         created_by: task.created_by.clone(),
         vibe_cost: task.vibe_cost,
         created_at: task.created_at.to_rfc3339(),

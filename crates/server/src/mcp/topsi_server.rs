@@ -7,8 +7,7 @@
 //! Uses raw SQL queries (sqlx::query_as::<_, Row>) to avoid
 //! compile-time query_as! macro dependency on DATABASE_URL.
 
-use db::models::agent::Agent;
-use db::models::task::Task;
+use db::models::{agent::Agent, task::Task};
 use rmcp::{
     ErrorData, ServerHandler,
     handler::server::tool::{Parameters, ToolRouter},
@@ -188,7 +187,7 @@ fn pid_hex(uuid: Uuid) -> String {
 async fn fetch_nodes(pool: &SqlitePool, pid: &str) -> Vec<NodeRow> {
     sqlx::query_as::<_, NodeRow>(
         "SELECT id, node_type, ref_id, capabilities, status, metadata, weight \
-         FROM topology_nodes WHERE project_id = ? ORDER BY node_type, created_at DESC"
+         FROM topology_nodes WHERE project_id = ? ORDER BY node_type, created_at DESC",
     )
     .bind(pid)
     .fetch_all(pool)
@@ -200,7 +199,7 @@ async fn fetch_nodes(pool: &SqlitePool, pid: &str) -> Vec<NodeRow> {
 async fn fetch_edges(pool: &SqlitePool, pid: &str) -> Vec<EdgeRow> {
     sqlx::query_as::<_, EdgeRow>(
         "SELECT id, from_node_id, to_node_id, edge_type, weight, status \
-         FROM topology_edges WHERE project_id = ? ORDER BY edge_type, created_at DESC"
+         FROM topology_edges WHERE project_id = ? ORDER BY edge_type, created_at DESC",
     )
     .bind(pid)
     .fetch_all(pool)
@@ -212,7 +211,7 @@ async fn fetch_edges(pool: &SqlitePool, pid: &str) -> Vec<EdgeRow> {
 async fn fetch_clusters(pool: &SqlitePool, pid: &str) -> Vec<ClusterRow> {
     sqlx::query_as::<_, ClusterRow>(
         "SELECT id, name, purpose, node_ids, is_active \
-         FROM topology_clusters WHERE project_id = ? ORDER BY is_active DESC, formed_at DESC"
+         FROM topology_clusters WHERE project_id = ? ORDER BY is_active DESC, formed_at DESC",
     )
     .bind(pid)
     .fetch_all(pool)
@@ -225,7 +224,7 @@ async fn fetch_active_agent_nodes(pool: &SqlitePool, pid: &str) -> Vec<NodeRow> 
     sqlx::query_as::<_, NodeRow>(
         "SELECT id, node_type, ref_id, capabilities, status, metadata, weight \
          FROM topology_nodes WHERE project_id = ? AND node_type = 'agent' AND status = 'active' \
-         ORDER BY weight DESC"
+         ORDER BY weight DESC",
     )
     .bind(pid)
     .fetch_all(pool)
@@ -455,8 +454,7 @@ impl TopsiServer {
         let edges = fetch_edges(&self.pool, &pid).await;
         let clusters = fetch_clusters(&self.pool, &pid).await;
 
-        let mut by_type: std::collections::HashMap<&str, usize> =
-            std::collections::HashMap::new();
+        let mut by_type: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
         let mut by_status: std::collections::HashMap<&str, usize> =
             std::collections::HashMap::new();
         for node in &nodes {
@@ -571,14 +569,14 @@ impl TopsiServer {
 
         match sqlx::query(
             "INSERT INTO topology_clusters (id, project_id, name, node_ids, is_active, formed_at) \
-             VALUES (?, ?, ?, ?, 1, datetime('now'))"
+             VALUES (?, ?, ?, ?, 1, datetime('now'))",
         )
-            .bind(&cid)
-            .bind(&pid)
-            .bind(&req.team_name)
-            .bind(&node_ids_json)
-            .execute(&self.pool)
-            .await
+        .bind(&cid)
+        .bind(&pid)
+        .bind(&req.team_name)
+        .bind(&node_ids_json)
+        .execute(&self.pool)
+        .await
         {
             Ok(_) => {
                 let response = serde_json::json!({
@@ -594,9 +592,7 @@ impl TopsiServer {
         }
     }
 
-    #[tool(
-        description = "Dissolve a team/cluster, releasing agents back to the general pool."
-    )]
+    #[tool(description = "Dissolve a team/cluster, releasing agents back to the general pool.")]
     async fn dissolve_team(
         &self,
         Parameters(req): Parameters<DissolveTeamRequest>,

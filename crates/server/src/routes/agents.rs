@@ -1,21 +1,18 @@
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post, put},
-    Json, Router,
 };
-use db::models::agent::{
-    Agent, AgentStatus, AgentWithParsedFields, CreateAgent, UpdateAgent,
-};
+use db::models::agent::{Agent, AgentStatus, AgentWithParsedFields, CreateAgent, UpdateAgent};
 use deployment::Deployment;
 use serde::Deserialize;
 use services::services::agent_registry::AgentRegistryService;
 use ts_rs::TS;
-
 use utils::response::ApiResponse;
 
-use crate::{middleware::access_control::AccessContext, DeploymentImpl};
+use crate::{DeploymentImpl, middleware::access_control::AccessContext};
 
 /// Query params for agent search/filter
 #[derive(Debug, Deserialize, TS)]
@@ -40,7 +37,10 @@ pub fn routes() -> Router<DeploymentImpl> {
         .route("/agents/search", get(search_agents))
         .route("/agents/active", get(list_active_agents))
         .route("/agents/seed", post(seed_agents))
-        .route("/agents/{id}", get(get_agent).put(update_agent).delete(delete_agent))
+        .route(
+            "/agents/{id}",
+            get(get_agent).put(update_agent).delete(delete_agent),
+        )
         .route("/agents/{id}/profile", get(get_agent_profile))
         .route("/agents/by-name/{name}", get(get_agent_by_name))
         .route("/agents/{id}/wallet", put(assign_wallet))
@@ -108,7 +108,10 @@ async fn search_agents(
         parsed.retain(|agent| {
             agent.short_name.to_lowercase().contains(&search_lower)
                 || agent.designation.to_lowercase().contains(&search_lower)
-                || agent.description.as_ref().map_or(false, |d| d.to_lowercase().contains(&search_lower))
+                || agent
+                    .description
+                    .as_ref()
+                    .map_or(false, |d| d.to_lowercase().contains(&search_lower))
         });
     }
 
@@ -137,13 +140,19 @@ async fn search_agents(
     match sort_by {
         "short_name" | "name" => {
             parsed.sort_by(|a, b| {
-                let cmp = a.short_name.to_lowercase().cmp(&b.short_name.to_lowercase());
+                let cmp = a
+                    .short_name
+                    .to_lowercase()
+                    .cmp(&b.short_name.to_lowercase());
                 if sort_asc { cmp } else { cmp.reverse() }
             });
         }
         "designation" => {
             parsed.sort_by(|a, b| {
-                let cmp = a.designation.to_lowercase().cmp(&b.designation.to_lowercase());
+                let cmp = a
+                    .designation
+                    .to_lowercase()
+                    .cmp(&b.designation.to_lowercase());
                 if sort_asc { cmp } else { cmp.reverse() }
             });
         }
@@ -155,13 +164,19 @@ async fn search_agents(
         }
         "priority" | "priority_weight" => {
             parsed.sort_by(|a, b| {
-                let cmp = a.priority_weight.unwrap_or(0).cmp(&b.priority_weight.unwrap_or(0));
+                let cmp = a
+                    .priority_weight
+                    .unwrap_or(0)
+                    .cmp(&b.priority_weight.unwrap_or(0));
                 if sort_asc { cmp } else { cmp.reverse() }
             });
         }
         "tasks_completed" => {
             parsed.sort_by(|a, b| {
-                let cmp = a.tasks_completed.unwrap_or(0).cmp(&b.tasks_completed.unwrap_or(0));
+                let cmp = a
+                    .tasks_completed
+                    .unwrap_or(0)
+                    .cmp(&b.tasks_completed.unwrap_or(0));
                 if sort_asc { cmp } else { cmp.reverse() }
             });
         }
@@ -282,9 +297,10 @@ async fn assign_wallet(
     Path(id): Path<String>,
     Json(request): Json<AssignWalletRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let agent = AgentRegistryService::assign_wallet(&deployment.db().pool, &id, &request.wallet_address)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let agent =
+        AgentRegistryService::assign_wallet(&deployment.db().pool, &id, &request.wallet_address)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let parsed: AgentWithParsedFields = agent.into();
     Ok(Json(parsed))

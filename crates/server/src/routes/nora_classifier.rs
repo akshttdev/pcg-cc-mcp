@@ -19,12 +19,12 @@ use axum::{
     http::HeaderMap,
     routing::{get, patch, post},
 };
+use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
-use deployment::Deployment;
 
 // ─── DB row ──────────────────────────────────────────────────────────────────
 
@@ -204,17 +204,18 @@ async fn list_predictions(
         .await
         .map_err(|e| ApiError::BadRequest(e.to_string()))?
     } else {
-        sqlx::query_as(
-            "SELECT * FROM nora_classifier_predictions ORDER BY created_at DESC LIMIT ?",
-        )
-        .bind(limit)
-        .fetch_all(pool)
-        .await
-        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+        sqlx::query_as("SELECT * FROM nora_classifier_predictions ORDER BY created_at DESC LIMIT ?")
+            .bind(limit)
+            .fetch_all(pool)
+            .await
+            .map_err(|e| ApiError::BadRequest(e.to_string()))?
     };
 
     let accuracy = compute_accuracy(pool, q.session_id.as_deref()).await?;
-    Ok(Json(ListResponse { predictions, accuracy }))
+    Ok(Json(ListResponse {
+        predictions,
+        accuracy,
+    }))
 }
 
 /// PATCH /nora-classifier/predictions/:id
@@ -232,13 +233,12 @@ async fn patch_prediction(
     struct Row {
         predicted_speak: i64,
     }
-    let row: Row = sqlx::query_as(
-        "SELECT predicted_speak FROM nora_classifier_predictions WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_one(pool)
-    .await
-    .map_err(|_| ApiError::NotFound(format!("Prediction {} not found", id)))?;
+    let row: Row =
+        sqlx::query_as("SELECT predicted_speak FROM nora_classifier_predictions WHERE id = ?")
+            .bind(&id)
+            .fetch_one(pool)
+            .await
+            .map_err(|_| ApiError::NotFound(format!("Prediction {} not found", id)))?;
 
     // If was_correct=true → was_wake_word_addressed = predicted_speak
     // If was_correct=false → was_wake_word_addressed = 1 - predicted_speak
@@ -248,14 +248,12 @@ async fn patch_prediction(
         1 - row.predicted_speak
     };
 
-    sqlx::query(
-        "UPDATE nora_classifier_predictions SET was_wake_word_addressed = ? WHERE id = ?",
-    )
-    .bind(actual)
-    .bind(&id)
-    .execute(pool)
-    .await
-    .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    sqlx::query("UPDATE nora_classifier_predictions SET was_wake_word_addressed = ? WHERE id = ?")
+        .bind(actual)
+        .bind(&id)
+        .execute(pool)
+        .await
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
     Ok(Json(serde_json::json!({ "ok": true })))
 }

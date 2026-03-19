@@ -1,9 +1,12 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::process::{Child, Command, Stdio};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::{
+    process::{Child, Command, Stdio},
+    sync::{Arc, Mutex},
+    time::Duration,
+};
+
 use tauri::{Manager, State};
 
 struct AppState {
@@ -40,10 +43,7 @@ fn start_apn_node() -> Result<Child, std::io::Error> {
     println!("Starting APN node...");
 
     // Check if node is already running
-    let check = Command::new("pgrep")
-        .arg("-f")
-        .arg("apn_node")
-        .output();
+    let check = Command::new("pgrep").arg("-f").arg("apn_node").output();
 
     if let Ok(output) = check {
         if !output.stdout.is_empty() {
@@ -76,10 +76,7 @@ fn start_bridge_server() -> Result<Child, std::io::Error> {
     println!("Starting bridge server...");
 
     // Check if already running
-    let check = Command::new("lsof")
-        .arg("-i")
-        .arg(":8000")
-        .output();
+    let check = Command::new("lsof").arg("-i").arg(":8000").output();
 
     if let Ok(output) = check {
         if !output.stdout.is_empty() {

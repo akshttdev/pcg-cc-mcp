@@ -1,17 +1,16 @@
-use std::{cmp, collections::HashMap, path::{Path, PathBuf}};
+use std::{
+    cmp,
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use chrono::Utc;
 use db::models::{
     cinematic_brief::{
-        CinematicBrief,
-        CinematicBriefStatus,
-        CinematicShotPlan,
-        CinematicShotPlanStatus,
-        CreateCinematicBrief,
-        CreateCinematicShotPlan,
-        UpdateCinematicBriefStatus,
+        CinematicBrief, CinematicBriefStatus, CinematicShotPlan, CinematicShotPlanStatus,
+        CreateCinematicBrief, CreateCinematicShotPlan, UpdateCinematicBriefStatus,
         UpdateCinematicShotPlanStatus,
     },
     project_asset::{CreateProjectAsset, ProjectAsset},
@@ -20,7 +19,10 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::SqlitePool;
-use tokio::{fs, time::{sleep, Duration}};
+use tokio::{
+    fs,
+    time::{sleep, Duration},
+};
 use tracing::info;
 use uuid::Uuid;
 
@@ -70,7 +72,7 @@ impl Default for CinematicsConfig {
                 .unwrap_or(true),
             use_high_quality: std::env::var("CINEMATICS_HIGH_QUALITY")
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-                .unwrap_or(true),  // Default to high quality
+                .unwrap_or(true), // Default to high quality
         }
     }
 }
@@ -122,7 +124,11 @@ impl CinematicsService {
     }
 
     fn comfy_endpoint(&self, path: &str) -> String {
-        format!("{}/{}", self.config.comfy_base_url.trim_end_matches('/'), path.trim_start_matches('/'))
+        format!(
+            "{}/{}",
+            self.config.comfy_base_url.trim_end_matches('/'),
+            path.trim_start_matches('/')
+        )
     }
 
     fn build_default_workflow(&self, prompt: &str, negative_prompt: &str) -> Value {
@@ -339,10 +345,10 @@ impl CinematicsService {
 
     async fn load_workflow_template(&self) -> Result<Value> {
         if let Some(path) = self.workflow_template_path() {
-            let data = fs::read_to_string(&path)
-                .await
-                .with_context(|| format!("Failed to read workflow template at {}", path.display()))?;
-            Ok(serde_json::from_str(&data)? )
+            let data = fs::read_to_string(&path).await.with_context(|| {
+                format!("Failed to read workflow template at {}", path.display())
+            })?;
+            Ok(serde_json::from_str(&data)?)
         } else {
             Ok(self.build_default_workflow("breathtaking establishing shot", "low quality"))
         }
@@ -380,7 +386,10 @@ impl CinematicsService {
             style_tags.push("film grain".into());
         }
         let joined_tags = style_tags.join(", ");
-        let prompt = format!("{} -- {} -- shot on virtual cinema camera", topic, joined_tags);
+        let prompt = format!(
+            "{} -- {} -- shot on virtual cinema camera",
+            topic, joined_tags
+        );
         let negative = "lowres, blurry, text artifacts".to_string();
         (prompt, negative)
     }
@@ -462,10 +471,13 @@ impl CinematicsService {
                     checksum: None,
                     byte_size: None,
                     mime_type: Some(mime.into()),
-                    metadata: Some(json!({
-                        "comfy_subfolder": img.subfolder,
-                        "comfy_type": img.kind,
-                    }).to_string()),
+                    metadata: Some(
+                        json!({
+                            "comfy_subfolder": img.subfolder,
+                            "comfy_type": img.kind,
+                        })
+                        .to_string(),
+                    ),
                     uploaded_by: Some("master_cinematographer".into()),
                 },
             )
@@ -593,7 +605,8 @@ impl Cinematographer for CinematicsService {
 
             let images = self.render_with_comfy(workflow.clone()).await?;
             combined_outputs.extend(images.clone());
-            let rendered_files: Vec<String> = images.iter().map(|img| img.filename.clone()).collect();
+            let rendered_files: Vec<String> =
+                images.iter().map(|img| img.filename.clone()).collect();
 
             CinematicShotPlan::update_status(
                 &self.pool,
@@ -623,7 +636,11 @@ impl Cinematographer for CinematicsService {
         )
         .await?;
 
-        info!("Cinematic brief {} rendered {} clips", brief.id, asset_ids.len());
+        info!(
+            "Cinematic brief {} rendered {} clips",
+            brief.id,
+            asset_ids.len()
+        );
 
         Ok(final_brief)
     }

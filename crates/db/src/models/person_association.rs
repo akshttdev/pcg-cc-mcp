@@ -47,10 +47,7 @@ pub struct PatchPersonCompanyRole {
 }
 
 impl PersonCompanyRole {
-    pub async fn list_for_person(
-        pool: &SqlitePool,
-        person_id: Uuid,
-    ) -> sqlx::Result<Vec<Self>> {
+    pub async fn list_for_person(pool: &SqlitePool, person_id: Uuid) -> sqlx::Result<Vec<Self>> {
         sqlx::query_as(
             r#"SELECT
                 pcr.id, pcr.person_id, pcr.company_id, pcr.role, pcr.title,
@@ -66,10 +63,7 @@ impl PersonCompanyRole {
         .await
     }
 
-    pub async fn list_for_company(
-        pool: &SqlitePool,
-        company_id: Uuid,
-    ) -> sqlx::Result<Vec<Self>> {
+    pub async fn list_for_company(pool: &SqlitePool, company_id: Uuid) -> sqlx::Result<Vec<Self>> {
         sqlx::query_as(
             r#"SELECT
                 pcr.id, pcr.person_id, pcr.company_id, pcr.role, pcr.title,
@@ -243,10 +237,7 @@ pub struct UpsertPersonOrgContact {
 }
 
 impl PersonOrgContact {
-    pub async fn list_for_person(
-        pool: &SqlitePool,
-        person_id: Uuid,
-    ) -> sqlx::Result<Vec<Self>> {
+    pub async fn list_for_person(pool: &SqlitePool, person_id: Uuid) -> sqlx::Result<Vec<Self>> {
         sqlx::query_as(
             r#"SELECT
                 poc.id, poc.person_id, poc.organization_id, poc.context, poc.notes, poc.added_at,
@@ -261,10 +252,7 @@ impl PersonOrgContact {
         .await
     }
 
-    pub async fn list_for_org(
-        pool: &SqlitePool,
-        org_id: Uuid,
-    ) -> sqlx::Result<Vec<Self>> {
+    pub async fn list_for_org(pool: &SqlitePool, org_id: Uuid) -> sqlx::Result<Vec<Self>> {
         sqlx::query_as(
             r#"SELECT
                 poc.id, poc.person_id, poc.organization_id, poc.context, poc.notes, poc.added_at,
@@ -317,11 +305,7 @@ impl PersonOrgContact {
         .await
     }
 
-    pub async fn delete(
-        pool: &SqlitePool,
-        person_id: Uuid,
-        org_id: Uuid,
-    ) -> sqlx::Result<bool> {
+    pub async fn delete(pool: &SqlitePool, person_id: Uuid, org_id: Uuid) -> sqlx::Result<bool> {
         let result = sqlx::query(
             "DELETE FROM person_organization_contacts WHERE person_id = ?1 AND organization_id = ?2",
         )
@@ -360,10 +344,7 @@ pub struct CreateCompanyContactMethod {
 }
 
 impl CompanyContactMethod {
-    pub async fn list_for_company(
-        pool: &SqlitePool,
-        company_id: Uuid,
-    ) -> sqlx::Result<Vec<Self>> {
+    pub async fn list_for_company(pool: &SqlitePool, company_id: Uuid) -> sqlx::Result<Vec<Self>> {
         sqlx::query_as(
             r#"SELECT id, company_id, method_type, label, value, is_primary, created_at
                FROM company_contact_methods

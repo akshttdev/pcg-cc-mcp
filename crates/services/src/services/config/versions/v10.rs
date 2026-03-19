@@ -2,7 +2,6 @@ use anyhow::Error;
 use executors::{executors::BaseCodingAgent, profile::ExecutorProfileId};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-
 pub use v9::{
     AptosWalletConfig, EditorConfig, EditorType, GitHubConfig, NotificationConfig, SoundFile,
     ThemeMode, TrelloConfig, UiLanguage,

@@ -6,8 +6,11 @@ use strip_ansi_escapes::strip;
 use thiserror::Error;
 use tracing_subscriber::{EnvFilter, prelude::*};
 use utils::{
-    assets::asset_dir, browser::open_browser, port_file::write_port_file, sentry::sentry_layer,
+    assets::asset_dir,
+    browser::open_browser,
     external_services::{ExternalServicesConfig, initialize_external_services},
+    port_file::write_port_file,
+    sentry::sentry_layer,
 };
 
 #[derive(Debug, Error)]
@@ -53,17 +56,25 @@ async fn main() -> Result<(), VibeKanbanError> {
     let external_config = ExternalServicesConfig::default();
     let service_status = initialize_external_services(&external_config).await;
     if service_status.apn_node_running {
-        tracing::info!("[MASTER] Media Monsters Master Node — APN mesh online on port {}", external_config.apn_node_port);
+        tracing::info!(
+            "[MASTER] Media Monsters Master Node — APN mesh online on port {}",
+            external_config.apn_node_port
+        );
     } else {
         tracing::warn!("APN node not available - mesh networking disabled");
     }
     if service_status.apn_bridge_running {
-        tracing::info!("[MASTER] Media Monsters Master Node — APN bridge API on port {}", external_config.apn_bridge_port);
+        tracing::info!(
+            "[MASTER] Media Monsters Master Node — APN bridge API on port {}",
+            external_config.apn_bridge_port
+        );
     } else {
         tracing::warn!("APN bridge not available - mesh API will use log fallback");
     }
     if !service_status.ollama_running {
-        tracing::warn!("Ollama not available - agents will fall back to cloud LLMs (may incur API costs)");
+        tracing::warn!(
+            "Ollama not available - agents will fall back to cloud LLMs (may incur API costs)"
+        );
     }
     if !service_status.comfyui_running {
         tracing::warn!("ComfyUI not available - Maci image generation will be disabled");
@@ -154,7 +165,9 @@ async fn main() -> Result<(), VibeKanbanError> {
             });
         }
         Ok(_) => {
-            tracing::info!("Sovereign storage auto-sync is disabled (set SOVEREIGN_STORAGE_ENABLED=true to enable)");
+            tracing::info!(
+                "Sovereign storage auto-sync is disabled (set SOVEREIGN_STORAGE_ENABLED=true to enable)"
+            );
         }
         Err(e) => {
             tracing::warn!("Failed to load sovereign storage config: {}", e);
@@ -174,7 +187,9 @@ async fn main() -> Result<(), VibeKanbanError> {
             });
         }
         Ok(_) => {
-            tracing::info!("Sovereign stack scraper is disabled (set SOVEREIGN_STACK_ENABLED=true to enable)");
+            tracing::info!(
+                "Sovereign stack scraper is disabled (set SOVEREIGN_STACK_ENABLED=true to enable)"
+            );
         }
         Err(e) => {
             tracing::warn!("Failed to load sovereign stack config: {}", e);
@@ -195,14 +210,18 @@ async fn main() -> Result<(), VibeKanbanError> {
         let nats_url_for_consumer = nats_url.clone();
         tokio::spawn(async move {
             tracing::info!("Pulse NATS consumer spawned");
-            server::pulse_consumer::start_pulse_consumer(&nats_url_for_consumer, pool_for_pulse).await;
+            server::pulse_consumer::start_pulse_consumer(&nats_url_for_consumer, pool_for_pulse)
+                .await;
         });
     }
 
     // Start APN Data Service (network-based project/task data serving)
     match server::apn_data_service::APNDataServiceConfig::from_env() {
         Ok(config) if config.enabled => {
-            tracing::info!("[MASTER] Starting APN Data Service (role: {:?})", config.role);
+            tracing::info!(
+                "[MASTER] Starting APN Data Service (role: {:?})",
+                config.role
+            );
             let mut service = server::apn_data_service::APNDataService::new(config);
             tokio::spawn(async move {
                 if let Err(e) = service.start().await {
@@ -211,7 +230,9 @@ async fn main() -> Result<(), VibeKanbanError> {
             });
         }
         Ok(_) => {
-            tracing::info!("APN Data Service is disabled (set APN_DATA_SERVICE_ENABLED=true to enable)");
+            tracing::info!(
+                "APN Data Service is disabled (set APN_DATA_SERVICE_ENABLED=true to enable)"
+            );
         }
         Err(e) => {
             tracing::warn!("Failed to load APN Data Service config: {}", e);
@@ -237,7 +258,10 @@ async fn main() -> Result<(), VibeKanbanError> {
                 .unwrap_or_else(|| std::path::PathBuf::from("./target/release/apn_node"));
 
             if !apn_binary.exists() {
-                tracing::warn!("⚠️ APN node binary not found at {:?}, skipping auto-start", apn_binary);
+                tracing::warn!(
+                    "⚠️ APN node binary not found at {:?}, skipping auto-start",
+                    apn_binary
+                );
                 return;
             }
 
@@ -245,22 +269,29 @@ async fn main() -> Result<(), VibeKanbanError> {
                 .unwrap_or_else(|_| "Media Monsters Master Node".to_string());
 
             let mut cmd = tokio::process::Command::new(&apn_binary);
-            cmd.arg("--port").arg("4001")
-               .arg("--relay").arg("nats://nonlocal.info:4222")
-               .arg("--heartbeat-interval").arg("30")
-               .arg("--name").arg(&device_name);
+            cmd.arg("--port")
+                .arg("4001")
+                .arg("--relay")
+                .arg("nats://nonlocal.info:4222")
+                .arg("--heartbeat-interval")
+                .arg("30")
+                .arg("--name")
+                .arg(&device_name);
 
             // Set custom hostname for master node
             cmd.env("APN_HOSTNAME", "media-monsters-master");
 
             // Stdin/stdout/stderr should be null for background process
             cmd.stdin(std::process::Stdio::null())
-               .stdout(std::process::Stdio::null())
-               .stderr(std::process::Stdio::null());
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null());
 
             match cmd.spawn() {
                 Ok(child) => {
-                    tracing::info!("✅ Media Monsters Master Node — APN node active (PID: {:?})", child.id());
+                    tracing::info!(
+                        "✅ Media Monsters Master Node — APN node active (PID: {:?})",
+                        child.id()
+                    );
                 }
                 Err(e) => {
                     tracing::error!("❌ Failed to start APN node: {}", e);
@@ -279,7 +310,11 @@ async fn main() -> Result<(), VibeKanbanError> {
             interval.tick().await;
 
             // Clean up duplicate peers
-            match db::models::peer_node::PeerNode::cleanup_duplicates(&deployment_for_cleanup.db().pool).await {
+            match db::models::peer_node::PeerNode::cleanup_duplicates(
+                &deployment_for_cleanup.db().pool,
+            )
+            .await
+            {
                 Ok(count) if count > 0 => {
                     tracing::info!("APN: Marked {} duplicate peers as inactive", count);
                 }
@@ -290,7 +325,11 @@ async fn main() -> Result<(), VibeKanbanError> {
             }
 
             // Mark stale peers as inactive
-            match db::models::peer_node::PeerNode::mark_stale_inactive(&deployment_for_cleanup.db().pool).await {
+            match db::models::peer_node::PeerNode::mark_stale_inactive(
+                &deployment_for_cleanup.db().pool,
+            )
+            .await
+            {
                 Ok(count) if count > 0 => {
                     tracing::info!("APN: Marked {} stale peers as inactive", count);
                 }
@@ -307,7 +346,10 @@ async fn main() -> Result<(), VibeKanbanError> {
 
     // Spawn workflow schedule trigger loop (checks every 5 minutes)
     let schedule_shutdown = tokio_util::sync::CancellationToken::new();
-    routes::data_source_workflows::spawn_workflow_schedule_loop(deployment.db().pool.clone(), schedule_shutdown.clone());
+    routes::data_source_workflows::spawn_workflow_schedule_loop(
+        deployment.db().pool.clone(),
+        schedule_shutdown.clone(),
+    );
 
     // Spawn OSS Library Listener (polls GitHub releases hourly)
     routes::oss_listener_bg::spawn_oss_listener(deployment.db().pool.clone());
@@ -319,14 +361,19 @@ async fn main() -> Result<(), VibeKanbanError> {
             let revenue_addr = match std::env::var("PLATFORM_REVENUE_ADDRESS") {
                 Ok(a) if !a.is_empty() => a,
                 _ => {
-                    tracing::warn!("[VIBE] PLATFORM_REVENUE_ADDRESS not set; deposit watcher disabled");
+                    tracing::warn!(
+                        "[VIBE] PLATFORM_REVENUE_ADDRESS not set; deposit watcher disabled"
+                    );
                     return;
                 }
             };
 
             let aptos = services::services::aptos::AptosService::testnet();
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
-            tracing::info!("[VIBE] Deposit watcher started for revenue address {}", &revenue_addr[..10.min(revenue_addr.len())]);
+            tracing::info!(
+                "[VIBE] Deposit watcher started for revenue address {}",
+                &revenue_addr[..10.min(revenue_addr.len())]
+            );
 
             loop {
                 interval.tick().await;
@@ -362,11 +409,21 @@ async fn main() -> Result<(), VibeKanbanError> {
         tokio::spawn(async move {
             let private_key = match std::env::var("PLATFORM_REVENUE_PRIVATE_KEY") {
                 Ok(k) if !k.is_empty() => k,
-                _ => { tracing::warn!("[VIBE] PLATFORM_REVENUE_PRIVATE_KEY not set; withdrawal executor disabled"); return; }
+                _ => {
+                    tracing::warn!(
+                        "[VIBE] PLATFORM_REVENUE_PRIVATE_KEY not set; withdrawal executor disabled"
+                    );
+                    return;
+                }
             };
             let revenue_addr = match std::env::var("PLATFORM_REVENUE_ADDRESS") {
                 Ok(a) if !a.is_empty() => a,
-                _ => { tracing::warn!("[VIBE] PLATFORM_REVENUE_ADDRESS not set; withdrawal executor disabled"); return; }
+                _ => {
+                    tracing::warn!(
+                        "[VIBE] PLATFORM_REVENUE_ADDRESS not set; withdrawal executor disabled"
+                    );
+                    return;
+                }
             };
 
             let aptos = services::services::aptos::AptosService::testnet();
@@ -375,22 +432,61 @@ async fn main() -> Result<(), VibeKanbanError> {
 
             loop {
                 interval.tick().await;
-                let pending = match db::models::vibe_deposit::VibeWithdrawal::list_pending(&pool_for_withdrawals, 5).await {
+                let pending = match db::models::vibe_deposit::VibeWithdrawal::list_pending(
+                    &pool_for_withdrawals,
+                    5,
+                )
+                .await
+                {
                     Ok(p) => p,
-                    Err(e) => { tracing::error!("[VIBE] Failed to list pending withdrawals: {e}"); continue; }
+                    Err(e) => {
+                        tracing::error!("[VIBE] Failed to list pending withdrawals: {e}");
+                        continue;
+                    }
                 };
                 for withdrawal in pending {
-                    let _ = db::models::vibe_deposit::VibeWithdrawal::mark_processing(&pool_for_withdrawals, withdrawal.id).await;
-                    match aptos.transfer_vibe(&private_key, &revenue_addr, &withdrawal.destination_address, withdrawal.amount_vibe as u64).await {
+                    let _ = db::models::vibe_deposit::VibeWithdrawal::mark_processing(
+                        &pool_for_withdrawals,
+                        withdrawal.id,
+                    )
+                    .await;
+                    match aptos
+                        .transfer_vibe(
+                            &private_key,
+                            &revenue_addr,
+                            &withdrawal.destination_address,
+                            withdrawal.amount_vibe as u64,
+                        )
+                        .await
+                    {
                         Ok(resp) if resp.success => {
-                            let _ = db::models::vibe_deposit::VibeWithdrawal::mark_completed(&pool_for_withdrawals, withdrawal.id, &resp.tx_hash).await;
-                            tracing::info!("[VIBE] Withdrawal {} completed: tx={}", withdrawal.id, resp.tx_hash);
+                            let _ = db::models::vibe_deposit::VibeWithdrawal::mark_completed(
+                                &pool_for_withdrawals,
+                                withdrawal.id,
+                                &resp.tx_hash,
+                            )
+                            .await;
+                            tracing::info!(
+                                "[VIBE] Withdrawal {} completed: tx={}",
+                                withdrawal.id,
+                                resp.tx_hash
+                            );
                         }
                         Ok(resp) => {
-                            let _ = db::models::vibe_deposit::VibeWithdrawal::mark_failed(&pool_for_withdrawals, withdrawal.id, &resp.message).await;
+                            let _ = db::models::vibe_deposit::VibeWithdrawal::mark_failed(
+                                &pool_for_withdrawals,
+                                withdrawal.id,
+                                &resp.message,
+                            )
+                            .await;
                         }
                         Err(e) => {
-                            let _ = db::models::vibe_deposit::VibeWithdrawal::mark_failed(&pool_for_withdrawals, withdrawal.id, &e.to_string()).await;
+                            let _ = db::models::vibe_deposit::VibeWithdrawal::mark_failed(
+                                &pool_for_withdrawals,
+                                withdrawal.id,
+                                &e.to_string(),
+                            )
+                            .await;
                         }
                     }
                 }

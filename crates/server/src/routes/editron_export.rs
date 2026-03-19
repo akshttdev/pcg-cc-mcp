@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use axum::{
     Router,
     body::Body,
@@ -13,7 +15,6 @@ use services::services::editron::{
     edit_assembly::{AssembledEdit, TimelineClip},
     premiere_xml::PremiereXmlExporter,
 };
-use std::path::PathBuf;
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
@@ -65,8 +66,8 @@ async fn export_artifact(
         .as_deref()
         .ok_or_else(|| ApiError::BadRequest("Artifact has no content to export".into()))?;
 
-    let edit_data: serde_json::Value =
-        serde_json::from_str(content).map_err(|e| ApiError::BadRequest(format!("Invalid artifact JSON: {}", e)))?;
+    let edit_data: serde_json::Value = serde_json::from_str(content)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid artifact JSON: {}", e)))?;
 
     // Build an AssembledEdit from the artifact's edit data
     let edit = build_assembled_edit(&artifact.title, &edit_data)?;
@@ -95,24 +96,15 @@ async fn export_artifact(
 
 /// Build an AssembledEdit from artifact JSON content.
 /// Handles the Le Chateau edit session format: { edits: [{ name, duration_seconds, segments, file }] }
-fn build_assembled_edit(
-    title: &str,
-    data: &serde_json::Value,
-) -> Result<AssembledEdit, ApiError> {
+fn build_assembled_edit(title: &str, data: &serde_json::Value) -> Result<AssembledEdit, ApiError> {
     let frame_rate = data
         .get("frame_rate")
         .and_then(|v| v.as_f64())
         .unwrap_or(30.0) as f32;
 
-    let width = data
-        .get("width")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(1080) as u32;
+    let width = data.get("width").and_then(|v| v.as_u64()).unwrap_or(1080) as u32;
 
-    let height = data
-        .get("height")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(1920) as u32;
+    let height = data.get("height").and_then(|v| v.as_u64()).unwrap_or(1920) as u32;
 
     // Calculate total duration from edits array or top-level duration
     let duration = if let Some(edits) = data.get("edits").and_then(|e| e.as_array()) {
@@ -153,12 +145,7 @@ fn build_assembled_edit(
                 .and_then(|v| v.as_str())
                 .unwrap_or("unknown.mp4");
 
-            let clip = TimelineClip::new(
-                PathBuf::from(source),
-                0.0,
-                clip_duration,
-                timeline_pos,
-            );
+            let clip = TimelineClip::new(PathBuf::from(source), 0.0, clip_duration, timeline_pos);
 
             edit.video_clips.push(clip);
             timeline_pos += clip_duration;

@@ -34,9 +34,9 @@ pub async fn get_attempt_repos(
     State(deployment): State<DeploymentImpl>,
     Query(query): Query<RepoQuery>,
 ) -> Result<ResponseJson<ApiResponse<Vec<RepoWithTargetBranch>>>, ApiError> {
-    let attempt_id = query
-        .task_attempt_id
-        .ok_or(ApiError::BadRequest("task_attempt_id is required".to_string()))?;
+    let attempt_id = query.task_attempt_id.ok_or(ApiError::BadRequest(
+        "task_attempt_id is required".to_string(),
+    ))?;
     let repos = Repo::find_by_task_attempt_id(&deployment.db().pool, attempt_id).await?;
     Ok(ResponseJson(ApiResponse::success(repos)))
 }

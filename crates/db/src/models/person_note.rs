@@ -95,9 +95,15 @@ impl PersonNote {
         let mut qb = sqlx::QueryBuilder::new(
             "UPDATE person_notes SET updated_at = datetime('now','subsec')",
         );
-        if let Some(v) = input.text       { qb.push(", text = ").push_bind(v); }
-        if let Some(v) = input.status     { qb.push(", status = ").push_bind(v); }
-        if let Some(v) = input.proposal_id { qb.push(", proposal_id = ").push_bind(v); }
+        if let Some(v) = input.text {
+            qb.push(", text = ").push_bind(v);
+        }
+        if let Some(v) = input.status {
+            qb.push(", status = ").push_bind(v);
+        }
+        if let Some(v) = input.proposal_id {
+            qb.push(", proposal_id = ").push_bind(v);
+        }
         qb.push(" WHERE id = ").push_bind(id);
         qb.build().execute(pool).await?;
         Self::find_by_id(pool, id).await

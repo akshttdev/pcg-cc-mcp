@@ -50,9 +50,10 @@ pub fn format_agent_embed(
         .timestamp(serenity::model::Timestamp::now());
 
     if let (Some(input), Some(output)) = (input_tokens, output_tokens) {
-        embed = embed.footer(serenity::all::CreateEmbedFooter::new(
-            format!("Tokens: {} in / {} out", input, output),
-        ));
+        embed = embed.footer(serenity::all::CreateEmbedFooter::new(format!(
+            "Tokens: {} in / {} out",
+            input, output
+        )));
     }
 
     embed

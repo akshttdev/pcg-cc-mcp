@@ -126,10 +126,7 @@ impl PulseAlertRule {
         .await
     }
 
-    pub async fn increment_trigger_count(
-        pool: &SqlitePool,
-        id: &str,
-    ) -> Result<(), sqlx::Error> {
+    pub async fn increment_trigger_count(pool: &SqlitePool, id: &str) -> Result<(), sqlx::Error> {
         sqlx::query(
             r#"UPDATE pulse_alert_rules SET trigger_count = trigger_count + 1,
                last_triggered_at = datetime('now', 'subsec'), updated_at = datetime('now', 'subsec')

@@ -7,9 +7,8 @@ use futures::{Stream, StreamExt};
 use reqwest::Client;
 
 use super::provider_trait::{
-    ChatMessage, ChatRequest, ContentBlock, LLMProviderTrait, MessageRole,
-    ProviderError, ProviderResponse, ProviderType, StreamChunk, TokenUsage, ToolCallRequest,
-    ToolDefinition,
+    ChatMessage, ChatRequest, ContentBlock, LLMProviderTrait, MessageRole, ProviderError,
+    ProviderResponse, ProviderType, StreamChunk, TokenUsage, ToolCallRequest, ToolDefinition,
 };
 
 /// OpenAI API provider
@@ -27,7 +26,9 @@ impl OpenAIProvider {
         if api_key.is_some() {
             tracing::info!("OpenAI provider initialized with API key");
         } else {
-            tracing::warn!("OpenAI provider created without API key - OPENAI_API_KEY env var not found");
+            tracing::warn!(
+                "OpenAI provider created without API key - OPENAI_API_KEY env var not found"
+            );
         }
 
         Self {
@@ -163,11 +164,7 @@ impl OpenAIProvider {
         }
 
         // Text response
-        let content = message["content"]
-            .as_str()
-            .unwrap_or("")
-            .trim()
-            .to_string();
+        let content = message["content"].as_str().unwrap_or("").trim().to_string();
 
         Ok(ProviderResponse::Text { content, usage })
     }
@@ -253,7 +250,9 @@ impl LLMProviderTrait for OpenAIProvider {
                         "auto" => serde_json::json!("auto"),
                         "required" => serde_json::json!("required"),
                         "none" => serde_json::json!("none"),
-                        specific => serde_json::json!({"type": "function", "function": {"name": specific}}),
+                        specific => {
+                            serde_json::json!({"type": "function", "function": {"name": specific}})
+                        }
                     };
                 } else {
                     payload["tool_choice"] = serde_json::json!("auto");

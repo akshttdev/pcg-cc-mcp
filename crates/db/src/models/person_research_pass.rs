@@ -60,7 +60,9 @@ impl PersonResearchPass {
 
     pub async fn next_pass_number(pool: &sqlx::SqlitePool, person_id: Uuid) -> i64 {
         #[derive(sqlx::FromRow)]
-        struct Row { n: Option<i64> }
+        struct Row {
+            n: Option<i64>,
+        }
 
         sqlx::query_as::<_, Row>(
             "SELECT MAX(pass_number) AS n FROM person_research_passes WHERE person_id = ?",

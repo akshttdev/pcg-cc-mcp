@@ -21,7 +21,6 @@ type ExecutorType =
 
 // RJSF's generic system uses `any` extensively — IChangeEvent, ValidatorType, etc.
 // Using Record<string, unknown> causes type incompatibilities with RJSF internals.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface ExecutorConfigFormProps {
   executor: ExecutorType;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

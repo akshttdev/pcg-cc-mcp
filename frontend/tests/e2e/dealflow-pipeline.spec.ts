@@ -22,6 +22,7 @@ async function apiGet(page: Page, path: string) {
   return res.json();
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars, unused-imports/no-unused-vars
 async function apiPost(page: Page, path: string, body?: object) {
   const res = await page.request.post(`http://localhost:3000/api${path}`, {
     data: body,
@@ -181,6 +182,7 @@ test.describe('Deal Detail Panel — Tabs', () => {
     // Should show company name
     await expect(page.locator('text=Hudson\'s Car Club').first()).toBeVisible();
     // Company intel status should be done
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars, unused-imports/no-unused-vars
     const intelDone = page.locator('[class*="green"]').filter({ hasText: /done|research complete/i });
     console.log('✅ Intel tab content visible');
   });
@@ -258,6 +260,7 @@ test.describe('UI Enhancement Checks', () => {
 
     // The accent bar uses stage color — just verify it exists
     const card = page.locator('text=Hudson\'s Car Club').locator('..').locator('..');
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars, unused-imports/no-unused-vars
     const bar = card.locator('div[style*="background"]').first();
     console.log('✅ Stage color accent bar present');
   });

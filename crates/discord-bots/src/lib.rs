@@ -7,14 +7,13 @@ pub mod voice;
 
 use std::sync::Arc;
 
-use serenity::all::*;
-use songbird::SerenityInit;
-use tracing::{error, info};
-
 use backend::BackendClient;
 use config::BotConfig;
 use nora_bot::NoraHandler;
+use serenity::all::*;
+use songbird::SerenityInit;
 use topsi_bot::TopsiHandler;
+use tracing::{error, info};
 use voice::{VoiceManager, VoiceServiceConfig};
 
 /// Spawn Discord bots (Nora + Topsi) as background tasks on the current tokio runtime.
@@ -49,11 +48,7 @@ pub fn spawn_discord_bots() {
         let voice_config = voice_config.clone();
 
         tokio::spawn(async move {
-            let nora_voice = Arc::new(VoiceManager::new(
-                backend.clone(),
-                "Nora",
-                voice_config,
-            ));
+            let nora_voice = Arc::new(VoiceManager::new(backend.clone(), "Nora", voice_config));
             let handler = NoraHandler::new(backend, config, nora_voice);
 
             let mut client = match Client::builder(&token, intents)
@@ -83,11 +78,7 @@ pub fn spawn_discord_bots() {
         let voice_config = voice_config.clone();
 
         tokio::spawn(async move {
-            let topsi_voice = Arc::new(VoiceManager::new(
-                backend.clone(),
-                "Topsi",
-                voice_config,
-            ));
+            let topsi_voice = Arc::new(VoiceManager::new(backend.clone(), "Topsi", voice_config));
             let handler = TopsiHandler::new(backend, config, topsi_voice);
 
             let mut client = match Client::builder(&token, intents)

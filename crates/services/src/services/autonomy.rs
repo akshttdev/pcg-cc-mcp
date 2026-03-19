@@ -4,21 +4,21 @@
 //! human-agent collaboration levels.
 
 use db::{
+    DBService,
     models::{
         approval_gate::{
             ApprovalDecision, ApprovalGate, ApprovalGateError, CreateApprovalGate,
             CreatePendingGate, GateApproval, PendingGate, PendingGateStatus, SubmitApproval,
         },
         checkpoint_definition::{
-            CheckpointDefinition, CheckpointDefinitionError,
-            CreateCheckpointDefinition, UpdateCheckpointDefinition,
+            CheckpointDefinition, CheckpointDefinitionError, CreateCheckpointDefinition,
+            UpdateCheckpointDefinition,
         },
         execution_checkpoint::{
-            CreateExecutionCheckpoint, ExecutionCheckpoint,
-            ExecutionCheckpointError, ReviewCheckpoint,
+            CreateExecutionCheckpoint, ExecutionCheckpoint, ExecutionCheckpointError,
+            ReviewCheckpoint,
         },
     },
-    DBService,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -100,14 +100,16 @@ impl AutonomyService {
     // ========== Autonomy Mode ==========
 
     /// Get autonomy mode for a task
-    pub async fn get_task_autonomy_mode(&self, task_id: Uuid) -> Result<AutonomyMode, AutonomyError> {
-        let row: Option<(String,)> = sqlx::query_as(
-            r#"SELECT autonomy_mode FROM tasks WHERE id = ?1"#,
-        )
-        .bind(task_id)
-        .fetch_optional(&self.db.pool)
-        .await
-        .map_err(|e| AutonomyError::DatabaseError(e.to_string()))?;
+    pub async fn get_task_autonomy_mode(
+        &self,
+        task_id: Uuid,
+    ) -> Result<AutonomyMode, AutonomyError> {
+        let row: Option<(String,)> =
+            sqlx::query_as(r#"SELECT autonomy_mode FROM tasks WHERE id = ?1"#)
+                .bind(task_id)
+                .fetch_optional(&self.db.pool)
+                .await
+                .map_err(|e| AutonomyError::DatabaseError(e.to_string()))?;
 
         match row {
             Some((mode,)) => match mode.as_str() {
@@ -185,9 +187,8 @@ impl AutonomyService {
         trigger_reason: Option<String>,
         auto_approve_minutes: Option<i32>,
     ) -> Result<ExecutionCheckpoint, AutonomyError> {
-        let expires_at = auto_approve_minutes.map(|mins| {
-            chrono::Utc::now() + chrono::Duration::minutes(mins as i64)
-        });
+        let expires_at = auto_approve_minutes
+            .map(|mins| chrono::Utc::now() + chrono::Duration::minutes(mins as i64));
 
         let checkpoint = ExecutionCheckpoint::create(
             &self.db.pool,
@@ -356,8 +357,13 @@ impl AutonomyService {
             .filter(|a| a.decision == ApprovalDecision::Rejected)
             .count() as i32;
 
-        PendingGate::update_counts(&self.db.pool, pending_gate_id, approval_count, rejection_count)
-            .await?;
+        PendingGate::update_counts(
+            &self.db.pool,
+            pending_gate_id,
+            approval_count,
+            rejection_count,
+        )
+        .await?;
 
         // Resolve if enough approvals or any rejection
         if approval_count >= gate.min_approvals {
@@ -382,7 +388,9 @@ impl AutonomyService {
     // ========== Summary ==========
 
     /// Get all pending approvals summary
-    pub async fn get_pending_approvals_summary(&self) -> Result<PendingApprovalsSummary, AutonomyError> {
+    pub async fn get_pending_approvals_summary(
+        &self,
+    ) -> Result<PendingApprovalsSummary, AutonomyError> {
         // Get all pending checkpoints
         let checkpoints = ExecutionCheckpoint::find_all_pending(&self.db.pool).await?;
 
@@ -391,7 +399,9 @@ impl AutonomyService {
         let mut gates_with_details = Vec::new();
 
         for pending in pending_gates {
-            if let Some(gate_def) = ApprovalGate::find_by_id(&self.db.pool, pending.approval_gate_id).await? {
+            if let Some(gate_def) =
+                ApprovalGate::find_by_id(&self.db.pool, pending.approval_gate_id).await?
+            {
                 let approvals = GateApproval::find_for_pending_gate(
                     &self.db.pool,
                     pending.approval_gate_id,
@@ -428,9 +438,9 @@ impl AutonomyService {
 
         // Check for pending gates
         let gates = self.get_pending_gates(execution_process_id).await?;
-        let has_blocking_gate = gates
-            .iter()
-            .any(|g| g.status == PendingGateStatus::Pending || g.status == PendingGateStatus::Rejected);
+        let has_blocking_gate = gates.iter().any(|g| {
+            g.status == PendingGateStatus::Pending || g.status == PendingGateStatus::Rejected
+        });
 
         Ok(!has_blocking_gate)
     }

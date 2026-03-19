@@ -181,20 +181,24 @@ pub async fn start_dev_server(
         .ok_or(SqlxError::RowNotFound)?;
 
     // Stop any existing dev servers for this project
-    let existing_dev_servers =
-        match ExecutionProcess::find_running_dev_servers_by_project(pool, Uuid::parse_str(&project.id).map_err(|e| ApiError::InternalError(e.to_string()))?).await {
-            Ok(servers) => servers,
-            Err(e) => {
-                tracing::error!(
-                    "Failed to find running dev servers for project {}: {}",
-                    project.id,
-                    e
-                );
-                return Err(ApiError::TaskAttempt(TaskAttemptError::ValidationError(
-                    e.to_string(),
-                )));
-            }
-        };
+    let existing_dev_servers = match ExecutionProcess::find_running_dev_servers_by_project(
+        pool,
+        Uuid::parse_str(&project.id).map_err(|e| ApiError::InternalError(e.to_string()))?,
+    )
+    .await
+    {
+        Ok(servers) => servers,
+        Err(e) => {
+            tracing::error!(
+                "Failed to find running dev servers for project {}: {}",
+                project.id,
+                e
+            );
+            return Err(ApiError::TaskAttempt(TaskAttemptError::ValidationError(
+                e.to_string(),
+            )));
+        }
+    };
 
     for dev_server in existing_dev_servers {
         tracing::info!(

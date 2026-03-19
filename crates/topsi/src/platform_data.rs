@@ -8,22 +8,30 @@
 //! DB queries directly in its agent loop. This keeps agent code focused on orchestration
 //! and makes platform data access testable and reusable.
 
+use std::sync::Arc;
+
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        crm_contact::{ContactSearchParams, CrmContact, LifecycleStage},
+        crm_deal::CrmDeal,
+        crm_pipeline::{CrmPipeline, CrmPipelineStage, PipelineType},
+        project::Project,
+        task::Task,
+    },
+};
 use serde_json::json;
 use sqlx::SqlitePool;
-use std::sync::Arc;
-use db::db_uuid::DbUuid;
 // TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 
-use crate::agent::access_control::{AccessScope, UserContext};
-use crate::agent::TaskExecutionBridge;
-use crate::{Result, TopsiError};
-
-use db::models::project::Project;
-use db::models::task::Task;
-use db::models::crm_contact::{CrmContact, ContactSearchParams, LifecycleStage};
-use db::models::crm_deal::CrmDeal;
-use db::models::crm_pipeline::{CrmPipeline, CrmPipelineStage, PipelineType};
+use crate::{
+    agent::{
+        access_control::{AccessScope, UserContext},
+        TaskExecutionBridge,
+    },
+    Result, TopsiError,
+};
 
 /// Platform Data Service — owns all CRUD operations for platform entities.
 ///
@@ -36,7 +44,10 @@ pub struct PlatformDataService {
 
 impl PlatformDataService {
     pub fn new(pool: SqlitePool, execution_bridge: Option<Arc<dyn TaskExecutionBridge>>) -> Self {
-        Self { pool, execution_bridge }
+        Self {
+            pool,
+            execution_bridge,
+        }
     }
 
     pub fn pool(&self) -> &SqlitePool {
@@ -90,9 +101,9 @@ impl PlatformDataService {
         scope: &AccessScope,
     ) -> Result<serde_json::Value> {
         let projects = match scope {
-            AccessScope::Admin => {
-                Project::find_all(&self.pool).await.map_err(|e| TopsiError::DatabaseError(e))?
-            }
+            AccessScope::Admin => Project::find_all(&self.pool)
+                .await
+                .map_err(|e| TopsiError::DatabaseError(e))?,
             AccessScope::Projects(ids) => {
                 let mut projects = Vec::new();
                 for id in ids {
@@ -138,13 +149,15 @@ impl PlatformDataService {
         args: &serde_json::Value,
         user_context: &UserContext,
     ) -> Result<serde_json::Value> {
-        use db::models::project::{Project, CreateProject};
+        use db::models::project::{CreateProject, Project};
 
-        let name = args.get("name")
+        let name = args
+            .get("name")
             .and_then(|v| v.as_str())
             .ok_or_else(|| TopsiError::ToolError("Missing project name".to_string()))?;
 
-        let mut path = args.get("path")
+        let mut path = args
+            .get("path")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
             .unwrap_or_else(|| {
@@ -160,14 +173,19 @@ impl PlatformDataService {
             let sanitized_name = name.to_lowercase().replace(" ", "-");
             path = format!("~/projects/{}-{}", sanitized_name, attempt);
             if attempt > 10 {
-                return Err(TopsiError::ToolError(
-                    format!("Could not find unique path after {} attempts", attempt)
-                ));
+                return Err(TopsiError::ToolError(format!(
+                    "Could not find unique path after {} attempts",
+                    attempt
+                )));
             }
         }
 
         if path != base_path {
-            tracing::info!("Original path {} was taken, using {} instead", base_path, path);
+            tracing::info!(
+                "Original path {} was taken, using {} instead",
+                base_path,
+                path
+            );
         }
 
         let project_id = Uuid::new_v4();
@@ -192,16 +210,21 @@ impl PlatformDataService {
         // Ensure default board exists so tasks have somewhere to land
         use db::models::project_board::ProjectBoard;
         if let Err(e) = ProjectBoard::ensure_default_board(&self.pool, &project.id).await {
-            tracing::error!("Failed to create default board for project {}: {}", project.id, e);
+            tracing::error!(
+                "Failed to create default board for project {}: {}",
+                project.id,
+                e
+            );
         }
 
         // Add the creator as project owner in project_members
-        let user_uuid = Uuid::parse_str(&user_context.user_id)
-            .map_err(|e| TopsiError::ToolError(format!("Invalid user ID '{}': {}", user_context.user_id, e)))?;
+        let user_uuid = Uuid::parse_str(&user_context.user_id).map_err(|e| {
+            TopsiError::ToolError(format!("Invalid user ID '{}': {}", user_context.user_id, e))
+        })?;
         let member_id = Uuid::new_v4();
         sqlx::query(
             r#"INSERT INTO project_members (id, project_id, user_id, role, granted_by)
-               VALUES (?, ?, ?, ?, ?)"#
+               VALUES (?, ?, ?, ?, ?)"#,
         )
         .bind(member_id.to_string())
         .bind(project.id.to_string())
@@ -212,8 +235,12 @@ impl PlatformDataService {
         .await
         .map_err(|e| TopsiError::ToolError(format!("Failed to add project member: {}", e)))?;
 
-        tracing::info!("Created project '{}' (ID: {}) for user {}",
-            project.name, project.id, user_context.user_id);
+        tracing::info!(
+            "Created project '{}' (ID: {}) for user {}",
+            project.name,
+            project.id,
+            user_context.user_id
+        );
 
         Ok(json!({
             "success": true,
@@ -233,7 +260,8 @@ impl PlatformDataService {
         args: &serde_json::Value,
         user_context: &UserContext,
     ) -> Result<serde_json::Value> {
-        let project_id_str = args["project_id"].as_str()
+        let project_id_str = args["project_id"]
+            .as_str()
             .ok_or_else(|| TopsiError::ToolError("project_id required".into()))?;
         let project_uuid = Uuid::parse_str(project_id_str)
             .map_err(|e| TopsiError::ToolError(format!("Invalid project_id: {}", e)))?;
@@ -249,14 +277,18 @@ impl PlatformDataService {
         .map_err(|e| TopsiError::ToolError(format!("Access check failed: {}", e)))?;
 
         if member_check.is_none() && !user_context.is_admin {
-            return Err(TopsiError::ToolError("Access denied: not a member of this project".into()));
+            return Err(TopsiError::ToolError(
+                "Access denied: not a member of this project".into(),
+            ));
         }
 
         let new_name = args["name"].as_str();
         let new_org_id = args["organization_id"].as_str();
 
         if new_name.is_none() && new_org_id.is_none() {
-            return Err(TopsiError::ToolError("Provide at least one field to update: name or organization_id".into()));
+            return Err(TopsiError::ToolError(
+                "Provide at least one field to update: name or organization_id".into(),
+            ));
         }
 
         // Parse org_id from hex string
@@ -264,25 +296,36 @@ impl PlatformDataService {
             if let Ok(u) = Uuid::parse_str(org_str) {
                 Some(u)
             } else if org_str.len() == 32 {
-                let with_dashes = format!("{}-{}-{}-{}-{}",
-                    &org_str[0..8], &org_str[8..12], &org_str[12..16],
-                    &org_str[16..20], &org_str[20..32]);
-                Some(Uuid::parse_str(&with_dashes)
-                    .map_err(|_| TopsiError::ToolError(format!("Invalid organization_id: {}", org_str)))?)
+                let with_dashes = format!(
+                    "{}-{}-{}-{}-{}",
+                    &org_str[0..8],
+                    &org_str[8..12],
+                    &org_str[12..16],
+                    &org_str[16..20],
+                    &org_str[20..32]
+                );
+                Some(Uuid::parse_str(&with_dashes).map_err(|_| {
+                    TopsiError::ToolError(format!("Invalid organization_id: {}", org_str))
+                })?)
             } else {
-                return Err(TopsiError::ToolError(format!("organization_id must be a UUID or 32-char hex string, got: {}", org_str)));
+                return Err(TopsiError::ToolError(format!(
+                    "organization_id must be a UUID or 32-char hex string, got: {}",
+                    org_str
+                )));
             }
         } else {
             None
         };
 
-        sqlx::query(r#"
+        sqlx::query(
+            r#"
             UPDATE projects
             SET name = COALESCE(?, name),
                 organization_id = CASE WHEN ? = 1 THEN ? ELSE organization_id END,
                 updated_at = datetime('now', 'subsec')
             WHERE id = ?
-        "#)
+        "#,
+        )
         .bind(new_name)
         .bind(org_uuid.is_some() as i32)
         .bind(org_uuid.map(|u| u.to_string()))
@@ -291,7 +334,12 @@ impl PlatformDataService {
         .await
         .map_err(|e| TopsiError::ToolError(format!("Failed to update project: {}", e)))?;
 
-        tracing::info!("Updated project {} — name={:?}, org={:?}", project_id_str, new_name, new_org_id);
+        tracing::info!(
+            "Updated project {} — name={:?}, org={:?}",
+            project_id_str,
+            new_name,
+            new_org_id
+        );
 
         Ok(json!({
             "success": true,
@@ -320,7 +368,7 @@ impl PlatformDataService {
         };
 
         let total: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND deleted_at IS NULL"
+            "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND deleted_at IS NULL",
         )
         .bind(project_id)
         .fetch_one(&self.pool)
@@ -378,12 +426,17 @@ impl PlatformDataService {
         .await
         .map_err(|e| TopsiError::ToolError(format!("Failed to list organizations: {}", e)))?;
 
-        let orgs: Vec<serde_json::Value> = rows.iter().map(|r| json!({
-            "id": r.id,
-            "name": r.name,
-            "slug": r.slug,
-            "description": r.description
-        })).collect();
+        let orgs: Vec<serde_json::Value> = rows
+            .iter()
+            .map(|r| {
+                json!({
+                    "id": r.id,
+                    "name": r.name,
+                    "slug": r.slug,
+                    "description": r.description
+                })
+            })
+            .collect();
 
         Ok(json!({ "organizations": orgs, "count": orgs.len() }))
     }
@@ -401,7 +454,11 @@ impl PlatformDataService {
     ) -> Result<serde_json::Value> {
         // Extract or infer project_id
         let project_id = if let Some(pid_str) = args.get("project_id").and_then(|v| v.as_str()) {
-            if pid_str.contains("<") || pid_str.contains(">") || pid_str == "null" || pid_str.is_empty() {
+            if pid_str.contains("<")
+                || pid_str.contains(">")
+                || pid_str == "null"
+                || pid_str.is_empty()
+            {
                 None
             } else {
                 Uuid::parse_str(pid_str).ok()
@@ -420,7 +477,7 @@ impl PlatformDataService {
                 let user_uuid = Uuid::parse_str(&user_context.user_id).unwrap_or_default();
                 let user_id_bytes = user_uuid.to_string();
                 let project_ids: Vec<String> = sqlx::query_scalar(
-                    r#"SELECT DISTINCT project_id FROM project_members WHERE user_id = ?"#
+                    r#"SELECT DISTINCT project_id FROM project_members WHERE user_id = ?"#,
                 )
                 .bind(&user_id_bytes)
                 .fetch_all(&self.pool)
@@ -430,7 +487,8 @@ impl PlatformDataService {
                 let mut projects = Vec::new();
                 for pid_str in project_ids {
                     if let Ok(pid) = Uuid::parse_str(&pid_str) {
-                        if let Ok(Some(p)) = Project::find_by_id(&self.pool, &pid.to_string()).await {
+                        if let Ok(Some(p)) = Project::find_by_id(&self.pool, &pid.to_string()).await
+                        {
                             projects.push(p);
                         }
                     }
@@ -440,7 +498,10 @@ impl PlatformDataService {
 
             if projects.is_empty() {
                 // Auto-create a project based on the task
-                let task_title = args.get("title").and_then(|v| v.as_str()).unwrap_or("Untitled Task");
+                let task_title = args
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Untitled Task");
                 let project_name = if task_title.len() > 30 {
                     format!("{} Project", &task_title[..30])
                 } else {
@@ -457,7 +518,7 @@ impl PlatformDataService {
                     path = format!("~/projects/{}-{}", sanitized, attempt);
                     if attempt > 10 {
                         return Err(TopsiError::ToolError(
-                            "Could not find unique path for auto-created project".to_string()
+                            "Could not find unique path for auto-created project".to_string(),
                         ));
                     }
                 }
@@ -477,10 +538,14 @@ impl PlatformDataService {
                 };
 
                 let new_project_id = Uuid::new_v4();
-                match Project::create(&self.pool, &create_project, &new_project_id.to_string()).await {
+                match Project::create(&self.pool, &create_project, &new_project_id.to_string())
+                    .await
+                {
                     Ok(project) => {
-                        let auto_user_uuid = Uuid::parse_str(&user_context.user_id)
-                            .map_err(|e| TopsiError::ToolError(format!("Invalid user ID: {}", e)))?;
+                        let auto_user_uuid =
+                            Uuid::parse_str(&user_context.user_id).map_err(|e| {
+                                TopsiError::ToolError(format!("Invalid user ID: {}", e))
+                            })?;
                         let member_id = Uuid::new_v4();
                         if let Err(e) = sqlx::query(
                             r#"INSERT INTO project_members (id, project_id, user_id, role, granted_by)
@@ -499,20 +564,30 @@ impl PlatformDataService {
                             ));
                         }
 
-                        tracing::info!("Auto-created project '{}' (ID: {}) for task '{}' by user {}",
-                            project.name, project.id, task_title, user_context.user_id);
-                        Uuid::parse_str(&project.id).map_err(|e| TopsiError::ToolError(format!("Invalid project ID: {}", e)))?
+                        tracing::info!(
+                            "Auto-created project '{}' (ID: {}) for task '{}' by user {}",
+                            project.name,
+                            project.id,
+                            task_title,
+                            user_context.user_id
+                        );
+                        Uuid::parse_str(&project.id).map_err(|e| {
+                            TopsiError::ToolError(format!("Invalid project ID: {}", e))
+                        })?
                     }
                     Err(e) => {
-                        return Err(TopsiError::ToolError(
-                            format!("No projects found and failed to auto-create project '{}': {}", project_name, e)
-                        ));
+                        return Err(TopsiError::ToolError(format!(
+                            "No projects found and failed to auto-create project '{}': {}",
+                            project_name, e
+                        )));
                     }
                 }
             } else if projects.len() == 1 {
-                Uuid::parse_str(&projects[0].id).map_err(|e| TopsiError::ToolError(format!("Invalid project ID: {}", e)))?
+                Uuid::parse_str(&projects[0].id)
+                    .map_err(|e| TopsiError::ToolError(format!("Invalid project ID: {}", e)))?
             } else {
-                let project_list: Vec<String> = projects.iter()
+                let project_list: Vec<String> = projects
+                    .iter()
                     .map(|p| format!("  - {} (ID: {})", p.name, p.id))
                     .collect();
 
@@ -525,11 +600,13 @@ impl PlatformDataService {
             }
         };
 
-        let title = args.get("title")
+        let title = args
+            .get("title")
             .and_then(|v| v.as_str())
             .ok_or_else(|| TopsiError::ToolError("Missing title".to_string()))?;
 
-        let description = args.get("description")
+        let description = args
+            .get("description")
             .and_then(|v| v.as_str())
             .ok_or_else(|| TopsiError::ToolError("Missing description".to_string()))?;
 
@@ -537,35 +614,38 @@ impl PlatformDataService {
 
         // Verify access to project
         match scope {
-            AccessScope::Admin => {},
+            AccessScope::Admin => {}
             AccessScope::Projects(ids) => {
                 if !ids.contains(&project_id) {
                     return Err(TopsiError::ToolError(
-                        "You don't have access to this project".to_string()
+                        "You don't have access to this project".to_string(),
                     ));
                 }
-            },
+            }
             AccessScope::SingleProject(id) => {
                 if *id != project_id {
                     return Err(TopsiError::ToolError(
-                        "You don't have access to this project".to_string()
+                        "You don't have access to this project".to_string(),
                     ));
                 }
-            },
+            }
             AccessScope::None => {
                 return Err(TopsiError::ToolError(
-                    "You don't have permission to create tasks".to_string()
+                    "You don't have permission to create tasks".to_string(),
                 ));
             }
         }
 
-        use db::models::task::{Task, CreateTask};
-        use db::models::project_board::ProjectBoard;
+        use db::models::{
+            project_board::ProjectBoard,
+            task::{CreateTask, Task},
+        };
 
-        let default_board_id = ProjectBoard::ensure_default_board(&self.pool, &project_id.to_string())
-            .await
-            .ok()
-            .and_then(|b| Uuid::parse_str(&b.id).ok());
+        let default_board_id =
+            ProjectBoard::ensure_default_board(&self.pool, &project_id.to_string())
+                .await
+                .ok()
+                .and_then(|b| Uuid::parse_str(&b.id).ok());
 
         let create_task = CreateTask {
             project_id: project_id.to_string(),
@@ -601,7 +681,8 @@ impl PlatformDataService {
             .map_err(|e| TopsiError::ToolError(format!("Failed to create task: {}", e)))?;
 
         // Auto-execute: if an agent was assigned, automatically start task execution
-        let auto_execute = args.get("auto_execute")
+        let auto_execute = args
+            .get("auto_execute")
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
@@ -619,17 +700,28 @@ impl PlatformDataService {
 
                 tracing::info!(
                     "[TOPSI] Auto-executing task {} with agent {} (executor: {})",
-                    task.id, agent, executor_name
+                    task.id,
+                    agent,
+                    executor_name
                 );
 
-                match bridge.start_task_attempt(task_id, executor_name, &base_branch).await {
+                match bridge
+                    .start_task_attempt(task_id, executor_name, &base_branch)
+                    .await
+                {
                     Ok(result) => {
                         tracing::info!("[TOPSI] Auto-execution started for task {}", task.id);
                         Some(result)
                     }
                     Err(e) => {
-                        tracing::error!("[TOPSI] Auto-execution failed for task {}: {}", task.id, e);
-                        Some(json!({ "error": format!("Task created but execution failed: {}", e) }))
+                        tracing::error!(
+                            "[TOPSI] Auto-execution failed for task {}: {}",
+                            task.id,
+                            e
+                        );
+                        Some(
+                            json!({ "error": format!("Task created but execution failed: {}", e) }),
+                        )
                     }
                 }
             } else {
@@ -679,8 +771,9 @@ impl PlatformDataService {
             .and_then(|v| v.as_str())
             .ok_or_else(|| TopsiError::ToolError("Missing task_id".to_string()))?;
 
-        let task_id = Uuid::parse_str(task_id_str)
-            .map_err(|e| TopsiError::ToolError(format!("Invalid task_id '{}': {}", task_id_str, e)))?;
+        let task_id = Uuid::parse_str(task_id_str).map_err(|e| {
+            TopsiError::ToolError(format!("Invalid task_id '{}': {}", task_id_str, e))
+        })?;
 
         let agent_name = args
             .get("agent_name")
@@ -694,15 +787,15 @@ impl PlatformDataService {
             .await
             .map_err(|e| TopsiError::DatabaseError(e))?;
 
-        let task = task.ok_or_else(|| {
-            TopsiError::ToolError(format!("Task {} not found", task_id))
-        })?;
+        let task =
+            task.ok_or_else(|| TopsiError::ToolError(format!("Task {} not found", task_id)))?;
 
         // Verify project access
         match scope {
             AccessScope::Admin => {}
             AccessScope::Projects(ids) => {
-                let project_uuid = Uuid::parse_str(&task.project_id).map_err(|e| TopsiError::ToolError(format!("Invalid project_id: {}", e)))?;
+                let project_uuid = Uuid::parse_str(&task.project_id)
+                    .map_err(|e| TopsiError::ToolError(format!("Invalid project_id: {}", e)))?;
                 if !ids.contains(&project_uuid) {
                     return Err(TopsiError::ToolError(
                         "You don't have access to this task's project".to_string(),
@@ -735,12 +828,20 @@ impl PlatformDataService {
 
         tracing::info!(
             "[TOPSI] Starting task execution: task={}, agent={}, executor={}",
-            task_id, agent_name, executor_name
+            task_id,
+            agent_name,
+            executor_name
         );
 
-        match bridge.start_task_attempt(task_id, executor_name, "main").await {
+        match bridge
+            .start_task_attempt(task_id, executor_name, "main")
+            .await
+        {
             Ok(result) => {
-                tracing::info!("[TOPSI] Task execution started successfully for task {}", task_id);
+                tracing::info!(
+                    "[TOPSI] Task execution started successfully for task {}",
+                    task_id
+                );
                 Ok(result)
             }
             Err(e) => {
@@ -769,10 +870,7 @@ impl PlatformDataService {
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
-        let log_lines = args
-            .get("log_lines")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(20) as i32;
+        let log_lines = args.get("log_lines").and_then(|v| v.as_i64()).unwrap_or(20) as i32;
 
         let task: Option<Task> = sqlx::query_as("SELECT * FROM tasks WHERE id = ?")
             .bind(task_id_str)
@@ -780,9 +878,8 @@ impl PlatformDataService {
             .await
             .map_err(|e| TopsiError::DatabaseError(e))?;
 
-        let task = task.ok_or_else(|| {
-            TopsiError::ToolError(format!("Task {} not found", task_id_str))
-        })?;
+        let task =
+            task.ok_or_else(|| TopsiError::ToolError(format!("Task {} not found", task_id_str)))?;
 
         let mut result = json!({
             "task_id": task.id.to_string(),
@@ -876,15 +973,15 @@ impl PlatformDataService {
             .await
             .map_err(|e| TopsiError::DatabaseError(e))?;
 
-        let task = task.ok_or_else(|| {
-            TopsiError::ToolError(format!("Task {} not found", task_id_str))
-        })?;
+        let task =
+            task.ok_or_else(|| TopsiError::ToolError(format!("Task {} not found", task_id_str)))?;
 
         // Verify project access
         match scope {
             AccessScope::Admin => {}
             AccessScope::Projects(ids) => {
-                let project_uuid = Uuid::parse_str(&task.project_id).map_err(|e| TopsiError::ToolError(format!("Invalid project_id: {}", e)))?;
+                let project_uuid = Uuid::parse_str(&task.project_id)
+                    .map_err(|e| TopsiError::ToolError(format!("Invalid project_id: {}", e)))?;
                 if !ids.contains(&project_uuid) {
                     return Err(TopsiError::ToolError(
                         "You don't have access to this task's project".to_string(),
@@ -938,10 +1035,7 @@ impl PlatformDataService {
 
         updates.push("updated_at = datetime('now')");
 
-        let query = format!(
-            "UPDATE tasks SET {} WHERE id = ?",
-            updates.join(", ")
-        );
+        let query = format!("UPDATE tasks SET {} WHERE id = ?", updates.join(", "));
 
         let mut q = sqlx::query(&query);
         for val in &values {
@@ -953,7 +1047,11 @@ impl PlatformDataService {
             .await
             .map_err(|e| TopsiError::ToolError(format!("Failed to update task: {}", e)))?;
 
-        tracing::info!("[TOPSI] Updated task {} with {} field changes", task_id_str, values.len());
+        tracing::info!(
+            "[TOPSI] Updated task {} with {} field changes",
+            task_id_str,
+            values.len()
+        );
 
         Ok(json!({
             "success": true,
@@ -972,10 +1070,7 @@ impl PlatformDataService {
     ) -> Result<serde_json::Value> {
         let status_filter = args.get("status").and_then(|v| v.as_str());
         let agent_filter = args.get("assigned_agent").and_then(|v| v.as_str());
-        let limit = args
-            .get("limit")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(20) as i32;
+        let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(20) as i32;
 
         let project_id_filter = args.get("project_id").and_then(|v| v.as_str());
 
@@ -983,18 +1078,19 @@ impl PlatformDataService {
             if let Ok(pid) = Uuid::parse_str(pid_str) {
                 vec![pid]
             } else {
-                return Err(TopsiError::ToolError(format!("Invalid project_id: {}", pid_str)));
+                return Err(TopsiError::ToolError(format!(
+                    "Invalid project_id: {}",
+                    pid_str
+                )));
             }
         } else {
             match scope {
-                AccessScope::Admin => {
-                    Project::find_all(&self.pool)
-                        .await
-                        .unwrap_or_default()
-                        .iter()
-                        .filter_map(|p| Uuid::parse_str(&p.id).ok())
-                        .collect()
-                }
+                AccessScope::Admin => Project::find_all(&self.pool)
+                    .await
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(|p| Uuid::parse_str(&p.id).ok())
+                    .collect(),
                 AccessScope::Projects(ids) => ids.iter().copied().collect(),
                 AccessScope::SingleProject(id) => vec![*id],
                 AccessScope::None => vec![],
@@ -1020,16 +1116,32 @@ impl PlatformDataService {
 
             query.push_str(" ORDER BY created_at DESC LIMIT ?");
 
-            let mut q = sqlx::query_as::<_, (String, String, String, String, Option<String>, String, String)>(&query);
+            let mut q = sqlx::query_as::<
+                _,
+                (
+                    String,
+                    String,
+                    String,
+                    String,
+                    Option<String>,
+                    String,
+                    String,
+                ),
+            >(&query);
             for val in &bind_values {
                 q = q.bind(val);
             }
             q = q.bind(limit);
 
-            let tasks: Vec<(String, String, String, String, Option<String>, String, String)> = q
-                .fetch_all(&self.pool)
-                .await
-                .unwrap_or_default();
+            let tasks: Vec<(
+                String,
+                String,
+                String,
+                String,
+                Option<String>,
+                String,
+                String,
+            )> = q.fetch_all(&self.pool).await.unwrap_or_default();
 
             for (id, title, status, priority, agent, created, updated) in tasks {
                 all_tasks.push(json!({
@@ -1072,7 +1184,12 @@ impl PlatformDataService {
         let task = match Task::find_by_id(&self.pool, task_id_str).await {
             Ok(Some(t)) => t,
             Ok(None) => return Ok(json!({"error": format!("Task '{}' not found", task_id_str)})),
-            Err(e) => return Err(TopsiError::ToolError(format!("Failed to look up task: {}", e))),
+            Err(e) => {
+                return Err(TopsiError::ToolError(format!(
+                    "Failed to look up task: {}",
+                    e
+                )))
+            }
         };
 
         // Check scope
@@ -1082,12 +1199,16 @@ impl PlatformDataService {
             AccessScope::Admin => {}
             AccessScope::Projects(ids) => {
                 if !ids.contains(&project_uuid) {
-                    return Ok(json!({"error": "Access denied: task belongs to a project outside your scope"}));
+                    return Ok(
+                        json!({"error": "Access denied: task belongs to a project outside your scope"}),
+                    );
                 }
             }
             AccessScope::SingleProject(id) => {
                 if *id != project_uuid {
-                    return Ok(json!({"error": "Access denied: task belongs to a different project"}));
+                    return Ok(
+                        json!({"error": "Access denied: task belongs to a different project"}),
+                    );
                 }
             }
             AccessScope::None => {
@@ -1187,7 +1308,11 @@ impl PlatformDataService {
             return Ok(json!({"error": e.to_string()}));
         }
 
-        let limit = args.get("limit").and_then(|v| v.as_i64()).map(|v| v as i32).unwrap_or(50);
+        let limit = args
+            .get("limit")
+            .and_then(|v| v.as_i64())
+            .map(|v| v as i32)
+            .unwrap_or(50);
         let search_query = args.get("search_query").and_then(|v| v.as_str());
         let lifecycle_stage_str = args.get("lifecycle_stage").and_then(|v| v.as_str());
         let lifecycle_stage = lifecycle_stage_str.and_then(|s| s.parse::<LifecycleStage>().ok());
@@ -1204,7 +1329,9 @@ impl PlatformDataService {
                 limit: Some(limit),
                 offset: None,
             };
-            CrmContact::search(&self.pool, params).await.unwrap_or_default()
+            CrmContact::search(&self.pool, params)
+                .await
+                .unwrap_or_default()
         } else {
             CrmContact::find_by_organization(&self.pool, &DbUuid::from(org_uuid), Some(limit))
                 .await
@@ -1255,17 +1382,23 @@ impl PlatformDataService {
 
         let deals = if let Some(pid) = pipeline_id {
             match Uuid::parse_str(pid) {
-                Ok(uuid) => CrmDeal::find_by_pipeline(&self.pool, &DbUuid::from(uuid)).await.unwrap_or_default(),
+                Ok(uuid) => CrmDeal::find_by_pipeline(&self.pool, &DbUuid::from(uuid))
+                    .await
+                    .unwrap_or_default(),
                 Err(_) => return Ok(json!({"error": "Invalid pipeline_id UUID"})),
             }
         } else if let Some(sid) = stage_id {
             match Uuid::parse_str(sid) {
-                Ok(uuid) => CrmDeal::find_by_stage(&self.pool, &DbUuid::from(uuid)).await.unwrap_or_default(),
+                Ok(uuid) => CrmDeal::find_by_stage(&self.pool, &DbUuid::from(uuid))
+                    .await
+                    .unwrap_or_default(),
                 Err(_) => return Ok(json!({"error": "Invalid stage_id UUID"})),
             }
         } else if let Some(oid) = org_id {
             match Uuid::parse_str(oid) {
-                Ok(uuid) => CrmDeal::find_by_organization(&self.pool, &DbUuid::from(uuid)).await.unwrap_or_default(),
+                Ok(uuid) => CrmDeal::find_by_organization(&self.pool, &DbUuid::from(uuid))
+                    .await
+                    .unwrap_or_default(),
                 Err(_) => return Ok(json!({"error": "Invalid organization_id UUID"})),
             }
         } else {
@@ -1322,9 +1455,13 @@ impl PlatformDataService {
             .and_then(|v| v.as_str())
             .and_then(|s| s.parse::<PipelineType>().ok());
 
-        let pipelines = CrmPipeline::find_by_organization(&self.pool, &DbUuid::from(org_uuid), pipeline_type_filter)
-            .await
-            .unwrap_or_default();
+        let pipelines = CrmPipeline::find_by_organization(
+            &self.pool,
+            &DbUuid::from(org_uuid),
+            pipeline_type_filter,
+        )
+        .await
+        .unwrap_or_default();
 
         let mut pipeline_list: Vec<serde_json::Value> = Vec::new();
         for p in &pipelines {
@@ -1365,7 +1502,7 @@ impl PlatformDataService {
         args: &serde_json::Value,
         user_context: &UserContext,
     ) -> Result<serde_json::Value> {
-        use db::models::crm_contact::{CrmContact, CreateCrmContact, ContactSource};
+        use db::models::crm_contact::{ContactSource, CreateCrmContact, CrmContact};
 
         let org_id_str = match args.get("organization_id").and_then(|v| v.as_str()) {
             Some(id) => id,
@@ -1376,32 +1513,58 @@ impl PlatformDataService {
 
         self.verify_org_membership(user_context, org_uuid).await?;
 
-        let lifecycle_stage = args.get("lifecycle_stage")
+        let lifecycle_stage = args
+            .get("lifecycle_stage")
             .and_then(|v| v.as_str())
             .and_then(|s| serde_json::from_value(json!(s)).ok());
 
-        let contact = CrmContact::create(&self.pool, CreateCrmContact {
-            organization_id: DbUuid::from(org_uuid),
-            client_id: None,
-            first_name: args.get("first_name").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            last_name: args.get("last_name").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            email: args.get("email").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            phone: args.get("phone").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            mobile: None,
-            avatar_url: None,
-            company_name: args.get("company_name").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            job_title: args.get("job_title").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            department: None,
-            linkedin_url: args.get("linkedin_url").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            twitter_handle: None,
-            website: None,
-            source: Some(ContactSource::Api),
-            lifecycle_stage,
-            tags: None,
-            custom_fields: None,
-            zoho_contact_id: None,
-            gmail_contact_id: None,
-        }).await;
+        let contact = CrmContact::create(
+            &self.pool,
+            CreateCrmContact {
+                organization_id: DbUuid::from(org_uuid),
+                client_id: None,
+                first_name: args
+                    .get("first_name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                last_name: args
+                    .get("last_name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                email: args
+                    .get("email")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                phone: args
+                    .get("phone")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                mobile: None,
+                avatar_url: None,
+                company_name: args
+                    .get("company_name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                job_title: args
+                    .get("job_title")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                department: None,
+                linkedin_url: args
+                    .get("linkedin_url")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                twitter_handle: None,
+                website: None,
+                source: Some(ContactSource::Api),
+                lifecycle_stage,
+                tags: None,
+                custom_fields: None,
+                zoho_contact_id: None,
+                gmail_contact_id: None,
+            },
+        )
+        .await;
 
         match contact {
             Ok(c) => Ok(json!({
@@ -1421,7 +1584,7 @@ impl PlatformDataService {
         args: &serde_json::Value,
         user_context: &UserContext,
     ) -> Result<serde_json::Value> {
-        use db::models::crm_deal::{CrmDeal, CreateCrmDeal};
+        use db::models::crm_deal::{CreateCrmDeal, CrmDeal};
 
         let org_id_str = match args.get("organization_id").and_then(|v| v.as_str()) {
             Some(id) => id,
@@ -1437,20 +1600,42 @@ impl PlatformDataService {
             None => return Ok(json!({"error": "name is required"})),
         };
 
-        let deal = CrmDeal::create(&self.pool, CreateCrmDeal {
-            organization_id: DbUuid::from(org_uuid),
-            client_id: None,
-            crm_contact_id: args.get("contact_id").and_then(|v| v.as_str()).map(|s| DbUuid::from_string(s)),
-            crm_pipeline_id: args.get("pipeline_id").and_then(|v| v.as_str()).map(|s| DbUuid::from_string(s)),
-            crm_stage_id: args.get("stage_id").and_then(|v| v.as_str()).map(|s| DbUuid::from_string(s)),
-            name,
-            description: args.get("description").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            amount: args.get("amount").and_then(|v| v.as_f64()),
-            currency: args.get("currency").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            expected_close_date: args.get("expected_close_date").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            tags: None,
-            custom_fields: None,
-        }).await;
+        let deal = CrmDeal::create(
+            &self.pool,
+            CreateCrmDeal {
+                organization_id: DbUuid::from(org_uuid),
+                client_id: None,
+                crm_contact_id: args
+                    .get("contact_id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| DbUuid::from_string(s)),
+                crm_pipeline_id: args
+                    .get("pipeline_id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| DbUuid::from_string(s)),
+                crm_stage_id: args
+                    .get("stage_id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| DbUuid::from_string(s)),
+                name,
+                description: args
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                amount: args.get("amount").and_then(|v| v.as_f64()),
+                currency: args
+                    .get("currency")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                expected_close_date: args
+                    .get("expected_close_date")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                tags: None,
+                custom_fields: None,
+            },
+        )
+        .await;
 
         match deal {
             Ok(d) => Ok(json!({
@@ -1488,14 +1673,35 @@ impl PlatformDataService {
         }
 
         let update = UpdateCrmDeal {
-            name: args.get("name").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            name: args
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
             amount: args.get("amount").and_then(|v| v.as_f64()),
-            currency: args.get("currency").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            crm_stage_id: args.get("stage_id").and_then(|v| v.as_str()).map(|s| DbUuid::from_string(s)),
-            description: args.get("description").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            expected_close_date: args.get("expected_close_date").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            lost_reason: args.get("lost_reason").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            win_reason: args.get("win_reason").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            currency: args
+                .get("currency")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            crm_stage_id: args
+                .get("stage_id")
+                .and_then(|v| v.as_str())
+                .map(|s| DbUuid::from_string(s)),
+            description: args
+                .get("description")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            expected_close_date: args
+                .get("expected_close_date")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            lost_reason: args
+                .get("lost_reason")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            win_reason: args
+                .get("win_reason")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
             ..Default::default()
         };
 
@@ -1542,7 +1748,8 @@ impl PlatformDataService {
                         false
                     })
                     .map(|row| {
-                        let owner_id: Option<String> = row.get::<Option<Vec<u8>>, _>("owner_id")
+                        let owner_id: Option<String> = row
+                            .get::<Option<Vec<u8>>, _>("owner_id")
                             .and_then(|bytes| Uuid::from_slice(&bytes).ok())
                             .map(|u| u.to_string());
                         json!({
@@ -1591,7 +1798,8 @@ impl PlatformDataService {
                     .and_then(|s| serde_json::from_str(&s).ok())
                     .unwrap_or(json!([]));
 
-                let owner_id: Option<String> = row.get::<Option<Vec<u8>>, _>("owner_id")
+                let owner_id: Option<String> = row
+                    .get::<Option<Vec<u8>>, _>("owner_id")
                     .and_then(|bytes| Uuid::from_slice(&bytes).ok())
                     .map(|u| u.to_string());
 
@@ -1642,14 +1850,21 @@ impl PlatformDataService {
                     .filter_map(|v| v.as_str().map(|s| s.to_string()))
                     .collect()
             })
-            .unwrap_or_else(|| vec!["projects".to_string(), "contacts".to_string(), "deals".to_string(), "tasks".to_string()]);
+            .unwrap_or_else(|| {
+                vec![
+                    "projects".to_string(),
+                    "contacts".to_string(),
+                    "deals".to_string(),
+                    "tasks".to_string(),
+                ]
+            });
 
         let like_pattern = format!("%{}%", query);
         let mut results = json!({});
 
         if entity_types.contains(&"projects".to_string()) {
             let projects = sqlx::query(
-                "SELECT id, name FROM projects WHERE name LIKE ?1 AND deleted_at IS NULL LIMIT ?2"
+                "SELECT id, name FROM projects WHERE name LIKE ?1 AND deleted_at IS NULL LIMIT ?2",
             )
             .bind(&like_pattern)
             .bind(limit)
@@ -1660,10 +1875,12 @@ impl PlatformDataService {
                 use sqlx::Row;
                 let list: Vec<serde_json::Value> = rows
                     .iter()
-                    .map(|r| json!({
-                        "id": r.get::<String, _>("id"),
-                        "name": r.get::<String, _>("name")
-                    }))
+                    .map(|r| {
+                        json!({
+                            "id": r.get::<String, _>("id"),
+                            "name": r.get::<String, _>("name")
+                        })
+                    })
                     .collect();
                 results["projects"] = json!(list);
             }
@@ -1682,16 +1899,20 @@ impl PlatformDataService {
                     limit: Some(limit),
                     offset: None,
                 };
-                let contacts = CrmContact::search(&self.pool, params).await.unwrap_or_default();
+                let contacts = CrmContact::search(&self.pool, params)
+                    .await
+                    .unwrap_or_default();
                 let list: Vec<serde_json::Value> = contacts
                     .iter()
-                    .map(|c| json!({
-                        "id": c.id.to_string(),
-                        "first_name": c.first_name,
-                        "last_name": c.last_name,
-                        "email": c.email,
-                        "company_name": c.company_name
-                    }))
+                    .map(|c| {
+                        json!({
+                            "id": c.id.to_string(),
+                            "first_name": c.first_name,
+                            "last_name": c.last_name,
+                            "email": c.email,
+                            "company_name": c.company_name
+                        })
+                    })
                     .collect();
                 results["contacts"] = json!(list);
             } else {
@@ -1718,7 +1939,9 @@ impl PlatformDataService {
                             let id_bytes = r.get::<Vec<u8>, _>("id");
                             let id_str = Uuid::from_slice(&id_bytes)
                                 .map(|u| u.to_string())
-                                .unwrap_or_else(|_| id_bytes.iter().map(|b| format!("{:02x}", b)).collect());
+                                .unwrap_or_else(|_| {
+                                    id_bytes.iter().map(|b| format!("{:02x}", b)).collect()
+                                });
                             json!({
                                 "id": id_str,
                                 "name": r.get::<String, _>("name"),
@@ -1748,12 +1971,14 @@ impl PlatformDataService {
                 use sqlx::Row;
                 let list: Vec<serde_json::Value> = rows
                     .iter()
-                    .map(|r| json!({
-                        "id": r.get::<String, _>("id"),
-                        "title": r.get::<String, _>("title"),
-                        "status": r.get::<String, _>("status"),
-                        "project_id": r.get::<Option<String>, _>("project_id")
-                    }))
+                    .map(|r| {
+                        json!({
+                            "id": r.get::<String, _>("id"),
+                            "title": r.get::<String, _>("title"),
+                            "status": r.get::<String, _>("status"),
+                            "project_id": r.get::<Option<String>, _>("project_id")
+                        })
+                    })
                     .collect();
                 results["tasks"] = json!(list);
             }
@@ -1789,20 +2014,22 @@ impl PlatformDataService {
 
         let items: Vec<serde_json::Value> = runs
             .iter()
-            .map(|r| json!({
-                "id": r.id,
-                "workflow_id": r.workflow_id,
-                "workflow_name": r.workflow_name,
-                "status": r.status,
-                "data_source_id": r.data_source_id,
-                "organization_id": r.organization_id,
-                "model_used": r.model_used,
-                "total_records_staged": r.total_records_staged,
-                "total_duplicates_found": r.total_duplicates_found,
-                "duration_ms": r.duration_ms,
-                "started_at": r.started_at,
-                "completed_at": r.completed_at,
-            }))
+            .map(|r| {
+                json!({
+                    "id": r.id,
+                    "workflow_id": r.workflow_id,
+                    "workflow_name": r.workflow_name,
+                    "status": r.status,
+                    "data_source_id": r.data_source_id,
+                    "organization_id": r.organization_id,
+                    "model_used": r.model_used,
+                    "total_records_staged": r.total_records_staged,
+                    "total_duplicates_found": r.total_duplicates_found,
+                    "duration_ms": r.duration_ms,
+                    "started_at": r.started_at,
+                    "completed_at": r.completed_at,
+                })
+            })
             .collect();
 
         Ok(json!({
@@ -1817,8 +2044,7 @@ impl PlatformDataService {
         args: &serde_json::Value,
         _scope: &AccessScope,
     ) -> Result<serde_json::Value> {
-        use db::models::workflow_run::WorkflowRun;
-        use db::models::workflow_staging::WorkflowStagingRecord;
+        use db::models::{workflow_run::WorkflowRun, workflow_staging::WorkflowStagingRecord};
 
         let run_id = match args.get("run_id").and_then(|v| v.as_str()) {
             Some(id) => id,
@@ -1836,11 +2062,17 @@ impl PlatformDataService {
             .await
             .unwrap_or_default();
 
-        let pending = staged.iter().filter(|r| r.status == "pending_review").count();
+        let pending = staged
+            .iter()
+            .filter(|r| r.status == "pending_review")
+            .count();
         let approved = staged.iter().filter(|r| r.status == "approved").count();
         let rejected = staged.iter().filter(|r| r.status == "rejected").count();
         let committed = staged.iter().filter(|r| r.status == "committed").count();
-        let duplicates = staged.iter().filter(|r| r.duplicate_of_id.is_some()).count();
+        let duplicates = staged
+            .iter()
+            .filter(|r| r.duplicate_of_id.is_some())
+            .count();
 
         Ok(json!({
             "id": run.id,
@@ -1898,9 +2130,11 @@ impl PlatformDataService {
         let items: Vec<serde_json::Value> = records
             .iter()
             .map(|r| {
-                let data: serde_json::Value = serde_json::from_str(&r.record_data)
-                    .unwrap_or(json!({}));
-                let validation_errs: Option<Vec<String>> = r.validation_errors.as_ref()
+                let data: serde_json::Value =
+                    serde_json::from_str(&r.record_data).unwrap_or(json!({}));
+                let validation_errs: Option<Vec<String>> = r
+                    .validation_errors
+                    .as_ref()
                     .and_then(|s| serde_json::from_str(s).ok());
                 json!({
                     "id": r.id,
@@ -1918,7 +2152,10 @@ impl PlatformDataService {
             })
             .collect();
 
-        let pending = items.iter().filter(|r| r["status"] == "pending_review").count();
+        let pending = items
+            .iter()
+            .filter(|r| r["status"] == "pending_review")
+            .count();
 
         Ok(json!({
             "records": items,

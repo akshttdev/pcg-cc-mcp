@@ -22,7 +22,7 @@ use twilight_http::Client as HttpClient;
 use twilight_model::{
     application::interaction::{Interaction, InteractionData, InteractionType},
     gateway::payload::incoming::VoiceStateUpdate,
-    http::interaction::{InteractionResponse, InteractionResponseType, InteractionResponseData},
+    http::interaction::{InteractionResponse, InteractionResponseData, InteractionResponseType},
     id::{
         marker::{ChannelMarker, GuildMarker, UserMarker},
         Id,
@@ -48,7 +48,10 @@ struct RateLimits {
 
 impl RateLimits {
     fn new() -> Self {
-        Self { per_user: HashMap::new(), per_guild: HashMap::new() }
+        Self {
+            per_user: HashMap::new(),
+            per_guild: HashMap::new(),
+        }
     }
 
     fn check_and_record(&mut self, guild_id: u64, user_id: u64) -> Option<&'static str> {
@@ -60,7 +63,9 @@ impl RateLimits {
         }
         if let Some(t) = self.per_guild.get(&guild_id) {
             if now.duration_since(*t).as_secs() < 30 {
-                return Some("Another join was just initiated in this server. Please wait 30 seconds.");
+                return Some(
+                    "Another join was just initiated in this server. Please wait 30 seconds.",
+                );
             }
         }
         self.per_user.insert(user_id, now);
@@ -175,9 +180,14 @@ pub async fn run_bot(
 
         match &event {
             Event::Ready(ready) => {
-                info!("Discord bot connected as {} ({})", ready.user.name, ready.user.id);
+                info!(
+                    "Discord bot connected as {} ({})",
+                    ready.user.name, ready.user.id
+                );
                 if !registered_commands {
-                    if let Err(e) = register_slash_commands(&state.http, state.dedicated_agent).await {
+                    if let Err(e) =
+                        register_slash_commands(&state.http, state.dedicated_agent).await
+                    {
                         error!("Failed to register slash commands: {}", e);
                     } else {
                         info!("Slash commands registered for {}", ready.user.name);
@@ -199,7 +209,10 @@ pub async fn run_bot(
             }
 
             Event::VoiceServerUpdate(vsu) => {
-                info!("VoiceServerUpdate: endpoint={:?} guild={:?}", vsu.endpoint, vsu.guild_id);
+                info!(
+                    "VoiceServerUpdate: endpoint={:?} guild={:?}",
+                    vsu.endpoint, vsu.guild_id
+                );
             }
 
             _ => {}
@@ -212,7 +225,11 @@ pub async fn run_bot(
 // ─── Auto-record + disconnect tracking ───────────────────────────────────────
 
 async fn handle_voice_state_update(state: &Arc<BotState>, update: &VoiceStateUpdate) {
-    let bot_id = state.cache.current_user().map(|u| u.id).unwrap_or(Id::new(1));
+    let bot_id = state
+        .cache
+        .current_user()
+        .map(|u| u.id)
+        .unwrap_or(Id::new(1));
 
     // Bot was disconnected / kicked from a voice channel
     if update.0.user_id == bot_id {
@@ -245,7 +262,8 @@ async fn handle_voice_state_update(state: &Arc<BotState>, update: &VoiceStateUpd
         tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
 
         // Count non-bot members in the channel
-        let member_count = state.cache
+        let member_count = state
+            .cache
             .voice_channel_states(channel_id)
             .map(|states| states.filter(|vs| vs.user_id() != bot_id).count())
             .unwrap_or(0);
@@ -262,14 +280,17 @@ async fn handle_voice_state_update(state: &Arc<BotState>, update: &VoiceStateUpd
             return;
         }
 
-        let channel_name = state.cache
+        let channel_name = state
+            .cache
             .channel(channel_id)
             .and_then(|c| c.name.clone())
             .unwrap_or_else(|| channel_id.get().to_string());
 
         info!(
             "Auto-record: {} members in #{} — {} joining",
-            member_count, channel_name, agent.name()
+            member_count,
+            channel_name,
+            agent.name()
         );
 
         do_join_voice(
@@ -294,24 +315,51 @@ async fn register_slash_commands(
     let app_id = http.current_user_application().await?.model().await?.id;
 
     let mut commands = vec![
-        build_simple_command("meeting-summary", "Generate an AI summary of the current voice session"),
+        build_simple_command(
+            "meeting-summary",
+            "Generate an AI summary of the current voice session",
+        ),
         build_note_command(),
     ];
 
     match dedicated_agent {
         Some(ActiveAgent::Nora) => {
-            commands.push(build_join_command("nora-join", "Nora joins your current voice channel"));
-            commands.push(build_simple_command("nora-leave", "Nora leaves the voice channel"));
+            commands.push(build_join_command(
+                "nora-join",
+                "Nora joins your current voice channel",
+            ));
+            commands.push(build_simple_command(
+                "nora-leave",
+                "Nora leaves the voice channel",
+            ));
         }
         Some(ActiveAgent::Topsi) => {
-            commands.push(build_join_command("topsi-join", "Topsi joins your current voice channel"));
-            commands.push(build_simple_command("topsi-leave", "Topsi leaves the voice channel"));
+            commands.push(build_join_command(
+                "topsi-join",
+                "Topsi joins your current voice channel",
+            ));
+            commands.push(build_simple_command(
+                "topsi-leave",
+                "Topsi leaves the voice channel",
+            ));
         }
         None => {
-            commands.push(build_join_command("nora-join", "Nora joins your current voice channel"));
-            commands.push(build_join_command("topsi-join", "Topsi joins your current voice channel"));
-            commands.push(build_simple_command("nora-leave", "Nora leaves the voice channel"));
-            commands.push(build_simple_command("topsi-leave", "Topsi leaves the voice channel"));
+            commands.push(build_join_command(
+                "nora-join",
+                "Nora joins your current voice channel",
+            ));
+            commands.push(build_join_command(
+                "topsi-join",
+                "Topsi joins your current voice channel",
+            ));
+            commands.push(build_simple_command(
+                "nora-leave",
+                "Nora leaves the voice channel",
+            ));
+            commands.push(build_simple_command(
+                "topsi-leave",
+                "Topsi leaves the voice channel",
+            ));
         }
     }
 
@@ -323,8 +371,13 @@ async fn register_slash_commands(
     Ok(())
 }
 
-fn build_join_command(name: &str, description: &str) -> twilight_model::application::command::Command {
-    use twilight_model::application::command::{Command, CommandOption, CommandOptionType, CommandType};
+fn build_join_command(
+    name: &str,
+    description: &str,
+) -> twilight_model::application::command::Command {
+    use twilight_model::application::command::{
+        Command, CommandOption, CommandOptionType, CommandType,
+    };
     Command {
         application_id: None,
         default_member_permissions: None,
@@ -357,7 +410,10 @@ fn build_join_command(name: &str, description: &str) -> twilight_model::applicat
     }
 }
 
-fn build_simple_command(name: &str, description: &str) -> twilight_model::application::command::Command {
+fn build_simple_command(
+    name: &str,
+    description: &str,
+) -> twilight_model::application::command::Command {
     use twilight_model::application::command::{Command, CommandType};
     Command {
         application_id: None,
@@ -377,7 +433,9 @@ fn build_simple_command(name: &str, description: &str) -> twilight_model::applic
 }
 
 fn build_note_command() -> twilight_model::application::command::Command {
-    use twilight_model::application::command::{Command, CommandOption, CommandOptionType, CommandType};
+    use twilight_model::application::command::{
+        Command, CommandOption, CommandOptionType, CommandType,
+    };
     Command {
         application_id: None,
         default_member_permissions: None,
@@ -507,12 +565,22 @@ async fn join_voice(
 ) {
     use twilight_model::application::interaction::application_command::CommandOptionValue;
 
-    info!("join_voice: invoked agent={} guild={}", agent.name(), guild_id);
+    info!(
+        "join_voice: invoked agent={} guild={}",
+        agent.name(),
+        guild_id
+    );
 
     let invoker_id = match interaction.author_id() {
         Some(id) => id,
         None => {
-            followup(state, interaction, app_id, "Could not determine your user ID.").await;
+            followup(
+                state,
+                interaction,
+                app_id,
+                "Could not determine your user ID.",
+            )
+            .await;
             return;
         }
     };
@@ -528,7 +596,10 @@ async fn join_voice(
 
         match cached {
             Some(id) => {
-                info!("join_voice: found channel {} for user {} (cache)", id, invoker_id);
+                info!(
+                    "join_voice: found channel {} for user {} (cache)",
+                    id, invoker_id
+                );
                 id
             }
             None => {
@@ -536,9 +607,14 @@ async fn join_voice(
                     "join_voice: cache miss for user {} in guild {} — trying Discord REST API",
                     invoker_id, guild_id
                 );
-                match fetch_voice_channel_id(&state.bot_token, guild_id.get(), invoker_id.get()).await {
+                match fetch_voice_channel_id(&state.bot_token, guild_id.get(), invoker_id.get())
+                    .await
+                {
                     Some(id) => {
-                        info!("join_voice: found channel {} for user {} (REST fallback)", id, invoker_id);
+                        info!(
+                            "join_voice: found channel {} for user {} (REST fallback)",
+                            id, invoker_id
+                        );
                         Id::new(id)
                     }
                     None => {
@@ -599,7 +675,10 @@ async fn do_join_voice(
     project_id: String,
     agent: ActiveAgent,
     // None when called from auto-record (no interaction to respond to)
-    respond: Option<(&Interaction, twilight_model::id::Id<twilight_model::id::marker::ApplicationMarker>)>,
+    respond: Option<(
+        &Interaction,
+        twilight_model::id::Id<twilight_model::id::marker::ApplicationMarker>,
+    )>,
 ) {
     let key = session_key(guild_id.get(), agent.name());
 
@@ -692,7 +771,9 @@ async fn do_join_voice(
                             .execute(&state.pool)
                             .await;
                         if let Some((interaction, app_id)) = respond {
-                            let hint = if e2.to_string().contains("establish") || e2.to_string().contains("timed") {
+                            let hint = if e2.to_string().contains("establish")
+                                || e2.to_string().contains("timed")
+                            {
                                 "This is usually a **permissions issue** — make sure I have **Connect** and **Speak** in that channel, or a network issue on the server side."
                             } else {
                                 "Check that I have **Connect** and **Speak** permissions in that channel."
@@ -701,7 +782,10 @@ async fn do_join_voice(
                                 state,
                                 interaction,
                                 app_id,
-                                &format!("Failed to join **#{}** after 2 attempts: `{}`\n\n{}", channel_name, e2, hint),
+                                &format!(
+                                    "Failed to join **#{}** after 2 attempts: `{}`\n\n{}",
+                                    channel_name, e2, hint
+                                ),
                             )
                             .await;
                         }
@@ -712,7 +796,12 @@ async fn do_join_voice(
         }
     };
 
-    info!("{} joined #{} in guild {}", agent.name(), channel_name, guild_id);
+    info!(
+        "{} joined #{} in guild {}",
+        agent.name(),
+        channel_name,
+        guild_id
+    );
 
     // Update bot nickname to signal active session (Craig pattern)
     let nick = format!("[Listening] {}", agent.name());
@@ -773,7 +862,13 @@ async fn leave_voice(
     let key = session_key(guild_id.get(), agent.name());
     match DISCORD_SESSIONS.remove(&key) {
         None => {
-            followup(state, interaction, app_id, "I'm not in a voice channel in this server.").await;
+            followup(
+                state,
+                interaction,
+                app_id,
+                "I'm not in a voice channel in this server.",
+            )
+            .await;
         }
         Some((_, session)) => {
             let mid = &session.meeting_session_id;
@@ -791,7 +886,11 @@ async fn leave_voice(
             }
 
             // Restore nickname
-            if let Ok(req) = state.http.update_current_member(guild_id).nick(Some(agent.name())) {
+            if let Ok(req) = state
+                .http
+                .update_current_member(guild_id)
+                .nick(Some(agent.name()))
+            {
                 let _ = req.await;
             }
 
@@ -821,18 +920,26 @@ async fn generate_summary(
         DISCORD_SESSIONS
             .get(&nora_key)
             .or_else(|| DISCORD_SESSIONS.get(&topsi_key))
-            .map(|s| (
-                s.meeting_session_id.clone(),
-                s.agent,
-                s.project_id.clone(),
-                s.server_port,
-            ))
+            .map(|s| {
+                (
+                    s.meeting_session_id.clone(),
+                    s.agent,
+                    s.project_id.clone(),
+                    s.server_port,
+                )
+            })
     };
 
     let (meeting_id, agent, project_id, server_port) = match session_info {
         Some(info) => info,
         None => {
-            followup(state, interaction, app_id, "No active voice session in this server.").await;
+            followup(
+                state,
+                interaction,
+                app_id,
+                "No active voice session in this server.",
+            )
+            .await;
             return;
         }
     };
@@ -846,7 +953,13 @@ async fn generate_summary(
     .unwrap_or_default();
 
     if segments.is_empty() {
-        followup(state, interaction, app_id, "No transcript yet — keep talking!").await;
+        followup(
+            state,
+            interaction,
+            app_id,
+            "No transcript yet — keep talking!",
+        )
+        .await;
         return;
     }
 
@@ -861,12 +974,17 @@ async fn generate_summary(
         &transcript_text[..transcript_text.len().min(4000)]
     );
 
-    if let Ok(summary) = audio::call_agent(server_port, agent, &prompt, &project_id, &meeting_id).await {
+    if let Ok(summary) =
+        audio::call_agent(server_port, agent, &prompt, &project_id, &meeting_id).await
+    {
         let _ = state
             .http
             .interaction(app_id)
             .create_followup(&interaction.token)
-            .content(&format!("**Meeting Summary**\n{}", &summary[..summary.len().min(1900)]))
+            .content(&format!(
+                "**Meeting Summary**\n{}",
+                &summary[..summary.len().min(1900)]
+            ))
             .unwrap_or_else(|_| unreachable!())
             .await;
     }
@@ -887,12 +1005,24 @@ async fn add_note(
     let session_info = DISCORD_SESSIONS
         .get(&nora_key)
         .or_else(|| DISCORD_SESSIONS.get(&topsi_key))
-        .map(|s| (s.meeting_session_id.clone(), s.segment_count, s.elapsed_ms()));
+        .map(|s| {
+            (
+                s.meeting_session_id.clone(),
+                s.segment_count,
+                s.elapsed_ms(),
+            )
+        });
 
     let (meeting_id, segment_count, elapsed_ms) = match session_info {
         Some(info) => info,
         None => {
-            followup(state, interaction, app_id, "No active voice session in this server.").await;
+            followup(
+                state,
+                interaction,
+                app_id,
+                "No active voice session in this server.",
+            )
+            .await;
             return;
         }
     };

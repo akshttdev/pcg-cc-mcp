@@ -6,9 +6,10 @@
 //! - Visualization of active voice channels
 //! - Clustering of voice sessions by channel type
 
-use super::graph::{GraphEdge, GraphNode, TopologyGraph, ClusterInfo};
 use chrono::Utc;
 use uuid::Uuid;
+
+use super::graph::{ClusterInfo, GraphEdge, GraphNode, TopologyGraph};
 
 /// Node types for voice topology
 pub mod node_types {
@@ -84,17 +85,13 @@ pub struct VoiceTopology;
 impl VoiceTopology {
     /// Create the voice gateway node
     pub fn create_gateway_node(gateway_id: &str) -> GraphNode {
-        GraphNode::new(
-            Uuid::new_v4(),
-            node_types::VOICE_GATEWAY,
-            gateway_id,
-        )
-        .with_capabilities(vec![
-            capabilities::AUDIO_INPUT.to_string(),
-            capabilities::AUDIO_OUTPUT.to_string(),
-            capabilities::STREAMING.to_string(),
-        ])
-        .with_status("active")
+        GraphNode::new(Uuid::new_v4(), node_types::VOICE_GATEWAY, gateway_id)
+            .with_capabilities(vec![
+                capabilities::AUDIO_INPUT.to_string(),
+                capabilities::AUDIO_OUTPUT.to_string(),
+                capabilities::STREAMING.to_string(),
+            ])
+            .with_status("active")
     }
 
     /// Create a voice channel node
@@ -103,13 +100,9 @@ impl VoiceTopology {
         _channel_type: &str,
         caps: Vec<&str>,
     ) -> GraphNode {
-        GraphNode::new(
-            Uuid::new_v4(),
-            node_types::VOICE_CHANNEL,
-            channel_id,
-        )
-        .with_capabilities(caps.into_iter().map(String::from).collect())
-        .with_status("ready")
+        GraphNode::new(Uuid::new_v4(), node_types::VOICE_CHANNEL, channel_id)
+            .with_capabilities(caps.into_iter().map(String::from).collect())
+            .with_status("ready")
     }
 
     /// Create a voice session node
@@ -127,15 +120,9 @@ impl VoiceTopology {
             metadata["device_id"] = serde_json::Value::String(device.to_string());
         }
 
-        let mut node = GraphNode::new(
-            Uuid::new_v4(),
-            node_types::VOICE_SESSION,
-            session_id,
-        )
-        .with_capabilities(vec![
-            capabilities::AUDIO_INPUT.to_string(),
-        ])
-        .with_status("active");
+        let mut node = GraphNode::new(Uuid::new_v4(), node_types::VOICE_SESSION, session_id)
+            .with_capabilities(vec![capabilities::AUDIO_INPUT.to_string()])
+            .with_status("active");
 
         node.metadata = Some(metadata);
         node
@@ -164,9 +151,7 @@ impl VoiceTopology {
     /// Create TTS processor node
     pub fn create_tts_node(provider: &str) -> GraphNode {
         let is_local = provider == "chatterbox" || provider == "local";
-        let mut caps = vec![
-            capabilities::AUDIO_OUTPUT.to_string(),
-        ];
+        let mut caps = vec![capabilities::AUDIO_OUTPUT.to_string()];
         if is_local {
             caps.push(capabilities::LOCAL.to_string());
         }
@@ -181,10 +166,7 @@ impl VoiceTopology {
     }
 
     /// Create edge from session to channel
-    pub fn create_session_channel_edge(
-        session_node_id: Uuid,
-        channel_node_id: Uuid,
-    ) -> GraphEdge {
+    pub fn create_session_channel_edge(session_node_id: Uuid, channel_node_id: Uuid) -> GraphEdge {
         GraphEdge::new(
             Uuid::new_v4(),
             session_node_id,
@@ -194,10 +176,7 @@ impl VoiceTopology {
     }
 
     /// Create edge from channel to gateway
-    pub fn create_channel_gateway_edge(
-        channel_node_id: Uuid,
-        gateway_node_id: Uuid,
-    ) -> GraphEdge {
+    pub fn create_channel_gateway_edge(channel_node_id: Uuid, gateway_node_id: Uuid) -> GraphEdge {
         GraphEdge::new(
             Uuid::new_v4(),
             gateway_node_id,
@@ -207,10 +186,7 @@ impl VoiceTopology {
     }
 
     /// Create audio flow edge
-    pub fn create_audio_flow_edge(
-        from_node_id: Uuid,
-        to_node_id: Uuid,
-    ) -> GraphEdge {
+    pub fn create_audio_flow_edge(from_node_id: Uuid, to_node_id: Uuid) -> GraphEdge {
         GraphEdge::new(
             Uuid::new_v4(),
             from_node_id,
@@ -265,10 +241,7 @@ impl VoiceTopology {
                 capabilities::AUDIO_OUTPUT,
                 capabilities::STREAMING,
             ],
-            "twilio" => vec![
-                capabilities::AUDIO_INPUT,
-                capabilities::AUDIO_OUTPUT,
-            ],
+            "twilio" => vec![capabilities::AUDIO_INPUT, capabilities::AUDIO_OUTPUT],
             _ => vec![capabilities::AUDIO_INPUT],
         };
 
@@ -277,7 +250,10 @@ impl VoiceTopology {
         graph.add_node(channel_node);
 
         // Connect channel to gateway
-        graph.add_edge(Self::create_channel_gateway_edge(channel_uuid, gateway_node_id));
+        graph.add_edge(Self::create_channel_gateway_edge(
+            channel_uuid,
+            gateway_node_id,
+        ));
         graph.add_edge(Self::create_audio_flow_edge(channel_uuid, gateway_node_id));
 
         channel_uuid
@@ -296,7 +272,10 @@ impl VoiceTopology {
         graph.add_node(session_node);
 
         // Connect session to channel
-        graph.add_edge(Self::create_session_channel_edge(session_uuid, channel_node_id));
+        graph.add_edge(Self::create_session_channel_edge(
+            session_uuid,
+            channel_node_id,
+        ));
         graph.add_edge(Self::create_audio_flow_edge(session_uuid, channel_node_id));
 
         session_uuid
@@ -369,28 +348,20 @@ impl VoiceTopology {
     }
 
     /// Create a meeting session node
-    pub fn create_meeting_node(
-        meeting_id: &str,
-        title: &str,
-        project_id: &str,
-    ) -> GraphNode {
+    pub fn create_meeting_node(meeting_id: &str, title: &str, project_id: &str) -> GraphNode {
         let metadata = serde_json::json!({
             "title": title,
             "project_id": project_id,
             "started_at": Utc::now().to_rfc3339(),
         });
 
-        let mut node = GraphNode::new(
-            Uuid::new_v4(),
-            node_types::MEETING_SESSION,
-            meeting_id,
-        )
-        .with_capabilities(vec![
-            capabilities::CONTINUOUS_CAPTURE.to_string(),
-            capabilities::WAKE_WORD.to_string(),
-            capabilities::NOTE_GENERATION.to_string(),
-        ])
-        .with_status("active");
+        let mut node = GraphNode::new(Uuid::new_v4(), node_types::MEETING_SESSION, meeting_id)
+            .with_capabilities(vec![
+                capabilities::CONTINUOUS_CAPTURE.to_string(),
+                capabilities::WAKE_WORD.to_string(),
+                capabilities::NOTE_GENERATION.to_string(),
+            ])
+            .with_status("active");
 
         node.metadata = Some(metadata);
         node
@@ -493,12 +464,7 @@ mod tests {
             "chatterbox",
         );
 
-        let channel_id = VoiceTopology::add_channel(
-            &mut graph,
-            gateway_id,
-            "glasses-1",
-            "glasses",
-        );
+        let channel_id = VoiceTopology::add_channel(&mut graph, gateway_id, "glasses-1", "glasses");
 
         let session_id = VoiceTopology::add_session(
             &mut graph,

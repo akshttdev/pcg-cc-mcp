@@ -159,7 +159,9 @@ impl ExecutionCheckpoint {
     }
 
     /// Find all pending checkpoints across all executions
-    pub async fn find_all_pending(pool: &SqlitePool) -> Result<Vec<Self>, ExecutionCheckpointError> {
+    pub async fn find_all_pending(
+        pool: &SqlitePool,
+    ) -> Result<Vec<Self>, ExecutionCheckpointError> {
         let checkpoints = sqlx::query_as::<_, ExecutionCheckpoint>(
             r#"
             SELECT * FROM execution_checkpoints

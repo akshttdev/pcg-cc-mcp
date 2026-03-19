@@ -88,7 +88,11 @@ impl PulseCollectionRun {
         error: Option<&str>,
         vibe_cost: Option<f64>,
     ) -> Result<(), sqlx::Error> {
-        let status = if error.is_some() { "failed" } else { "completed" };
+        let status = if error.is_some() {
+            "failed"
+        } else {
+            "completed"
+        };
 
         sqlx::query(
             r#"UPDATE pulse_collection_runs SET

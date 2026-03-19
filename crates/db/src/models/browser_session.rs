@@ -93,9 +93,15 @@ pub struct CreateBrowserSession {
     pub headless: bool,
 }
 
-fn default_viewport_width() -> i32 { 1280 }
-fn default_viewport_height() -> i32 { 720 }
-fn default_headless() -> bool { true }
+fn default_viewport_width() -> i32 {
+    1280
+}
+fn default_viewport_height() -> i32 {
+    720
+}
+fn default_headless() -> bool {
+    true
+}
 
 impl BrowserSession {
     /// Create a new browser session
@@ -130,12 +136,11 @@ impl BrowserSession {
         pool: &SqlitePool,
         id: Uuid,
     ) -> Result<Option<Self>, BrowserSessionError> {
-        let session = sqlx::query_as::<_, BrowserSession>(
-            r#"SELECT * FROM browser_sessions WHERE id = ?1"#,
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await?;
+        let session =
+            sqlx::query_as::<_, BrowserSession>(r#"SELECT * FROM browser_sessions WHERE id = ?1"#)
+                .bind(id)
+                .fetch_optional(pool)
+                .await?;
 
         Ok(session)
     }

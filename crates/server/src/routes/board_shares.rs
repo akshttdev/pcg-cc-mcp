@@ -12,11 +12,7 @@ use deployment::Deployment;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{
-    DeploymentImpl,
-    error::ApiError,
-    middleware::access_control::AccessContext,
-};
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
 /// Check if user has admin access to an org
 async fn require_org_admin(
@@ -30,7 +26,9 @@ async fn require_org_admin(
     let role = Organization::get_user_role(pool, org_id, access_context.user_id.as_str()).await?;
     match role.as_deref() {
         Some("admin") => Ok(()),
-        _ => Err(ApiError::Forbidden("Only org admins can manage board shares".into())),
+        _ => Err(ApiError::Forbidden(
+            "Only org admins can manage board shares".into(),
+        )),
     }
 }
 
@@ -45,7 +43,9 @@ async fn require_org_access(
     }
     let role = Organization::get_user_role(pool, org_id, access_context.user_id.as_str()).await?;
     if role.is_none() {
-        return Err(ApiError::Forbidden("Not a member of this organization".into()));
+        return Err(ApiError::Forbidden(
+            "Not a member of this organization".into(),
+        ));
     }
     Ok(())
 }
@@ -70,25 +70,36 @@ pub async fn create_board_share(
         organization_id: Option<String>,
     }
 
-    let proj: Option<ProjOrg> = sqlx::query_as(
-        "SELECT organization_id FROM projects WHERE id = ?"
-    )
-    .bind(&board.project_id)
-    .fetch_optional(pool)
-    .await?;
+    let proj: Option<ProjOrg> = sqlx::query_as("SELECT organization_id FROM projects WHERE id = ?")
+        .bind(&board.project_id)
+        .fetch_optional(pool)
+        .await?;
 
     match proj {
         Some(p) if p.organization_id.as_deref() == Some(org_id.as_str()) => {}
-        _ => return Err(ApiError::Forbidden("Board does not belong to a project in this organization".into())),
+        _ => {
+            return Err(ApiError::Forbidden(
+                "Board does not belong to a project in this organization".into(),
+            ));
+        }
     }
 
     // Cannot share with self
     if data.target_organization_id == org_id {
-        return Err(ApiError::BadRequest("Cannot share a board with the same organization".into()));
+        return Err(ApiError::BadRequest(
+            "Cannot share a board with the same organization".into(),
+        ));
     }
 
     let id = Uuid::new_v4().to_string();
-    let share = BoardShare::create(pool, &id, &data, &org_id, &access_context.user_id.to_string()).await?;
+    let share = BoardShare::create(
+        pool,
+        &id,
+        &data,
+        &org_id,
+        &access_context.user_id.to_string(),
+    )
+    .await?;
     Ok(Json(ApiResponse::success(share)))
 }
 
@@ -130,10 +141,16 @@ pub async fn get_board_share(
         .ok_or_else(|| ApiError::NotFound("Board share not found".into()))?;
 
     // User must be member of source or target org
-    let src_ok = require_org_access(pool, &access_context, &share.source_organization_id).await.is_ok();
-    let tgt_ok = require_org_access(pool, &access_context, &share.target_organization_id).await.is_ok();
+    let src_ok = require_org_access(pool, &access_context, &share.source_organization_id)
+        .await
+        .is_ok();
+    let tgt_ok = require_org_access(pool, &access_context, &share.target_organization_id)
+        .await
+        .is_ok();
     if !src_ok && !tgt_ok {
-        return Err(ApiError::Forbidden("Not a member of either organization".into()));
+        return Err(ApiError::Forbidden(
+            "Not a member of either organization".into(),
+        ));
     }
 
     Ok(Json(ApiResponse::success(share)))
@@ -187,6 +204,8 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         )
         .route(
             "/board-shares/{id}",
-            get(get_board_share).put(update_board_share).delete(delete_board_share),
+            get(get_board_share)
+                .put(update_board_share)
+                .delete(delete_board_share),
         )
 }

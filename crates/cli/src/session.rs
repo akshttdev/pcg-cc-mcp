@@ -343,9 +343,10 @@ fn get_git_info(work_dir: &Path) -> (Option<String>, Option<String>) {
     });
 
     // Get branch name
-    let branch = repo.head().ok().and_then(|head| {
-        head.shorthand().map(|s| s.to_string())
-    });
+    let branch = repo
+        .head()
+        .ok()
+        .and_then(|head| head.shorthand().map(|s| s.to_string()));
 
     (sha, branch)
 }
@@ -367,10 +368,7 @@ fn get_git_diff_stats(work_dir: &Path, start_sha: Option<&str>) -> GitDiffStats 
     });
 
     // Get HEAD commit
-    let head_commit = repo
-        .head()
-        .ok()
-        .and_then(|head| head.peel_to_commit().ok());
+    let head_commit = repo.head().ok().and_then(|head| head.peel_to_commit().ok());
 
     if let (Some(start), Some(end)) = (start_commit, head_commit.as_ref()) {
         // Get diff between start and HEAD

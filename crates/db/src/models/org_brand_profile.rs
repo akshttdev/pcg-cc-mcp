@@ -102,10 +102,7 @@ pub struct UpsertOrgBrandProfile {
 }
 
 impl OrgBrandProfile {
-    pub async fn find_by_org(
-        pool: &SqlitePool,
-        org_id: Uuid,
-    ) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn find_by_org(pool: &SqlitePool, org_id: Uuid) -> Result<Option<Self>, sqlx::Error> {
         let org_bytes = org_id.to_string();
         sqlx::query_as::<_, OrgBrandProfile>(
             "SELECT id, organization_id, tagline, primary_color, secondary_color, accent_color,
@@ -120,7 +117,7 @@ impl OrgBrandProfile {
              estimated_team_size, tech_stack, geographic_focus, funding_stage,
              content_strategy_notes, awards_and_recognition, brand_gap_notes,
              created_at, updated_at
-             FROM organization_brand_profiles WHERE organization_id = ?"
+             FROM organization_brand_profiles WHERE organization_id = ?",
         )
         .bind(org_bytes)
         .fetch_optional(pool)
@@ -135,8 +132,14 @@ impl OrgBrandProfile {
         let id = Uuid::new_v4();
         let id_bytes = id.to_string();
         let org_bytes = org_id.to_string();
-        let primary = data.primary_color.clone().unwrap_or_else(|| "#2563EB".to_string());
-        let secondary = data.secondary_color.clone().unwrap_or_else(|| "#EC4899".to_string());
+        let primary = data
+            .primary_color
+            .clone()
+            .unwrap_or_else(|| "#2563EB".to_string());
+        let secondary = data
+            .secondary_color
+            .clone()
+            .unwrap_or_else(|| "#EC4899".to_string());
 
         sqlx::query(
             "INSERT INTO organization_brand_profiles (

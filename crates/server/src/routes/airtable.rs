@@ -1,23 +1,26 @@
 use axum::{
+    Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
     routing::{get, post},
-    Router,
 };
-use db::models::{
-    airtable_base::{AirtableBase, CreateAirtableBase, UpdateAirtableBase},
-    airtable_record_link::{
-        AirtableOrigin, AirtableRecordLink, AirtableSyncStatus, CreateAirtableRecordLink,
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        airtable_base::{AirtableBase, CreateAirtableBase, UpdateAirtableBase},
+        airtable_record_link::{
+            AirtableOrigin, AirtableRecordLink, AirtableSyncStatus, CreateAirtableRecordLink,
+        },
+        task::{CreateTask, Priority, Task},
     },
-    task::{CreateTask, Priority, Task},
 };
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use services::services::{
     airtable_service::{
-        build_record_url, get_record_name, AirtableBaseInfo, AirtableRecord, AirtableService,
-        AirtableTable,
+        AirtableBaseInfo, AirtableRecord, AirtableService, AirtableTable, build_record_url,
+        get_record_name,
     },
     config::save_config_to_file,
 };
@@ -25,7 +28,6 @@ use tracing::{error, info};
 use ts_rs::TS;
 use utils::{assets::config_path, response::ApiResponse};
 use uuid::Uuid;
-use db::db_uuid::DbUuid;
 
 use crate::DeploymentImpl;
 
@@ -54,7 +56,10 @@ pub fn router() -> Router<DeploymentImpl> {
         )
         // Task-level operations
         .route("/airtable/tasks/{task_id}/link", get(get_task_link))
-        .route("/airtable/tasks/{task_id}/push", post(push_task_to_airtable))
+        .route(
+            "/airtable/tasks/{task_id}/push",
+            post(push_task_to_airtable),
+        )
         .route(
             "/airtable/tasks/{task_id}/sync-deliverables",
             post(sync_deliverables_to_airtable),
@@ -134,10 +139,7 @@ async fn verify_credentials(
     let service = match AirtableService::new(&payload.token) {
         Ok(s) => s,
         Err(e) => {
-            return Ok(Json(ApiResponse::error(&format!(
-                "Invalid token: {}",
-                e
-            ))));
+            return Ok(Json(ApiResponse::error(&format!("Invalid token: {}", e))));
         }
     };
 
@@ -229,7 +231,9 @@ async fn get_connection(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<AirtableConnectionWithBase>>, StatusCode> {
-    let id = DbUuid::parse(&id).map_err(|_| StatusCode::BAD_REQUEST)?.to_uuid();
+    let id = DbUuid::parse(&id)
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+        .to_uuid();
     let pool = &deployment.db().pool;
     let config = deployment.config().read().await;
 
@@ -244,7 +248,9 @@ async fn get_connection(
 
     // Try to fetch base info from Airtable API
     let base_info = if config.airtable.is_configured() {
-        if let Ok(service) = AirtableService::new(config.airtable.token.as_deref().unwrap_or_default()) {
+        if let Ok(service) =
+            AirtableService::new(config.airtable.token.as_deref().unwrap_or_default())
+        {
             // Get bases and find the matching one
             if let Ok(bases) = service.list_my_bases().await {
                 bases
@@ -277,7 +283,9 @@ async fn create_connection(
     // Optionally fetch base name from Airtable if not provided
     let mut create_data = payload;
     if create_data.airtable_base_name.is_none() && config.airtable.is_configured() {
-        if let Ok(service) = AirtableService::new(config.airtable.token.as_deref().unwrap_or_default()) {
+        if let Ok(service) =
+            AirtableService::new(config.airtable.token.as_deref().unwrap_or_default())
+        {
             if let Ok(bases) = service.list_my_bases().await {
                 if let Some(base) = bases
                     .into_iter()
@@ -313,7 +321,9 @@ async fn update_connection(
     Path(id): Path<String>,
     Json(payload): Json<UpdateAirtableBase>,
 ) -> Result<Json<ApiResponse<AirtableBase>>, StatusCode> {
-    let id = DbUuid::parse(&id).map_err(|_| StatusCode::BAD_REQUEST)?.to_uuid();
+    let id = DbUuid::parse(&id)
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+        .to_uuid();
     let pool = &deployment.db().pool;
 
     match AirtableBase::update(pool, id, payload).await {
@@ -336,7 +346,9 @@ async fn delete_connection(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, StatusCode> {
-    let id = DbUuid::parse(&id).map_err(|_| StatusCode::BAD_REQUEST)?.to_uuid();
+    let id = DbUuid::parse(&id)
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+        .to_uuid();
     let pool = &deployment.db().pool;
 
     match AirtableBase::delete(pool, id).await {
@@ -356,7 +368,9 @@ async fn get_base_tables(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<AirtableTable>>>, StatusCode> {
-    let id = DbUuid::parse(&id).map_err(|_| StatusCode::BAD_REQUEST)?.to_uuid();
+    let id = DbUuid::parse(&id)
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+        .to_uuid();
     let pool = &deployment.db().pool;
     let config = deployment.config().read().await;
 
@@ -398,7 +412,9 @@ async fn get_table_records(
     Path(id): Path<String>,
     Query(query): Query<AirtableTableQuery>,
 ) -> Result<Json<ApiResponse<Vec<AirtableRecord>>>, StatusCode> {
-    let id = DbUuid::parse(&id).map_err(|_| StatusCode::BAD_REQUEST)?.to_uuid();
+    let id = DbUuid::parse(&id)
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+        .to_uuid();
     let pool = &deployment.db().pool;
     let config = deployment.config().read().await;
 
@@ -452,7 +468,9 @@ async fn import_records_from_table(
     Path(connection_id): Path<String>,
     Json(payload): Json<AirtableImportRequest>,
 ) -> Result<Json<ApiResponse<AirtableImportResult>>, StatusCode> {
-    let connection_id = DbUuid::parse(&connection_id).map_err(|_| StatusCode::BAD_REQUEST)?.to_uuid();
+    let connection_id = DbUuid::parse(&connection_id)
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+        .to_uuid();
     let pool = &deployment.db().pool;
     let config = deployment.config().read().await;
 
@@ -581,11 +599,8 @@ async fn import_records_from_table(
         };
 
         // Build record URL
-        let record_url = build_record_url(
-            &connection.airtable_base_id,
-            &payload.table_id,
-            &record.id,
-        );
+        let record_url =
+            build_record_url(&connection.airtable_base_id, &payload.table_id, &record.id);
 
         // Create the link
         let task_uuid = match DbUuid::parse(&task.id) {
@@ -645,7 +660,9 @@ async fn get_task_link(
     State(deployment): State<DeploymentImpl>,
     Path(task_id): Path<String>,
 ) -> Result<Json<ApiResponse<Option<AirtableRecordLink>>>, StatusCode> {
-    let task_id = DbUuid::parse(&task_id).map_err(|_| StatusCode::BAD_REQUEST)?.to_uuid();
+    let task_id = DbUuid::parse(&task_id)
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+        .to_uuid();
     let pool = &deployment.db().pool;
 
     match AirtableRecordLink::find_by_task_id(pool, task_id).await {
@@ -663,7 +680,9 @@ async fn push_task_to_airtable(
     Path(task_id): Path<String>,
     Json(payload): Json<AirtablePushTaskRequest>,
 ) -> Result<Json<ApiResponse<AirtableRecordLink>>, StatusCode> {
-    let task_id = DbUuid::parse(&task_id).map_err(|_| StatusCode::BAD_REQUEST)?.to_uuid();
+    let task_id = DbUuid::parse(&task_id)
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+        .to_uuid();
     let pool = &deployment.db().pool;
     let config = deployment.config().read().await;
 
@@ -734,7 +753,8 @@ async fn push_task_to_airtable(
 
     // Create the link
     let task_uuid = DbUuid::parse(&task.id)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?.to_uuid();
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .to_uuid();
     let link = match AirtableRecordLink::create(
         pool,
         CreateAirtableRecordLink {
@@ -770,7 +790,9 @@ async fn sync_deliverables_to_airtable(
     State(deployment): State<DeploymentImpl>,
     Path(task_id): Path<String>,
 ) -> Result<Json<ApiResponse<AirtableRecordLink>>, StatusCode> {
-    let task_id = DbUuid::parse(&task_id).map_err(|_| StatusCode::BAD_REQUEST)?.to_uuid();
+    let task_id = DbUuid::parse(&task_id)
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+        .to_uuid();
     let pool = &deployment.db().pool;
     let config = deployment.config().read().await;
 

@@ -16,10 +16,9 @@
 
 mod types;
 
-pub use types::*;
-
 use anyhow::{Context, Result};
-use tracing::{debug, warn, info};
+use tracing::{debug, info, warn};
+pub use types::*;
 
 /// Default APN Core API URL
 pub const DEFAULT_APN_CORE_URL: &str = "http://localhost:8000";
@@ -35,16 +34,10 @@ pub struct ApnClient {
 #[derive(Debug, thiserror::Error)]
 pub enum ApnClientError {
     #[error("APN Core not reachable at {url}: {source}")]
-    NotReachable {
-        url: String,
-        source: reqwest::Error,
-    },
+    NotReachable { url: String, source: reqwest::Error },
 
     #[error("APN Core returned error {status}: {body}")]
-    ApiError {
-        status: u16,
-        body: String,
-    },
+    ApiError { status: u16, body: String },
 
     #[error("Failed to parse APN Core response: {0}")]
     ParseError(#[from] reqwest::Error),
@@ -71,7 +64,8 @@ impl ApnClient {
 
     /// Check if APN Core is running and healthy
     pub async fn health_check(&self) -> Result<HealthResponse> {
-        let resp = self.client
+        let resp = self
+            .client
             .get(format!("{}/health", self.base_url))
             .send()
             .await
@@ -97,7 +91,8 @@ impl ApnClient {
     /// Get this node's identity from APN Core.
     /// This is THE single source of truth for device identity on the APN network.
     pub async fn get_identity(&self) -> Result<NodeIdentity> {
-        let resp = self.client
+        let resp = self
+            .client
             .get(format!("{}/api/identity", self.base_url))
             .send()
             .await
@@ -116,7 +111,8 @@ impl ApnClient {
 
     /// Get version information
     pub async fn get_version(&self) -> Result<VersionInfo> {
-        let resp = self.client
+        let resp = self
+            .client
             .get(format!("{}/api/version", self.base_url))
             .send()
             .await
@@ -129,7 +125,8 @@ impl ApnClient {
 
     /// Get all known peers on the APN network
     pub async fn get_peers(&self) -> Result<PeerList> {
-        let resp = self.client
+        let resp = self
+            .client
             .get(format!("{}/api/network/peers", self.base_url))
             .send()
             .await
@@ -140,7 +137,8 @@ impl ApnClient {
 
     /// Get network statistics
     pub async fn get_network_stats(&self) -> Result<NetworkStats> {
-        let resp = self.client
+        let resp = self
+            .client
             .get(format!("{}/api/network/stats", self.base_url))
             .send()
             .await
@@ -153,7 +151,8 @@ impl ApnClient {
 
     /// Get this node's capabilities
     pub async fn get_capabilities(&self) -> Result<CapabilitiesResponse> {
-        let resp = self.client
+        let resp = self
+            .client
             .get(format!("{}/api/capabilities", self.base_url))
             .send()
             .await
@@ -163,8 +162,12 @@ impl ApnClient {
     }
 
     /// Register/update this node's capabilities
-    pub async fn update_capabilities(&self, caps: &CapabilitiesUpdate) -> Result<serde_json::Value> {
-        let resp = self.client
+    pub async fn update_capabilities(
+        &self,
+        caps: &CapabilitiesUpdate,
+    ) -> Result<serde_json::Value> {
+        let resp = self
+            .client
             .post(format!("{}/api/capabilities", self.base_url))
             .json(caps)
             .send()
@@ -184,7 +187,8 @@ impl ApnClient {
 
     /// Get current system resource usage
     pub async fn get_resources(&self) -> Result<ResourcesResponse> {
-        let resp = self.client
+        let resp = self
+            .client
             .get(format!("{}/api/resources", self.base_url))
             .send()
             .await
@@ -197,7 +201,8 @@ impl ApnClient {
 
     /// Get contribution status
     pub async fn get_contribution_status(&self) -> Result<ContributionStatus> {
-        let resp = self.client
+        let resp = self
+            .client
             .get(format!("{}/api/contribution/status", self.base_url))
             .send()
             .await
@@ -207,8 +212,12 @@ impl ApnClient {
     }
 
     /// Update contribution settings
-    pub async fn update_contribution_settings(&self, settings: &ContributionSettingsUpdate) -> Result<serde_json::Value> {
-        let resp = self.client
+    pub async fn update_contribution_settings(
+        &self,
+        settings: &ContributionSettingsUpdate,
+    ) -> Result<serde_json::Value> {
+        let resp = self
+            .client
             .post(format!("{}/api/contribution/settings", self.base_url))
             .json(settings)
             .send()
@@ -221,13 +230,18 @@ impl ApnClient {
     // ============= File Transfer Endpoints =============
 
     /// Send a file to another node via P2P transfer
-    pub async fn send_file(&self, target_node_id: &str, file_path: &str) -> Result<TransferResponse> {
+    pub async fn send_file(
+        &self,
+        target_node_id: &str,
+        file_path: &str,
+    ) -> Result<TransferResponse> {
         let req = FileSendRequest {
             target_node_id: target_node_id.to_string(),
             file_path: file_path.to_string(),
         };
 
-        let resp = self.client
+        let resp = self
+            .client
             .post(format!("{}/api/files/send", self.base_url))
             .json(&req)
             .timeout(std::time::Duration::from_secs(30))
@@ -246,7 +260,8 @@ impl ApnClient {
 
     /// Get all active file transfers
     pub async fn get_active_transfers(&self) -> Result<ActiveTransfersResponse> {
-        let resp = self.client
+        let resp = self
+            .client
             .get(format!("{}/api/files/transfers", self.base_url))
             .send()
             .await
@@ -257,8 +272,12 @@ impl ApnClient {
 
     /// Get a specific transfer by ID
     pub async fn get_transfer(&self, transfer_id: &str) -> Result<TransferResponse> {
-        let resp = self.client
-            .get(format!("{}/api/files/transfers/{}", self.base_url, transfer_id))
+        let resp = self
+            .client
+            .get(format!(
+                "{}/api/files/transfers/{}",
+                self.base_url, transfer_id
+            ))
             .send()
             .await
             .context("Failed to reach APN Core for transfer status")?;
@@ -274,8 +293,12 @@ impl ApnClient {
 
     /// Get file transfer history
     pub async fn get_transfer_history(&self, limit: u32) -> Result<TransferHistoryResponse> {
-        let resp = self.client
-            .get(format!("{}/api/files/history?limit={}", self.base_url, limit))
+        let resp = self
+            .client
+            .get(format!(
+                "{}/api/files/history?limit={}",
+                self.base_url, limit
+            ))
             .send()
             .await
             .context("Failed to reach APN Core for transfer history")?;
@@ -285,8 +308,12 @@ impl ApnClient {
 
     /// Accept a pending incoming transfer
     pub async fn accept_transfer(&self, transfer_id: &str) -> Result<serde_json::Value> {
-        let resp = self.client
-            .post(format!("{}/api/files/transfers/{}/accept", self.base_url, transfer_id))
+        let resp = self
+            .client
+            .post(format!(
+                "{}/api/files/transfers/{}/accept",
+                self.base_url, transfer_id
+            ))
             .send()
             .await
             .context("Failed to reach APN Core to accept transfer")?;
@@ -309,7 +336,8 @@ impl ApnClient {
             file_name: file_name.map(String::from),
         };
 
-        let resp = self.client
+        let resp = self
+            .client
             .post(format!("{}/api/cloud/import", self.base_url))
             .json(&req)
             .timeout(std::time::Duration::from_secs(30))
@@ -328,7 +356,8 @@ impl ApnClient {
 
     /// Get active cloud imports
     pub async fn get_active_imports(&self) -> Result<ActiveImportsResponse> {
-        let resp = self.client
+        let resp = self
+            .client
             .get(format!("{}/api/cloud/imports", self.base_url))
             .send()
             .await
@@ -339,7 +368,8 @@ impl ApnClient {
 
     /// Get a specific import status
     pub async fn get_import(&self, job_id: &str) -> Result<ImportResponse> {
-        let resp = self.client
+        let resp = self
+            .client
             .get(format!("{}/api/cloud/imports/{}", self.base_url, job_id))
             .send()
             .await
@@ -356,8 +386,12 @@ impl ApnClient {
 
     /// Get cloud import history
     pub async fn get_import_history(&self, limit: u32) -> Result<ImportHistoryResponse> {
-        let resp = self.client
-            .get(format!("{}/api/cloud/history?limit={}", self.base_url, limit))
+        let resp = self
+            .client
+            .get(format!(
+                "{}/api/cloud/history?limit={}",
+                self.base_url, limit
+            ))
             .send()
             .await
             .context("Failed to reach APN Core for import history")?;
@@ -367,7 +401,8 @@ impl ApnClient {
 
     /// Get download cache statistics
     pub async fn get_cache_stats(&self) -> Result<CacheStatsResponse> {
-        let resp = self.client
+        let resp = self
+            .client
             .get(format!("{}/api/cloud/cache", self.base_url))
             .send()
             .await
@@ -378,8 +413,13 @@ impl ApnClient {
 
     /// Resolve a cloud URL to a direct download URL
     pub async fn resolve_cloud_url(&self, url: &str) -> Result<ResolveUrlResponse> {
-        let resp = self.client
-            .get(format!("{}/api/cloud/resolve?url={}", self.base_url, urlencoding::encode(url)))
+        let resp = self
+            .client
+            .get(format!(
+                "{}/api/cloud/resolve?url={}",
+                self.base_url,
+                urlencoding::encode(url)
+            ))
             .send()
             .await
             .context("Failed to reach APN Core to resolve URL")?;
@@ -389,8 +429,12 @@ impl ApnClient {
 
     /// Cancel an active transfer
     pub async fn cancel_transfer(&self, transfer_id: &str) -> Result<serde_json::Value> {
-        let resp = self.client
-            .post(format!("{}/api/files/transfers/{}/cancel", self.base_url, transfer_id))
+        let resp = self
+            .client
+            .post(format!(
+                "{}/api/files/transfers/{}/cancel",
+                self.base_url, transfer_id
+            ))
             .send()
             .await
             .context("Failed to reach APN Core to cancel transfer")?;

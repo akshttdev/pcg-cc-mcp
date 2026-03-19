@@ -2,17 +2,10 @@ use db::models::{
     task::Task,
     task_dependency::{CreateTaskDependency, DependencyType, TaskDependency},
 };
-use rmcp::{
-    ErrorData,
-    handler::server::tool::Parameters,
-    model::CallToolResult,
-    tool,
-};
+use rmcp::{ErrorData, handler::server::tool::Parameters, model::CallToolResult, tool};
 use serde_json::Value;
 
-use super::TaskServer;
-use super::helpers::*;
-use super::types::*;
+use super::{TaskServer, helpers::*, types::*};
 
 impl TaskServer {
     #[tool(
@@ -29,12 +22,20 @@ impl TaskServer {
 
         match req.action.as_str() {
             "add" => {
-                let source = match req.source_task_id.as_deref().map(|s| parse_uuid(s, "source_task_id")) {
+                let source = match req
+                    .source_task_id
+                    .as_deref()
+                    .map(|s| parse_uuid(s, "source_task_id"))
+                {
                     Some(Ok(u)) => u,
                     Some(Err(r)) => return Ok(r),
                     None => return Ok(error_result("source_task_id required for 'add'", None)),
                 };
-                let target = match req.target_task_id.as_deref().map(|s| parse_uuid(s, "target_task_id")) {
+                let target = match req
+                    .target_task_id
+                    .as_deref()
+                    .map(|s| parse_uuid(s, "target_task_id"))
+                {
                     Some(Ok(u)) => u,
                     Some(Err(r)) => return Ok(r),
                     None => return Ok(error_result("target_task_id required for 'add'", None)),
@@ -43,7 +44,12 @@ impl TaskServer {
                 let dep_type = match req.dependency_type.as_deref().unwrap_or("blocks") {
                     "blocks" => DependencyType::Blocks,
                     "relates_to" => DependencyType::RelatesTo,
-                    _ => return Ok(error_result("dependency_type must be 'blocks' or 'relates_to'", None)),
+                    _ => {
+                        return Ok(error_result(
+                            "dependency_type must be 'blocks' or 'relates_to'",
+                            None,
+                        ));
+                    }
                 };
 
                 let payload = CreateTaskDependency {
@@ -62,16 +68,27 @@ impl TaskServer {
                         "target_task_id": dep.target_task_id.to_string(),
                         "dependency_type": format!("{:?}", dep.dependency_type).to_lowercase(),
                     }))),
-                    Err(e) => Ok(error_result("Failed to create dependency", Some(&e.to_string()))),
+                    Err(e) => Ok(error_result(
+                        "Failed to create dependency",
+                        Some(&e.to_string()),
+                    )),
                 }
             }
             "remove" => {
-                let source = match req.source_task_id.as_deref().map(|s| parse_uuid(s, "source_task_id")) {
+                let source = match req
+                    .source_task_id
+                    .as_deref()
+                    .map(|s| parse_uuid(s, "source_task_id"))
+                {
                     Some(Ok(u)) => u,
                     Some(Err(r)) => return Ok(r),
                     None => return Ok(error_result("source_task_id required for 'remove'", None)),
                 };
-                let target = match req.target_task_id.as_deref().map(|s| parse_uuid(s, "target_task_id")) {
+                let target = match req
+                    .target_task_id
+                    .as_deref()
+                    .map(|s| parse_uuid(s, "target_task_id"))
+                {
                     Some(Ok(u)) => u,
                     Some(Err(r)) => return Ok(r),
                     None => return Ok(error_result("target_task_id required for 'remove'", None)),
@@ -80,7 +97,12 @@ impl TaskServer {
                 // Find matching dependency and delete
                 let deps = match TaskDependency::list_by_task(&self.pool, source).await {
                     Ok(d) => d,
-                    Err(e) => return Ok(error_result("Failed to list dependencies", Some(&e.to_string()))),
+                    Err(e) => {
+                        return Ok(error_result(
+                            "Failed to list dependencies",
+                            Some(&e.to_string()),
+                        ));
+                    }
                 };
 
                 let matching = deps.iter().find(|d| {
@@ -94,7 +116,10 @@ impl TaskServer {
                             "success": true,
                             "message": "Dependency removed",
                         }))),
-                        Err(e) => Ok(error_result("Failed to delete dependency", Some(&e.to_string()))),
+                        Err(e) => Ok(error_result(
+                            "Failed to delete dependency",
+                            Some(&e.to_string()),
+                        )),
                     },
                     None => Ok(error_result("No matching dependency found", None)),
                 }
@@ -124,7 +149,12 @@ impl TaskServer {
                                     "dependencies": items,
                                 })));
                             }
-                            Err(e) => return Ok(error_result("Failed to list dependencies", Some(&e.to_string()))),
+                            Err(e) => {
+                                return Ok(error_result(
+                                    "Failed to list dependencies",
+                                    Some(&e.to_string()),
+                                ));
+                            }
                         }
                     }
                 };
@@ -148,10 +178,16 @@ impl TaskServer {
                             "dependencies": items,
                         })))
                     }
-                    Err(e) => Ok(error_result("Failed to list dependencies", Some(&e.to_string()))),
+                    Err(e) => Ok(error_result(
+                        "Failed to list dependencies",
+                        Some(&e.to_string()),
+                    )),
                 }
             }
-            _ => Ok(error_result("Invalid action. Use 'add', 'remove', or 'list'", None)),
+            _ => Ok(error_result(
+                "Invalid action. Use 'add', 'remove', or 'list'",
+                None,
+            )),
         }
     }
 
@@ -172,22 +208,45 @@ impl TaskServer {
         };
 
         // Verify task exists
-        match Task::find_by_id_and_project_id(&self.pool, &task_uuid.to_string(), &project_uuid.to_string()).await {
+        match Task::find_by_id_and_project_id(
+            &self.pool,
+            &task_uuid.to_string(),
+            &project_uuid.to_string(),
+        )
+        .await
+        {
             Ok(Some(_)) => {}
-            Ok(None) => return Ok(error_result("Task not found in the specified project", None)),
-            Err(e) => return Ok(error_result("Failed to retrieve task", Some(&e.to_string()))),
+            Ok(None) => {
+                return Ok(error_result(
+                    "Task not found in the specified project",
+                    None,
+                ));
+            }
+            Err(e) => {
+                return Ok(error_result(
+                    "Failed to retrieve task",
+                    Some(&e.to_string()),
+                ));
+            }
         }
 
         // Get all dependencies where this task is the target (i.e., things that block this task)
         let deps = match TaskDependency::list_by_task(&self.pool, task_uuid).await {
             Ok(d) => d,
-            Err(e) => return Ok(error_result("Failed to list dependencies", Some(&e.to_string()))),
+            Err(e) => {
+                return Ok(error_result(
+                    "Failed to list dependencies",
+                    Some(&e.to_string()),
+                ));
+            }
         };
 
         // Filter to only "blocks" dependencies where this task is the target
         let blockers: Vec<&TaskDependency> = deps
             .iter()
-            .filter(|d| d.dependency_type == DependencyType::Blocks && d.target_task_id == task_uuid)
+            .filter(|d| {
+                d.dependency_type == DependencyType::Blocks && d.target_task_id == task_uuid
+            })
             .collect();
 
         if blockers.is_empty() {

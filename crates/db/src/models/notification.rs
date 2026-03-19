@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
 use ts_rs::TS;
+
 use crate::db_uuid::DbUuid;
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]

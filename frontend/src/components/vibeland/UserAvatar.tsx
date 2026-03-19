@@ -184,6 +184,7 @@ export function UserAvatar({
     const handleKeyDown = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
       if (['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright',' '].includes(key)) {
+        // intentionally empty — key handled by state updates below
       }
       if (key === 'e') {
         if (!isSuspendedRef.current && onInteractRef.current) onInteractRef.current();
@@ -615,6 +616,7 @@ interface HumanoidAvatarProps {
   showJetpack?: boolean;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars, unused-imports/no-unused-vars
 function HumanoidAvatar({ color: _color, isAdmin, animationRef, showJetpack = false }: HumanoidAvatarProps) {
   const bodyRef = useRef<THREE.Group>(null);
   const headRef = useRef<THREE.Group>(null);

@@ -3,26 +3,27 @@ use axum::{
     extract::{Path, Query, State},
     routing::{get, post, put},
 };
-use db::models::data_source::DataSource;
-use db::models::execution_artifact::ExecutionArtifact;
-use db::models::workflow_run::{WorkflowRun, CreateWorkflowRun};
-use db::models::workflow_staging::WorkflowStagingRecord;
+use db::models::{
+    data_source::DataSource,
+    execution_artifact::ExecutionArtifact,
+    pcg_router_model::PcgRouterModel,
+    workflow_run::{CreateWorkflowRun, WorkflowRun},
+    workflow_staging::WorkflowStagingRecord,
+};
+use deployment::Deployment;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
+pub use services::services::workflow_execution::{
+    NodePosition, WorkflowConnection, WorkflowDefinition, WorkflowNode, build_schema_prompt_text,
+    check_company_duplicate, check_contact_duplicate, check_deal_duplicate,
+    check_intra_batch_duplicate, check_task_duplicate, compute_confidence, execute_action_node,
+    execute_node_with_llm, extract_records_from_output, is_fallback_placeholder,
+    validate_record_against_schema,
+};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use deployment::Deployment;
-use db::models::pcg_router_model::PcgRouterModel;
 use crate::{DeploymentImpl, error::ApiError};
-pub use services::services::workflow_execution::{
-    NodePosition, WorkflowNode, WorkflowConnection, WorkflowDefinition,
-    extract_records_from_output, is_fallback_placeholder, compute_confidence,
-    build_schema_prompt_text, validate_record_against_schema,
-    check_contact_duplicate, check_company_duplicate,
-    check_deal_duplicate, check_task_duplicate, check_intra_batch_duplicate,
-    execute_node_with_llm, execute_action_node,
-};
 
 // Legacy step type for backwards compat with run_workflow
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,8 +41,8 @@ struct CreateWorkflowRequest {
     description: Option<String>,
     nodes: Vec<WorkflowNode>,
     connections: Vec<WorkflowConnection>,
-    owner_type: Option<String>,  // "organization" or "user"
-    owner_id: Option<String>,    // UUID of the owner
+    owner_type: Option<String>, // "organization" or "user"
+    owner_id: Option<String>,   // UUID of the owner
     default_model: Option<String>,
 }
 
@@ -91,7 +92,9 @@ fn default_analysis_workflow() -> WorkflowDefinition {
     WorkflowDefinition {
         id: "default_analysis".to_string(),
         name: "Data Source Analysis".to_string(),
-        description: Some("Extract companies, contacts, and opportunities from data source content.".to_string()),
+        description: Some(
+            "Extract companies, contacts, and opportunities from data source content.".to_string(),
+        ),
         nodes: vec![
             WorkflowNode {
                 id: "extract_companies".to_string(),
@@ -261,14 +264,12 @@ fn bug_triage_workflow() -> WorkflowDefinition {
                 position: NodePosition { x: 500.0, y: 200.0 },
             },
         ],
-        connections: vec![
-            WorkflowConnection {
-                source: "investigate".to_string(),
-                target: "create_tasks".to_string(),
-                source_output: Some(0),
-                target_input: Some(0),
-            },
-        ],
+        connections: vec![WorkflowConnection {
+            source: "investigate".to_string(),
+            target: "create_tasks".to_string(),
+            source_output: Some(0),
+            target_input: Some(0),
+        }],
         is_system: true,
         owner_type: "system".to_string(),
         owner_id: None,
@@ -281,7 +282,10 @@ fn sprint_planning_workflow() -> WorkflowDefinition {
     WorkflowDefinition {
         id: "sprint_planning".to_string(),
         name: "Sprint Planning from Requirements".to_string(),
-        description: Some("Break down requirements documents into agent-ready tasks with completion criteria.".to_string()),
+        description: Some(
+            "Break down requirements documents into agent-ready tasks with completion criteria."
+                .to_string(),
+        ),
         nodes: vec![
             WorkflowNode {
                 id: "extract_requirements".to_string(),
@@ -313,9 +317,12 @@ fn sprint_planning_workflow() -> WorkflowDefinition {
                 position: NodePosition { x: 500.0, y: 200.0 },
             },
         ],
-        connections: vec![
-            WorkflowConnection { source: "extract_requirements".to_string(), target: "output_sprint_tasks".to_string(), source_output: Some(0), target_input: Some(0) },
-        ],
+        connections: vec![WorkflowConnection {
+            source: "extract_requirements".to_string(),
+            target: "output_sprint_tasks".to_string(),
+            source_output: Some(0),
+            target_input: Some(0),
+        }],
         is_system: true,
         owner_type: "system".to_string(),
         owner_id: None,
@@ -328,7 +335,10 @@ fn client_onboarding_workflow() -> WorkflowDefinition {
     WorkflowDefinition {
         id: "client_onboarding".to_string(),
         name: "Client Onboarding Pipeline".to_string(),
-        description: Some("Process new client data, create CRM contacts, and generate onboarding task checklist.".to_string()),
+        description: Some(
+            "Process new client data, create CRM contacts, and generate onboarding task checklist."
+                .to_string(),
+        ),
         nodes: vec![
             WorkflowNode {
                 id: "extract_client_info".to_string(),
@@ -364,8 +374,18 @@ fn client_onboarding_workflow() -> WorkflowDefinition {
             },
         ],
         connections: vec![
-            WorkflowConnection { source: "extract_client_info".to_string(), target: "create_contacts".to_string(), source_output: Some(0), target_input: Some(0) },
-            WorkflowConnection { source: "extract_client_info".to_string(), target: "create_onboarding_tasks".to_string(), source_output: Some(0), target_input: Some(0) },
+            WorkflowConnection {
+                source: "extract_client_info".to_string(),
+                target: "create_contacts".to_string(),
+                source_output: Some(0),
+                target_input: Some(0),
+            },
+            WorkflowConnection {
+                source: "extract_client_info".to_string(),
+                target: "create_onboarding_tasks".to_string(),
+                source_output: Some(0),
+                target_input: Some(0),
+            },
         ],
         is_system: true,
         owner_type: "system".to_string(),
@@ -379,7 +399,10 @@ fn content_pipeline_workflow() -> WorkflowDefinition {
     WorkflowDefinition {
         id: "content_pipeline".to_string(),
         name: "Content Analysis Pipeline".to_string(),
-        description: Some("Analyze content for SEO opportunities and create actionable content tasks.".to_string()),
+        description: Some(
+            "Analyze content for SEO opportunities and create actionable content tasks."
+                .to_string(),
+        ),
         nodes: vec![
             WorkflowNode {
                 id: "summarize_content".to_string(),
@@ -428,8 +451,18 @@ fn content_pipeline_workflow() -> WorkflowDefinition {
             },
         ],
         connections: vec![
-            WorkflowConnection { source: "summarize_content".to_string(), target: "analyze_seo".to_string(), source_output: Some(0), target_input: Some(0) },
-            WorkflowConnection { source: "analyze_seo".to_string(), target: "create_content_tasks".to_string(), source_output: Some(0), target_input: Some(0) },
+            WorkflowConnection {
+                source: "summarize_content".to_string(),
+                target: "analyze_seo".to_string(),
+                source_output: Some(0),
+                target_input: Some(0),
+            },
+            WorkflowConnection {
+                source: "analyze_seo".to_string(),
+                target: "create_content_tasks".to_string(),
+                source_output: Some(0),
+                target_input: Some(0),
+            },
         ],
         is_system: true,
         owner_type: "system".to_string(),
@@ -475,14 +508,38 @@ pub(crate) async fn seed_defaults(pool: &sqlx::SqlitePool) {
     }
 }
 
-fn parse_workflow_from_row(id: String, owner_type: String, owner_id: Option<String>, name: String, description: Option<String>, steps_json: String, is_system: bool) -> WorkflowDefinition {
+fn parse_workflow_from_row(
+    id: String,
+    owner_type: String,
+    owner_id: Option<String>,
+    name: String,
+    description: Option<String>,
+    steps_json: String,
+    is_system: bool,
+) -> WorkflowDefinition {
     // Try new format: {"nodes": [...], "connections": [...], "default_model": "..."}
     if let Ok(v) = serde_json::from_str::<Value>(&steps_json) {
         if v.get("nodes").is_some() {
-            let nodes: Vec<WorkflowNode> = serde_json::from_value(v["nodes"].clone()).unwrap_or_default();
-            let connections: Vec<WorkflowConnection> = serde_json::from_value(v["connections"].clone()).unwrap_or_default();
-            let default_model = v.get("default_model").and_then(|dm| dm.as_str()).filter(|s| !s.is_empty()).map(|s| s.to_string());
-            return WorkflowDefinition { id, name, description, nodes, connections, is_system, owner_type, owner_id, default_model };
+            let nodes: Vec<WorkflowNode> =
+                serde_json::from_value(v["nodes"].clone()).unwrap_or_default();
+            let connections: Vec<WorkflowConnection> =
+                serde_json::from_value(v["connections"].clone()).unwrap_or_default();
+            let default_model = v
+                .get("default_model")
+                .and_then(|dm| dm.as_str())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string());
+            return WorkflowDefinition {
+                id,
+                name,
+                description,
+                nodes,
+                connections,
+                is_system,
+                owner_type,
+                owner_id,
+                default_model,
+            };
         }
     }
 
@@ -498,7 +555,11 @@ fn parse_workflow_from_row(id: String, owner_type: String, owner_id: Option<Stri
             node_type: "llm_extract".to_string(),
             parameters: json!({ "prompt_template": step.prompt_template }),
             position: NodePosition {
-                x: if step.depends_on.is_empty() { 100.0 } else { 100.0 + 400.0 },
+                x: if step.depends_on.is_empty() {
+                    100.0
+                } else {
+                    100.0 + 400.0
+                },
                 y: 100.0 + (i as f64) * 200.0,
             },
         });
@@ -512,10 +573,22 @@ fn parse_workflow_from_row(id: String, owner_type: String, owner_id: Option<Stri
         }
     }
 
-    WorkflowDefinition { id, name, description, nodes, connections, is_system, owner_type, owner_id, default_model: None }
+    WorkflowDefinition {
+        id,
+        name,
+        description,
+        nodes,
+        connections,
+        is_system,
+        owner_type,
+        owner_id,
+        default_model: None,
+    }
 }
 
-pub(crate) async fn load_all_workflows(pool: &sqlx::SqlitePool) -> Result<Vec<WorkflowDefinition>, sqlx::Error> {
+pub(crate) async fn load_all_workflows(
+    pool: &sqlx::SqlitePool,
+) -> Result<Vec<WorkflowDefinition>, sqlx::Error> {
     seed_defaults(pool).await;
 
     let rows = sqlx::query_as::<_, (String, String, Option<String>, String, Option<String>, String, bool)>(
@@ -524,10 +597,18 @@ pub(crate) async fn load_all_workflows(pool: &sqlx::SqlitePool) -> Result<Vec<Wo
     .fetch_all(pool)
     .await?;
 
-    Ok(rows.into_iter().map(|(id, ot, oid, name, desc, steps, sys)| parse_workflow_from_row(id, ot, oid, name, desc, steps, sys)).collect())
+    Ok(rows
+        .into_iter()
+        .map(|(id, ot, oid, name, desc, steps, sys)| {
+            parse_workflow_from_row(id, ot, oid, name, desc, steps, sys)
+        })
+        .collect())
 }
 
-pub(crate) async fn load_workflow(pool: &sqlx::SqlitePool, workflow_id: &str) -> Result<Option<WorkflowDefinition>, sqlx::Error> {
+pub(crate) async fn load_workflow(
+    pool: &sqlx::SqlitePool,
+    workflow_id: &str,
+) -> Result<Option<WorkflowDefinition>, sqlx::Error> {
     seed_defaults(pool).await;
 
     let row = sqlx::query_as::<_, (String, String, Option<String>, String, Option<String>, String, bool)>(
@@ -537,9 +618,10 @@ pub(crate) async fn load_workflow(pool: &sqlx::SqlitePool, workflow_id: &str) ->
     .fetch_optional(pool)
     .await?;
 
-    Ok(row.map(|(id, ot, oid, name, desc, steps, sys)| parse_workflow_from_row(id, ot, oid, name, desc, steps, sys)))
+    Ok(row.map(|(id, ot, oid, name, desc, steps, sys)| {
+        parse_workflow_from_row(id, ot, oid, name, desc, steps, sys)
+    }))
 }
-
 
 // Text extraction, mock LLM, record helpers, dedup, action node execution,
 // and LLM node execution have been extracted to
@@ -554,9 +636,11 @@ async fn list_workflows_for_data_source(
 ) -> Result<Json<ApiResponse<Vec<WorkflowDefinition>>>, ApiError> {
     let pool = &deployment.db().pool;
     DataSource::find_by_id(pool, &data_source_id.to_string())
-        .await.map_err(|e| ApiError::InternalError(format!("Failed to look up data source: {e}")))?
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to look up data source: {e}")))?
         .ok_or_else(|| ApiError::NotFound("Data source not found".to_string()))?;
-    let workflows = load_all_workflows(pool).await
+    let workflows = load_all_workflows(pool)
+        .await
         .map_err(|e| ApiError::InternalError(format!("Failed to load workflows: {e}")))?;
     Ok(Json(ApiResponse::success(workflows)))
 }
@@ -584,33 +668,44 @@ async fn run_workflow(
     let run_start = std::time::Instant::now();
 
     let data_source = DataSource::find_by_id(pool, &data_source_id.to_string())
-        .await.map_err(|e| ApiError::InternalError(format!("Failed to look up data source: {e}")))?
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to look up data source: {e}")))?
         .ok_or_else(|| ApiError::NotFound("Data source not found".to_string()))?;
 
-    let workflow = load_workflow(pool, &workflow_id).await
+    let workflow = load_workflow(pool, &workflow_id)
+        .await
         .map_err(|e| ApiError::InternalError(format!("Failed to load workflow: {e}")))?
         .ok_or_else(|| ApiError::NotFound(format!("Workflow '{}' not found", workflow_id)))?;
 
-    let model = request_model.or(workflow.default_model.clone()).unwrap_or_default();
+    let model = request_model
+        .or(workflow.default_model.clone())
+        .unwrap_or_default();
 
     let content = data_source.content.clone().unwrap_or_default();
 
     // Compute content hash for idempotency check (includes workflow structure so
     // definition changes invalidate the cache even if the source content is unchanged)
     let content_hash = {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
+        use std::{
+            collections::hash_map::DefaultHasher,
+            hash::{Hash, Hasher},
+        };
         let mut hasher = DefaultHasher::new();
         workflow_id.hash(&mut hasher);
-        serde_json::to_string(&workflow.nodes).unwrap_or_default().hash(&mut hasher);
-        serde_json::to_string(&workflow.connections).unwrap_or_default().hash(&mut hasher);
+        serde_json::to_string(&workflow.nodes)
+            .unwrap_or_default()
+            .hash(&mut hasher);
+        serde_json::to_string(&workflow.connections)
+            .unwrap_or_default()
+            .hash(&mut hasher);
         content.hash(&mut hasher);
         format!("{:016x}", hasher.finish())
     };
 
     // Check for existing completed run with same content hash (unless force=true)
     if !force {
-        if let Ok(Some(existing_run)) = WorkflowRun::find_by_content_hash(pool, &content_hash).await {
+        if let Ok(Some(existing_run)) = WorkflowRun::find_by_content_hash(pool, &content_hash).await
+        {
             // Return the existing run's results with reconstructed usage stats
             let existing_run_id = existing_run.id.clone();
             let staged = existing_run.total_records_staged.unwrap_or(0);
@@ -646,18 +741,33 @@ async fn run_workflow(
     }
 
     // Create workflow run record
-    let ds_org_uuid = data_source.organization_id.as_deref().and_then(|s| Uuid::parse_str(s).ok());
-    let ds_proj_uuid = data_source.project_id.as_deref().and_then(|s| Uuid::parse_str(s).ok());
-    if let Err(e) = WorkflowRun::create(pool, CreateWorkflowRun {
-        id: workflow_run_id,
-        workflow_id: workflow.id.clone(),
-        workflow_name: workflow.name.clone(),
-        data_source_id: Some(data_source_id),
-        organization_id: ds_org_uuid,
-        project_id: ds_proj_uuid,
-        model_used: if model.is_empty() { None } else { Some(model.clone()) },
-        content_hash: Some(content_hash),
-    }).await {
+    let ds_org_uuid = data_source
+        .organization_id
+        .as_deref()
+        .and_then(|s| Uuid::parse_str(s).ok());
+    let ds_proj_uuid = data_source
+        .project_id
+        .as_deref()
+        .and_then(|s| Uuid::parse_str(s).ok());
+    if let Err(e) = WorkflowRun::create(
+        pool,
+        CreateWorkflowRun {
+            id: workflow_run_id,
+            workflow_id: workflow.id.clone(),
+            workflow_name: workflow.name.clone(),
+            data_source_id: Some(data_source_id),
+            organization_id: ds_org_uuid,
+            project_id: ds_proj_uuid,
+            model_used: if model.is_empty() {
+                None
+            } else {
+                Some(model.clone())
+            },
+            content_hash: Some(content_hash),
+        },
+    )
+    .await
+    {
         tracing::error!("[WORKFLOW] Failed to create workflow run record: {e}");
     }
 
@@ -674,13 +784,22 @@ async fn run_workflow(
         auto_approve: false,
     };
 
-    let result = super::workflow_engine::execute_workflow_nodes(pool, &workflow, &content, &opts).await;
+    let result =
+        super::workflow_engine::execute_workflow_nodes(pool, &workflow, &content, &opts).await;
 
     // Check for LLM errors
     let llm_errors = super::workflow_engine::check_for_llm_errors(&result.node_results);
     if !llm_errors.is_empty() {
         let duration_ms = run_start.elapsed().as_millis() as i64;
-        super::workflow_engine::finalize_workflow_run(pool, workflow_run_id, &workflow, &result, duration_ms, "failed").await;
+        super::workflow_engine::finalize_workflow_run(
+            pool,
+            workflow_run_id,
+            &workflow,
+            &result,
+            duration_ms,
+            "failed",
+        )
+        .await;
         return Err(ApiError::InternalError(format!(
             "Workflow failed — LLM calls returned errors. {}. Check that API keys are configured as environment variables (e.g. ANTHROPIC_API_KEY).",
             llm_errors.first().unwrap_or(&String::new())
@@ -689,14 +808,26 @@ async fn run_workflow(
 
     // Finalize the run
     let duration_ms = run_start.elapsed().as_millis() as i64;
-    super::workflow_engine::finalize_workflow_run(pool, workflow_run_id, &workflow, &result, duration_ms, "completed").await;
+    super::workflow_engine::finalize_workflow_run(
+        pool,
+        workflow_run_id,
+        &workflow,
+        &result,
+        duration_ms,
+        "completed",
+    )
+    .await;
 
     // Build step results from node results (artifact_id is not tracked by engine — use Uuid::nil as placeholder)
-    let step_results: Vec<StepResult> = result.node_results.iter().map(|nr| StepResult {
-        step_id: nr.node_id.clone(),
-        step_name: nr.node_name.clone(),
-        artifact_id: Uuid::nil(),
-    }).collect();
+    let step_results: Vec<StepResult> = result
+        .node_results
+        .iter()
+        .map(|nr| StepResult {
+            step_id: nr.node_id.clone(),
+            step_name: nr.node_name.clone(),
+            artifact_id: Uuid::nil(),
+        })
+        .collect();
 
     Ok(Json(ApiResponse::success(WorkflowRunResult {
         workflow_run_id,
@@ -717,7 +848,8 @@ async fn list_data_source_artifacts(
 ) -> Result<Json<ApiResponse<Vec<ExecutionArtifact>>>, ApiError> {
     let pool = &deployment.db().pool;
     DataSource::find_by_id(pool, &data_source_id.to_string())
-        .await.map_err(|e| ApiError::InternalError(format!("Failed to look up data source: {e}")))?
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to look up data source: {e}")))?
         .ok_or_else(|| ApiError::NotFound("Data source not found".to_string()))?;
 
     let ds_id_str = data_source_id.to_string();
@@ -734,7 +866,8 @@ async fn list_all_workflow_definitions(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Vec<WorkflowDefinition>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let workflows = load_all_workflows(pool).await
+    let workflows = load_all_workflows(pool)
+        .await
         .map_err(|e| ApiError::InternalError(format!("Failed to load workflows: {e}")))?;
     Ok(Json(ApiResponse::success(workflows)))
 }
@@ -750,21 +883,32 @@ async fn create_workflow_definition(
         return Err(ApiError::BadRequest("id and name are required".to_string()));
     }
 
-    let existing = load_workflow(pool, &req.id).await
+    let existing = load_workflow(pool, &req.id)
+        .await
         .map_err(|e| ApiError::InternalError(format!("DB error: {e}")))?;
     if existing.is_some() {
-        return Err(ApiError::BadRequest(format!("Workflow '{}' already exists", req.id)));
+        return Err(ApiError::BadRequest(format!(
+            "Workflow '{}' already exists",
+            req.id
+        )));
     }
 
     let owner_type = req.owner_type.unwrap_or_else(|| "organization".to_string());
     if !["organization", "user"].contains(&owner_type.as_str()) {
-        return Err(ApiError::BadRequest("owner_type must be 'organization' or 'user'".to_string()));
+        return Err(ApiError::BadRequest(
+            "owner_type must be 'organization' or 'user'".to_string(),
+        ));
     }
 
     let wf = WorkflowDefinition {
-        id: req.id, name: req.name, description: req.description,
-        nodes: req.nodes, connections: req.connections, is_system: false,
-        owner_type: owner_type.clone(), owner_id: req.owner_id.clone(),
+        id: req.id,
+        name: req.name,
+        description: req.description,
+        nodes: req.nodes,
+        connections: req.connections,
+        is_system: false,
+        owner_type: owner_type.clone(),
+        owner_id: req.owner_id.clone(),
         default_model: req.default_model,
     };
     let data = serialize_workflow_data(&wf);
@@ -787,7 +931,8 @@ async fn update_workflow_definition(
 ) -> Result<Json<ApiResponse<WorkflowDefinition>>, ApiError> {
     let pool = &deployment.db().pool;
 
-    let existing = load_workflow(pool, &workflow_id).await
+    let existing = load_workflow(pool, &workflow_id)
+        .await
         .map_err(|e| ApiError::InternalError(format!("DB error: {e}")))?
         .ok_or_else(|| ApiError::NotFound(format!("Workflow '{}' not found", workflow_id)))?;
 
@@ -798,9 +943,14 @@ async fn update_workflow_definition(
     let default_model = req.default_model.or(existing.default_model);
 
     let wf = WorkflowDefinition {
-        id: workflow_id.clone(), name: name.clone(), description: description.clone(),
-        nodes: nodes.clone(), connections: connections.clone(), is_system: existing.is_system,
-        owner_type: existing.owner_type.clone(), owner_id: existing.owner_id.clone(),
+        id: workflow_id.clone(),
+        name: name.clone(),
+        description: description.clone(),
+        nodes: nodes.clone(),
+        connections: connections.clone(),
+        is_system: existing.is_system,
+        owner_type: existing.owner_type.clone(),
+        owner_id: existing.owner_id.clone(),
         default_model,
     };
     let data = serialize_workflow_data(&wf);
@@ -822,16 +972,21 @@ async fn delete_workflow_definition(
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
 
-    let existing = load_workflow(pool, &workflow_id).await
+    let existing = load_workflow(pool, &workflow_id)
+        .await
         .map_err(|e| ApiError::InternalError(format!("DB error: {e}")))?
         .ok_or_else(|| ApiError::NotFound(format!("Workflow '{}' not found", workflow_id)))?;
 
     if existing.is_system {
-        return Err(ApiError::BadRequest("Cannot delete system workflows".to_string()));
+        return Err(ApiError::BadRequest(
+            "Cannot delete system workflows".to_string(),
+        ));
     }
 
     sqlx::query("DELETE FROM workflow_definitions WHERE id = ?1")
-        .bind(&workflow_id).execute(pool).await
+        .bind(&workflow_id)
+        .execute(pool)
+        .await
         .map_err(|e| ApiError::InternalError(format!("Failed to delete workflow: {e}")))?;
 
     Ok(Json(ApiResponse::success(())))
@@ -907,7 +1062,6 @@ struct PreviewRecordInfo {
     data: Value,
     validation_errors: Vec<String>,
     confidence: f64,
-
 }
 
 /// POST /api/workflows/preview — dry-run a workflow without saving artifacts
@@ -943,48 +1097,61 @@ async fn preview_workflow(
         ..Default::default()
     };
 
-    let result = super::workflow_engine::execute_workflow_nodes(pool, &preview_workflow, &content, &opts).await;
+    let result =
+        super::workflow_engine::execute_workflow_nodes(pool, &preview_workflow, &content, &opts)
+            .await;
 
     // Convert node results to preview format with validation info
-    let results: Vec<PreviewNodeResult> = result.node_results.iter().map(|nr| {
-        let records = if nr.node_type.starts_with("output_") {
-            let target_type = nr.node_type.strip_prefix("output_").unwrap_or("");
-            let staging_target = match target_type {
-                "crm_contacts" => Some("crm_contact"),
-                "crm_companies" => Some("company"),
-                "crm_deals" => Some("crm_deal"),
-                "tasks" => Some("task"),
-                _ => None,
-            };
-            staging_target.and_then(|st| {
-                serde_json::from_str::<Value>(&nr.output).ok().map(|parsed| {
-                    extract_records_from_output(&parsed, st).iter().map(|record| {
-                        let validation_errors = match validate_record_against_schema(record, st) {
-                            Ok(()) => vec![],
-                            Err(errs) => errs,
-                        };
-                        let confidence = compute_confidence(record, st, &validation_errors, false);
-                        PreviewRecordInfo {
-                            data: record.clone(),
-                            validation_errors,
-                            confidence,
-                        }
-                    }).collect::<Vec<_>>()
+    let results: Vec<PreviewNodeResult> = result
+        .node_results
+        .iter()
+        .map(|nr| {
+            let records = if nr.node_type.starts_with("output_") {
+                let target_type = nr.node_type.strip_prefix("output_").unwrap_or("");
+                let staging_target = match target_type {
+                    "crm_contacts" => Some("crm_contact"),
+                    "crm_companies" => Some("company"),
+                    "crm_deals" => Some("crm_deal"),
+                    "tasks" => Some("task"),
+                    _ => None,
+                };
+                staging_target.and_then(|st| {
+                    serde_json::from_str::<Value>(&nr.output)
+                        .ok()
+                        .map(|parsed| {
+                            extract_records_from_output(&parsed, st)
+                                .iter()
+                                .map(|record| {
+                                    let validation_errors =
+                                        match validate_record_against_schema(record, st) {
+                                            Ok(()) => vec![],
+                                            Err(errs) => errs,
+                                        };
+                                    let confidence =
+                                        compute_confidence(record, st, &validation_errors, false);
+                                    PreviewRecordInfo {
+                                        data: record.clone(),
+                                        validation_errors,
+                                        confidence,
+                                    }
+                                })
+                                .collect::<Vec<_>>()
+                        })
                 })
-            })
-        } else {
-            None
-        };
+            } else {
+                None
+            };
 
-        PreviewNodeResult {
-            node_id: nr.node_id.clone(),
-            node_name: nr.node_name.clone(),
-            node_type: nr.node_type.clone(),
-            output: nr.output.clone(),
-            usage: nr.usage.clone(),
-            records,
-        }
-    }).collect();
+            PreviewNodeResult {
+                node_id: nr.node_id.clone(),
+                node_name: nr.node_name.clone(),
+                node_type: nr.node_type.clone(),
+                output: nr.output.clone(),
+                usage: nr.usage.clone(),
+                records,
+            }
+        })
+        .collect();
 
     Ok(Json(ApiResponse::success(results)))
 }
@@ -1009,16 +1176,20 @@ async fn list_available_models(
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to list models: {e}")))?;
 
-    let available: Vec<AvailableModel> = models.iter().enumerate().map(|(i, m)| {
-        AvailableModel {
-            id: m.model_id.clone(),
-            label: format!("{} ({})", m.name, m.provider),
-            is_default: i == 0, // highest priority (first) is default
-            provider: m.provider.clone(),
-            cost_per_million_input: m.cost_per_million_input,
-            cost_per_million_output: m.cost_per_million_output,
-        }
-    }).collect();
+    let available: Vec<AvailableModel> = models
+        .iter()
+        .enumerate()
+        .map(|(i, m)| {
+            AvailableModel {
+                id: m.model_id.clone(),
+                label: format!("{} ({})", m.name, m.provider),
+                is_default: i == 0, // highest priority (first) is default
+                provider: m.provider.clone(),
+                cost_per_million_input: m.cost_per_million_input,
+                cost_per_million_output: m.cost_per_million_output,
+            }
+        })
+        .collect();
 
     Ok(Json(ApiResponse::success(available)))
 }
@@ -1075,17 +1246,29 @@ async fn get_run_stats(
         .ok_or_else(|| ApiError::NotFound("Workflow run not found".to_string()))?;
 
     // Get current staging record counts for live stats
-    let run_uuid = Uuid::parse_str(&id)
-        .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {e}")))?;
+    let run_uuid =
+        Uuid::parse_str(&id).map_err(|e| ApiError::InternalError(format!("Invalid UUID: {e}")))?;
     let staging_records = WorkflowStagingRecord::find_by_run(pool, run_uuid)
         .await
         .unwrap_or_default();
 
     let total = staging_records.len() as f64;
-    let approved = staging_records.iter().filter(|r| r.status == "approved" || r.status == "committed").count() as f64;
-    let rejected = staging_records.iter().filter(|r| r.status == "rejected").count() as f64;
-    let committed = staging_records.iter().filter(|r| r.status == "committed").count() as f64;
-    let duplicates = staging_records.iter().filter(|r| r.duplicate_of_id.is_some()).count() as f64;
+    let approved = staging_records
+        .iter()
+        .filter(|r| r.status == "approved" || r.status == "committed")
+        .count() as f64;
+    let rejected = staging_records
+        .iter()
+        .filter(|r| r.status == "rejected")
+        .count() as f64;
+    let committed = staging_records
+        .iter()
+        .filter(|r| r.status == "committed")
+        .count() as f64;
+    let duplicates = staging_records
+        .iter()
+        .filter(|r| r.duplicate_of_id.is_some())
+        .count() as f64;
 
     let approval_rate = if total > 0.0 { approved / total } else { 0.0 };
     let duplicate_rate = if total > 0.0 { duplicates / total } else { 0.0 };
@@ -1114,7 +1297,11 @@ async fn get_run_stats(
 
 /// Check for matching workflow triggers and run them in the background.
 /// Called after a new data source is created. Non-blocking — spawns tokio tasks.
-pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_id: String, deployment: crate::DeploymentImpl) {
+pub async fn fire_triggers_for_data_source(
+    pool: sqlx::SqlitePool,
+    data_source_id: String,
+    deployment: crate::DeploymentImpl,
+) {
     use db::models::workflow_trigger::WorkflowTrigger;
 
     let ds = match DataSource::find_by_id(&pool, &data_source_id).await {
@@ -1130,10 +1317,16 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
         &ds.data_type,
         org_id.as_deref(),
         proj_id.as_deref(),
-    ).await {
+    )
+    .await
+    {
         Ok(t) => t,
         Err(e) => {
-            tracing::error!("[TRIGGER] Failed to find matching triggers for ds {}: {}", data_source_id, e);
+            tracing::error!(
+                "[TRIGGER] Failed to find matching triggers for ds {}: {}",
+                data_source_id,
+                e
+            );
             return;
         }
     };
@@ -1144,7 +1337,9 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
 
     tracing::info!(
         "[TRIGGER] Found {} matching trigger(s) for data source {} (type={})",
-        triggers.len(), data_source_id, ds.data_type
+        triggers.len(),
+        data_source_id,
+        ds.data_type
     );
 
     for trigger in triggers {
@@ -1152,7 +1347,8 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
         if !trigger.is_past_cooldown() {
             tracing::info!(
                 "[TRIGGER] Skipping trigger '{}' — still in cooldown ({}s)",
-                trigger.id, trigger.cooldown_seconds
+                trigger.id,
+                trigger.cooldown_seconds
             );
             continue;
         }
@@ -1169,13 +1365,18 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
             let _trigger_start = std::time::Instant::now();
 
             // Create audit trail entry
-            use db::models::trigger_execution::{TriggerExecution, CreateTriggerExecution};
-            let execution = TriggerExecution::create(&pool, CreateTriggerExecution {
-                trigger_id: trigger_id.clone(),
-                source_type: Some("data_source".to_string()),
-                source_id: Some(ds_id.clone()),
-                metadata: None,
-            }).await.ok();
+            use db::models::trigger_execution::{CreateTriggerExecution, TriggerExecution};
+            let execution = TriggerExecution::create(
+                &pool,
+                CreateTriggerExecution {
+                    trigger_id: trigger_id.clone(),
+                    source_type: Some("data_source".to_string()),
+                    source_id: Some(ds_id.clone()),
+                    metadata: None,
+                },
+            )
+            .await
+            .ok();
             let span = tracing::info_span!("trigger_execution",
                 trigger_id = %trigger_id,
                 workflow_id = %workflow_id,
@@ -1185,19 +1386,28 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
 
             tracing::info!(
                 "[TRIGGER] Firing trigger '{}' (workflow={}) for data source {}",
-                trigger_id, workflow_id, ds_id
+                trigger_id,
+                workflow_id,
+                ds_id
             );
 
             // Increment trigger count
             if let Err(e) = WorkflowTrigger::increment_trigger_count(&pool, &trigger_id).await {
-                tracing::warn!("[TRIGGER] Failed to increment trigger count for '{}': {e}", trigger_id);
+                tracing::warn!(
+                    "[TRIGGER] Failed to increment trigger count for '{}': {e}",
+                    trigger_id
+                );
             }
 
             // Load the workflow definition
             let workflow = match load_workflow(&pool, &workflow_id).await {
                 Ok(Some(wf)) => wf,
                 Ok(None) => {
-                    tracing::error!("[TRIGGER] Workflow '{}' not found for trigger '{}'", workflow_id, trigger_id);
+                    tracing::error!(
+                        "[TRIGGER] Workflow '{}' not found for trigger '{}'",
+                        workflow_id,
+                        trigger_id
+                    );
                     return;
                 }
                 Err(e) => {
@@ -1224,22 +1434,43 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
             let run_start = std::time::Instant::now();
 
             // Create workflow run record
-            if let Err(e) = WorkflowRun::create(&pool, CreateWorkflowRun {
-                id: workflow_run_id,
-                workflow_id: workflow.id.clone(),
-                workflow_name: workflow.name.clone(),
-                data_source_id: Uuid::parse_str(&ds_id).ok(),
-                organization_id: data_source.organization_id.as_deref().and_then(|s| Uuid::parse_str(s).ok()),
-                project_id: data_source.project_id.as_deref().and_then(|s| Uuid::parse_str(s).ok()),
-                model_used: if model.is_empty() { None } else { Some(model.clone()) },
-                content_hash: None,
-            }).await {
+            if let Err(e) = WorkflowRun::create(
+                &pool,
+                CreateWorkflowRun {
+                    id: workflow_run_id,
+                    workflow_id: workflow.id.clone(),
+                    workflow_name: workflow.name.clone(),
+                    data_source_id: Uuid::parse_str(&ds_id).ok(),
+                    organization_id: data_source
+                        .organization_id
+                        .as_deref()
+                        .and_then(|s| Uuid::parse_str(s).ok()),
+                    project_id: data_source
+                        .project_id
+                        .as_deref()
+                        .and_then(|s| Uuid::parse_str(s).ok()),
+                    model_used: if model.is_empty() {
+                        None
+                    } else {
+                        Some(model.clone())
+                    },
+                    content_hash: None,
+                },
+            )
+            .await
+            {
                 tracing::error!("[TRIGGER] Failed to create workflow run record: {e}");
                 return;
             }
 
-            let ctx_project_id = data_source.project_id.as_deref().and_then(|s| Uuid::parse_str(s).ok());
-            let ctx_org_id = data_source.organization_id.as_deref().and_then(|s| Uuid::parse_str(s).ok());
+            let ctx_project_id = data_source
+                .project_id
+                .as_deref()
+                .and_then(|s| Uuid::parse_str(s).ok());
+            let ctx_org_id = data_source
+                .organization_id
+                .as_deref()
+                .and_then(|s| Uuid::parse_str(s).ok());
             let content = data_source.content.unwrap_or_default();
 
             // Execute via shared engine
@@ -1257,31 +1488,60 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
 
             // Mark execution as running
             if let Some(ref exec) = execution {
-                let _ = TriggerExecution::mark_running(&pool, &exec.id, Some(&workflow_run_id.to_string())).await;
+                let _ = TriggerExecution::mark_running(
+                    &pool,
+                    &exec.id,
+                    Some(&workflow_run_id.to_string()),
+                )
+                .await;
             }
 
-            let result = super::workflow_engine::execute_workflow_nodes(&pool, &workflow, &content, &opts).await;
+            let result =
+                super::workflow_engine::execute_workflow_nodes(&pool, &workflow, &content, &opts)
+                    .await;
 
             let duration_ms = run_start.elapsed().as_millis() as i64;
-            super::workflow_engine::finalize_workflow_run(&pool, workflow_run_id, &workflow, &result, duration_ms, "completed").await;
+            super::workflow_engine::finalize_workflow_run(
+                &pool,
+                workflow_run_id,
+                &workflow,
+                &result,
+                duration_ms,
+                "completed",
+            )
+            .await;
 
             // Record execution result
             if let Some(ref exec) = execution {
-                let _ = TriggerExecution::mark_completed(&pool, &exec.id, result.staged_records, duration_ms).await;
+                let _ = TriggerExecution::mark_completed(
+                    &pool,
+                    &exec.id,
+                    result.staged_records,
+                    duration_ms,
+                )
+                .await;
             }
             let _ = WorkflowTrigger::clear_error(&pool, &trigger_id).await;
 
             tracing::info!(
                 "[TRIGGER] Completed trigger '{}' workflow run {} ({} records staged, {}ms)",
-                trigger_id, workflow_run_id, result.staged_records, duration_ms
+                trigger_id,
+                workflow_run_id,
+                result.staged_records,
+                duration_ms
             );
 
             // Auto-approve + batch-commit when trigger has auto_approve enabled
             if trigger_auto_approve && result.staged_records > 0 {
                 let label = format!("trigger '{trigger_id}'");
                 super::workflow_engine::auto_approve_staged_records(
-                    &pool, workflow_run_id, result.staged_records, &deployment, &label,
-                ).await;
+                    &pool,
+                    workflow_run_id,
+                    result.staged_records,
+                    &deployment,
+                    &label,
+                )
+                .await;
             }
         });
     }
@@ -1293,10 +1553,14 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
 
 /// Spawn a background task that checks for due schedule triggers every 5 minutes.
 /// Schedule triggers run workflows without a data source — they use an empty content string.
-pub fn spawn_workflow_schedule_loop(pool: sqlx::SqlitePool, shutdown: tokio_util::sync::CancellationToken) {
+pub fn spawn_workflow_schedule_loop(
+    pool: sqlx::SqlitePool,
+    shutdown: tokio_util::sync::CancellationToken,
+) {
     tokio::spawn(async move {
-        use db::models::workflow_trigger::WorkflowTrigger;
         use std::time::Duration;
+
+        use db::models::workflow_trigger::WorkflowTrigger;
         use tokio::time::interval;
 
         // Check every 5 minutes
@@ -1324,7 +1588,10 @@ pub fn spawn_workflow_schedule_loop(pool: sqlx::SqlitePool, shutdown: tokio_util
                 continue;
             }
 
-            tracing::info!("[SCHEDULE] Found {} due schedule trigger(s)", due_triggers.len());
+            tracing::info!(
+                "[SCHEDULE] Found {} due schedule trigger(s)",
+                due_triggers.len()
+            );
 
             for trigger in due_triggers {
                 let pool = pool.clone();
@@ -1341,7 +1608,9 @@ pub fn spawn_workflow_schedule_loop(pool: sqlx::SqlitePool, shutdown: tokio_util
                     let start = std::time::Instant::now();
 
                     // Mark trigger as fired
-                    if let Err(e) = WorkflowTrigger::increment_trigger_count(&pool, &trigger_id).await {
+                    if let Err(e) =
+                        WorkflowTrigger::increment_trigger_count(&pool, &trigger_id).await
+                    {
                         tracing::warn!("[SCHEDULE] Failed to update trigger count: {e}");
                     }
 
@@ -1353,7 +1622,10 @@ pub fn spawn_workflow_schedule_loop(pool: sqlx::SqlitePool, shutdown: tokio_util
                             return;
                         }
                         Err(e) => {
-                            tracing::error!("[SCHEDULE] Failed to load workflow '{}': {e}", workflow_id);
+                            tracing::error!(
+                                "[SCHEDULE] Failed to load workflow '{}': {e}",
+                                workflow_id
+                            );
                             return;
                         }
                     };
@@ -1371,11 +1643,16 @@ pub fn spawn_workflow_schedule_loop(pool: sqlx::SqlitePool, shutdown: tokio_util
                         ..Default::default()
                     };
 
-                    let result = super::workflow_engine::execute_workflow_nodes(&pool, &workflow, "", &opts).await;
+                    let result =
+                        super::workflow_engine::execute_workflow_nodes(&pool, &workflow, "", &opts)
+                            .await;
                     let duration_ms = start.elapsed().as_millis();
                     tracing::info!(
                         "[SCHEDULE] Completed workflow '{}' (trigger '{}') in {}ms, {} records staged",
-                        workflow_id, trigger_id, duration_ms, result.staged_records
+                        workflow_id,
+                        trigger_id,
+                        duration_ms,
+                        result.staged_records
                     );
                 });
             }
@@ -1385,11 +1662,26 @@ pub fn spawn_workflow_schedule_loop(pool: sqlx::SqlitePool, shutdown: tokio_util
 
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
-        .route("/data-sources/{id}/workflows", get(list_workflows_for_data_source))
-        .route("/data-sources/{id}/workflows/{workflow_id}/run", post(run_workflow))
-        .route("/data-sources/{id}/artifacts", get(list_data_source_artifacts))
-        .route("/workflows/definitions", get(list_all_workflow_definitions).post(create_workflow_definition))
-        .route("/workflows/definitions/{id}", put(update_workflow_definition).delete(delete_workflow_definition))
+        .route(
+            "/data-sources/{id}/workflows",
+            get(list_workflows_for_data_source),
+        )
+        .route(
+            "/data-sources/{id}/workflows/{workflow_id}/run",
+            post(run_workflow),
+        )
+        .route(
+            "/data-sources/{id}/artifacts",
+            get(list_data_source_artifacts),
+        )
+        .route(
+            "/workflows/definitions",
+            get(list_all_workflow_definitions).post(create_workflow_definition),
+        )
+        .route(
+            "/workflows/definitions/{id}",
+            put(update_workflow_definition).delete(delete_workflow_definition),
+        )
         .route("/workflows/preview", post(preview_workflow))
         .route("/workflows/models", get(list_available_models))
         .route("/workflows/runs/recent", get(list_recent_runs))

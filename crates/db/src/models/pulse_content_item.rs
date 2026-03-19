@@ -143,9 +143,7 @@ impl PulseContentItem {
         status: Option<&str>,
         limit: i64,
     ) -> Result<Vec<Self>, sqlx::Error> {
-        let mut sql = String::from(
-            "SELECT * FROM pulse_content_items WHERE project_id = ?",
-        );
+        let mut sql = String::from("SELECT * FROM pulse_content_items WHERE project_id = ?");
         if keyword.is_some() {
             sql.push_str(" AND (title LIKE '%' || ? || '%' OR body LIKE '%' || ? || '%')");
         }
@@ -248,16 +246,12 @@ impl PulseContentItem {
         .await
     }
 
-    pub async fn count_by_project(
-        pool: &SqlitePool,
-        project_id: Uuid,
-    ) -> Result<i64, sqlx::Error> {
-        let row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM pulse_content_items WHERE project_id = ?",
-        )
-        .bind(project_id)
-        .fetch_one(pool)
-        .await?;
+    pub async fn count_by_project(pool: &SqlitePool, project_id: Uuid) -> Result<i64, sqlx::Error> {
+        let row: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM pulse_content_items WHERE project_id = ?")
+                .bind(project_id)
+                .fetch_one(pool)
+                .await?;
         Ok(row.0)
     }
 

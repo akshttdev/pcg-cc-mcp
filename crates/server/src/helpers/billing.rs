@@ -4,9 +4,11 @@
 //! copy-pasted across topsi, nora, agent_chat, and task routes. This module
 //! provides two functions that replace all of those copies.
 
-use db::models::project::Project;
-use db::models::vibe_deposit::{VibeDeposit, VibeWithdrawal};
-use db::models::vibe_transaction::{VibeSourceType, VibeTransaction};
+use db::models::{
+    project::Project,
+    vibe_deposit::{VibeDeposit, VibeWithdrawal},
+    vibe_transaction::{VibeSourceType, VibeTransaction},
+};
 use services::services::vibe_pricing::VibePricingService;
 use sqlx::SqlitePool;
 use uuid::Uuid;
@@ -28,10 +30,11 @@ pub async fn ensure_vibe_balance(pool: &SqlitePool, project_id: Uuid) -> Result<
     let total_withdrawn = VibeWithdrawal::total_withdrawn(pool, project_id)
         .await
         .unwrap_or(0);
-    let total_spent = VibeTransaction::sum_by_source(pool, VibeSourceType::Project, project_id, None)
-        .await
-        .map(|s| s.total_vibe)
-        .unwrap_or(0);
+    let total_spent =
+        VibeTransaction::sum_by_source(pool, VibeSourceType::Project, project_id, None)
+            .await
+            .map(|s| s.total_vibe)
+            .unwrap_or(0);
 
     let balance = total_deposited - total_withdrawn - total_spent;
     if balance <= 0 {

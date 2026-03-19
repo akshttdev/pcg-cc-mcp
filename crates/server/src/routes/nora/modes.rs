@@ -1,7 +1,6 @@
 //! Nora mode handlers: list/apply modes, rapid playbook, graph plans
 
-use super::*;
-use super::coordination::emit_coordination_event;
+use super::{coordination::emit_coordination_event, *};
 
 pub async fn list_modes_handler() -> Json<Vec<NoraModeSummary>> {
     let summaries = NORA_MODE_PRESETS
@@ -95,10 +94,7 @@ pub async fn update_graph_node_handler(
                 .clone()
                 .unwrap_or_else(|| "NORA_GRAPH".to_string()),
             issued_by: "NORA_GRAPH".to_string(),
-            content: format!(
-                "Node '{}' advanced to {:?}",
-                node.label, body.status
-            ),
+            content: format!("Node '{}' advanced to {:?}", node.label, body.status),
             priority: Some(format!("{:?}", body.status)),
             timestamp: Utc::now(),
         })

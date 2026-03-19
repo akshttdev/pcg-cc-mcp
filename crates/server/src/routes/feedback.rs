@@ -3,10 +3,14 @@
 //! Creates tasks in the Bug Reports project for user feedback.
 
 use axum::{Router, extract::State, response::Json as ResponseJson, routing::post};
-use db::constants::{BUGREPORTS_BOARD_ID, BUGREPORTS_PROJECT_ID};
-use db::models::agent::Agent;
-use db::models::data_source::{CreateDataSource, DataSource};
-use db::models::task::{CreateTask, Priority, Task};
+use db::{
+    constants::{BUGREPORTS_BOARD_ID, BUGREPORTS_PROJECT_ID},
+    models::{
+        agent::Agent,
+        data_source::{CreateDataSource, DataSource},
+        task::{CreateTask, Priority, Task},
+    },
+};
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -82,10 +86,7 @@ pub async fn submit_feedback(
     }
 
     // Build tags based on feedback type
-    let tags = vec![
-        req.feedback_type.clone(),
-        "user-submitted".to_string(),
-    ];
+    let tags = vec![req.feedback_type.clone(), "user-submitted".to_string()];
 
     let task_id = Uuid::new_v4();
     let task_id_str = task_id.to_string();
@@ -127,7 +128,11 @@ pub async fn submit_feedback(
             if let Err(e) = Task::assign_agent(pool, &task_id_str, &agent.id).await {
                 tracing::warn!("Failed to assign dev agent to feedback task: {e}");
             } else {
-                tracing::info!("Assigned dev agent '{}' to feedback task {}", agent.short_name, task_id_str);
+                tracing::info!(
+                    "Assigned dev agent '{}' to feedback task {}",
+                    agent.short_name,
+                    task_id_str
+                );
             }
         }
         Ok(None) => {
@@ -177,7 +182,12 @@ pub async fn submit_feedback(
         let ds_id = ds.id.clone();
         let trigger_dep = deployment.clone();
         tokio::spawn(async move {
-            super::data_source_workflows::fire_triggers_for_data_source(trigger_pool, ds_id, trigger_dep).await;
+            super::data_source_workflows::fire_triggers_for_data_source(
+                trigger_pool,
+                ds_id,
+                trigger_dep,
+            )
+            .await;
         });
     }
 

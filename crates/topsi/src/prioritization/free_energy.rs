@@ -8,8 +8,9 @@
 //!
 //! Actions with LOWER free energy are preferred (minimizing surprise).
 
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -54,8 +55,7 @@ impl ExpectedFreeEnergy {
         // Free energy = -epistemic - pragmatic (negated because we want to minimize)
         // But for prioritization, we want HIGHER scores to be better
         // So we return: epistemic + pragmatic + urgency_boost + dependency_boost
-        self.total = (self.epistemic_value + self.pragmatic_value)
-            * self.urgency_factor
+        self.total = (self.epistemic_value + self.pragmatic_value) * self.urgency_factor
             + self.dependency_impact;
     }
 }
@@ -196,13 +196,15 @@ impl EFECalculator {
         actions: &[PotentialAction],
         goals: &[Goal],
     ) -> Vec<ExpectedFreeEnergy> {
-        let mut results: Vec<ExpectedFreeEnergy> = actions
-            .iter()
-            .map(|a| self.calculate(a, goals))
-            .collect();
+        let mut results: Vec<ExpectedFreeEnergy> =
+            actions.iter().map(|a| self.calculate(a, goals)).collect();
 
         // Sort by total EFE (highest first = best action)
-        results.sort_by(|a, b| b.total.partial_cmp(&a.total).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.total
+                .partial_cmp(&a.total)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         results
     }
@@ -235,10 +237,18 @@ impl IntoPotentialAction for db::models::task::Task {
 
         // Data completeness: based on whether description, assignee, etc. are filled
         let mut completeness = 0.0;
-        if self.description.is_some() { completeness += 0.3; }
-        if self.assignee_id.is_some() || self.assigned_agent.is_some() { completeness += 0.3; }
-        if self.due_date.is_some() { completeness += 0.2; }
-        if self.tags.is_some() { completeness += 0.2; }
+        if self.description.is_some() {
+            completeness += 0.3;
+        }
+        if self.assignee_id.is_some() || self.assigned_agent.is_some() {
+            completeness += 0.3;
+        }
+        if self.due_date.is_some() {
+            completeness += 0.2;
+        }
+        if self.tags.is_some() {
+            completeness += 0.2;
+        }
 
         PotentialAction {
             id: Uuid::parse_str(&self.id).unwrap_or_default(),
@@ -255,9 +265,10 @@ impl IntoPotentialAction for db::models::task::Task {
 
 #[cfg(test)]
 mod tests {
+    use chrono::{Duration, Utc};
+
     use super::*;
     use crate::prioritization::goals::GoalType;
-    use chrono::{Duration, Utc};
 
     #[test]
     fn test_information_gain() {

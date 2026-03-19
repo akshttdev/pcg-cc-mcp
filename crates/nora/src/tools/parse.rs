@@ -1,7 +1,6 @@
 //! Tool call parsing from LLM function calls
 
-use super::types::*;
-use super::ExecutiveTools;
+use super::{types::*, ExecutiveTools};
 
 #[allow(dead_code)]
 impl ExecutiveTools {
@@ -72,9 +71,7 @@ impl ExecutiveTools {
             }
             "get_project_details" => {
                 let project_name = arguments.get("project_name")?.as_str()?.to_string();
-                Some(NoraExecutiveTool::GetProjectDetails {
-                    project_name,
-                })
+                Some(NoraExecutiveTool::GetProjectDetails { project_name })
             }
             "delete_project" => {
                 let project_name = arguments.get("project_name")?.as_str()?.to_string();
@@ -82,9 +79,19 @@ impl ExecutiveTools {
             }
             "update_project" => {
                 let project_name = arguments.get("project_name")?.as_str()?.to_string();
-                let new_name = arguments.get("new_name").and_then(|v| v.as_str()).map(String::from);
-                let new_description = arguments.get("new_description").and_then(|v| v.as_str()).map(String::from);
-                Some(NoraExecutiveTool::UpdateProject { project_name, new_name, new_description })
+                let new_name = arguments
+                    .get("new_name")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                let new_description = arguments
+                    .get("new_description")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                Some(NoraExecutiveTool::UpdateProject {
+                    project_name,
+                    new_name,
+                    new_description,
+                })
             }
             "execute_workflow" => {
                 let agent_id = arguments.get("agent_id")?.as_str()?.to_string();
@@ -96,11 +103,7 @@ impl ExecutiveTools {
                 let inputs = arguments
                     .get("inputs")
                     .and_then(|v| v.as_object())
-                    .map(|obj| {
-                        obj.iter()
-                            .map(|(k, v)| (k.clone(), v.clone()))
-                            .collect()
-                    })
+                    .map(|obj| obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
                     .unwrap_or_default();
                 Some(NoraExecutiveTool::ExecuteWorkflow {
                     agent_id,
@@ -110,16 +113,18 @@ impl ExecutiveTools {
                 })
             }
             "cancel_workflow" => {
-                let workflow_instance_id = arguments.get("workflow_instance_id")?.as_str()?.to_string();
+                let workflow_instance_id =
+                    arguments.get("workflow_instance_id")?.as_str()?.to_string();
                 Some(NoraExecutiveTool::CancelWorkflow {
                     workflow_instance_id,
                 })
             }
-            "list_active_workflows" => {
-                Some(NoraExecutiveTool::ListActiveWorkflows)
-            }
+            "list_active_workflows" => Some(NoraExecutiveTool::ListActiveWorkflows),
             "list_available_workflows" => {
-                let agent_id = arguments.get("agent_id").and_then(|v| v.as_str()).map(String::from);
+                let agent_id = arguments
+                    .get("agent_id")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
                 Some(NoraExecutiveTool::ListAvailableWorkflows { agent_id })
             }
             "send_email" => {
@@ -144,9 +149,19 @@ impl ExecutiveTools {
                     .and_then(|v| v.as_u64())
                     .map(|v| v.min(50) as usize)
                     .unwrap_or(10);
-                let owner_type = arguments.get("owner_type").and_then(|v| v.as_str()).map(String::from);
-                let owner_id = arguments.get("owner_id").and_then(|v| v.as_str()).map(String::from);
-                Some(NoraExecutiveTool::ReadInbox { limit, owner_type, owner_id })
+                let owner_type = arguments
+                    .get("owner_type")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                let owner_id = arguments
+                    .get("owner_id")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                Some(NoraExecutiveTool::ReadInbox {
+                    limit,
+                    owner_type,
+                    owner_id,
+                })
             }
             "send_sms" => {
                 let to = arguments.get("to")?.as_str()?.to_string();
@@ -343,72 +358,172 @@ impl ExecutiveTools {
             "analyze_scenes" => {
                 let batch_id = arguments.get("batch_id")?.as_str()?.to_string();
                 let segment_interval = arguments.get("segment_interval").and_then(|v| v.as_f64());
-                let project_id = arguments.get("project_id").and_then(|v| v.as_str()).map(String::from);
-                Some(NoraExecutiveTool::AnalyzeScenes { batch_id, segment_interval, project_id })
+                let project_id = arguments
+                    .get("project_id")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                Some(NoraExecutiveTool::AnalyzeScenes {
+                    batch_id,
+                    segment_interval,
+                    project_id,
+                })
             }
             "analyze_beat_grid" => {
                 let audio_path = arguments.get("audio_path")?.as_str()?.to_string();
                 let bpm_hint = arguments.get("bpm_hint").and_then(|v| v.as_f64());
-                let beats_per_bar = arguments.get("beats_per_bar").and_then(|v| v.as_u64()).map(|v| v as u32);
-                let project_id = arguments.get("project_id").and_then(|v| v.as_str()).map(String::from);
-                Some(NoraExecutiveTool::AnalyzeBeatGrid { audio_path, bpm_hint, beats_per_bar, project_id })
+                let beats_per_bar = arguments
+                    .get("beats_per_bar")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as u32);
+                let project_id = arguments
+                    .get("project_id")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                Some(NoraExecutiveTool::AnalyzeBeatGrid {
+                    audio_path,
+                    bpm_hint,
+                    beats_per_bar,
+                    project_id,
+                })
             }
             "assemble_recap_edit" => {
                 let batch_id = arguments.get("batch_id")?.as_str()?.to_string();
                 let audio_path = arguments.get("audio_path")?.as_str()?.to_string();
                 let bpm_hint = arguments.get("bpm_hint").and_then(|v| v.as_f64());
-                let target_aspect_ratio = arguments.get("target_aspect_ratio").and_then(|v| v.as_str()).map(String::from);
-                let project_id = arguments.get("project_id").and_then(|v| v.as_str()).map(String::from);
-                let project_name = arguments.get("project_name").and_then(|v| v.as_str()).map(String::from);
-                Some(NoraExecutiveTool::AssembleRecapEdit { batch_id, audio_path, bpm_hint, target_aspect_ratio, project_id, project_name })
+                let target_aspect_ratio = arguments
+                    .get("target_aspect_ratio")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                let project_id = arguments
+                    .get("project_id")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                let project_name = arguments
+                    .get("project_name")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                Some(NoraExecutiveTool::AssembleRecapEdit {
+                    batch_id,
+                    audio_path,
+                    bpm_hint,
+                    target_aspect_ratio,
+                    project_id,
+                    project_name,
+                })
             }
             "execute_render_script" => {
                 let render_script = arguments.get("render_script")?.as_str()?.to_string();
-                let render_output = arguments.get("render_output")
+                let render_output = arguments
+                    .get("render_output")
                     .and_then(|v| v.as_str())
                     .unwrap_or("output.mp4")
                     .to_string();
-                let xml_path = arguments.get("xml_path")
+                let xml_path = arguments
+                    .get("xml_path")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                Some(NoraExecutiveTool::ExecuteRenderScript { render_script, render_output, xml_path })
+                Some(NoraExecutiveTool::ExecuteRenderScript {
+                    render_script,
+                    render_output,
+                    xml_path,
+                })
             }
             "search_music" => {
-                let query = arguments.get("query").and_then(|v| v.as_str()).map(String::from);
-                let moods = arguments.get("moods").and_then(|v| v.as_array()).map(|arr| {
-                    arr.iter().filter_map(|v| v.as_str().map(String::from)).collect()
-                });
-                let genres = arguments.get("genres").and_then(|v| v.as_array()).map(|arr| {
-                    arr.iter().filter_map(|v| v.as_str().map(String::from)).collect()
-                });
-                let min_bpm = arguments.get("min_bpm").and_then(|v| v.as_u64()).map(|v| v as u32);
-                let max_bpm = arguments.get("max_bpm").and_then(|v| v.as_u64()).map(|v| v as u32);
+                let query = arguments
+                    .get("query")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                let moods = arguments
+                    .get("moods")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    });
+                let genres = arguments
+                    .get("genres")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    });
+                let min_bpm = arguments
+                    .get("min_bpm")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as u32);
+                let max_bpm = arguments
+                    .get("max_bpm")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as u32);
                 let min_duration = arguments.get("min_duration").and_then(|v| v.as_f64());
                 let max_duration = arguments.get("max_duration").and_then(|v| v.as_f64());
                 let instrumental = arguments.get("instrumental").and_then(|v| v.as_bool());
-                let platforms = arguments.get("platforms").and_then(|v| v.as_array()).map(|arr| {
-                    arr.iter().filter_map(|v| v.as_str().map(String::from)).collect()
-                });
-                let page = arguments.get("page").and_then(|v| v.as_u64()).map(|v| v as u32);
-                let per_page = arguments.get("per_page").and_then(|v| v.as_u64()).map(|v| v as u32);
+                let platforms = arguments
+                    .get("platforms")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    });
+                let page = arguments
+                    .get("page")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as u32);
+                let per_page = arguments
+                    .get("per_page")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as u32);
                 Some(NoraExecutiveTool::SearchMusic {
-                    query, moods, genres, min_bpm, max_bpm, min_duration, max_duration,
-                    instrumental, platforms, page, per_page,
+                    query,
+                    moods,
+                    genres,
+                    min_bpm,
+                    max_bpm,
+                    min_duration,
+                    max_duration,
+                    instrumental,
+                    platforms,
+                    page,
+                    per_page,
                 })
             }
             "download_music_track" => {
                 let track_id = arguments.get("track_id")?.as_str()?.to_string();
-                let filename = arguments.get("filename").and_then(|v| v.as_str()).map(String::from);
-                let output_dir = arguments.get("output_dir").and_then(|v| v.as_str()).map(String::from);
-                Some(NoraExecutiveTool::DownloadMusicTrack { track_id, filename, output_dir })
+                let filename = arguments
+                    .get("filename")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                let output_dir = arguments
+                    .get("output_dir")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                Some(NoraExecutiveTool::DownloadMusicTrack {
+                    track_id,
+                    filename,
+                    output_dir,
+                })
             }
             "recommend_music_for_video" => {
-                let video_path = arguments.get("video_path").and_then(|v| v.as_str()).map(String::from);
-                let content_type = arguments.get("content_type").and_then(|v| v.as_str()).map(String::from);
+                let video_path = arguments
+                    .get("video_path")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                let content_type = arguments
+                    .get("content_type")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
                 let target_duration = arguments.get("target_duration").and_then(|v| v.as_f64());
                 let auto_search = arguments.get("auto_search").and_then(|v| v.as_bool());
-                Some(NoraExecutiveTool::RecommendMusicForVideo { video_path, content_type, target_duration, auto_search })
+                Some(NoraExecutiveTool::RecommendMusicForVideo {
+                    video_path,
+                    content_type,
+                    target_duration,
+                    auto_search,
+                })
             }
             "preview_music_track" => {
                 let track_id = arguments.get("track_id")?.as_str()?.to_string();
@@ -421,7 +536,10 @@ impl ExecutiveTools {
             "analyze_music_track" => {
                 let audio_path = arguments.get("audio_path")?.as_str()?.to_string();
                 let bpm_hint = arguments.get("bpm_hint").and_then(|v| v.as_f64());
-                Some(NoraExecutiveTool::AnalyzeMusicTrack { audio_path, bpm_hint })
+                Some(NoraExecutiveTool::AnalyzeMusicTrack {
+                    audio_path,
+                    bpm_hint,
+                })
             }
             "create_calendar_event" => {
                 let title = arguments.get("title")?.as_str()?.to_string();

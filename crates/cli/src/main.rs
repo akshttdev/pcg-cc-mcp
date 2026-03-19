@@ -21,7 +21,9 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 #[command(name = "orcha")]
 #[command(author = "PCG Team")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
-#[command(about = "ORCHA CLI - Interactive development session with task tracking and agent coordination")]
+#[command(
+    about = "ORCHA CLI - Interactive development session with task tracking and agent coordination"
+)]
 #[command(long_about = r#"
 ORCHA CLI provides a Claude Code-like terminal experience integrated with the ORCHA Dashboard.
 

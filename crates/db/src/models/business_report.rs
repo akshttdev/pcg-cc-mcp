@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
+
 use crate::db_uuid::DbUuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -160,10 +161,7 @@ impl BusinessReport {
         .await
     }
 
-    pub async fn mark_ready(
-        pool: &sqlx::SqlitePool,
-        id: Uuid,
-    ) -> Result<(), sqlx::Error> {
+    pub async fn mark_ready(pool: &sqlx::SqlitePool, id: Uuid) -> Result<(), sqlx::Error> {
         sqlx::query(
             "UPDATE business_reports SET status = 'ready', updated_at = datetime('now','subsec') WHERE id = ?",
         )
@@ -182,8 +180,10 @@ impl BusinessReport {
         let mut sets: Vec<&str> = vec!["updated_at = datetime('now','subsec')"];
         macro_rules! push_if_some {
             ($field:expr, $col:literal) => {
-                if $field.is_some() { sets.push($col); }
-            }
+                if $field.is_some() {
+                    sets.push($col);
+                }
+            };
         }
         push_if_some!(data.title, "title = ?");
         push_if_some!(data.executive_summary, "executive_summary = ?");
@@ -210,8 +210,10 @@ impl BusinessReport {
         let mut q = sqlx::query_as::<_, Self>(&sql);
         macro_rules! bind_if_some {
             ($field:expr) => {
-                if let Some(v) = $field { q = q.bind(v); }
-            }
+                if let Some(v) = $field {
+                    q = q.bind(v);
+                }
+            };
         }
         bind_if_some!(data.title);
         bind_if_some!(data.executive_summary);

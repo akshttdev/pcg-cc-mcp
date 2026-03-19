@@ -216,7 +216,7 @@ export function StagingTab() {
       const data = JSON.parse(record.record_data);
       data[fieldKey] = newValue;
       updateMutation.mutate({ id: recordId, data: { record_data: data } });
-    } catch {}
+    } catch { /* intentionally empty */ }
   }, [pendingRecords, updateMutation]);
 
   const handleRejectDups = useCallback(() => {
@@ -279,7 +279,7 @@ export function StagingTab() {
         if (Array.isArray(errs)) {
           for (const e of errs) warnCounts[e] = (warnCounts[e] || 0) + 1;
         }
-      } catch {}
+      } catch { /* intentionally empty */ }
     }
     // Warnings appearing on more than half of records are "common"
     const threshold = Math.max(2, Math.floor(pendingRecords.length * 0.5));
@@ -336,7 +336,7 @@ export function StagingTab() {
   const tableRows = useMemo(() => {
     const rows = filteredRecords.map(record => {
       let data: Record<string, any> = {};
-      try { data = JSON.parse(record.record_data); } catch {}
+      try { data = JSON.parse(record.record_data); } catch { /* intentionally empty */ }
       const displayName = data.first_name
         ? `${data.first_name} ${data.last_name || ''}`
         : data.name || data.title || 'Untitled';
@@ -657,7 +657,7 @@ export function StagingTab() {
 
             let validationErrs: string[] = [];
             if (record.validation_errors) {
-              try { validationErrs = JSON.parse(record.validation_errors); } catch {}
+              try { validationErrs = JSON.parse(record.validation_errors); } catch { /* intentionally empty */ }
             }
 
             // Check if this record has any of the common/global warnings

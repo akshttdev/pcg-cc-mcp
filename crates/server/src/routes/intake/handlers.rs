@@ -4,23 +4,24 @@ use axum::{
     Extension, Json,
     extract::{Path, State},
 };
-use db::models::{
-    business_report::{BusinessReport, PatchBusinessReport},
-    call_intake_item::CallIntakeItem,
-    crm_deal::CrmDeal,
-    proposal::{CreateProposal, Proposal},
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        business_report::{BusinessReport, PatchBusinessReport},
+        call_intake_item::CallIntakeItem,
+        crm_deal::CrmDeal,
+        proposal::{CreateProposal, Proposal},
+    },
 };
 use tracing::{info, warn};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
-use db::db_uuid::DbUuid;
 use super::{
     EmailIntakePayload, GenerateReportRequest, RevisionRequest, UploadIntakePayload,
-    pipeline::run_intake_pipeline,
-    report::run_report_generation,
+    pipeline::run_intake_pipeline, report::run_report_generation,
 };
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
 // ── Intake ingestion ─────────────────────────────────────────────────────────
 
@@ -42,9 +43,7 @@ pub async fn email_webhook(
         body.from_email.as_deref(),
     );
 
-    let raw_content = body.text
-        .or(body.html)
-        .unwrap_or_default();
+    let raw_content = body.text.or(body.html).unwrap_or_default();
 
     if raw_content.trim().is_empty() {
         return Err(ApiError::BadRequest("Email body is empty".into()));
@@ -55,7 +54,8 @@ pub async fn email_webhook(
         from_email.as_deref(),
         body.organization_id,
         body.assigned_to,
-    ).await;
+    )
+    .await;
 
     let item = CallIntakeItem::create(
         pool,
@@ -68,13 +68,17 @@ pub async fn email_webhook(
             from_name: from_name.clone(),
             call_date: body.date.clone(),
             duration_seconds: None,
-            metadata: Some(serde_json::json!({
-                "message_id": body.message_id,
-                "organization_id": org_id.map(|id| id.to_string()),
-                "assigned_to": assigned.map(|id| id.to_string()),
-            }).to_string()),
+            metadata: Some(
+                serde_json::json!({
+                    "message_id": body.message_id,
+                    "organization_id": org_id.map(|id| id.to_string()),
+                    "assigned_to": assigned.map(|id| id.to_string()),
+                })
+                .to_string(),
+            ),
         },
-    ).await?;
+    )
+    .await?;
 
     let item_id = item.id;
     let pool_clone = pool.clone();
@@ -111,12 +115,17 @@ pub async fn upload_transcript(
         body.from_email.as_deref(),
         body.organization_id,
         body.assigned_to,
-    ).await;
+    )
+    .await;
 
     let item = CallIntakeItem::create(
         pool,
         CreateCallIntakeItem {
-            source_type: if body.call_log_id.is_some() { "call_log".into() } else { "upload".into() },
+            source_type: if body.call_log_id.is_some() {
+                "call_log".into()
+            } else {
+                "upload".into()
+            },
             source_ref,
             raw_content: Some(body.content),
             subject: body.subject,
@@ -124,12 +133,16 @@ pub async fn upload_transcript(
             from_name: body.from_name,
             call_date: body.call_date,
             duration_seconds: body.duration_seconds,
-            metadata: Some(serde_json::json!({
-                "organization_id": org_id.map(|id| id.to_string()),
-                "assigned_to": assigned.map(|id| id.to_string()),
-            }).to_string()),
+            metadata: Some(
+                serde_json::json!({
+                    "organization_id": org_id.map(|id| id.to_string()),
+                    "assigned_to": assigned.map(|id| id.to_string()),
+                })
+                .to_string(),
+            ),
         },
-    ).await?;
+    )
+    .await?;
 
     let item_id = item.id;
     let pool_clone = pool.clone();
@@ -160,7 +173,9 @@ pub async fn get_intake_item(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<CallIntakeItem>>, ApiError> {
     use deployment::Deployment;
-    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let id = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     let item = CallIntakeItem::find_by_id(&d.db().pool, id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Intake item not found".into()))?;
@@ -172,7 +187,9 @@ pub async fn process_intake_item_handler(
     State(d): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
-    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let id = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     use deployment::Deployment;
     let pool = &d.db().pool;
 
@@ -186,15 +203,28 @@ pub async fn process_intake_item_handler(
 
     // Read org/assigned from item metadata if available
     #[derive(sqlx::FromRow)]
-    struct MetaRow { metadata: Option<String> }
+    struct MetaRow {
+        metadata: Option<String>,
+    }
     let meta = sqlx::query_as::<_, MetaRow>("SELECT metadata FROM call_intake_items WHERE id = ?")
-        .bind(id).fetch_optional(pool).await.ok().flatten();
-    let (org_id, assigned) = meta.and_then(|m| {
-        let v: serde_json::Value = serde_json::from_str(m.metadata.as_deref().unwrap_or("{}")).ok()?;
-        let org = v["organization_id"].as_str().and_then(|s| s.parse::<Uuid>().ok());
-        let asgn = v["assigned_to"].as_str().and_then(|s| s.parse::<Uuid>().ok());
-        Some((org, asgn))
-    }).unwrap_or((None, None));
+        .bind(id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten();
+    let (org_id, assigned) = meta
+        .and_then(|m| {
+            let v: serde_json::Value =
+                serde_json::from_str(m.metadata.as_deref().unwrap_or("{}")).ok()?;
+            let org = v["organization_id"]
+                .as_str()
+                .and_then(|s| s.parse::<Uuid>().ok());
+            let asgn = v["assigned_to"]
+                .as_str()
+                .and_then(|s| s.parse::<Uuid>().ok());
+            Some((org, asgn))
+        })
+        .unwrap_or((None, None));
 
     let pool_clone = pool.clone();
     tokio::spawn(async move {
@@ -203,7 +233,9 @@ pub async fn process_intake_item_handler(
         }
     });
 
-    Ok(Json(ApiResponse::success(serde_json::json!({ "status": "queued", "id": id }))))
+    Ok(Json(ApiResponse::success(
+        serde_json::json!({ "status": "queued", "id": id }),
+    )))
 }
 
 /// GET /api/intake/:id/status
@@ -212,7 +244,9 @@ pub async fn get_intake_status(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
     use deployment::Deployment;
-    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let id = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     let item = CallIntakeItem::find_by_id(&d.db().pool, id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Intake item not found".into()))?;
@@ -244,7 +278,9 @@ pub async fn get_report(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<BusinessReport>>, ApiError> {
     use deployment::Deployment;
-    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let id = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     let report = BusinessReport::find_by_id(&d.db().pool, id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Report not found".into()))?;
@@ -258,7 +294,9 @@ pub async fn patch_report(
     Json(body): Json<PatchBusinessReport>,
 ) -> Result<Json<ApiResponse<BusinessReport>>, ApiError> {
     use deployment::Deployment;
-    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let id = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     let report = BusinessReport::patch(&d.db().pool, id, body)
         .await?
         .ok_or_else(|| ApiError::NotFound("Report not found".into()))?;
@@ -272,12 +310,15 @@ pub async fn approve_business_report(
     Extension(access_context): Extension<AccessContext>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
-    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let id = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     use deployment::Deployment;
     let pool = &d.db().pool;
     let user_id = &access_context.user_id;
     let user_id_uuid = DbUuid::parse(user_id.as_str())
-        .map_err(|e| ApiError::InternalError(format!("Invalid user UUID: {e}")))?.to_uuid();
+        .map_err(|e| ApiError::InternalError(format!("Invalid user UUID: {e}")))?
+        .to_uuid();
 
     let report = BusinessReport::find_by_id(pool, id)
         .await?
@@ -322,15 +363,14 @@ pub async fn approve_business_report(
     let mut proposal_json: Option<serde_json::Value> = None;
     if let Some(person_id) = report.person_id.clone() {
         // Check if a proposal already exists for this person
-        let exists: bool = sqlx::query_scalar(
-            "SELECT COUNT(*) > 0 FROM proposals WHERE lead_id = ?",
-        )
-        .bind(person_id.as_str())
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten()
-        .unwrap_or(false);
+        let exists: bool =
+            sqlx::query_scalar("SELECT COUNT(*) > 0 FROM proposals WHERE lead_id = ?")
+                .bind(person_id.as_str())
+                .fetch_optional(pool)
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or(false);
 
         if !exists {
             // Build description from report sections
@@ -343,7 +383,10 @@ pub async fn approve_business_report(
 
             // Look up person name for the title
             #[derive(sqlx::FromRow)]
-            struct NameRow { full_name: String, company_name: Option<String> }
+            struct NameRow {
+                full_name: String,
+                company_name: Option<String>,
+            }
             let person_info = sqlx::query_as::<_, NameRow>(
                 "SELECT full_name, company_name FROM persons WHERE id = ?",
             )
@@ -365,7 +408,9 @@ pub async fn approve_business_report(
 
             // Find org for this person
             #[derive(sqlx::FromRow)]
-            struct OrgRow { organization_id: Uuid }
+            struct OrgRow {
+                organization_id: Uuid,
+            }
             let org_id = sqlx::query_as::<_, OrgRow>(
                 "SELECT organization_id FROM person_organization_contacts WHERE person_id = ? LIMIT 1",
             )
@@ -376,22 +421,35 @@ pub async fn approve_business_report(
             .flatten()
             .map(|r| r.organization_id);
 
-            let new_proposal = Proposal::create(pool, CreateProposal {
-                title,
-                lead_id: Some(DbUuid::parse(person_id.as_str()).map(|u| u.to_uuid()).unwrap_or_default()),
-                organization_id: org_id,
-                owner_id: Some(user_id_uuid),
-                project_id: None,
-                company_id: report.company_id.as_ref().and_then(|id| DbUuid::parse(id.as_str()).map(|u| u.to_uuid()).ok()),
-                description: Some(description),
-                quote_amount_vibe: None,
-                deal_type: None,
-                contact_ids: Some(vec![person_id.to_string()]),
-            }).await;
+            let new_proposal = Proposal::create(
+                pool,
+                CreateProposal {
+                    title,
+                    lead_id: Some(
+                        DbUuid::parse(person_id.as_str())
+                            .map(|u| u.to_uuid())
+                            .unwrap_or_default(),
+                    ),
+                    organization_id: org_id,
+                    owner_id: Some(user_id_uuid),
+                    project_id: None,
+                    company_id: report
+                        .company_id
+                        .as_ref()
+                        .and_then(|id| DbUuid::parse(id.as_str()).map(|u| u.to_uuid()).ok()),
+                    description: Some(description),
+                    quote_amount_vibe: None,
+                    deal_type: None,
+                    contact_ids: Some(vec![person_id.to_string()]),
+                },
+            )
+            .await;
 
             match new_proposal {
                 Ok(p) => {
-                    proposal_json = Some(serde_json::json!({ "id": p.id, "title": p.title, "status": p.status }));
+                    proposal_json = Some(
+                        serde_json::json!({ "id": p.id, "title": p.title, "status": p.status }),
+                    );
                     info!("Auto-created proposal {} from approved report {}", p.id, id);
                 }
                 Err(e) => warn!("Failed to create proposal from report {}: {}", id, e),
@@ -414,7 +472,9 @@ pub async fn request_revision(
     Path(id): Path<String>,
     Json(body): Json<RevisionRequest>,
 ) -> Result<Json<ApiResponse<BusinessReport>>, ApiError> {
-    let id = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let id = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     use deployment::Deployment;
     let pool = &d.db().pool;
     let user_id = &access_context.user_id;
@@ -486,7 +546,11 @@ pub async fn generate_report_handler(
         // Load businesses/individuals from most recent intake item for this person
         let (businesses, individuals, intake_id) = {
             #[derive(sqlx::FromRow)]
-            struct IntakeRow { id: Uuid, extracted_businesses: String, extracted_individuals: String }
+            struct IntakeRow {
+                id: Uuid,
+                extracted_businesses: String,
+                extracted_individuals: String,
+            }
             let row = sqlx::query_as::<_, IntakeRow>(
                 "SELECT id, extracted_businesses, extracted_individuals FROM call_intake_items
                  WHERE person_id = ? ORDER BY created_at DESC LIMIT 1",
@@ -498,8 +562,10 @@ pub async fn generate_report_handler(
             .flatten();
 
             if let Some(r) = row {
-                let biz: Vec<super::ExtractedBusiness> = serde_json::from_str(&r.extracted_businesses).unwrap_or_default();
-                let ind: Vec<super::ExtractedIndividual> = serde_json::from_str(&r.extracted_individuals).unwrap_or_default();
+                let biz: Vec<super::ExtractedBusiness> =
+                    serde_json::from_str(&r.extracted_businesses).unwrap_or_default();
+                let ind: Vec<super::ExtractedIndividual> =
+                    serde_json::from_str(&r.extracted_individuals).unwrap_or_default();
                 (biz, ind, r.id)
             } else {
                 (vec![], vec![], Uuid::nil())
@@ -507,8 +573,16 @@ pub async fn generate_report_handler(
         };
 
         if let Err(e) = run_report_generation(
-            pool_clone, person_id, report_type, businesses, individuals, intake_id, None,
-        ).await {
+            pool_clone,
+            person_id,
+            report_type,
+            businesses,
+            individuals,
+            intake_id,
+            None,
+        )
+        .await
+        {
             tracing::error!("Report generation failed for person {}: {}", person_id, e);
         }
     });

@@ -82,7 +82,9 @@ impl PcgRouterModel {
             }
         }
         // 2. Fall back to environment variable lookup
-        self.api_key_env_var.as_deref().and_then(|var| std::env::var(var).ok())
+        self.api_key_env_var
+            .as_deref()
+            .and_then(|var| std::env::var(var).ok())
     }
 
     /// Base URL for the provider API.
@@ -92,18 +94,18 @@ impl PcgRouterModel {
         }
         match self.provider.as_str() {
             "anthropic" => "https://api.anthropic.com",
-            "openai"    => "https://api.openai.com",
-            "openrouter"=> "https://openrouter.ai/api",
-            "gemini"    => "https://generativelanguage.googleapis.com/v1beta/openai",
-            "mistral"   => "https://api.mistral.ai",
-            "xai"       => "https://api.x.ai",
-            "deepseek"  => "https://api.deepseek.com",
-            "groq"      => "https://api.groq.com/openai",
-            "cohere"    => "https://api.cohere.com/compatibility",
+            "openai" => "https://api.openai.com",
+            "openrouter" => "https://openrouter.ai/api",
+            "gemini" => "https://generativelanguage.googleapis.com/v1beta/openai",
+            "mistral" => "https://api.mistral.ai",
+            "xai" => "https://api.x.ai",
+            "deepseek" => "https://api.deepseek.com",
+            "groq" => "https://api.groq.com/openai",
+            "cohere" => "https://api.cohere.com/compatibility",
             // Qwen via Alibaba DashScope OpenAI-compat layer
             // base_url + /v1/chat/completions = correct endpoint
-            "qwen"      => "https://dashscope.aliyuncs.com/compatible-mode",
-            _           => "http://localhost:11434", // ollama default
+            "qwen" => "https://dashscope.aliyuncs.com/compatible-mode",
+            _ => "http://localhost:11434", // ollama default
         }
     }
 }

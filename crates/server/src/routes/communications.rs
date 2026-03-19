@@ -3,10 +3,13 @@
 //! API endpoints for phone calls and SMS messages (Twilio integration).
 
 use axum::{
-    Extension, Router,
+    Extension, Json, Router,
     extract::{Path, Query, State},
-    routing::{get, post, patch},
-    Json,
+    routing::{get, patch, post},
+};
+use db::models::{
+    call_log::{CallLog, CallStats, UpdateCallLog},
+    sms_message::{SmsMessage, SmsStats, UpdateSmsMessage},
 };
 use deployment::Deployment;
 use serde::Deserialize;
@@ -14,8 +17,6 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
-use db::models::call_log::{CallLog, CallStats, UpdateCallLog};
-use db::models::sms_message::{SmsMessage, SmsStats, UpdateSmsMessage};
 
 // ============================================================================
 // Call Logs
@@ -44,13 +45,19 @@ async fn list_calls(
         let all_calls = CallLog::find_by_deal(pool, deal_id, limit).await?;
         let mut accessible = Vec::new();
         for call in all_calls {
-            if access_context.get_project_role(pool, &call.project_id.to_string()).await?.is_some() {
+            if access_context
+                .get_project_role(pool, &call.project_id.to_string())
+                .await?
+                .is_some()
+            {
                 accessible.push(call);
             }
         }
         accessible
     } else if let Some(project_id) = query.project_id {
-        access_context.require_viewer(pool, &project_id.to_string()).await?;
+        access_context
+            .require_viewer(pool, &project_id.to_string())
+            .await?;
         CallLog::find_by_project(pool, project_id, limit, offset).await?
     } else {
         vec![]
@@ -67,7 +74,8 @@ async fn get_call_stats(
 ) -> Result<Json<ApiResponse<CallStats>>, ApiError> {
     let pool = &deployment.db().pool;
     access_context.require_viewer(pool, &project_id).await?;
-    let project_id = Uuid::parse_str(&project_id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", project_id)))?;
+    let project_id = Uuid::parse_str(&project_id)
+        .map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", project_id)))?;
     let stats = CallLog::get_stats(pool, project_id).await?;
     Ok(Json(ApiResponse::success(stats)))
 }
@@ -79,9 +87,12 @@ async fn get_call(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<CallLog>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
+    let id =
+        Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     let call = CallLog::find_by_id(pool, id).await?;
-    access_context.require_viewer(pool, &call.project_id.to_string()).await?;
+    access_context
+        .require_viewer(pool, &call.project_id.to_string())
+        .await?;
     Ok(Json(ApiResponse::success(call)))
 }
 
@@ -93,10 +104,13 @@ async fn update_call(
     Json(update): Json<UpdateCallLog>,
 ) -> Result<Json<ApiResponse<CallLog>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
+    let id =
+        Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     // Load existing call to get project_id, then verify editor access
     let existing = CallLog::find_by_id(pool, id).await?;
-    access_context.require_editor(pool, &existing.project_id.to_string()).await?;
+    access_context
+        .require_editor(pool, &existing.project_id.to_string())
+        .await?;
     let call = CallLog::update(pool, id, update).await?;
     Ok(Json(ApiResponse::success(call)))
 }
@@ -125,7 +139,9 @@ async fn list_sms(
     let offset = query.offset.unwrap_or(0);
 
     let messages = if let Some(project_id) = query.project_id {
-        access_context.require_viewer(pool, &project_id.to_string()).await?;
+        access_context
+            .require_viewer(pool, &project_id.to_string())
+            .await?;
         if let Some(phone) = &query.phone_number {
             SmsMessage::find_conversation(pool, project_id, phone, limit).await?
         } else if query.is_read == Some(false) {
@@ -148,7 +164,8 @@ async fn get_sms_stats(
 ) -> Result<Json<ApiResponse<SmsStats>>, ApiError> {
     let pool = &deployment.db().pool;
     access_context.require_viewer(pool, &project_id).await?;
-    let project_id = Uuid::parse_str(&project_id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", project_id)))?;
+    let project_id = Uuid::parse_str(&project_id)
+        .map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", project_id)))?;
     let stats = SmsMessage::get_stats(pool, project_id).await?;
     Ok(Json(ApiResponse::success(stats)))
 }
@@ -160,9 +177,12 @@ async fn get_sms(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<SmsMessage>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
+    let id =
+        Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     let msg = SmsMessage::find_by_id(pool, id).await?;
-    access_context.require_viewer(pool, &msg.project_id.to_string()).await?;
+    access_context
+        .require_viewer(pool, &msg.project_id.to_string())
+        .await?;
     Ok(Json(ApiResponse::success(msg)))
 }
 
@@ -174,10 +194,13 @@ async fn update_sms(
     Json(update): Json<UpdateSmsMessage>,
 ) -> Result<Json<ApiResponse<SmsMessage>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
+    let id =
+        Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     // Load existing SMS to get project_id, then verify editor access
     let existing = SmsMessage::find_by_id(pool, id).await?;
-    access_context.require_editor(pool, &existing.project_id.to_string()).await?;
+    access_context
+        .require_editor(pool, &existing.project_id.to_string())
+        .await?;
     let msg = SmsMessage::update(pool, id, update).await?;
     Ok(Json(ApiResponse::success(msg)))
 }
@@ -189,9 +212,12 @@ async fn mark_sms_read(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
+    let id =
+        Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     let existing = SmsMessage::find_by_id(pool, id).await?;
-    access_context.require_editor(pool, &existing.project_id.to_string()).await?;
+    access_context
+        .require_editor(pool, &existing.project_id.to_string())
+        .await?;
     SmsMessage::mark_as_read(pool, id).await?;
     Ok(Json(ApiResponse::success(())))
 }
@@ -203,9 +229,12 @@ async fn toggle_sms_star(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<SmsMessage>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
+    let id =
+        Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest(format!("Invalid UUID: {}", id)))?;
     let existing = SmsMessage::find_by_id(pool, id).await?;
-    access_context.require_editor(pool, &existing.project_id.to_string()).await?;
+    access_context
+        .require_editor(pool, &existing.project_id.to_string())
+        .await?;
     let msg = SmsMessage::toggle_star(pool, id).await?;
     Ok(Json(ApiResponse::success(msg)))
 }
@@ -214,7 +243,10 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         // Call routes
         .route("/communications/calls", get(list_calls))
-        .route("/communications/calls/stats/{project_id}", get(get_call_stats))
+        .route(
+            "/communications/calls/stats/{project_id}",
+            get(get_call_stats),
+        )
         .route("/communications/calls/{id}", get(get_call))
         .route("/communications/calls/{id}", patch(update_call))
         // SMS routes

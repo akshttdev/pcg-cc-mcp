@@ -1,17 +1,18 @@
 use axum::{
     Router,
     body::Body,
-    extract::{Path, State},
+    extract::{Path, Request, State},
     http::{StatusCode, header},
     response::Response,
     routing::get,
 };
-use axum::extract::Request;
 use db::models::execution_artifact::ExecutionArtifact;
 use deployment::Deployment;
 use serde_json::json;
-use tokio::fs::File;
-use tokio::io::{AsyncSeekExt, AsyncReadExt};
+use tokio::{
+    fs::File,
+    io::{AsyncReadExt, AsyncSeekExt},
+};
 use tokio_util::io::ReaderStream;
 use utils::assets::asset_dir;
 use uuid::Uuid;
@@ -32,7 +33,10 @@ fn resolve_artifact_path(file_path: &str) -> std::path::PathBuf {
 
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
-        .route("/artifacts/{artifact_id}/content", get(get_artifact_content))
+        .route(
+            "/artifacts/{artifact_id}/content",
+            get(get_artifact_content),
+        )
         .route("/artifacts/{artifact_id}/download", get(download_artifact))
         .route(
             "/artifacts/{artifact_id}/files/{*filename}",
@@ -133,7 +137,8 @@ async fn get_artifact_file(
         .and_then(|s| {
             let mut parts = s.splitn(2, '-');
             let start: u64 = parts.next()?.parse().ok()?;
-            let end: u64 = parts.next()
+            let end: u64 = parts
+                .next()
                 .and_then(|e| if e.is_empty() { None } else { e.parse().ok() })
                 .unwrap_or(file_size.saturating_sub(1));
             Some((start, end))
@@ -156,7 +161,10 @@ async fn get_artifact_file(
             .status(StatusCode::PARTIAL_CONTENT)
             .header(header::CONTENT_TYPE, &content_type)
             .header(header::CONTENT_LENGTH, length)
-            .header(header::CONTENT_RANGE, format!("bytes {}-{}/{}", start, end, file_size))
+            .header(
+                header::CONTENT_RANGE,
+                format!("bytes {}-{}/{}", start, end, file_size),
+            )
             .header(header::ACCEPT_RANGES, "bytes")
             .body(Body::from_stream(stream))
             .map_err(|e| ApiError::InternalError(e.to_string()))
@@ -288,7 +296,5 @@ async fn serve_artifact_content(
         }
     }
 
-    Err(ApiError::NotFound(
-        "Artifact has no content or file".into(),
-    ))
+    Err(ApiError::NotFound("Artifact has no content or file".into()))
 }

@@ -168,8 +168,9 @@ fn bytes_to_uuid(bytes: &[u8]) -> Option<Uuid> {
 fn parse_dt(s: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(s)
         .map(|d| d.with_timezone(&Utc))
-        .or_else(|_| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
-            .map(|d| d.and_utc()))
+        .or_else(|_| {
+            chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").map(|d| d.and_utc())
+        })
         .unwrap_or_else(|_| Utc::now())
 }
 
@@ -232,7 +233,7 @@ impl OrchestrationContext {
         let row = sqlx::query_as::<_, ContextRow>(
             "SELECT id, root_task_id, project_id, task_id, entry_type, title, content, source, \
              status, priority, resolved_by, resolved_at, metadata, created_at, updated_at \
-             FROM orchestration_contexts WHERE id = ?"
+             FROM orchestration_contexts WHERE id = ?",
         )
         .bind(&id_bytes)
         .fetch_one(pool)
@@ -290,7 +291,7 @@ impl OrchestrationContext {
         let result = sqlx::query(
             "UPDATE orchestration_contexts \
              SET status = ?, resolved_by = ?, resolved_at = CURRENT_TIMESTAMP \
-             WHERE id = ? AND status = 'active'"
+             WHERE id = ? AND status = 'active'",
         )
         .bind(&status_str)
         .bind(resolved_by)
@@ -309,7 +310,7 @@ impl OrchestrationContext {
             "SELECT id, root_task_id, project_id, task_id, entry_type, title, content, source, \
              status, priority, resolved_by, resolved_at, metadata, created_at, updated_at \
              FROM orchestration_contexts WHERE project_id = ? \
-             ORDER BY created_at DESC"
+             ORDER BY created_at DESC",
         )
         .bind(&proj_bytes)
         .fetch_all(pool)

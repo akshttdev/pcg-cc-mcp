@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 ///! Reward Distributor - Batches and distributes VIBE rewards to peer wallets
 ///!
 ///! This service:
@@ -6,10 +8,8 @@
 ///! - Sends tokens from rewards wallet to peer wallets
 ///! - Tracks confirmations on Aptos blockchain
 ///! - Handles failures and retries
-
 use anyhow::{Context, Result};
 use sqlx::SqlitePool;
-use std::sync::Arc;
 use tokio::time::{interval, Duration};
 use uuid::Uuid;
 
@@ -35,8 +35,8 @@ impl Default for DistributorConfig {
         Self {
             rewards_wallet_mnemonic: String::new(),
             min_distribution_amount: 100_000_000, // 1 VIBE minimum
-            batch_size: 50, // Max 50 rewards per batch
-            distribution_interval_secs: 300, // 5 minutes
+            batch_size: 50,                       // Max 50 rewards per batch
+            distribution_interval_secs: 300,      // 5 minutes
             aptos_node_url: "https://fullnode.testnet.aptoslabs.com/v1".to_string(),
         }
     }
@@ -104,12 +104,10 @@ impl RewardDistributor {
         use db::models::peer_reward::PeerReward;
 
         // Get pending rewards from database
-        let pending = PeerReward::list_pending_for_distribution(
-            &self.db,
-            self.config.batch_size as i64,
-        )
-        .await
-        .context("Failed to fetch pending rewards")?;
+        let pending =
+            PeerReward::list_pending_for_distribution(&self.db, self.config.batch_size as i64)
+                .await
+                .context("Failed to fetch pending rewards")?;
 
         if pending.is_empty() {
             tracing::debug!("No pending rewards to distribute");
@@ -126,9 +124,10 @@ impl RewardDistributor {
 
         for reward in &pending {
             // Get peer wallet address
-            let peer_node = db::models::peer_node::PeerNode::find_by_id(&self.db, reward.peer_node_id)
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("Peer node not found"))?;
+            let peer_node =
+                db::models::peer_node::PeerNode::find_by_id(&self.db, reward.peer_node_id)
+                    .await?
+                    .ok_or_else(|| anyhow::anyhow!("Peer node not found"))?;
 
             grouped
                 .entry(peer_node.wallet_address.clone())
@@ -167,11 +166,10 @@ impl RewardDistributor {
         let batch_id = Uuid::new_v4();
 
         // Get next batch number
-        let batch_number: i64 = sqlx::query_scalar(
-            "SELECT COALESCE(MAX(batch_number), 0) + 1 FROM reward_batches",
-        )
-        .fetch_one(&self.db)
-        .await?;
+        let batch_number: i64 =
+            sqlx::query_scalar("SELECT COALESCE(MAX(batch_number), 0) + 1 FROM reward_batches")
+                .fetch_one(&self.db)
+                .await?;
 
         let total_rewards = grouped.values().map(|v| v.len()).sum::<usize>();
         let total_amount: i64 = total_per_peer.values().sum();
@@ -204,8 +202,13 @@ impl RewardDistributor {
         // Update all rewards in this batch
         for reward_ids in grouped.values() {
             for reward_id in reward_ids {
-                PeerReward::update_status(&self.db, *reward_id, RewardStatus::Batched, Some(batch_id))
-                    .await?;
+                PeerReward::update_status(
+                    &self.db,
+                    *reward_id,
+                    RewardStatus::Batched,
+                    Some(batch_id),
+                )
+                .await?;
             }
         }
 
@@ -258,9 +261,7 @@ impl RewardDistributor {
             // Mark rewards as distributed
             for reward_id in &batch.rewards {
                 db::models::peer_reward::PeerReward::mark_distributed(
-                    &self.db,
-                    *reward_id,
-                    &tx_hash,
+                    &self.db, *reward_id, &tx_hash,
                     None, // block_height will be filled when confirmed
                 )
                 .await?;
@@ -277,11 +278,7 @@ impl RewardDistributor {
     }
 
     /// Simulate Aptos token transfer (placeholder for real implementation)
-    async fn simulate_aptos_transfer(
-        &self,
-        _recipient: &str,
-        _amount: i64,
-    ) -> Result<String> {
+    async fn simulate_aptos_transfer(&self, _recipient: &str, _amount: i64) -> Result<String> {
         // TODO: Implement actual Aptos transfer using aptos-sdk
         // This would involve:
         // 1. Building a coin::transfer transaction
@@ -295,11 +292,7 @@ impl RewardDistributor {
     }
 
     /// Mark batch as submitted to blockchain
-    async fn mark_batch_submitted(
-        &self,
-        batch_id: Uuid,
-        tx_hash: &str,
-    ) -> Result<()> {
+    async fn mark_batch_submitted(&self, batch_id: Uuid, tx_hash: &str) -> Result<()> {
         sqlx::query!(
             r#"
             UPDATE reward_batches

@@ -34,21 +34,21 @@ mod personality_tests;
 pub use agent::NoraAgent;
 pub use brain::{LLMConfig, LLMProvider};
 pub use cache::{CacheKey, CachedResponse, LlmCache, ResponseMetadata};
+pub use context::{
+    ProjectContextSummary, ProjectScopeBuilder, ProjectScopeError, ProjectScopedContext,
+};
 pub use coordination::{CoordinationEvent, CoordinationManager};
 pub use execution::{
-    Artifact, ArtifactStore, ArtifactType, ExecutionEngine, ExecutionEvent, ExecutionRequest,
-    ExecutionResult, ExecutionRouter, ExecutionStatus, EventBroadcaster,
+    Artifact, ArtifactStore, ArtifactType, EventBroadcaster, ExecutionEngine, ExecutionEvent,
+    ExecutionRequest, ExecutionResult, ExecutionRouter, ExecutionStatus,
 };
 pub use executor::{
     BoardInfo, PodInfo, ProjectDetails, ProjectInfo, ProjectStats, TaskDefinition, TaskExecutor,
     TaskInfo,
 };
 pub use graph::{
-    GraphEdge, GraphNode, GraphNodeStatus, GraphPlan, GraphPlanStatus, GraphPlanSummary,
-    GraphOrchestrator,
-};
-pub use context::{
-    ProjectContextSummary, ProjectScopeBuilder, ProjectScopeError, ProjectScopedContext,
+    GraphEdge, GraphNode, GraphNodeStatus, GraphOrchestrator, GraphPlan, GraphPlanStatus,
+    GraphPlanSummary,
 };
 pub use memory::{ConversationMemory, ExecutiveContext};
 pub use personality::{BritishPersonality, PersonalityConfig};

@@ -75,8 +75,7 @@ impl ProjectScopedContext {
             "## Project Context\n\
              **Project**: {}\n\
              **Path**: {}\n",
-            summary.project_name,
-            summary.project_path
+            summary.project_name, summary.project_path
         );
 
         // Add active tasks
@@ -85,9 +84,7 @@ impl ProjectScopedContext {
             for task in &summary.active_tasks {
                 context.push_str(&format!(
                     "- [{:?}] {} ({})\n",
-                    task.status,
-                    task.title,
-                    task.id
+                    task.status, task.title, task.id
                 ));
             }
         }
@@ -125,8 +122,8 @@ impl ProjectScopedContext {
             .ok_or(ProjectScopeError::ProjectNotFound(self.project_id))?;
 
         // Load tasks with status
-        let all_tasks = Task::find_by_project_id_with_attempt_status(&self.pool, &project_id_str)
-            .await?;
+        let all_tasks =
+            Task::find_by_project_id_with_attempt_status(&self.pool, &project_id_str).await?;
 
         // Split into active and recent completed
         let (active, completed): (Vec<_>, Vec<_>) = all_tasks
@@ -181,7 +178,7 @@ impl ProjectScopedContext {
             FROM token_usage
             WHERE project_id = ?1
               AND DATE(created_at) = DATE(?2)
-            "#
+            "#,
         )
         .bind(self.project_id.to_string())
         .bind(&today)
@@ -243,8 +240,9 @@ impl ProjectScopedContext {
     pub fn enforce_project_scope(&self, params: &mut serde_json::Value) {
         if let Some(obj) = params.as_object_mut() {
             // If tool expects a project_id, inject our scoped project
-            if obj.contains_key("project_id") ||
-               obj.get("project_id").map(|v| v.is_null()).unwrap_or(false) {
+            if obj.contains_key("project_id")
+                || obj.get("project_id").map(|v| v.is_null()).unwrap_or(false)
+            {
                 obj.insert(
                     "project_id".to_string(),
                     serde_json::Value::String(self.project_id.to_string()),
@@ -277,19 +275,24 @@ impl ProjectScopeBuilder {
         let project = Project::find_by_name_case_insensitive(&self.pool, name)
             .await?
             .ok_or_else(|| ProjectScopeError::ProjectNotFound(Uuid::nil()))?;
-        self.project_id = Some(Uuid::parse_str(&project.id).map_err(|_| ProjectScopeError::ProjectNotFound(Uuid::nil()))?);
+        self.project_id = Some(
+            Uuid::parse_str(&project.id)
+                .map_err(|_| ProjectScopeError::ProjectNotFound(Uuid::nil()))?,
+        );
         Ok(self)
     }
 
     pub fn build(self) -> Option<ProjectScopedContext> {
-        self.project_id.map(|id| ProjectScopedContext::new(id, self.pool))
+        self.project_id
+            .map(|id| ProjectScopedContext::new(id, self.pool))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use serde_json::json;
+
+    use super::*;
 
     #[test]
     fn test_validate_tool_access_same_project() {

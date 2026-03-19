@@ -28,15 +28,30 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/call-intake/upload", post(handlers::upload_transcript))
         .route("/call-intake", get(handlers::list_intake))
         .route("/call-intake/{id}", get(handlers::get_intake_item))
-        .route("/call-intake/{id}/process", post(handlers::process_intake_item_handler))
+        .route(
+            "/call-intake/{id}/process",
+            post(handlers::process_intake_item_handler),
+        )
         .route("/call-intake/{id}/status", get(handlers::get_intake_status))
         // Business reports
         .route("/business-reports", get(handlers::list_reports))
-        .route("/business-reports/generate", post(handlers::generate_report_handler))
-        .route("/business-reports/{id}", get(handlers::get_report).patch(handlers::patch_report))
+        .route(
+            "/business-reports/generate",
+            post(handlers::generate_report_handler),
+        )
+        .route(
+            "/business-reports/{id}",
+            get(handlers::get_report).patch(handlers::patch_report),
+        )
         // Human review endpoints
-        .route("/business-reports/{id}/approve", post(handlers::approve_business_report))
-        .route("/business-reports/{id}/request-revision", post(handlers::request_revision))
+        .route(
+            "/business-reports/{id}/approve",
+            post(handlers::approve_business_report),
+        )
+        .route(
+            "/business-reports/{id}/request-revision",
+            post(handlers::request_revision),
+        )
         .with_state(state)
 }
 
@@ -47,10 +62,10 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
 #[derive(Debug, Deserialize)]
 pub struct EmailIntakePayload {
     pub subject: Option<String>,
-    pub from: Option<String>,         // "Name <email>" or just email
+    pub from: Option<String>, // "Name <email>" or just email
     pub from_email: Option<String>,
     pub from_name: Option<String>,
-    pub text: Option<String>,         // plain-text body
+    pub text: Option<String>, // plain-text body
     pub html: Option<String>,
     pub date: Option<String>,
     pub message_id: Option<String>,
@@ -189,14 +204,14 @@ pub(crate) async fn resolve_org_and_assignee(
         return (explicit_org, explicit_assignee);
     }
 
-    let domain = from_email
-        .and_then(|e| e.split('@').nth(1))
-        .unwrap_or("");
+    let domain = from_email.and_then(|e| e.split('@').nth(1)).unwrap_or("");
 
     if domain.eq_ignore_ascii_case(SIRAK_DOMAIN) {
         // Route to Sirak Studios — look up Sirak's user id dynamically
         #[derive(sqlx::FromRow)]
-        struct Row { id: Uuid }
+        struct Row {
+            id: Uuid,
+        }
 
         let sirak_user = sqlx::query_as::<_, Row>(
             "SELECT id FROM users WHERE email = 'sirak@powerclubglobal.com' LIMIT 1",
@@ -230,7 +245,7 @@ pub(crate) fn parse_from_field(
         // Parse "Name <email>" format
         if let Some(lt) = f.find('<') {
             let name = f[..lt].trim().trim_matches('"').to_string();
-            let email = f[lt+1..].trim_end_matches('>').trim().to_string();
+            let email = f[lt + 1..].trim_end_matches('>').trim().to_string();
             return (
                 if name.is_empty() { None } else { Some(name) },
                 if email.is_empty() { None } else { Some(email) },

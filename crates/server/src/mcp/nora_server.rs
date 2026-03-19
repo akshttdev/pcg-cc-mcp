@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use nora::agent::{NoraRequest, NoraRequestType, RapidPlaybookRequest, RapidPlaybookResult, RequestPriority};
+use nora::agent::{
+    NoraRequest, NoraRequestType, RapidPlaybookRequest, RapidPlaybookResult, RequestPriority,
+};
 use rmcp::{
     ErrorData, ServerHandler,
     handler::server::tool::{Parameters, ToolRouter},

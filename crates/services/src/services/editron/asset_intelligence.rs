@@ -8,13 +8,15 @@
 //!   4. Updates media_assets with AI metadata
 //!   5. Registers in project knowledge graph
 
-use sqlx::SqlitePool;
 use std::process::Command;
+
+use db::models::{
+    media_asset::MediaAsset,
+    project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource},
+};
+use sqlx::SqlitePool;
 use tracing::{error, info};
 use uuid::Uuid;
-
-use db::models::media_asset::MediaAsset;
-use db::models::project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource};
 
 /// Kick off async AI analysis — returns immediately.
 pub fn analyze_async(
@@ -253,10 +255,34 @@ fn base64_encode(bytes: &[u8]) -> String {
         let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
         let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
         let combined = (b0 << 16) | (b1 << 8) | b2;
-        let _ = write!(result, "{}", ALPHABET[((combined >> 18) & 63) as usize] as char);
-        let _ = write!(result, "{}", ALPHABET[((combined >> 12) & 63) as usize] as char);
-        let _ = write!(result, "{}", if chunk.len() > 1 { ALPHABET[((combined >> 6) & 63) as usize] as char } else { '=' });
-        let _ = write!(result, "{}", if chunk.len() > 2 { ALPHABET[(combined & 63) as usize] as char } else { '=' });
+        let _ = write!(
+            result,
+            "{}",
+            ALPHABET[((combined >> 18) & 63) as usize] as char
+        );
+        let _ = write!(
+            result,
+            "{}",
+            ALPHABET[((combined >> 12) & 63) as usize] as char
+        );
+        let _ = write!(
+            result,
+            "{}",
+            if chunk.len() > 1 {
+                ALPHABET[((combined >> 6) & 63) as usize] as char
+            } else {
+                '='
+            }
+        );
+        let _ = write!(
+            result,
+            "{}",
+            if chunk.len() > 2 {
+                ALPHABET[(combined & 63) as usize] as char
+            } else {
+                '='
+            }
+        );
     }
     result
 }

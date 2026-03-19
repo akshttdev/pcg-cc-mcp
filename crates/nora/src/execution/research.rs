@@ -3,10 +3,11 @@
 //! Provides real LLM-powered research capabilities with web search integration.
 //! Each workflow stage is executed as a focused research task with tool access.
 
+use std::collections::HashMap;
+
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
 use uuid::Uuid;
 
 /// Research context passed between stages
@@ -38,7 +39,9 @@ impl ResearchTools {
         if exa_api_key.is_some() {
             tracing::info!("[RESEARCH_TOOLS] Exa neural search enabled");
         } else {
-            tracing::info!("[RESEARCH_TOOLS] Exa API key not found, will fall back to OpenAI web search");
+            tracing::info!(
+                "[RESEARCH_TOOLS] Exa API key not found, will fall back to OpenAI web search"
+            );
         }
         Self {
             http_client: Client::new(),
@@ -48,7 +51,11 @@ impl ResearchTools {
     }
 
     /// Search the web using Exa API (if available) or fall back to OpenAI web search
-    pub async fn web_search(&self, query: &str, num_results: usize) -> Result<Vec<SearchResult>, String> {
+    pub async fn web_search(
+        &self,
+        query: &str,
+        num_results: usize,
+    ) -> Result<Vec<SearchResult>, String> {
         tracing::info!("[RESEARCH_TOOLS] Web search: {}", query);
 
         if let Some(exa_key) = &self.exa_api_key {
@@ -59,8 +66,14 @@ impl ResearchTools {
         }
     }
 
-    async fn exa_search(&self, query: &str, num_results: usize, api_key: &str) -> Result<Vec<SearchResult>, String> {
-        let response = self.http_client
+    async fn exa_search(
+        &self,
+        query: &str,
+        num_results: usize,
+        api_key: &str,
+    ) -> Result<Vec<SearchResult>, String> {
+        let response = self
+            .http_client
             .post("https://api.exa.ai/search")
             .header("Authorization", format!("Bearer {}", api_key))
             .header("Content-Type", "application/json")
@@ -83,7 +96,9 @@ impl ResearchTools {
             return Err(format!("Exa API error ({}): {}", status, body));
         }
 
-        let json: Value = response.json().await
+        let json: Value = response
+            .json()
+            .await
             .map_err(|e| format!("Failed to parse Exa response: {}", e))?;
 
         let results = json["results"]
@@ -103,10 +118,16 @@ impl ResearchTools {
         Ok(results)
     }
 
-    async fn openai_web_search(&self, query: &str, _num_results: usize) -> Result<Vec<SearchResult>, String> {
+    async fn openai_web_search(
+        &self,
+        query: &str,
+        _num_results: usize,
+    ) -> Result<Vec<SearchResult>, String> {
         // Use OpenAI to generate simulated search results based on its knowledge
         // In production, you'd integrate with a real search API
-        let api_key = self.openai_api_key.as_ref()
+        let api_key = self
+            .openai_api_key
+            .as_ref()
             .ok_or("No OpenAI API key configured")?;
 
         let response = self.http_client
@@ -131,7 +152,9 @@ impl ResearchTools {
             .await
             .map_err(|e| format!("OpenAI request failed: {}", e))?;
 
-        let json: Value = response.json().await
+        let json: Value = response
+            .json()
+            .await
             .map_err(|e| format!("Failed to parse OpenAI response: {}", e))?;
 
         let content = json["choices"][0]["message"]["content"]
@@ -139,8 +162,7 @@ impl ResearchTools {
             .unwrap_or("[]");
 
         // Parse the JSON array from the response
-        let results: Vec<SearchResult> = serde_json::from_str(content)
-            .unwrap_or_default();
+        let results: Vec<SearchResult> = serde_json::from_str(content).unwrap_or_default();
 
         Ok(results)
     }
@@ -149,14 +171,20 @@ impl ResearchTools {
     pub async fn fetch_url(&self, url: &str) -> Result<String, String> {
         tracing::info!("[RESEARCH_TOOLS] Fetching URL: {}", url);
 
-        let response = self.http_client
+        let response = self
+            .http_client
             .get(url)
-            .header("User-Agent", "Mozilla/5.0 (compatible; Scout/1.0; Research Agent)")
+            .header(
+                "User-Agent",
+                "Mozilla/5.0 (compatible; Scout/1.0; Research Agent)",
+            )
             .send()
             .await
             .map_err(|e| format!("Failed to fetch URL: {}", e))?;
 
-        let text = response.text().await
+        let text = response
+            .text()
+            .await
             .map_err(|e| format!("Failed to read response: {}", e))?;
 
         // Simple HTML to text conversion (strip tags)
@@ -167,15 +195,28 @@ impl ResearchTools {
     }
 
     /// Call LLM with a research prompt
-    pub async fn research_llm(&self, system_prompt: &str, user_prompt: &str) -> Result<String, String> {
-        let api_key = self.openai_api_key.as_ref()
+    pub async fn research_llm(
+        &self,
+        system_prompt: &str,
+        user_prompt: &str,
+    ) -> Result<String, String> {
+        let api_key = self
+            .openai_api_key
+            .as_ref()
             .ok_or("No OpenAI API key configured")?;
 
         tracing::info!("[RESEARCH_TOOLS] Calling LLM for research...");
-        tracing::debug!("[RESEARCH_TOOLS] System: {}...", &system_prompt[..system_prompt.len().min(200)]);
-        tracing::debug!("[RESEARCH_TOOLS] User: {}...", &user_prompt[..user_prompt.len().min(200)]);
+        tracing::debug!(
+            "[RESEARCH_TOOLS] System: {}...",
+            &system_prompt[..system_prompt.len().min(200)]
+        );
+        tracing::debug!(
+            "[RESEARCH_TOOLS] User: {}...",
+            &user_prompt[..user_prompt.len().min(200)]
+        );
 
-        let response = self.http_client
+        let response = self
+            .http_client
             .post("https://api.openai.com/v1/chat/completions")
             .header("Authorization", format!("Bearer {}", api_key))
             .header("Content-Type", "application/json")
@@ -198,7 +239,9 @@ impl ResearchTools {
             return Err(format!("OpenAI API error ({}): {}", status, body));
         }
 
-        let json: Value = response.json().await
+        let json: Value = response
+            .json()
+            .await
             .map_err(|e| format!("Failed to parse LLM response: {}", e))?;
 
         let content = json["choices"][0]["message"]["content"]
@@ -260,18 +303,22 @@ Return ONLY valid JSON, no markdown formatting."#;
         let response = self.tools.research_llm(system_prompt, &user_prompt).await?;
 
         // Parse the JSON response
-        let brief: Value = serde_json::from_str(&response)
-            .unwrap_or_else(|_| serde_json::json!({
+        let brief: Value = serde_json::from_str(&response).unwrap_or_else(|_| {
+            serde_json::json!({
                 "research_brief": response,
                 "target": user_request,
                 "key_questions": [],
                 "platforms_to_check": ["web"],
                 "success_criteria": "Comprehensive analysis"
-            }));
+            })
+        });
 
         Ok(ResearchContext {
             original_request: user_request.to_string(),
-            research_brief: brief["research_brief"].as_str().unwrap_or(&response).to_string(),
+            research_brief: brief["research_brief"]
+                .as_str()
+                .unwrap_or(&response)
+                .to_string(),
             project_name: project_context.map(String::from),
             target: brief["target"].as_str().unwrap_or(user_request).to_string(),
             findings: HashMap::new(),
@@ -294,24 +341,22 @@ Return ONLY valid JSON, no markdown formatting."#;
         );
 
         match stage_name {
-            "Account Discovery" => {
-                self.execute_discovery_stage(context).await
-            }
-            "Content Analysis" => {
-                self.execute_analysis_stage(context).await
-            }
-            "Insight Synthesis" => {
-                self.execute_synthesis_stage(context).await
-            }
+            "Account Discovery" => self.execute_discovery_stage(context).await,
+            "Content Analysis" => self.execute_analysis_stage(context).await,
+            "Insight Synthesis" => self.execute_synthesis_stage(context).await,
             _ => {
                 // Generic stage execution
-                self.execute_generic_stage(stage_name, stage_description, expected_output, context).await
+                self.execute_generic_stage(stage_name, stage_description, expected_output, context)
+                    .await
             }
         }
     }
 
     /// Stage 1: Account Discovery - Find relevant accounts/sources
-    async fn execute_discovery_stage(&self, context: &mut ResearchContext) -> Result<Value, String> {
+    async fn execute_discovery_stage(
+        &self,
+        context: &mut ResearchContext,
+    ) -> Result<Value, String> {
         let system_prompt = format!(
             r#"You are Scout, a social intelligence analyst conducting the Account Discovery phase.
 
@@ -331,8 +376,7 @@ Output a JSON object with:
 - discovery_summary: Brief summary of what you found
 
 Return ONLY valid JSON."#,
-            context.research_brief,
-            context.target
+            context.research_brief, context.target
         );
 
         // First, do a web search to find accounts
@@ -341,25 +385,32 @@ Return ONLY valid JSON."#,
 
         let user_prompt = format!(
             "Based on your knowledge and these search results, identify relevant accounts:\n\n{}",
-            search_results.iter()
+            search_results
+                .iter()
                 .map(|r| format!("- {}: {}", r.title, r.snippet))
                 .collect::<Vec<_>>()
                 .join("\n")
         );
 
-        let response = self.tools.research_llm(&system_prompt, &user_prompt).await?;
+        let response = self
+            .tools
+            .research_llm(&system_prompt, &user_prompt)
+            .await?;
 
-        let output: Value = serde_json::from_str(&response)
-            .unwrap_or_else(|_| serde_json::json!({
+        let output: Value = serde_json::from_str(&response).unwrap_or_else(|_| {
+            serde_json::json!({
                 "accounts": [],
                 "key_players": [],
                 "platforms_covered": [],
                 "discovery_summary": response,
                 "raw_response": response
-            }));
+            })
+        });
 
         // Store findings for next stage
-        context.findings.insert("discovery".to_string(), output.clone());
+        context
+            .findings
+            .insert("discovery".to_string(), output.clone());
 
         Ok(serde_json::json!({
             "stage": "Account Discovery",
@@ -371,7 +422,9 @@ Return ONLY valid JSON."#,
 
     /// Stage 2: Content Analysis - Analyze content patterns
     async fn execute_analysis_stage(&self, context: &mut ResearchContext) -> Result<Value, String> {
-        let discovery = context.findings.get("discovery")
+        let discovery = context
+            .findings
+            .get("discovery")
             .cloned()
             .unwrap_or(serde_json::json!({}));
 
@@ -403,20 +456,23 @@ Return ONLY valid JSON."#,
             serde_json::to_string_pretty(&discovery).unwrap_or_default()
         );
 
-        let user_prompt = format!(
-            "Analyze the content strategies for: {}",
-            context.target
-        );
+        let user_prompt = format!("Analyze the content strategies for: {}", context.target);
 
-        let response = self.tools.research_llm(&system_prompt, &user_prompt).await?;
+        let response = self
+            .tools
+            .research_llm(&system_prompt, &user_prompt)
+            .await?;
 
-        let output: Value = serde_json::from_str(&response)
-            .unwrap_or_else(|_| serde_json::json!({
+        let output: Value = serde_json::from_str(&response).unwrap_or_else(|_| {
+            serde_json::json!({
                 "analysis_summary": response,
                 "raw_response": response
-            }));
+            })
+        });
 
-        context.findings.insert("analysis".to_string(), output.clone());
+        context
+            .findings
+            .insert("analysis".to_string(), output.clone());
 
         Ok(serde_json::json!({
             "stage": "Content Analysis",
@@ -426,9 +482,11 @@ Return ONLY valid JSON."#,
     }
 
     /// Stage 3: Insight Synthesis - Create final report
-    async fn execute_synthesis_stage(&self, context: &mut ResearchContext) -> Result<Value, String> {
-        let all_findings = serde_json::to_string_pretty(&context.findings)
-            .unwrap_or_default();
+    async fn execute_synthesis_stage(
+        &self,
+        context: &mut ResearchContext,
+    ) -> Result<Value, String> {
+        let all_findings = serde_json::to_string_pretty(&context.findings).unwrap_or_default();
 
         let system_prompt = format!(
             r#"You are Scout, a social intelligence analyst creating the final Insight Synthesis report.
@@ -455,22 +513,23 @@ Output a JSON object with:
 - confidence_level: High/Medium/Low confidence in findings
 
 Return ONLY valid JSON."#,
-            context.original_request,
-            context.research_brief,
-            all_findings
+            context.original_request, context.research_brief, all_findings
         );
 
         let user_prompt = "Create the final research report with all insights synthesized.";
 
         let response = self.tools.research_llm(&system_prompt, user_prompt).await?;
 
-        let output: Value = serde_json::from_str(&response)
-            .unwrap_or_else(|_| serde_json::json!({
+        let output: Value = serde_json::from_str(&response).unwrap_or_else(|_| {
+            serde_json::json!({
                 "executive_summary": response,
                 "raw_response": response
-            }));
+            })
+        });
 
-        context.findings.insert("synthesis".to_string(), output.clone());
+        context
+            .findings
+            .insert("synthesis".to_string(), output.clone());
 
         Ok(serde_json::json!({
             "stage": "Insight Synthesis",
@@ -510,15 +569,21 @@ Return a JSON object with your findings."#,
             serde_json::to_string_pretty(&context.findings).unwrap_or_default()
         );
 
-        let response = self.tools.research_llm(&system_prompt, "Execute this research stage.").await?;
+        let response = self
+            .tools
+            .research_llm(&system_prompt, "Execute this research stage.")
+            .await?;
 
-        let output: Value = serde_json::from_str(&response)
-            .unwrap_or_else(|_| serde_json::json!({
+        let output: Value = serde_json::from_str(&response).unwrap_or_else(|_| {
+            serde_json::json!({
                 "output": response,
                 "raw_response": response
-            }));
+            })
+        });
 
-        context.findings.insert(stage_name.to_lowercase().replace(" ", "_"), output.clone());
+        context
+            .findings
+            .insert(stage_name.to_lowercase().replace(" ", "_"), output.clone());
 
         Ok(serde_json::json!({
             "stage": stage_name,

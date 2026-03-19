@@ -159,10 +159,7 @@ pub struct UpdateAgentFlow {
 
 impl AgentFlow {
     /// Create a new agent flow
-    pub async fn create(
-        pool: &SqlitePool,
-        data: CreateAgentFlow,
-    ) -> Result<Self, AgentFlowError> {
+    pub async fn create(pool: &SqlitePool, data: CreateAgentFlow) -> Result<Self, AgentFlowError> {
         let id = Uuid::new_v4();
         let flow_type_str = data.flow_type.to_string();
         let flow_config_str = data.flow_config.map(|v| v.to_string());
@@ -194,16 +191,11 @@ impl AgentFlow {
     }
 
     /// Find flow by ID
-    pub async fn find_by_id(
-        pool: &SqlitePool,
-        id: Uuid,
-    ) -> Result<Option<Self>, AgentFlowError> {
-        let flow = sqlx::query_as::<_, AgentFlow>(
-            r#"SELECT * FROM agent_flows WHERE id = ?1"#,
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await?;
+    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, AgentFlowError> {
+        let flow = sqlx::query_as::<_, AgentFlow>(r#"SELECT * FROM agent_flows WHERE id = ?1"#)
+            .bind(id)
+            .fetch_optional(pool)
+            .await?;
 
         Ok(flow)
     }
@@ -249,9 +241,7 @@ impl AgentFlow {
     }
 
     /// Find flows awaiting approval
-    pub async fn find_awaiting_approval(
-        pool: &SqlitePool,
-    ) -> Result<Vec<Self>, AgentFlowError> {
+    pub async fn find_awaiting_approval(pool: &SqlitePool) -> Result<Vec<Self>, AgentFlowError> {
         let flows = sqlx::query_as::<_, AgentFlow>(
             r#"
             SELECT * FROM agent_flows
@@ -266,10 +256,7 @@ impl AgentFlow {
     }
 
     /// Find recent flows (for Mission Control dashboard)
-    pub async fn find_recent(
-        pool: &SqlitePool,
-        limit: i32,
-    ) -> Result<Vec<Self>, AgentFlowError> {
+    pub async fn find_recent(pool: &SqlitePool, limit: i32) -> Result<Vec<Self>, AgentFlowError> {
         let flows = sqlx::query_as::<_, AgentFlow>(
             r#"
             SELECT * FROM agent_flows
@@ -369,10 +356,7 @@ impl AgentFlow {
     }
 
     /// Request approval
-    pub async fn request_approval(
-        pool: &SqlitePool,
-        id: Uuid,
-    ) -> Result<Self, AgentFlowError> {
+    pub async fn request_approval(pool: &SqlitePool, id: Uuid) -> Result<Self, AgentFlowError> {
         let flow = sqlx::query_as::<_, AgentFlow>(
             r#"
             UPDATE agent_flows

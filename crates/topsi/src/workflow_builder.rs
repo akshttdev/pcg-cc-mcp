@@ -121,14 +121,11 @@ pub async fn build_workflow(
 
     // For modify actions, load the existing workflow
     if action == "modify" {
-        let wf_id = workflow_id
-            .ok_or("workflow_id is required for modify action")?;
+        let wf_id = workflow_id.ok_or("workflow_id is required for modify action")?;
         match load_existing_workflow(pool, wf_id).await {
             Some(wf) => {
                 builder_context.push_str("## Existing Workflow to Modify\n```json\n");
-                builder_context.push_str(
-                    &serde_json::to_string_pretty(&wf).unwrap_or_default()
-                );
+                builder_context.push_str(&serde_json::to_string_pretty(&wf).unwrap_or_default());
                 builder_context.push_str("\n```\n\nModify this workflow according to the user's request. Return the complete updated workflow (not just the diff).\n\n");
             }
             None => return Err(format!("Workflow '{}' not found", wf_id)),
@@ -140,8 +137,14 @@ pub async fn build_workflow(
     if !existing_workflows.is_empty() {
         builder_context.push_str("## Existing Workflows in System\n");
         for (id, name, desc) in &existing_workflows {
-            builder_context.push_str(&format!("- `{}`: {} {}\n", id, name,
-                desc.as_deref().map(|d| format!("— {}", d)).unwrap_or_default()));
+            builder_context.push_str(&format!(
+                "- `{}`: {} {}\n",
+                id,
+                name,
+                desc.as_deref()
+                    .map(|d| format!("— {}", d))
+                    .unwrap_or_default()
+            ));
         }
         builder_context.push('\n');
     }
@@ -167,9 +170,14 @@ pub async fn build_workflow(
     };
 
     // Save to database
-    let name = workflow_json["name"].as_str().unwrap_or("Unnamed Workflow").to_string();
+    let name = workflow_json["name"]
+        .as_str()
+        .unwrap_or("Unnamed Workflow")
+        .to_string();
     let description = workflow_json["description"].as_str().map(|s| s.to_string());
-    let default_model = workflow_json["default_model"].as_str().map(|s| s.to_string());
+    let default_model = workflow_json["default_model"]
+        .as_str()
+        .map(|s| s.to_string());
 
     let steps_data = json!({
         "nodes": workflow_json["nodes"],
@@ -191,16 +199,18 @@ pub async fn build_workflow(
         .map_err(|e| format!("Failed to update workflow: {}", e))?;
     } else {
         // Check for ID collision
-        let existing = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM workflow_definitions WHERE id = ?1"
-        )
-        .bind(&wf_id)
-        .fetch_one(pool)
-        .await
-        .unwrap_or(0);
+        let existing =
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM workflow_definitions WHERE id = ?1")
+                .bind(&wf_id)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0);
 
         if existing > 0 {
-            return Err(format!("Workflow with ID '{}' already exists. Use modify action to update it.", wf_id));
+            return Err(format!(
+                "Workflow with ID '{}' already exists. Use modify action to update it.",
+                wf_id
+            ));
         }
 
         sqlx::query(
@@ -257,16 +267,19 @@ fn parse_workflow_json(response: &str) -> Result<Value, String> {
         trimmed
     };
 
-    serde_json::from_str::<Value>(json_str)
-        .map_err(|e| format!(
+    serde_json::from_str::<Value>(json_str).map_err(|e| {
+        format!(
             "Failed to parse workflow JSON from LLM response: {}. Response start: {}",
-            e, &trimmed[..trimmed.len().min(200)]
-        ))
+            e,
+            &trimmed[..trimmed.len().min(200)]
+        )
+    })
 }
 
 /// Validate the workflow structure has required fields and valid node types.
 fn validate_workflow(wf: &Value) -> Result<(), String> {
-    let nodes = wf["nodes"].as_array()
+    let nodes = wf["nodes"]
+        .as_array()
         .ok_or("Workflow must have a 'nodes' array")?;
 
     if nodes.is_empty() {
@@ -274,19 +287,29 @@ fn validate_workflow(wf: &Value) -> Result<(), String> {
     }
 
     let valid_types = [
-        "llm_extract", "llm_analyze", "llm_summarize",
-        "output_crm_contacts", "output_crm_companies", "output_crm_deals", "output_tasks",
-        "conditional", "send_notification", "assign_to_agent", "http_request",
+        "llm_extract",
+        "llm_analyze",
+        "llm_summarize",
+        "output_crm_contacts",
+        "output_crm_companies",
+        "output_crm_deals",
+        "output_tasks",
+        "conditional",
+        "send_notification",
+        "assign_to_agent",
+        "http_request",
     ];
 
     for node in nodes {
-        let node_type = node["type"].as_str()
+        let node_type = node["type"]
+            .as_str()
             .or_else(|| node["node_type"].as_str())
             .ok_or_else(|| format!("Node {:?} missing 'type' field", node["id"]))?;
 
         if !valid_types.contains(&node_type) {
             return Err(format!(
-                "Invalid node type '{}'. Valid types: {:?}", node_type, valid_types
+                "Invalid node type '{}'. Valid types: {:?}",
+                node_type, valid_types
             ));
         }
 
@@ -300,21 +323,27 @@ fn validate_workflow(wf: &Value) -> Result<(), String> {
 
     // Validate connections reference existing nodes
     if let Some(conns) = wf["connections"].as_array() {
-        let node_ids: Vec<&str> = nodes.iter()
-            .filter_map(|n| n["id"].as_str())
-            .collect();
+        let node_ids: Vec<&str> = nodes.iter().filter_map(|n| n["id"].as_str()).collect();
 
         for conn in conns {
-            let source = conn["source"].as_str()
+            let source = conn["source"]
+                .as_str()
                 .ok_or("Connection missing 'source' field")?;
-            let target = conn["target"].as_str()
+            let target = conn["target"]
+                .as_str()
                 .ok_or("Connection missing 'target' field")?;
 
             if !node_ids.contains(&source) {
-                return Err(format!("Connection source '{}' references non-existent node", source));
+                return Err(format!(
+                    "Connection source '{}' references non-existent node",
+                    source
+                ));
             }
             if !node_ids.contains(&target) {
-                return Err(format!("Connection target '{}' references non-existent node", target));
+                return Err(format!(
+                    "Connection target '{}' references non-existent node",
+                    target
+                ));
             }
         }
     }
@@ -348,7 +377,7 @@ fn slug_from_name(name: &str) -> String {
 /// Load an existing workflow definition from the database as JSON.
 async fn load_existing_workflow(pool: &SqlitePool, workflow_id: &str) -> Option<Value> {
     let row = sqlx::query_as::<_, (String, Option<String>, String)>(
-        "SELECT name, description, steps FROM workflow_definitions WHERE id = ?1"
+        "SELECT name, description, steps FROM workflow_definitions WHERE id = ?1",
     )
     .bind(workflow_id)
     .fetch_optional(pool)
@@ -370,7 +399,7 @@ async fn load_existing_workflow(pool: &SqlitePool, workflow_id: &str) -> Option<
 /// List all workflow definitions as (id, name, description) summaries.
 async fn list_workflow_summaries(pool: &SqlitePool) -> Vec<(String, String, Option<String>)> {
     sqlx::query_as::<_, (String, String, Option<String>)>(
-        "SELECT id, name, description FROM workflow_definitions ORDER BY is_system DESC, name ASC"
+        "SELECT id, name, description FROM workflow_definitions ORDER BY is_system DESC, name ASC",
     )
     .fetch_all(pool)
     .await

@@ -9,7 +9,9 @@
 //! - Lumetri-style color presets
 
 use std::path::{Path, PathBuf};
+
 use serde::{Deserialize, Serialize};
+
 use super::EditronResult;
 
 /// LUT (Look-Up Table) for color grading
@@ -24,25 +26,25 @@ pub struct LUT {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LUTFormat {
-    Cube,    // .cube format (most common)
-    Cube3D,  // 3D LUT
-    Look,    // Adobe Look format
-    Mga,     // DaVinci Resolve format
+    Cube,   // .cube format (most common)
+    Cube3D, // 3D LUT
+    Look,   // Adobe Look format
+    Mga,    // DaVinci Resolve format
 }
 
 /// Color wheel adjustments (Lift/Gamma/Gain)
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ColorWheels {
-    pub lift: ColorWheel,   // Shadows
-    pub gamma: ColorWheel,  // Midtones
-    pub gain: ColorWheel,   // Highlights
+    pub lift: ColorWheel,  // Shadows
+    pub gamma: ColorWheel, // Midtones
+    pub gain: ColorWheel,  // Highlights
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ColorWheel {
-    pub red: f32,    // -1.0 to 1.0
-    pub green: f32,  // -1.0 to 1.0
-    pub blue: f32,   // -1.0 to 1.0
+    pub red: f32,       // -1.0 to 1.0
+    pub green: f32,     // -1.0 to 1.0
+    pub blue: f32,      // -1.0 to 1.0
     pub luminance: f32, // Master adjustment
 }
 
@@ -61,10 +63,7 @@ pub struct ColorCurves {
 impl Default for ColorCurves {
     fn default() -> Self {
         // Linear curve (no adjustment)
-        let linear = vec![
-            CurvePoint { x: 0.0, y: 0.0 },
-            CurvePoint { x: 1.0, y: 1.0 },
-        ];
+        let linear = vec![CurvePoint { x: 0.0, y: 0.0 }, CurvePoint { x: 1.0, y: 1.0 }];
         Self {
             master: linear.clone(),
             red: linear.clone(),
@@ -101,9 +100,9 @@ pub struct HSLSecondary {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct HSLAdjustments {
-    pub hue_shift: f32,      // -180 to 180
-    pub saturation: f32,     // -1.0 to 1.0
-    pub luminance: f32,      // -1.0 to 1.0
+    pub hue_shift: f32,  // -180 to 180
+    pub saturation: f32, // -1.0 to 1.0
+    pub luminance: f32,  // -1.0 to 1.0
 }
 
 /// Complete color grade preset
@@ -127,16 +126,16 @@ pub struct ColorGradePreset {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct BasicColorCorrection {
-    pub exposure: f32,       // -4.0 to 4.0 stops
-    pub contrast: f32,       // -100 to 100
-    pub highlights: f32,     // -100 to 100
-    pub shadows: f32,        // -100 to 100
-    pub whites: f32,         // -100 to 100
-    pub blacks: f32,         // -100 to 100
-    pub temperature: f32,    // -100 to 100 (cool to warm)
-    pub tint: f32,           // -100 to 100 (green to magenta)
-    pub vibrance: f32,       // -100 to 100
-    pub saturation: f32,     // -100 to 100
+    pub exposure: f32,    // -4.0 to 4.0 stops
+    pub contrast: f32,    // -100 to 100
+    pub highlights: f32,  // -100 to 100
+    pub shadows: f32,     // -100 to 100
+    pub whites: f32,      // -100 to 100
+    pub blacks: f32,      // -100 to 100
+    pub temperature: f32, // -100 to 100 (cool to warm)
+    pub tint: f32,        // -100 to 100 (green to magenta)
+    pub vibrance: f32,    // -100 to 100
+    pub saturation: f32,  // -100 to 100
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -187,9 +186,24 @@ impl ColorGradingEngine {
                 ..Default::default()
             },
             wheels: ColorWheels {
-                lift: ColorWheel { red: -0.05, green: 0.0, blue: 0.08, luminance: 0.0 },
-                gamma: ColorWheel { red: 0.0, green: -0.02, blue: 0.0, luminance: 0.0 },
-                gain: ColorWheel { red: 0.05, green: 0.02, blue: -0.05, luminance: 0.0 },
+                lift: ColorWheel {
+                    red: -0.05,
+                    green: 0.0,
+                    blue: 0.08,
+                    luminance: 0.0,
+                },
+                gamma: ColorWheel {
+                    red: 0.0,
+                    green: -0.02,
+                    blue: 0.0,
+                    luminance: 0.0,
+                },
+                gain: ColorWheel {
+                    red: 0.05,
+                    green: 0.02,
+                    blue: -0.05,
+                    luminance: 0.0,
+                },
             },
             curves: ColorCurves::default(),
             lut: None,
@@ -231,9 +245,24 @@ impl ColorGradingEngine {
                 ..Default::default()
             },
             wheels: ColorWheels {
-                lift: ColorWheel { red: 0.02, green: 0.01, blue: 0.05, luminance: 0.02 },
-                gamma: ColorWheel { red: 0.0, green: 0.01, blue: 0.0, luminance: 0.0 },
-                gain: ColorWheel { red: 0.02, green: 0.0, blue: -0.02, luminance: 0.0 },
+                lift: ColorWheel {
+                    red: 0.02,
+                    green: 0.01,
+                    blue: 0.05,
+                    luminance: 0.02,
+                },
+                gamma: ColorWheel {
+                    red: 0.0,
+                    green: 0.01,
+                    blue: 0.0,
+                    luminance: 0.0,
+                },
+                gain: ColorWheel {
+                    red: 0.02,
+                    green: 0.0,
+                    blue: -0.02,
+                    luminance: 0.0,
+                },
             },
             curves: ColorCurves {
                 // Slight S-curve for contrast
@@ -295,9 +324,24 @@ impl ColorGradingEngine {
                 ..Default::default()
             },
             wheels: ColorWheels {
-                lift: ColorWheel { red: 0.0, green: 0.0, blue: 0.03, luminance: -0.02 },
-                gamma: ColorWheel { red: 0.0, green: -0.01, blue: 0.0, luminance: 0.0 },
-                gain: ColorWheel { red: 0.0, green: 0.0, blue: -0.02, luminance: 0.0 },
+                lift: ColorWheel {
+                    red: 0.0,
+                    green: 0.0,
+                    blue: 0.03,
+                    luminance: -0.02,
+                },
+                gamma: ColorWheel {
+                    red: 0.0,
+                    green: -0.01,
+                    blue: 0.0,
+                    luminance: 0.0,
+                },
+                gain: ColorWheel {
+                    red: 0.0,
+                    green: 0.0,
+                    blue: -0.02,
+                    luminance: 0.0,
+                },
             },
             curves: ColorCurves::default(),
             lut: None,
@@ -327,9 +371,19 @@ impl ColorGradingEngine {
                 ..Default::default()
             },
             wheels: ColorWheels {
-                lift: ColorWheel { red: 0.0, green: 0.0, blue: 0.02, luminance: 0.0 },
+                lift: ColorWheel {
+                    red: 0.0,
+                    green: 0.0,
+                    blue: 0.02,
+                    luminance: 0.0,
+                },
                 gamma: ColorWheel::default(),
-                gain: ColorWheel { red: 0.02, green: 0.01, blue: 0.0, luminance: 0.0 },
+                gain: ColorWheel {
+                    red: 0.02,
+                    green: 0.01,
+                    blue: 0.0,
+                    luminance: 0.0,
+                },
             },
             curves: ColorCurves::default(),
             lut: None,
@@ -353,9 +407,24 @@ impl ColorGradingEngine {
                 ..Default::default()
             },
             wheels: ColorWheels {
-                lift: ColorWheel { red: 0.05, green: 0.03, blue: 0.0, luminance: 0.05 },
-                gamma: ColorWheel { red: 0.02, green: 0.0, blue: -0.02, luminance: 0.0 },
-                gain: ColorWheel { red: 0.0, green: -0.02, blue: -0.05, luminance: -0.03 },
+                lift: ColorWheel {
+                    red: 0.05,
+                    green: 0.03,
+                    blue: 0.0,
+                    luminance: 0.05,
+                },
+                gamma: ColorWheel {
+                    red: 0.02,
+                    green: 0.0,
+                    blue: -0.02,
+                    luminance: 0.0,
+                },
+                gain: ColorWheel {
+                    red: 0.0,
+                    green: -0.02,
+                    blue: -0.05,
+                    luminance: -0.03,
+                },
             },
             curves: ColorCurves {
                 master: vec![
@@ -400,14 +469,27 @@ impl ColorGradingEngine {
 
         // Color wheels via colorbalance
         let w = &preset.wheels;
-        if w.lift.red != 0.0 || w.lift.green != 0.0 || w.lift.blue != 0.0 ||
-           w.gamma.red != 0.0 || w.gamma.green != 0.0 || w.gamma.blue != 0.0 ||
-           w.gain.red != 0.0 || w.gain.green != 0.0 || w.gain.blue != 0.0 {
+        if w.lift.red != 0.0
+            || w.lift.green != 0.0
+            || w.lift.blue != 0.0
+            || w.gamma.red != 0.0
+            || w.gamma.green != 0.0
+            || w.gamma.blue != 0.0
+            || w.gain.red != 0.0
+            || w.gain.green != 0.0
+            || w.gain.blue != 0.0
+        {
             filters.push(format!(
                 "colorbalance=rs={}:gs={}:bs={}:rm={}:gm={}:bm={}:rh={}:gh={}:bh={}",
-                w.lift.red, w.lift.green, w.lift.blue,
-                w.gamma.red, w.gamma.green, w.gamma.blue,
-                w.gain.red, w.gain.green, w.gain.blue
+                w.lift.red,
+                w.lift.green,
+                w.lift.blue,
+                w.gamma.red,
+                w.gamma.green,
+                w.gamma.blue,
+                w.gain.red,
+                w.gain.green,
+                w.gain.blue
             ));
         }
 
@@ -415,10 +497,7 @@ impl ColorGradingEngine {
         if let Some(v) = &preset.vignette {
             if v.amount != 0.0 {
                 let angle = std::f32::consts::PI / 5.0; // Vignette angle
-                filters.push(format!(
-                    "vignette=angle={}:mode=backward",
-                    angle
-                ));
+                filters.push(format!("vignette=angle={}:mode=backward", angle));
             }
         }
 
@@ -428,7 +507,8 @@ impl ColorGradingEngine {
     /// Generate Premiere Pro Lumetri settings (ExtendScript)
     pub fn to_premiere_lumetri(&self, preset: &ColorGradePreset) -> String {
         let basic = &preset.basic;
-        format!(r#"
+        format!(
+            r#"
 // Lumetri Color Settings for: {}
 var lumetriEffect = app.project.activeSequence.videoTracks[0].clips[0].components[1];
 if (lumetriEffect) {{
@@ -478,7 +558,8 @@ if (lumetriEffect) {{
 
                     if let Some(format) = format {
                         luts.push(LUT {
-                            name: path.file_stem()
+                            name: path
+                                .file_stem()
                                 .and_then(|s| s.to_str())
                                 .unwrap_or("Unknown")
                                 .to_string(),

@@ -1,20 +1,20 @@
+use std::collections::HashMap;
+
 use axum::{
     Router,
     extract::{Path, State},
     response::Json as ResponseJson,
     routing::get,
 };
-use db::models::cms_faq_item::CmsFaqItem;
-use db::models::cms_page_section::CmsPageSection;
-use db::models::cms_product::CmsProduct;
-use db::models::cms_site::CmsSite;
-use db::models::cms_site_setting::CmsSiteSetting;
+use db::models::{
+    cms_faq_item::CmsFaqItem, cms_page_section::CmsPageSection, cms_product::CmsProduct,
+    cms_site::CmsSite, cms_site_setting::CmsSiteSetting,
+};
+use deployment::Deployment;
 use serde::Serialize;
 use ts_rs::TS;
 use utils::response::ApiResponse;
-use std::collections::HashMap;
 
-use deployment::Deployment;
 use crate::{DeploymentImpl, error::ApiError};
 
 #[derive(Debug, Serialize, TS)]
@@ -42,7 +42,10 @@ pub async fn get_site(
         .map(|s| (s.setting_key, s.setting_value))
         .collect();
 
-    Ok(ResponseJson(ApiResponse::success(PublicSiteData { site, settings })))
+    Ok(ResponseJson(ApiResponse::success(PublicSiteData {
+        site,
+        settings,
+    })))
 }
 
 // Get active products for a site
@@ -116,7 +119,8 @@ pub async fn get_page_sections(
         return Err(ApiError::NotFound("Site not found".to_string()));
     }
 
-    let sections = CmsPageSection::find_active_by_page(&deployment.db().pool, site.id, &page_slug).await?;
+    let sections =
+        CmsPageSection::find_active_by_page(&deployment.db().pool, site.id, &page_slug).await?;
     Ok(ResponseJson(ApiResponse::success(sections)))
 }
 
@@ -124,7 +128,13 @@ pub fn router() -> Router<DeploymentImpl> {
     Router::new()
         .route("/sites/{slug}", get(get_site))
         .route("/sites/{slug}/products", get(get_products))
-        .route("/sites/{site_slug}/products/{product_slug}", get(get_product))
+        .route(
+            "/sites/{site_slug}/products/{product_slug}",
+            get(get_product),
+        )
         .route("/sites/{slug}/faq", get(get_faq))
-        .route("/sites/{site_slug}/page/{page_slug}", get(get_page_sections))
+        .route(
+            "/sites/{site_slug}/page/{page_slug}",
+            get(get_page_sections),
+        )
 }

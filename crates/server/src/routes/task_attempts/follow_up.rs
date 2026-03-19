@@ -68,7 +68,12 @@ pub async fn follow_up(
 
     let mut prompt = payload.prompt;
     if let Some(image_ids) = &payload.image_ids {
-        TaskImage::associate_many_dedup(&deployment.db().pool, Uuid::parse_str(&task.id).map_err(|e| ApiError::InternalError(e.to_string()))?, image_ids).await?;
+        TaskImage::associate_many_dedup(
+            &deployment.db().pool,
+            Uuid::parse_str(&task.id).map_err(|e| ApiError::InternalError(e.to_string()))?,
+            image_ids,
+        )
+        .await?;
 
         // Copy new images from the image cache to the worktree
         if let Some(container_ref) = &task_attempt.container_ref {
@@ -262,7 +267,12 @@ pub async fn save_follow_up_draft(
             .parent_task(&deployment.db().pool)
             .await?
             .ok_or(SqlxError::RowNotFound)?;
-        TaskImage::associate_many_dedup(pool, Uuid::parse_str(&task.id).map_err(|e| ApiError::InternalError(e.to_string()))?, image_ids).await?;
+        TaskImage::associate_many_dedup(
+            pool,
+            Uuid::parse_str(&task.id).map_err(|e| ApiError::InternalError(e.to_string()))?,
+            image_ids,
+        )
+        .await?;
     }
 
     // If queued and no process running for this attempt, attempt to start immediately.
@@ -369,9 +379,12 @@ pub async fn set_follow_up_queue(
             .await
             .unwrap_or(false)
         {
-            let _ =
-                start_follow_up_from_draft(&deployment, &task_attempt, current.as_ref().expect("current checked via queued above"))
-                    .await;
+            let _ = start_follow_up_from_draft(
+                &deployment,
+                &task_attempt,
+                current.as_ref().expect("current checked via queued above"),
+            )
+            .await;
         } else {
             // Schedule a short delayed recheck to handle timing edges
             let deployment_clone = deployment.clone();

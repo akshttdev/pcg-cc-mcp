@@ -153,10 +153,7 @@ impl ContextInjection {
     }
 
     /// Acknowledge an injection
-    pub async fn acknowledge(
-        pool: &SqlitePool,
-        id: Uuid,
-    ) -> Result<Self, ContextInjectionError> {
+    pub async fn acknowledge(pool: &SqlitePool, id: Uuid) -> Result<Self, ContextInjectionError> {
         let injection = sqlx::query_as::<_, ContextInjection>(
             r#"
             UPDATE context_injections

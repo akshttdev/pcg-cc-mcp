@@ -5,6 +5,7 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use db::models::social_account::SocialPlatform;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
@@ -12,7 +13,6 @@ use crate::services::social::{
     EngagementMetrics, OAuthTokens, PlatformConnector, PlatformLimits, PlatformMention,
     ProfileInfo, PublishContent, PublishResult, SocialError,
 };
-use db::models::social_account::SocialPlatform;
 
 const LINKEDIN_AUTH_URL: &str = "https://www.linkedin.com/oauth/v2/authorization";
 const LINKEDIN_TOKEN_URL: &str = "https://www.linkedin.com/oauth/v2/accessToken";
@@ -237,7 +237,9 @@ impl PlatformConnector for LinkedInConnector {
             .map_err(|e| SocialError::NetworkError(e.to_string()))?;
 
         if !response.status().is_success() {
-            return Err(SocialError::PlatformError("Failed to fetch profile".to_string()));
+            return Err(SocialError::PlatformError(
+                "Failed to fetch profile".to_string(),
+            ));
         }
 
         let profile: LinkedInProfile = response
@@ -287,7 +289,14 @@ impl PlatformConnector for LinkedInConnector {
         let mut caption = content.caption.clone();
         if !content.hashtags.is_empty() {
             caption.push_str("\n\n");
-            caption.push_str(&content.hashtags.iter().map(|h| format!("#{}", h)).collect::<Vec<_>>().join(" "));
+            caption.push_str(
+                &content
+                    .hashtags
+                    .iter()
+                    .map(|h| format!("#{}", h))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            );
         }
 
         // Determine media category
@@ -413,8 +422,8 @@ impl PlatformConnector for LinkedInConnector {
             max_hashtags: 30,
             max_mentions: 50,
             max_images: 9,
-            max_video_length_seconds: 600, // 10 minutes
-            max_image_size_bytes: 8 * 1024 * 1024, // 8MB
+            max_video_length_seconds: 600,           // 10 minutes
+            max_image_size_bytes: 8 * 1024 * 1024,   // 8MB
             max_video_size_bytes: 200 * 1024 * 1024, // 200MB
             supported_media_types: vec![
                 "image/jpeg".to_string(),

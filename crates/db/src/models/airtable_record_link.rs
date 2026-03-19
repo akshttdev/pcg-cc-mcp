@@ -382,9 +382,12 @@ impl AirtableRecordLink {
 
     /// Delete by task ID
     pub async fn delete_by_task_id(pool: &SqlitePool, task_id: Uuid) -> Result<(), sqlx::Error> {
-        sqlx::query!("DELETE FROM airtable_record_links WHERE task_id = ?", task_id)
-            .execute(pool)
-            .await?;
+        sqlx::query!(
+            "DELETE FROM airtable_record_links WHERE task_id = ?",
+            task_id
+        )
+        .execute(pool)
+        .await?;
         Ok(())
     }
 }

@@ -4,17 +4,10 @@ use db::models::{
     agent::{Agent, AgentStatus},
     project::Project,
 };
-use rmcp::{
-    ErrorData,
-    handler::server::tool::Parameters,
-    model::CallToolResult,
-    tool,
-};
+use rmcp::{ErrorData, handler::server::tool::Parameters, model::CallToolResult, tool};
 use serde_json::Value;
 
-use super::TaskServer;
-use super::helpers::*;
-use super::types::*;
+use super::{TaskServer, helpers::*, types::*};
 
 impl TaskServer {
     #[tool(
@@ -37,13 +30,24 @@ impl TaskServer {
             format!(
                 "SELECT id, project_id, node_type, ref_id, label, capabilities, status, metadata, weight, created_at, updated_at \
                  FROM topology_nodes WHERE project_id = '{}' AND node_type = '{}' {} ORDER BY created_at",
-                pid_hex, nt, if active_only { "AND status = 'active'" } else { "" }
+                pid_hex,
+                nt,
+                if active_only {
+                    "AND status = 'active'"
+                } else {
+                    ""
+                }
             )
         } else {
             format!(
                 "SELECT id, project_id, node_type, ref_id, label, capabilities, status, metadata, weight, created_at, updated_at \
                  FROM topology_nodes WHERE project_id = '{}' {} ORDER BY created_at",
-                pid_hex, if active_only { "AND status = 'active'" } else { "" }
+                pid_hex,
+                if active_only {
+                    "AND status = 'active'"
+                } else {
+                    ""
+                }
             )
         };
 
@@ -81,13 +85,24 @@ impl TaskServer {
             format!(
                 "SELECT id, from_node_id, to_node_id, edge_type, weight, status, metadata \
                  FROM topology_edges WHERE project_id = '{}' AND edge_type = '{}' {} ORDER BY created_at",
-                pid_hex, et, if active_only { "AND status = 'active'" } else { "" }
+                pid_hex,
+                et,
+                if active_only {
+                    "AND status = 'active'"
+                } else {
+                    ""
+                }
             )
         } else {
             format!(
                 "SELECT id, from_node_id, to_node_id, edge_type, weight, status, metadata \
                  FROM topology_edges WHERE project_id = '{}' {} ORDER BY created_at",
-                pid_hex, if active_only { "AND status = 'active'" } else { "" }
+                pid_hex,
+                if active_only {
+                    "AND status = 'active'"
+                } else {
+                    ""
+                }
             )
         };
 
@@ -108,14 +123,16 @@ impl TaskServer {
 
         let edges_json: Vec<Value> = edge_rows
             .iter()
-            .map(|e| serde_json::json!({
-                "id": e.id,
-                "from_node_id": e.from_node_id,
-                "to_node_id": e.to_node_id,
-                "edge_type": e.edge_type,
-                "weight": e.weight,
-                "status": e.status,
-            }))
+            .map(|e| {
+                serde_json::json!({
+                    "id": e.id,
+                    "from_node_id": e.from_node_id,
+                    "to_node_id": e.to_node_id,
+                    "edge_type": e.edge_type,
+                    "weight": e.weight,
+                    "status": e.status,
+                })
+            })
             .collect();
 
         // Fetch clusters
@@ -378,7 +395,10 @@ impl TaskServer {
                 })))
             }
             Ok(None) => Ok(error_result("Project not found", None)),
-            Err(e) => Ok(error_result("Failed to retrieve project", Some(&e.to_string()))),
+            Err(e) => Ok(error_result(
+                "Failed to retrieve project",
+                Some(&e.to_string()),
+            )),
         }
     }
 
@@ -393,20 +413,19 @@ impl TaskServer {
                 "inactive" => AgentStatus::Inactive,
                 "maintenance" => AgentStatus::Maintenance,
                 "training" => AgentStatus::Training,
-                _ => return Ok(error_result(
-                    "Invalid status. Valid: active, inactive, maintenance, training",
-                    None,
-                )),
+                _ => {
+                    return Ok(error_result(
+                        "Invalid status. Valid: active, inactive, maintenance, training",
+                        None,
+                    ));
+                }
             };
             match if status == AgentStatus::Active {
                 Agent::find_active(&self.pool).await
             } else {
-                Agent::find_all(&self.pool).await.map(|agents| {
-                    agents
-                        .into_iter()
-                        .filter(|a| a.status == status)
-                        .collect()
-                })
+                Agent::find_all(&self.pool)
+                    .await
+                    .map(|agents| agents.into_iter().filter(|a| a.status == status).collect())
             } {
                 Ok(a) => a,
                 Err(e) => return Ok(error_result("Failed to list agents", Some(&e.to_string()))),
@@ -421,10 +440,14 @@ impl TaskServer {
         let agent_list: Vec<Value> = agents
             .iter()
             .map(|a| {
-                let capabilities: Option<Vec<String>> =
-                    a.capabilities.as_deref().and_then(|s| serde_json::from_str(s).ok());
-                let tools: Option<Vec<String>> =
-                    a.tools.as_deref().and_then(|s| serde_json::from_str(s).ok());
+                let capabilities: Option<Vec<String>> = a
+                    .capabilities
+                    .as_deref()
+                    .and_then(|s| serde_json::from_str(s).ok());
+                let tools: Option<Vec<String>> = a
+                    .tools
+                    .as_deref()
+                    .and_then(|s| serde_json::from_str(s).ok());
 
                 serde_json::json!({
                     "id": a.id.to_string(),

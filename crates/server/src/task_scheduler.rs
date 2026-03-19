@@ -8,9 +8,10 @@
 //! The scheduler polls the database for eligible tasks and triggers execution
 //! by calling the /run API endpoint.
 
+use std::sync::Arc;
+
 use chrono::Utc;
 use deployment::Deployment;
-use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{error, info};
 use uuid::Uuid;
@@ -75,7 +76,10 @@ impl<D: Deployment + Clone + Send + Sync + 'static> TaskScheduler<D> {
         let active_executions = self.active_executions.clone();
 
         tokio::spawn(async move {
-            info!("[TASK_SCHEDULER] Started - polling every {}s", config.poll_interval_secs);
+            info!(
+                "[TASK_SCHEDULER] Started - polling every {}s",
+                config.poll_interval_secs
+            );
 
             loop {
                 // Check if still running
@@ -86,16 +90,15 @@ impl<D: Deployment + Clone + Send + Sync + 'static> TaskScheduler<D> {
                 drop(running);
 
                 // Process eligible tasks
-                if let Err(e) = Self::process_eligible_tasks(
-                    &pool,
-                    &config,
-                    &active_executions,
-                ).await {
+                if let Err(e) =
+                    Self::process_eligible_tasks(&pool, &config, &active_executions).await
+                {
                     error!("[TASK_SCHEDULER] Error processing tasks: {}", e);
                 }
 
                 // Sleep before next poll
-                tokio::time::sleep(tokio::time::Duration::from_secs(config.poll_interval_secs)).await;
+                tokio::time::sleep(tokio::time::Duration::from_secs(config.poll_interval_secs))
+                    .await;
             }
 
             info!("[TASK_SCHEDULER] Stopped");
@@ -116,7 +119,6 @@ impl<D: Deployment + Clone + Send + Sync + 'static> TaskScheduler<D> {
         config: &TaskSchedulerConfig,
         active_executions: &Arc<RwLock<usize>>,
     ) -> anyhow::Result<()> {
-
         // Find tasks that are eligible for execution:
         // - status = 'todo'
         // - assigned_agent is not null
@@ -218,11 +220,10 @@ impl<D: Deployment + Clone + Send + Sync + 'static> TaskScheduler<D> {
             }
 
             // Execute the task
-            if let Err(e) = Self::execute_task(pool, &task, active_executions, config.backend_port).await {
-                error!(
-                    "[TASK_SCHEDULER] Failed to execute task {}: {}",
-                    task.id, e
-                );
+            if let Err(e) =
+                Self::execute_task(pool, &task, active_executions, config.backend_port).await
+            {
+                error!("[TASK_SCHEDULER] Failed to execute task {}: {}", task.id, e);
             }
         }
 
@@ -260,12 +261,7 @@ impl<D: Deployment + Clone + Send + Sync + 'static> TaskScheduler<D> {
 
         info!("[TASK_SCHEDULER] Triggering execution at {}", url);
 
-        match client
-            .post(&url)
-            .json(&payload)
-            .send()
-            .await
-        {
+        match client.post(&url).json(&payload).send().await {
             Ok(response) => {
                 if response.status().is_success() {
                     info!(
@@ -273,7 +269,10 @@ impl<D: Deployment + Clone + Send + Sync + 'static> TaskScheduler<D> {
                         task.id
                     );
                 } else {
-                    let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+                    let error_text = response
+                        .text()
+                        .await
+                        .unwrap_or_else(|_| "Unknown error".to_string());
                     error!(
                         "[TASK_SCHEDULER] Failed to execute task {}: {}",
                         task.id, error_text

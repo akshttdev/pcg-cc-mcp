@@ -7,8 +7,9 @@
 //! - Custom transition presets
 //! - Audio-synced transitions
 
-use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+
+use serde::{Deserialize, Serialize};
 
 /// Transition types available
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -192,10 +193,10 @@ pub enum ZoomDirection {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LightLeakColor {
-    Warm,     // Orange/yellow
-    Cool,     // Blue/cyan
-    Film,     // Classic amber
-    Neon,     // Pink/purple
+    Warm,           // Orange/yellow
+    Cool,           // Blue/cyan
+    Film,           // Classic amber
+    Neon,           // Pink/purple
     Custom(String), // Hex color
 }
 
@@ -322,7 +323,6 @@ impl TransitionEngine {
                 description: "Fade through white (flash)".to_string(),
                 tags: vec!["fade".to_string(), "white".to_string(), "flash".to_string()],
             },
-
             // Social media transitions
             TransitionPreset {
                 name: "Whip Pan Right".to_string(),
@@ -334,7 +334,11 @@ impl TransitionEngine {
                     speed_ramp: true,
                 },
                 description: "Fast pan to the right with motion blur".to_string(),
-                tags: vec!["fast".to_string(), "dynamic".to_string(), "social".to_string()],
+                tags: vec![
+                    "fast".to_string(),
+                    "dynamic".to_string(),
+                    "social".to_string(),
+                ],
             },
             TransitionPreset {
                 name: "Whip Pan Left".to_string(),
@@ -346,7 +350,11 @@ impl TransitionEngine {
                     speed_ramp: true,
                 },
                 description: "Fast pan to the left with motion blur".to_string(),
-                tags: vec!["fast".to_string(), "dynamic".to_string(), "social".to_string()],
+                tags: vec![
+                    "fast".to_string(),
+                    "dynamic".to_string(),
+                    "social".to_string(),
+                ],
             },
             TransitionPreset {
                 name: "Zoom Push".to_string(),
@@ -358,7 +366,11 @@ impl TransitionEngine {
                     motion_blur: true,
                 },
                 description: "Zoom into the next clip".to_string(),
-                tags: vec!["zoom".to_string(), "dynamic".to_string(), "impact".to_string()],
+                tags: vec![
+                    "zoom".to_string(),
+                    "dynamic".to_string(),
+                    "impact".to_string(),
+                ],
             },
             TransitionPreset {
                 name: "Glitch".to_string(),
@@ -371,7 +383,11 @@ impl TransitionEngine {
                     scanlines: false,
                 },
                 description: "Digital glitch effect".to_string(),
-                tags: vec!["glitch".to_string(), "digital".to_string(), "trendy".to_string()],
+                tags: vec![
+                    "glitch".to_string(),
+                    "digital".to_string(),
+                    "trendy".to_string(),
+                ],
             },
             TransitionPreset {
                 name: "Smooth Zoom Out".to_string(),
@@ -383,9 +399,12 @@ impl TransitionEngine {
                     motion_blur: false,
                 },
                 description: "Gentle zoom out transition".to_string(),
-                tags: vec!["zoom".to_string(), "smooth".to_string(), "reveal".to_string()],
+                tags: vec![
+                    "zoom".to_string(),
+                    "smooth".to_string(),
+                    "reveal".to_string(),
+                ],
             },
-
             // Cinematic transitions
             TransitionPreset {
                 name: "Light Leak Warm".to_string(),
@@ -397,7 +416,11 @@ impl TransitionEngine {
                     position: LightLeakPosition::TopRight,
                 },
                 description: "Warm film light leak".to_string(),
-                tags: vec!["film".to_string(), "organic".to_string(), "warm".to_string()],
+                tags: vec![
+                    "film".to_string(),
+                    "organic".to_string(),
+                    "warm".to_string(),
+                ],
             },
             TransitionPreset {
                 name: "Lens Flare".to_string(),
@@ -409,7 +432,11 @@ impl TransitionEngine {
                     position: LightLeakPosition::Center,
                 },
                 description: "Anamorphic lens flare style".to_string(),
-                tags: vec!["lens".to_string(), "flare".to_string(), "cinematic".to_string()],
+                tags: vec![
+                    "lens".to_string(),
+                    "flare".to_string(),
+                    "cinematic".to_string(),
+                ],
             },
             TransitionPreset {
                 name: "Iris In".to_string(),
@@ -423,7 +450,6 @@ impl TransitionEngine {
                 description: "Classic circular iris open".to_string(),
                 tags: vec!["classic".to_string(), "vintage".to_string()],
             },
-
             // Retro transitions
             TransitionPreset {
                 name: "Film Burn 8mm".to_string(),
@@ -434,7 +460,11 @@ impl TransitionEngine {
                     grain_amount: 0.5,
                 },
                 description: "8mm film burn and frame flash".to_string(),
-                tags: vec!["vintage".to_string(), "film".to_string(), "retro".to_string()],
+                tags: vec![
+                    "vintage".to_string(),
+                    "film".to_string(),
+                    "retro".to_string(),
+                ],
             },
             TransitionPreset {
                 name: "VHS Glitch".to_string(),
@@ -447,9 +477,12 @@ impl TransitionEngine {
                     scanlines: true,
                 },
                 description: "VHS tape glitch effect".to_string(),
-                tags: vec!["vhs".to_string(), "retro".to_string(), "nostalgic".to_string()],
+                tags: vec![
+                    "vhs".to_string(),
+                    "retro".to_string(),
+                    "nostalgic".to_string(),
+                ],
             },
-
             // Creative transitions
             TransitionPreset {
                 name: "Spin Clockwise".to_string(),
@@ -461,7 +494,11 @@ impl TransitionEngine {
                     zoom: true,
                 },
                 description: "Spinning rotation with zoom".to_string(),
-                tags: vec!["spin".to_string(), "dynamic".to_string(), "creative".to_string()],
+                tags: vec![
+                    "spin".to_string(),
+                    "dynamic".to_string(),
+                    "creative".to_string(),
+                ],
             },
             TransitionPreset {
                 name: "Lens Distort".to_string(),
@@ -472,29 +509,46 @@ impl TransitionEngine {
                     chromatic_aberration: true,
                 },
                 description: "Lens distortion with chromatic aberration".to_string(),
-                tags: vec!["lens".to_string(), "creative".to_string(), "trippy".to_string()],
+                tags: vec![
+                    "lens".to_string(),
+                    "creative".to_string(),
+                    "trippy".to_string(),
+                ],
             },
         ]
     }
 
     /// Convert transition to FFmpeg filter string
-    pub fn to_ffmpeg_filter(&self, transition: &Transition, input_a: &str, input_b: &str) -> String {
+    pub fn to_ffmpeg_filter(
+        &self,
+        transition: &Transition,
+        input_a: &str,
+        input_b: &str,
+    ) -> String {
         match transition {
-            Transition::Dissolve { duration_frames, .. } => {
+            Transition::Dissolve {
+                duration_frames, ..
+            } => {
                 let duration = *duration_frames as f32 / self.frame_rate;
                 format!(
                     "[{}][{}]xfade=transition=fade:duration={}:offset=0",
                     input_a, input_b, duration
                 )
             }
-            Transition::FadeToColor { duration_frames,  .. } => {
+            Transition::FadeToColor {
+                duration_frames, ..
+            } => {
                 let duration = *duration_frames as f32 / self.frame_rate;
                 format!(
                     "[{}][{}]xfade=transition=fadeblack:duration={}:offset=0",
                     input_a, input_b, duration
                 )
             }
-            Transition::Wipe { duration_frames, direction, softness: _softness } => {
+            Transition::Wipe {
+                duration_frames,
+                direction,
+                softness: _softness,
+            } => {
                 let duration = *duration_frames as f32 / self.frame_rate;
                 let xfade_type = match direction {
                     WipeDirection::Left => "wipeleft",
@@ -511,7 +565,11 @@ impl TransitionEngine {
                     input_a, input_b, xfade_type, duration
                 )
             }
-            Transition::ZoomPush { duration_frames, direction, .. } => {
+            Transition::ZoomPush {
+                duration_frames,
+                direction,
+                ..
+            } => {
                 let duration = *duration_frames as f32 / self.frame_rate;
                 let xfade_type = match direction {
                     ZoomDirection::In => "zoomin",
@@ -524,20 +582,37 @@ impl TransitionEngine {
                     input_a, input_b, xfade_type, duration
                 )
             }
-            Transition::Iris { duration_frames, opening, .. } => {
+            Transition::Iris {
+                duration_frames,
+                opening,
+                ..
+            } => {
                 let duration = *duration_frames as f32 / self.frame_rate;
-                let xfade_type = if *opening { "circleopen" } else { "circleclose" };
+                let xfade_type = if *opening {
+                    "circleopen"
+                } else {
+                    "circleclose"
+                };
                 format!(
                     "[{}][{}]xfade=transition={}:duration={}:offset=0",
                     input_a, input_b, xfade_type, duration
                 )
             }
-            Transition::Glitch { duration_frames, intensity, rgb_split, .. } => {
+            Transition::Glitch {
+                duration_frames,
+                intensity,
+                rgb_split,
+                ..
+            } => {
                 let duration = *duration_frames as f32 / self.frame_rate;
                 // Glitch requires custom filter chain
                 let mut filters = vec![];
                 if *rgb_split {
-                    filters.push(format!("rgbashift=rh=-{}:bh={}", intensity * 10.0, intensity * 10.0));
+                    filters.push(format!(
+                        "rgbashift=rh=-{}:bh={}",
+                        intensity * 10.0,
+                        intensity * 10.0
+                    ));
                 }
                 format!(
                     "[{}][{}]xfade=transition=pixelize:duration={}:offset=0",
@@ -546,17 +621,29 @@ impl TransitionEngine {
             }
             _ => {
                 // Default to dissolve for unsupported transitions
-                format!("[{}][{}]xfade=transition=fade:duration=0.5:offset=0", input_a, input_b)
+                format!(
+                    "[{}][{}]xfade=transition=fade:duration=0.5:offset=0",
+                    input_a, input_b
+                )
             }
         }
     }
 
     /// Generate Premiere Pro transition ExtendScript
-    pub fn to_premiere_script(&self, transition: &Transition, track_index: u32, clip_index: u32) -> String {
+    pub fn to_premiere_script(
+        &self,
+        transition: &Transition,
+        track_index: u32,
+        clip_index: u32,
+    ) -> String {
         let transition_name = match transition {
             Transition::Dissolve { .. } => "Cross Dissolve",
             Transition::FadeToColor { color, .. } => {
-                if color == "#000000" { "Dip to Black" } else { "Dip to White" }
+                if color == "#000000" {
+                    "Dip to Black"
+                } else {
+                    "Dip to White"
+                }
             }
             Transition::Wipe { direction, .. } => match direction {
                 WipeDirection::Left => "Wipe Left",
@@ -569,13 +656,20 @@ impl TransitionEngine {
         };
 
         let duration_frames = match transition {
-            Transition::Dissolve { duration_frames, .. } => *duration_frames,
-            Transition::FadeToColor { duration_frames, .. } => *duration_frames,
-            Transition::Wipe { duration_frames, .. } => *duration_frames,
+            Transition::Dissolve {
+                duration_frames, ..
+            } => *duration_frames,
+            Transition::FadeToColor {
+                duration_frames, ..
+            } => *duration_frames,
+            Transition::Wipe {
+                duration_frames, ..
+            } => *duration_frames,
             _ => 15,
         };
 
-        format!(r#"
+        format!(
+            r#"
 // Apply transition: {}
 var seq = app.project.activeSequence;
 var track = seq.videoTracks[{}];
@@ -606,14 +700,17 @@ if (clip && clip.end) {{
     pub fn presets_by_category(&self, category: TransitionCategory) -> Vec<&TransitionPreset> {
         self.presets
             .iter()
-            .filter(|p| matches!((&p.category, &category),
-                (TransitionCategory::Basic, TransitionCategory::Basic) |
-                (TransitionCategory::Social, TransitionCategory::Social) |
-                (TransitionCategory::Cinematic, TransitionCategory::Cinematic) |
-                (TransitionCategory::Retro, TransitionCategory::Retro) |
-                (TransitionCategory::Creative, TransitionCategory::Creative) |
-                (TransitionCategory::Audio, TransitionCategory::Audio)
-            ))
+            .filter(|p| {
+                matches!(
+                    (&p.category, &category),
+                    (TransitionCategory::Basic, TransitionCategory::Basic)
+                        | (TransitionCategory::Social, TransitionCategory::Social)
+                        | (TransitionCategory::Cinematic, TransitionCategory::Cinematic)
+                        | (TransitionCategory::Retro, TransitionCategory::Retro)
+                        | (TransitionCategory::Creative, TransitionCategory::Creative)
+                        | (TransitionCategory::Audio, TransitionCategory::Audio)
+                )
+            })
             .collect()
     }
 
@@ -623,9 +720,11 @@ if (clip && clip.end) {{
         self.presets
             .iter()
             .filter(|p| {
-                p.name.to_lowercase().contains(&query_lower) ||
-                p.description.to_lowercase().contains(&query_lower) ||
-                p.tags.iter().any(|t| t.to_lowercase().contains(&query_lower))
+                p.name.to_lowercase().contains(&query_lower)
+                    || p.description.to_lowercase().contains(&query_lower)
+                    || p.tags
+                        .iter()
+                        .any(|t| t.to_lowercase().contains(&query_lower))
             })
             .collect()
     }

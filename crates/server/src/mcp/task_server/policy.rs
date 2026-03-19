@@ -15,9 +15,7 @@ use serde_json::Value;
 use services::services::pcg_policy::{self, PolicyAction, PolicyCheckContext};
 use uuid::Uuid;
 
-use super::TaskServer;
-use super::helpers::*;
-use super::types::*;
+use super::{TaskServer, helpers::*, types::*};
 
 impl TaskServer {
     #[tool(description = "Evaluate PCG governance policies for a task before execution.")]
@@ -64,7 +62,10 @@ impl TaskServer {
                     notes: decision.notes.clone(),
                 }))
             }
-            Err(e) => Ok(error_result("Failed to evaluate PCG policy", Some(&e.to_string()))),
+            Err(e) => Ok(error_result(
+                "Failed to evaluate PCG policy",
+                Some(&e.to_string()),
+            )),
         }
     }
 
@@ -168,7 +169,8 @@ impl TaskServer {
                 Ok(Some(ids)) => {
                     let mut matched = Vec::new();
                     for pid in ids {
-                        if let Ok(Some(p)) = Project::find_by_id(&self.pool, &pid.to_string()).await {
+                        if let Ok(Some(p)) = Project::find_by_id(&self.pool, &pid.to_string()).await
+                        {
                             let q_lower = req.query.to_lowercase();
                             if p.name.to_lowercase().contains(&q_lower)
                                 || p.git_repo_path
@@ -227,10 +229,15 @@ impl TaskServer {
         // Search tasks
         if search_tasks {
             let like = format!("%{}%", req.query);
-            let project_filter = req.project_id.as_deref().and_then(|s| Uuid::parse_str(s).ok());
+            let project_filter = req
+                .project_id
+                .as_deref()
+                .and_then(|s| Uuid::parse_str(s).ok());
 
             let tasks: Vec<Value> = if let Some(pid) = project_filter {
-                match Task::find_by_project_id_with_attempt_status(&self.pool, &pid.to_string()).await {
+                match Task::find_by_project_id_with_attempt_status(&self.pool, &pid.to_string())
+                    .await
+                {
                     Ok(tasks) => {
                         let q_lower = req.query.to_lowercase();
                         tasks
@@ -270,7 +277,10 @@ impl TaskServer {
 
         // Search knowledge
         if search_knowledge {
-            let project_filter = req.project_id.as_deref().and_then(|s| Uuid::parse_str(s).ok());
+            let project_filter = req
+                .project_id
+                .as_deref()
+                .and_then(|s| Uuid::parse_str(s).ok());
             let like = format!("%{}%", req.query);
 
             let knowledge: Vec<Value> = if let Some(pid) = project_filter {
@@ -280,9 +290,7 @@ impl TaskServer {
                         sources
                             .iter()
                             .filter(|s| {
-                                s.source_title
-                                    .to_lowercase()
-                                    .contains(&q_lower)
+                                s.source_title.to_lowercase().contains(&q_lower)
                                     || s.source_summary
                                         .as_deref()
                                         .unwrap_or("")

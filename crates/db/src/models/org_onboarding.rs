@@ -360,12 +360,12 @@ impl OrgOnboardingSegment {
             existing.started_at
         };
 
-        let completed_at =
-            if status == SegmentStatus::Completed && existing.completed_at.is_none() {
-                Some(Utc::now())
-            } else {
-                existing.completed_at
-            };
+        let completed_at = if status == SegmentStatus::Completed && existing.completed_at.is_none()
+        {
+            Some(Utc::now())
+        } else {
+            existing.completed_at
+        };
 
         let status_str = serde_json::to_value(&status)
             .ok()

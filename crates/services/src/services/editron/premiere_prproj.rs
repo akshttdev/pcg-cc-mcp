@@ -37,12 +37,13 @@
 //!
 //! This preserves all internal object references, component chains, and media links.
 
-use std::collections::HashMap;
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
-use flate2::read::GzDecoder;
-use flate2::write::GzEncoder;
-use flate2::Compression;
+use std::{
+    collections::HashMap,
+    io::{Read, Write},
+    path::{Path, PathBuf},
+};
+
+use flate2::{Compression, read::GzDecoder, write::GzEncoder};
 use regex::Regex;
 
 use super::{EditronError, EditronResult};
@@ -102,8 +103,9 @@ impl PrprojRecutEngine {
         let file = std::fs::File::open(path)?;
         let mut decoder = GzDecoder::new(file);
         let mut xml = String::new();
-        decoder.read_to_string(&mut xml)
-            .map_err(|e| EditronError::InvalidFormat(format!("Failed to decompress .prproj: {}", e)))?;
+        decoder.read_to_string(&mut xml).map_err(|e| {
+            EditronError::InvalidFormat(format!("Failed to decompress .prproj: {}", e))
+        })?;
 
         let mut engine = Self {
             xml,
@@ -135,11 +137,11 @@ impl PrprojRecutEngine {
                 let abs_end = abs_start + end + "</SubClip>".len();
                 let block = &self.xml[abs_start..abs_end];
 
-                if let (Some(uuid_cap), Some(name_cap)) = (
-                    uuid_re.captures(block),
-                    name_re.captures(block),
-                ) {
-                    if let (Some(uuid_match), Some(name_match)) = (uuid_cap.get(1), name_cap.get(1)) {
+                if let (Some(uuid_cap), Some(name_cap)) =
+                    (uuid_re.captures(block), name_re.captures(block))
+                {
+                    if let (Some(uuid_match), Some(name_match)) = (uuid_cap.get(1), name_cap.get(1))
+                    {
                         let uuid = uuid_match.as_str().to_string();
                         let name = name_match.as_str().to_string();
                         self.clip_uuid_map.insert(name, uuid);
@@ -168,36 +170,39 @@ impl PrprojRecutEngine {
                 let block = &self.xml[abs_start..abs_end];
 
                 if let Some(vcti_cap) = vcti_re.captures(block) {
-                    let Some(vcti_match) = vcti_cap.get(1) else { pos = abs_end; continue; };
+                    let Some(vcti_match) = vcti_cap.get(1) else {
+                        pos = abs_end;
+                        continue;
+                    };
                     let vcti_id = vcti_match.as_str().to_string();
 
                     // Find SubClip reference
                     if let Some(sc_cap) = subclip_ref_re.captures(block) {
-                        let Some(sc_match) = sc_cap.get(1) else { pos = abs_end; continue; };
+                        let Some(sc_match) = sc_cap.get(1) else {
+                            pos = abs_end;
+                            continue;
+                        };
                         let subclip_id = sc_match.as_str();
 
                         // Find the SubClip definition to get name and clip ref
                         let sc_pattern = format!("ObjectID=\"{}\"", subclip_id);
                         if let Some(sc_pos) = self.xml.find(&sc_pattern) {
-                            let sc_block_end = self.xml[sc_pos..].find("</SubClip>")
+                            let sc_block_end = self.xml[sc_pos..]
+                                .find("</SubClip>")
                                 .map(|e| sc_pos + e + "</SubClip>".len())
                                 .unwrap_or(sc_pos + 500);
                             let sc_block = &self.xml[sc_pos..sc_block_end.min(self.xml.len())];
 
                             if let Some(name_cap) = name_re.captures(sc_block) {
                                 if let Some(name_match) = name_cap.get(1) {
-                                    self.vcti_to_name.insert(
-                                        vcti_id.clone(),
-                                        name_match.as_str().to_string(),
-                                    );
+                                    self.vcti_to_name
+                                        .insert(vcti_id.clone(), name_match.as_str().to_string());
                                 }
                             }
                             if let Some(clip_cap) = clip_ref_re.captures(sc_block) {
                                 if let Some(clip_match) = clip_cap.get(1) {
-                                    self.vcti_to_clip_id.insert(
-                                        vcti_id.clone(),
-                                        clip_match.as_str().to_string(),
-                                    );
+                                    self.vcti_to_clip_id
+                                        .insert(vcti_id.clone(), clip_match.as_str().to_string());
                                 }
                             }
                         }
@@ -234,7 +239,10 @@ impl PrprojRecutEngine {
         // Build name → VCTI ID map
         let mut name_to_vctis: HashMap<String, Vec<String>> = HashMap::new();
         for (vcti_id, name) in &self.vcti_to_name {
-            name_to_vctis.entry(name.clone()).or_default().push(vcti_id.clone());
+            name_to_vctis
+                .entry(name.clone())
+                .or_default()
+                .push(vcti_id.clone());
         }
 
         // Assign VCTIs to EDL entries
@@ -242,7 +250,12 @@ impl PrprojRecutEngine {
         for (i, entry) in edl.iter().enumerate() {
             let available: Vec<_> = name_to_vctis
                 .get(&entry.filename)
-                .map(|v| v.iter().filter(|id| !used_vctis.contains(*id)).cloned().collect())
+                .map(|v| {
+                    v.iter()
+                        .filter(|id| !used_vctis.contains(*id))
+                        .cloned()
+                        .collect()
+                })
                 .unwrap_or_default();
 
             if let Some(vcti_id) = available.first() {
@@ -257,8 +270,9 @@ impl PrprojRecutEngine {
 
         // Update TrackItems list in the VideoClipTrack
         let _track_items_re = Regex::new(
-            r#"(<ClipItems Version="3">\s*<TrackItems Version="1">)([\s\S]*?)(</TrackItems>)"#
-        ).map_err(|e| EditronError::InvalidFormat(e.to_string()))?;
+            r#"(<ClipItems Version="3">\s*<TrackItems Version="1">)([\s\S]*?)(</TrackItems>)"#,
+        )
+        .map_err(|e| EditronError::InvalidFormat(e.to_string()))?;
 
         // Build replacement manually since regex with special chars is tricky
         if let Some(ti_start) = self.xml.find("<ClipItems Version=\"3\">\n") {
@@ -381,7 +395,8 @@ impl PrprojRecutEngine {
 
             // Re-find position since xml changed
             if let Some(clip_pos) = self.xml.find(&pattern) {
-                let search_region = &self.xml[clip_pos..clip_pos + 2000.min(self.xml.len() - clip_pos)];
+                let search_region =
+                    &self.xml[clip_pos..clip_pos + 2000.min(self.xml.len() - clip_pos)];
                 if let Some(out_start) = search_region.find("<OutPoint>") {
                     if let Some(out_end) = search_region[out_start..].find("</OutPoint>") {
                         let abs_start = clip_pos + out_start;

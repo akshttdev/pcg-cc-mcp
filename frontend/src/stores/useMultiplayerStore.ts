@@ -93,7 +93,7 @@ export const useMultiplayerStore = create<MultiplayerStore>((set, get) => ({
         set({ connectionError: 'Connection error' });
       };
 
-      ws.onclose = (_event) => {
+      ws.onclose = () => {
         set({
           isConnected: false,
           ws: null,
@@ -270,6 +270,7 @@ export const useMultiplayerStore = create<MultiplayerStore>((set, get) => ({
 
         case 'teleport_result': {
           if (message.success) {
+            // intentionally empty — success needs no action
           } else {
             console.error('[Multiplayer] Teleport failed:', message.error);
           }

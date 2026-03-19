@@ -204,13 +204,11 @@ impl CrmActivity {
 
     /// Find an activity by ID
     pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Self, CrmActivityError> {
-        sqlx::query_as::<_, CrmActivity>(
-            r#"SELECT * FROM crm_activities WHERE id = ?1"#,
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await?
-        .ok_or(CrmActivityError::NotFound)
+        sqlx::query_as::<_, CrmActivity>(r#"SELECT * FROM crm_activities WHERE id = ?1"#)
+            .bind(id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or(CrmActivityError::NotFound)
     }
 
     /// Find all activities for a contact

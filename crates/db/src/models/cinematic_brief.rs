@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sqlx::{types::Json, FromRow, SqlitePool, Type};
+use sqlx::{FromRow, SqlitePool, Type, types::Json};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -312,10 +312,7 @@ impl CinematicBrief {
             .render_payload
             .clone()
             .unwrap_or_else(|| Value::Object(serde_json::Map::new()));
-        let output_assets = payload
-            .output_assets
-            .clone()
-            .unwrap_or_default();
+        let output_assets = payload.output_assets.clone().unwrap_or_default();
         let render_payload_json = Json(render_payload);
         let output_assets_json = Json(Value::from(output_assets));
         let status = payload.status.clone();

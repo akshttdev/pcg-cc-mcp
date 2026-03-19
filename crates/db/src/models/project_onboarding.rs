@@ -80,7 +80,9 @@ impl SegmentType {
 
     pub fn description(&self) -> &'static str {
         match self {
-            SegmentType::Research => "Market research, competitor analysis, and positioning strategy",
+            SegmentType::Research => {
+                "Market research, competitor analysis, and positioning strategy"
+            }
             SegmentType::Brand => "Logo, colors, fonts, brand guide, and visual identity",
             SegmentType::Website => "Website, landing pages, and web presence",
             SegmentType::Crm => "CRM pipelines, contacts, deals, and sales workflow",
@@ -308,12 +310,12 @@ impl ProjectOnboarding {
             .unwrap_or(existing.current_phase);
         let context_data = payload.context_data.clone().or(existing.context_data);
         let recommendations = payload.recommendations.clone().or(existing.recommendations);
-        let completed_at = if status == OnboardingStatus::Completed && existing.completed_at.is_none()
-        {
-            Some(Utc::now())
-        } else {
-            existing.completed_at
-        };
+        let completed_at =
+            if status == OnboardingStatus::Completed && existing.completed_at.is_none() {
+                Some(Utc::now())
+            } else {
+                existing.completed_at
+            };
 
         sqlx::query_as!(
             ProjectOnboarding,
@@ -425,7 +427,8 @@ impl OnboardingSegment {
             existing.started_at
         };
 
-        let completed_at = if status == SegmentStatus::Completed && existing.completed_at.is_none() {
+        let completed_at = if status == SegmentStatus::Completed && existing.completed_at.is_none()
+        {
             Some(Utc::now())
         } else {
             existing.completed_at

@@ -13,24 +13,24 @@
 
 use std::collections::{HashMap, HashSet};
 
-use serde_json::{json, Value};
+use db::models::{
+    execution_artifact::{ArtifactType, CreateExecutionArtifact, ExecutionArtifact},
+    workflow_run::{UpdateWorkflowRunOnComplete, WorkflowRun},
+    workflow_staging::{CreateStagingRecord, WorkflowStagingRecord},
+};
+use serde_json::{Value, json};
 use sqlx::SqlitePool;
 use uuid::Uuid;
-
-use db::models::execution_artifact::{ArtifactType, CreateExecutionArtifact, ExecutionArtifact};
-use db::models::workflow_run::{WorkflowRun, UpdateWorkflowRunOnComplete};
-use db::models::workflow_staging::{WorkflowStagingRecord, CreateStagingRecord};
 
 /// Maximum number of records that can be auto-approved in a single workflow run.
 /// Acts as a safety guard against runaway auto-approve on large batches.
 pub const MAX_AUTO_APPROVE_RECORDS: i64 = 50;
 
 use services::services::workflow_execution::{
-    WorkflowDefinition, WorkflowNode,
-    execute_node_with_llm, execute_action_node,
-    extract_records_from_output, check_contact_duplicate, check_company_duplicate,
-    check_deal_duplicate, check_task_duplicate, check_intra_batch_duplicate,
-    validate_record_against_schema, is_fallback_placeholder, compute_confidence,
+    WorkflowDefinition, WorkflowNode, check_company_duplicate, check_contact_duplicate,
+    check_deal_duplicate, check_intra_batch_duplicate, check_task_duplicate, compute_confidence,
+    execute_action_node, execute_node_with_llm, extract_records_from_output,
+    is_fallback_placeholder, validate_record_against_schema,
 };
 
 /// Result of executing a single node
@@ -101,7 +101,10 @@ pub async fn execute_workflow_nodes(
     // Build dependency map from connections
     let mut deps_map: HashMap<String, Vec<String>> = HashMap::new();
     for conn in &workflow.connections {
-        deps_map.entry(conn.target.clone()).or_default().push(conn.source.clone());
+        deps_map
+            .entry(conn.target.clone())
+            .or_default()
+            .push(conn.source.clone());
     }
 
     // Topological sort: process nodes in dependency order
@@ -136,8 +139,15 @@ pub async fn execute_workflow_nodes(
     for conn in &workflow.connections {
         if let Some(target_node) = workflow.nodes.iter().find(|n| n.id == conn.target) {
             if target_node.node_type.starts_with("output_") {
-                let target_type = target_node.node_type.strip_prefix("output_").unwrap_or("").to_string();
-                downstream_targets.entry(conn.source.clone()).or_default().push(target_type);
+                let target_type = target_node
+                    .node_type
+                    .strip_prefix("output_")
+                    .unwrap_or("")
+                    .to_string();
+                downstream_targets
+                    .entry(conn.source.clone())
+                    .or_default()
+                    .push(target_type);
             }
         }
     }
@@ -163,8 +173,15 @@ pub async fn execute_workflow_nodes(
                 .collect::<Vec<_>>()
                 .join("\n");
             (input_data, None)
-        } else if let Some(action_result) =
-            execute_action_node(pool, node, &previous, opts.project_id, opts.organization_id, opts.workflow_run_id).await
+        } else if let Some(action_result) = execute_action_node(
+            pool,
+            node,
+            &previous,
+            opts.project_id,
+            opts.organization_id,
+            opts.workflow_run_id,
+        )
+        .await
         {
             action_result
         } else {
@@ -187,13 +204,17 @@ pub async fn execute_workflow_nodes(
             explicit_schema.to_string()
         } else if let Some(targets) = downstream_targets.get(&node.id) {
             // Map output node types to schema names (e.g. "crm_contacts" → "contacts")
-            targets.iter().map(|t| match t.as_str() {
-                "crm_contacts" => "contacts",
-                "crm_companies" | "companies" => "companies",
-                "crm_deals" | "deals" => "deals",
-                "tasks" => "tasks",
-                other => other,
-            }).collect::<Vec<_>>().join("_")
+            targets
+                .iter()
+                .map(|t| match t.as_str() {
+                    "crm_contacts" => "contacts",
+                    "crm_companies" | "companies" => "companies",
+                    "crm_deals" | "deals" => "deals",
+                    "tasks" => "tasks",
+                    other => other,
+                })
+                .collect::<Vec<_>>()
+                .join("_")
         } else {
             String::new()
         };
@@ -204,7 +225,10 @@ pub async fn execute_workflow_nodes(
 
         // Create execution artifact if requested
         if opts.create_artifacts {
-            let step_index = ordered_nodes.iter().position(|n| n.id == node.id).unwrap_or(0);
+            let step_index = ordered_nodes
+                .iter()
+                .position(|n| n.id == node.id)
+                .unwrap_or(0);
             let mut artifact_metadata = json!({
                 "workflow_id": workflow.id,
                 "step_id": node.id,
@@ -279,11 +303,16 @@ pub async fn execute_workflow_nodes(
     let mut staged_records: i64 = 0;
     if opts.create_staging {
         if let Some(run_id) = opts.workflow_run_id {
-            for node in ordered_nodes.iter().filter(|n| n.node_type.starts_with("output_")) {
+            for node in ordered_nodes
+                .iter()
+                .filter(|n| n.node_type.starts_with("output_"))
+            {
                 let target_type = node.node_type.strip_prefix("output_").unwrap_or("");
                 tracing::debug!(
                     "[WORKFLOW] Staging: output node '{}' type='output_{}' → target='{}'",
-                    node.id, target_type, target_type
+                    node.id,
+                    target_type,
+                    target_type
                 );
                 let staging_target = match target_type {
                     "crm_contacts" => "crm_contact",
@@ -293,7 +322,8 @@ pub async fn execute_workflow_nodes(
                     _ => {
                         tracing::warn!(
                             "[WORKFLOW] Staging: skipping output node '{}' — unrecognized type 'output_{}'",
-                            node.id, target_type
+                            node.id,
+                            target_type
                         );
                         continue;
                     }
@@ -303,13 +333,16 @@ pub async fn execute_workflow_nodes(
                 {
                     tracing::debug!(
                         "[WORKFLOW] Staging: node '{}' raw output (first 500 chars): {}",
-                        node.id, &output[..output.len().min(500)]
+                        node.id,
+                        &output[..output.len().min(500)]
                     );
                     if let Ok(parsed) = serde_json::from_str::<Value>(output) {
                         let records = extract_records_from_output(&parsed, staging_target);
                         tracing::debug!(
                             "[WORKFLOW] Staging: node '{}' extracted {} records for target '{}'",
-                            node.id, records.len(), staging_target
+                            node.id,
+                            records.len(),
+                            staging_target
                         );
                         for record in records {
                             let dup = match staging_target {
@@ -328,26 +361,33 @@ pub async fn execute_workflow_nodes(
                                 }
                                 _ => None,
                             };
-                            let dup = dup.or(
-                                check_intra_batch_duplicate(pool, run_id, staging_target, &record)
-                                    .await,
-                            );
+                            let dup = dup.or(check_intra_batch_duplicate(
+                                pool,
+                                run_id,
+                                staging_target,
+                                &record,
+                            )
+                            .await);
                             let (dup_id, dup_type) = match dup {
                                 Some((id, t)) => (Some(id), Some(t)),
                                 None => (None, None),
                             };
 
-                            let mut validation_errors =
-                                match validate_record_against_schema(&record, staging_target) {
-                                    Ok(()) => None,
-                                    Err(errs) => {
-                                        tracing::warn!(
+                            let mut validation_errors = match validate_record_against_schema(
+                                &record,
+                                staging_target,
+                            ) {
+                                Ok(()) => None,
+                                Err(errs) => {
+                                    tracing::warn!(
                                         "[WORKFLOW] Validation errors for {} record in node '{}': {:?}",
-                                        staging_target, node.id, errs
+                                        staging_target,
+                                        node.id,
+                                        errs
                                     );
-                                        Some(errs)
-                                    }
-                                };
+                                    Some(errs)
+                                }
+                            };
 
                             if is_fallback_placeholder(&record) {
                                 validation_errors.get_or_insert_with(Vec::new).push(
@@ -410,7 +450,10 @@ pub async fn execute_workflow_nodes(
                     tracing::warn!(
                         "[WORKFLOW] Staging: node '{}' not found in step_outputs (available: {:?})",
                         node.id,
-                        step_outputs.iter().map(|(id, _, _)| id.as_str()).collect::<Vec<_>>()
+                        step_outputs
+                            .iter()
+                            .map(|(id, _, _)| id.as_str())
+                            .collect::<Vec<_>>()
                     );
                 }
             }
@@ -481,9 +524,7 @@ pub async fn finalize_workflow_run(
     )
     .await
     {
-        tracing::error!(
-            "[WORKFLOW] Failed to update workflow run on complete: {e}"
-        );
+        tracing::error!("[WORKFLOW] Failed to update workflow run on complete: {e}");
     }
 }
 
@@ -492,12 +533,10 @@ pub fn check_for_llm_errors(results: &[NodeResult]) -> Vec<String> {
     results
         .iter()
         .filter_map(|r| {
-            serde_json::from_str::<Value>(&r.output)
-                .ok()
-                .and_then(|v| {
-                    v.get("error")
-                        .and_then(|e| e.as_str().map(|s| format!("Node '{}': {}", r.node_id, s)))
-                })
+            serde_json::from_str::<Value>(&r.output).ok().and_then(|v| {
+                v.get("error")
+                    .and_then(|e| e.as_str().map(|s| format!("Node '{}': {}", r.node_id, s)))
+            })
         })
         .collect()
 }
@@ -530,16 +569,15 @@ pub async fn auto_approve_staged_records(
         return;
     }
 
-    tracing::info!(
-        "[WORKFLOW] auto_approve enabled for {trigger_label} — approving valid records"
-    );
+    tracing::info!("[WORKFLOW] auto_approve enabled for {trigger_label} — approving valid records");
 
     // Step 1: auto-approve non-duplicate records with confidence >= 0.7
     match WorkflowStagingRecord::auto_approve_valid(pool, workflow_run_id).await {
         Ok(approved) => {
             tracing::info!(
                 "[WORKFLOW] Auto-approved {} record(s) for workflow run {}",
-                approved, workflow_run_id
+                approved,
+                workflow_run_id
             );
 
             // Step 2: reject duplicates
@@ -552,7 +590,8 @@ pub async fn auto_approve_staged_records(
                 let records = WorkflowStagingRecord::find_by_run(pool, workflow_run_id)
                     .await
                     .unwrap_or_default();
-                let mut approved_records: Vec<_> = records.into_iter()
+                let mut approved_records: Vec<_> = records
+                    .into_iter()
                     .filter(|r| r.status == "approved")
                     .collect();
 
@@ -571,7 +610,11 @@ pub async fn auto_approve_staged_records(
                     match super::workflow_staging::commit_record_internal(pool, record).await {
                         Ok(created_id) => {
                             committed += 1;
-                            commit_results.push((record.id, record.target_type.clone(), Some(created_id)));
+                            commit_results.push((
+                                record.id,
+                                record.target_type.clone(),
+                                Some(created_id),
+                            ));
                         }
                         Err(e) => {
                             tracing::warn!(
@@ -585,7 +628,8 @@ pub async fn auto_approve_staged_records(
 
                 tracing::info!(
                     "[WORKFLOW] Auto-committed {}/{} records for {trigger_label}",
-                    committed, approved
+                    committed,
+                    approved
                 );
 
                 // Post-commit: link contacts to companies by matching company_name
@@ -596,9 +640,22 @@ pub async fn auto_approve_staged_records(
                         if target_type == "crm_contact" {
                             if let Some(contact_id) = created_id {
                                 let contact_db_id = db::db_uuid::DbUuid::from(*contact_id);
-                                if let Ok(contact) = db::models::crm_contact::CrmContact::find_by_id(pool, &contact_db_id).await {
+                                if let Ok(contact) =
+                                    db::models::crm_contact::CrmContact::find_by_id(
+                                        pool,
+                                        &contact_db_id,
+                                    )
+                                    .await
+                                {
                                     if let Some(company_name) = &contact.company_name {
-                                        if let Ok(Some(company)) = db::models::company::Company::find_by_name_and_org(pool, company_name, &org_db_id).await {
+                                        if let Ok(Some(company)) =
+                                            db::models::company::Company::find_by_name_and_org(
+                                                pool,
+                                                company_name,
+                                                &org_db_id,
+                                            )
+                                            .await
+                                        {
                                             let _ = super::workflow_staging::store_company_id_in_custom_fields(pool, &contact.id, &company.id).await;
                                         }
                                     }
@@ -612,14 +669,23 @@ pub async fn auto_approve_staged_records(
                 for (idx, (_, target_type, created_id)) in commit_results.iter().enumerate() {
                     if target_type == "task" {
                         if let Some(task_id) = created_id {
-                            if let Ok(data) = serde_json::from_str::<Value>(&approved_records[idx].record_data) {
+                            if let Ok(data) =
+                                serde_json::from_str::<Value>(&approved_records[idx].record_data)
+                            {
                                 if data["agent_id"].as_str().is_some() {
                                     let pool = pool.clone();
                                     let dep = deployment.clone();
                                     let tid = *task_id;
                                     tokio::spawn(async move {
-                                        if let Err(e) = super::workflow_staging::auto_start_agent_execution(&pool, &dep, tid).await {
-                                            tracing::warn!("Auto-execute for task {tid} failed: {e}");
+                                        if let Err(e) =
+                                            super::workflow_staging::auto_start_agent_execution(
+                                                &pool, &dep, tid,
+                                            )
+                                            .await
+                                        {
+                                            tracing::warn!(
+                                                "Auto-execute for task {tid} failed: {e}"
+                                            );
                                         }
                                     });
                                 }
@@ -630,7 +696,10 @@ pub async fn auto_approve_staged_records(
             }
         }
         Err(e) => {
-            tracing::error!("[WORKFLOW] Auto-approve failed for workflow run {}: {e}", workflow_run_id);
+            tracing::error!(
+                "[WORKFLOW] Auto-approve failed for workflow run {}: {e}",
+                workflow_run_id
+            );
         }
     }
 }

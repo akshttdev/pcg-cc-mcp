@@ -37,9 +37,13 @@ pub struct CreateTaskRequest {
     pub requires_approval: Option<bool>,
     #[schemars(description = "Arbitrary custom properties as JSON object")]
     pub custom_properties: Option<Value>,
-    #[schemars(description = "Structured completion criteria — measurable conditions that define when this task is done (e.g. 'All tests pass, coverage > 80%, PR approved')")]
+    #[schemars(
+        description = "Structured completion criteria — measurable conditions that define when this task is done (e.g. 'All tests pass, coverage > 80%, PR approved')"
+    )]
     pub completion_criteria: Option<String>,
-    #[schemars(description = "Expected output format — what deliverables look like (e.g. 'Rust module with pub fn, unit tests, updated CHANGELOG')")]
+    #[schemars(
+        description = "Expected output format — what deliverables look like (e.g. 'Rust module with pub fn, unit tests, updated CHANGELOG')"
+    )]
     pub output_format: Option<String>,
 }
 
@@ -100,7 +104,9 @@ pub struct ListTasksRequest {
     pub tag: Option<String>,
     #[schemars(description = "Search keyword in title and description")]
     pub search: Option<String>,
-    #[schemars(description = "Sort by: created_at, updated_at, priority, due_date, title (default: created_at)")]
+    #[schemars(
+        description = "Sort by: created_at, updated_at, priority, due_date, title (default: created_at)"
+    )]
     pub sort_by: Option<String>,
     #[schemars(description = "Sort direction: asc or desc (default: desc)")]
     pub sort_direction: Option<String>,
@@ -237,7 +243,9 @@ pub struct UpdateTaskRequest {
     pub requires_approval: Option<bool>,
     #[schemars(description = "New custom properties (JSON object, null to clear)")]
     pub custom_properties: Option<Value>,
-    #[schemars(description = "New completion criteria — measurable conditions for task completion")]
+    #[schemars(
+        description = "New completion criteria — measurable conditions for task completion"
+    )]
     pub completion_criteria: Option<String>,
     #[schemars(description = "New output format — expected deliverable format")]
     pub output_format: Option<String>,
@@ -294,7 +302,9 @@ pub struct AssignTaskRequest {
     pub project_id: String,
     #[schemars(description = "The ID of the task to assign")]
     pub task_id: String,
-    #[schemars(description = "The username or UUID of the user to assign the task to. Use 'unassign' to clear.")]
+    #[schemars(
+        description = "The username or UUID of the user to assign the task to. Use 'unassign' to clear."
+    )]
     pub assignee: String,
 }
 
@@ -306,7 +316,9 @@ pub struct AddCommentRequest {
     pub task_id: String,
     #[schemars(description = "The comment text content")]
     pub content: String,
-    #[schemars(description = "Optional: 'comment', 'status_update', 'review', 'system', 'handoff'. Default: 'comment'")]
+    #[schemars(
+        description = "Optional: 'comment', 'status_update', 'review', 'system', 'handoff'. Default: 'comment'"
+    )]
     pub comment_type: Option<String>,
 }
 
@@ -431,9 +443,13 @@ pub struct CheckDependenciesRequest {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct UnifiedSearchRequest {
-    #[schemars(description = "Search query — matches against titles, names, descriptions across all entity types")]
+    #[schemars(
+        description = "Search query — matches against titles, names, descriptions across all entity types"
+    )]
     pub query: String,
-    #[schemars(description = "Entity types to search: 'projects', 'tasks', 'knowledge', 'persons'. Default: all")]
+    #[schemars(
+        description = "Entity types to search: 'projects', 'tasks', 'knowledge', 'persons'. Default: all"
+    )]
     pub entity_types: Option<Vec<String>>,
     #[schemars(description = "Optional project UUID to scope task/knowledge search")]
     pub project_id: Option<String>,
@@ -445,7 +461,9 @@ pub struct UnifiedSearchRequest {
 pub struct ScaffoldProjectRequest {
     #[schemars(description = "Project name")]
     pub name: String,
-    #[schemars(description = "Template type: 'software', 'research', 'marketing', 'client_onboarding'")]
+    #[schemars(
+        description = "Template type: 'software', 'research', 'marketing', 'client_onboarding'"
+    )]
     pub template: String,
     #[schemars(description = "Path to git repository (will be created if it doesn't exist)")]
     pub git_repo_path: String,
@@ -453,9 +471,13 @@ pub struct ScaffoldProjectRequest {
     pub organization_id: Option<String>,
     #[schemars(description = "Optional client UUID to associate with")]
     pub client_id: Option<String>,
-    #[schemars(description = "Optional topic/subject for research projects — used to generate contextual tasks")]
+    #[schemars(
+        description = "Optional topic/subject for research projects — used to generate contextual tasks"
+    )]
     pub topic: Option<String>,
-    #[schemars(description = "Optional client name for client onboarding — used to personalize task descriptions")]
+    #[schemars(
+        description = "Optional client name for client onboarding — used to personalize task descriptions"
+    )]
     pub client_name: Option<String>,
 }
 
@@ -465,7 +487,9 @@ pub struct ScaffoldProjectRequest {
 pub struct AddKnowledgeRequest {
     #[schemars(description = "Project UUID")]
     pub project_id: String,
-    #[schemars(description = "Source type: conversation, artifact, pulse_content, context_injection, entity, topology_snapshot")]
+    #[schemars(
+        description = "Source type: conversation, artifact, pulse_content, context_injection, entity, topology_snapshot"
+    )]
     pub source_type: String,
     #[schemars(description = "Unique identifier for this knowledge source")]
     pub source_id: String,

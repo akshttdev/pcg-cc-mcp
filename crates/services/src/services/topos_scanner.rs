@@ -18,10 +18,11 @@
 //! ```
 
 use std::path::{Path, PathBuf};
+
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use ts_rs::TS;
-use utils::assets::{topos_dir, topos_structure, ensure_project_structure};
+use utils::assets::{ensure_project_structure, topos_dir, topos_structure};
 
 #[derive(Debug, Error)]
 pub enum ToposScannerError {
@@ -135,7 +136,9 @@ impl ToposScannerService {
 
         // Sort by last modified (most recent first)
         projects.sort_by(|a, b| {
-            b.last_modified.unwrap_or(0).cmp(&a.last_modified.unwrap_or(0))
+            b.last_modified
+                .unwrap_or(0)
+                .cmp(&a.last_modified.unwrap_or(0))
         });
 
         tracing::info!("Discovered {} projects in topos", projects.len());
@@ -144,9 +147,14 @@ impl ToposScannerService {
     }
 
     /// Analyze a directory to determine if it's a valid project
-    async fn analyze_project_directory(&self, path: &Path, name: &str) -> Option<DiscoveredProject> {
+    async fn analyze_project_directory(
+        &self,
+        path: &Path,
+        name: &str,
+    ) -> Option<DiscoveredProject> {
         // Get last modified time
-        let last_modified = path.metadata()
+        let last_modified = path
+            .metadata()
             .ok()
             .and_then(|m| m.modified().ok())
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
@@ -201,10 +209,7 @@ impl ToposScannerService {
 
     /// Check if a project has the standard filing structure
     fn has_standard_structure(&self, path: &Path) -> bool {
-        let required_dirs = [
-            topos_structure::GITHUB_DIR,
-            topos_structure::ASSETS_DIR,
-        ];
+        let required_dirs = [topos_structure::GITHUB_DIR, topos_structure::ASSETS_DIR];
 
         required_dirs.iter().any(|dir| path.join(dir).exists())
     }
@@ -229,13 +234,20 @@ impl ToposScannerService {
     }
 
     /// Ensure a project has the standard filing structure
-    pub fn ensure_project_structure(&self, project_path: &PathBuf) -> Result<(), ToposScannerError> {
+    pub fn ensure_project_structure(
+        &self,
+        project_path: &PathBuf,
+    ) -> Result<(), ToposScannerError> {
         ensure_project_structure(project_path)?;
         Ok(())
     }
 
     /// Create session log file path for a project
-    pub fn session_log_path(&self, project_name: &str, session_id: &str) -> Result<PathBuf, ToposScannerError> {
+    pub fn session_log_path(
+        &self,
+        project_name: &str,
+        session_id: &str,
+    ) -> Result<PathBuf, ToposScannerError> {
         let topos_path = Self::get_topos_dir()?;
         let logs_dir = topos_path
             .join(project_name)
@@ -249,7 +261,11 @@ impl ToposScannerService {
     }
 
     /// Create artifact path for a project
-    pub fn artifact_path(&self, project_name: &str, artifact_name: &str) -> Result<PathBuf, ToposScannerError> {
+    pub fn artifact_path(
+        &self,
+        project_name: &str,
+        artifact_name: &str,
+    ) -> Result<PathBuf, ToposScannerError> {
         let topos_path = Self::get_topos_dir()?;
         let artifacts_dir = topos_path
             .join(project_name)
@@ -264,7 +280,9 @@ impl ToposScannerService {
     /// Get the assets directory for a project
     pub fn assets_dir(&self, project_name: &str) -> Result<PathBuf, ToposScannerError> {
         let topos_path = Self::get_topos_dir()?;
-        Ok(topos_path.join(project_name).join(topos_structure::ASSETS_DIR))
+        Ok(topos_path
+            .join(project_name)
+            .join(topos_structure::ASSETS_DIR))
     }
 }
 

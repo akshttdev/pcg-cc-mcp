@@ -157,7 +157,10 @@ impl CpuMiner {
 
     /// Start mining (connects to pool)
     pub async fn start(&mut self) -> anyhow::Result<()> {
-        tracing::info!("Starting CPU miner, connecting to {}", self.config.stratum_url);
+        tracing::info!(
+            "Starting CPU miner, connecting to {}",
+            self.config.stratum_url
+        );
         self.running = true;
 
         // TODO: Implement actual stratum connection
