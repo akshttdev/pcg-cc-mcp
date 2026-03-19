@@ -14,9 +14,8 @@ use deployment::Deployment;
 use serde::Deserialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
-use db::db_uuid::DbUuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param};
 
 const VIBE_PER_USD: f64 = 100.0; // 1 USD = 100 VIBE  (since 1 VIBE = $0.01)
 
@@ -89,7 +88,7 @@ async fn get_invoice(
     State(d): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Invoice>>, ApiError> {
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let id_uuid = parse_db_uuid_param(&id, "invoice ID")?.to_uuid();
     Invoice::find_by_id(&d.db().pool, id_uuid)
         .await?
         .map(|i| Json(ApiResponse::success(i)))
@@ -108,7 +107,7 @@ async fn update_invoice(
             body.amount_vibe = Some((usd * VIBE_PER_USD).ceil() as i64);
         }
     }
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let id_uuid = parse_db_uuid_param(&id, "invoice ID")?.to_uuid();
     Invoice::update(&d.db().pool, id_uuid, body)
         .await?
         .map(|i| Json(ApiResponse::success(i)))
@@ -122,7 +121,7 @@ async fn move_invoice_status(
     Json(body): Json<MoveStatusBody>,
 ) -> Result<Json<ApiResponse<Invoice>>, ApiError> {
     let pool = &d.db().pool;
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let id_uuid = parse_db_uuid_param(&id, "invoice ID")?.to_uuid();
 
     // Set paid_at when marking paid or partial
     let sql = match body.status.as_str() {
@@ -148,7 +147,7 @@ async fn delete_invoice(
     State(d): State<DeploymentImpl>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let id_uuid = parse_db_uuid_param(&id, "invoice ID")?.to_uuid();
     let deleted = Invoice::delete(&d.db().pool, id_uuid).await?;
     if deleted {
         Ok(Json(ApiResponse::success(())))

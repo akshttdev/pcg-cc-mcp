@@ -951,7 +951,7 @@ async fn check_phase1_completion_and_trigger(pool: &sqlx::SqlitePool, task_id: &
     let contact_uuid = deal.crm_contact_id.as_deref().and_then(db_uuid_from_str);
     let project_uuid = deal.project_id.as_deref().and_then(db_uuid_from_str);
 
-    crate::routes::crm_deals::generate_phase1_business_report(
+    crate::routes::crm_deal_automations::generate_phase1_business_report(
         pool,
         deal_uuid,
         contact_uuid,

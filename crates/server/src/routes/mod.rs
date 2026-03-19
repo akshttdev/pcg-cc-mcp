@@ -42,6 +42,8 @@ pub mod communications;
 pub mod companies;
 pub mod crm_activities;
 pub mod crm_contacts;
+pub mod crm_deal_automations;
+pub mod crm_deal_transitions;
 pub mod crm_deals;
 pub mod crm_pipelines;
 pub mod data_source_workflows;

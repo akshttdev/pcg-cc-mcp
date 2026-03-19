@@ -1,0 +1,5 @@
+#!/bin/sh
+# Pre-commit hook: run lint-staged on frontend files
+# Install: git config core.hooksPath .githooks
+
+cd frontend && npx lint-staged
