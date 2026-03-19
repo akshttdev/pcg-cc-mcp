@@ -135,13 +135,24 @@ During this sprint, add `validator` to `Cargo.toml` and apply `#[derive(Validate
 
 ## Sprint Items (10 items, ROI-ordered)
 
-### 1. Fix PR #50 Regressions [CRITICAL — Day 1]
-**Effort**: 0.5 days | **Parallelizable**: Yes
+### 1. Fix PR #50 Regressions + Access Control Gaps [CRITICAL — Day 1]
+**Effort**: 1 day | **Parallelizable**: Yes
 
 **1a. Harden kanban access control** (`crates/server/src/routes/crm_deals.rs:256-275`)
 - Current: checks `require_org_membership` only when `pipeline.organization_id` is `Some`
 - Fix: deny access when `organization_id` is `None` — return 403 "Pipeline has no organization scope"
 - This is a security fix, not a feature
+
+**1d. Add access control to `crm_contacts.rs`** (12 endpoints, ZERO access checks)
+- All handlers lack `Extension(access_context)` parameter entirely
+- Any authenticated user can CRUD all contacts regardless of organization membership
+- Fix: Add `Extension(access_context): Extension<AccessContext>` to all handlers
+- Add `require_org_membership()` checks using `organization_id` query param
+- Follow `crm_deals.rs` patterns (gold standard — all 20 handlers protected)
+
+**1e. Add access control to `crm_pipelines.rs`** (13 endpoints, ZERO access checks)
+- Same issue as contacts — handlers accept `organization_id` but never validate membership
+- Fix: Same pattern as 1d
 
 **1b. Fix `uuid::Uuid` in new code** (`crm_deals.rs`)
 - 6 instances of `uuid::Uuid` found (line 20 import + lines 895, 1011, 1191, 1194, 1195).
@@ -177,6 +188,7 @@ During this sprint, add `validator` to `Cargo.toml` and apply `#[derive(Validate
 **2c. Fix `alpha-protocol-core` test compile errors** — 2 borrow checker issues in test code
 **2d. Fix ESLint** — `eslint --fix` for unused disable directives (62 errors)
 **2e. Remove `continue-on-error: true`** from `.github/workflows/ci.yml` lines 48, 65 (clippy + tests). Keep on lines 119, 129 (security audits — advisory only).
+**2f. Add `vite build` step** to CI — currently only `tsc --noEmit` catches TS errors; actual build failures go undetected. Add after ESLint step in `frontend-check` job.
 
 ### 3. Apply Lint-Staged Setup [QUICK WIN — Day 1]
 **Effort**: 0.5 days
@@ -238,19 +250,34 @@ Add drain timeout (30s) via `tokio::time::timeout` to prevent hanging on long-ru
 - Migrate `spawn_workflow_schedule_loop` and `spawn_automation_loop` as first adopters
 - Agent flow executor (#9) will be the third adopter
 
+**5d. APN Node subprocess cleanup on shutdown**
+- APN Node is spawned as detached child process (main.rs:289) — `Child` handle dropped, no SIGTERM on server exit
+- Fix: Call `kill_existing_apn_nodes()` in the shutdown signal handler (same function already used at startup, line 253)
+- Keep it simple — BackgroundWorker trait handles tokio tasks, subprocess cleanup goes in signal handler directly
+- Total background operations: 16 (14 tokio spawns + 1 APN subprocess + 1 PR Monitor service)
+
 ### 6. Bridge Dual Cost System (S0-02) [HIGH — Day 3]
 **Effort**: 1 day
 
-**Problem**: `TokenUsage::create()` (token_usage.rs:115-149) never sets `cost_cents`. Dashboard shows $0.
+**Problem**: Dashboard shows $0 because `ai-usage.tsx` reads from `token_usage` table where `cost_cents` is always NULL. Real cost data lives in `vibe_transactions.calculated_cost_cents`.
 
-**Approach**: Populate `cost_cents` at insert time
-- Look up `ModelPricing` for the model/provider after insert
-- Call `ModelPricing::calculate_cost(input_tokens, output_tokens)` (model_pricing.rs:120-142)
-- UPDATE the record's `cost_cents` field
-- Verify: `TokenUsageWidget.tsx` (mission-control) shows non-zero values after running an agent
+**Root cause analysis** (from gap audit):
+- `TokenUsage::create()` INSERT doesn't include `cost_cents` column at all
+- `CreateTokenUsage` struct doesn't have a `cost_cents` field
+- All billing goes through `record_llm_vibe_usage()` → `VibePricingService` → `vibe_transactions` table
+- `TokenUsage::create()` is only called from `POST /token-usage` (legacy endpoint, rarely called)
+- 6 aggregation queries in `token_usage.rs` SUM cost_cents — all return NULL
 
-### 7. Structured Response Protocol (S0-03 + Arch D) [FOUNDATION — Day 3-4]
-**Effort**: 1.5 days
+**Approach**: Redirect dashboard to `vibe_transactions` (source of truth)
+- Add new API endpoint `GET /api/vibe-usage/summary` mirroring token_usage aggregation queries but reading from `vibe_transactions`
+- Add `GET /api/vibe-usage/daily`, `/by-project`, `/by-model` equivalents
+- Update `frontend/src/pages/ai-usage.tsx` to query vibe-usage endpoints
+- Update `TokenUsageWidget.tsx` (mission-control) to use vibe data
+- Keep `token_usage` routes as-is for backward compatibility
+- Verify: dashboard shows actual cost data after running an agent
+
+### 7. Structured Response Protocol (S0-03 + Arch D) [FOUNDATION — merged with #9]
+**Effort**: Combined with #9 (agent engine) — built together since protocol exists to serve the executor
 
 **New files**:
 - `crates/db/src/models/agent_response.rs` — envelope types + `StructuredOutput` trait
@@ -381,11 +408,18 @@ pub async fn transition_validated(pool: &SqlitePool, id: Uuid, target_status: Fl
 - Contract Net Protocol: agents bid on tasks based on capability/workload (MAS research)
 - Restate-style checkpoint recovery: journal side-effect results, no deterministic replay requirement
 
-**Agent dispatch strategy**: Configurable per flow_type
-- **Simple tasks** (research, analysis, triage): Route through `pcg_router.rs` (HTTP/API calls) — simpler, cost-tracked automatically via VibeTransaction
-- **Complex tasks** (coding, multi-step): Spawn via executor service (CLI process) — more powerful, full git worktree isolation
-- `flow_config` JSON stores `dispatch_mode: "api" | "executor"` — default "api" for Phase 1
-- Phase 2 adds automatic routing based on task complexity
+**Agent dispatch strategy**: Hybrid with configuration — supports both modes
+- **API dispatch** (default): Route through `pcg_router.rs` (HTTP/API calls) — simpler, cost-tracked automatically via VibeTransaction. Best for research, analysis, triage.
+- **Executor dispatch**: Spawn via executor service (CLI process) — more powerful, full git worktree isolation. Best for coding, multi-step tasks.
+- `flow_config` JSON stores `dispatch_mode: "api" | "executor" | "auto"` — default "api" for Phase 1
+- `"auto"` mode: Phase 2 adds automatic routing based on task complexity/FlowType
+- Both modes parse agent output into `AgentResponseEnvelope` for uniform handling
+
+**CRM Deal FSM prototype** (added in sprint per gap analysis):
+- `crm_deals.rs:move_deal_stage()` currently has NO stage ordering validation — any deal can move to any stage
+- Add `valid_stage_transitions()` to `CrmPipelineStage` model — validates stage ordering within pipeline
+- Same caller-aware guard pattern: agent-driven transitions strict, dashboard users permissive
+- Prototypes the FSM validation pattern alongside agent flow FSM
 
 **Scope note**: Full agent orchestration engine estimated at 2-3 weeks (per architecture-gaps-analysis.md). Phase 1 deliberately scopes to MVP: single-agent progression through phases with API dispatch. Multi-agent delegation, retry/circuit-break, and wide research orchestration deferred to Phase 2.
 
@@ -433,10 +467,10 @@ Extend existing feedback system (`crates/server/src/routes/feedback.rs`).
 
 Large feature branches risk merge conflicts and hide broken code. Ship to main incrementally via focused PRs that each leave main in a stable, deployable state. No PR should introduce half-built features visible to users.
 
-### PR #51: CI Hardening + Regressions
-**Items**: #1 (regressions), #2 (CI fixes), #3 (lint-staged)
-**Why safe for main**: All fixes/infrastructure — no new features. CI starts enforcing quality. Pre-commit hooks prevent formatting drift.
-**Gate**: All CI jobs pass after removing `continue-on-error`.
+### PR #51: CI Hardening + Regressions + Access Control
+**Items**: #1 (regressions + access control for contacts/pipelines), #2 (CI fixes + vite build), #3 (lint-staged)
+**Why safe for main**: All fixes/infrastructure — no new features. CI starts enforcing quality. Pre-commit hooks prevent formatting drift. Access control fixes are security-critical.
+**Gate**: All CI jobs pass after removing `continue-on-error`. All CRM endpoints have access checks.
 
 ### PR #52: Stability Fixes
 **Items**: #4 (cooldown race), #5 (graceful shutdown + worker trait + registry)
@@ -448,15 +482,10 @@ Large feature branches risk merge conflicts and hide broken code. Ship to main i
 **Why safe for main**: Populates a field that was always NULL. Dashboard starts showing data instead of $0. No schema changes, no new endpoints.
 **Gate**: Run an agent task → cost dashboard shows non-zero value.
 
-### PR #54: Agent Response Protocol + Clarification
-**Items**: #7 (response protocol), #8 (clarification status)
-**Why safe for main**: New types and one new enum variant. The `NeedsClarification` status is additive — no existing flows use it. New endpoint is additive (doesn't modify existing behavior). Migration adds a nullable column.
-**Gate**: `npm run generate-types:check` passes. Existing agent flow CRUD still works.
-
-### PR #55: Agent Flow Engine Phase 1
-**Items**: #9 (agent flow executor)
-**Why safe for main**: New background worker — **disabled by default** via feature flag (`ENABLE_AGENT_FLOW_ENGINE=1` env var). Engine only activates when explicitly enabled. This prevents accidental agent dispatch on main while allowing dogfood testing.
-**Gate**: With flag enabled: create flow → engine progresses through phases. Without flag: no behavior change.
+### PR #54: Agent Engine + Response Protocol + Clarification + Deal FSM
+**Items**: #7 (response protocol, merged with #9), #8 (clarification status), #9 (agent flow executor), CRM deal FSM prototype
+**Why safe for main**: Agent engine **disabled by default** via feature flag (`ENABLE_AGENT_FLOW_ENGINE=1` env var). Response types are additive. `NeedsClarification` status is a new enum variant — no existing flows use it. Deal FSM validation is agent-only (dashboard users bypass). Migration adds nullable columns.
+**Gate**: With flag enabled: create flow → engine progresses through phases. Without flag: no behavior change. `npm run generate-types:check` passes.
 
 ### PR #56: Dogfood Friction Logging
 **Items**: #10 (friction logging)
@@ -474,8 +503,8 @@ PR #56 (friction logging) → independent
 ```
 
 PRs #51, #52, #53, #56 can merge to main in any order.
-PR #54 merges after #51 (clean CI).
-PR #55 merges last (depends on #52 + #54).
+PR #54 merges after #52 (needs worker trait) + clean CI.
+**Note**: PR #55 removed — items #7 and #9 merged into PR #54.
 
 ---
 
@@ -535,6 +564,8 @@ FRONTEND_PORT=3000 npx playwright test --reporter=list
 | File | Action | Sprint Item |
 |------|--------|-------------|
 | `crates/server/src/routes/crm_deals.rs` | Modify — access control + DbUuid | #1 |
+| `crates/server/src/routes/crm_contacts.rs` | Modify — add access control to all 12 endpoints | #1 |
+| `crates/server/src/routes/crm_pipelines.rs` | Modify — add access control to all 13 endpoints | #1 |
 | ~~`frontend/src/pages/call-intake.tsx`~~ | ~~Modify — replace raw fetch~~ | ~~#1~~ (already uses `makeRequest`) |
 | `.github/workflows/ci.yml` | Modify — remove continue-on-error | #2 |
 | All Rust crates | Modify — `cargo fmt --all` | #2 |
@@ -544,7 +575,9 @@ FRONTEND_PORT=3000 npx playwright test --reporter=list
 | `crates/server/src/routes/data_source_workflows.rs` | Modify — update cooldown callers | #4 |
 | `crates/server/src/main.rs` | Modify — graceful shutdown + worker registry | #5, #9 |
 | `crates/server/src/workers/mod.rs` | Create — BackgroundWorker trait + registry | #5 |
-| `crates/db/src/models/token_usage.rs` | Modify — populate cost_cents | #6 |
+| `crates/server/src/routes/vibe_usage.rs` | Create — vibe usage aggregation endpoints | #6 |
+| `frontend/src/pages/ai-usage.tsx` | Modify — redirect to vibe-usage API | #6 |
+| `crates/db/src/models/crm_deal.rs` | Modify — add deal stage FSM validation | #9 |
 | `crates/db/src/models/agent_response.rs` | Create — response envelope types | #7 |
 | `crates/db/src/models/agent_flow.rs` | Modify — NeedsClarification status | #8 |
 | `crates/server/src/routes/agent_flows.rs` | Modify — clarification endpoint | #8 |
@@ -552,6 +585,30 @@ FRONTEND_PORT=3000 npx playwright test --reporter=list
 | `crates/server/src/routes/feedback.rs` | Modify — friction fields | #10 |
 | `frontend/src/components/feedback/` | Create/modify — friction form | #10 |
 | `crates/db/migrations/2026031900000X_*.sql` | Create — new migrations | #8, #10 |
+
+---
+
+## Gap Analysis Findings (2026-03-19 pre-implementation audit)
+
+8 parallel research agents audited the codebase against the sprint plan. Key findings:
+
+### Scope corrections
+1. **crm_deals.rs access control was already complete** — all 20 handlers protected. Real gaps: `crm_contacts.rs` (12 endpoints, ZERO checks) and `crm_pipelines.rs` (13 endpoints, ZERO checks). Retargeted item #1.
+2. **Cost bridge misdirected** — plan said "populate cost_cents in TokenUsage::create()". Reality: `TokenUsage::create()` is rarely called; all billing flows through `vibe_transactions`. Redirected dashboard to read from source of truth instead of patching dead table.
+3. **Background task count was 14, actual is 16** — missed PR Monitor Service (stored JoinHandle, never awaited) and APN Node subprocess (detached, no shutdown). Updated item #5.
+4. **Items #7 and #9 merged** — response protocol and engine are tightly coupled; building separately creates design-in-a-vacuum risk.
+
+### New items added
+- **1d/1e**: Access control for crm_contacts.rs + crm_pipelines.rs (security-critical)
+- **2f**: `vite build` step in CI (frontend build failures undetected)
+- **5d**: APN Node subprocess cleanup on shutdown
+- **CRM deal FSM prototype**: `move_deal_stage()` has no ordering validation — prototype FSM alongside agent flow FSM
+
+### Confirmed (no changes needed)
+- Item #3 (lint-staged): stash exists as described, ready to apply
+- Item #4 (cooldown race): exact check-then-act race confirmed at lines 172/249 in webhook handler
+- Item #8 (NeedsClarification): existing FlowStatus enum ready for new variant
+- Item #10 (friction logging): current feedback system extensible via JSON metadata, no schema migration needed
 
 ---
 
