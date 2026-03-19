@@ -317,22 +317,16 @@ export default function CallIntakePage() {
                           onClick={async () => {
                             try {
                               const dealName = [item.from_name, item.company_name].filter(Boolean).join(' — ') || 'New Deal';
-                              const res = await fetch('/api/crm/deals', {
+                              const { makeRequest } = await import('@/lib/api/client');
+                              await makeRequest('/api/crm/deals', {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('session_id') ?? ''}` },
-                                credentials: 'include',
                                 body: JSON.stringify({
-                                  organization_id: user?.home_organization_id ?? (user as any)?.organizations?.[0]?.id,
-                                  crm_contact_id: null,
+                                  organization_id: user?.home_organization_id,
                                   name: dealName,
                                   description: item.call_summary ?? item.subject ?? '',
                                 }),
                               });
-                              if (res.ok) {
-                                toast.success('Deal created — check the Pipeline');
-                              } else {
-                                toast.error('Failed to create deal');
-                              }
+                              toast.success('Deal created — check the Pipeline');
                             } catch { toast.error('Failed to create deal'); }
                           }}>
                           <Briefcase className="w-3 h-3" /> Create Deal

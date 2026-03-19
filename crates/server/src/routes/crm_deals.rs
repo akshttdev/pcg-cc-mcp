@@ -213,11 +213,20 @@ async fn list_enriched_deals(
 
 /// GET /crm/deals/kanban/:pipeline_id - Get Kanban board data
 async fn get_kanban_data(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(pipeline_id): Path<String>,
 ) -> Result<Json<ApiResponse<KanbanBoardData>>, ApiError> {
     let pool = &deployment.db().pool;
     let pipeline_id = DbUuid::parse(&pipeline_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+
+    // Org authorization: load pipeline to get its org_id
+    let pipeline = db::models::crm_pipeline::CrmPipeline::find_by_id(pool, &pipeline_id).await
+        .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+    if let Some(ref org_id) = pipeline.organization_id {
+        require_org_membership(&access_context, pool, org_id.as_str()).await?;
+    }
+
     let kanban_data = CrmDeal::get_kanban_data(pool, &pipeline_id).await?;
     Ok(Json(ApiResponse::success(kanban_data)))
 }

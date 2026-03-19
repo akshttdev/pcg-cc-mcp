@@ -3,8 +3,8 @@
 -- Populated during discovery/research for client companies.
 
 CREATE TABLE IF NOT EXISTS company_brand_profiles (
-    id                      BLOB PRIMARY KEY NOT NULL DEFAULT (randomblob(16)),
-    company_id              BLOB NOT NULL UNIQUE REFERENCES companies(id) ON DELETE CASCADE,
+    id                      TEXT PRIMARY KEY NOT NULL,
+    company_id              TEXT NOT NULL UNIQUE REFERENCES companies(id) ON DELETE CASCADE,
 
     -- Identity
     tagline                 TEXT,
