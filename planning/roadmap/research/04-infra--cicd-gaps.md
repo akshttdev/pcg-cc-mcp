@@ -1,6 +1,6 @@
-Perfect. Now let me compile my comprehensive analysis.
-
 ## Infrastructure, CI/CD, and Deployment Readiness Analysis
+
+> **Last verified**: 2026-03-19 (codebase verification pass — all counts and claims checked against actual code)
 
 ### 1. CI/CD Pipelines (.github/workflows/)
 
@@ -27,13 +27,15 @@ Perfect. Now let me compile my comprehensive analysis.
   - Draft/prerelease mode
 
 **GAPS:**
-- Clippy and tests use `continue-on-error: true` — failures don't block merges (concerning for production)
-- No integration test suite in CI
+- **⚠️ P0: Clippy and tests use `continue-on-error: true`** — failures don't block merges. This means broken code can be merged to main without any CI gate. This is the single most critical CI gap and must be fixed before Stage 0 (Dogfood).
+- No integration test suite in CI (backend API contract tests)
 - No E2E test execution in CI pipeline (Playwright tests not run automatically)
+- No frontend unit test step (no Vitest/Jest configured)
 - No artifact signing for release binaries
 - No automated deployment to production (manual step required)
 - No SBOM (Software Bill of Materials) generation
-- No license compliance scanning
+- No license compliance scanning (critical given MIT/Apache-2.0/BSD-only policy — see Report 08)
+- No `cargo-chef` or layer caching for faster CI builds (full rebuild every time)
 
 ---
 
@@ -106,7 +108,7 @@ Perfect. Now let me compile my comprehensive analysis.
 - System resource monitoring (docker stats)
 
 **Makefile** (convenience wrapper):
-- 40+ targets for common operations
+- 26 targets for common operations
 - Setup, deploy, start, stop, restart, status
 - Logs (app, nginx, apn, cloudflared)
 - Backup/update/clean commands
@@ -178,7 +180,7 @@ Perfect. Now let me compile my comprehensive analysis.
 **Migration System: sqlx with offline mode**
 
 **Statistics:**
-- **215 total migrations** in `/crates/db/migrations/`
+- **215 total migrations** in `/crates/db/migrations/` (verified 2026-03-19)
 - Latest migrations (sample):
   - 20250617183714: init.sql (baseline schema)
   - 20250620212427: execution_processes
@@ -299,17 +301,22 @@ Perfect. Now let me compile my comprehensive analysis.
 2. **Manual health checks:**
    - Makefile target: `make health` (curls endpoints)
 
+**EXISTING (previously missed):**
+- ✅ **Sentry error tracking** is integrated on BOTH backend and frontend:
+  - Backend: `sentry_tracing::SentryLayer` in `crates/utils/src/sentry.rs`, wired into tracing subscriber in `main.rs`
+  - Frontend: `@sentry/react` with `Sentry.init()` in `main.tsx` (DSN configured), `SentryRoutes` wrapping React Router
+  - `update_sentry_scope()` called during deployment startup for context enrichment
+
 **GAPS:**
 - No metrics export (Prometheus metrics endpoint)
-- No distributed tracing (Jaeger, Zipkin)
-- No error tracking/reporting (Sentry, Rollbar)
+- No distributed tracing (Jaeger, Zipkin, OpenTelemetry)
 - No APM (Application Performance Monitoring)
 - No log aggregation (logs lost if container restarts)
 - No alerting (alert rules, slack notifications, PagerDuty)
 - No uptime monitoring (Ping, synthetic checks)
 - No capacity planning/forecasting
 - Ollama and Chatterbox logs not persisted (lost on restart)
-- No request tracing context propagation
+- No request tracing context propagation (Sentry provides error tracking, not request tracing)
 
 ---
 
@@ -355,7 +362,7 @@ Perfect. Now let me compile my comprehensive analysis.
 | **Backups** | GOOD | db-backup service does daily backups with retention. No backup validation. |
 | **Database Migrations** | GOOD | sqlx handles migrations, but no zero-downtime strategy. |
 | **Secrets Management** | POOR | All secrets in .env file. No vault, no encryption at rest. |
-| **Monitoring/Alerts** | POOR | Logging only to stdout. No metrics, no alerting, no tracing. |
+| **Monitoring/Alerts** | PARTIAL | Sentry error tracking (backend + frontend). No metrics export, no alerting rules, no distributed tracing. |
 | **Load Balancing** | MISSING | Single container. No horizontal scaling. |
 | **Auto-Recovery** | PARTIAL | restart_policy on docker-compose set to on-failure with exponential backoff. |
 | **Data Encryption** | POOR | No encryption at rest (SQLite file unencrypted), TLS optional. |
@@ -418,8 +425,8 @@ Perfect. Now let me compile my comprehensive analysis.
 - APN node binary available but AUTO_START_APN=false in Docker by default
 
 **GAPS:**
-- Mesh networking is optional/stubbed — production readiness unclear
-- APN bridge server minimal (echo server, not full protocol)
+- Mesh networking is optional — production readiness unclear for multi-node deployment
+- APN bridge is a **functional NATS relay** (not just an echo server as previously reported) — it bridges HTTP requests to NATS messaging for NAT traversal, but full mesh protocol (gossipsub, kad) is in the Rust `alpha-protocol-core` crate, not the Python bridge
 - No mesh consensus mechanism documented
 - No Byzantine fault tolerance mechanisms
 - Reward distribution not tested at scale
@@ -500,4 +507,32 @@ Perfect. Now let me compile my comprehensive analysis.
 - Configuration server
 - Service mesh
 
-**Overall:** **70/100 — Production-Capable But Not Production-Hardened.** The application can run in production with the existing setup, but enterprise-grade reliability, observability, and security features are missing.
+**Overall:** **72/100 — Production-Capable But Not Production-Hardened.** The application can run in production with the existing setup (Sentry provides error visibility), but enterprise-grade reliability, observability, and security features are missing.
+
+---
+
+### 13. VERIFIED CRITICAL GAPS (Cross-Referenced from Research Reports 05-25)
+
+> These gaps were identified by cross-referencing findings from all 25 research reports against the actual infrastructure.
+
+| Gap | Impact | Blocks Stage | Priority | Reference |
+|-----|--------|-------------|----------|-----------|
+| CI `continue-on-error: true` on clippy/tests | Broken code can merge to main | Stage 0 (Dogfood) | **P0** | This report |
+| No secrets management (Vault, SOPS) | Credentials in `.env` files | Stage 1 (Pilot) | P0 | Report 08 (Legal) |
+| No Prometheus metrics endpoint | No quantitative observability | Stage 1 (Pilot) | P1 | Report 16 (Observability) |
+| No distributed tracing (OTEL) | Can't trace cross-service requests | Stage 2 (Growth) | P2 | Report 16 (Observability) |
+| No zero-downtime deployment | Service interruption on deploy | Stage 1 (Pilot) | P1 | Report 05 (Deployment) |
+| No `cargo-chef` / Docker layer caching | Slow CI builds (~15-20 min) | Stage 0 (Dogfood) | P2 | This report |
+| No SBOM generation | Can't audit supply chain | Stage 1 (Pilot) | P1 | Report 08 (Legal) |
+| No license compliance scanning | GPL/AGPL deps could violate policy | Stage 1 (Pilot) | P1 | Report 08 (Legal) |
+| No tenant isolation at DB level (RLS) | Org data leakage risk | Stage 2 (Growth) | P1 | Report 08 (Legal) |
+| No automated deployment pipeline | Manual docker-compose up | Stage 1 (Pilot) | P1 | Report 05 (Deployment) |
+| No E2E tests in CI | Regressions not caught pre-merge | Stage 0 (Dogfood) | P1 | Report 03 (Frontend) |
+| No frontend unit tests in CI | Hook/utility bugs uncaught | Stage 0 (Dogfood) | P1 | Report 03 (Frontend) |
+
+### Corrected Assessment (from initial report)
+
+- **Sentry**: Previously listed as "missing" — it IS integrated on both backend (`sentry-tracing` crate) and frontend (`@sentry/react`). Score adjusted upward.
+- **APN Bridge**: Previously described as "echo server" — it is a functional NATS relay for NAT traversal. Score adjusted.
+- **Makefile**: 26 targets (not "40+")
+- **Migration count**: 215 (verified)

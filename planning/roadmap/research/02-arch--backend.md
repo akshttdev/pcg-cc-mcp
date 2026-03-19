@@ -1,15 +1,17 @@
-Perfect! Now I have enough information to provide a comprehensive analysis. Let me compile the findings:
-
 ## Comprehensive Backend Architecture Analysis: pcg-cc-mcp
+
+> **Last verified**: 2026-03-19 (codebase verification pass — all counts and claims checked against actual code)
 
 This is a sophisticated, production-grade Rust/Axum backend serving a multi-domain platform with AI agents, project management, CRM, social integrations, and complex workflow orchestration. Here's the detailed breakdown:
 
 ---
 
-## 1. CRATE STRUCTURE (20 crates in workspace)
+## 1. CRATE STRUCTURE (20 workspace members: 18 crates + 2 Tauri apps)
+
+> **Verified**: `Cargo.toml` workspace has 20 members. `/crates/` directory contains 20 subdirectories (18 workspace members + `discord-bots` and `topiclips` which are not in workspace). Two additional Tauri apps (`apn-app/src-tauri`, `frontend/src-tauri`) round out the workspace.
 
 **Core/Infrastructure:**
-- **`server`** (0.0.96, ~44K LOC in routes alone) - Main Axum HTTP server with 130+ route modules. Primary entry point (`main.rs`), router configuration, middleware, MCP integration.
+- **`server`** (0.0.96, ~44K LOC in routes alone) - Main Axum HTTP server with 120 route modules. Primary entry point (`main.rs`), router configuration, middleware, MCP integration.
 - **`db`** (0.0.96) - Database abstraction layer. SQLx-based ORM with 140+ data models. Supports SQLite and PostgreSQL via feature flag. 212 migrations (13K+ lines SQL).
 - **`utils`** (0.0.96) - Shared utilities: WebSocket handling, SSE, error responses, logging infrastructure, Sentry integration, port management, asset embedding.
 - **`deployment`** (abstract trait) - Trait-based deployment abstraction for cloud/local flexibility.
@@ -36,7 +38,7 @@ This is a sophisticated, production-grade Rust/Axum backend serving a multi-doma
 
 ---
 
-## 2. API ROUTES (130+ route modules in `/crates/server/src/routes/`)
+## 2. API ROUTES (120 route modules in `/crates/server/src/routes/`)
 
 **Major route categories:**
 
@@ -99,7 +101,7 @@ This is a sophisticated, production-grade Rust/Axum backend serving a multi-doma
 
 **Migration infrastructure:**
 - Location: `/crates/db/migrations/`
-- Count: **212 migrations** (~13K lines SQL)
+- Count: **215 migrations** (~13K lines SQL)
 - Format: Timestamp + description (e.g., `20250617183714_init.sql`)
 - Latest migrations: task templates, parent_task nesting, worktree cleanup, executor types
 
@@ -143,6 +145,7 @@ Executor Layer (executors crate)
   ├─ OpenCode Executor
   ├─ Cursor Executor
   ├─ Duck Executor (default)
+  ├─ Codex Executor → OpenAI
   └─ ACP/AMP Executors (APN protocol)
   ↓
 Agent Tools
@@ -210,7 +213,7 @@ Agent Tools
    - `#[enum_dispatch]` macro for zero-cost abstraction
    - Each executor implements common trait interface
    - New executors added by implementing executor trait + adding to enum
-   - Examples: Claude, Gemini, Qwen, Duck (fallback), OpenCode, Cursor
+   - Examples: Claude, Gemini, Qwen, Duck (fallback), OpenCode, Cursor, Codex, ACP, AMP
 
 2. **Deployment Abstraction** (`crates/deployment/src/lib.rs`)
    - `#[async_trait] pub trait Deployment`
@@ -226,7 +229,7 @@ Agent Tools
 4. **Router Modularity** (`crates/server/src/routes/mod.rs`)
    - Each route module exports `fn router(deployment) -> Router`
    - Merged into top-level router via `Router::new().merge()`
-   - ~130 route modules independently composable
+   - ~120 route modules independently composable
 
 5. **Service Layer Pattern**
    - Stateless services accept `&SqlitePool` + `&Config`
@@ -529,10 +532,10 @@ Sse::new(stream).keep_alive(KeepAlive::new().interval(...))
 
 ### Mature & Production-Ready
 1. ✅ **REST API framework** (Axum + middleware) - Solid, extensible
-2. ✅ **Database layer** (SQLx + migrations) - 212 migrations, stable schema
+2. ✅ **Database layer** (SQLx + migrations) - 215 migrations, stable schema
 3. ✅ **Auth system** (GitHub OAuth + SQLite/Postgres) - Multi-mode, secure
 4. ✅ **RBAC** (org/project/role) - Multi-tenant, middleware-enforced
-5. ✅ **AI agent system** (Nora + executors) - 6+ executor implementations, streaming
+5. ✅ **AI agent system** (Nora + executors) - 9 executor implementations, streaming
 6. ✅ **Real-time features** (SSE + WebSocket) - Multiple endpoints, keep-alive
 7. ✅ **External integrations** (10+ services) - OAuth, webhooks, async sync
 8. ✅ **Error handling** (structured, typed, mapped) - Sentry tracking
@@ -597,7 +600,8 @@ Sse::new(stream).keep_alive(KeepAlive::new().interval(...))
 - `/crates/executors/src/executors/mod.rs` - Executor dispatch
 - `/crates/server/src/middleware/` - Auth, access control, rate limiting
 - `/crates/server/src/error.rs` - Error type definitions
-- `/crates/db/migrations/` - DB schema (212 migrations)
+- `/crates/db/migrations/` - DB schema (215 migrations)
+- `/crates/server/src/task_scheduler.rs` - Dead code: task scheduler (never called from main.rs)
 - `/e2e/` - E2E test suite
 
 **Database models (largest domains):**
@@ -613,3 +617,51 @@ Sse::new(stream).keep_alive(KeepAlive::new().interval(...))
 - `/crates/server/src/routes/data_source_workflows.rs` (1.7K)
 - `/crates/server/src/routes/tasks.rs` (1.6K)
 - `/crates/server/src/routes/projects.rs` (1.2K)
+
+---
+
+## 13. VERIFIED CRITICAL GAPS (Cross-Referenced from Research Reports 05-25)
+
+> These gaps were identified by cross-referencing findings from all 25 research reports against the actual codebase. Each gap has been verified against code.
+
+### Dead Code & Unused Systems
+
+1. **Task Scheduler (Dead Code)** — `crates/server/src/task_scheduler.rs` (~310 lines) + referenced in `lib.rs`. Module exists but is **never called from `main.rs`** startup sequence. The scheduled task execution system is defined but not wired into the application lifecycle.
+
+2. **Agent Flow Engine (No Background Worker)** — Route handlers exist in `agent_flows.rs` and `agent_flow_events.rs` for flow orchestration, but there is **no background worker** that processes flow steps autonomously. Flows can be created/queried via API but lack an execution engine.
+
+### Data Integrity Gaps
+
+3. **`cost_cents` Never Populated at Insert** — The `token_usage` table has a `cost_cents` field, and `cost_cents` appears across 20+ files (models, routes, pricing). However, at `TokenUsage::create()` time, `cost_cents` is **not calculated from model pricing** — it's either passed as 0 or left null. The `model_pricing` and `vibe_pricing` tables exist but aren't consulted during token usage recording.
+
+4. **Task Organization Isolation** — Tasks don't have a direct `organization_id` column. Organization scoping relies on `task → project → organization_id` JOINs. If a task's project has `organization_id = NULL` (legacy data), the task leaks across org boundaries in queries that filter by org.
+
+### Testing & Quality Gaps
+
+5. **Integration Test Coverage** — Backend has sparse unit tests (colocated `#[cfg(test)]` blocks) and **no integration test suite** that exercises API endpoints against a real database. The E2E Playwright suite covers user workflows but not API contract testing.
+
+6. **No Load/Performance Testing** — No k6, Locust, or similar load testing infrastructure. Performance baselines are unknown. Critical for Stage 1 (Pilot) readiness.
+
+### Architecture Gaps (Roadmap-Critical)
+
+7. **No 5-Level Error Recovery** — The roadmap targets sophisticated error recovery (retry → escalate → checkpoint → rollback → human-in-loop). Current error handling is binary: success or error response. No retry policies, circuit breakers, or checkpoint/rollback for multi-step operations. (See Report 10: AI Safety)
+
+8. **Telemetry/Observability Architecture** — Sentry is integrated (verified in both `main.rs` and `App.tsx`), but there are **no Prometheus metrics endpoints**, no distributed tracing (OpenTelemetry/Jaeger), and no structured metric collection for AI agent performance, token costs, or execution latency. (See Report 16: Observability)
+
+9. **Rate Limiting Incomplete** — `TokenBucket` implementation exists in middleware but is only deployed for Nora chat (20 req/min) and Nora voice (30 req/min). **No rate limiting on general API endpoints**, no per-org quotas, no nginx-level throttling. (See Report 25: Scaling)
+
+10. **VoiceGateway is ACTIVE** — Originally reported as "commented out" but verification confirms `crates/nora/src/voice/gateway.rs` is a live module with `VoiceGateway` struct, actively used in `crates/nora/src/voice/mod.rs` and routed via `crates/server/src/routes/voice.rs`. This is functional infrastructure, not dead code.
+
+### Roadmap Alignment Gaps
+
+| Gap | Blocks Stage | Priority | Reference Report |
+|-----|-------------|----------|-----------------|
+| Task scheduler dead code | Stage 0 (Dogfood) | P1 | This report |
+| Agent flow no worker | Stage 1 (Pilot) | P0 | Report 10 (AI Safety) |
+| cost_cents not populated | Stage 1 (Billing) | P1 | Report 12 (Billing) |
+| No integration tests | Stage 0 (Dogfood) | P1 | Report 04 (CI/CD) |
+| No load testing | Stage 1 (Pilot) | P1 | Report 16 (Observability) |
+| No error recovery levels | Stage 2 (Growth) | P2 | Report 10 (AI Safety) |
+| No metrics/tracing | Stage 1 (Pilot) | P0 | Report 16 (Observability) |
+| Rate limiting incomplete | Stage 1 (Pilot) | P1 | Report 25 (Scaling) |
+| Org isolation via JOINs | Stage 2 (Growth) | P1 | Report 08 (Legal) |

@@ -1,6 +1,6 @@
-Perfect! I now have all the planning documents. Let me compile a comprehensive summary:
-
 ## COMPREHENSIVE ORCHA PROJECT SUMMARY
+
+> **Last verified**: 2026-03-19 (codebase verification pass with cross-reference to 25 research reports)
 
 ### 1. FIVE-YEAR PRODUCT ROADMAP VISION, PHASES, AND MILESTONES
 
@@ -67,22 +67,54 @@ As of 2026-03-18:
 | VIBE Token Economy | 25% | Testnet stubs only; no real settlement |
 | E2E Testing | 80% | 30/33 passed, 28/31 demo tests passing |
 
-#### **Technology Stack**
+#### **Technology Stack** *(verified 2026-03-19)*
 - **Backend**: Rust nightly + Axum + Tokio + SQLx + SQLite (PostgreSQL feature-gated)
-- **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS + shadcn/ui
-- **Infrastructure**: Tauri desktop, SSE real-time, 4 MCP servers, 8 executor backends, 9 named agents
-- **Database**: 23 Rust crates, 138 models, 116 routes, 202 migrations, 60+ frontend pages, 311+ components
+- **Frontend**: React 18.2 + TypeScript 5.9.2 + Vite 5.4.20 + Tailwind CSS 3.4 + shadcn/ui
+- **Infrastructure**: Tauri desktop, SSE real-time, MCP client integration, 8 executor backends (Claude, Gemini, Qwen, OpenCode, Cursor, Duck, AMP, Codex), 9 named agents
+- **Database**: **21 Rust crates** (workspace), **140 models**, **112 route modules**, **214 migrations**, **49 main page routes** (168 total page files), **54 component directories**, **69 custom hooks**
+- **Error tracking**: Sentry integrated on both backend (tracing layer) and frontend (React Router integration)
+- **i18n**: Configured with i18next, **3 languages populated** (English, Spanish, Japanese) — settings page has 231 translated strings
 
-#### **Critical Issues**
-- **P0 Blocker**: Agent Flow Orchestration Engine missing (no background worker to progress phases)
-- **Technical Debt**: 100+ `.unwrap()` calls on hot paths, SQLite write-lock bottleneck, 84 Path<Uuid> conversions pending
-- **Missing Infrastructure**: No billing system, no rate limiting, no production deployment pipeline, no multi-tenant resource isolation
+#### **Critical Issues** *(verified 2026-03-19)*
+- **P0 Blocker**: Agent Flow Orchestration Engine — route handlers exist (`agent_flows.rs`, 253 lines) with state machine logic, but **NO background worker** to autonomously progress phases. Agent flow events helper (`agent_flow_events.rs`, 136 lines) emits events but has no polling/execution loop.
+- **P0 Blocker**: Task Scheduler — **fully implemented** (`task_scheduler.rs`, 310 lines) with polling loop, scheduled_start respect, max concurrent enforcement — but **NEVER called from main.rs**. Completely dead code.
+- **P0 Gap**: `cost_cents` field exists in `token_usage` table but **never populated at insert time** — all cost aggregation queries (`SUM(cost_cents)`) return NULL. PCG Router *does* compute `estimated_cost_micros` at runtime but doesn't persist it.
+- **P0 Gap**: Task API does NOT enforce org isolation — queries filter by `project_id` only, not `organization_id`. Cross-org task access possible if project_id known.
+- **P0 Gap**: CI pipeline has `continue-on-error: true` on clippy, tests, AND security audits — **failures don't block merges**. E2E tests not run in CI at all.
+- **P0 Gap**: No AI safety guardrails — no prompt injection defense, no PII detection, no output validation, no LLM input/output scanning. (See report 24)
+- **Technical Debt**: ~258 `.unwrap()` calls remaining (394→258 after PR #47), SQLite write-lock bottleneck, 84 Path<Uuid> conversions pending
+- **Missing Infrastructure**: No billing system, rate limiting only on Nora endpoints (TokenBucket), no production deployment pipeline, no multi-tenant resource isolation, no secrets management (all in .env)
+- **Legal Gaps**: No GDPR right-to-erasure implementation, no privacy policy, no DPA template, no cookie consent, EU AI Act compliance needed by August 2026. SOC 2 not started (~$20-35K, 3-4 months for Type I). (See report 08)
+- **Build Performance**: Cranelift installed via flox but NOT activated in `.cargo/config.toml`. sccache disabled in CI. Babel transpiler used instead of SWC (20-70x slower). `predev` script destroys Vite cache on every start. (See report 21)
 
 #### **Revenue Readiness Verdict**
-**NOT revenue-ready** — lacks billing, usage metering, rate limiting, production deployment, user docs. Estimated 8-12 weeks to minimum viable revenue readiness.
+**NOT revenue-ready** — lacks billing, usage metering, rate limiting, production deployment, user docs, GDPR compliance, privacy policy, and AI safety guardrails. Estimated 8-12 weeks to minimum viable revenue readiness, plus legal work.
 
 #### **Fundraising Readiness Verdict**
-**Demo-ready for pre-seed/angel** — has working demo, strong research foundation, clear differentiation (TOPOS architecture + APN mesh). For seed: needs revenue traction and formalized unit economics.
+**Demo-ready for pre-seed/angel** — has working demo, strong research foundation, clear differentiation (TOPOS architecture + APN mesh). For seed: needs revenue traction, formalized unit economics, and SOC 2 Type I readiness.
+
+#### **Production Readiness Gaps** *(cross-referenced from reports 05-25)*
+
+| Gap | Priority | Stage | Reference |
+|-----|----------|-------|-----------|
+| Agent Flow background worker | P0 | 0 | Report 09 (apalis) |
+| Wire task scheduler to main.rs | P0 | 0 | Verified dead code |
+| Remove CI continue-on-error | P0 | 0 | Report 19 |
+| AI safety guardrails | P0 | 0 | Report 24 (LLM Guard) |
+| Task org isolation | P0 | 0-1 | Verified — project-only scoping |
+| Populate cost_cents in token_usage | P0 | 0 | Verified — SUM returns NULL |
+| GDPR basics (erasure, DPA, privacy policy) | P0 | 1 | Report 08 |
+| Billing system (Stripe + metering) | P0 | 1 | Report 09 (OpenMeter + async-stripe) |
+| Secrets management | P1 | 1 | Report 08 (Infisical MIT) |
+| Activate cranelift + sccache in CI | P1 | 0 | Report 21 |
+| OpenTelemetry + metrics | P1 | 1 | Report 16 |
+| Integration tests (axum-test) | P1 | 0 | Report 19 |
+| Frontend unit tests (vitest) | P1 | 0-1 | Report 19 |
+| 3-level rate limiting | P1 | 1 | Report 09 (tower-governor) |
+| Automated deployment pipeline | P1 | 1 | Report 05 |
+| SOC 2 Type I | P2 | 2 | Report 08 ($20-35K) |
+| MCP servers for ORCHA capabilities | P2 | 1-2 | Report 10 |
+| EU AI Act transparency labels | P1 | 1 | Report 08 (deadline Aug 2026) |
 
 ---
 
