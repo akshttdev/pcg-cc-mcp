@@ -143,15 +143,15 @@ During this sprint, add `validator` to `Cargo.toml` and apply `#[derive(Validate
 - Fix: deny access when `organization_id` is `None` — return 403 "Pipeline has no organization scope"
 - This is a security fix, not a feature
 
-**1b. Fix `uuid::Uuid` in new code** (`crm_deals.rs` ~line 693)
-- `trigger_deep_research_pass2` uses `uuid::Uuid::new_v4()` and `uuid::Uuid::parse_str()`
-- Replace with `DbUuid::new().to_uuid()` and `DbUuid::parse()`
-- Per rust-standards.md: "NEVER use uuid::Uuid in route handlers"
+**1b. Fix `uuid::Uuid` in new code** (`crm_deals.rs`)
+- 6 instances of `uuid::Uuid` found. Most are for BLOB column binding (lines 895, 1011, 1191-1195) — these need `DbUuid` but may require model-layer changes since BLOB columns expect `uuid::Uuid`.
+- Per rust-standards.md: "NEVER use uuid::Uuid in route handlers" — route handler code should use `DbUuid::parse()`, push BLOB conversion to model/consumer layer.
+- **Scope for this sprint**: Fix route-handler-level usage. BLOB-binding instances deferred to DbUuid Phase C (backlog).
 
-**1c. Fix raw `fetch()` in call-intake.tsx**
-- Replace `fetch('/api/crm/deals', ...)` with `crmDealsApi.createDeal()`
-- Remove `localStorage.getItem('session_id')` manual auth
-- Remove `(user as any)?.organizations?.[0]?.id` cast
+**1c. ~~Fix raw `fetch()` in call-intake.tsx~~** — RESOLVED
+- Exploration found `call-intake.tsx` already uses `makeRequest` (dynamic import), not raw `fetch()`.
+- Uses `callIntakeApi` and `reportsApi` domain modules correctly.
+- **No fix needed** — remove from sprint scope.
 
 ### 2. Fix CI Pipeline [HIGH — Day 1-2]
 **Effort**: 1.5 days | **Parallelizable**: Yes (assign to different dev)
@@ -160,7 +160,7 @@ During this sprint, add `validator` to `Cargo.toml` and apply `#[derive(Validate
 **2b. Fix clippy errors** — `discord-bots` (29), `utils` (23), `pcg-cli` (65). Use `#![allow(clippy::uninlined_format_args)]` at crate root for bulk non-critical lints.
 **2c. Fix `alpha-protocol-core` test compile errors** — 2 borrow checker issues in test code
 **2d. Fix ESLint** — `eslint --fix` for unused disable directives (62 errors)
-**2e. Remove `continue-on-error: true`** from `.github/workflows/ci.yml` lines 48, 65. Keep on security audits (advisory only).
+**2e. Remove `continue-on-error: true`** from `.github/workflows/ci.yml` lines 48, 65 (clippy + tests). Keep on lines 119, 129 (security audits — advisory only).
 
 ### 3. Apply Lint-Staged Setup [QUICK WIN — Day 1]
 **Effort**: 0.5 days
@@ -200,8 +200,22 @@ Add drain timeout (30s) via `tokio::time::timeout` to prevent hanging on long-ru
 
 **5b. Shutdown registry** — new `crates/server/src/workers/mod.rs`
 - `ShutdownRegistry` with root CancellationToken that cascades to children
-- Wire existing tokens: `sovereign_stack_shutdown`, `schedule_shutdown`
-- Register all background tasks (13+ spawned in main.rs)
+- Wire existing tokens: `sovereign_stack_shutdown` (line 178), `schedule_shutdown` (line 348) — both created but NEVER signaled
+- Register all 14 background tasks (11 in main.rs + 3 in route files):
+  - Line 147: file search cache (one-time)
+  - Line 161: sovereign storage sync
+  - Line 183: sovereign stack scraper (has token, unused)
+  - Line 211: pulse NATS consumer
+  - Line 226: APN data service
+  - Line 249: auto-start APN node (one-time)
+  - Line 307: APN peer cleanup (60s)
+  - Line 360: VIBE deposit watcher (30s)
+  - Line 409: VIBE withdrawal executor (60s)
+  - Line 501: meeting stale-session cleanup (120s)
+  - Line 345: `spawn_automation_loop` (3600s) — no token
+  - Line 349: `spawn_workflow_schedule_loop` (300s) — **only task with working shutdown**
+  - Line 355: `spawn_oss_listener` (3600s) — no token
+  - Line 575: browser opener (one-time, dev only)
 
 **5c. Background worker trait** (Arch improvement A)
 - Extract shared `BackgroundWorker` trait pattern
@@ -231,7 +245,7 @@ Add drain timeout (30s) via `tokio::time::timeout` to prevent hanging on long-ru
 ### 8. Clarification as First-Class Status (S0-04) [FOUNDATION — Day 4]
 **Effort**: 0.5 days | **Depends on**: #7
 
-- Add `NeedsClarification` to `FlowStatus` enum in `agent_flow.rs`
+- Add `NeedsClarification` as 8th variant to `FlowStatus` enum in `agent_flow.rs` (existing: Planning, Executing, Verifying, Completed, Failed, Paused, AwaitingApproval)
 - Migration: add `clarification_request` TEXT column to `agent_flows`
 - New endpoint: `POST /agent-flows/{id}/respond-clarification` — stores answer, resumes flow
 - Frontend: render clarification question with input form when flow is in this status
@@ -418,7 +432,7 @@ FRONTEND_PORT=3000 npx playwright test --reporter=list
 | File | Action | Sprint Item |
 |------|--------|-------------|
 | `crates/server/src/routes/crm_deals.rs` | Modify — access control + DbUuid | #1 |
-| `frontend/src/pages/call-intake.tsx` | Modify — replace raw fetch | #1 |
+| ~~`frontend/src/pages/call-intake.tsx`~~ | ~~Modify — replace raw fetch~~ | ~~#1~~ (already uses `makeRequest`) |
 | `.github/workflows/ci.yml` | Modify — remove continue-on-error | #2 |
 | All Rust crates | Modify — `cargo fmt --all` | #2 |
 | `crates/alpha-protocol-core/` | Modify — fix compile errors | #2 |
