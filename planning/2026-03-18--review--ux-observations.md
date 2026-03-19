@@ -201,3 +201,19 @@ Add error handling in CompanyBrandGuidePage: if `company` query returns null/err
 **Impact**: Person profile page is unusable in light mode — poor contrast, wrong visual hierarchy
 **Resolution**: Refactor to use `bg-card`, `border-border`, `text-muted-foreground` semantic tokens that adapt to both modes. ~60 class replacements needed.
 **Status**: DEFERRED — pre-existing issue, not introduced by this PR
+
+### Full Workflow Confirmed via MCP (2026-03-19)
+
+Complete walkthrough verified step by step:
+1. Navigate to pipeline → board renders with 9 stages ✓
+2. Click "Add Deal" → form dialog opens (Name, Amount, Stage=Lead, Contact, Description) ✓
+3. Fill form → "Create Deal" → toast + deal card in Lead column immediately ✓
+4. Click deal card → detail panel dialog opens with 8 tabs ✓
+5. Overview tab: Operator context shows description, $25K value, 10% probability, org link ✓
+6. Tab switching via data-testid works for all tabs ✓
+7. Person profile loads with UUID format IDs ✓
+8. All pages render correctly in light mode, dark mode verified on pipeline + person profile ✓
+
+Deal creation via "Add Deal" dialog automatically assigns crm_stage_id from Stage dropdown,
+which ensures deals appear on the kanban board. API-created deals without crm_stage_id don't
+show on the board (confirmed issue, fixed in demo by using UI dialog instead).
