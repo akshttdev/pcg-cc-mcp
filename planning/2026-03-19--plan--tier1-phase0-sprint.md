@@ -4,7 +4,7 @@
 **Branch**: `feature/2026-03-19--tier1-phase0`
 **Worktree**: `/Users/mediamonsters/topos/pcg-cc-mcp` (root)
 **Base**: `main` (commit `ed66d568b`)
-**Status**: IN PROGRESS
+**Status**: IN PROGRESS — PRs #53, #54, #55 open for review
 **Goal**: Fix regressions, harden CI, build Agent Flow Engine foundation, enable internal dev workflow dogfooding
 **Team**: 2-3 devs + Claude Code
 **Duration**: Flexible (ship when done)
@@ -107,11 +107,13 @@ Add `validator` to workspace deps. Apply `#[derive(Validate)]` to new structs on
 ### 1. Fix PR #50 Regressions + Access Control Gaps [CRITICAL — Day 1]
 **Effort**: 1 day | **PR**: #51
 
-**1a. Harden kanban access control** (`crm_deals.rs:256-275`)
-- Fix: deny access when `organization_id` is `None` → return 403
+**~~1a. Harden kanban access control~~** — ALREADY DONE (all 20 handlers in `crm_deals.rs` confirmed to have `Extension(access_context)` + org membership checks; retargeted to contacts/pipelines in #1d/#1e)
 
 **1b. Fix `uuid::Uuid` in new code** (`crm_deals.rs`)
-- 6 instances (lines 20, 895, 1011, 1191, 1194, 1195) → convert to `DbUuid::parse()` / `bind_uuid_blob()`
+- **Verified**: all 6 instances still present (L20 import, L895, L1011, L1191, L1194, L1195 — BLOB-column bindings for `business_reports`)
+- L895, L1011: convert `uuid::Uuid::parse_str()` → `DbUuid::parse()` (person/company IDs)
+- L1188-1195: 3 instances used for BLOB-column binding (`business_reports.id`/`crm_deal_id` are BLOB) — convert where possible, add comment for Phase C remainder
+- L20: remove `use uuid::Uuid` import after conversions
 - Scope: route-handler-level only. BLOB-binding deferred to DbUuid Phase C if model signatures need changing.
 
 **1d. Add access control to `crm_contacts.rs`** (12 endpoints, ZERO checks)
@@ -132,13 +134,13 @@ Add `validator` to workspace deps. Apply `#[derive(Validate)]` to new structs on
 **Strategy**: Format only files modified in sprint. Pre-commit hooks (#3) enforce incrementally on future commits.
 
 **2a. `cargo fmt`** — modified files only, not `cargo fmt --all`
-**2b. Fix clippy** — `discord-bots` (29), `utils` (23), `pcg-cli` (65). Use `#![allow(clippy::uninlined_format_args)]` at crate root for bulk non-critical lints.
+**2b. Fix clippy** — `discord-bots` (29), `utils` (23), `cli` (65). Use `#![allow(clippy::uninlined_format_args)]` at crate root for bulk non-critical lints.
 **2c. Fix `alpha-protocol-core` test compile errors** — 2 borrow checker issues
 **2d. Fix ESLint** — `eslint --fix` on modified files only
 **2e. Remove `continue-on-error: true`** from CI lines 48, 65 (clippy + tests). Keep on lines 119, 129 (security audits).
 **2f. Add `vite build` step** to CI frontend-check job
 
-**CI fmt strategy**: Add `rustfmt.toml` with `ignore` list for vendored crates (`serenity-voice-model`). Use `#[rustfmt::skip]` for pre-existing violations outside sprint scope. Verify `cargo fmt --check` passes on main first — if it doesn't, determine scope of pre-existing violations before committing to full-codebase check.
+**CI fmt strategy**: Modify existing `rustfmt.toml` (already has `reorder_imports`, `group_imports`, `imports_granularity`) to add `ignore` list for vendored crates (`vendor/serenity-voice-model`). Use `#[rustfmt::skip]` for pre-existing violations outside sprint scope. Verify `cargo fmt --check` passes on main first — if it doesn't, determine scope of pre-existing violations before committing to full-codebase check.
 
 ### 3. Apply Lint-Staged Config [QUICK WIN — Day 1]
 **Effort**: 0.25 days | **PR**: #51
@@ -148,12 +150,13 @@ Selectively restore config from stash (NOT cherry-pick — stash uses `git check
 - Discard: 654 auto-reformatted source files
 - ESLint max-warnings: accept 110→180 bump; re-evaluate at sprint end
 - `git config core.hooksPath .githooks` to activate
-- **Note**: verify stash@{0} is correct before applying — stash refs shift
+- **Verified**: `stash@{0}` = "lint-staged + import-sort setup + eslint --fix". Contains `.githooks/pre-commit` (+5), `frontend/package.json` (+7/-), `frontend/.eslintrc.cjs` (+4/-) plus 654 auto-reformatted files to discard
+- Run `pnpm install` after restoring `frontend/package.json`
 
 ### 4. Cooldown Race Condition Fix (S0-05) [HIGH — Day 2]
 **Effort**: 0.5 days | **PR**: #52
 
-File: `crates/db/src/models/workflow_trigger.rs` (lines 272-293)
+**Model fix**: `crates/db/src/models/workflow_trigger.rs` — new atomic method:
 ```sql
 UPDATE workflow_triggers
 SET last_triggered_at = datetime('now'), trigger_count = trigger_count + 1
@@ -162,7 +165,10 @@ WHERE id = ? AND (last_triggered_at IS NULL
 RETURNING *
 ```
 - New method: `try_claim_trigger(pool, trigger_id) -> Option<WorkflowTrigger>`
-- Update callers in `data_source_workflows.rs`
+- Note: existing `is_past_cooldown()` (lines 272-293) is an in-memory check — the race is TOCTOU between this check and the spawn
+
+**Caller fix**: `crates/server/src/routes/data_source_workflows.rs:1347`
+- Replace `if !trigger.is_past_cooldown() { continue; }` with `try_claim_trigger()` atomic call
 - Run `cargo sqlx prepare --workspace` after adding new query
 
 ### 5. Graceful Shutdown + Worker Registry (S0-12 + Arch A/B) [HIGH — Day 2-3]
@@ -187,7 +193,7 @@ Configurable drain timeout: env `SHUTDOWN_DRAIN_TIMEOUT_SECS` (default 30s, high
 **5d. APN Node subprocess cleanup** — call `kill_existing_apn_nodes()` in shutdown handler
 
 ### 6. Bridge Dual Cost System (S0-02) [HIGH — Day 3]
-**Effort**: 1 day | **PR**: #53
+**Effort**: 1 day | **PR**: #54
 
 Redirect dashboard from dead `token_usage` table to `vibe_transactions` (source of truth).
 
@@ -196,21 +202,23 @@ Redirect dashboard from dead `token_usage` table to `vibe_transactions` (source 
   - `GET /api/vibe/costs/daily?org_id=&days=`
   - `GET /api/vibe/costs/by-model?org_id=&days=`
   - `GET /api/vibe/costs/by-project?org_id=&days=`
-- **Access control**: `require_editor()` on all cost endpoints
+- **Access control**: `require_org_membership()` on all cost endpoints (org-scoped, NOT project-scoped `require_editor()`). [DEPENDENCY: needs #1d from PR #51 to extract this to AccessContext — PR #54 merges after #51]
 - Add GROUP BY queries to `vibe_transaction.rs` model
-- Update `ai-usage.tsx` + `TokenUsageWidget.tsx` to call vibe endpoints
+- Create `frontend/src/lib/api/costs.ts` — dedicated cost API module (don't extend vibeApi in workflows.ts)
+- Extract `ai-usage.tsx` (518 lines) tab components into separate files during refactor
+- Update extracted tab components + `TokenUsageWidget.tsx` to call new cost API
 - Run `cargo sqlx prepare --workspace` after adding new queries
 - Run `npm run generate-types` if new response structs added
 
 ### 7. Structured Response Protocol (S0-03 + Arch D) [FOUNDATION — merged with #9]
-**Effort**: Combined with #9 | **PR**: #54
+**Effort**: Combined with #9 | **PR**: #55
 
 - `crates/db/src/models/agent_response.rs` — `AgentResponseEnvelope`, `AgentResponseStatus` (Done/NeedsClarification/Failed/InProgress), `ClarificationRequest`, `ResponseMetrics`
 - `#[derive(TS)]` for frontend type generation
 - Run `npm run generate-types` after creating types
 
 ### 8. Clarification as First-Class Status (S0-04) [FOUNDATION — Day 4]
-**Effort**: 0.5 days | **PR**: #54
+**Effort**: 0.5 days | **PR**: #55
 
 - Add `NeedsClarification` as 8th variant to `FlowStatus` in `agent_flow.rs`
 - Migration `20260413000001`: add `clarification_request` TEXT column to `agent_flows`
@@ -219,7 +227,7 @@ Redirect dashboard from dead `token_usage` table to `vibe_transactions` (source 
 - Run `cargo sqlx prepare --workspace` after migration
 
 ### 9. Agent Flow Orchestration Engine — Phase 1 (S0-06 + Arch A/B/C) [KEYSTONE — Day 4-8]
-**Effort**: 5 days | **PR**: #54
+**Effort**: 5 days | **PR**: #55
 
 **New file**: `crates/server/src/agent_flow_executor.rs` — implements `BackgroundWorker`, polls every 15s.
 
@@ -268,13 +276,13 @@ pub async fn transition_validated(pool, id, target_status, target_phase) -> Resu
 ```
 
 **Agent dispatch** — hybrid with configuration:
-- **API dispatch** (default): `pcg_router.rs` → `WorkflowLLMService::completion_with_tools()`. Best for research/analysis.
-- **Executor dispatch**: `container.start_execution()` → CLI process in git worktree. Best for coding.
+- **API dispatch** (default): `pcg_router.rs` → `route_completion()` (OpenRouter-compatible). Best for research/analysis.
+- **Executor dispatch**: `ContainerService::start_execution()` (container.rs:573) → CLI process in git worktree. Best for coding.
 - `flow_config.dispatch_mode: "api" | "executor" | "auto"` (default: "api")
 - Both parse output into `AgentResponseEnvelope`
 
 **CRM Deal FSM prototype** — same pattern, embedded in this sprint:
-- `move_deal_stage()` currently has NO stage ordering validation
+- `CrmDeal::move_to_stage()` (crm_deal.rs:405-537) currently has NO stage ordering validation
 - Add `valid_stage_transitions()` to `CrmPipelineStage` — validates within pipeline
 - Agent-driven: strict. Dashboard: permissive.
 
@@ -298,7 +306,7 @@ agent_flow_executor::spawn(pool.clone(), flow_shutdown);
 **Phase 2 note**: Inline stage-trigger agents (Scout, Astra, Cash, Lux) in `crm_deals.rs` coexist with engine in Phase 1. Phase 2 migrates them to engine for retry/timeout/observability. NOT modified this sprint.
 
 ### 10. Dogfood Friction Logging (S0-19) [DOGFOOD — Day 6-7]
-**Effort**: 1.5 days | **PR**: #55
+**Effort**: 1.5 days | **PR**: #53
 
 Extend `crates/server/src/routes/feedback.rs`:
 - `friction_area: Option<String>` — enum: workflow_editor, crm_pipeline, task_management, etc.
@@ -311,17 +319,15 @@ Extend `crates/server/src/routes/feedback.rs`:
 
 ## PR Strategy
 
-| PR | Items | Safe Because | Depends On |
-|----|-------|-------------|-----------|
-| **#51** | #1, #2, #3 | All fixes/infra, no new features | Independent |
-| **#52** | #4, #5 | Bug fix + internal refactor | Independent |
-| **#53** | #6 | Redirects dashboard to real data | Independent |
-| **#54** | #7, #8, #9 | Engine **disabled by default** (`ENABLE_AGENT_FLOW_ENGINE=1`) | After #52 (needs worker trait) |
-| **#55** | #10 | Extends existing form with optional fields | Independent |
+> **Note**: GitHub PR #51 and #52 were burned during workflow setup. Plans #51-#53 are combined into GitHub PR #53. Numbers are in sync from #54 onward.
 
-PRs #51, #52, #53, #55 can merge in any order. PR #54 merges last.
+| GitHub PR | Plan Items | Branch | Status |
+|-----------|-----------|--------|--------|
+| **#53** | Plan #51 + #52 + #53 (CI, access control, stability, friction) | `pr/51-ci-regressions-access-control` | OPEN |
+| **#54** | Plan #54 (cost bridge) | `pr/54-cost-bridge` | OPEN |
+| **#55** | Plan #55 (agent engine) | `pr/55-agent-engine` | OPEN |
 
-**Critical path**: #5c (worker trait) → #7 (response protocol) → #8 (clarification) → #9 (engine)
+Merge order: #53 first (foundation), #54 and #55 can follow in either order. #55 merges last.
 
 ---
 
@@ -389,34 +395,35 @@ FRONTEND_PORT=3000 npx playwright test --reporter=list
 | `crates/server/src/middleware/access_control.rs` | Add `require_org_membership()` to `AccessContext` | #1d | #51 |
 | `crates/server/src/helpers.rs` | Create — `parse_db_uuid_param()` | #1b | #51 |
 | `.github/workflows/ci.yml` | Remove `continue-on-error`, add `vite build` | #2 | #51 |
-| `rustfmt.toml` | Create — vendored crate exclusions | #2 | #51 |
+| `rustfmt.toml` | Modify — add vendored crate exclusions (file already exists with import settings) | #2 | #51 |
 | `.githooks/pre-commit` | Create from stash | #3 | #51 |
 | `frontend/package.json` | Add lint-staged + simple-import-sort deps | #3 | #51 |
 | `frontend/.eslintrc.cjs` | Add import-sort rules from stash | #3 | #51 |
 | `frontend/src/constants/artifact.ts` | Create — deduplicate `VIDEO_EDIT_TYPES` | modularity | #51 |
 | **PR #52 — Stability** |
 | `crates/db/src/models/workflow_trigger.rs` | Atomic `try_claim_trigger()` | #4 | #52 |
-| `crates/server/src/routes/data_source_workflows.rs` | Update cooldown callers | #4 | #52 |
+| `crates/server/src/routes/data_source_workflows.rs` | Replace `is_past_cooldown()` with `try_claim_trigger()` at L1347 | #4 | #52 |
 | `crates/server/src/workers/mod.rs` | Create — BackgroundWorker trait + ShutdownRegistry | #5 | #52 |
 | `crates/server/src/main.rs` | Graceful shutdown + registry wiring | #5 | #52 |
-| **PR #53 — Cost Bridge** |
-| `crates/server/src/routes/vibe_treasury.rs` | Add cost aggregation endpoints | #6 | #53 |
-| `crates/db/src/models/vibe_transaction.rs` | Add GROUP BY queries | #6 | #53 |
-| `frontend/src/pages/ai-usage.tsx` | Redirect to vibe endpoints | #6 | #53 |
-| `frontend/src/constants/query-config.ts` | Create — centralized staleTime/refetchInterval | modularity | #53 |
-| **PR #54 — Agent Engine** |
-| `crates/db/src/models/agent_response.rs` | Create — envelope types + StructuredOutput | #7 | #54 |
-| `crates/db/src/models/agent_flow.rs` | NeedsClarification + FSM validation | #8, #9 | #54 |
-| `crates/server/src/routes/agent_flows.rs` | Clarification endpoint | #8 | #54 |
-| `crates/server/src/agent_flow_executor.rs` | Create — engine background worker | #9 | #54 |
-| `crates/server/src/events/mod.rs` | Create — DomainEvent enum + broadcast | #9 | #54 |
-| `crates/db/src/models/crm_deal.rs` | Deal FSM validation + pipeline check | #9 | #54 |
-| `crates/db/src/models/crm_pipeline.rs` | `valid_next_stages()` method | #9 | #54 |
-| `crates/db/migrations/20260413000001_*.sql` | NeedsClarification column | #8 | #54 |
-| `Cargo.toml` (workspace) | Add `validator` to workspace deps | Arch E | #54 |
-| **PR #55 — Friction Logging** |
-| `crates/server/src/routes/feedback.rs` | Add friction fields | #10 | #55 |
-| `frontend/src/components/feedback/` | Friction form UI | #10 | #55 |
+| **PR #53 — Friction Logging** |
+| `crates/server/src/routes/feedback.rs` | Add friction fields | #10 | #53 |
+| `frontend/src/components/dialogs/feedback/FeedbackDialog.tsx` | Extend with friction fields | #10 | #53 |
+| **PR #54 — Cost Bridge** (after #51) |
+| `crates/server/src/routes/vibe_treasury.rs` | Add cost aggregation endpoints | #6 | #54 |
+| `crates/db/src/models/vibe_transaction.rs` | Add GROUP BY queries | #6 | #54 |
+| `frontend/src/lib/api/costs.ts` | Create — dedicated cost API module | #6 | #54 |
+| `frontend/src/pages/ai-usage.tsx` | Extract tab components + redirect to cost API | #6 | #54 |
+| `frontend/src/constants/query-config.ts` | Create — centralized staleTime/refetchInterval | modularity | #54 |
+| **PR #55 — Agent Engine** (after #52, merges last) |
+| `crates/db/src/models/agent_response.rs` | Create — envelope types + StructuredOutput | #7 | #55 |
+| `crates/db/src/models/agent_flow.rs` | NeedsClarification + FSM validation | #8, #9 | #55 |
+| `crates/server/src/routes/agent_flows.rs` | Clarification endpoint | #8 | #55 |
+| `crates/server/src/agent_flow_executor.rs` | Create — engine background worker | #9 | #55 |
+| `crates/server/src/events/mod.rs` | Create — DomainEvent enum + broadcast | #9 | #55 |
+| `crates/db/src/models/crm_deal.rs` | Deal FSM validation + pipeline check | #9 | #55 |
+| `crates/db/src/models/crm_pipeline.rs` | `valid_next_stages()` method | #9 | #55 |
+| `crates/db/migrations/20260413000001_*.sql` | NeedsClarification column | #8 | #55 |
+| `Cargo.toml` (workspace) | Add `validator` to workspace deps | Arch E | #55 |
 
 ---
 
@@ -428,7 +435,7 @@ All decisions resolved during planning — captured here for reference.
 |----------|-----------|---------|
 | `cargo fmt` in CI | Full-codebase check + `rustfmt.toml` ignore for vendored crates. Verify main passes first. | Incremental format on modified files only |
 | `crm_deals.rs` split timing | Split FIRST, before access control / FSM changes | Reduces merge conflict risk |
-| Cost endpoint access control | `require_editor()` — viewer too permissive for financial data | Consistent with RBAC patterns |
+| Cost endpoint access control | `require_org_membership()` — org-scoped, not project-scoped `require_editor()` | Cost data is per-org, not per-project |
 | Vendored crate formatting | Exclude via `rustfmt.toml` `ignore` list | `serenity-voice-model` etc. |
 | PR #51 scope | Single PR (no split into #51a/#51b) | CI + access control straightforward enough together |
 | Items #7 + #9 merge | Build together — protocol exists to serve the executor | Avoids design-in-a-vacuum risk |
@@ -448,9 +455,10 @@ All decisions resolved during planning — captured here for reference.
 | `crm_deals.rs` → transitions + automations modules | 1h | #51 |
 | `VIDEO_EDIT_TYPES` → `constants/artifact.ts` | 15m | #51 |
 | `BackgroundWorker` trait + `spawn_worker()` | 30m | #52 |
-| Date formatting → use `formatDate()` everywhere | 30m | #53 |
-| `QUERY_CONFIG` constants → `query-config.ts` | 30m | #53 |
-| `AgentFlowExecutorConfig::from_env()` | 15m | #54 |
+| Date formatting → use `formatDate()` everywhere | 30m | #54 |
+| `QUERY_CONFIG` constants → `query-config.ts` | 30m | #54 |
+| `ai-usage.tsx` tab component extraction | 45m | #54 |
+| `AgentFlowExecutorConfig::from_env()` | 15m | #55 |
 
 Deferred modularity items → `BACKLOG--remaining-work.md`
 
@@ -477,7 +485,7 @@ Two research phases (8 + 7 parallel agents) audited the codebase before implemen
 ### Scope corrections applied
 1. **crm_deals.rs access control already complete** — real gaps in `crm_contacts.rs` (12 endpoints) and `crm_pipelines.rs` (13 endpoints). Retargeted.
 2. **Cost bridge misdirected** — `TokenUsage::create()` rarely called; all billing via `vibe_transactions`. Redirected dashboard.
-3. **Background task count 14→16** — added PR Monitor Service + APN Node subprocess.
+3. **Background task count**: 11 direct tokio::spawn + 2 wrapper spawns + 1 APN subprocess = ~14 total (no PR Monitor Service found).
 4. **Items #7 + #9 merged** — response protocol and engine too coupled to build separately.
 
 ### Confirmed as-planned
@@ -486,6 +494,7 @@ Two research phases (8 + 7 parallel agents) audited the codebase before implemen
 ### Key codebase facts
 - 23 workspace crates, nightly-2025-05-18 toolchain
 - 443 tests (375 `#[test]` + 68 `#[tokio::test]`)
+- `rustfmt.toml` already exists (import settings) — needs vendored crate `ignore` list added
 - Latest migration: `20260412000000`
 - `workers/`, `events/`, `agent_flow_executor.rs` — all need creating
 - `TaskScheduler` (310 lines) — dead code, patterns reusable for engine
@@ -503,3 +512,31 @@ Cross-referenced against consolidated roadmap on `research/5-year-product-roadma
 - Org-level CRM authz ✓ (#1d, #1e — roadmap listed as "Deferred", we're fixing it)
 
 Inline stage-trigger agents (Scout, Astra, Cash, Lux) coexist with engine in Phase 1 (engine opt-in via `ENABLE_AGENT_FLOW_ENGINE=1`). Phase 2 migrates them for retry/timeout/observability.
+
+---
+
+## Expansion Audit (2026-03-19)
+
+8 parallel codebase audit agents verified all claims. Sequential thinking analyzed dependencies and contradictions.
+
+### Corrections Applied
+1. **Item #1a**: Marked as already done — all 20 `crm_deals.rs` handlers confirmed to have access checks
+2. **Item #1b**: Verified — all 6 `uuid::Uuid` instances confirmed still present (L20, L895, L1011, L1191, L1194, L1195)
+3. **Item #2b**: Fixed crate name `pcg-cli` → `cli` (actual directory name)
+4. **Item #4**: Clarified TOCTOU race location (data_source_workflows.rs:1347) vs model method (workflow_trigger.rs:272-293)
+5. **Item #6**: Changed access control from `require_editor()` (project-scoped) → `require_org_membership()` (org-scoped)
+6. **Item #6**: Added `frontend/src/lib/api/costs.ts` as dedicated cost API module + ai-usage.tsx tab extraction
+7. **Item #9**: Fixed `WorkflowLLMService::completion_with_tools()` → `route_completion()` in pcg_router.rs
+8. **Item #9**: Fixed `move_deal_stage()` → `CrmDeal::move_to_stage()` (crm_deal.rs:405-537)
+9. **Item #10**: Fixed FeedbackDialog path → `components/dialogs/feedback/FeedbackDialog.tsx`
+10. **PR renumber**: #53→friction (independent), #54→cost bridge (after #51), #55→agent engine (after #52, last)
+11. **Files table**: `rustfmt.toml` changed from "Create" to "Modify" (already exists with import settings)
+12. **Gap analysis**: Background operation count corrected to ~14 (no PR Monitor Service exists)
+13. **Item #3**: Stash verified — `stash@{0}` contains expected 3 files + 654 auto-reformatted to discard. Added `pnpm install` step.
+
+### Decisions Resolved (post-expansion)
+1. ~~uuid::Uuid check~~ → Verified: all 6 still present, fix proceeds as planned
+2. ~~PR dependency~~ → Accepted: renumbered PRs so #54 (cost bridge) merges after #51
+3. ~~ai-usage.tsx extraction~~ → Extract tab components during cost bridge work (PR #54)
+4. ~~Cost API location~~ → Dedicated `frontend/src/lib/api/costs.ts` module
+5. ~~Stash verification~~ → Confirmed correct, contents match expectations
