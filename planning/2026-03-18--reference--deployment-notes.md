@@ -153,3 +153,15 @@ New env vars for this branch:
 UPDATE crm_contacts SET company_name = 'Hudson''s Car Club', full_name = 'Joshua Marotta'
 WHERE id = 'ct-joshua-marotta-001';
 ```
+
+### Person ID Format Fix
+Person IDs must be valid UUIDs for the person profile page to work. The seed data previously used custom string IDs (`p-joshua-marotta-001`) which caused "Person not found" errors.
+
+```sql
+-- Fix: use UUID format for person IDs
+UPDATE persons SET id = 'a7b8c9d0-1234-5678-9abc-def012345678' WHERE id = 'p-joshua-marotta-001';
+UPDATE crm_contacts SET person_id = 'a7b8c9d0-1234-5678-9abc-def012345678' WHERE person_id = 'p-joshua-marotta-001';
+
+-- Set deal amount for invoice functionality
+UPDATE crm_deals SET amount = 25000 WHERE id = '3b5de595-b2dc-0792-2284-e0349788dfd7';
+```

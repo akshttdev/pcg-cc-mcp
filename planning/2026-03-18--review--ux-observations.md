@@ -176,3 +176,28 @@ Add error handling in CompanyBrandGuidePage: if `company` query returns null/err
 
 #### Invoice Button (Deck & Close Tab)  
 - **GAP (MCP-7, MEDIUM)**: "Send Invoice" button is disabled with message "Amount: not set" even though the deal has amount=$25,000 in the database. The DeckTab component may read amount from a different field or the amount isn't being passed to the component correctly.
+
+### Fixes Applied During Walkthrough
+- **MCP-5 RESOLVED**: Operator context DOES refresh on panel re-open — not a bug, just needs re-fetch
+- **MCP-6 FIXED**: Person ID changed from custom string to UUID format in seed data. Person profile now loads correctly with full name, title, company, intel, tabs.
+- **MCP-7 FIXED**: Deal amount was NULL in seed data. Set to $25,000. Invoice button now enabled with correct amount display.
+
+### Light/Dark Mode UI Review
+
+#### Pages checked:
+| Page | Light | Dark | Issues |
+|------|-------|------|--------|
+| Pipeline Kanban | Good | Good | No issues |
+| Deal Detail Panel | Good | N/A (panel overlay) | Panel uses proper shadcn theming |
+| Companies Table | Good | Good | Proper table contrast |
+| Person Profile | **BROKEN** | Acceptable | Hardcoded dark-only classes (bg-slate-900, border-slate-800, text-slate-400) — no dark: prefixes. Looks wrong in light mode. |
+| Brand Guide | Good (loading state) | Not tested | Black background is intentional for brand display |
+
+#### Person Profile Dark Mode Issue (MCP-8, MEDIUM)
+**File**: `frontend/src/pages/person-profile.tsx`
+**Problem**: Entire page uses hardcoded dark color classes (`bg-slate-900/50`, `border-slate-800`, `text-slate-400`) without `dark:` conditional prefixes. This means:
+- In light mode: dark cards on white background — looks broken
+- In dark mode: looks acceptable but doesn't follow Tailwind dark mode pattern
+**Impact**: Person profile page is unusable in light mode — poor contrast, wrong visual hierarchy
+**Resolution**: Refactor to use `bg-card`, `border-border`, `text-muted-foreground` semantic tokens that adapt to both modes. ~60 class replacements needed.
+**Status**: DEFERRED — pre-existing issue, not introduced by this PR
