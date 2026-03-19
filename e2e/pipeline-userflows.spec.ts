@@ -4,7 +4,7 @@
  * person/company profile pages, and cross-page link integrity.
  */
 import { test, expect, Page } from '@playwright/test';
-import { loginAsAdmin, loginAndGoto, PIPELINE_ID, ORG_ID } from './helpers/auth';
+import { loginAsAdmin, loginAndGoto, PIPELINE_ID, ORG_ID } from './quarantine/helpers/auth';
 import {
   createTestDeal,
   createTestContact,
@@ -12,7 +12,7 @@ import {
   cleanupTestData,
   getSessionId,
   TEST_CONSTANTS,
-} from '../helpers/seed';
+} from './helpers/seed';
 
 const BASE_URL = `http://localhost:${process.env.FRONTEND_PORT || '3000'}`;
 
