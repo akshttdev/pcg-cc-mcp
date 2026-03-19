@@ -233,7 +233,8 @@ impl AgentWallet {
 
     /// Get remaining VIBE budget
     pub fn remaining_vibe(&self) -> Option<i64> {
-        self.vibe_budget_limit.map(|limit| limit - self.vibe_spent_amount)
+        self.vibe_budget_limit
+            .map(|limit| limit - self.vibe_spent_amount)
     }
 }
 

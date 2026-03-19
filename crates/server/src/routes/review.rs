@@ -6,23 +6,22 @@
 //! POST /api/artifacts/{artifact_id}/review-link — create/get artifact review token (auth)
 
 use axum::{
-    Router,
+    Json, Router,
     extract::{Path, State},
     routing::{get, patch, post},
-    Json,
+};
+use db::models::{
+    deliverable::Deliverable,
+    execution_artifact::ExecutionArtifact,
+    review_comment::{CreateReviewComment, ReviewComment},
+    review_token::ReviewToken,
 };
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
-use utils::response::ApiResponse;
+use utils::{assets::asset_dir, response::ApiResponse};
 use uuid::Uuid;
 
-use utils::assets::asset_dir;
-
 use crate::{DeploymentImpl, error::ApiError};
-use db::models::deliverable::Deliverable;
-use db::models::execution_artifact::ExecutionArtifact;
-use db::models::review_comment::{CreateReviewComment, ReviewComment};
-use db::models::review_token::ReviewToken;
 
 // ── Response types ────────────────────────────────────────────────────────────
 
@@ -61,17 +60,17 @@ pub struct ReviewLinkResponse {
 fn artifact_video_url_from_content(artifact: &ExecutionArtifact) -> Option<String> {
     let content = artifact.content.as_deref()?;
     let data: serde_json::Value = serde_json::from_str(content).ok()?;
-    let items = data.get("deliverables")
+    let items = data
+        .get("deliverables")
         .or_else(|| data.get("edits"))
         .and_then(|v| v.as_array())?;
     let first = items.first()?;
-    let file = first.get("file")
-        .and_then(|v| v.as_str())
-        .or_else(|| {
-            first.get("path")
-                .and_then(|v| v.as_str())
-                .and_then(|p| p.split('/').last())
-        })?;
+    let file = first.get("file").and_then(|v| v.as_str()).or_else(|| {
+        first
+            .get("path")
+            .and_then(|v| v.as_str())
+            .and_then(|p| p.split('/').last())
+    })?;
     Some(format!("/api/artifacts/{}/files/{}", artifact.id, file))
 }
 
@@ -81,12 +80,20 @@ fn artifact_video_url_from_dir(artifact: &ExecutionArtifact) -> Option<String> {
     let file_path = artifact.file_path.as_deref()?;
     let dir = {
         let p = std::path::Path::new(file_path);
-        if p.is_absolute() { p.to_path_buf() } else { asset_dir().join(file_path) }
+        if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            asset_dir().join(file_path)
+        }
     };
     if !dir.is_dir() {
         // file_path is a file itself — check if it's a video
         if dir.is_file() {
-            let ext = dir.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+            let ext = dir
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
             if matches!(ext.as_str(), "mp4" | "mov" | "webm" | "avi" | "mkv") {
                 let filename = dir.file_name()?.to_string_lossy().to_string();
                 return Some(format!("/api/artifacts/{}/files/{}", artifact.id, filename));
@@ -99,9 +106,17 @@ fn artifact_video_url_from_dir(artifact: &ExecutionArtifact) -> Option<String> {
     if let Ok(entries) = std::fs::read_dir(&dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if !path.is_file() { continue; }
-            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-            if !matches!(ext.as_str(), "mp4" | "mov" | "webm" | "avi" | "mkv") { continue; }
+            if !path.is_file() {
+                continue;
+            }
+            let ext = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            if !matches!(ext.as_str(), "mp4" | "mov" | "webm" | "avi" | "mkv") {
+                continue;
+            }
             let mtime = entry.metadata().ok()?.modified().ok()?;
             let fname = path.file_name()?.to_string_lossy().to_string();
             if best.as_ref().map_or(true, |(t, _)| mtime > *t) {
@@ -115,8 +130,7 @@ fn artifact_video_url_from_dir(artifact: &ExecutionArtifact) -> Option<String> {
 
 /// Resolve the best available video URL for an artifact.
 fn resolve_artifact_video_url(artifact: &ExecutionArtifact) -> Option<String> {
-    artifact_video_url_from_content(artifact)
-        .or_else(|| artifact_video_url_from_dir(artifact))
+    artifact_video_url_from_content(artifact).or_else(|| artifact_video_url_from_dir(artifact))
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
@@ -141,12 +155,17 @@ async fn get_review_data(
             .await?
             .ok_or_else(|| ApiError::NotFound("Artifact not found".into()))?;
 
-        let video_url = tok.artifact_video_url.clone()
+        let video_url = tok
+            .artifact_video_url
+            .clone()
             .or_else(|| resolve_artifact_video_url(&artifact));
 
         payload = ReviewDeliverablePayload {
             id: artifact.id.to_string(),
-            title: tok.artifact_title.clone().unwrap_or_else(|| artifact.title.clone()),
+            title: tok
+                .artifact_title
+                .clone()
+                .unwrap_or_else(|| artifact.title.clone()),
             status: "active".to_string(),
             description: None,
             working_file_url: video_url,
@@ -171,7 +190,9 @@ async fn get_review_data(
 
         comments = ReviewComment::find_by_deliverable(pool, deliverable_id).await?;
     } else {
-        return Err(ApiError::InternalError("Review token has no linked resource".into()));
+        return Err(ApiError::InternalError(
+            "Review token has no linked resource".into(),
+        ));
     }
 
     Ok(Json(ApiResponse::success(ReviewData {
@@ -194,7 +215,8 @@ async fn add_comment(
         .ok_or_else(|| ApiError::NotFound("Review link is invalid or expired".into()))?;
 
     // Use artifact_id or deliverable_id as the comment scope
-    let scope_id = tok.artifact_id
+    let scope_id = tok
+        .artifact_id
         .or(tok.deliverable_id)
         .ok_or_else(|| ApiError::InternalError("Review token has no linked resource".into()))?;
 
@@ -210,12 +232,11 @@ async fn resolve_comment(
 ) -> Result<Json<ApiResponse<ReviewComment>>, ApiError> {
     let pool = &d.db().pool;
 
-    let valid: Option<ReviewToken> = sqlx::query_as(
-        "SELECT * FROM review_tokens WHERE token = ? AND is_active = 1",
-    )
-    .bind(&token)
-    .fetch_optional(pool)
-    .await?;
+    let valid: Option<ReviewToken> =
+        sqlx::query_as("SELECT * FROM review_tokens WHERE token = ? AND is_active = 1")
+            .bind(&token)
+            .fetch_optional(pool)
+            .await?;
 
     valid.ok_or_else(|| ApiError::NotFound("Invalid review token".into()))?;
 
@@ -243,18 +264,15 @@ async fn get_artifact_review_link(
 
     let title = artifact.title.clone();
 
-    let token = ReviewToken::get_or_create_for_artifact(
-        pool,
-        artifact_id,
-        &video_url,
-        &title,
-        None,
-    )
-    .await
-    .map_err(|e| ApiError::InternalError(format!("Failed to create review token: {}", e)))?;
+    let token =
+        ReviewToken::get_or_create_for_artifact(pool, artifact_id, &video_url, &title, None)
+            .await
+            .map_err(|e| {
+                ApiError::InternalError(format!("Failed to create review token: {}", e))
+            })?;
 
-    let base_url = std::env::var("APP_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:3000".to_string());
+    let base_url =
+        std::env::var("APP_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
     let url = format!("{}/review/{}", base_url, token.token);
 
     Ok(Json(ApiResponse::success(ReviewLinkResponse {
@@ -279,6 +297,9 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
 /// Protected routes (require session auth)
 pub fn protected_router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
-        .route("/artifacts/{artifact_id}/review-link", post(get_artifact_review_link))
+        .route(
+            "/artifacts/{artifact_id}/review-link",
+            post(get_artifact_review_link),
+        )
         .with_state(deployment.clone())
 }

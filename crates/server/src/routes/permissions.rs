@@ -450,7 +450,11 @@ async fn check_project_access(
 
     // Use hierarchical check which includes task-assignment tier
     let access_result = context
-        .check_project_access_hierarchical(&pool, &project_id, crate::middleware::ProjectRole::Viewer)
+        .check_project_access_hierarchical(
+            &pool,
+            &project_id,
+            crate::middleware::ProjectRole::Viewer,
+        )
         .await;
 
     let access_scope = context

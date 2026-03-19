@@ -120,16 +120,25 @@ pub struct UpdateSocialPost {
 }
 
 impl SocialPost {
-    pub async fn create(pool: &SqlitePool, data: CreateSocialPost) -> Result<Self, SocialPostError> {
+    pub async fn create(
+        pool: &SqlitePool,
+        data: CreateSocialPost,
+    ) -> Result<Self, SocialPostError> {
         let id = Uuid::new_v4();
         let content_type = data
             .content_type
             .map(|t| format!("{:?}", t).to_lowercase())
             .unwrap_or_else(|| "post".to_string());
         let content_blocks = data.content_blocks.map(|v| v.to_string());
-        let media_urls = data.media_urls.map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".to_string()));
-        let hashtags = data.hashtags.map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".to_string()));
-        let mentions = data.mentions.map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".to_string()));
+        let media_urls = data
+            .media_urls
+            .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".to_string()));
+        let hashtags = data
+            .hashtags
+            .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".to_string()));
+        let mentions = data
+            .mentions
+            .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".to_string()));
         let platforms = serde_json::to_string(&data.platforms).unwrap_or_else(|_| "[]".to_string());
         let platform_specific = data.platform_specific.map(|v| v.to_string());
         let is_evergreen = data.is_evergreen.unwrap_or(false);
@@ -289,9 +298,15 @@ impl SocialPost {
     ) -> Result<Self, SocialPostError> {
         let status = data.status.map(|s| format!("{:?}", s).to_lowercase());
         let content_blocks = data.content_blocks.map(|v| v.to_string());
-        let media_urls = data.media_urls.map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".to_string()));
-        let hashtags = data.hashtags.map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".to_string()));
-        let mentions = data.mentions.map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".to_string()));
+        let media_urls = data
+            .media_urls
+            .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".to_string()));
+        let hashtags = data
+            .hashtags
+            .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".to_string()));
+        let mentions = data
+            .mentions
+            .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".to_string()));
         let platform_specific = data.platform_specific.map(|v| v.to_string());
 
         let approved_at = data.approved_by.as_ref().map(|_| Utc::now());
@@ -448,14 +463,13 @@ impl SocialPost {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::models::test_utils::{
-        create_test_project,
-        create_test_social_account,
-        setup_test_pool,
-    };
     use chrono::{Duration, Utc};
     use serde_json::json;
+
+    use super::*;
+    use crate::models::test_utils::{
+        create_test_project, create_test_social_account, setup_test_pool,
+    };
 
     #[tokio::test]
     async fn social_post_lifecycle() {

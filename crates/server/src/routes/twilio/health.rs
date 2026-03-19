@@ -15,12 +15,14 @@ pub async fn twilio_health(State(_state): State<DeploymentImpl>) -> impl IntoRes
                 None
             };
 
-            let nora_voice_available = get_nora_instance()
-                .await
-                .map(|_| true)
-                .unwrap_or(false);
+            let nora_voice_available = get_nora_instance().await.map(|_| true).unwrap_or(false);
 
-            (handler.is_configured(), calls.len(), phone, nora_voice_available)
+            (
+                handler.is_configured(),
+                calls.len(),
+                phone,
+                nora_voice_available,
+            )
         } else {
             (false, 0, None, false)
         };

@@ -46,7 +46,10 @@ impl BoardShare {
         .await
     }
 
-    pub async fn find_by_board(pool: &SqlitePool, board_id: &str) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn find_by_board(
+        pool: &SqlitePool,
+        board_id: &str,
+    ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, BoardShare>(
             r#"SELECT id, board_id, source_organization_id, target_organization_id,
                       permission, share_type, shared_by, is_active, created_at, updated_at
@@ -132,7 +135,11 @@ impl BoardShare {
         .await
     }
 
-    pub async fn update(pool: &SqlitePool, id: &str, data: &UpdateBoardShare) -> Result<Self, sqlx::Error> {
+    pub async fn update(
+        pool: &SqlitePool,
+        id: &str,
+        data: &UpdateBoardShare,
+    ) -> Result<Self, sqlx::Error> {
         let existing = Self::find_by_id(pool, id)
             .await?
             .ok_or(sqlx::Error::RowNotFound)?;

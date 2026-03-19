@@ -4,18 +4,22 @@
 //! This is the org-scoped equivalent of the project onboarding system.
 
 use axum::{
+    Json, Router,
     extract::{Path, State},
     routing::{get, post},
-    Json, Router,
 };
-use db::models::org_onboarding::{
-    CreateOrgOnboarding, OrgOnboarding, OrgOnboardingSegment, UpdateOrgOnboarding,
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        org_onboarding::{
+            CreateOrgOnboarding, OrgOnboarding, OrgOnboardingSegment, UpdateOrgOnboarding,
+        },
+        project_onboarding::{SegmentStatus, UpdateOnboardingSegment},
+    },
 };
-use db::models::project_onboarding::{SegmentStatus, UpdateOnboardingSegment};
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 
@@ -30,7 +34,10 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/onboarding/organization/{org_id}/start",
             post(start_org_onboarding),
         )
-        .route("/onboarding/organization/{org_id}/segments", get(list_org_segments))
+        .route(
+            "/onboarding/organization/{org_id}/segments",
+            get(list_org_segments),
+        )
         .route(
             "/onboarding/organization-segment/{segment_id}",
             get(get_org_segment).put(update_org_segment),
@@ -58,7 +65,9 @@ async fn get_org_onboarding(
     State(deployment): State<DeploymentImpl>,
     Path(org_id): Path<String>,
 ) -> Result<Json<Option<OrgOnboardingWithSegments>>, ApiError> {
-    let org_id = DbUuid::parse(&org_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let org_id = DbUuid::parse(&org_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let pool = &deployment.db().pool;
     let onboarding = OrgOnboarding::find_by_organization(pool, org_id).await?;
 
@@ -80,7 +89,9 @@ async fn start_org_onboarding(
     Path(org_id): Path<String>,
     Json(payload): Json<StartOrgOnboardingRequest>,
 ) -> Result<Json<OrgOnboardingWithSegments>, ApiError> {
-    let org_id = DbUuid::parse(&org_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let org_id = DbUuid::parse(&org_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let pool = &deployment.db().pool;
 
     // Check if onboarding already exists
@@ -120,7 +131,9 @@ async fn update_org_onboarding(
     Path(org_id): Path<String>,
     Json(payload): Json<UpdateOrgOnboarding>,
 ) -> Result<Json<OrgOnboarding>, ApiError> {
-    let org_id = DbUuid::parse(&org_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let org_id = DbUuid::parse(&org_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let pool = &deployment.db().pool;
     let existing = OrgOnboarding::find_by_organization(pool, org_id)
         .await?
@@ -137,7 +150,9 @@ async fn list_org_segments(
     State(deployment): State<DeploymentImpl>,
     Path(org_id): Path<String>,
 ) -> Result<Json<Vec<OrgOnboardingSegment>>, ApiError> {
-    let org_id = DbUuid::parse(&org_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let org_id = DbUuid::parse(&org_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let pool = &deployment.db().pool;
     let onboarding = OrgOnboarding::find_by_organization(pool, org_id)
         .await?
@@ -151,7 +166,9 @@ async fn get_org_segment(
     State(deployment): State<DeploymentImpl>,
     Path(segment_id): Path<String>,
 ) -> Result<Json<OrgOnboardingSegment>, ApiError> {
-    let segment_id = DbUuid::parse(&segment_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let segment_id = DbUuid::parse(&segment_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let pool = &deployment.db().pool;
     let segment = OrgOnboardingSegment::find_by_id(pool, segment_id)
         .await?
@@ -166,7 +183,9 @@ async fn update_org_segment(
     Path(segment_id): Path<String>,
     Json(payload): Json<UpdateOnboardingSegment>,
 ) -> Result<Json<OrgOnboardingSegment>, ApiError> {
-    let segment_id = DbUuid::parse(&segment_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let segment_id = DbUuid::parse(&segment_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let pool = &deployment.db().pool;
     let segment = OrgOnboardingSegment::update(pool, segment_id, &payload)
         .await?
@@ -180,7 +199,9 @@ async fn start_org_segment(
     State(deployment): State<DeploymentImpl>,
     Path(segment_id): Path<String>,
 ) -> Result<Json<OrgOnboardingSegment>, ApiError> {
-    let segment_id = DbUuid::parse(&segment_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let segment_id = DbUuid::parse(&segment_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let pool = &deployment.db().pool;
     let update = UpdateOnboardingSegment {
         status: Some(SegmentStatus::InProgress),
@@ -212,7 +233,9 @@ async fn complete_org_segment(
     Path(segment_id): Path<String>,
     Json(payload): Json<CompleteOrgSegmentRequest>,
 ) -> Result<Json<OrgOnboardingSegment>, ApiError> {
-    let segment_id = DbUuid::parse(&segment_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let segment_id = DbUuid::parse(&segment_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let pool = &deployment.db().pool;
     let status = if payload.skip {
         SegmentStatus::Skipped

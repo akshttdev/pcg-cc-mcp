@@ -1,8 +1,8 @@
 //! Audio processing utilities: PCM accumulation, WAV encoding, STT, wake word detection, TTS
 
+use std::{io::Cursor, sync::Arc};
+
 use anyhow::{Context, Result};
-use std::io::Cursor;
-use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
@@ -34,11 +34,12 @@ pub fn encode_wav(stereo_samples: &[i16]) -> Result<Vec<u8>> {
         sample_format: hound::SampleFormat::Int,
     };
 
-    let mut writer = hound::WavWriter::new(cursor, spec)
-        .context("Failed to create WAV writer")?;
+    let mut writer = hound::WavWriter::new(cursor, spec).context("Failed to create WAV writer")?;
 
     for sample in &downsampled {
-        writer.write_sample(*sample).context("Failed to write WAV sample")?;
+        writer
+            .write_sample(*sample)
+            .context("Failed to write WAV sample")?;
     }
     writer.finalize().context("Failed to finalize WAV")?;
 
@@ -232,7 +233,11 @@ pub async fn call_agent(
         .unwrap_or("Understood.")
         .to_string();
 
-    info!("Agent {} responded: {}", agent.name(), &response_text[..response_text.len().min(80)]);
+    info!(
+        "Agent {} responded: {}",
+        agent.name(),
+        &response_text[..response_text.len().min(80)]
+    );
     Ok(response_text)
 }
 
@@ -339,10 +344,7 @@ async fn synthesize_openai(api_key: &str, text: &str) -> Result<Vec<u8>> {
 ///
 /// Writes audio to a temp WAV file, loads it as a songbird Input, and plays it.
 /// The temp file is cleaned up after a short delay.
-pub async fn synthesize_and_play(
-    call_lock: Arc<Mutex<songbird::Call>>,
-    text: &str,
-) -> Result<()> {
+pub async fn synthesize_and_play(call_lock: Arc<Mutex<songbird::Call>>, text: &str) -> Result<()> {
     let wav_bytes = synthesize_tts(text).await?;
 
     // Write to a temp file so songbird's symphonia decoder can read it

@@ -678,11 +678,14 @@ pub struct SystemTTS {
 impl SystemTTS {
     pub async fn new(config: &TTSConfig) -> VoiceResult<Self> {
         // Get Chatterbox endpoint from environment or use default
-        let endpoint = std::env::var("CHATTERBOX_URL")
-            .unwrap_or_else(|_| "http://localhost:8100".to_string());
+        let endpoint =
+            std::env::var("CHATTERBOX_URL").unwrap_or_else(|_| "http://localhost:8100".to_string());
 
-        info!("Initializing system TTS with Chatterbox backend: {}", endpoint);
-        
+        info!(
+            "Initializing system TTS with Chatterbox backend: {}",
+            endpoint
+        );
+
         Ok(Self {
             config: config.clone(),
             client: reqwest::Client::new(),
@@ -818,8 +821,8 @@ pub struct ChatterboxTTS {
 impl ChatterboxTTS {
     pub async fn new(config: &TTSConfig) -> VoiceResult<Self> {
         // Get Chatterbox endpoint from environment or use default
-        let endpoint = std::env::var("CHATTERBOX_URL")
-            .unwrap_or_else(|_| "http://localhost:8100".to_string());
+        let endpoint =
+            std::env::var("CHATTERBOX_URL").unwrap_or_else(|_| "http://localhost:8100".to_string());
 
         info!("Initializing Chatterbox TTS with endpoint: {}", endpoint);
 

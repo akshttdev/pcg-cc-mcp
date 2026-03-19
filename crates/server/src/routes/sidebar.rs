@@ -1,19 +1,11 @@
-use axum::{
-    Extension, Json, Router,
-    extract::State,
-    routing::get,
-};
+use axum::{Extension, Json, Router, extract::State, routing::get};
+use db::models::project_knowledge_source::{ProjectHealthSummary, ProjectKnowledgeSource};
 use deployment::Deployment;
 use serde::Serialize;
 use ts_rs::TS;
 use utils::response::ApiResponse;
-use db::models::project_knowledge_source::{ProjectKnowledgeSource, ProjectHealthSummary};
 
-use crate::{
-    DeploymentImpl,
-    error::ApiError,
-    middleware::access_control::AccessContext,
-};
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
@@ -211,7 +203,8 @@ fn build_project_tree(
         .map(|proj| {
             let health = health_map.get(&proj.id);
             let children = build_project_tree(project_rows, health_map, Some(&proj.id));
-            let is_container = proj.git_repo_path.is_empty() || proj.git_repo_path.starts_with("container:");
+            let is_container =
+                proj.git_repo_path.is_empty() || proj.git_repo_path.starts_with("container:");
             SidebarProject {
                 id: proj.id.clone(),
                 name: proj.name.clone(),
@@ -361,11 +354,7 @@ pub async fn get_sidebar_tree(
             .filter(|p| p.client_id.is_none())
             .cloned()
             .collect();
-        let internal_projects = build_project_tree(
-            &internal_project_rows,
-            &health_map,
-            None,
-        );
+        let internal_projects = build_project_tree(&internal_project_rows, &health_map, None);
 
         // Build sidebar clients with nested project trees
         let clients: Vec<SidebarClient> = client_rows
@@ -445,7 +434,11 @@ pub async fn get_sidebar_tree(
         // Rollup health for org: worst status across all projects
         let all_org_projects: Vec<&SidebarProject> = collect_all_projects(&internal_projects)
             .into_iter()
-            .chain(clients.iter().flat_map(|c| collect_all_projects(&c.projects)))
+            .chain(
+                clients
+                    .iter()
+                    .flat_map(|c| collect_all_projects(&c.projects)),
+            )
             .collect();
         let (org_health, org_issues, org_kc, org_activity) = rollup_health(&all_org_projects);
 
@@ -494,8 +487,7 @@ pub async fn get_sidebar_tree(
             let internal_projects = build_project_tree(&orphan_projects, &orphan_health, None);
 
             let all_projects = collect_all_projects(&internal_projects);
-            let (orph_health, orph_issues, orph_kc, orph_activity) =
-                rollup_health(&all_projects);
+            let (orph_health, orph_issues, orph_kc, orph_activity) = rollup_health(&all_projects);
 
             member_orgs.push(SidebarOrg {
                 id: String::new(),

@@ -4,9 +4,9 @@
 //! Uses WhisperX (installed at `.venv-whisperx/`) via subprocess for
 //! word-level aligned transcription with speaker diarization.
 
+use std::{collections::HashMap, path::PathBuf};
+
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::PathBuf;
 use ts_rs::TS;
 
 use super::{VoiceError, VoiceResult};
@@ -191,16 +191,11 @@ impl DiarizationEngine {
             .args(&cmd_args)
             .output()
             .await
-            .map_err(|e| {
-                VoiceError::STTError(format!("Failed to run WhisperX: {}", e))
-            })?;
+            .map_err(|e| VoiceError::STTError(format!("Failed to run WhisperX: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(VoiceError::STTError(format!(
-                "WhisperX failed: {}",
-                stderr
-            )));
+            return Err(VoiceError::STTError(format!("WhisperX failed: {}", stderr)));
         }
 
         // Find the output JSON file
@@ -212,18 +207,14 @@ impl DiarizationEngine {
 
         let json_content = tokio::fs::read_to_string(&json_path)
             .await
-            .map_err(|e| {
-                VoiceError::STTError(format!("Failed to read WhisperX output: {}", e))
-            })?;
+            .map_err(|e| VoiceError::STTError(format!("Failed to read WhisperX output: {}", e)))?;
 
         // Clean up output
         let _ = tokio::fs::remove_file(&json_path).await;
 
         // Parse WhisperX JSON output
         let whisperx_output: WhisperXOutput = serde_json::from_str(&json_content)
-            .map_err(|e| {
-                VoiceError::STTError(format!("Failed to parse WhisperX JSON: {}", e))
-            })?;
+            .map_err(|e| VoiceError::STTError(format!("Failed to parse WhisperX JSON: {}", e)))?;
 
         // Convert to DiarizedSegments with consistent speaker mapping
         let mut segments = Vec::new();

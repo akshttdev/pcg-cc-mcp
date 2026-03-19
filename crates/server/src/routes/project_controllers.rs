@@ -11,14 +11,13 @@ use axum::{
 use db::models::{
     project::Project,
     project_controller::{
-        ProjectControllerConfig, ProjectControllerConversation,
-        ProjectControllerMessage, UpdateControllerConfig,
+        ProjectControllerConfig, ProjectControllerConversation, ProjectControllerMessage,
+        UpdateControllerConfig,
     },
 };
 use deployment::Deployment;
 use nora::brain::{
-    ConversationMessage, LLMClient, LLMConfig, LLMResponse,
-    infer_provider_from_model,
+    ConversationMessage, LLMClient, LLMConfig, LLMResponse, infer_provider_from_model,
 };
 use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
@@ -151,9 +150,12 @@ async fn get_conversation(
         ));
     }
 
-    let messages =
-        ProjectControllerMessage::find_by_conversation(&deployment.db().pool, &conversation_id, None)
-            .await?;
+    let messages = ProjectControllerMessage::find_by_conversation(
+        &deployment.db().pool,
+        &conversation_id,
+        None,
+    )
+    .await?;
 
     Ok(Json(ApiResponse::success(ConversationWithMessages {
         conversation,
@@ -349,7 +351,11 @@ async fn send_message(
             Ok(LLMResponse::ToolCalls { calls, .. }) => {
                 format!(
                     "I'd like to help with that. I identified these actions: {}",
-                    calls.iter().map(|c| c.name.clone()).collect::<Vec<_>>().join(", ")
+                    calls
+                        .iter()
+                        .map(|c| c.name.clone())
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 )
             }
             Err(e) => {
@@ -407,10 +413,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/controller",
             get(get_controller_config).put(update_controller_config),
         )
-        .route(
-            "/controller/conversations",
-            get(list_conversations),
-        )
+        .route("/controller/conversations", get(list_conversations))
         .route(
             "/controller/conversations/{conversation_id}",
             get(get_conversation).delete(delete_conversation),

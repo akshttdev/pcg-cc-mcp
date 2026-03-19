@@ -105,6 +105,7 @@ const useMeshStats = () => {
           setLoading(false);
           return;
         } catch (tauriErr) {
+          // intentionally empty — fall through to API endpoint
         }
       }
 

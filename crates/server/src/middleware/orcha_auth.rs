@@ -4,6 +4,8 @@
 //! When a user authenticates, we determine which device serves their Topsi instance
 //! and route all queries accordingly.
 
+use std::path::Path;
+
 use axum::{
     extract::{Request, State},
     http::StatusCode,
@@ -12,7 +14,6 @@ use axum::{
 };
 use deployment::Deployment;
 use sqlx::SqlitePool;
-use std::path::Path;
 
 use crate::{
     DeploymentImpl,
@@ -38,8 +39,7 @@ impl OrchaAccessContext {
     /// Get the database pool for queries
     /// If topsi_pool is set, use it; otherwise fall back to deployment DB
     pub fn db_pool<'a>(&'a self, deployment: &'a DeploymentImpl) -> &'a SqlitePool {
-        self.topsi_pool.as_ref()
-            .unwrap_or(&deployment.db().pool)
+        self.topsi_pool.as_ref().unwrap_or(&deployment.db().pool)
     }
 }
 
@@ -63,8 +63,8 @@ pub async fn require_orcha_auth(
     };
 
     // Load ORCHA router
-    let orcha_config_path = std::env::var("ORCHA_CONFIG")
-        .unwrap_or_else(|_| "orcha_config.toml".to_string());
+    let orcha_config_path =
+        std::env::var("ORCHA_CONFIG").unwrap_or_else(|_| "orcha_config.toml".to_string());
 
     let router = match OrchaRouter::from_file(&orcha_config_path) {
         Ok(r) => r,
@@ -75,13 +75,14 @@ pub async fn require_orcha_auth(
     };
 
     // Get username from user_id
-    let username = match get_username_from_id(&deployment.db().pool, access_context.user_id.as_str()).await {
-        Ok(u) => u,
-        Err(e) => {
-            tracing::error!("Failed to get username: {}", e);
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
-    };
+    let username =
+        match get_username_from_id(&deployment.db().pool, access_context.user_id.as_str()).await {
+            Ok(u) => u,
+            Err(e) => {
+                tracing::error!("Failed to get username: {}", e);
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            }
+        };
 
     // Route user to their Topsi instance
     let topsi_route = match router.route_user(&username, &deployment.db().pool).await {
@@ -130,13 +131,11 @@ pub async fn require_orcha_auth(
 
 /// Get username from user ID
 async fn get_username_from_id(pool: &SqlitePool, user_id: &str) -> Result<String, ApiError> {
-    let result: Option<(String,)> = sqlx::query_as(
-        "SELECT username FROM users WHERE id = ?"
-    )
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+    let result: Option<(String,)> = sqlx::query_as("SELECT username FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
     result
         .map(|(username,)| username)
@@ -147,18 +146,19 @@ async fn get_username_from_id(pool: &SqlitePool, user_id: &str) -> Result<String
 async fn connect_to_topsi(db_path: &Path) -> Result<SqlitePool, ApiError> {
     // Check if database file exists
     if !db_path.exists() {
-        return Err(ApiError::InternalError(
-            format!("Topsi database not found: {}", db_path.display())
-        ));
+        return Err(ApiError::InternalError(format!(
+            "Topsi database not found: {}",
+            db_path.display()
+        )));
     }
 
     // Build connection URL
     let db_url = format!("sqlite://{}?mode=rw", db_path.display());
 
     // Connect to database
-    let pool = SqlitePool::connect(&db_url)
-        .await
-        .map_err(|e| ApiError::InternalError(format!("Failed to connect to Topsi database: {}", e)))?;
+    let pool = SqlitePool::connect(&db_url).await.map_err(|e| {
+        ApiError::InternalError(format!("Failed to connect to Topsi database: {}", e))
+    })?;
 
     // Set connection options for better performance
     sqlx::query("PRAGMA journal_mode = WAL")

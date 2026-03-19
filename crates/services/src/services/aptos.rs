@@ -1,8 +1,8 @@
 use aes_gcm::{
-    aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
+    aead::{Aead, KeyInit},
 };
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signature, Signer};
 use rand::RngCore;
 use reqwest::Client;
@@ -18,7 +18,8 @@ const MAX_GAS_AMOUNT: u64 = 10000;
 // VIBE Token Configuration
 // VIBE is a fungible asset on Aptos - deployed at address below
 // 1 VIBE = $0.01 USD, 1 APT ≈ $10 USD (approximate), so 1 APT = 1,000 VIBE
-const _VIBE_TOKEN_ADDRESS: &str = "0x24cb561c64c32942eb8600d5135f0185c23bcd06cd8cf33422ce2f9b77d65388";
+const _VIBE_TOKEN_ADDRESS: &str =
+    "0x24cb561c64c32942eb8600d5135f0185c23bcd06cd8cf33422ce2f9b77d65388";
 const APT_TO_VIBE_RATE: u64 = 1_000; // 1 APT = 1,000 VIBE (assuming $10/APT and $0.01/VIBE)
 const _VIBE_DECIMALS: u8 = 8; // Same as APT for simplicity
 
@@ -285,12 +286,16 @@ impl AptosService {
 
         for resource in &resources {
             if resource.resource_type == "0x1::coin::CoinStore<0x1::aptos_coin::AptosCoin>" {
-                if let Ok(coin_store) = serde_json::from_value::<CoinStoreData>(resource.data.clone()) {
+                if let Ok(coin_store) =
+                    serde_json::from_value::<CoinStoreData>(resource.data.clone())
+                {
                     balance = coin_store.coin.value.parse().unwrap_or(0);
                 }
             }
             if resource.resource_type == "0x1::account::Account" {
-                if let Ok(account_data) = serde_json::from_value::<AccountData>(resource.data.clone()) {
+                if let Ok(account_data) =
+                    serde_json::from_value::<AccountData>(resource.data.clone())
+                {
                     sequence_number = account_data.sequence_number.parse().unwrap_or(0);
                 }
             }
@@ -326,11 +331,7 @@ impl AptosService {
             "arguments": [owner, metadata_address]
         });
 
-        let response = self.client
-            .post(&url)
-            .json(&request_body)
-            .send()
-            .await?;
+        let response = self.client.post(&url).json(&request_body).send().await?;
 
         if !response.status().is_success() {
             return Ok(0); // Return 0 if view fails (account might not have FA store)
@@ -338,7 +339,8 @@ impl AptosService {
 
         // Response is an array with single u64 value as string
         let result: Vec<String> = response.json().await.unwrap_or_default();
-        let balance = result.first()
+        let balance = result
+            .first()
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(0);
 
@@ -346,7 +348,11 @@ impl AptosService {
     }
 
     /// Fund account from testnet faucet
-    pub async fn fund_from_faucet(&self, address: &str, amount_apt: Option<f64>) -> Result<FaucetResponse> {
+    pub async fn fund_from_faucet(
+        &self,
+        address: &str,
+        amount_apt: Option<f64>,
+    ) -> Result<FaucetResponse> {
         let address = Self::normalize_address(address);
 
         // Default to 1 APT if not specified (faucet typically gives 1 APT per request)
@@ -380,7 +386,11 @@ impl AptosService {
     }
 
     /// Get recent transactions for an account
-    pub async fn get_transactions(&self, address: &str, limit: Option<u32>) -> Result<Vec<AptosTransaction>> {
+    pub async fn get_transactions(
+        &self,
+        address: &str,
+        limit: Option<u32>,
+    ) -> Result<Vec<AptosTransaction>> {
         let address = Self::normalize_address(address);
         let limit = limit.unwrap_or(25);
 
@@ -477,7 +487,10 @@ impl AptosService {
         let secret_key = SecretKey::from_bytes(&private_key_bytes)
             .map_err(|e| anyhow!("Invalid private key: {}", e))?;
         let public_key = PublicKey::from(&secret_key);
-        let keypair = Keypair { secret: secret_key, public: public_key };
+        let keypair = Keypair {
+            secret: secret_key,
+            public: public_key,
+        };
 
         // Get sequence number
         let balance_info = self.get_balance(&sender).await?;
@@ -509,7 +522,8 @@ impl AptosService {
 
         // Get the signing message from the API
         let encode_url = format!("{}/transactions/encode_submission", self.node_url);
-        let encode_response = self.client
+        let encode_response = self
+            .client
             .post(&encode_url)
             .json(&transaction)
             .send()
@@ -555,7 +569,8 @@ impl AptosService {
 
         // Submit the transaction
         let submit_url = format!("{}/transactions", self.node_url);
-        let submit_response = self.client
+        let submit_response = self
+            .client
             .post(&submit_url)
             .json(&signed_tx)
             .send()
@@ -594,7 +609,8 @@ impl AptosService {
     // ========================================
 
     // VIBE Token contract address (deployed on testnet)
-    const VIBE_CONTRACT: &'static str = "0x24cb561c64c32942eb8600d5135f0185c23bcd06cd8cf33422ce2f9b77d65388";
+    const VIBE_CONTRACT: &'static str =
+        "0x24cb561c64c32942eb8600d5135f0185c23bcd06cd8cf33422ce2f9b77d65388";
 
     /// Get VIBE token balance for an address
     /// Queries the actual VIBE token contract on Aptos testnet
@@ -631,11 +647,7 @@ impl AptosService {
             "arguments": [owner]
         });
 
-        let response = self.client
-            .post(&url)
-            .json(&request_body)
-            .send()
-            .await?;
+        let response = self.client.post(&url).json(&request_body).send().await?;
 
         if !response.status().is_success() {
             return Ok(0); // Return 0 if view fails
@@ -643,7 +655,8 @@ impl AptosService {
 
         // Response is an array with single u64 value as string
         let result: Vec<String> = response.json().await.unwrap_or_default();
-        let balance = result.first()
+        let balance = result
+            .first()
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(0);
 
@@ -669,7 +682,10 @@ impl AptosService {
         let secret_key = SecretKey::from_bytes(&private_key_bytes)
             .map_err(|e| anyhow!("Invalid private key: {}", e))?;
         let public_key = PublicKey::from(&secret_key);
-        let keypair = Keypair { secret: secret_key, public: public_key };
+        let keypair = Keypair {
+            secret: secret_key,
+            public: public_key,
+        };
 
         // Get sequence number
         let balance_info = self.get_balance(&sender).await?;
@@ -701,7 +717,8 @@ impl AptosService {
 
         // Get the signing message from the API
         let encode_url = format!("{}/transactions/encode_submission", self.node_url);
-        let encode_response = self.client
+        let encode_response = self
+            .client
             .post(&encode_url)
             .json(&transaction)
             .send()
@@ -747,7 +764,8 @@ impl AptosService {
 
         // Submit the transaction
         let submit_url = format!("{}/transactions", self.node_url);
-        let submit_response = self.client
+        let submit_response = self
+            .client
             .post(&submit_url)
             .json(&signed_tx)
             .send()
@@ -948,8 +966,9 @@ impl AptosService {
         let key_bytes = hasher.finalize();
 
         // Decode base64
-        let combined = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, encrypted)
-            .map_err(|e| anyhow!("Invalid base64: {}", e))?;
+        let combined =
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, encrypted)
+                .map_err(|e| anyhow!("Invalid base64: {}", e))?;
 
         if combined.len() < 12 {
             return Err(anyhow!("Encrypted data too short"));

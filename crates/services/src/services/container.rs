@@ -465,7 +465,8 @@ pub trait ContainerService {
         task_attempt: &TaskAttempt,
         executor_profile_id: ExecutorProfileId,
     ) -> Result<ExecutionProcess, ContainerError> {
-        self.start_attempt_with_reason(task_attempt, executor_profile_id, None, None).await
+        self.start_attempt_with_reason(task_attempt, executor_profile_id, None, None)
+            .await
     }
 
     /// Start execution with an explicit run_reason override and optional prompt suffix.
@@ -543,7 +544,9 @@ pub trait ContainerService {
             self.start_execution(
                 &task_attempt,
                 &executor_action,
-                run_reason_override.as_ref().unwrap_or(&ExecutionProcessRunReason::SetupScript),
+                run_reason_override
+                    .as_ref()
+                    .unwrap_or(&ExecutionProcessRunReason::SetupScript),
             )
             .await?
         } else {
@@ -558,7 +561,9 @@ pub trait ContainerService {
             self.start_execution(
                 &task_attempt,
                 &executor_action,
-                run_reason_override.as_ref().unwrap_or(&ExecutionProcessRunReason::CodingAgent),
+                run_reason_override
+                    .as_ref()
+                    .unwrap_or(&ExecutionProcessRunReason::CodingAgent),
             )
             .await?
         };

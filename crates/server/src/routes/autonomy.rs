@@ -8,10 +8,16 @@ use axum::{
     response::Json as ResponseJson,
     routing::{delete, get, post, put},
 };
-use db::models::{
-    approval_gate::{ApprovalGate, GateApproval, GateType, PendingGate, SubmitApproval},
-    checkpoint_definition::{CheckpointDefinition, CheckpointType, CreateCheckpointDefinition, UpdateCheckpointDefinition},
-    execution_checkpoint::{CheckpointStatus, ExecutionCheckpoint, ReviewCheckpoint},
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        approval_gate::{ApprovalGate, GateApproval, GateType, PendingGate, SubmitApproval},
+        checkpoint_definition::{
+            CheckpointDefinition, CheckpointType, CreateCheckpointDefinition,
+            UpdateCheckpointDefinition,
+        },
+        execution_checkpoint::{CheckpointStatus, ExecutionCheckpoint, ReviewCheckpoint},
+    },
 };
 use deployment::Deployment;
 use serde::Deserialize;
@@ -20,7 +26,6 @@ use services::services::autonomy::{AutonomyMode, AutonomyService, PendingApprova
 use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
-use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 
@@ -105,7 +110,9 @@ pub async fn get_task_autonomy_mode(
     Path(task_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<AutonomyMode>>, ApiError> {
-    let task_id = DbUuid::parse(&task_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let task_id = DbUuid::parse(&task_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let autonomy = AutonomyService::new(deployment.db().clone());
 
     let mode = autonomy
@@ -122,7 +129,9 @@ pub async fn set_task_autonomy_mode(
     State(deployment): State<DeploymentImpl>,
     ResponseJson(req): ResponseJson<SetAutonomyModeRequest>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
-    let task_id = DbUuid::parse(&task_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let task_id = DbUuid::parse(&task_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let autonomy = AutonomyService::new(deployment.db().clone());
 
     autonomy
@@ -164,7 +173,9 @@ pub async fn get_checkpoint_definitions(
     Path(project_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<CheckpointDefinition>>>, ApiError> {
-    let project_id = DbUuid::parse(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let project_id = DbUuid::parse(&project_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let autonomy = AutonomyService::new(deployment.db().clone());
 
     let defs = autonomy
@@ -181,7 +192,9 @@ pub async fn update_checkpoint_definition(
     State(deployment): State<DeploymentImpl>,
     ResponseJson(req): ResponseJson<UpdateCheckpointDefinitionRequest>,
 ) -> Result<ResponseJson<ApiResponse<CheckpointDefinition>>, ApiError> {
-    let definition_id = DbUuid::parse(&definition_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let definition_id = DbUuid::parse(&definition_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let autonomy = AutonomyService::new(deployment.db().clone());
 
     let def = autonomy
@@ -208,7 +221,9 @@ pub async fn delete_checkpoint_definition(
     Path(definition_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
-    let definition_id = DbUuid::parse(&definition_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let definition_id = DbUuid::parse(&definition_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let autonomy = AutonomyService::new(deployment.db().clone());
 
     autonomy
@@ -227,7 +242,9 @@ pub async fn trigger_checkpoint(
     State(deployment): State<DeploymentImpl>,
     ResponseJson(req): ResponseJson<TriggerCheckpointRequest>,
 ) -> Result<ResponseJson<ApiResponse<ExecutionCheckpoint>>, ApiError> {
-    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let execution_id = DbUuid::parse(&execution_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let autonomy = AutonomyService::new(deployment.db().clone());
 
     let checkpoint = autonomy
@@ -249,7 +266,9 @@ pub async fn get_execution_checkpoints(
     Path(execution_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<ExecutionCheckpoint>>>, ApiError> {
-    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let execution_id = DbUuid::parse(&execution_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let autonomy = AutonomyService::new(deployment.db().clone());
 
     let checkpoints = autonomy
@@ -265,7 +284,9 @@ pub async fn get_pending_checkpoints(
     Path(execution_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<ExecutionCheckpoint>>>, ApiError> {
-    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let execution_id = DbUuid::parse(&execution_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let autonomy = AutonomyService::new(deployment.db().clone());
 
     let checkpoints = autonomy
@@ -282,7 +303,9 @@ pub async fn review_checkpoint(
     State(deployment): State<DeploymentImpl>,
     ResponseJson(req): ResponseJson<ReviewCheckpointRequest>,
 ) -> Result<ResponseJson<ApiResponse<ExecutionCheckpoint>>, ApiError> {
-    let checkpoint_id = DbUuid::parse(&checkpoint_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let checkpoint_id = DbUuid::parse(&checkpoint_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let autonomy = AutonomyService::new(deployment.db().clone());
 
     let checkpoint = autonomy
@@ -306,7 +329,9 @@ pub async fn skip_checkpoint(
     Path(checkpoint_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<ExecutionCheckpoint>>, ApiError> {
-    let checkpoint_id = DbUuid::parse(&checkpoint_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let checkpoint_id = DbUuid::parse(&checkpoint_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let autonomy = AutonomyService::new(deployment.db().clone());
 
     let checkpoint = autonomy
@@ -347,7 +372,9 @@ pub async fn get_project_gates(
     Path(project_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<ApprovalGate>>>, ApiError> {
-    let project_id = DbUuid::parse(&project_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let project_id = DbUuid::parse(&project_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let autonomy = AutonomyService::new(deployment.db().clone());
 
     let gates = autonomy
@@ -363,7 +390,9 @@ pub async fn delete_approval_gate(
     Path(gate_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
-    let gate_id = DbUuid::parse(&gate_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let gate_id = DbUuid::parse(&gate_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let autonomy = AutonomyService::new(deployment.db().clone());
 
     autonomy
@@ -382,7 +411,9 @@ pub async fn trigger_gate(
     State(deployment): State<DeploymentImpl>,
     ResponseJson(req): ResponseJson<TriggerGateRequest>,
 ) -> Result<ResponseJson<ApiResponse<PendingGate>>, ApiError> {
-    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let execution_id = DbUuid::parse(&execution_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let autonomy = AutonomyService::new(deployment.db().clone());
 
     let pending = autonomy
@@ -398,7 +429,9 @@ pub async fn get_pending_gates(
     Path(execution_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<PendingGate>>>, ApiError> {
-    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let execution_id = DbUuid::parse(&execution_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let autonomy = AutonomyService::new(deployment.db().clone());
 
     let gates = autonomy
@@ -415,7 +448,9 @@ pub async fn submit_gate_approval(
     State(deployment): State<DeploymentImpl>,
     ResponseJson(req): ResponseJson<SubmitApproval>,
 ) -> Result<ResponseJson<ApiResponse<GateApproval>>, ApiError> {
-    let pending_gate_id = DbUuid::parse(&pending_gate_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let pending_gate_id = DbUuid::parse(&pending_gate_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let autonomy = AutonomyService::new(deployment.db().clone());
 
     let approval = autonomy
@@ -431,7 +466,9 @@ pub async fn bypass_gate(
     Path(pending_gate_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<PendingGate>>, ApiError> {
-    let pending_gate_id = DbUuid::parse(&pending_gate_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let pending_gate_id = DbUuid::parse(&pending_gate_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let autonomy = AutonomyService::new(deployment.db().clone());
 
     let pending = autonomy
@@ -463,7 +500,9 @@ pub async fn can_execution_proceed(
     Path(execution_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<bool>>, ApiError> {
-    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let execution_id = DbUuid::parse(&execution_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let autonomy = AutonomyService::new(deployment.db().clone());
 
     let can_proceed = autonomy
@@ -479,29 +518,74 @@ pub async fn can_execution_proceed(
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         // Autonomy mode
-        .route("/tasks/{task_id}/autonomy-mode", get(get_task_autonomy_mode))
-        .route("/tasks/{task_id}/autonomy-mode", put(set_task_autonomy_mode))
+        .route(
+            "/tasks/{task_id}/autonomy-mode",
+            get(get_task_autonomy_mode),
+        )
+        .route(
+            "/tasks/{task_id}/autonomy-mode",
+            put(set_task_autonomy_mode),
+        )
         // Checkpoint definitions
-        .route("/autonomy/checkpoint-definitions", post(create_checkpoint_definition))
-        .route("/autonomy/checkpoint-definitions/{definition_id}", put(update_checkpoint_definition))
-        .route("/autonomy/checkpoint-definitions/{definition_id}", delete(delete_checkpoint_definition))
-        .route("/projects/{project_id}/checkpoint-definitions", get(get_checkpoint_definitions))
+        .route(
+            "/autonomy/checkpoint-definitions",
+            post(create_checkpoint_definition),
+        )
+        .route(
+            "/autonomy/checkpoint-definitions/{definition_id}",
+            put(update_checkpoint_definition),
+        )
+        .route(
+            "/autonomy/checkpoint-definitions/{definition_id}",
+            delete(delete_checkpoint_definition),
+        )
+        .route(
+            "/projects/{project_id}/checkpoint-definitions",
+            get(get_checkpoint_definitions),
+        )
         // Execution checkpoints
-        .route("/executions/{execution_id}/checkpoints", get(get_execution_checkpoints))
-        .route("/executions/{execution_id}/checkpoints", post(trigger_checkpoint))
-        .route("/executions/{execution_id}/checkpoints/pending", get(get_pending_checkpoints))
-        .route("/checkpoints/{checkpoint_id}/review", post(review_checkpoint))
+        .route(
+            "/executions/{execution_id}/checkpoints",
+            get(get_execution_checkpoints),
+        )
+        .route(
+            "/executions/{execution_id}/checkpoints",
+            post(trigger_checkpoint),
+        )
+        .route(
+            "/executions/{execution_id}/checkpoints/pending",
+            get(get_pending_checkpoints),
+        )
+        .route(
+            "/checkpoints/{checkpoint_id}/review",
+            post(review_checkpoint),
+        )
         .route("/checkpoints/{checkpoint_id}/skip", post(skip_checkpoint))
         // Approval gates
         .route("/autonomy/approval-gates", post(create_approval_gate))
-        .route("/autonomy/approval-gates/{gate_id}", delete(delete_approval_gate))
-        .route("/projects/{project_id}/approval-gates", get(get_project_gates))
+        .route(
+            "/autonomy/approval-gates/{gate_id}",
+            delete(delete_approval_gate),
+        )
+        .route(
+            "/projects/{project_id}/approval-gates",
+            get(get_project_gates),
+        )
         // Pending gates
         .route("/executions/{execution_id}/gates", get(get_pending_gates))
         .route("/executions/{execution_id}/gates", post(trigger_gate))
-        .route("/pending-gates/{pending_gate_id}/approve", post(submit_gate_approval))
+        .route(
+            "/pending-gates/{pending_gate_id}/approve",
+            post(submit_gate_approval),
+        )
         .route("/pending-gates/{pending_gate_id}/bypass", post(bypass_gate))
         // Summary
-        .route("/autonomy/pending-approvals", get(get_pending_approvals_summary))
-        .route("/executions/{execution_id}/can-proceed", get(can_execution_proceed))
+        .route(
+            "/autonomy/pending-approvals",
+            get(get_pending_approvals_summary),
+        )
+        .route(
+            "/executions/{execution_id}/can-proceed",
+            get(can_execution_proceed),
+        )
 }

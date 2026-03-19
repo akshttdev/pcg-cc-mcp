@@ -7,13 +7,13 @@
 //! The orchestrator delegates to sub-agents found via `parent_agent_id`.
 
 use axum::{Json, Router, extract::State, routing::get};
+use db::models::agent::{Agent, AgentStatus, AutonomyLevel, CreateAgent};
+use deployment::Deployment;
 use serde::Serialize;
 use sqlx::SqlitePool;
 use ts_rs::TS;
-use crate::{DeploymentImpl, error::ApiError};
-use crate::middleware::access_control::get_current_user;
-use db::models::agent::{Agent, AgentStatus, AutonomyLevel, CreateAgent};
-use deployment::Deployment;
+
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::get_current_user};
 
 /// Response for GET /orcha/status
 #[derive(Debug, Serialize, TS)]
@@ -64,14 +64,12 @@ pub async fn get_orcha_status(
 
     // Resolve username from the users table
     let user_id_bytes = access_ctx.user_id.to_string();
-    let username: String = sqlx::query_scalar(
-        "SELECT username FROM users WHERE id = ?"
-    )
-    .bind(&user_id_bytes)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| ApiError::InternalError(format!("DB error: {}", e)))?
-    .unwrap_or_else(|| "unknown".to_string());
+    let username: String = sqlx::query_scalar("SELECT username FROM users WHERE id = ?")
+        .bind(&user_id_bytes)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("DB error: {}", e)))?
+        .unwrap_or_else(|| "unknown".to_string());
 
     // Determine which orchestrator this user gets
     let (orchestrator_name, agent) = if access_ctx.is_admin {
@@ -107,13 +105,11 @@ pub async fn get_orcha_status(
     .await
     .unwrap_or_default()
     .into_iter()
-    .map(|(id, short_name, designation, status)| {
-        SubAgentBrief {
-            id,
-            short_name,
-            designation,
-            status,
-        }
+    .map(|(id, short_name, designation, status)| SubAgentBrief {
+        id,
+        short_name,
+        designation,
+        status,
     })
     .collect();
 
@@ -146,12 +142,11 @@ pub async fn ensure_orcha_agents(pool: &SqlitePool) -> Result<usize, String> {
         is_admin: bool,
     }
 
-    let users: Vec<UserRow> = sqlx::query_as(
-        "SELECT id, username, is_admin FROM users WHERE is_active = 1"
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| format!("Failed to fetch users: {}", e))?;
+    let users: Vec<UserRow> =
+        sqlx::query_as("SELECT id, username, is_admin FROM users WHERE is_active = 1")
+            .fetch_all(pool)
+            .await
+            .map_err(|e| format!("Failed to fetch users: {}", e))?;
 
     let mut created = 0usize;
 
@@ -214,7 +209,11 @@ pub async fn ensure_orcha_agents(pool: &SqlitePool) -> Result<usize, String> {
 
         match Agent::create(pool, &create).await {
             Ok(agent) => {
-                tracing::info!("Created orchestrator agent '{}' (ID: {})", orcha_name, agent.id);
+                tracing::info!(
+                    "Created orchestrator agent '{}' (ID: {})",
+                    orcha_name,
+                    agent.id
+                );
                 created += 1;
             }
             Err(e) => {

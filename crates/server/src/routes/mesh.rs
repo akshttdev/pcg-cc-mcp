@@ -13,12 +13,7 @@
 //! Dashboard mesh routes  -->  apn-client  -->  APN Core (localhost:8000)
 //! ```
 
-use axum::{
-    Router,
-    extract::State,
-    response::Json as ResponseJson,
-    routing::get,
-};
+use axum::{Router, extract::State, response::Json as ResponseJson, routing::get};
 use chrono::{DateTime, Utc};
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
@@ -113,8 +108,10 @@ async fn fetch_peers_from_apn_core() -> (Vec<PeerInfo>, bool, String, u64) {
             let uptime = stats.uptime_seconds;
 
             let peers = match client.get_peers().await {
-                Ok(peer_list) => {
-                    peer_list.peers.into_iter().map(|p| PeerInfo {
+                Ok(peer_list) => peer_list
+                    .peers
+                    .into_iter()
+                    .map(|p| PeerInfo {
                         peer_id: p.node_id,
                         address: p.wallet_address,
                         latency_ms: None,
@@ -122,8 +119,8 @@ async fn fetch_peers_from_apn_core() -> (Vec<PeerInfo>, bool, String, u64) {
                         bandwidth_mbps: None,
                         reputation: 1.0,
                         capabilities: p.capabilities,
-                    }).collect()
-                }
+                    })
+                    .collect(),
                 Err(_) => vec![],
             };
 
@@ -141,8 +138,11 @@ async fn fetch_peers_from_apn_core() -> (Vec<PeerInfo>, bool, String, u64) {
 
 /// Legacy fallback: parse peers from log file (used when APN Core is not running)
 async fn fetch_peers_from_log_fallback() -> (Vec<PeerInfo>, bool) {
-    use std::io::{BufRead, BufReader};
-    use std::fs::File;
+    use std::{
+        fs::File,
+        io::{BufRead, BufReader},
+    };
+
     use regex::Regex;
 
     let log_path = "/tmp/apn_node.log";
@@ -176,15 +176,18 @@ async fn fetch_peers_from_log_fallback() -> (Vec<PeerInfo>, bool) {
                     .collect();
 
                 if !peers.contains_key(node_id) {
-                    peers.insert(node_id.to_string(), PeerInfo {
-                        peer_id: node_id.to_string(),
-                        address: wallet.to_string(),
-                        latency_ms: None,
-                        connection_type: "NATS".to_string(),
-                        bandwidth_mbps: None,
-                        reputation: 1.0,
-                        capabilities,
-                    });
+                    peers.insert(
+                        node_id.to_string(),
+                        PeerInfo {
+                            peer_id: node_id.to_string(),
+                            address: wallet.to_string(),
+                            latency_ms: None,
+                            connection_type: "NATS".to_string(),
+                            bandwidth_mbps: None,
+                            reputation: 1.0,
+                            capabilities,
+                        },
+                    );
                 }
             }
         }
@@ -235,7 +238,7 @@ pub async fn get_mesh_stats(
         FROM agent_flows af
         ORDER BY af.planning_started_at DESC
         LIMIT 20
-        "#
+        "#,
     )
     .fetch_all(pool)
     .await
@@ -260,10 +263,15 @@ pub async fn get_mesh_stats(
                 id: id.clone(),
                 timestamp,
                 tx_type: tx_type.to_string(),
-                description: format!("{} workflow: {}",
-                    if status == "completed" { "Completed" }
-                    else if status == "failed" { "Failed" }
-                    else { "Processing" },
+                description: format!(
+                    "{} workflow: {}",
+                    if status == "completed" {
+                        "Completed"
+                    } else if status == "failed" {
+                        "Failed"
+                    } else {
+                        "Processing"
+                    },
                     flow_type
                 ),
                 vibe_amount: Some(if status == "completed" { 10.0 } else { 0.0 }),
@@ -274,7 +282,7 @@ pub async fn get_mesh_stats(
         .collect();
 
     let active_count: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM agent_flows WHERE status IN ('planning', 'executing')"
+        "SELECT COUNT(*) FROM agent_flows WHERE status IN ('planning', 'executing')",
     )
     .fetch_one(pool)
     .await
@@ -285,7 +293,7 @@ pub async fn get_mesh_stats(
         SELECT COUNT(*) FROM agent_flows
         WHERE status = 'completed'
         AND date(verification_completed_at) = date('now')
-        "#
+        "#,
     )
     .fetch_one(pool)
     .await
@@ -295,7 +303,11 @@ pub async fn get_mesh_stats(
 
     let stats = MeshStats {
         node_id,
-        status: if relay_connected { "online".to_string() } else { "offline".to_string() },
+        status: if relay_connected {
+            "online".to_string()
+        } else {
+            "offline".to_string()
+        },
         peers_connected: peers.len(),
         peers,
         bandwidth: BandwidthStats {
@@ -374,7 +386,7 @@ pub async fn get_transactions(
         FROM agent_flows af
         ORDER BY af.planning_started_at DESC
         LIMIT 50
-        "#
+        "#,
     )
     .fetch_all(pool)
     .await
@@ -399,10 +411,15 @@ pub async fn get_transactions(
                 id: id.clone(),
                 timestamp,
                 tx_type: tx_type.to_string(),
-                description: format!("{} workflow: {}",
-                    if status == "completed" { "Completed" }
-                    else if status == "failed" { "Failed" }
-                    else { "Processing" },
+                description: format!(
+                    "{} workflow: {}",
+                    if status == "completed" {
+                        "Completed"
+                    } else if status == "failed" {
+                        "Failed"
+                    } else {
+                        "Processing"
+                    },
                     flow_type
                 ),
                 vibe_amount: Some(if status == "completed" { 10.0 } else { 0.0 }),
@@ -658,8 +675,14 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/files/send", axum::routing::post(send_file))
         .route("/files/transfers", get(get_active_transfers))
         .route("/files/transfers/{id}", get(get_transfer_status))
-        .route("/files/transfers/{id}/accept", axum::routing::post(accept_file_transfer))
-        .route("/files/transfers/{id}/cancel", axum::routing::post(cancel_file_transfer))
+        .route(
+            "/files/transfers/{id}/accept",
+            axum::routing::post(accept_file_transfer),
+        )
+        .route(
+            "/files/transfers/{id}/cancel",
+            axum::routing::post(cancel_file_transfer),
+        )
         .route("/files/history", get(get_file_transfer_history))
         // Cloud import routes (proxy to APN Core)
         .route("/cloud/import", axum::routing::post(cloud_import))

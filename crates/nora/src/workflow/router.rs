@@ -52,7 +52,10 @@ impl WorkflowRouter {
         matches.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap());
 
         // Return the best match
-        matches.into_iter().next().map(|(agent, workflow, _)| (agent, workflow))
+        matches
+            .into_iter()
+            .next()
+            .map(|(agent, workflow, _)| (agent, workflow))
     }
 
     /// Calculate how well a workflow matches a user request
@@ -145,9 +148,10 @@ impl WorkflowRouter {
         self.agents
             .iter()
             .flat_map(|agent| {
-                agent.workflows.iter().map(move |workflow| {
-                    (agent.agent_id.clone(), workflow.clone())
-                })
+                agent
+                    .workflows
+                    .iter()
+                    .map(move |workflow| (agent.agent_id.clone(), workflow.clone()))
             })
             .collect()
     }

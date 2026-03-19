@@ -4,40 +4,52 @@
 //! routes participant audio through Whisper STT → Nora LLM → ElevenLabs/Chatterbox TTS,
 //! and injects Nora's voice back into the meeting via PipeWire virtual audio devices.
 
-use std::collections::{HashMap, HashSet};
-use std::convert::Infallible;
-use std::pin::Pin;
-use std::sync::Arc;
-use std::process::Stdio;
-use std::time::{Duration, Instant};
+use std::{
+    collections::{HashMap, HashSet},
+    convert::Infallible,
+    pin::Pin,
+    process::Stdio,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use axum::{
     Json, Router,
     body::Bytes,
     extract::{Path, State},
     http::StatusCode,
-    response::{IntoResponse, Response, sse::{Event as SseEvent, KeepAlive, Sse}},
+    response::{
+        IntoResponse, Response,
+        sse::{Event as SseEvent, KeepAlive, Sse},
+    },
     routing::{get, post},
 };
+use chrono::Utc;
+use db::models::{
+    data_source::{CreateDataSource, DataSource},
+    meeting_session::{
+        CreateMeetingSegment, CreateMeetingSession, MeetingSegment, MeetingSession, MeetingStatus,
+        UpdateMeetingSession,
+    },
+    project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource},
+};
+use deployment::Deployment;
 use futures::Stream;
 use futures_util::StreamExt;
+use nora::agent::{NoraRequest, NoraRequestType, RequestPriority};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tokio::process::{Child, Command};
-use tokio::sync::{Mutex, broadcast};
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::{
+    io::{AsyncBufReadExt, BufReader},
+    process::{Child, Command},
+    sync::{Mutex, broadcast},
+};
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{info, warn};
 // TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
-use chrono::Utc;
 
-use db::models::meeting_session::{CreateMeetingSession, MeetingSession, UpdateMeetingSession, MeetingStatus, CreateMeetingSegment, MeetingSegment};
-use db::models::project_knowledge_source::{ProjectKnowledgeSource, KnowledgeSourceType};
-use db::models::data_source::{CreateDataSource, DataSource};
-use nora::agent::{NoraRequest, NoraRequestType, RequestPriority};
-use deployment::Deployment;
 use crate::{DeploymentImpl, routes::nora::get_nora_instance};
 
 // ── Global state ─────────────────────────────────────────────────────────────
@@ -111,44 +123,57 @@ pub async fn join_meet(
 
     // Resolve project_id: use provided value if non-empty, otherwise fall back to
     // the first admin-owned project so sessions appear in the dashboard
-    let project_id = if body.project_id.is_empty() || body.project_id == "00000000000000000000000000000001" {
-        sqlx::query_scalar::<_, String>(
-            "SELECT lower(hex(p.id)) FROM projects p \
+    let project_id =
+        if body.project_id.is_empty() || body.project_id == "00000000000000000000000000000001" {
+            sqlx::query_scalar::<_, String>(
+                "SELECT lower(hex(p.id)) FROM projects p \
              JOIN project_members pm ON pm.project_id = p.id \
              JOIN users u ON u.id = pm.user_id \
              WHERE u.is_admin = 1 AND u.is_active = 1 \
-             ORDER BY p.created_at DESC LIMIT 1"
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap_or_else(|_| body.project_id.clone())
-    } else {
-        body.project_id.clone()
-    };
+             ORDER BY p.created_at DESC LIMIT 1",
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap_or_else(|_| body.project_id.clone())
+        } else {
+            body.project_id.clone()
+        };
 
-    let db_session = MeetingSession::create(&pool, CreateMeetingSession {
-        project_id,
-        title: Some(body.title.unwrap_or_else(|| "Google Meet with Nora".to_string())),
-        started_by: "nora".to_string(),
-    }).await.map_err(|e| (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({ "error": format!("Failed to create meeting session: {}", e) })),
-    ))?;
+    let db_session = MeetingSession::create(
+        &pool,
+        CreateMeetingSession {
+            project_id,
+            title: Some(
+                body.title
+                    .unwrap_or_else(|| "Google Meet with Nora".to_string()),
+            ),
+            started_by: "nora".to_string(),
+        },
+    )
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to create meeting session: {}", e) })),
+        )
+    })?;
 
     // Use the DB-generated ID as the canonical session ID everywhere
     let session_id = db_session.id.clone();
 
     let (tx, _rx) = broadcast::channel::<TranscriptEvent>(128);
     let script_path = find_script("meet-bot.js");
-    let server_url = std::env::var("BACKEND_URL")
-        .unwrap_or_else(|_| "http://localhost:3000".to_string());
-    let profile_dir = std::env::var("NORA_CHROME_PROFILE")
-        .unwrap_or_else(|_| {
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/home/pythia".to_string());
-            format!("{}/nora-chrome-profile", home)
-        });
+    let server_url =
+        std::env::var("BACKEND_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
+    let profile_dir = std::env::var("NORA_CHROME_PROFILE").unwrap_or_else(|_| {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/pythia".to_string());
+        format!("{}/nora-chrome-profile", home)
+    });
 
-    info!("[MEET] Spawning meet-bot: session={} url={}", session_id, meet_url);
+    info!(
+        "[MEET] Spawning meet-bot: session={} url={}",
+        session_id, meet_url
+    );
 
     let mut child = Command::new("node")
         .arg(&script_path)
@@ -156,14 +181,19 @@ pub async fn join_meet(
         .arg(&session_id)
         .arg(&server_url)
         .arg(&profile_dir)
-        .env("DISPLAY", std::env::var("DISPLAY").unwrap_or_else(|_| ":1".to_string()))
+        .env(
+            "DISPLAY",
+            std::env::var("DISPLAY").unwrap_or_else(|_| ":1".to_string()),
+        )
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": format!("Failed to start meet bot: {}", e) })),
-        ))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to start meet bot: {}", e) })),
+            )
+        })?;
 
     // Log bot stdout events
     let sid_log = session_id.clone();
@@ -191,11 +221,15 @@ pub async fn join_meet(
                                 {
                                     let stdout = String::from_utf8_lossy(&out.stdout);
                                     for line in stdout.lines() {
-                                        if let Some(sink_input_id) = line.split_whitespace().next() {
+                                        if let Some(sink_input_id) = line.split_whitespace().next()
+                                        {
                                             let _ = std::process::Command::new("pactl")
                                                 .args(["move-sink-input", sink_input_id, &out_sink])
                                                 .output();
-                                            info!("[MEET] Moved sink-input {} to {}", sink_input_id, out_sink);
+                                            info!(
+                                                "[MEET] Moved sink-input {} to {}",
+                                                sink_input_id, out_sink
+                                            );
                                         }
                                     }
                                 }
@@ -207,25 +241,40 @@ pub async fn join_meet(
                                     let mut sessions = sessions_intro.lock().await;
                                     if let Some(sess) = sessions.get_mut(&sid_intro) {
                                         sess.tts_queue.push(audio);
-                                        info!("[MEET] Intro queued for session {}", &sid_intro[..8]);
+                                        info!(
+                                            "[MEET] Intro queued for session {}",
+                                            &sid_intro[..8]
+                                        );
                                     }
                                 }
                             });
                         }
                         Some("transcript") => {
                             if let Some(text) = ev.get("text").and_then(|t| t.as_str()) {
-                                let speaker = ev.get("speaker").and_then(|s| s.as_str()).unwrap_or("participant").to_string();
+                                let speaker = ev
+                                    .get("speaker")
+                                    .and_then(|s| s.as_str())
+                                    .unwrap_or("participant")
+                                    .to_string();
                                 let _ = tx_log.send(TranscriptEvent {
-                                    speaker, text: text.to_string(), segment_index: 0, is_nora: false,
+                                    speaker,
+                                    text: text.to_string(),
+                                    segment_index: 0,
+                                    is_nora: false,
                                 });
                             }
                         }
                         Some("done") | Some("leaving") => {
-                            let _ = MeetingSession::update(&pool_log, &sid_log, UpdateMeetingSession {
-                                status: Some(MeetingStatus::Ended),
-                                ended_at: Some(Utc::now().to_rfc3339()),
-                                ..Default::default()
-                            }).await;
+                            let _ = MeetingSession::update(
+                                &pool_log,
+                                &sid_log,
+                                UpdateMeetingSession {
+                                    status: Some(MeetingStatus::Ended),
+                                    ended_at: Some(Utc::now().to_rfc3339()),
+                                    ..Default::default()
+                                },
+                            )
+                            .await;
                             break;
                         }
                         _ => {}
@@ -247,16 +296,19 @@ pub async fn join_meet(
 
     {
         let mut sessions = ACTIVE_MEETS.lock().await;
-        sessions.insert(session_id.clone(), ActiveMeetSession {
-            session_id: session_id.clone(),
-            meet_url: meet_url.clone(),
-            project_id: body.project_id.clone(),
-            process: Some(child),
-            tx,
-            tts_queue: Vec::new(),
-            started_at: Instant::now(),
-            segment_count: 0,
-        });
+        sessions.insert(
+            session_id.clone(),
+            ActiveMeetSession {
+                session_id: session_id.clone(),
+                meet_url: meet_url.clone(),
+                project_id: body.project_id.clone(),
+                process: Some(child),
+                tx,
+                tts_queue: Vec::new(),
+                started_at: Instant::now(),
+                segment_count: 0,
+            },
+        );
     }
 
     Ok(Json(JoinMeetResponse {
@@ -275,11 +327,15 @@ pub async fn receive_audio(
     let pool = deployment.db().pool.clone();
 
     if body.is_empty() {
-        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "empty audio" }))).into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "empty audio" })),
+        )
+            .into_response();
     }
 
-    let whisper_url = std::env::var("WHISPER_URL")
-        .unwrap_or_else(|_| "http://localhost:8101".to_string());
+    let whisper_url =
+        std::env::var("WHISPER_URL").unwrap_or_else(|_| "http://localhost:8101".to_string());
 
     let transcript = call_whisper(&whisper_url, &body).await;
     let transcript = match transcript {
@@ -287,7 +343,11 @@ pub async fn receive_audio(
         _ => return Json(json!({ "transcript": null })).into_response(),
     };
 
-    info!("[MEET {}] STT: {}", &session_id[..session_id.len().min(8)], transcript);
+    info!(
+        "[MEET {}] STT: {}",
+        &session_id[..session_id.len().min(8)],
+        transcript
+    );
 
     // Only engage Nora when she's directly addressed by name
     let addressed = transcript.to_lowercase().contains("nora");
@@ -307,7 +367,7 @@ pub async fn receive_audio(
         } else {
             // Session not in memory (e.g. after server restart) — use DB to determine index
             let count = sqlx::query_scalar::<_, i64>(
-                "SELECT COUNT(*) FROM meeting_segments WHERE meeting_session_id = ?"
+                "SELECT COUNT(*) FROM meeting_segments WHERE meeting_session_id = ?",
             )
             .bind(&session_id)
             .fetch_one(&pool)
@@ -317,16 +377,20 @@ pub async fn receive_audio(
         };
         idx
     };
-    let _ = MeetingSegment::create(&pool, CreateMeetingSegment {
-        meeting_session_id: session_id.clone(),
-        segment_index: participant_idx,
-        speaker_label: Some("participant".to_string()),
-        text: transcript.clone(),
-        confidence: None,
-        start_time_ms: 0,
-        end_time_ms: 2000,
-        is_topsi_addressed: false,
-    }).await;
+    let _ = MeetingSegment::create(
+        &pool,
+        CreateMeetingSegment {
+            meeting_session_id: session_id.clone(),
+            segment_index: participant_idx,
+            speaker_label: Some("participant".to_string()),
+            text: transcript.clone(),
+            confidence: None,
+            start_time_ms: 0,
+            end_time_ms: 2000,
+            is_topsi_addressed: false,
+        },
+    )
+    .await;
 
     // Only engage Nora when addressed by name — transcript is always stored above
     if !addressed {
@@ -359,7 +423,10 @@ pub async fn receive_audio(
             };
             match nora.process_request(req).await {
                 Ok(resp) => Some(resp.content),
-                Err(e) => { warn!("[MEET] Nora error: {}", e); None }
+                Err(e) => {
+                    warn!("[MEET] Nora error: {}", e);
+                    None
+                }
             }
         } else {
             warn!("[MEET] Nora not initialized");
@@ -372,7 +439,11 @@ pub async fn receive_audio(
         _ => return Json(json!({ "transcript": transcript })).into_response(),
     };
 
-    info!("[MEET {}] Nora: {}", &session_id[..session_id.len().min(8)], nora_text);
+    info!(
+        "[MEET {}] Nora: {}",
+        &session_id[..session_id.len().min(8)],
+        nora_text
+    );
 
     // Store Nora segment + broadcast
     let nora_idx = {
@@ -388,7 +459,7 @@ pub async fn receive_audio(
             sess.segment_count
         } else {
             let count = sqlx::query_scalar::<_, i64>(
-                "SELECT COUNT(*) FROM meeting_segments WHERE meeting_session_id = ?"
+                "SELECT COUNT(*) FROM meeting_segments WHERE meeting_session_id = ?",
             )
             .bind(&session_id)
             .fetch_one(&pool)
@@ -398,16 +469,20 @@ pub async fn receive_audio(
         };
         idx
     };
-    let _ = MeetingSegment::create(&pool, CreateMeetingSegment {
-        meeting_session_id: session_id.clone(),
-        segment_index: nora_idx,
-        speaker_label: Some("Nora".to_string()),
-        text: nora_text.clone(),
-        confidence: Some(1.0),
-        start_time_ms: 0,
-        end_time_ms: 0,
-        is_topsi_addressed: false,
-    }).await;
+    let _ = MeetingSegment::create(
+        &pool,
+        CreateMeetingSegment {
+            meeting_session_id: session_id.clone(),
+            segment_index: nora_idx,
+            speaker_label: Some("Nora".to_string()),
+            text: nora_text.clone(),
+            confidence: Some(1.0),
+            start_time_ms: 0,
+            end_time_ms: 0,
+            is_topsi_addressed: false,
+        },
+    )
+    .await;
 
     // Synthesize TTS and queue
     if let Some(audio) = synthesize_tts(&nora_text).await {
@@ -430,7 +505,8 @@ pub async fn next_tts(Path(session_id): Path<String>) -> Response {
             if let Some(sess) = sessions.get_mut(&session_id) {
                 if !sess.tts_queue.is_empty() {
                     let audio = sess.tts_queue.remove(0);
-                    return (StatusCode::OK, [("Content-Type", "audio/wav")], audio).into_response();
+                    return (StatusCode::OK, [("Content-Type", "audio/wav")], audio)
+                        .into_response();
                 }
             } else {
                 return StatusCode::NOT_FOUND.into_response();
@@ -448,13 +524,18 @@ pub async fn next_tts(Path(session_id): Path<String>) -> Response {
 /// GET /nora/meet/sessions
 pub async fn list_sessions() -> Json<Vec<MeetSessionInfo>> {
     let sessions = ACTIVE_MEETS.lock().await;
-    Json(sessions.values().map(|s| MeetSessionInfo {
-        session_id: s.session_id.clone(),
-        meet_url: s.meet_url.clone(),
-        project_id: s.project_id.clone(),
-        elapsed_seconds: s.started_at.elapsed().as_secs(),
-        segment_count: s.segment_count,
-    }).collect())
+    Json(
+        sessions
+            .values()
+            .map(|s| MeetSessionInfo {
+                session_id: s.session_id.clone(),
+                meet_url: s.meet_url.clone(),
+                project_id: s.project_id.clone(),
+                elapsed_seconds: s.started_at.elapsed().as_secs(),
+                segment_count: s.segment_count,
+            })
+            .collect(),
+    )
 }
 
 /// POST /nora/meet/:id/leave
@@ -469,11 +550,16 @@ pub async fn leave_meet(
         if let Some(mut child) = sess.process.take() {
             let _ = child.kill().await;
         }
-        let _ = MeetingSession::update(&pool, &session_id, UpdateMeetingSession {
-            status: Some(MeetingStatus::Ended),
-            ended_at: Some(Utc::now().to_rfc3339()),
-            ..Default::default()
-        }).await;
+        let _ = MeetingSession::update(
+            &pool,
+            &session_id,
+            UpdateMeetingSession {
+                status: Some(MeetingStatus::Ended),
+                ended_at: Some(Utc::now().to_rfc3339()),
+                ..Default::default()
+            },
+        )
+        .await;
         save_meeting_knowledge_source(&pool, &session_id).await;
         Json(json!({ "status": "left", "session_id": session_id }))
     } else {
@@ -495,24 +581,29 @@ async fn save_meeting_knowledge_source(pool: &sqlx::SqlitePool, session_id: &str
         Err(_) => {
             // Try hex without dashes
             let hex = session.project_id.replace('-', "");
-            match hex::decode(&hex).ok().and_then(|b| uuid::Uuid::from_slice(&b).ok()) {
+            match hex::decode(&hex)
+                .ok()
+                .and_then(|b| uuid::Uuid::from_slice(&b).ok())
+            {
                 Some(u) => u,
                 None => return,
             }
         }
     };
 
-    let seg_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM meeting_segments WHERE meeting_session_id = ?"
-    )
-    .bind(session_id)
-    .fetch_one(pool)
-    .await
-    .unwrap_or(0);
+    let seg_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM meeting_segments WHERE meeting_session_id = ?")
+            .bind(session_id)
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0);
 
     // Fetch all transcript segments for full-text content
     #[derive(sqlx::FromRow)]
-    struct SegRow { speaker_label: Option<String>, text: String }
+    struct SegRow {
+        speaker_label: Option<String>,
+        text: String,
+    }
     let all_segs: Vec<SegRow> = sqlx::query_as(
         "SELECT speaker_label, text FROM meeting_segments WHERE meeting_session_id = ? ORDER BY segment_index ASC"
     )
@@ -522,26 +613,53 @@ async fn save_meeting_knowledge_source(pool: &sqlx::SqlitePool, session_id: &str
     .unwrap_or_default();
 
     let summary = if seg_count > 0 {
-        let preview: String = all_segs.iter().take(5).map(|s| s.text.as_str()).collect::<Vec<_>>().join(" ");
-        let preview_trimmed = if preview.len() > 300 { &preview[..300] } else { &preview };
-        format!("{} transcript segments captured. Preview: {}", seg_count, preview_trimmed)
+        let preview: String = all_segs
+            .iter()
+            .take(5)
+            .map(|s| s.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let preview_trimmed = if preview.len() > 300 {
+            &preview[..300]
+        } else {
+            &preview
+        };
+        format!(
+            "{} transcript segments captured. Preview: {}",
+            seg_count, preview_trimmed
+        )
     } else {
-        "Nora attended this meeting. No transcript was captured (audio may not have been active).".to_string()
+        "Nora attended this meeting. No transcript was captured (audio may not have been active)."
+            .to_string()
     };
 
     // Full transcript as plain text (for data_sources content)
-    let transcript_text: String = all_segs.iter().map(|s| {
-        let label = s.speaker_label.as_deref().unwrap_or("Speaker");
-        format!("[{}] {}", label, s.text)
-    }).collect::<Vec<_>>().join("\n");
+    let transcript_text: String = all_segs
+        .iter()
+        .map(|s| {
+            let label = s.speaker_label.as_deref().unwrap_or("Speaker");
+            format!("[{}] {}", label, s.text)
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
 
     let title = format!("{} ({})", session.title, &session_id[..8]);
-    let coverage = if seg_count > 0 { (seg_count as f64 / 100.0).min(1.0).max(0.3) } else { 0.1 };
+    let coverage = if seg_count > 0 {
+        (seg_count as f64 / 100.0).min(1.0).max(0.3)
+    } else {
+        0.1
+    };
 
     let full_content = if transcript_text.is_empty() {
-        format!("Nora attended: {}\n\nNo audio transcript was captured.", session.title)
+        format!(
+            "Nora attended: {}\n\nNo audio transcript was captured.",
+            session.title
+        )
     } else {
-        format!("Meeting: {}\nDate: {}\n\n{}", session.title, session.started_at, transcript_text)
+        format!(
+            "Meeting: {}\nDate: {}\n\n{}",
+            session.title, session.started_at, transcript_text
+        )
     };
 
     // 1. Save to project_knowledge_sources (project knowledge graph)
@@ -553,7 +671,8 @@ async fn save_meeting_knowledge_source(pool: &sqlx::SqlitePool, session_id: &str
         &title,
         Some(&summary),
         coverage,
-    ).await;
+    )
+    .await;
 
     // 2. Save to data_sources (organization dashboard)
     // Skip if already saved (idempotent check via metadata json containing session_id)
@@ -567,14 +686,13 @@ async fn save_meeting_knowledge_source(pool: &sqlx::SqlitePool, session_id: &str
 
     if already_exists == 0 {
         // Look up organization_id from the project (include soft-deleted projects)
-        let org_id_bytes: Option<Vec<u8>> = sqlx::query_scalar(
-            "SELECT organization_id FROM projects WHERE lower(hex(id)) = ?"
-        )
-        .bind(&session.project_id.replace('-', "").to_lowercase())
-        .fetch_optional(pool)
-        .await
-        .unwrap_or(None)
-        .flatten();
+        let org_id_bytes: Option<Vec<u8>> =
+            sqlx::query_scalar("SELECT organization_id FROM projects WHERE lower(hex(id)) = ?")
+                .bind(&session.project_id.replace('-', "").to_lowercase())
+                .fetch_optional(pool)
+                .await
+                .unwrap_or(None)
+                .flatten();
 
         // Fallback: use admin user's default org
         let org_uuid: Option<Uuid> = if let Some(bytes) = org_id_bytes {
@@ -585,7 +703,7 @@ async fn save_meeting_knowledge_source(pool: &sqlx::SqlitePool, session_id: &str
                 "SELECT om.organization_id FROM organization_members om \
                  JOIN users u ON u.id = om.user_id \
                  WHERE u.is_admin = 1 AND u.is_active = 1 \
-                 ORDER BY om.created_at ASC LIMIT 1"
+                 ORDER BY om.created_at ASC LIMIT 1",
             )
             .fetch_optional(pool)
             .await
@@ -599,30 +717,35 @@ async fn save_meeting_knowledge_source(pool: &sqlx::SqlitePool, session_id: &str
             "started_by": session.started_by,
             "segment_count": seg_count,
             "source": "nora_meet"
-        }).to_string();
+        })
+        .to_string();
 
-        let _ = DataSource::create(pool, CreateDataSource {
-            organization_id: org_uuid.map(|u| u.to_string()),
-            project_id: None,
-            created_by: None,
-            title: title.clone(),
-            description: Some(summary.clone()),
-            data_type: "conversation".to_string(),
-            source_type: Some("text".to_string()),
-            content: Some(full_content.clone()),
-            file_name: None,
-            file_type: None,
-            file_path: None,
-            file_size_bytes: None,
-            file_hash: None,
-            metadata: Some(metadata),
-            folder: None,
-        }).await;
+        let _ = DataSource::create(
+            pool,
+            CreateDataSource {
+                organization_id: org_uuid.map(|u| u.to_string()),
+                project_id: None,
+                created_by: None,
+                title: title.clone(),
+                description: Some(summary.clone()),
+                data_type: "conversation".to_string(),
+                source_type: Some("text".to_string()),
+                content: Some(full_content.clone()),
+                file_name: None,
+                file_type: None,
+                file_path: None,
+                file_size_bytes: None,
+                file_hash: None,
+                metadata: Some(metadata),
+                folder: None,
+            },
+        )
+        .await;
 
         // Mark as ready immediately (no processing needed for text)
         let _ = sqlx::query(
             "UPDATE data_sources SET status='ready' \
-             WHERE json_extract(metadata, '$.meeting_session_id') = ?"
+             WHERE json_extract(metadata, '$.meeting_session_id') = ?",
         )
         .bind(session_id)
         .execute(pool)
@@ -631,9 +754,20 @@ async fn save_meeting_knowledge_source(pool: &sqlx::SqlitePool, session_id: &str
 
     // Auto-detect attendees from title (e.g. "Meet with Sirak" → look up person "Sirak")
     // If found, link them on the session and also save to their org's data sources
-    detect_and_link_attendees(pool, session_id, &session.title, &full_content, &title, &summary).await;
+    detect_and_link_attendees(
+        pool,
+        session_id,
+        &session.title,
+        &full_content,
+        &title,
+        &summary,
+    )
+    .await;
 
-    info!("Saved meeting {} as knowledge source and data source ({} segments)", session_id, seg_count);
+    info!(
+        "Saved meeting {} as knowledge source and data source ({} segments)",
+        session_id, seg_count
+    );
 }
 
 /// Extract names from meeting title (e.g. "Meet with Sirak", "Call with John & Amy"),
@@ -648,10 +782,16 @@ async fn detect_and_link_attendees(
 ) {
     // Extract candidate names from common title patterns
     let lower = title.to_lowercase();
-    let name_part = ["meet with ", "call with ", "chat with ", "meeting with ", "sync with "]
-        .iter()
-        .find_map(|prefix| lower.strip_prefix(prefix))
-        .unwrap_or("");
+    let name_part = [
+        "meet with ",
+        "call with ",
+        "chat with ",
+        "meeting with ",
+        "sync with ",
+    ]
+    .iter()
+    .find_map(|prefix| lower.strip_prefix(prefix))
+    .unwrap_or("");
 
     if name_part.is_empty() {
         return;
@@ -673,11 +813,13 @@ async fn detect_and_link_attendees(
         // Look up person or user by name (case-insensitive partial match)
         #[derive(sqlx::FromRow)]
         #[allow(dead_code)]
-        struct PersonRow { id: Vec<u8> }
+        struct PersonRow {
+            id: Vec<u8>,
+        }
 
         // Try persons table first
         let person_bytes: Option<Vec<u8>> = sqlx::query_scalar(
-            "SELECT id FROM persons WHERE lower(full_name) LIKE lower('%' || ? || '%') LIMIT 1"
+            "SELECT id FROM persons WHERE lower(full_name) LIKE lower('%' || ? || '%') LIMIT 1",
         )
         .bind(name)
         .fetch_optional(pool)
@@ -686,10 +828,12 @@ async fn detect_and_link_attendees(
         .flatten();
 
         // Fallback: users table
-        let person_bytes = if person_bytes.is_some() { person_bytes } else {
+        let person_bytes = if person_bytes.is_some() {
+            person_bytes
+        } else {
             sqlx::query_scalar(
                 "SELECT id FROM users WHERE lower(username) LIKE lower('%' || ? || '%') \
-                 OR lower(full_name) LIKE lower('%' || ? || '%') LIMIT 1"
+                 OR lower(full_name) LIKE lower('%' || ? || '%') LIMIT 1",
             )
             .bind(name)
             .bind(name)
@@ -707,7 +851,7 @@ async fn detect_and_link_attendees(
 
         // Update attendee_person_ids on the session (add if not already present)
         let current_ids: String = sqlx::query_scalar(
-            "SELECT COALESCE(attendee_person_ids, '[]') FROM meeting_sessions WHERE id = ?"
+            "SELECT COALESCE(attendee_person_ids, '[]') FROM meeting_sessions WHERE id = ?",
         )
         .bind(session_id)
         .fetch_one(pool)
@@ -734,7 +878,7 @@ async fn detect_and_link_attendees(
         let attendee_org: Option<Vec<u8>> = sqlx::query_scalar(
             "SELECT om.organization_id FROM organization_members om \
              WHERE om.user_id = ? \
-             ORDER BY om.created_at ASC LIMIT 1"
+             ORDER BY om.created_at ASC LIMIT 1",
         )
         .bind(person_uuid.to_string())
         .fetch_optional(pool)
@@ -751,7 +895,7 @@ async fn detect_and_link_attendees(
         let exists: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM data_sources \
              WHERE json_extract(metadata, '$.meeting_session_id') = ? \
-             AND organization_id = ?"
+             AND organization_id = ?",
         )
         .bind(session_id)
         .bind(attendee_org_uuid.to_string())
@@ -767,37 +911,45 @@ async fn detect_and_link_attendees(
             "meeting_session_id": session_id,
             "attendee_person_id": person_hex,
             "source": "nora_meet"
-        }).to_string();
+        })
+        .to_string();
 
-        let _ = DataSource::create(pool, CreateDataSource {
-            organization_id: Some(attendee_org_uuid.to_string()),
-            project_id: None,
-            created_by: None,
-            title: ds_title.to_string(),
-            description: Some(ds_description.to_string()),
-            data_type: "conversation".to_string(),
-            source_type: Some("text".to_string()),
-            content: Some(content.to_string()),
-            file_name: None,
-            file_type: None,
-            file_path: None,
-            file_size_bytes: None,
-            file_hash: None,
-            metadata: Some(metadata),
-            folder: None,
-        }).await;
+        let _ = DataSource::create(
+            pool,
+            CreateDataSource {
+                organization_id: Some(attendee_org_uuid.to_string()),
+                project_id: None,
+                created_by: None,
+                title: ds_title.to_string(),
+                description: Some(ds_description.to_string()),
+                data_type: "conversation".to_string(),
+                source_type: Some("text".to_string()),
+                content: Some(content.to_string()),
+                file_name: None,
+                file_type: None,
+                file_path: None,
+                file_size_bytes: None,
+                file_hash: None,
+                metadata: Some(metadata),
+                folder: None,
+            },
+        )
+        .await;
 
         let _ = sqlx::query(
             "UPDATE data_sources SET status='ready' \
              WHERE json_extract(metadata, '$.meeting_session_id') = ? \
-             AND organization_id = ?"
+             AND organization_id = ?",
         )
         .bind(session_id)
         .bind(attendee_org_uuid.to_string())
         .execute(pool)
         .await;
 
-        info!("Linked attendee {} (org {}) to meeting {}", person_hex, attendee_org_uuid, session_id);
+        info!(
+            "Linked attendee {} (org {}) to meeting {}",
+            person_hex, attendee_org_uuid, session_id
+        );
     }
 }
 
@@ -808,19 +960,22 @@ pub async fn bot_left(
 ) -> impl IntoResponse {
     let pool = deployment.db().pool.clone();
     ACTIVE_MEETS.lock().await.remove(&session_id);
-    let _ = MeetingSession::update(&pool, &session_id, UpdateMeetingSession {
-        status: Some(MeetingStatus::Ended),
-        ended_at: Some(Utc::now().to_rfc3339()),
-        ..Default::default()
-    }).await;
+    let _ = MeetingSession::update(
+        &pool,
+        &session_id,
+        UpdateMeetingSession {
+            status: Some(MeetingStatus::Ended),
+            ended_at: Some(Utc::now().to_rfc3339()),
+            ..Default::default()
+        },
+    )
+    .await;
     save_meeting_knowledge_source(&pool, &session_id).await;
     StatusCode::OK
 }
 
 /// GET /nora/meet/:id/transcript  — SSE live transcript
-pub async fn transcript_stream(
-    Path(session_id): Path<String>,
-) -> impl IntoResponse {
+pub async fn transcript_stream(Path(session_id): Path<String>) -> impl IntoResponse {
     let stream: Pin<Box<dyn Stream<Item = Result<SseEvent, Infallible>> + Send>> = {
         let sessions = ACTIVE_MEETS.lock().await;
         match sessions.get(&session_id) {
@@ -828,24 +983,30 @@ pub async fn transcript_stream(
                 let rx = sess.tx.subscribe();
                 let s = BroadcastStream::new(rx).filter_map(|item| {
                     let result = match item {
-                        Ok(ev) => serde_json::to_string(&ev).ok().map(|json| {
-                            Ok(SseEvent::default().event("transcript").data(json))
-                        }),
-                        Err(_) => Some(Ok(SseEvent::default().event("done").data(r#"{"message":"session ended"}"#))),
+                        Ok(ev) => serde_json::to_string(&ev)
+                            .ok()
+                            .map(|json| Ok(SseEvent::default().event("transcript").data(json))),
+                        Err(_) => Some(Ok(SseEvent::default()
+                            .event("done")
+                            .data(r#"{"message":"session ended"}"#))),
                     };
                     std::future::ready(result)
                 });
                 Box::pin(s)
             }
             None => {
-                let ev = SseEvent::default().event("error").data(r#"{"error":"session not found"}"#);
+                let ev = SseEvent::default()
+                    .event("error")
+                    .data(r#"{"error":"session not found"}"#);
                 Box::pin(futures_util::stream::once(async move { Ok(ev) }))
             }
         }
     };
 
     Sse::new(stream).keep_alive(
-        KeepAlive::new().interval(Duration::from_secs(15)).text("keep-alive"),
+        KeepAlive::new()
+            .interval(Duration::from_secs(15))
+            .text("keep-alive"),
     )
 }
 
@@ -860,7 +1021,9 @@ fn find_script(name: &str) -> String {
         format!("{}/pcg-cc-mcp/scripts/{}", home, name),
     ];
     for c in &candidates {
-        if std::path::Path::new(c).exists() { return c.clone(); }
+        if std::path::Path::new(c).exists() {
+            return c.clone();
+        }
     }
     format!("scripts/{}", name)
 }
@@ -870,21 +1033,29 @@ async fn call_whisper(whisper_url: &str, wav: &[u8]) -> Option<String> {
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
-        .build().ok()?;
+        .build()
+        .ok()?;
 
     // Use /transcribe/file endpoint — sends WAV with correct filename so Whisper
     // saves it with .wav extension and ffmpeg decodes it correctly
     let part = multipart::Part::bytes(wav.to_vec())
         .file_name("audio.wav")
-        .mime_str("audio/wav").ok()?;
+        .mime_str("audio/wav")
+        .ok()?;
 
     let resp = client
         .post(format!("{}/transcribe/file", whisper_url))
         .multipart(multipart::Form::new().part("file", part))
-        .send().await.ok()?;
+        .send()
+        .await
+        .ok()?;
 
     if !resp.status().is_success() {
-        warn!("[MEET-WHISPER] Error {}: {}", resp.status(), resp.text().await.unwrap_or_default());
+        warn!(
+            "[MEET-WHISPER] Error {}: {}",
+            resp.status(),
+            resp.text().await.unwrap_or_default()
+        );
         return None;
     }
 
@@ -899,20 +1070,28 @@ async fn call_whisper(whisper_url: &str, wav: &[u8]) -> Option<String> {
 async fn synthesize_tts(text: &str) -> Option<Vec<u8>> {
     if let Ok(key) = std::env::var("ELEVENLABS_API_KEY") {
         if !key.is_empty() {
-            if let Some(audio) = elevenlabs_tts(text, &key).await { return Some(audio); }
+            if let Some(audio) = elevenlabs_tts(text, &key).await {
+                return Some(audio);
+            }
         }
     }
-    let chatterbox_url = std::env::var("CHATTERBOX_URL")
-        .unwrap_or_else(|_| "http://localhost:8102".to_string());
+    let chatterbox_url =
+        std::env::var("CHATTERBOX_URL").unwrap_or_else(|_| "http://localhost:8102".to_string());
     chatterbox_tts(text, &chatterbox_url).await
 }
 
 async fn elevenlabs_tts(text: &str, api_key: &str) -> Option<Vec<u8>> {
-    let voice_id = std::env::var("ELEVENLABS_VOICE_ID")
-        .unwrap_or_else(|_| "ZtcPZrt9K4w8e1OB9M6w".to_string());
-    let client = reqwest::Client::builder().timeout(Duration::from_secs(30)).build().ok()?;
+    let voice_id =
+        std::env::var("ELEVENLABS_VOICE_ID").unwrap_or_else(|_| "ZtcPZrt9K4w8e1OB9M6w".to_string());
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .ok()?;
     let resp = client
-        .post(format!("https://api.elevenlabs.io/v1/text-to-speech/{}", voice_id))
+        .post(format!(
+            "https://api.elevenlabs.io/v1/text-to-speech/{}",
+            voice_id
+        ))
         .header("xi-api-key", api_key)
         .header("Content-Type", "application/json")
         .json(&json!({
@@ -920,18 +1099,29 @@ async fn elevenlabs_tts(text: &str, api_key: &str) -> Option<Vec<u8>> {
             "model_id": "eleven_multilingual_v2",
             "voice_settings": { "stability": 0.5, "similarity_boost": 0.75 }
         }))
-        .send().await.ok()?;
-    if !resp.status().is_success() { return None; }
+        .send()
+        .await
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
     Some(resp.bytes().await.ok()?.to_vec())
 }
 
 async fn chatterbox_tts(text: &str, chatterbox_url: &str) -> Option<Vec<u8>> {
-    let client = reqwest::Client::builder().timeout(Duration::from_secs(30)).build().ok()?;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .ok()?;
     let resp = client
         .post(format!("{}/synthesize", chatterbox_url))
         .json(&json!({ "text": text, "voice": "p225" }))
-        .send().await.ok()?;
-    if !resp.status().is_success() { return None; }
+        .send()
+        .await
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
     Some(resp.bytes().await.ok()?.to_vec())
 }
 
@@ -942,8 +1132,12 @@ static SEEN_MESSAGE_IDS: Lazy<Arc<Mutex<HashSet<String>>>> =
     Lazy::new(|| Arc::new(Mutex::new(HashSet::new())));
 
 /// Zoho token cache: (access_token, refreshed_at)
-static ZOHO_TOKEN_CACHE: Lazy<Arc<Mutex<(String, Instant)>>> =
-    Lazy::new(|| Arc::new(Mutex::new((String::new(), Instant::now() - Duration::from_secs(9999)))));
+static ZOHO_TOKEN_CACHE: Lazy<Arc<Mutex<(String, Instant)>>> = Lazy::new(|| {
+    Arc::new(Mutex::new((
+        String::new(),
+        Instant::now() - Duration::from_secs(9999),
+    )))
+});
 
 async fn get_zoho_token(pool: &sqlx::SqlitePool) -> Option<String> {
     // Return cached token if < 50 minutes old
@@ -961,22 +1155,30 @@ async fn get_zoho_token(pool: &sqlx::SqlitePool) -> Option<String> {
     .fetch_optional(pool).await.ok()??;
 
     let refresh_token = row.refresh_token?;
-    let client_id  = std::env::var("ZOHO_CLIENT_ID").ok()?;
+    let client_id = std::env::var("ZOHO_CLIENT_ID").ok()?;
     let client_secret = std::env::var("ZOHO_CLIENT_SECRET").ok()?;
 
-    let client = reqwest::Client::builder().timeout(Duration::from_secs(15)).build().ok()?;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .ok()?;
     let resp = client
         .post("https://accounts.zoho.com/oauth/v2/token")
         .form(&[
             ("refresh_token", refresh_token.as_str()),
-            ("client_id",     client_id.as_str()),
+            ("client_id", client_id.as_str()),
             ("client_secret", client_secret.as_str()),
-            ("grant_type",    "refresh_token"),
+            ("grant_type", "refresh_token"),
         ])
-        .send().await.ok()?;
+        .send()
+        .await
+        .ok()?;
 
     if !resp.status().is_success() {
-        warn!("[MEET-WATCHER] Zoho token refresh failed: {}", resp.status());
+        warn!(
+            "[MEET-WATCHER] Zoho token refresh failed: {}",
+            resp.status()
+        );
         return None;
     }
 
@@ -996,11 +1198,25 @@ async fn get_zoho_token(pool: &sqlx::SqlitePool) -> Option<String> {
 
 async fn fetch_inbox_meets(token: &str, account_id: &str) -> Vec<(String, String)> {
     // Returns Vec<(message_id, meet_url)> for new invites
-    let client = reqwest::Client::builder().timeout(Duration::from_secs(15)).build().unwrap_or_default();
-    let url = format!("https://mail.zoho.com/api/accounts/{}/messages/view?limit=10&sortorder=false", account_id);
-    let resp = match client.get(&url).header("Authorization", format!("Zoho-oauthtoken {}", token)).send().await {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .unwrap_or_default();
+    let url = format!(
+        "https://mail.zoho.com/api/accounts/{}/messages/view?limit=10&sortorder=false",
+        account_id
+    );
+    let resp = match client
+        .get(&url)
+        .header("Authorization", format!("Zoho-oauthtoken {}", token))
+        .send()
+        .await
+    {
         Ok(r) => r,
-        Err(e) => { warn!("[MEET-WATCHER] Inbox fetch error: {}", e); return vec![]; }
+        Err(e) => {
+            warn!("[MEET-WATCHER] Inbox fetch error: {}", e);
+            return vec![];
+        }
     };
     if !resp.status().is_success() {
         warn!("[MEET-WATCHER] Inbox fetch HTTP {}", resp.status());
@@ -1023,7 +1239,7 @@ async fn fetch_inbox_meets(token: &str, account_id: &str) -> Vec<(String, String
             None => continue,
         };
         let summary = msg.get("summary").and_then(|v| v.as_str()).unwrap_or("");
-        let subject  = msg.get("subject").and_then(|v| v.as_str()).unwrap_or("");
+        let subject = msg.get("subject").and_then(|v| v.as_str()).unwrap_or("");
         // Only process Google Meet invite emails
         if !summary.contains("meet.google.com") && !subject.to_lowercase().contains("video call") {
             continue;
@@ -1059,16 +1275,24 @@ pub async fn start_meet_watcher(deployment: DeploymentImpl) {
             let pool = deployment.db().pool.clone();
             let account_id = match get_zoho_account_id(&pool).await {
                 Some(id) => id,
-                None => { warn!("[MEET-WATCHER] No Zoho account_id found"); continue; }
+                None => {
+                    warn!("[MEET-WATCHER] No Zoho account_id found");
+                    continue;
+                }
             };
 
             let token = match get_zoho_token(&pool).await {
                 Some(t) => t,
-                None => { warn!("[MEET-WATCHER] Could not obtain Zoho token"); continue; }
+                None => {
+                    warn!("[MEET-WATCHER] Could not obtain Zoho token");
+                    continue;
+                }
             };
 
             let invites = fetch_inbox_meets(&token, &account_id).await;
-            if invites.is_empty() { continue; }
+            if invites.is_empty() {
+                continue;
+            }
 
             let mut seen = SEEN_MESSAGE_IDS.lock().await;
             let active_urls: HashSet<String> = {
@@ -1077,7 +1301,9 @@ pub async fn start_meet_watcher(deployment: DeploymentImpl) {
             };
 
             for (msg_id, meet_url) in invites {
-                if seen.contains(&msg_id) { continue; }
+                if seen.contains(&msg_id) {
+                    continue;
+                }
                 seen.insert(msg_id.clone());
 
                 if active_urls.contains(&meet_url) {
@@ -1094,9 +1320,11 @@ pub async fn start_meet_watcher(deployment: DeploymentImpl) {
                      JOIN project_members pm ON pm.project_id = p.id \
                      JOIN users u ON u.id = pm.user_id \
                      WHERE u.is_admin = 1 AND u.is_active = 1 \
-                     ORDER BY p.created_at DESC LIMIT 1"
+                     ORDER BY p.created_at DESC LIMIT 1",
                 )
-                .fetch_one(&pool).await.unwrap_or_default();
+                .fetch_one(&pool)
+                .await
+                .unwrap_or_default();
 
                 let req = JoinMeetRequest {
                     meet_url: meet_url.clone(),
@@ -1105,7 +1333,9 @@ pub async fn start_meet_watcher(deployment: DeploymentImpl) {
                 };
                 match join_meet(axum::extract::State(deployment.clone()), Json(req)).await {
                     Ok(Json(resp)) => info!("[MEET-WATCHER] Joined session {}", resp.session_id),
-                    Err((_, Json(e))) => warn!("[MEET-WATCHER] Failed to join {}: {:?}", meet_url, e),
+                    Err((_, Json(e))) => {
+                        warn!("[MEET-WATCHER] Failed to join {}: {:?}", meet_url, e)
+                    }
                 }
 
                 seen = SEEN_MESSAGE_IDS.lock().await;
@@ -1119,7 +1349,8 @@ async fn get_zoho_account_id(pool: &sqlx::SqlitePool) -> Option<String> {
         "SELECT metadata FROM email_accounts WHERE email_address = 'nora@powerclubglobal.com' LIMIT 1"
     )
     .fetch_optional(pool).await.ok()??;
-    let meta: serde_json::Value = serde_json::from_str(row.metadata.as_deref().unwrap_or("{}")).ok()?;
+    let meta: serde_json::Value =
+        serde_json::from_str(row.metadata.as_deref().unwrap_or("{}")).ok()?;
     meta.get("zoho_account_id")?.as_str().map(str::to_string)
 }
 

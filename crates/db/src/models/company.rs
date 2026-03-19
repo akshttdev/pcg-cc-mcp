@@ -65,7 +65,7 @@ pub struct Company {
     pub intelligence_agent: Option<String>,
 
     // Platform links
-    pub organization_id: Option<DbUuid>,   // set when company joins as an org
+    pub organization_id: Option<DbUuid>, // set when company joins as an org
     pub created_by_org_id: Option<DbUuid>, // admin org that discovered/created this
 
     pub created_at: DateTime<Utc>,
@@ -123,12 +123,11 @@ impl Company {
         // Companies store id as BLOB; DbUuid encodes as TEXT so direct `= ?` misses.
         // Use hex(id) comparison which works for both BLOB and TEXT storage.
         let hex_no_dashes = id.to_string().replace('-', "");
-        let row = sqlx::query_as::<_, Self>(
-            "SELECT * FROM companies WHERE lower(hex(id)) = lower(?)",
-        )
-        .bind(&hex_no_dashes)
-        .fetch_optional(pool)
-        .await?;
+        let row =
+            sqlx::query_as::<_, Self>("SELECT * FROM companies WHERE lower(hex(id)) = lower(?)")
+                .bind(&hex_no_dashes)
+                .fetch_optional(pool)
+                .await?;
         Ok(row)
     }
 
@@ -167,17 +166,14 @@ impl Company {
         Ok(row)
     }
 
-
     pub async fn find_by_organization(
         pool: &SqlitePool,
         org_id: &DbUuid,
     ) -> Result<Option<Self>, CompanyError> {
-        let row = sqlx::query_as::<_, Self>(
-            "SELECT * FROM companies WHERE organization_id = ?",
-        )
-        .bind(org_id)
-        .fetch_optional(pool)
-        .await?;
+        let row = sqlx::query_as::<_, Self>("SELECT * FROM companies WHERE organization_id = ?")
+            .bind(org_id)
+            .fetch_optional(pool)
+            .await?;
         Ok(row)
     }
 
@@ -198,7 +194,8 @@ impl Company {
                 qb.push(" AND organization_id IS NULL");
             }
         }
-        qb.push(" ORDER BY name ASC LIMIT ").push_bind(limit.unwrap_or(200));
+        qb.push(" ORDER BY name ASC LIMIT ")
+            .push_bind(limit.unwrap_or(200));
         let rows = qb.build_query_as::<Self>().fetch_all(pool).await?;
         Ok(rows)
     }
@@ -242,7 +239,11 @@ impl Company {
             }
         })?;
 
-        Self::find_by_id(pool, &id).await?.ok_or(CompanyError::NotFound)
+        // Use find_by_name instead of find_by_id to avoid BLOB/TEXT hex mismatch.
+        // The name was just inserted and slug UNIQUE constraint prevents duplicates.
+        Self::find_by_name(pool, &input.name)
+            .await?
+            .ok_or(CompanyError::NotFound)
     }
 
     /// Find or create a company by name. Used when provisioning orgs or
@@ -269,7 +270,9 @@ impl Company {
         // Deduplicate slug if needed
         let base_slug = Self::slugify(name);
         #[derive(sqlx::FromRow)]
-        struct Count { count: i64 }
+        struct Count {
+            count: i64,
+        }
         let c: Count = sqlx::query_as("SELECT COUNT(*) as count FROM companies WHERE slug LIKE ?")
             .bind(format!("{}%", base_slug))
             .fetch_one(pool)
@@ -280,16 +283,20 @@ impl Company {
             format!("{}-{}", base_slug, c.count)
         };
 
-        Self::create(pool, CreateCompany {
-            name: name.to_string(),
-            slug: Some(slug),
-            website,
-            industry: None,
-            description: None,
-            logo_url: None,
-            headquarters: None,
-            created_by_org_id,
-        }).await
+        Self::create(
+            pool,
+            CreateCompany {
+                name: name.to_string(),
+                slug: Some(slug),
+                website,
+                industry: None,
+                description: None,
+                logo_url: None,
+                headquarters: None,
+                created_by_org_id,
+            },
+        )
+        .await
     }
 
     pub async fn update(
@@ -297,39 +304,95 @@ impl Company {
         id: &DbUuid,
         input: UpdateCompany,
     ) -> Result<Option<Self>, CompanyError> {
-        let mut qb = sqlx::QueryBuilder::new(
-            "UPDATE companies SET updated_at = datetime('now','subsec')",
-        );
-        if let Some(v) = input.name              { qb.push(", name = ").push_bind(v); }
-        if let Some(v) = input.website           { qb.push(", website = ").push_bind(v); }
-        if let Some(v) = input.industry          { qb.push(", industry = ").push_bind(v); }
-        if let Some(v) = input.description       { qb.push(", description = ").push_bind(v); }
-        if let Some(v) = input.logo_url          { qb.push(", logo_url = ").push_bind(v); }
-        if let Some(v) = input.cover_image_url   { qb.push(", cover_image_url = ").push_bind(v); }
-        if let Some(v) = input.headquarters      { qb.push(", headquarters = ").push_bind(v); }
-        if let Some(v) = input.address           { qb.push(", address = ").push_bind(v); }
-        if let Some(v) = input.city              { qb.push(", city = ").push_bind(v); }
-        if let Some(v) = input.country           { qb.push(", country = ").push_bind(v); }
-        if let Some(v) = input.phone             { qb.push(", phone = ").push_bind(v); }
-        if let Some(v) = input.email             { qb.push(", email = ").push_bind(v); }
-        if let Some(v) = input.whatsapp          { qb.push(", whatsapp = ").push_bind(v); }
-        if let Some(v) = input.instagram_handle  { qb.push(", instagram_handle = ").push_bind(v); }
-        if let Some(v) = input.linkedin_url      { qb.push(", linkedin_url = ").push_bind(v); }
-        if let Some(v) = input.twitter_handle    { qb.push(", twitter_handle = ").push_bind(v); }
-        if let Some(v) = input.facebook_url      { qb.push(", facebook_url = ").push_bind(v); }
-        if let Some(v) = input.founded_year      { qb.push(", founded_year = ").push_bind(v); }
-        if let Some(v) = input.employee_count    { qb.push(", employee_count = ").push_bind(v); }
-        if let Some(v) = input.tags              { qb.push(", tags = ").push_bind(v); }
-        if let Some(v) = input.business_hours    { qb.push(", business_hours = ").push_bind(v); }
-        if let Some(v) = input.notes             { qb.push(", notes = ").push_bind(v); }
-        if let Some(v) = input.gmb_rating        { qb.push(", gmb_rating = ").push_bind(v); }
-        if let Some(v) = input.gmb_review_count  { qb.push(", gmb_review_count = ").push_bind(v); }
-        if let Some(v) = input.gmb_place_id      { qb.push(", gmb_place_id = ").push_bind(v); }
-        if let Some(v) = input.organization_id   { qb.push(", organization_id = ").push_bind(v); }
-        if let Some(v) = input.intelligence_summary { qb.push(", intelligence_summary = ").push_bind(v); }
-        if let Some(v) = input.intelligence_status  { qb.push(", intelligence_status = ").push_bind(v); }
+        let mut qb =
+            sqlx::QueryBuilder::new("UPDATE companies SET updated_at = datetime('now','subsec')");
+        if let Some(v) = input.name {
+            qb.push(", name = ").push_bind(v);
+        }
+        if let Some(v) = input.website {
+            qb.push(", website = ").push_bind(v);
+        }
+        if let Some(v) = input.industry {
+            qb.push(", industry = ").push_bind(v);
+        }
+        if let Some(v) = input.description {
+            qb.push(", description = ").push_bind(v);
+        }
+        if let Some(v) = input.logo_url {
+            qb.push(", logo_url = ").push_bind(v);
+        }
+        if let Some(v) = input.cover_image_url {
+            qb.push(", cover_image_url = ").push_bind(v);
+        }
+        if let Some(v) = input.headquarters {
+            qb.push(", headquarters = ").push_bind(v);
+        }
+        if let Some(v) = input.address {
+            qb.push(", address = ").push_bind(v);
+        }
+        if let Some(v) = input.city {
+            qb.push(", city = ").push_bind(v);
+        }
+        if let Some(v) = input.country {
+            qb.push(", country = ").push_bind(v);
+        }
+        if let Some(v) = input.phone {
+            qb.push(", phone = ").push_bind(v);
+        }
+        if let Some(v) = input.email {
+            qb.push(", email = ").push_bind(v);
+        }
+        if let Some(v) = input.whatsapp {
+            qb.push(", whatsapp = ").push_bind(v);
+        }
+        if let Some(v) = input.instagram_handle {
+            qb.push(", instagram_handle = ").push_bind(v);
+        }
+        if let Some(v) = input.linkedin_url {
+            qb.push(", linkedin_url = ").push_bind(v);
+        }
+        if let Some(v) = input.twitter_handle {
+            qb.push(", twitter_handle = ").push_bind(v);
+        }
+        if let Some(v) = input.facebook_url {
+            qb.push(", facebook_url = ").push_bind(v);
+        }
+        if let Some(v) = input.founded_year {
+            qb.push(", founded_year = ").push_bind(v);
+        }
+        if let Some(v) = input.employee_count {
+            qb.push(", employee_count = ").push_bind(v);
+        }
+        if let Some(v) = input.tags {
+            qb.push(", tags = ").push_bind(v);
+        }
+        if let Some(v) = input.business_hours {
+            qb.push(", business_hours = ").push_bind(v);
+        }
+        if let Some(v) = input.notes {
+            qb.push(", notes = ").push_bind(v);
+        }
+        if let Some(v) = input.gmb_rating {
+            qb.push(", gmb_rating = ").push_bind(v);
+        }
+        if let Some(v) = input.gmb_review_count {
+            qb.push(", gmb_review_count = ").push_bind(v);
+        }
+        if let Some(v) = input.gmb_place_id {
+            qb.push(", gmb_place_id = ").push_bind(v);
+        }
+        if let Some(v) = input.organization_id {
+            qb.push(", organization_id = ").push_bind(v);
+        }
+        if let Some(v) = input.intelligence_summary {
+            qb.push(", intelligence_summary = ").push_bind(v);
+        }
+        if let Some(v) = input.intelligence_status {
+            qb.push(", intelligence_status = ").push_bind(v);
+        }
         let hex_no_dashes = id.to_string().replace('-', "");
-        qb.push(" WHERE lower(hex(id)) = lower(?)").push_bind(hex_no_dashes);
+        qb.push(" WHERE lower(hex(id)) = lower(?)")
+            .push_bind(hex_no_dashes);
         qb.build().execute(pool).await?;
         Ok(Self::find_by_id(pool, id).await?)
     }

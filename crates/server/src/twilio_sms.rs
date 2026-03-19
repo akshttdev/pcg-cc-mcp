@@ -6,17 +6,17 @@
 //! Set SIGNALWIRE_SPACE_URL (e.g. "example.signalwire.com") to route
 //! through SignalWire instead of Twilio. All other env vars stay the same.
 
+use std::{collections::HashMap, sync::Arc};
+
 use chrono::Utc;
 use db::models::{
-    crm_activity::{CrmActivity, CrmActivityType, CreateCrmActivity},
+    crm_activity::{CreateCrmActivity, CrmActivity, CrmActivityType},
     crm_contact::CrmContact,
     sms_message::{CreateSmsMessage, SmsDirection, SmsMessage, SmsStatus},
 };
 use nora::twilio::TwilioConfig;
 use serde::Deserialize;
 use sqlx::SqlitePool;
-use std::collections::HashMap;
-use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 use uuid::Uuid;
@@ -46,9 +46,15 @@ struct TwilioMessageResponse {
 pub fn sms_api_url(account_sid: &str) -> String {
     if let Ok(space) = std::env::var("SIGNALWIRE_SPACE_URL") {
         let space = space.trim_end_matches('/');
-        format!("https://{}/api/laml/2010-04-01/Accounts/{}/Messages.json", space, account_sid)
+        format!(
+            "https://{}/api/laml/2010-04-01/Accounts/{}/Messages.json",
+            space, account_sid
+        )
     } else {
-        format!("https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json", account_sid)
+        format!(
+            "https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json",
+            account_sid
+        )
     }
 }
 
@@ -128,10 +134,7 @@ impl TwilioSmsSender {
             .map_err(|e| format!("Failed to read Twilio response: {}", e))?;
 
         if !status.is_success() {
-            return Err(format!(
-                "Twilio API returned {}: {}",
-                status, resp_body
-            ));
+            return Err(format!("Twilio API returned {}: {}", status, resp_body));
         }
 
         let msg_resp: TwilioMessageResponse = serde_json::from_str(&resp_body)
@@ -191,7 +194,9 @@ impl TwilioSmsSender {
         let _: Result<SmsMessage, _> = SmsMessage::create(
             &self.db_pool,
             CreateSmsMessage {
-                project_id: contact.project_id.as_ref()
+                project_id: contact
+                    .project_id
+                    .as_ref()
                     .and_then(|id| Uuid::parse_str(id).ok())
                     .unwrap_or_else(Uuid::new_v4),
                 message_sid: message_sid.clone(),
@@ -217,8 +222,14 @@ impl TwilioSmsSender {
         let _: Result<CrmActivity, _> = CrmActivity::create(
             &self.db_pool,
             CreateCrmActivity {
-                organization_id: contact.organization_id.as_ref().and_then(|id| Uuid::parse_str(id).ok()),
-                client_id: contact.client_id.as_ref().and_then(|id| Uuid::parse_str(id).ok()),
+                organization_id: contact
+                    .organization_id
+                    .as_ref()
+                    .and_then(|id| Uuid::parse_str(id).ok()),
+                client_id: contact
+                    .client_id
+                    .as_ref()
+                    .and_then(|id| Uuid::parse_str(id).ok()),
                 crm_contact_id: Uuid::parse_str(&contact.id).ok(),
                 crm_deal_id: None,
                 activity_type: CrmActivityType::Custom,
@@ -287,7 +298,9 @@ impl TwilioSmsSender {
         let _: Result<SmsMessage, _> = SmsMessage::create(
             &self.db_pool,
             CreateSmsMessage {
-                project_id: contact.project_id.as_ref()
+                project_id: contact
+                    .project_id
+                    .as_ref()
                     .and_then(|id| Uuid::parse_str(id).ok())
                     .unwrap_or_else(Uuid::new_v4),
                 message_sid,

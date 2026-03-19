@@ -8,9 +8,12 @@
 //! - Energy direction tracking per section (Rising/Falling/Stable)
 //! - Transition point markers (downbeats, drops, builds)
 
+use std::{
+    path::{Path, PathBuf},
+    process::Stdio,
+};
+
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
-use std::process::Stdio;
 use thiserror::Error;
 use tokio::process::Command;
 
@@ -135,11 +138,7 @@ impl BeatAnalysisEngine {
     /// Get audio duration via ffprobe
     pub async fn get_duration(&self, path: &Path) -> Result<f64, BeatAnalysisError> {
         let output = Command::new(&self.ffprobe_path)
-            .args([
-                "-v", "quiet",
-                "-print_format", "json",
-                "-show_format",
-            ])
+            .args(["-v", "quiet", "-print_format", "json", "-show_format"])
             .arg(path)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -178,11 +177,7 @@ impl BeatAnalysisEngine {
                 .args(["-t", &format!("{:.3}", segment_dur)])
                 .args(["-i"])
                 .arg(path)
-                .args([
-                    "-af", "volumedetect",
-                    "-f", "null",
-                    "-",
-                ])
+                .args(["-af", "volumedetect", "-f", "null", "-"])
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .output()
@@ -191,8 +186,7 @@ impl BeatAnalysisEngine {
             let stderr = String::from_utf8_lossy(&output.stderr);
 
             // Parse mean_volume from volumedetect
-            let mean_vol = Self::parse_volumedetect(&stderr, "mean_volume")
-                .unwrap_or(-30.0);
+            let mean_vol = Self::parse_volumedetect(&stderr, "mean_volume").unwrap_or(-30.0);
 
             // Normalize: -60dB=0.0, 0dB=1.0
             let normalized = ((mean_vol + 60.0) / 60.0).clamp(0.0, 1.0);
@@ -249,8 +243,8 @@ impl BeatAnalysisEngine {
 
         // Snap to nearest common tempo if within 5%
         let common_tempos = [
-            60.0, 70.0, 75.0, 80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0, 120.0,
-            125.0, 128.0, 130.0, 135.0, 140.0, 145.0, 150.0, 155.0, 160.0, 170.0, 180.0,
+            60.0, 70.0, 75.0, 80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0, 120.0, 125.0,
+            128.0, 130.0, 135.0, 140.0, 145.0, 150.0, 155.0, 160.0, 170.0, 180.0,
         ];
         let snapped = common_tempos
             .iter()
@@ -287,18 +281,10 @@ impl BeatAnalysisEngine {
         // Clamp: if < 75 BPM, try doubling; if > 160, try halving
         if best_bpm < 75.0 {
             let doubled = best_bpm * 2.0;
-            if doubled <= 200.0 {
-                doubled
-            } else {
-                best_bpm
-            }
+            if doubled <= 200.0 { doubled } else { best_bpm }
         } else if best_bpm > 160.0 {
             let halved = best_bpm / 2.0;
-            if halved >= 60.0 {
-                halved
-            } else {
-                best_bpm
-            }
+            if halved >= 60.0 { halved } else { best_bpm }
         } else {
             best_bpm
         }
@@ -312,10 +298,7 @@ impl BeatAnalysisEngine {
         }
 
         let beat_interval = 60.0 / bpm;
-        let duration = energy_curve
-            .last()
-            .map(|p| p.timestamp)
-            .unwrap_or(0.0);
+        let duration = energy_curve.last().map(|p| p.timestamp).unwrap_or(0.0);
         let num_beats = (duration / beat_interval).floor() as usize;
 
         if num_beats == 0 {
@@ -353,9 +336,8 @@ impl BeatAnalysisEngine {
             let energy_at_beat = Self::energy_at_time(energy_curve, timestamp);
 
             // Strong cut points: downbeats, or beats 1 and 3 in 4/4
-            let is_strong_cut_point = is_downbeat
-                || (beats_per_bar == 4 && beat_in_bar == 3)
-                || (energy_at_beat > 0.6);
+            let is_strong_cut_point =
+                is_downbeat || (beats_per_bar == 4 && beat_in_bar == 3) || (energy_at_beat > 0.6);
 
             beats.push(BeatMarker {
                 timestamp,
@@ -379,10 +361,7 @@ impl BeatAnalysisEngine {
     /// 3. Merge sections shorter than 3 seconds with nearest-energy neighbor
     /// 4. Classify by energy relative to track average
     /// 5. Add energy direction analysis per section
-    pub fn detect_sections(
-        energy_curve: &[EnergyPoint],
-        duration: f64,
-    ) -> Vec<MusicSection> {
+    pub fn detect_sections(energy_curve: &[EnergyPoint], duration: f64) -> Vec<MusicSection> {
         if energy_curve.is_empty() {
             return vec![MusicSection {
                 name: "Full Track".to_string(),
@@ -407,8 +386,7 @@ impl BeatAnalysisEngine {
                 if energy_curve.len() > 1 {
                     let dt = energy_curve[1].timestamp - energy_curve[0].timestamp;
                     if dt > 0.0 {
-                        (energy_curve[1].normalized_energy - energy_curve[0].normalized_energy)
-                            / dt
+                        (energy_curve[1].normalized_energy - energy_curve[0].normalized_energy) / dt
                     } else {
                         0.0
                     }
@@ -418,16 +396,14 @@ impl BeatAnalysisEngine {
             } else if i == energy_curve.len() - 1 {
                 let dt = energy_curve[i].timestamp - energy_curve[i - 1].timestamp;
                 if dt > 0.0 {
-                    (energy_curve[i].normalized_energy - energy_curve[i - 1].normalized_energy)
-                        / dt
+                    (energy_curve[i].normalized_energy - energy_curve[i - 1].normalized_energy) / dt
                 } else {
                     0.0
                 }
             } else {
                 let dt = energy_curve[i + 1].timestamp - energy_curve[i - 1].timestamp;
                 if dt > 0.0 {
-                    (energy_curve[i + 1].normalized_energy
-                        - energy_curve[i - 1].normalized_energy)
+                    (energy_curve[i + 1].normalized_energy - energy_curve[i - 1].normalized_energy)
                         / dt
                 } else {
                     0.0
@@ -478,7 +454,8 @@ impl BeatAnalysisEngine {
                 continue;
             }
 
-            let section_energies: Vec<f64> = energy_curve[start_idx..=end_idx.min(energy_curve.len() - 1)]
+            let section_energies: Vec<f64> = energy_curve
+                [start_idx..=end_idx.min(energy_curve.len() - 1)]
                 .iter()
                 .map(|p| p.normalized_energy)
                 .collect();
@@ -554,11 +531,7 @@ impl BeatAnalysisEngine {
             } else {
                 0.0
             };
-            let end_position = if duration > 0.0 {
-                end / duration
-            } else {
-                1.0
-            };
+            let end_position = if duration > 0.0 { end / duration } else { 1.0 };
 
             // Energy direction analysis
             let section_points: Vec<f64> = energy_curve
@@ -571,8 +544,7 @@ impl BeatAnalysisEngine {
                 EnergyDirection::Stable
             } else {
                 let half = section_points.len() / 2;
-                let first_half =
-                    section_points[..half].iter().sum::<f64>() / half.max(1) as f64;
+                let first_half = section_points[..half].iter().sum::<f64>() / half.max(1) as f64;
                 let second_half = section_points[half..].iter().sum::<f64>()
                     / (section_points.len() - half).max(1) as f64;
                 let diff = second_half - first_half;

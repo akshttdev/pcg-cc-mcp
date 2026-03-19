@@ -1,7 +1,9 @@
-use anyhow::{anyhow, Result};
-use db::models::model_pricing::{estimate_cost, infer_provider, ModelPricing, CostEstimate, VIBE_USD_VALUE};
-use db::models::vibe_transaction::{
-    CreateVibeTransaction, VibeSourceType, VibeTransaction, VibeTransactionSummary,
+use anyhow::{Result, anyhow};
+use db::models::{
+    model_pricing::{CostEstimate, ModelPricing, VIBE_USD_VALUE, estimate_cost, infer_provider},
+    vibe_transaction::{
+        CreateVibeTransaction, VibeSourceType, VibeTransaction, VibeTransactionSummary,
+    },
 };
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
@@ -93,7 +95,9 @@ impl VibePricingService {
         process_id: Option<Uuid>,
     ) -> Result<VibeTransaction> {
         // Calculate cost
-        let estimate = self.estimate_cost(model, input_tokens, output_tokens).await?;
+        let estimate = self
+            .estimate_cost(model, input_tokens, output_tokens)
+            .await?;
         let provider = infer_provider(model);
 
         // Create the transaction record

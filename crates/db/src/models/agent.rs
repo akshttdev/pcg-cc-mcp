@@ -176,15 +176,33 @@ impl From<Agent> for AgentWithParsedFields {
             short_name: agent.short_name,
             designation: agent.designation,
             description: agent.description,
-            personality: agent.personality.as_deref().and_then(|s| serde_json::from_str(s).ok()),
+            personality: agent
+                .personality
+                .as_deref()
+                .and_then(|s| serde_json::from_str(s).ok()),
             voice_style: agent.voice_style,
             avatar_url: agent.avatar_url,
-            capabilities: agent.capabilities.as_deref().and_then(|s| serde_json::from_str(s).ok()),
-            tools: agent.tools.as_deref().and_then(|s| serde_json::from_str(s).ok()),
-            functions: agent.functions.as_deref().and_then(|s| serde_json::from_str(s).ok()),
+            capabilities: agent
+                .capabilities
+                .as_deref()
+                .and_then(|s| serde_json::from_str(s).ok()),
+            tools: agent
+                .tools
+                .as_deref()
+                .and_then(|s| serde_json::from_str(s).ok()),
+            functions: agent
+                .functions
+                .as_deref()
+                .and_then(|s| serde_json::from_str(s).ok()),
             default_model: agent.default_model,
-            fallback_models: agent.fallback_models.as_deref().and_then(|s| serde_json::from_str(s).ok()),
-            model_config: agent.model_config.as_deref().and_then(|s| serde_json::from_str(s).ok()),
+            fallback_models: agent
+                .fallback_models
+                .as_deref()
+                .and_then(|s| serde_json::from_str(s).ok()),
+            model_config: agent
+                .model_config
+                .as_deref()
+                .and_then(|s| serde_json::from_str(s).ok()),
             status: agent.status,
             autonomy_level: agent.autonomy_level,
             max_concurrent_tasks: agent.max_concurrent_tasks,
@@ -353,7 +371,8 @@ impl Agent {
     /// highest-priority active agent.
     pub async fn find_default_assignee(pool: &SqlitePool) -> Result<Option<Self>, sqlx::Error> {
         let agents = Self::find_active(pool).await?;
-        Ok(agents.iter()
+        Ok(agents
+            .iter()
             .find(|a| a.agent_tier.as_deref() == Some("system"))
             .or_else(|| agents.first())
             .cloned())
@@ -403,7 +422,10 @@ impl Agent {
     }
 
     /// Find agent by short name
-    pub async fn find_by_short_name(pool: &SqlitePool, short_name: &str) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn find_by_short_name(
+        pool: &SqlitePool,
+        short_name: &str,
+    ) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             Agent,
             r#"SELECT
@@ -446,7 +468,10 @@ impl Agent {
     }
 
     /// Find agent by wallet address
-    pub async fn find_by_wallet(pool: &SqlitePool, wallet_address: &str) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn find_by_wallet(
+        pool: &SqlitePool,
+        wallet_address: &str,
+    ) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             Agent,
             r#"SELECT
@@ -491,12 +516,30 @@ impl Agent {
     /// Create a new agent
     pub async fn create(pool: &SqlitePool, data: &CreateAgent) -> Result<Self, sqlx::Error> {
         let id = DbUuid::new();
-        let personality_json = data.personality.as_ref().map(|p| serde_json::to_string(p).unwrap_or_else(|_| "{}".to_string()));
-        let capabilities_json = data.capabilities.as_ref().map(|c| serde_json::to_string(c).unwrap_or_else(|_| "[]".to_string()));
-        let tools_json = data.tools.as_ref().map(|t| serde_json::to_string(t).unwrap_or_else(|_| "[]".to_string()));
-        let functions_json = data.functions.as_ref().map(|f| serde_json::to_string(f).unwrap_or_else(|_| "[]".to_string()));
-        let fallback_models_json = data.fallback_models.as_ref().map(|f| serde_json::to_string(f).unwrap_or_else(|_| "[]".to_string()));
-        let model_config_json = data.model_config.as_ref().map(|m| serde_json::to_string(m).unwrap_or_else(|_| "{}".to_string()));
+        let personality_json = data
+            .personality
+            .as_ref()
+            .map(|p| serde_json::to_string(p).unwrap_or_else(|_| "{}".to_string()));
+        let capabilities_json = data
+            .capabilities
+            .as_ref()
+            .map(|c| serde_json::to_string(c).unwrap_or_else(|_| "[]".to_string()));
+        let tools_json = data
+            .tools
+            .as_ref()
+            .map(|t| serde_json::to_string(t).unwrap_or_else(|_| "[]".to_string()));
+        let functions_json = data
+            .functions
+            .as_ref()
+            .map(|f| serde_json::to_string(f).unwrap_or_else(|_| "[]".to_string()));
+        let fallback_models_json = data
+            .fallback_models
+            .as_ref()
+            .map(|f| serde_json::to_string(f).unwrap_or_else(|_| "[]".to_string()));
+        let model_config_json = data
+            .model_config
+            .as_ref()
+            .map(|m| serde_json::to_string(m).unwrap_or_else(|_| "{}".to_string()));
         let status = data.status.clone().unwrap_or_default();
         let autonomy_level = data.autonomy_level.clone().unwrap_or_default();
 
@@ -579,13 +622,35 @@ impl Agent {
     }
 
     /// Update an existing agent
-    pub async fn update(pool: &SqlitePool, id: &str, data: &UpdateAgent) -> Result<Self, sqlx::Error> {
-        let personality_json = data.personality.as_ref().map(|p| serde_json::to_string(p).unwrap_or_else(|_| "{}".to_string()));
-        let capabilities_json = data.capabilities.as_ref().map(|c| serde_json::to_string(c).unwrap_or_else(|_| "[]".to_string()));
-        let tools_json = data.tools.as_ref().map(|t| serde_json::to_string(t).unwrap_or_else(|_| "[]".to_string()));
-        let functions_json = data.functions.as_ref().map(|f| serde_json::to_string(f).unwrap_or_else(|_| "[]".to_string()));
-        let fallback_models_json = data.fallback_models.as_ref().map(|f| serde_json::to_string(f).unwrap_or_else(|_| "[]".to_string()));
-        let model_config_json = data.model_config.as_ref().map(|m| serde_json::to_string(m).unwrap_or_else(|_| "{}".to_string()));
+    pub async fn update(
+        pool: &SqlitePool,
+        id: &str,
+        data: &UpdateAgent,
+    ) -> Result<Self, sqlx::Error> {
+        let personality_json = data
+            .personality
+            .as_ref()
+            .map(|p| serde_json::to_string(p).unwrap_or_else(|_| "{}".to_string()));
+        let capabilities_json = data
+            .capabilities
+            .as_ref()
+            .map(|c| serde_json::to_string(c).unwrap_or_else(|_| "[]".to_string()));
+        let tools_json = data
+            .tools
+            .as_ref()
+            .map(|t| serde_json::to_string(t).unwrap_or_else(|_| "[]".to_string()));
+        let functions_json = data
+            .functions
+            .as_ref()
+            .map(|f| serde_json::to_string(f).unwrap_or_else(|_| "[]".to_string()));
+        let fallback_models_json = data
+            .fallback_models
+            .as_ref()
+            .map(|f| serde_json::to_string(f).unwrap_or_else(|_| "[]".to_string()));
+        let model_config_json = data
+            .model_config
+            .as_ref()
+            .map(|m| serde_json::to_string(m).unwrap_or_else(|_| "{}".to_string()));
 
         sqlx::query_as!(
             Agent,
@@ -714,7 +779,10 @@ impl Agent {
     }
 
     /// Find agents visible to a specific user (system-tier + user's own agents)
-    pub async fn find_visible_for_user(pool: &SqlitePool, user_id: &str) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn find_visible_for_user(
+        pool: &SqlitePool,
+        user_id: &str,
+    ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
             Agent,
             r#"SELECT
@@ -758,7 +826,11 @@ impl Agent {
     }
 
     /// Update agent status
-    pub async fn update_status(pool: &SqlitePool, id: &str, status: AgentStatus) -> Result<(), sqlx::Error> {
+    pub async fn update_status(
+        pool: &SqlitePool,
+        id: &str,
+        status: AgentStatus,
+    ) -> Result<(), sqlx::Error> {
         sqlx::query!(
             "UPDATE agents SET status = $2, updated_at = datetime('now', 'subsec') WHERE id = $1",
             id,

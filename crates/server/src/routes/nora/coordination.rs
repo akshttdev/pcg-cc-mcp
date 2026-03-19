@@ -2,8 +2,10 @@
 
 use axum::{
     extract::WebSocketUpgrade,
-    response::Response,
-    response::sse::{Event, KeepAlive, Sse},
+    response::{
+        Response,
+        sse::{Event, KeepAlive, Sse},
+    },
 };
 use futures::stream::Stream;
 
@@ -136,7 +138,10 @@ pub async fn get_coordination_events_sse(
                 Ok(event) => {
                     let payload = coordination_event_payload(event);
                     let data = payload.to_string();
-                    return Some((Ok(Event::default().event("coordination_event").data(data)), rx));
+                    return Some((
+                        Ok(Event::default().event("coordination_event").data(data)),
+                        rx,
+                    ));
                 }
                 Err(broadcast::error::RecvError::Lagged(_)) => continue,
                 Err(broadcast::error::RecvError::Closed) => return None,

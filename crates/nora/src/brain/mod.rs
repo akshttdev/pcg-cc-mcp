@@ -18,9 +18,7 @@ pub use providers::{
 
 // Agent-specific LLM client configuration
 pub mod agent_client;
-pub use agent_client::{
-    create_client_for_agent, infer_provider_from_model, AgentModelConfig,
-};
+pub use agent_client::{create_client_for_agent, infer_provider_from_model, AgentModelConfig};
 
 /// A message in the conversation history
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -269,23 +267,26 @@ impl LLMClient {
         }
 
         // Check for local Ollama fallback (local LLM models)
-        let fallback_endpoint = std::env::var("OLLAMA_ENDPOINT")
-            .ok()
-            .or_else(|| {
-                // Check if Ollama is running on default port
-                if std::net::TcpStream::connect("127.0.0.1:11434").is_ok() {
-                    Some("http://127.0.0.1:11434/v1/chat/completions".to_string())
-                } else {
-                    None
-                }
-            });
+        let fallback_endpoint = std::env::var("OLLAMA_ENDPOINT").ok().or_else(|| {
+            // Check if Ollama is running on default port
+            if std::net::TcpStream::connect("127.0.0.1:11434").is_ok() {
+                Some("http://127.0.0.1:11434/v1/chat/completions".to_string())
+            } else {
+                None
+            }
+        });
 
-        let fallback_model = std::env::var("OLLAMA_MODEL")
-            .ok()
-            .or_else(|| fallback_endpoint.as_ref().map(|_| "gpt-oss:20b".to_string()));
+        let fallback_model = std::env::var("OLLAMA_MODEL").ok().or_else(|| {
+            fallback_endpoint
+                .as_ref()
+                .map(|_| "gpt-oss:20b".to_string())
+        });
 
         if fallback_endpoint.is_some() {
-            tracing::info!("LLMClient has Ollama fallback configured: {:?}", fallback_model);
+            tracing::info!(
+                "LLMClient has Ollama fallback configured: {:?}",
+                fallback_model
+            );
         }
 
         Self {
@@ -482,21 +483,25 @@ impl LLMClient {
         tool_results: &[ToolResult],
     ) -> Result<String> {
         // Call the conversation-aware version with empty history and no tools (no chaining)
-        match self.continue_with_tool_results_and_history(
-            system_prompt,
-            user_query,
-            context,
-            tool_calls,
-            tool_results,
-            &[],
-            &[], // Empty tools = no chaining support in legacy function
-        )
-        .await?
+        match self
+            .continue_with_tool_results_and_history(
+                system_prompt,
+                user_query,
+                context,
+                tool_calls,
+                tool_results,
+                &[],
+                &[], // Empty tools = no chaining support in legacy function
+            )
+            .await?
         {
             LLMResponse::Text { content, .. } => Ok(content),
             LLMResponse::ToolCalls { .. } => {
                 // Legacy function doesn't support chaining, return a message
-                Ok("Action completed. Use the conversation-aware API for tool chaining.".to_string())
+                Ok(
+                    "Action completed. Use the conversation-aware API for tool chaining."
+                        .to_string(),
+                )
             }
         }
     }
@@ -641,7 +646,12 @@ impl LLMClient {
             if attempt > 0 {
                 // Exponential backoff: 1s, 2s, 4s
                 let delay_ms = 1000 * (1 << (attempt - 1));
-                tracing::info!("[LLM_API] Rate limited, retrying in {}ms (attempt {}/{})", delay_ms, attempt + 1, max_retries);
+                tracing::info!(
+                    "[LLM_API] Rate limited, retrying in {}ms (attempt {}/{})",
+                    delay_ms,
+                    attempt + 1,
+                    max_retries
+                );
                 tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
             }
 
@@ -660,7 +670,10 @@ impl LLMClient {
                 Ok(r) => r,
                 Err(e) => {
                     tracing::error!("[LLM_API] Request failed: {}", e);
-                    last_error = Some(NoraError::LLMError(format!("Failed to send request: {}", e)));
+                    last_error = Some(NoraError::LLMError(format!(
+                        "Failed to send request: {}",
+                        e
+                    )));
                     continue;
                 }
             };
@@ -683,8 +696,15 @@ impl LLMClient {
 
             // Only retry on 429 (rate limit) or 5xx (server errors)
             if status.as_u16() == 429 || status.is_server_error() {
-                tracing::warn!("[LLM_API] Retryable error ({}): {}", status, &body[..body.len().min(200)]);
-                last_error = Some(NoraError::LLMError(format!("OpenAI API error ({}): {}", status, body)));
+                tracing::warn!(
+                    "[LLM_API] Retryable error ({}): {}",
+                    status,
+                    &body[..body.len().min(200)]
+                );
+                last_error = Some(NoraError::LLMError(format!(
+                    "OpenAI API error ({}): {}",
+                    status, body
+                )));
                 continue;
             }
 
@@ -698,8 +718,14 @@ impl LLMClient {
 
         // All retries exhausted - try Ollama fallback if available
         if let (Some(endpoint), Some(model)) = (&self.fallback_endpoint, &self.fallback_model) {
-            tracing::info!("[LLM_API] Primary provider failed, trying Ollama fallback: {}", model);
-            match self.call_ollama_fallback(endpoint, model, &messages, tools).await {
+            tracing::info!(
+                "[LLM_API] Primary provider failed, trying Ollama fallback: {}",
+                model
+            );
+            match self
+                .call_ollama_fallback(endpoint, model, &messages, tools)
+                .await
+            {
                 Ok(response) => return Ok(response),
                 Err(e) => {
                     tracing::warn!("[LLM_API] Ollama fallback also failed: {}", e);
@@ -731,7 +757,11 @@ impl LLMClient {
             payload["tool_choice"] = serde_json::json!("auto");
         }
 
-        tracing::info!("[LLM_API] Calling Ollama at {} with model {}", endpoint, model);
+        tracing::info!(
+            "[LLM_API] Calling Ollama at {} with model {}",
+            endpoint,
+            model
+        );
 
         let response = self
             .client
@@ -745,12 +775,16 @@ impl LLMClient {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(NoraError::LLMError(format!("Ollama error ({}): {}", status, body)));
+            return Err(NoraError::LLMError(format!(
+                "Ollama error ({}): {}",
+                status, body
+            )));
         }
 
-        let json: serde_json::Value = response.json().await.map_err(|e| {
-            NoraError::LLMError(format!("Failed to parse Ollama response: {}", e))
-        })?;
+        let json: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| NoraError::LLMError(format!("Failed to parse Ollama response: {}", e)))?;
 
         tracing::info!("[LLM_API] Ollama fallback succeeded");
         self.process_openai_tool_response(json).await
@@ -773,7 +807,11 @@ impl LLMClient {
         });
 
         if let Some(ref u) = usage {
-            tracing::info!("[LLM_API] Token usage: {} input, {} output", u.input_tokens, u.output_tokens);
+            tracing::info!(
+                "[LLM_API] Token usage: {} input, {} output",
+                u.input_tokens,
+                u.output_tokens
+            );
         }
 
         // Check if LLM wants to call tools
@@ -987,7 +1025,10 @@ impl LLMClient {
                     let delay = 1000 * (1 << (attempt - 1)); // 1s, 2s, 4s
                     tracing::warn!(
                         "[LLM_API] Continuation got {}, retrying in {}ms (attempt {}/{})",
-                        status, delay, attempt + 1, max_retries
+                        status,
+                        delay,
+                        attempt + 1,
+                        max_retries
                     );
                     tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                     continue;
@@ -1009,7 +1050,8 @@ impl LLMClient {
                     let mut fallback_payload = payload.clone();
                     fallback_payload["model"] = serde_json::json!(fallback_model);
 
-                    match self.client
+                    match self
+                        .client
                         .post(fallback_endpoint)
                         .header("Content-Type", "application/json")
                         .json(&fallback_payload)
@@ -1018,7 +1060,9 @@ impl LLMClient {
                     {
                         Ok(resp) if resp.status().is_success() => {
                             if let Ok(j) = resp.json::<serde_json::Value>().await {
-                                tracing::info!("[LLM_API] Ollama fallback succeeded for continuation");
+                                tracing::info!(
+                                    "[LLM_API] Ollama fallback succeeded for continuation"
+                                );
                                 json = Some(j);
                             }
                         }
@@ -1078,16 +1122,15 @@ impl LLMClient {
                     tracing::debug!("[LLM_API] Chained tool call: {} ({})", tc.name, tc.id);
                 }
 
-                return Ok(LLMResponse::ToolCalls { calls: parsed_calls, usage });
+                return Ok(LLMResponse::ToolCalls {
+                    calls: parsed_calls,
+                    usage,
+                });
             }
         }
 
         // No tool calls - return the text content
-        let content = message["content"]
-            .as_str()
-            .unwrap_or("")
-            .trim()
-            .to_string();
+        let content = message["content"].as_str().unwrap_or("").trim().to_string();
 
         tracing::info!(
             "[LLM_API] Continuation response received ({} chars)",
@@ -1620,10 +1663,7 @@ impl LLMClient {
         );
 
         let request = ChatRequest {
-            messages: vec![
-                ChatMessage::system(system),
-                ChatMessage::user(user_content),
-            ],
+            messages: vec![ChatMessage::system(system), ChatMessage::user(user_content)],
             tools: None,
             config: ChatConfig {
                 model: self.config.model.clone(),
@@ -1633,15 +1673,16 @@ impl LLMClient {
             },
         };
 
-        let response = provider.chat(request).await.map_err(|e| {
-            NoraError::LLMError(format!("Anthropic API error: {}", e))
-        })?;
+        let response = provider
+            .chat(request)
+            .await
+            .map_err(|e| NoraError::LLMError(format!("Anthropic API error: {}", e)))?;
 
         match response {
             providers::ProviderResponse::Text { content, .. } => Ok(content),
-            providers::ProviderResponse::ToolCalls { .. } => {
-                Err(NoraError::LLMError("Unexpected tool calls in simple generate".to_string()))
-            }
+            providers::ProviderResponse::ToolCalls { .. } => Err(NoraError::LLMError(
+                "Unexpected tool calls in simple generate".to_string(),
+            )),
         }
     }
 
@@ -1674,10 +1715,7 @@ impl LLMClient {
         );
 
         let request = ChatRequest {
-            messages: vec![
-                ChatMessage::system(system),
-                ChatMessage::user(user_content),
-            ],
+            messages: vec![ChatMessage::system(system), ChatMessage::user(user_content)],
             tools: None,
             config: ChatConfig {
                 model: self.config.model.clone(),
@@ -1687,9 +1725,10 @@ impl LLMClient {
             },
         };
 
-        let stream = provider.chat_stream(request).await.map_err(|e| {
-            NoraError::LLMError(format!("Anthropic streaming error: {}", e))
-        })?;
+        let stream = provider
+            .chat_stream(request)
+            .await
+            .map_err(|e| NoraError::LLMError(format!("Anthropic streaming error: {}", e)))?;
 
         // Convert provider stream to the expected format
         let mapped_stream = stream.map(|result| {
@@ -1772,13 +1811,18 @@ impl LLMClient {
                 model: self.config.model.clone(),
                 temperature: self.config.temperature,
                 max_tokens: self.config.max_tokens,
-                tool_choice: if tools.is_empty() { None } else { Some("auto".to_string()) },
+                tool_choice: if tools.is_empty() {
+                    None
+                } else {
+                    Some("auto".to_string())
+                },
             },
         };
 
-        let response = provider.chat(request).await.map_err(|e| {
-            NoraError::LLMError(format!("Anthropic API error: {}", e))
-        })?;
+        let response = provider
+            .chat(request)
+            .await
+            .map_err(|e| NoraError::LLMError(format!("Anthropic API error: {}", e)))?;
 
         // Convert provider response to LLMResponse, preserving usage
         match response {
@@ -1794,7 +1838,10 @@ impl LLMClient {
                         arguments: c.arguments,
                     })
                     .collect();
-                Ok(LLMResponse::ToolCalls { calls: tool_calls, usage })
+                Ok(LLMResponse::ToolCalls {
+                    calls: tool_calls,
+                    usage,
+                })
             }
         }
     }
@@ -1859,7 +1906,10 @@ impl LLMClient {
 
         // Add tool results
         for result in tool_results {
-            messages.push(ChatMessage::tool_result(&result.tool_call_id, &result.result));
+            messages.push(ChatMessage::tool_result(
+                &result.tool_call_id,
+                &result.result,
+            ));
         }
 
         // Convert tools to provider format
@@ -1888,13 +1938,18 @@ impl LLMClient {
                 model: self.config.model.clone(),
                 temperature: self.config.temperature,
                 max_tokens: self.config.max_tokens,
-                tool_choice: if tools.is_empty() { None } else { Some("auto".to_string()) },
+                tool_choice: if tools.is_empty() {
+                    None
+                } else {
+                    Some("auto".to_string())
+                },
             },
         };
 
-        let response = provider.chat(request).await.map_err(|e| {
-            NoraError::LLMError(format!("Anthropic API error: {}", e))
-        })?;
+        let response = provider
+            .chat(request)
+            .await
+            .map_err(|e| NoraError::LLMError(format!("Anthropic API error: {}", e)))?;
 
         // Convert provider response to LLMResponse, preserving usage
         match response {
@@ -1910,7 +1965,10 @@ impl LLMClient {
                         arguments: c.arguments,
                     })
                     .collect();
-                Ok(LLMResponse::ToolCalls { calls: tool_calls, usage })
+                Ok(LLMResponse::ToolCalls {
+                    calls: tool_calls,
+                    usage,
+                })
             }
         }
     }

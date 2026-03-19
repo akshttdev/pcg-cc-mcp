@@ -1,3 +1,5 @@
+use std::{collections::HashMap, sync::Arc};
+
 ///! Reward Tracker - Listens to peer heartbeats and calculates VIBE rewards
 ///!
 ///! This service:
@@ -6,19 +8,20 @@
 ///! - Calculates rewards based on economics.rs formulas
 ///! - Creates reward records in the database
 ///! - Applies multipliers for GPU, high resources, etc.
-
 use anyhow::{Context, Result};
 use async_nats::Client as NatsClient;
 use futures::StreamExt;
 use sqlx::SqlitePool;
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::RwLock;
-use tokio::time::{interval, Duration};
+use tokio::{
+    sync::RwLock,
+    time::{interval, Duration},
+};
 
-use crate::economics::{VibeAmount, RewardRates};
-use crate::relay::PeerAnnouncement;
-use crate::wire::NodeResources;
+use crate::{
+    economics::{RewardRates, VibeAmount},
+    relay::PeerAnnouncement,
+    wire::NodeResources,
+};
 
 /// Configuration for the reward tracker
 #[derive(Debug, Clone)]
@@ -72,7 +75,11 @@ impl RewardTracker {
     }
 
     /// Create a new reward tracker with config (will connect to NATS later)
-    pub fn new_with_config(db: SqlitePool, config: RewardTrackerConfig, rates: RewardRates) -> Self {
+    pub fn new_with_config(
+        db: SqlitePool,
+        config: RewardTrackerConfig,
+        rates: RewardRates,
+    ) -> Self {
         Self {
             nats: None,
             db,
@@ -121,7 +128,10 @@ impl RewardTracker {
 
     /// Listen to heartbeats on NATS
     async fn listen_heartbeats(&self) -> Result<()> {
-        let nats = self.nats.as_ref().ok_or_else(|| anyhow::anyhow!("NATS not initialized"))?;
+        let nats = self
+            .nats
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("NATS not initialized"))?;
 
         let mut sub = nats
             .subscribe("apn.heartbeat")
@@ -142,8 +152,8 @@ impl RewardTracker {
     /// Handle a single heartbeat message
     async fn handle_heartbeat(&self, payload: &[u8]) -> Result<()> {
         // Parse heartbeat announcement
-        let announcement: PeerAnnouncement = serde_json::from_slice(payload)
-            .context("Failed to parse heartbeat")?;
+        let announcement: PeerAnnouncement =
+            serde_json::from_slice(payload).context("Failed to parse heartbeat")?;
 
         let node_id = format!("apn_{}", &announcement.wallet_address[2..10]); // Extract node_id from wallet
         let wallet = announcement.wallet_address.clone();
@@ -235,11 +245,13 @@ impl RewardTracker {
             hostname: announcement.hostname.clone(),
         };
 
-        PeerNode::upsert(&self.db, peer_data).await
+        PeerNode::upsert(&self.db, peer_data)
+            .await
             .context("Failed to upsert peer node")?;
 
         // Update heartbeat timestamp
-        PeerNode::update_heartbeat(&self.db, &node_id).await
+        PeerNode::update_heartbeat(&self.db, &node_id)
+            .await
             .context("Failed to update heartbeat")?;
 
         Ok(())
@@ -260,8 +272,10 @@ impl RewardTracker {
 
     /// Process all pending rewards and create database records
     async fn process_pending_rewards(&self) -> Result<()> {
-        use db::models::peer_node::PeerNode;
-        use db::models::peer_reward::{CreatePeerReward, PeerReward, RewardType};
+        use db::models::{
+            peer_node::PeerNode,
+            peer_reward::{CreatePeerReward, PeerReward, RewardType},
+        };
 
         let mut peers = self.peers.write().await;
 
@@ -289,10 +303,7 @@ impl RewardTracker {
                 reward_type: RewardType::Heartbeat,
                 base_amount: self.rates.heartbeat_base as i64,
                 multiplier,
-                description: Some(format!(
-                    "{} heartbeats",
-                    peer.heartbeat_count
-                )),
+                description: Some(format!("{} heartbeats", peer.heartbeat_count)),
                 metadata: Some(serde_json::json!({
                     "heartbeat_count": peer.heartbeat_count,
                     "has_gpu": peer.resources.as_ref().map(|r| r.gpu_available).unwrap_or(false),

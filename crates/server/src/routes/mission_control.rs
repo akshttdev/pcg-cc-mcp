@@ -72,8 +72,10 @@ pub async fn get_dashboard(
     let running_processes = ExecutionProcess::find_running(pool).await?;
 
     let mut active_executions = Vec::new();
-    let mut project_map: std::collections::HashMap<String, (String, usize, Option<ProjectCapacity>)> =
-        std::collections::HashMap::new();
+    let mut project_map: std::collections::HashMap<
+        String,
+        (String, usize, Option<ProjectCapacity>),
+    > = std::collections::HashMap::new();
 
     for process in running_processes {
         // Load execution context
@@ -160,17 +162,19 @@ pub async fn get_dashboard(
         if let Ok(Some(task)) = Task::find_by_id(pool, &flow.task_id.to_string()).await {
             // Get project info
             let (project_id, project_name) = if let Ok(Some(project)) =
-                db::models::project::Project::find_by_id(pool, &task.project_id).await {
+                db::models::project::Project::find_by_id(pool, &task.project_id).await
+            {
                 (Some(project.id), Some(project.name))
             } else {
                 (Some(task.project_id.clone()), None)
             };
 
             // Get events count
-            let events_count = db::models::agent_flow_event::AgentFlowEvent::find_by_flow(pool, flow.id)
-                .await
-                .map(|e| e.len())
-                .unwrap_or(0);
+            let events_count =
+                db::models::agent_flow_event::AgentFlowEvent::find_by_flow(pool, flow.id)
+                    .await
+                    .map(|e| e.len())
+                    .unwrap_or(0);
 
             active_workflows.push(ActiveWorkflowInfo {
                 task_id: flow.task_id.to_string(),
@@ -183,16 +187,25 @@ pub async fn get_dashboard(
         }
     }
 
-    let total_active = active_executions.len() + active_workflows.iter().filter(|w| {
-        matches!(w.flow.status, FlowStatus::Planning | FlowStatus::Executing | FlowStatus::Verifying)
-    }).count();
+    let total_active = active_executions.len()
+        + active_workflows
+            .iter()
+            .filter(|w| {
+                matches!(
+                    w.flow.status,
+                    FlowStatus::Planning | FlowStatus::Executing | FlowStatus::Verifying
+                )
+            })
+            .count();
 
-    Ok(ResponseJson(ApiResponse::success(MissionControlDashboard {
-        active_executions,
-        active_workflows,
-        total_active,
-        by_project,
-    })))
+    Ok(ResponseJson(ApiResponse::success(
+        MissionControlDashboard {
+            active_executions,
+            active_workflows,
+            total_active,
+            by_project,
+        },
+    )))
 }
 
 /// Get artifacts for a specific execution process

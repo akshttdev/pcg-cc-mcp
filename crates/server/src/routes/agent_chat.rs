@@ -6,10 +6,10 @@
 use std::sync::Arc;
 
 use axum::{
-    extract::{Path, Query, State},
-    response::{sse::Event, Sse},
-    routing::{get, post},
     Json, Router,
+    extract::{Path, Query, State},
+    response::{Sse, sse::Event},
+    routing::{get, post},
 };
 use db::models::{
     agent::Agent,
@@ -20,15 +20,15 @@ use db::models::{
 use deployment::Deployment;
 use futures::stream::Stream;
 use nora::{
-    brain::{create_client_for_agent, ConversationMessage, LLMResponse, ToolCall, ToolResult},
-    tools::ExecutiveTools,
     ProjectScopedContext,
+    brain::{ConversationMessage, LLMResponse, ToolCall, ToolResult, create_client_for_agent},
+    tools::ExecutiveTools,
 };
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use uuid::Uuid;
 
-use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
 /// Request to chat with an agent
 #[derive(Debug, Deserialize, TS)]
@@ -152,14 +152,10 @@ pub async fn agent_chat(
         .map_err(|e| ApiError::BadRequest(format!("Invalid agent UUID: {e}")))?;
 
     // Get or create conversation
-    let conversation = AgentConversation::get_or_create(
-        pool,
-        agent_uuid,
-        &request.session_id,
-        request.project_id,
-    )
-    .await
-    .map_err(|e| ApiError::InternalError(format!("Failed to get conversation: {}", e)))?;
+    let conversation =
+        AgentConversation::get_or_create(pool, agent_uuid, &request.session_id, request.project_id)
+            .await
+            .map_err(|e| ApiError::InternalError(format!("Failed to get conversation: {}", e)))?;
 
     // Add user message to conversation
     AgentConversationMessage::add_user_message(pool, conversation.id, &request.message)
@@ -201,7 +197,8 @@ pub async fn agent_chat(
         }
         tracing::info!(
             "Model/provider override: model={:?}, provider={:?}",
-            request.model, request.provider
+            request.model,
+            request.provider
         );
         overridden
     } else {
@@ -230,7 +227,8 @@ pub async fn agent_chat(
         project_context.as_deref(),
         &agent_id,
         pool,
-    ).await;
+    )
+    .await;
 
     // VIBE Balance Check
     if let Some(project_id) = request.project_id {
@@ -270,7 +268,10 @@ pub async fn agent_chat(
                 final_usage = usage.clone();
                 break;
             }
-            LLMResponse::ToolCalls { ref calls, ref usage } => {
+            LLMResponse::ToolCalls {
+                ref calls,
+                ref usage,
+            } => {
                 tracing::info!(
                     "[AGENT_CHAT] Tool calls iteration {}: {:?}",
                     iteration,
@@ -296,8 +297,7 @@ pub async fn agent_chat(
                             &call.name,
                             &call.arguments,
                             pool,
-                            uuid::Uuid::parse_str(access_ctx.user_id.as_str())
-                                .unwrap_or_default(),
+                            uuid::Uuid::parse_str(access_ctx.user_id.as_str()).unwrap_or_default(),
                         )
                         .await
                     };
@@ -305,7 +305,10 @@ pub async fn agent_chat(
                     let result_str = serde_json::to_string(&result).unwrap_or_default();
                     tool_results.push(ToolResult {
                         tool_call_id: call.id.clone(),
-                        success: result.get("success").and_then(|v| v.as_bool()).unwrap_or(false),
+                        success: result
+                            .get("success")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false),
                         result: result_str,
                     });
                 }
@@ -325,19 +328,28 @@ pub async fn agent_chat(
                         &tool_schemas,
                     )
                     .await
-                    .map_err(|e| ApiError::InternalError(format!("LLM tool continuation error: {}", e)))?;
+                    .map_err(|e| {
+                        ApiError::InternalError(format!("LLM tool continuation error: {}", e))
+                    })?;
             }
         }
     }
 
     // Extract final content and usage
     let (content, usage) = match llm_response {
-        LLMResponse::Text { content: text, usage } => (text, usage.or(final_usage)),
+        LLMResponse::Text {
+            content: text,
+            usage,
+        } => (text, usage.or(final_usage)),
         LLMResponse::ToolCalls { calls, usage } => {
             // Max iterations reached - summarize what happened
             let text = format!(
                 "I attempted to use tools but reached the maximum iteration limit. Last tools requested: {}",
-                calls.iter().map(|c| c.name.clone()).collect::<Vec<_>>().join(", ")
+                calls
+                    .iter()
+                    .map(|c| c.name.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
             );
             (text, usage.or(final_usage))
         }
@@ -351,18 +363,31 @@ pub async fn agent_chat(
 
     // Log token usage if available
     if let Some(u) = &usage {
-        tracing::info!("[AGENT_CHAT] Token usage: {} input, {} output", u.input_tokens, u.output_tokens);
+        tracing::info!(
+            "[AGENT_CHAT] Token usage: {} input, {} output",
+            u.input_tokens,
+            u.output_tokens
+        );
     }
 
     let latency_ms = start.elapsed().as_millis() as i64;
 
     // Get model/provider info (use overrides if present, else agent config)
-    let model = request.model.clone().or_else(|| agent.default_model.clone());
+    let model = request
+        .model
+        .clone()
+        .or_else(|| agent.default_model.clone());
     let provider = request.provider.clone().or_else(|| {
         model.as_ref().map(|m| {
             if m.starts_with("claude") {
                 "anthropic".to_string()
-            } else if m.starts_with("llama") || m.starts_with("deepseek") || m.starts_with("mistral") || m.starts_with("phi") || m.starts_with("qwen") || m.starts_with("gpt-oss") {
+            } else if m.starts_with("llama")
+                || m.starts_with("deepseek")
+                || m.starts_with("mistral")
+                || m.starts_with("phi")
+                || m.starts_with("qwen")
+                || m.starts_with("gpt-oss")
+            {
                 "ollama".to_string()
             } else {
                 "openai".to_string()
@@ -373,10 +398,17 @@ pub async fn agent_chat(
     // Record VIBE usage (if project is specified and we have token counts)
     let vibe_earned = if let Some(project_id) = request.project_id {
         crate::helpers::billing::record_llm_vibe_usage(
-            pool, project_id, model.as_deref().unwrap_or("gpt-4o"),
-            input_tokens, output_tokens,
-            None, None, None, "AgentChat",
-        ).await
+            pool,
+            project_id,
+            model.as_deref().unwrap_or("gpt-4o"),
+            input_tokens,
+            output_tokens,
+            None,
+            None,
+            None,
+            "AgentChat",
+        )
+        .await
     } else {
         0
     };
@@ -395,23 +427,32 @@ pub async fn agent_chat(
                         wallet_id: wallet.id,
                         direction: "credit".to_string(),
                         amount: vibe_earned,
-                        description: Some(format!("Earned from chat session {}", request.session_id)),
-                        metadata: Some(serde_json::json!({
-                            "input_tokens": input_tokens,
-                            "output_tokens": output_tokens,
-                            "model": model,
-                            "project_id": request.project_id
-                        }).to_string()),
+                        description: Some(format!(
+                            "Earned from chat session {}",
+                            request.session_id
+                        )),
+                        metadata: Some(
+                            serde_json::json!({
+                                "input_tokens": input_tokens,
+                                "output_tokens": output_tokens,
+                                "model": model,
+                                "project_id": request.project_id
+                            })
+                            .to_string(),
+                        ),
                         task_id: None,
                         process_id: None,
                     },
-                ).await;
+                )
+                .await;
 
                 match tx_result {
                     Ok(tx) => {
                         tracing::info!(
                             "[VIBE] Credited {} VIBE to agent {} wallet (tx: {})",
-                            vibe_earned, agent.short_name, tx.id
+                            vibe_earned,
+                            agent.short_name,
+                            tx.id
                         );
                     }
                     Err(e) => {
@@ -422,7 +463,8 @@ pub async fn agent_chat(
             Ok(None) => {
                 tracing::warn!(
                     "[VIBE] No wallet found for agent '{}' (profile_key: {}), skipping credit",
-                    agent.short_name, profile_key
+                    agent.short_name,
+                    profile_key
                 );
             }
             Err(e) => {
@@ -525,7 +567,8 @@ pub async fn agent_chat_stream(
         project_context.as_deref(),
         &agent_id,
         &pool,
-    ).await;
+    )
+    .await;
 
     // Get streaming response
     let stream_result = llm
@@ -807,12 +850,11 @@ async fn fetch_recent_workflow_results(
     pool: &sqlx::SqlitePool,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     // First, get the agent's short_name to match in event_data
-    let agent_name: Option<String> = sqlx::query_scalar(
-        r#"SELECT short_name FROM agents WHERE id = ?1"#
-    )
-    .bind(agent_id)
-    .fetch_optional(pool)
-    .await?;
+    let agent_name: Option<String> =
+        sqlx::query_scalar(r#"SELECT short_name FROM agents WHERE id = ?1"#)
+            .bind(agent_id)
+            .fetch_optional(pool)
+            .await?;
 
     let agent_name = match agent_name {
         Some(name) => name,
@@ -853,22 +895,27 @@ async fn fetch_recent_workflow_results(
             // New flow header
             if current_flow_id != Some(event.agent_flow_id) {
                 current_flow_id = Some(event.agent_flow_id);
-                output.push_str("───────────────────────────────────────────────────────────────\n");
+                output
+                    .push_str("───────────────────────────────────────────────────────────────\n");
                 output.push_str(&format!("Workflow: {}\n", event.agent_flow_id));
-                output.push_str("───────────────────────────────────────────────────────────────\n");
+                output
+                    .push_str("───────────────────────────────────────────────────────────────\n");
             }
 
             let event_type = event.event_type.to_string();
 
             if event_type == "phase_completed" {
-                let phase = data.get("phase")
+                let phase = data
+                    .get("phase")
                     .and_then(|v| v.as_str())
                     .unwrap_or("Unknown");
-                let duration = data.get("duration_ms")
+                let duration = data
+                    .get("duration_ms")
                     .and_then(|v| v.as_u64())
                     .map(|ms| format!("{}ms", ms))
                     .unwrap_or_default();
-                let agent_name = data.get("agent_name")
+                let agent_name = data
+                    .get("agent_name")
                     .and_then(|v| v.as_str())
                     .unwrap_or("Unknown");
 
@@ -892,11 +939,11 @@ async fn fetch_recent_workflow_results(
                     }
                 }
             } else if event_type == "flow_completed" {
-                let total_artifacts = data.get("total_artifacts")
+                let total_artifacts = data
+                    .get("total_artifacts")
                     .and_then(|v| v.as_i64())
                     .unwrap_or(0);
-                let score = data.get("verification_score")
-                    .and_then(|v| v.as_f64());
+                let score = data.get("verification_score").and_then(|v| v.as_f64());
 
                 output.push_str("\n✓ WORKFLOW COMPLETED\n");
                 output.push_str(&format!("  Artifacts produced: {}\n", total_artifacts));

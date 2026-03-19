@@ -99,10 +99,9 @@ pub async fn get_active_executions(
 
     let count = executions.len() as i64;
 
-    Ok(ResponseJson(ApiResponse::success(ActiveExecutionsResponse {
-        count,
-        executions,
-    })))
+    Ok(ResponseJson(ApiResponse::success(
+        ActiveExecutionsResponse { count, executions },
+    )))
 }
 
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {

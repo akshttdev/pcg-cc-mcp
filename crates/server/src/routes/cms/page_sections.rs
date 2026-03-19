@@ -5,12 +5,14 @@ use axum::{
     response::Json as ResponseJson,
     routing::get,
 };
-use db::models::cms_page_section::{CmsPageSection, CreateCmsPageSection, UpdateCmsPageSection};
-use db::models::cms_site::CmsSite;
+use db::models::{
+    cms_page_section::{CmsPageSection, CreateCmsPageSection, UpdateCmsPageSection},
+    cms_site::CmsSite,
+};
+use deployment::Deployment;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use deployment::Deployment;
 use crate::{DeploymentImpl, error::ApiError, middleware::require_auth};
 
 pub async fn list_page_sections(
@@ -100,8 +102,5 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
                 .patch(update_section)
                 .delete(delete_section),
         )
-        .layer(from_fn_with_state(
-            deployment.clone(),
-            require_auth,
-        ))
+        .layer(from_fn_with_state(deployment.clone(), require_auth))
 }

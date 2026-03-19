@@ -157,10 +157,7 @@ impl TopsiConfig {
             autonomy_level: AutonomyLevel::Manual,
             topology_auto_refresh: false,
             refresh_interval_secs: 300,
-            enabled_tools: vec![
-                "view_topology".to_string(),
-                "find_path".to_string(),
-            ],
+            enabled_tools: vec!["view_topology".to_string(), "find_path".to_string()],
             max_context_nodes: 20,
             auto_pattern_detection: false,
             auto_reroute: false,

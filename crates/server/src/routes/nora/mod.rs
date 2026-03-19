@@ -14,16 +14,20 @@ use std::sync::Arc;
 use axum::{
     Json, Router,
     extract::{Path, State},
-    routing::{get, post, patch},
+    routing::{get, patch, post},
 };
 use chrono::{DateTime, Utc};
-use db::models::agent_conversation::{AgentConversation, AgentConversationMessage};
-use db::models::project::Project;
-use sqlx;
+use db::models::{
+    agent_conversation::{AgentConversation, AgentConversationMessage},
+    project::Project,
+};
 use deployment::Deployment;
 use nora::{
     NoraAgent, NoraConfig, NoraError,
-    agent::{NoraRequest, NoraRequestType, NoraResponse, RapidPlaybookRequest, RapidPlaybookResult, RequestPriority},
+    agent::{
+        NoraRequest, NoraRequestType, NoraResponse, RapidPlaybookRequest, RapidPlaybookResult,
+        RequestPriority,
+    },
     coordination::{AgentCoordinationState, CoordinationEvent, CoordinationStats},
     graph::{GraphNodeStatus, GraphPlan, GraphPlanSummary},
     memory::{BudgetStatus, ProjectContext, ProjectStatus},
@@ -33,25 +37,27 @@ use nora::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tokio::sync::{broadcast, RwLock};
+use sqlx;
+use tokio::sync::{RwLock, broadcast};
 use ts_rs::TS;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
-
 // Re-export items used by sub-modules and external modules
 pub use self::coordination::emit_coordination_event;
-pub use self::config::NoraModeSummary;
-pub(crate) use self::config::NORA_MODE_PRESETS;
-pub(crate) use self::rate_limiter::{get_chat_rate_limiter, get_voice_rate_limiter};
-pub use self::initialization::initialize_nora_on_startup;
+pub(crate) use self::{
+    config::NORA_MODE_PRESETS,
+    rate_limiter::{get_chat_rate_limiter, get_voice_rate_limiter},
+};
+pub use self::{config::NoraModeSummary, initialization::initialize_nora_on_startup};
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
 /// Global Nora agent instance
 pub(crate) static NORA_INSTANCE: tokio::sync::OnceCell<Arc<RwLock<Option<NoraAgent>>>> =
     tokio::sync::OnceCell::const_new();
 
 /// Global Nora initialization timestamp
-pub(crate) static NORA_INIT_TIME: tokio::sync::OnceCell<DateTime<Utc>> = tokio::sync::OnceCell::const_new();
+pub(crate) static NORA_INIT_TIME: tokio::sync::OnceCell<DateTime<Utc>> =
+    tokio::sync::OnceCell::const_new();
 
 /// Nora manager for coordinating agent instances
 #[derive(Clone)]
@@ -73,7 +79,9 @@ impl NoraManager {
         if let Some(nora) = agent.as_ref() {
             nora.process_request(request).await
         } else {
-            Err(NoraError::NotInitialized("Nora agent not initialized".to_string()))
+            Err(NoraError::NotInitialized(
+                "Nora agent not initialized".to_string(),
+            ))
         }
     }
 
@@ -85,7 +93,9 @@ impl NoraManager {
                 .await
                 .map_err(|e| NoraError::CoordinationError(e.to_string()))
         } else {
-            Err(NoraError::NotInitialized("Nora agent not initialized".to_string()))
+            Err(NoraError::NotInitialized(
+                "Nora agent not initialized".to_string(),
+            ))
         }
     }
 
@@ -97,7 +107,9 @@ impl NoraManager {
                 .await
                 .map_err(|e| NoraError::CoordinationError(e.to_string()))
         } else {
-            Err(NoraError::NotInitialized("Nora agent not initialized".to_string()))
+            Err(NoraError::NotInitialized(
+                "Nora agent not initialized".to_string(),
+            ))
         }
     }
 
@@ -117,7 +129,9 @@ impl NoraManager {
 
     pub async fn get_uptime_ms(&self) -> Option<u64> {
         NORA_INIT_TIME.get().map(|init_time| {
-            Utc::now().signed_duration_since(*init_time).num_milliseconds() as u64
+            Utc::now()
+                .signed_duration_since(*init_time)
+                .num_milliseconds() as u64
         })
     }
 
@@ -126,20 +140,31 @@ impl NoraManager {
         if let Some(nora) = agent.as_ref() {
             nora.sync_live_context().await
         } else {
-            Err(NoraError::NotInitialized("Nora agent not initialized".to_string()))
+            Err(NoraError::NotInitialized(
+                "Nora agent not initialized".to_string(),
+            ))
         }
     }
 
-    pub async fn run_rapid_playbook(&self, payload: RapidPlaybookRequest) -> Result<RapidPlaybookResult, NoraError> {
+    pub async fn run_rapid_playbook(
+        &self,
+        payload: RapidPlaybookRequest,
+    ) -> Result<RapidPlaybookResult, NoraError> {
         let agent = self.agent.read().await;
         if let Some(nora) = agent.as_ref() {
             nora.run_rapid_playbook(payload).await
         } else {
-            Err(NoraError::NotInitialized("Nora agent not initialized".to_string()))
+            Err(NoraError::NotInitialized(
+                "Nora agent not initialized".to_string(),
+            ))
         }
     }
 
-    pub async fn reinitialize_with_config(&self, config: NoraConfig, preserve_memory: bool) -> Result<String, NoraError> {
+    pub async fn reinitialize_with_config(
+        &self,
+        config: NoraConfig,
+        preserve_memory: bool,
+    ) -> Result<String, NoraError> {
         let mut agent_guard = self.agent.write().await;
         let new_agent = NoraAgent::new(config).await?;
         if preserve_memory {
@@ -160,7 +185,9 @@ impl NoraManager {
         if let Some(nora) = agent.as_ref() {
             Ok(nora.graph_plan_summaries().await)
         } else {
-            Err(NoraError::NotInitialized("Nora agent not initialized".to_string()))
+            Err(NoraError::NotInitialized(
+                "Nora agent not initialized".to_string(),
+            ))
         }
     }
 
@@ -171,16 +198,26 @@ impl NoraManager {
                 .await
                 .ok_or_else(|| NoraError::ConfigError("Plan not found".to_string()))
         } else {
-            Err(NoraError::NotInitialized("Nora agent not initialized".to_string()))
+            Err(NoraError::NotInitialized(
+                "Nora agent not initialized".to_string(),
+            ))
         }
     }
 
-    pub async fn update_graph_node_status(&self, plan_id: &str, node_id: &str, status: GraphNodeStatus) -> Result<GraphPlan, NoraError> {
+    pub async fn update_graph_node_status(
+        &self,
+        plan_id: &str,
+        node_id: &str,
+        status: GraphNodeStatus,
+    ) -> Result<GraphPlan, NoraError> {
         let agent = self.agent.read().await;
         if let Some(nora) = agent.as_ref() {
-            nora.update_graph_node_status(plan_id, node_id, status).await
+            nora.update_graph_node_status(plan_id, node_id, status)
+                .await
         } else {
-            Err(NoraError::NotInitialized("Nora agent not initialized".to_string()))
+            Err(NoraError::NotInitialized(
+                "Nora agent not initialized".to_string(),
+            ))
         }
     }
 }
@@ -201,9 +238,18 @@ pub fn nora_routes() -> Router<DeploymentImpl> {
         .route("/nora/voice/synthesize", post(voice::synthesize_speech))
         .route("/nora/voice/transcribe", post(voice::transcribe_speech))
         .route("/nora/voice/interaction", post(voice::voice_interaction))
-        .route("/nora/voice/analytics/users/{user_id}", get(voice::get_user_voice_analytics))
-        .route("/nora/voice/analytics/users", get(voice::get_all_users_voice_analytics))
-        .route("/nora/voice/conversations/{session_id}", get(voice::get_session_conversation))
+        .route(
+            "/nora/voice/analytics/users/{user_id}",
+            get(voice::get_user_voice_analytics),
+        )
+        .route(
+            "/nora/voice/analytics/users",
+            get(voice::get_all_users_voice_analytics),
+        )
+        .route(
+            "/nora/voice/conversations/{session_id}",
+            get(voice::get_session_conversation),
+        )
         .route("/nora/tools/execute", post(execute_executive_tool))
         .route("/nora/tools/available", get(get_available_tools))
         .route("/nora/context/sync", post(sync_live_context_handler))
@@ -211,14 +257,26 @@ pub fn nora_routes() -> Router<DeploymentImpl> {
         .route("/nora/modes/apply", post(modes::apply_mode_handler))
         .route("/nora/playbooks/rapid", post(modes::rapid_playbook_handler))
         .route("/nora/graph/plans", get(modes::list_graph_plans_handler))
-        .route("/nora/graph/plans/{plan_id}", get(modes::get_graph_plan_handler))
+        .route(
+            "/nora/graph/plans/{plan_id}",
+            get(modes::get_graph_plan_handler),
+        )
         .route(
             "/nora/graph/plans/{plan_id}/nodes/{node_id}",
             patch(modes::update_graph_node_handler),
         )
-        .route("/nora/coordination/stats", get(coordination::get_coordination_stats))
-        .route("/nora/coordination/agents", get(coordination::get_coordination_agents))
-        .route("/nora/coordination/events", get(coordination::get_coordination_events_ws))
+        .route(
+            "/nora/coordination/stats",
+            get(coordination::get_coordination_stats),
+        )
+        .route(
+            "/nora/coordination/agents",
+            get(coordination::get_coordination_agents),
+        )
+        .route(
+            "/nora/coordination/events",
+            get(coordination::get_coordination_events_ws),
+        )
         .route(
             "/nora/coordination/events/sse",
             get(coordination::get_coordination_events_sse),
@@ -229,7 +287,10 @@ pub fn nora_routes() -> Router<DeploymentImpl> {
         )
         .route("/nora/personality/config", get(get_personality_config))
         .route("/nora/personality/config", post(update_personality_config))
-        .route("/nora/project/create", post(project_ops::nora_create_project))
+        .route(
+            "/nora/project/create",
+            post(project_ops::nora_create_project),
+        )
         .route("/nora/board/create", post(project_ops::nora_create_board))
         .route("/nora/task/create", post(project_ops::nora_create_task))
         .layer(axum::middleware::from_fn(
@@ -521,7 +582,9 @@ pub async fn get_nora_status(
     if let Some(nora) = instance.as_ref() {
         let is_active = nora.is_active().await;
         let uptime_ms = NORA_INIT_TIME.get().map(|init_time| {
-            Utc::now().signed_duration_since(*init_time).num_milliseconds() as u64
+            Utc::now()
+                .signed_duration_since(*init_time)
+                .num_milliseconds() as u64
         });
 
         Ok(Json(NoraStatusResponse {
@@ -555,7 +618,9 @@ async fn sync_live_context_handler(
         .sync_live_context()
         .await
         .map_err(|e| ApiError::InternalError(e.to_string()))?;
-    Ok(Json(ContextSyncResponse { projects_refreshed: refreshed }))
+    Ok(Json(ContextSyncResponse {
+        projects_refreshed: refreshed,
+    }))
 }
 
 pub async fn get_cache_stats(
@@ -586,7 +651,9 @@ pub async fn clear_cache(
 
     if let Some(llm) = &nora.llm {
         llm.clear_cache().await;
-        Ok(Json(json!({ "success": true, "message": "LLM cache cleared successfully" })))
+        Ok(Json(
+            json!({ "success": true, "message": "LLM cache cleared successfully" }),
+        ))
     } else {
         Err(ApiError::InternalError("LLM not available".to_string()))
     }
@@ -637,7 +704,11 @@ pub async fn get_available_tools(
             name: tool.name.clone(),
             description: tool.description.clone(),
             category: format!("{:?}", tool.category),
-            required_permissions: tool.required_permissions.iter().map(|p| format!("{:?}", p)).collect(),
+            required_permissions: tool
+                .required_permissions
+                .iter()
+                .map(|p| format!("{:?}", p))
+                .collect(),
             estimated_duration: tool.estimated_duration.clone(),
         })
         .collect();

@@ -4,13 +4,22 @@
 //! screenshot capture, visual diffs, and security-first URL allowlisting.
 
 use db::{
-    models::{
-        browser_action::{ActionResult, ActionType, BrowserAction, BrowserActionError, CompleteAction, CreateBrowserAction},
-        browser_allowlist::{BrowserAllowlist, BrowserAllowlistError, CreateBrowserAllowlist, PatternType},
-        browser_screenshot::{AddVisualDiff, BrowserScreenshot, BrowserScreenshotError, CreateBrowserScreenshot},
-        browser_session::{BrowserSession, BrowserSessionError, BrowserType, CreateBrowserSession, SessionStatus},
-    },
     DBService,
+    models::{
+        browser_action::{
+            ActionResult, ActionType, BrowserAction, BrowserActionError, CompleteAction,
+            CreateBrowserAction,
+        },
+        browser_allowlist::{
+            BrowserAllowlist, BrowserAllowlistError, CreateBrowserAllowlist, PatternType,
+        },
+        browser_screenshot::{
+            AddVisualDiff, BrowserScreenshot, BrowserScreenshotError, CreateBrowserScreenshot,
+        },
+        browser_session::{
+            BrowserSession, BrowserSessionError, BrowserType, CreateBrowserSession, SessionStatus,
+        },
+    },
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -126,7 +135,10 @@ impl BowserService {
     }
 
     /// Get session with full details
-    pub async fn get_session_details(&self, id: Uuid) -> Result<BrowserSessionDetails, BowserError> {
+    pub async fn get_session_details(
+        &self,
+        id: Uuid,
+    ) -> Result<BrowserSessionDetails, BowserError> {
         let session = self.get_session(id).await?;
         let screenshots = BrowserScreenshot::find_by_session(&self.db.pool, id).await?;
         let actions = BrowserAction::find_by_session(&self.db.pool, id).await?;
@@ -210,7 +222,10 @@ impl BowserService {
     }
 
     /// Get allowlist for a project
-    pub async fn get_allowlist(&self, project_id: Uuid) -> Result<Vec<BrowserAllowlist>, BowserError> {
+    pub async fn get_allowlist(
+        &self,
+        project_id: Uuid,
+    ) -> Result<Vec<BrowserAllowlist>, BowserError> {
         let entries = BrowserAllowlist::find_for_project(&self.db.pool, project_id).await?;
         Ok(entries)
     }
@@ -276,7 +291,11 @@ impl BowserService {
             &self.db.pool,
             action_id,
             CompleteAction {
-                result: if success { ActionResult::Success } else { ActionResult::Failed },
+                result: if success {
+                    ActionResult::Success
+                } else {
+                    ActionResult::Failed
+                },
                 error_message,
                 duration_ms: Some(duration_ms),
                 screenshot_id: None,
@@ -347,7 +366,10 @@ impl BowserService {
     }
 
     /// Get screenshots for a session
-    pub async fn get_screenshots(&self, session_id: Uuid) -> Result<Vec<BrowserScreenshot>, BowserError> {
+    pub async fn get_screenshots(
+        &self,
+        session_id: Uuid,
+    ) -> Result<Vec<BrowserScreenshot>, BowserError> {
         let screenshots = BrowserScreenshot::find_by_session(&self.db.pool, session_id).await?;
         Ok(screenshots)
     }
@@ -435,7 +457,10 @@ impl BowserService {
     }
 
     /// Get failed actions for a session
-    pub async fn get_failed_actions(&self, session_id: Uuid) -> Result<Vec<BrowserAction>, BowserError> {
+    pub async fn get_failed_actions(
+        &self,
+        session_id: Uuid,
+    ) -> Result<Vec<BrowserAction>, BowserError> {
         let actions = BrowserAction::find_failed(&self.db.pool, session_id).await?;
         Ok(actions)
     }

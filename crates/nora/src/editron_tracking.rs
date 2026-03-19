@@ -4,7 +4,7 @@
 //! when Editron media tools execute.
 
 use db::models::{
-    activity::{ActorType, ActivityLog, CreateActivityLog},
+    activity::{ActivityLog, ActorType, CreateActivityLog},
     execution_artifact::{ArtifactType, CreateExecutionArtifact, ExecutionArtifact},
     task::{CreateTask, Priority, Task},
     task_artifact::{ArtifactRole, LinkArtifactToTask, TaskArtifact},
@@ -41,7 +41,11 @@ impl EditronVibeCosts {
     /// 5000 base + 1000 per format, 2x for Rush priority
     pub fn render(format_count: usize, is_rush: bool) -> i64 {
         let base = 5000 + (format_count as i64) * 1000;
-        if is_rush { base * 2 } else { base }
+        if is_rush {
+            base * 2
+        } else {
+            base
+        }
     }
 }
 
@@ -92,7 +96,7 @@ pub async fn record_editron_vibe(
     extra_metadata: Value,
 ) -> Result<VibeTransaction, Box<dyn std::error::Error + Send + Sync>> {
     let cost_cents = amount; // 1 VIBE = $0.01 → 1 VIBE = 1 cent
-    // Convert string IDs to Uuid locally — downstream CreateVibeTransaction still requires Uuid
+                             // Convert string IDs to Uuid locally — downstream CreateVibeTransaction still requires Uuid
     let project_uuid = Uuid::parse_str(project_id)?;
     let task_uuid = Uuid::parse_str(task_id)?;
 
@@ -197,11 +201,17 @@ pub async fn find_or_create_task(
         if let Ok(Some(task)) = Task::find_by_id(pool, tid).await {
             return Some((task.id, task.project_id));
         }
-        tracing::warn!("[EDITRON_TRACKING] task_id '{}' not found, falling through", tid);
+        tracing::warn!(
+            "[EDITRON_TRACKING] task_id '{}' not found, falling through",
+            tid
+        );
     }
 
     // 2. Try to find task by batch_id in custom_properties
-    if let Some(batch_id) = custom_props.get("editron_batch_id").and_then(|v| v.as_str()) {
+    if let Some(batch_id) = custom_props
+        .get("editron_batch_id")
+        .and_then(|v| v.as_str())
+    {
         if let Some((tid, pid)) = find_workflow_task_by_batch_id(pool, batch_id).await {
             return Some((tid, pid));
         }
@@ -248,7 +258,10 @@ pub async fn find_or_create_task(
             );
 
             // Try to assign to a board
-            if let Ok(Some(board)) = executor.get_default_board_for_tasks(&project_id_str.clone()).await {
+            if let Ok(Some(board)) = executor
+                .get_default_board_for_tasks(&project_id_str.clone())
+                .await
+            {
                 let _ = executor.add_task_to_board(&task.id, &board.id).await;
             }
 

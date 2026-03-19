@@ -28,8 +28,8 @@ pub enum VolumePathError {
 fn stack_env() -> (String, String, String) {
     let stack_root = std::env::var("SOVEREIGN_STACK_ROOT")
         .unwrap_or_else(|_| "E:/topos/sovereign_stack".to_string());
-    let org_name = std::env::var("SOVEREIGN_STACK_ORG_NAME")
-        .unwrap_or_else(|_| "Sirak Studios".to_string());
+    let org_name =
+        std::env::var("SOVEREIGN_STACK_ORG_NAME").unwrap_or_else(|_| "Sirak Studios".to_string());
     let storage_root = std::env::var("SOVEREIGN_STORAGE_ROOT")
         .unwrap_or_else(|_| "E:/topos/sovereign_storage".to_string());
     (stack_root, org_name, storage_root)
@@ -45,7 +45,9 @@ pub fn volume_base_path(volume: &str) -> Result<PathBuf, VolumePathError> {
     match volume {
         VOLUME_SOVEREIGN_PERSONAL => Ok(PathBuf::from(&stack_root).join("Personal")),
         VOLUME_SOVEREIGN_ORG => Ok(PathBuf::from(&stack_root).join(&org_name)),
-        VOLUME_MEDIA_PIPELINE => Ok(PathBuf::from(&stack_root).join(&org_name).join("Media Pipeline")),
+        VOLUME_MEDIA_PIPELINE => Ok(PathBuf::from(&stack_root)
+            .join(&org_name)
+            .join("Media Pipeline")),
         VOLUME_SOVEREIGN => Ok(PathBuf::from(storage_root)),
         VOLUME_DATA_SOURCES => Ok(crate::cache_dir().join("data_sources")),
         VOLUME_ARTIFACTS => Ok(crate::cache_dir().join("artifacts")),

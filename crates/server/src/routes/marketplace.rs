@@ -23,29 +23,30 @@
 use std::time::Instant;
 
 use axum::{
+    Extension, Json, Router,
     extract::{Path, Query, State},
     http::HeaderMap,
     routing::{delete, get, patch, post},
-    Extension, Json, Router,
+};
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        gateway_request::GatewayRequest,
+        marketplace_listing::{CreateListing, MarketplaceListing, UpdateListing},
+        marketplace_subscription::{
+            CreateSubscription, MarketplaceSubscription, SubscriptionCreated, SubscriptionView,
+        },
+        peer_reward::{CreatePeerReward, PeerReward, RewardType},
+    },
 };
 use deployment::Deployment;
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use uuid::Uuid;
-use db::db_uuid::DbUuid;
-
-use db::models::{
-    gateway_request::GatewayRequest,
-    marketplace_listing::{CreateListing, MarketplaceListing, UpdateListing},
-    marketplace_subscription::{
-        CreateSubscription, MarketplaceSubscription, SubscriptionCreated, SubscriptionView,
-    },
-    peer_reward::{CreatePeerReward, PeerReward, RewardType},
-};
-use futures::StreamExt;
 use utils::response::ApiResponse;
+use uuid::Uuid;
 
-use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
 // ─── Gateway Request / Response ──────────────────────────────────────────────
 
@@ -125,7 +126,10 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/marketplace/subscriptions", post(create_subscription))
         .route("/marketplace/subscriptions", get(list_subscriptions))
         .route("/marketplace/subscriptions/{id}", get(get_subscription))
-        .route("/marketplace/subscriptions/{id}/topup", post(topup_subscription))
+        .route(
+            "/marketplace/subscriptions/{id}/topup",
+            post(topup_subscription),
+        )
         .route(
             "/marketplace/subscriptions/{id}/requests",
             get(list_requests),
@@ -198,7 +202,9 @@ async fn gateway(
 
     let vibe_cost = listing.price_vibe.max(listing.min_vibe);
 
-    if !crate::helpers::vibe_check::is_vibe_bypass_active(pool).await && !subscription.has_balance(vibe_cost) {
+    if !crate::helpers::vibe_check::is_vibe_bypass_active(pool).await
+        && !subscription.has_balance(vibe_cost)
+    {
         return Err(ApiError::PaymentRequired(format!(
             "Insufficient VIBE balance. Need {:.4}, have {:.4}",
             vibe_cost,
@@ -384,7 +390,10 @@ async fn credit_provider_node(pool: &sqlx::SqlitePool, node_id: &str, wallet: &s
     let peer = match PeerNode::find_by_node_id(pool, node_id).await {
         Ok(Some(p)) => p,
         _ => {
-            tracing::warn!("Provider node {} not found in DB for reward credit", node_id);
+            tracing::warn!(
+                "Provider node {} not found in DB for reward credit",
+                node_id
+            );
             return;
         }
     };
@@ -426,7 +435,9 @@ async fn update_listing(
     Json(body): Json<UpdateListing>,
 ) -> Result<Json<ApiResponse<MarketplaceListing>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid ID".into()))?
+        .to_uuid();
     let listing = MarketplaceListing::update(pool, id_uuid, body)
         .await?
         .ok_or_else(|| ApiError::NotFound("Listing not found".to_string()))?;
@@ -439,7 +450,9 @@ async fn deactivate_listing(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<bool>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid ID".into()))?
+        .to_uuid();
     let deleted = MarketplaceListing::delete(pool, id_uuid).await?;
     Ok(Json(ApiResponse::success(deleted)))
 }
@@ -476,7 +489,9 @@ async fn get_subscription(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<SubscriptionView>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid ID".into()))?
+        .to_uuid();
     let sub = MarketplaceSubscription::find_by_id(pool, id_uuid)
         .await?
         .ok_or_else(|| ApiError::NotFound("Subscription not found".to_string()))?;
@@ -495,7 +510,9 @@ async fn topup_subscription(
         ));
     }
     let pool = &deployment.db().pool;
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid ID".into()))?
+        .to_uuid();
     MarketplaceSubscription::add_budget(pool, id_uuid, body.vibe_amount).await?;
     let sub = MarketplaceSubscription::find_by_id(pool, id_uuid)
         .await?
@@ -510,7 +527,9 @@ async fn list_requests(
     Query(q): Query<HistoryQuery>,
 ) -> Result<Json<ApiResponse<Vec<GatewayRequest>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid ID".into()))?
+        .to_uuid();
     let requests = GatewayRequest::list_for_subscription(pool, id_uuid, q.limit).await?;
     Ok(Json(ApiResponse::success(requests)))
 }

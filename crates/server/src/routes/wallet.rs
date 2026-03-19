@@ -1,22 +1,13 @@
 //! Wallet import endpoint for linking Aptos wallet addresses to users
 
-use axum::{
-    extract::State,
-    response::Json as ResponseJson,
-    routing::post,
-    Router,
-};
+use axum::{Router, extract::State, response::Json as ResponseJson, routing::post};
 use db::models::user::User;
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use utils::response::ApiResponse;
 
-use crate::{
-    error::ApiError,
-    middleware::access_control::AccessContext,
-    DeploymentImpl,
-};
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
@@ -53,14 +44,13 @@ async fn import_wallet(
     }
 
     // Check if this wallet is already linked to another user
-    let existing: Option<Vec<u8>> = sqlx::query_scalar(
-        "SELECT id FROM users WHERE wallet_address = ? AND id != ?",
-    )
-    .bind(addr)
-    .bind(access_ctx.user_id.to_string())
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+    let existing: Option<Vec<u8>> =
+        sqlx::query_scalar("SELECT id FROM users WHERE wallet_address = ? AND id != ?")
+            .bind(addr)
+            .bind(access_ctx.user_id.to_string())
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
     if existing.is_some() {
         return Err(ApiError::BadRequest(

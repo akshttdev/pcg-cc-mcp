@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AskTopsiButton } from '@/components/topsi/AskTopsiButton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import {
   Calendar,
   Mail,
@@ -23,11 +26,17 @@ import {
   User,
   CheckSquare,
   Users,
+  MessageSquare,
+  Zap,
+  Phone,
+  Video,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { organizationsApi } from '@/lib/api';
-import { organizationKeys } from '@/lib/query-keys';
+import { crmKeys, organizationKeys } from '@/lib/query-keys';
+import { crmDealsApi } from '@/lib/api/crm';
 import type { CrmDealWithContact } from '@/types/crm';
 
 // ── MetricCard (local helper) ────────────────────────────────────────────────
@@ -73,6 +82,7 @@ interface OverviewTabProps {
 export function OverviewTab({ deal, stageColor, onConvert, orgId }: OverviewTabProps) {
   const navigate = useNavigate();
   const taskTotal = deal.task_total ?? 0;
+  const currentStage = (deal.stage ?? '').toLowerCase().replace(/\s+/g, '_');
 
   const effectiveOrgId = orgId || deal.organization_id;
   const { data: orgData } = useQuery({
@@ -114,15 +124,120 @@ export function OverviewTab({ deal, stageColor, onConvert, orgId }: OverviewTabP
     }
   }
 
+  const qc = useQueryClient();
+  const [contextText, setContextText] = useState(deal.description ?? '');
+  const [editingContext, setEditingContext] = useState(false);
+
+  const invalidateKanban = () => {
+    qc.invalidateQueries({ queryKey: crmKeys.kanbanAll() });
+    qc.invalidateQueries({ queryKey: crmKeys.orgKanbanAll() });
+    qc.invalidateQueries({ queryKey: crmKeys.kanbanLegacy() });
+  };
+
+  const saveContext = useMutation({
+    mutationFn: () => crmDealsApi.updateDeal(deal.id, { description: contextText }),
+    onSuccess: () => { toast.success('Context saved'); setEditingContext(false); invalidateKanban(); },
+    onError: () => toast.error('Failed to save context — please try again.'),
+  });
+
+  const toggleExpedite = useMutation({
+    mutationFn: () => crmDealsApi.updateDeal(deal.id, { expedited: deal.expedited ? 0 : 1 } as any),
+    onSuccess: () => { invalidateKanban(); },
+  });
+
+  // Parse call scheduling from custom_fields
+  const customFields = (() => {
+    try { return typeof deal.custom_fields === 'string' ? JSON.parse(deal.custom_fields) : deal.custom_fields ?? {}; }
+    catch { return {}; }
+  })();
+
   return (
     <div className="p-5 space-y-5">
-      {/* Status */}
-      {deal.description && (
+      {/* Operator Context — "Tell us about this lead" */}
+      <div>
+        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5">
+          <MessageSquare className="h-3 w-3" /> Operator Context
+        </h4>
+        {editingContext ? (
+          <Card className="bg-muted/30 border-border/60">
+            <CardContent className="p-3 space-y-2">
+              <Textarea
+                value={contextText}
+                onChange={(e) => setContextText(e.target.value)}
+                placeholder="Who is this person? What does their company do? What's the opportunity? Add any background, relationship context, or budget signals…"
+                className="min-h-[100px] text-sm"
+              />
+              <div className="flex gap-1.5">
+                <Button size="sm" className="h-7 text-xs gap-1" onClick={() => saveContext.mutate()} disabled={saveContext.isPending}>
+                  Save Context
+                </Button>
+                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setEditingContext(false); setContextText(deal.description ?? ''); }}>
+                  Cancel
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : deal.description ? (
+          <Card className="bg-muted/30 border-border/60 cursor-pointer hover:border-primary/40 transition-colors" onClick={() => setEditingContext(true)}>
+            <CardContent className="p-3">
+              <p className="text-sm whitespace-pre-wrap leading-relaxed">{deal.description}</p>
+              <p className="text-[10px] text-muted-foreground mt-2">Click to edit</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="bg-muted/30 border-dashed border-amber-500/30 cursor-pointer hover:border-amber-500/60 transition-colors" onClick={() => setEditingContext(true)}>
+            <CardContent className="p-3 text-center">
+              <p className="text-sm text-muted-foreground">No context yet — add notes about this lead</p>
+              <p className="text-xs text-amber-500 mt-1">Required before advancing from Intel</p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Expedite Toggle */}
+      <div className="flex items-center justify-between px-1">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Zap className="h-3 w-3" />
+          <span>Expedite</span>
+        </div>
+        <Switch
+          checked={!!deal.expedited}
+          onCheckedChange={() => toggleExpedite.mutate()}
+        />
+      </div>
+
+      {/* Call Scheduling (Discovery stage) */}
+      {(currentStage === 'discovery' || currentStage === 'proposal' || currentStage === 'present') && (
         <div>
-          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-            Status
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5">
+            <Phone className="h-3 w-3" /> Scheduled Calls
           </h4>
-          <p className="text-sm whitespace-pre-wrap leading-relaxed">{deal.description}</p>
+          <Card className="bg-muted/30 border-border/60">
+            <CardContent className="p-3 space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span>Discovery Call</span>
+                </div>
+                <Badge variant="outline" className={cn('text-[10px]',
+                  customFields.discovery_call_status === 'done' ? 'text-green-500 border-green-500/30' : 'text-muted-foreground'
+                )}>
+                  {customFields.discovery_call_date || 'Not scheduled'}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <Video className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span>Presentation Call</span>
+                </div>
+                <Badge variant="outline" className={cn('text-[10px]',
+                  customFields.presentation_call_status === 'done' ? 'text-green-500 border-green-500/30' : 'text-muted-foreground'
+                )}>
+                  {customFields.presentation_call_date || 'Not scheduled'}
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 

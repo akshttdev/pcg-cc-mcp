@@ -4,9 +4,10 @@
 //! and manages the economic settlement via Vibe tokens.
 
 use std::sync::Arc;
+
+use chrono::Utc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
-use chrono::Utc;
 
 use super::types::*;
 
@@ -100,7 +101,8 @@ impl ResourceAccounting {
             vibe_amount: Some(amount),
             peer_node: None,
             task_id: None,
-        }).await;
+        })
+        .await;
     }
 
     /// Debit Vibe from the account
@@ -123,7 +125,8 @@ impl ResourceAccounting {
             vibe_amount: Some(-amount),
             peer_node: None,
             task_id: None,
-        }).await;
+        })
+        .await;
 
         Ok(())
     }
@@ -142,7 +145,8 @@ impl ResourceAccounting {
             vibe_amount: Some(-result.agreed_reward),
             peer_node: Some(result.assigned_node.clone()),
             task_id: Some(request.task_id),
-        }).await;
+        })
+        .await;
     }
 
     /// Record a task received
@@ -155,7 +159,8 @@ impl ResourceAccounting {
             vibe_amount: Some(task.reward_vibe),
             peer_node: Some(task.from_node.clone()),
             task_id: Some(task.task_id),
-        }).await;
+        })
+        .await;
     }
 
     /// Record task completion
@@ -173,7 +178,10 @@ impl ResourceAccounting {
         };
 
         let description = if success {
-            format!("Task completed successfully, earned {:.2} VIBE", vibe_earned)
+            format!(
+                "Task completed successfully, earned {:.2} VIBE",
+                vibe_earned
+            )
         } else {
             "Task execution failed".to_string()
         };
@@ -186,7 +194,8 @@ impl ResourceAccounting {
             vibe_amount: if success { Some(vibe_earned) } else { None },
             peer_node: Some(executor_node.to_string()),
             task_id: Some(task_id),
-        }).await;
+        })
+        .await;
 
         // Update compute stats
         {
@@ -200,12 +209,7 @@ impl ResourceAccounting {
     }
 
     /// Record bandwidth contribution
-    pub async fn record_bandwidth_contribution(
-        &self,
-        bytes: u64,
-        peer_node: &str,
-        purpose: &str,
-    ) {
+    pub async fn record_bandwidth_contribution(&self, bytes: u64, peer_node: &str, purpose: &str) {
         // Calculate Vibe earned
         let gb = bytes as f64 / 1_073_741_824.0;
         let vibe_earned = gb * self.settings.bandwidth_vibe_per_gb;
@@ -230,7 +234,8 @@ impl ResourceAccounting {
             vibe_amount: Some(vibe_earned),
             peer_node: Some(peer_node.to_string()),
             task_id: None,
-        }).await;
+        })
+        .await;
     }
 
     /// Record a transaction
@@ -253,12 +258,7 @@ impl ResourceAccounting {
     /// Get recent transactions (limited)
     pub async fn recent_transactions_limited(&self, limit: usize) -> Vec<TransactionLog> {
         let transactions = self.transactions.read().await;
-        transactions
-            .iter()
-            .rev()
-            .take(limit)
-            .cloned()
-            .collect()
+        transactions.iter().rev().take(limit).cloned().collect()
     }
 
     /// Get bandwidth stats
@@ -323,11 +323,9 @@ mod tests {
         let accounting = ResourceAccounting::new();
 
         // Contribute 1 GB
-        accounting.record_bandwidth_contribution(
-            1_073_741_824,
-            "peer_node",
-            "task_relay"
-        ).await;
+        accounting
+            .record_bandwidth_contribution(1_073_741_824, "peer_node", "task_relay")
+            .await;
 
         let stats = accounting.bandwidth_stats().await;
         assert_eq!(stats.total_contributed_bytes, 1_073_741_824);

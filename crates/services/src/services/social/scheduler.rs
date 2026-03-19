@@ -6,12 +6,11 @@
 //! - Evergreen content rotation
 
 use chrono::{DateTime, NaiveTime, Utc};
+use db::models::social_post::{PostStatus, SocialPost, UpdateSocialPost};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use tracing::info;
 use uuid::Uuid;
-
-use db::models::social_post::{SocialPost, UpdateSocialPost, PostStatus};
 
 /// Schedule rule for category queues
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -171,10 +170,26 @@ impl Scheduler {
         // Default optimal times based on general social media research
         // These could be customized per category
         match category {
-            Some("events") => vec!["18:00".to_string(), "19:00".to_string(), "12:00".to_string()],
-            Some("community") => vec!["10:00".to_string(), "15:00".to_string(), "20:00".to_string()],
-            Some("drinks") => vec!["17:00".to_string(), "18:00".to_string(), "21:00".to_string()],
-            Some("vibe") => vec!["11:00".to_string(), "14:00".to_string(), "19:00".to_string()],
+            Some("events") => vec![
+                "18:00".to_string(),
+                "19:00".to_string(),
+                "12:00".to_string(),
+            ],
+            Some("community") => vec![
+                "10:00".to_string(),
+                "15:00".to_string(),
+                "20:00".to_string(),
+            ],
+            Some("drinks") => vec![
+                "17:00".to_string(),
+                "18:00".to_string(),
+                "21:00".to_string(),
+            ],
+            Some("vibe") => vec![
+                "11:00".to_string(),
+                "14:00".to_string(),
+                "19:00".to_string(),
+            ],
             _ => vec![
                 "09:00".to_string(),
                 "12:00".to_string(),
@@ -195,8 +210,7 @@ impl Scheduler {
         let minute: u32 = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
 
         let naive_date = date.date_naive();
-        let naive_time = NaiveTime::from_hms_opt(hour, minute, 0)
-            .ok_or("Invalid time")?;
+        let naive_time = NaiveTime::from_hms_opt(hour, minute, 0).ok_or("Invalid time")?;
         let naive_datetime = naive_date.and_time(naive_time);
 
         Ok(DateTime::from_naive_utc_and_offset(naive_datetime, Utc))
@@ -228,10 +242,7 @@ impl Scheduler {
                     .schedule_post(post.id, post.category.as_deref(), None)
                     .await
                 {
-                    info!(
-                        "Recycled evergreen post {} scheduled for {}",
-                        post.id, time
-                    );
+                    info!("Recycled evergreen post {} scheduled for {}", post.id, time);
                     scheduled_count += 1;
                 }
             }
@@ -252,11 +263,7 @@ impl Scheduler {
 
         let upcoming: Vec<SocialPost> = all_scheduled
             .into_iter()
-            .filter(|p| {
-                p.scheduled_for
-                    .map(|s| s <= cutoff)
-                    .unwrap_or(false)
-            })
+            .filter(|p| p.scheduled_for.map(|s| s <= cutoff).unwrap_or(false))
             .collect();
 
         Ok(upcoming)

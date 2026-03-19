@@ -28,14 +28,12 @@
 //! - `APN_DATA_SERVICE_PROVIDER_ID` — Provider's identifier (for consumers)
 //! - `APN_DATA_SERVICE_SYNC_INTERVAL` — Seconds between data refreshes (default: 30)
 
+use std::{path::PathBuf, sync::Arc, time::Duration};
+
 use anyhow::{Context, Result};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::RwLock;
-use tokio::time;
+use tokio::{sync::RwLock, time};
 
 // ============================================================================
 // Configuration
@@ -295,10 +293,7 @@ impl APNDataService {
         let request_subject = format!("apn.data.request.{}", self.config.device_id);
         let mut sub = client.subscribe(request_subject.clone()).await?;
 
-        tracing::info!(
-            "[APN_DATA] Provider listening on: {}",
-            request_subject
-        );
+        tracing::info!("[APN_DATA] Provider listening on: {}", request_subject);
 
         let db_path = self.config.db_path.clone();
         let provider_id = self.config.device_id.clone();
@@ -325,8 +320,7 @@ impl APNDataService {
                 // Query DB with access control and build response
                 match Self::handle_data_request(&db_path, &provider_id, &request).await {
                     Ok(response) => {
-                        let response_subject =
-                            format!("apn.data.response.{}", request.from_device);
+                        let response_subject = format!("apn.data.response.{}", request.from_device);
 
                         match serde_json::to_vec(&response) {
                             Ok(payload) => {
@@ -335,10 +329,7 @@ impl APNDataService {
                                     .publish(response_subject.clone(), payload.into())
                                     .await
                                 {
-                                    tracing::error!(
-                                        "[APN_DATA] Failed to publish response: {}",
-                                        e
-                                    );
+                                    tracing::error!("[APN_DATA] Failed to publish response: {}", e);
                                 } else {
                                     tracing::info!(
                                         "[APN_DATA] Sent {} bytes to {} ({} projects, {} tasks)",
@@ -350,18 +341,12 @@ impl APNDataService {
                                 }
                             }
                             Err(e) => {
-                                tracing::error!(
-                                    "[APN_DATA] Failed to serialize response: {}",
-                                    e
-                                );
+                                tracing::error!("[APN_DATA] Failed to serialize response: {}", e);
                             }
                         }
                     }
                     Err(e) => {
-                        tracing::error!(
-                            "[APN_DATA] Failed to handle data request: {}",
-                            e
-                        );
+                        tracing::error!("[APN_DATA] Failed to handle data request: {}", e);
                     }
                 }
             }
@@ -626,10 +611,7 @@ impl APNDataService {
         let response_subject = format!("apn.data.response.{}", device_id);
         let mut response_sub = client.subscribe(response_subject.clone()).await?;
 
-        tracing::info!(
-            "[APN_DATA] Consumer listening on: {}",
-            response_subject
-        );
+        tracing::info!("[APN_DATA] Consumer listening on: {}", response_subject);
 
         // Spawn response handler
         let state_for_handler = state.clone();
@@ -651,9 +633,7 @@ impl APNDataService {
                 );
 
                 // Upsert received data into local DB
-                if let Err(e) =
-                    Self::upsert_received_data(&db_path_for_handler, &response).await
-                {
+                if let Err(e) = Self::upsert_received_data(&db_path_for_handler, &response).await {
                     tracing::error!("[APN_DATA] Failed to upsert received data: {}", e);
                 } else {
                     let mut st = state_for_handler.write().await;
@@ -687,14 +667,13 @@ impl APNDataService {
                 // Use a generic request for all users on this device
                 let request = DataRequest {
                     from_device: device_id_for_loop.clone(),
-                    user_id: String::new(), // Provider will use username
+                    user_id: String::new(),  // Provider will use username
                     username: String::new(), // Empty = request for all authorized users
                     request_type: DataRequestType::FullSync,
                     timestamp: chrono::Utc::now().to_rfc3339(),
                 };
 
-                let request_subject =
-                    format!("apn.data.request.{}", provider_id_for_loop);
+                let request_subject = format!("apn.data.request.{}", provider_id_for_loop);
 
                 match serde_json::to_vec(&request) {
                     Ok(payload) => {
@@ -702,22 +681,13 @@ impl APNDataService {
                             .publish(request_subject.clone(), payload.into())
                             .await
                         {
-                            tracing::error!(
-                                "[APN_DATA] Failed to send sync request: {}",
-                                e
-                            );
+                            tracing::error!("[APN_DATA] Failed to send sync request: {}", e);
                         } else {
-                            tracing::debug!(
-                                "[APN_DATA] Sync request sent to {}",
-                                request_subject
-                            );
+                            tracing::debug!("[APN_DATA] Sync request sent to {}", request_subject);
                         }
                     }
                     Err(e) => {
-                        tracing::error!(
-                            "[APN_DATA] Failed to serialize sync request: {}",
-                            e
-                        );
+                        tracing::error!("[APN_DATA] Failed to serialize sync request: {}", e);
                     }
                 }
             }

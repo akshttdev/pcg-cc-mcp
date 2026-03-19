@@ -6,6 +6,8 @@
 //!
 //! No extra tasks are created. All review activity lives in the collaborators trail.
 
+use std::sync::Arc;
+
 use db::models::{
     agent::Agent,
     agent_execution_config::AgentExecutionConfig,
@@ -14,22 +16,18 @@ use db::models::{
     merge::Merge,
     project::Project,
     task::{
-        Task, TaskCollaborator, TaskStatus, ACTOR_TYPE_AGENT_WATCHER, WATCHER_ACTION_QA_FAIL,
+        ACTOR_TYPE_AGENT_WATCHER, Task, TaskCollaborator, TaskStatus, WATCHER_ACTION_QA_FAIL,
         WATCHER_ACTION_QA_NEEDS_CHANGES, WATCHER_ACTION_QA_PASS, WATCHER_ACTION_TRIGGERED,
         WATCHER_ACTION_WATCHING,
     },
     task_attempt::{CreateTaskAttempt, TaskAttempt},
 };
-use executors::executors::BaseCodingAgent;
-use executors::profile::ExecutorProfileId;
+use executors::{executors::BaseCodingAgent, profile::ExecutorProfileId};
 use sqlx::SqlitePool;
-use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use super::config::Config;
-use super::container::ContainerService;
-use super::git::GitService;
+use super::{config::Config, container::ContainerService, git::GitService};
 
 /// Maximum QA review iterations before escalating to human.
 pub const MAX_QA_ITERATIONS: i64 = 2;
@@ -80,9 +78,7 @@ pub async fn trigger_agent_watchers<C: ContainerService + Sync>(
     );
 
     for watcher in &pending {
-        if let Err(e) =
-            trigger_single_watcher(pool, container, ctx, pr, watcher).await
-        {
+        if let Err(e) = trigger_single_watcher(pool, container, ctx, pr, watcher).await {
             tracing::error!(
                 "Failed to trigger watcher {} for task {}: {e}",
                 watcher.actor_id,
@@ -147,10 +143,17 @@ pub async fn spawn_watcher_reviews<C: ContainerService + Sync>(
 
     for watcher in &pending {
         if let Err(e) = spawn_single_watcher_review(
-            pool, container, task_id, &task.title,
+            pool,
+            container,
+            task_id,
+            &task.title,
             task.completion_criteria.as_deref().unwrap_or_default(),
-            &base_branch, pr, watcher,
-        ).await {
+            &base_branch,
+            pr,
+            watcher,
+        )
+        .await
+        {
             tracing::error!(
                 "spawn_watcher_reviews: failed to trigger watcher {} for task {task_id}: {e}",
                 watcher.actor_id
@@ -173,9 +176,15 @@ async fn spawn_single_watcher_review<C: ContainerService + Sync>(
     let agent_id = &watcher.actor_id;
 
     // Mark as triggered
-    Task::update_collaborator(pool, task_id, agent_id, ACTOR_TYPE_AGENT_WATCHER, WATCHER_ACTION_TRIGGERED)
-        .await
-        .map_err(|e| format!("Failed to mark watcher as triggered: {e}"))?;
+    Task::update_collaborator(
+        pool,
+        task_id,
+        agent_id,
+        ACTOR_TYPE_AGENT_WATCHER,
+        WATCHER_ACTION_TRIGGERED,
+    )
+    .await
+    .map_err(|e| format!("Failed to mark watcher as triggered: {e}"))?;
 
     // Look up agent and config
     let agent = Agent::find_by_id(pool, agent_id)
@@ -191,8 +200,8 @@ async fn spawn_single_watcher_review<C: ContainerService + Sync>(
     let executor_profile_id = if let Some(ref cfg) = config {
         if let Some(ref profile_str) = cfg.execution_profile_id {
             let parts: Vec<&str> = profile_str.splitn(2, ':').collect();
-            let executor = std::str::FromStr::from_str(parts[0])
-                .unwrap_or(BaseCodingAgent::ClaudeCode);
+            let executor =
+                std::str::FromStr::from_str(parts[0]).unwrap_or(BaseCodingAgent::ClaudeCode);
             let variant = parts.get(1).map(|s| s.to_string());
             ExecutorProfileId { executor, variant }
         } else {
@@ -204,8 +213,7 @@ async fn spawn_single_watcher_review<C: ContainerService + Sync>(
 
     let review_description = build_review_description(pr, task_title, task_id, completion_criteria);
 
-    let task_uuid = Uuid::parse_str(task_id)
-        .map_err(|e| format!("Invalid task UUID: {e}"))?;
+    let task_uuid = Uuid::parse_str(task_id).map_err(|e| format!("Invalid task UUID: {e}"))?;
 
     let attempt = TaskAttempt::create(
         pool,
@@ -234,7 +242,10 @@ async fn spawn_single_watcher_review<C: ContainerService + Sync>(
         db::models::execution_artifact::CreateExecutionArtifact {
             execution_process_id: Some(process.id),
             artifact_type: db::models::execution_artifact::ArtifactType::ResearchReport,
-            title: format!("QA Review Instructions — Task {} PR #{}", task_id, pr.number),
+            title: format!(
+                "QA Review Instructions — Task {} PR #{}",
+                task_id, pr.number
+            ),
             content: Some(review_description),
             file_path: None,
             metadata: Some(serde_json::json!({
@@ -245,13 +256,18 @@ async fn spawn_single_watcher_review<C: ContainerService + Sync>(
                 "type": "qa_review_instructions",
             })),
         },
-    ).await {
+    )
+    .await
+    {
         tracing::warn!("Failed to store QA review instructions artifact: {e}");
     }
 
     tracing::info!(
         "Triggered agent watcher '{}' ({}) on task {} — attempt {}",
-        agent.short_name, agent_id, task_id, attempt.id
+        agent.short_name,
+        agent_id,
+        task_id,
+        attempt.id
     );
 
     Ok(())
@@ -292,8 +308,8 @@ async fn trigger_single_watcher<C: ContainerService + Sync>(
     let executor_profile_id = if let Some(ref cfg) = config {
         if let Some(ref profile_str) = cfg.execution_profile_id {
             let parts: Vec<&str> = profile_str.splitn(2, ':').collect();
-            let executor = std::str::FromStr::from_str(parts[0])
-                .unwrap_or(BaseCodingAgent::ClaudeCode);
+            let executor =
+                std::str::FromStr::from_str(parts[0]).unwrap_or(BaseCodingAgent::ClaudeCode);
             let variant = parts.get(1).map(|s| s.to_string());
             ExecutorProfileId { executor, variant }
         } else {
@@ -305,11 +321,11 @@ async fn trigger_single_watcher<C: ContainerService + Sync>(
 
     // Build the review description (structured QA prompt with PR URL, criteria, verdict schema)
     let completion_criteria = ctx.task.completion_criteria.clone().unwrap_or_default();
-    let review_description = build_review_description(pr, &ctx.task.title, &ctx.task.id, &completion_criteria);
+    let review_description =
+        build_review_description(pr, &ctx.task.title, &ctx.task.id, &completion_criteria);
 
     // Resolve task UUID for attempt creation
-    let task_uuid = Uuid::parse_str(&ctx.task.id)
-        .map_err(|e| format!("Invalid task UUID: {e}"))?;
+    let task_uuid = Uuid::parse_str(&ctx.task.id).map_err(|e| format!("Invalid task UUID: {e}"))?;
 
     // ctx.task_attempt is always the dev attempt (not a QA attempt) — we reuse
     // its base_branch so the QA review targets the same integration point.
@@ -347,7 +363,10 @@ async fn trigger_single_watcher<C: ContainerService + Sync>(
         db::models::execution_artifact::CreateExecutionArtifact {
             execution_process_id: Some(process.id),
             artifact_type: db::models::execution_artifact::ArtifactType::ResearchReport,
-            title: format!("QA Review Instructions — Task {} PR #{}", ctx.task.id, pr.number),
+            title: format!(
+                "QA Review Instructions — Task {} PR #{}",
+                ctx.task.id, pr.number
+            ),
             content: Some(review_description),
             file_path: None,
             metadata: Some(serde_json::json!({
@@ -358,7 +377,9 @@ async fn trigger_single_watcher<C: ContainerService + Sync>(
                 "type": "qa_review_instructions",
             })),
         },
-    ).await {
+    )
+    .await
+    {
         tracing::warn!("Failed to store QA review instructions artifact: {e}");
     }
 
@@ -497,9 +518,7 @@ pub async fn finalize_review(
             }
 
             // Send task back to InProgress for dev agent iteration
-            if let Err(e) =
-                Task::update_status(pool, &ctx.task.id, TaskStatus::InProgress).await
-            {
+            if let Err(e) = Task::update_status(pool, &ctx.task.id, TaskStatus::InProgress).await {
                 tracing::error!("QA review: failed to set task back to InProgress: {e}");
             }
             tracing::info!(
@@ -559,7 +578,9 @@ fn build_review_description(
 /// Build a structured PR comment from a QA verdict.
 fn build_review_comment(verdict: &serde_json::Value, iteration: i64, task_id: &str) -> String {
     let verdict_str = verdict["verdict"].as_str().unwrap_or("unknown");
-    let summary = verdict["summary"].as_str().unwrap_or("No summary provided.");
+    let summary = verdict["summary"]
+        .as_str()
+        .unwrap_or("No summary provided.");
 
     let verdict_emoji = match verdict_str {
         "pass" => "Pass",
@@ -624,14 +645,10 @@ fn build_review_comment(verdict: &serde_json::Value, iteration: i64, task_id: &s
 async fn find_pr_number_for_task(pool: &SqlitePool, ctx: &ExecutionContext) -> Option<i64> {
     // First try: look up from the current task's attempts
     let task_uuid = Uuid::parse_str(&ctx.task.id).ok()?;
-    let attempts = TaskAttempt::fetch_all(pool, Some(task_uuid))
-        .await
-        .ok()?;
+    let attempts = TaskAttempt::fetch_all(pool, Some(task_uuid)).await.ok()?;
 
     for attempt in &attempts {
-        if let Ok(Some(merge)) =
-            Merge::find_latest_by_task_attempt_id(pool, attempt.id).await
-        {
+        if let Ok(Some(merge)) = Merge::find_latest_by_task_attempt_id(pool, attempt.id).await {
             if let db::models::merge::Merge::Pr(pr_merge) = merge {
                 return Some(pr_merge.pr_info.number);
             }
@@ -671,10 +688,9 @@ async fn extract_verdict_from_artifacts(
     pool: &SqlitePool,
     ctx: &ExecutionContext,
 ) -> Option<serde_json::Value> {
-    let artifacts =
-        ExecutionArtifact::find_by_execution_process(pool, ctx.execution_process.id)
-            .await
-            .unwrap_or_default();
+    let artifacts = ExecutionArtifact::find_by_execution_process(pool, ctx.execution_process.id)
+        .await
+        .unwrap_or_default();
 
     artifacts
         .iter()
@@ -696,9 +712,7 @@ async fn count_agent_review_iterations(pool: &SqlitePool, ctx: &ExecutionContext
     let mut count = 0i64;
     for attempt in &attempts {
         let processes = db::models::execution_process::ExecutionProcess::find_by_task_attempt_id(
-            pool,
-            attempt.id,
-            false,
+            pool, attempt.id, false,
         )
         .await
         .unwrap_or_default();
@@ -718,9 +732,7 @@ async fn find_watcher_agent_for_attempt(
     pool: &SqlitePool,
     ctx: &ExecutionContext,
 ) -> Option<String> {
-    let watchers = Task::find_agent_watchers(pool, &ctx.task.id)
-        .await
-        .ok()?;
+    let watchers = Task::find_agent_watchers(pool, &ctx.task.id).await.ok()?;
 
     // If there's only one agent watcher, it's unambiguous
     if watchers.len() == 1 {

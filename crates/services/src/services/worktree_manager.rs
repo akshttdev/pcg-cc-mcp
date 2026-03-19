@@ -92,12 +92,10 @@ impl WorktreeManager {
         // Get or create a lock for this specific worktree path.
         // Uses unwrap_or_else to recover from a poisoned mutex (prior panic).
         let lock = {
-            let mut locks = WORKTREE_CREATION_LOCKS
-                .lock()
-                .unwrap_or_else(|poisoned| {
-                    warn!("Worktree creation locks mutex was poisoned, recovering");
-                    poisoned.into_inner()
-                });
+            let mut locks = WORKTREE_CREATION_LOCKS.lock().unwrap_or_else(|poisoned| {
+                warn!("Worktree creation locks mutex was poisoned, recovering");
+                poisoned.into_inner()
+            });
             locks
                 .entry(path_str.clone())
                 .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
@@ -400,12 +398,10 @@ impl WorktreeManager {
         // Get the same lock to ensure we don't interfere with creation.
         // Uses unwrap_or_else to recover from a poisoned mutex (prior panic).
         let lock = {
-            let mut locks = WORKTREE_CREATION_LOCKS
-                .lock()
-                .unwrap_or_else(|poisoned| {
-                    warn!("Worktree creation locks mutex was poisoned, recovering");
-                    poisoned.into_inner()
-                });
+            let mut locks = WORKTREE_CREATION_LOCKS.lock().unwrap_or_else(|poisoned| {
+                warn!("Worktree creation locks mutex was poisoned, recovering");
+                poisoned.into_inner()
+            });
             locks
                 .entry(path_str.clone())
                 .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))

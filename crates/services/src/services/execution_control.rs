@@ -4,12 +4,16 @@
 //! Enables true human-agent collaboration during task execution.
 
 use db::{
+    DBService,
     models::{
-        context_injection::{ContextInjection, ContextInjectionError, CreateContextInjection, InjectionType},
-        execution_handoff::{ActorType, CreateExecutionHandoff, ExecutionHandoff, ExecutionHandoffError, HandoffType},
+        context_injection::{
+            ContextInjection, ContextInjectionError, CreateContextInjection, InjectionType,
+        },
+        execution_handoff::{
+            ActorType, CreateExecutionHandoff, ExecutionHandoff, ExecutionHandoffError, HandoffType,
+        },
         execution_pause_history::{ExecutionPauseHistory, ExecutionPauseHistoryError},
     },
-    DBService,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -132,13 +136,12 @@ impl ExecutionControlService {
         &self,
         execution_process_id: Uuid,
     ) -> Result<ControlState, ExecutionControlError> {
-        let row: Option<(String,)> = sqlx::query_as(
-            r#"SELECT control_state FROM execution_processes WHERE id = ?1"#,
-        )
-        .bind(execution_process_id)
-        .fetch_optional(&self.db.pool)
-        .await
-        .map_err(|e| ExecutionControlError::DatabaseError(e.to_string()))?;
+        let row: Option<(String,)> =
+            sqlx::query_as(r#"SELECT control_state FROM execution_processes WHERE id = ?1"#)
+                .bind(execution_process_id)
+                .fetch_optional(&self.db.pool)
+                .await
+                .map_err(|e| ExecutionControlError::DatabaseError(e.to_string()))?;
 
         match row {
             Some((state,)) => match state.as_str() {
@@ -148,7 +151,9 @@ impl ExecutionControlService {
                 "awaiting_input" => Ok(ControlState::AwaitingInput),
                 _ => Ok(ControlState::Running),
             },
-            None => Err(ExecutionControlError::ExecutionNotFound(execution_process_id)),
+            None => Err(ExecutionControlError::ExecutionNotFound(
+                execution_process_id,
+            )),
         }
     }
 
@@ -196,7 +201,10 @@ impl ExecutionControlService {
     // ========== Pause/Resume ==========
 
     /// Pause an execution
-    pub async fn pause(&self, req: PauseRequest) -> Result<ExecutionPauseHistory, ExecutionControlError> {
+    pub async fn pause(
+        &self,
+        req: PauseRequest,
+    ) -> Result<ExecutionPauseHistory, ExecutionControlError> {
         let current = self.get_control_state(req.execution_process_id).await?;
 
         if current == ControlState::Paused {
@@ -208,8 +216,12 @@ impl ExecutionControlService {
         }
 
         // Update control state
-        self.set_control_state(req.execution_process_id, ControlState::Paused, req.reason.clone())
-            .await?;
+        self.set_control_state(
+            req.execution_process_id,
+            ControlState::Paused,
+            req.reason.clone(),
+        )
+        .await?;
 
         // Record in pause history
         let entry = ExecutionPauseHistory::record_pause(
@@ -225,7 +237,10 @@ impl ExecutionControlService {
     }
 
     /// Resume an execution
-    pub async fn resume(&self, req: ResumeRequest) -> Result<ExecutionPauseHistory, ExecutionControlError> {
+    pub async fn resume(
+        &self,
+        req: ResumeRequest,
+    ) -> Result<ExecutionPauseHistory, ExecutionControlError> {
         let current = self.get_control_state(req.execution_process_id).await?;
 
         if current == ControlState::Running {
@@ -258,14 +273,18 @@ impl ExecutionControlService {
         &self,
         execution_process_id: Uuid,
     ) -> Result<Vec<ExecutionPauseHistory>, ExecutionControlError> {
-        let entries = ExecutionPauseHistory::find_by_execution(&self.db.pool, execution_process_id).await?;
+        let entries =
+            ExecutionPauseHistory::find_by_execution(&self.db.pool, execution_process_id).await?;
         Ok(entries)
     }
 
     // ========== Human Takeover ==========
 
     /// Human takes over control from agent
-    pub async fn human_takeover(&self, req: TakeoverRequest) -> Result<ExecutionHandoff, ExecutionControlError> {
+    pub async fn human_takeover(
+        &self,
+        req: TakeoverRequest,
+    ) -> Result<ExecutionHandoff, ExecutionControlError> {
         let current = self.get_control_state(req.execution_process_id).await?;
 
         if current == ControlState::HumanTakeover {
@@ -273,15 +292,24 @@ impl ExecutionControlService {
         }
 
         // Get current controller (from latest handoff or default to system)
-        let latest_handoff = ExecutionHandoff::find_latest(&self.db.pool, req.execution_process_id).await?;
+        let latest_handoff =
+            ExecutionHandoff::find_latest(&self.db.pool, req.execution_process_id).await?;
         let (from_type, from_id, from_name) = match latest_handoff {
             Some(h) => (h.to_actor_type, h.to_actor_id, h.to_actor_name),
-            None => (ActorType::System, "system".to_string(), Some("System".to_string())),
+            None => (
+                ActorType::System,
+                "system".to_string(),
+                Some("System".to_string()),
+            ),
         };
 
         // Update control state
-        self.set_control_state(req.execution_process_id, ControlState::HumanTakeover, req.reason.clone())
-            .await?;
+        self.set_control_state(
+            req.execution_process_id,
+            ControlState::HumanTakeover,
+            req.reason.clone(),
+        )
+        .await?;
 
         // Create handoff record
         let handoff = ExecutionHandoff::create(
@@ -305,7 +333,10 @@ impl ExecutionControlService {
     }
 
     /// Return control from human to agent
-    pub async fn return_control(&self, req: ReturnControlRequest) -> Result<ExecutionHandoff, ExecutionControlError> {
+    pub async fn return_control(
+        &self,
+        req: ReturnControlRequest,
+    ) -> Result<ExecutionHandoff, ExecutionControlError> {
         let current = self.get_control_state(req.execution_process_id).await?;
 
         if current != ControlState::HumanTakeover {
@@ -350,7 +381,8 @@ impl ExecutionControlService {
         &self,
         execution_process_id: Uuid,
     ) -> Result<Vec<ExecutionHandoff>, ExecutionControlError> {
-        let handoffs = ExecutionHandoff::find_by_execution(&self.db.pool, execution_process_id).await?;
+        let handoffs =
+            ExecutionHandoff::find_by_execution(&self.db.pool, execution_process_id).await?;
         Ok(handoffs)
     }
 
@@ -387,7 +419,8 @@ impl ExecutionControlService {
         &self,
         execution_process_id: Uuid,
     ) -> Result<Vec<ContextInjection>, ExecutionControlError> {
-        let injections = ContextInjection::find_by_execution(&self.db.pool, execution_process_id).await?;
+        let injections =
+            ContextInjection::find_by_execution(&self.db.pool, execution_process_id).await?;
         Ok(injections)
     }
 
@@ -396,7 +429,8 @@ impl ExecutionControlService {
         &self,
         execution_process_id: Uuid,
     ) -> Result<Vec<ContextInjection>, ExecutionControlError> {
-        let injections = ContextInjection::find_unacknowledged(&self.db.pool, execution_process_id).await?;
+        let injections =
+            ContextInjection::find_unacknowledged(&self.db.pool, execution_process_id).await?;
         Ok(injections)
     }
 
@@ -428,7 +462,8 @@ impl ExecutionControlService {
         let control_state = self.get_control_state(execution_process_id).await?;
 
         // Get current controller from latest handoff
-        let latest_handoff = ExecutionHandoff::find_latest(&self.db.pool, execution_process_id).await?;
+        let latest_handoff =
+            ExecutionHandoff::find_latest(&self.db.pool, execution_process_id).await?;
         let current_controller = latest_handoff.map(|h| ActorInfo {
             actor_type: h.to_actor_type,
             actor_id: h.to_actor_id,

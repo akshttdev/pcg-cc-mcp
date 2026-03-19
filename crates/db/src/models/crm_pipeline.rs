@@ -453,14 +453,14 @@ impl CrmPipeline {
 
         // Create default stages for clients (8-stage pipeline with human review gates)
         let stages = vec![
-            ("Lead",              "#6B7280", 0, false, false, 5),
+            ("Lead", "#6B7280", 0, false, false, 5),
             ("Business Analysis", "#3B82F6", 1, false, false, 20),
-            ("Discovery",         "#8B5CF6", 2, false, false, 40),
-            ("Build Proposal",    "#F59E0B", 3, false, false, 55),
-            ("Polish",            "#EC4899", 4, false, false, 70),
-            ("Proposal Meeting",  "#EF4444", 5, false, false, 85),
-            ("Closed Won",        "#22C55E", 6, true,  true,  100),
-            ("Closed Lost",       "#9CA3AF", 7, true,  false, 0),
+            ("Discovery", "#8B5CF6", 2, false, false, 40),
+            ("Build Proposal", "#F59E0B", 3, false, false, 55),
+            ("Polish", "#EC4899", 4, false, false, 70),
+            ("Proposal Meeting", "#EF4444", 5, false, false, 85),
+            ("Closed Won", "#22C55E", 6, true, true, 100),
+            ("Closed Lost", "#9CA3AF", 7, true, false, 0),
         ];
 
         for (name, color, position, is_closed, is_won, probability) in stages {
@@ -502,14 +502,14 @@ impl CrmPipeline {
         .await?;
 
         let stages = vec![
-            ("Lead",              "#6B7280", 0, false, false, 5),
+            ("Lead", "#6B7280", 0, false, false, 5),
             ("Business Analysis", "#3B82F6", 1, false, false, 20),
-            ("Discovery",         "#8B5CF6", 2, false, false, 40),
-            ("Build Proposal",    "#F59E0B", 3, false, false, 55),
-            ("Polish",            "#EC4899", 4, false, false, 70),
-            ("Proposal Meeting",  "#EF4444", 5, false, false, 85),
-            ("Closed Won",        "#22C55E", 6, true,  true,  100),
-            ("Closed Lost",       "#9CA3AF", 7, true,  false, 0),
+            ("Discovery", "#8B5CF6", 2, false, false, 40),
+            ("Build Proposal", "#F59E0B", 3, false, false, 55),
+            ("Polish", "#EC4899", 4, false, false, 70),
+            ("Proposal Meeting", "#EF4444", 5, false, false, 85),
+            ("Closed Won", "#22C55E", 6, true, true, 100),
+            ("Closed Lost", "#9CA3AF", 7, true, false, 0),
         ];
 
         for (name, color, position, is_closed, is_won, probability) in stages {

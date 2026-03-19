@@ -143,17 +143,27 @@ impl Client {
         .await
     }
 
-    pub async fn update(pool: &SqlitePool, id: &str, data: &UpdateClient) -> Result<Self, sqlx::Error> {
+    pub async fn update(
+        pool: &SqlitePool,
+        id: &str,
+        data: &UpdateClient,
+    ) -> Result<Self, sqlx::Error> {
         let existing = Self::find_by_id(pool, id)
             .await?
             .ok_or(sqlx::Error::RowNotFound)?;
 
         let name = data.name.as_deref().unwrap_or(&existing.name);
         let slug = data.slug.as_deref().unwrap_or(&existing.slug);
-        let description = data.description.as_deref().or(existing.description.as_deref());
+        let description = data
+            .description
+            .as_deref()
+            .or(existing.description.as_deref());
         let logo_url = data.logo_url.as_deref().or(existing.logo_url.as_deref());
         let website = data.website.as_deref().or(existing.website.as_deref());
-        let crm_contact_id = data.crm_contact_id.as_deref().or(existing.crm_contact_id.as_deref());
+        let crm_contact_id = data
+            .crm_contact_id
+            .as_deref()
+            .or(existing.crm_contact_id.as_deref());
         let is_active = data.is_active.unwrap_or(existing.is_active);
 
         sqlx::query_as::<_, Client>(
@@ -176,7 +186,11 @@ impl Client {
         .await
     }
 
-    pub async fn soft_delete(pool: &SqlitePool, id: &str, deleted_by: &str) -> Result<(), sqlx::Error> {
+    pub async fn soft_delete(
+        pool: &SqlitePool,
+        id: &str,
+        deleted_by: &str,
+    ) -> Result<(), sqlx::Error> {
         sqlx::query(
             "UPDATE clients SET deleted_at = datetime('now'), deleted_by = ?, updated_at = datetime('now') WHERE id = ?"
         )
@@ -236,7 +250,11 @@ impl Client {
         .await
     }
 
-    pub async fn remove_member(pool: &SqlitePool, client_id: &str, user_id: Uuid) -> Result<u64, sqlx::Error> {
+    pub async fn remove_member(
+        pool: &SqlitePool,
+        client_id: &str,
+        user_id: Uuid,
+    ) -> Result<u64, sqlx::Error> {
         let result = sqlx::query("DELETE FROM client_members WHERE client_id = ? AND user_id = ?")
             .bind(client_id)
             .bind(user_id)
@@ -245,7 +263,10 @@ impl Client {
         Ok(result.rows_affected())
     }
 
-    pub async fn get_members(pool: &SqlitePool, client_id: &str) -> Result<Vec<ClientMember>, sqlx::Error> {
+    pub async fn get_members(
+        pool: &SqlitePool,
+        client_id: &str,
+    ) -> Result<Vec<ClientMember>, sqlx::Error> {
         sqlx::query_as::<_, ClientMember>(
             r#"SELECT id, client_id, user_id, role, granted_by, granted_at
                FROM client_members WHERE client_id = ?

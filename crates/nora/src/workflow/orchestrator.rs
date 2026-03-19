@@ -1,26 +1,24 @@
 //! Workflow orchestration - manages multiple concurrent workflow executions
 
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use chrono::Utc;
+use cinematics::CinematicsService;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use tokio::sync::{broadcast, RwLock};
 use ts_rs::TS;
 use uuid::Uuid;
 
+use super::{
+    router::WorkflowRouter,
+    types::{WorkflowContext, WorkflowInstance, WorkflowResult, WorkflowState},
+};
 use crate::{
     coordination::CoordinationManager,
     executor::TaskExecutor,
     profiles::{AgentProfile, AgentWorkflow},
     Result,
-};
-use cinematics::CinematicsService;
-
-use super::{
-    router::WorkflowRouter,
-    types::{WorkflowContext, WorkflowInstance, WorkflowResult, WorkflowState},
 };
 
 /// Events emitted during workflow execution
@@ -75,10 +73,7 @@ pub struct WorkflowOrchestrator {
 }
 
 impl WorkflowOrchestrator {
-    pub fn new(
-        agents: Vec<AgentProfile>,
-        coordination: Arc<CoordinationManager>,
-    ) -> Self {
+    pub fn new(agents: Vec<AgentProfile>, coordination: Arc<CoordinationManager>) -> Self {
         let (event_sender, _) = broadcast::channel(1000);
 
         Self {
@@ -139,12 +134,15 @@ impl WorkflowOrchestrator {
         let (agent, workflow) = self
             .router
             .find_workflow(agent_id, workflow_id)
-            .ok_or_else(|| crate::NoraError::CoordinationError(format!(
-                "Workflow not found: agent={}, workflow={}",
-                agent_id, workflow_id
-            )))?;
+            .ok_or_else(|| {
+                crate::NoraError::CoordinationError(format!(
+                    "Workflow not found: agent={}, workflow={}",
+                    agent_id, workflow_id
+                ))
+            })?;
 
-        self.execute_workflow_internal(agent, workflow, context).await
+        self.execute_workflow_internal(agent, workflow, context)
+            .await
     }
 
     /// Route a user request to the appropriate workflow and execute it
@@ -159,10 +157,12 @@ impl WorkflowOrchestrator {
         let (agent, workflow) = self
             .router
             .route_request(user_request, &agent_states)
-            .ok_or_else(|| crate::NoraError::CoordinationError(format!(
-                "No workflow found for request: {}",
-                user_request
-            )))?;
+            .ok_or_else(|| {
+                crate::NoraError::CoordinationError(format!(
+                    "No workflow found for request: {}",
+                    user_request
+                ))
+            })?;
 
         tracing::info!(
             "[WORKFLOW_ORCHESTRATOR] Routed request to agent '{}' workflow '{}'",
@@ -170,7 +170,8 @@ impl WorkflowOrchestrator {
             workflow.name
         );
 
-        self.execute_workflow_internal(agent, workflow, context).await
+        self.execute_workflow_internal(agent, workflow, context)
+            .await
     }
 
     /// Execute a workflow
@@ -192,7 +193,11 @@ impl WorkflowOrchestrator {
             current_stage: 0,
             state: WorkflowState::Running {
                 stage: 0,
-                stage_name: workflow.stages.first().map(|s| s.name.clone()).unwrap_or_default(),
+                stage_name: workflow
+                    .stages
+                    .first()
+                    .map(|s| s.name.clone())
+                    .unwrap_or_default(),
                 progress: 0.0,
             },
             context: context.clone(),
@@ -217,11 +222,14 @@ impl WorkflowOrchestrator {
         });
 
         // Emit coordination event for Mission Control visibility
-        let first_stage_name = workflow.stages.first()
+        let first_stage_name = workflow
+            .stages
+            .first()
             .map(|s| s.name.clone())
             .unwrap_or_else(|| "Starting".to_string());
-        let _ = self.coordination.emit_event(
-            crate::coordination::CoordinationEvent::WorkflowProgress {
+        let _ = self
+            .coordination
+            .emit_event(crate::coordination::CoordinationEvent::WorkflowProgress {
                 workflow_instance_id: workflow_instance_id.to_string(),
                 agent_id: agent.agent_id.clone(),
                 agent_codename: agent.codename.clone(),
@@ -232,12 +240,13 @@ impl WorkflowOrchestrator {
                 status: "running".to_string(),
                 project_id: context.project_id.map(|id| id.to_string()),
                 timestamp: now,
-            }
-        ).await;
+            })
+            .await;
 
         // Create tracking tasks for each workflow stage (Nora will execute the tools)
         let task_ids = if let Some(task_executor) = self.task_executor.read().await.as_ref() {
-            self.create_workflow_tasks(&agent, &workflow, &context, task_executor).await
+            self.create_workflow_tasks(&agent, &workflow, &context, task_executor)
+                .await
         } else {
             Vec::new()
         };
@@ -290,7 +299,8 @@ impl WorkflowOrchestrator {
             state: instance.state.clone(),
             created_tasks: instance.created_tasks.clone(),
             deliverables: instance.deliverables.clone(),
-            execution_time_ms: instance.completed_at
+            execution_time_ms: instance
+                .completed_at
                 .map(|completed| {
                     (completed.timestamp_millis() - instance.started_at.timestamp_millis()) as u64
                 })
@@ -323,10 +333,14 @@ impl WorkflowOrchestrator {
         let mut workflows = self.active_workflows.write().await;
 
         if let Some(instance) = workflows.get_mut(&workflow_id) {
-            let stage_name = instance.workflow.stages[instance.current_stage].name.clone();
+            let stage_name = instance.workflow.stages[instance.current_stage]
+                .name
+                .clone();
 
             // Store stage output
-            instance.context.set_stage_output(stage_name.clone(), stage_output);
+            instance
+                .context
+                .set_stage_output(stage_name.clone(), stage_output);
 
             // Advance to next stage
             instance.current_stage += 1;
@@ -356,8 +370,9 @@ impl WorkflowOrchestrator {
 
             // Emit coordination event for Mission Control visibility
             let agent_codename = self.get_agent_codename_sync(&instance.agent_id);
-            let _ = self.coordination.emit_event(
-                crate::coordination::CoordinationEvent::WorkflowProgress {
+            let _ = self
+                .coordination
+                .emit_event(crate::coordination::CoordinationEvent::WorkflowProgress {
                     workflow_instance_id: workflow_id.to_string(),
                     agent_id: instance.agent_id.clone(),
                     agent_codename,
@@ -368,8 +383,8 @@ impl WorkflowOrchestrator {
                     status: status.to_string(),
                     project_id: instance.context.project_id.map(|id| id.to_string()),
                     timestamp: Utc::now(),
-                }
-            ).await;
+                })
+                .await;
         }
 
         Ok(())
@@ -387,15 +402,13 @@ impl WorkflowOrchestrator {
     }
 
     /// Mark workflow stage as failed
-    pub async fn fail_workflow_stage(
-        &self,
-        workflow_id: Uuid,
-        error: String,
-    ) -> Result<()> {
+    pub async fn fail_workflow_stage(&self, workflow_id: Uuid, error: String) -> Result<()> {
         let mut workflows = self.active_workflows.write().await;
 
         if let Some(instance) = workflows.get_mut(&workflow_id) {
-            let stage_name = instance.workflow.stages[instance.current_stage].name.clone();
+            let stage_name = instance.workflow.stages[instance.current_stage]
+                .name
+                .clone();
 
             instance.state = WorkflowState::Failed {
                 error: error.clone(),
@@ -439,13 +452,16 @@ impl WorkflowOrchestrator {
         context: &WorkflowContext,
         executor: &TaskExecutor,
     ) -> Vec<String> {
-        use crate::executor::TaskDefinition;
         use db::models::task::Priority;
+
+        use crate::executor::TaskDefinition;
 
         let project_id = match context.project_id {
             Some(id) => id,
             None => {
-                tracing::warn!("[WORKFLOW_ORCHESTRATOR] No project_id in context, skipping task creation");
+                tracing::warn!(
+                    "[WORKFLOW_ORCHESTRATOR] No project_id in context, skipping task creation"
+                );
                 return Vec::new();
             }
         };
@@ -455,7 +471,10 @@ impl WorkflowOrchestrator {
         for stage in &workflow.stages {
             let task_def = TaskDefinition {
                 title: format!("{} - {}", agent.codename, stage.name),
-                description: Some(format!("{}\n\nExpected output: {}", stage.description, stage.output)),
+                description: Some(format!(
+                    "{}\n\nExpected output: {}",
+                    stage.description, stage.output
+                )),
                 priority: Some(Priority::High),
                 tags: Some(vec![
                     agent.agent_id.clone(),

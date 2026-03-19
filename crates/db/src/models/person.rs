@@ -3,8 +3,11 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
 use ts_rs::TS;
 use uuid::Uuid;
-use crate::db_uuid::DbUuid;
-use crate::models::person_association::{PersonCompanyRole, PersonOrgContact};
+
+use crate::{
+    db_uuid::DbUuid,
+    models::person_association::{PersonCompanyRole, PersonOrgContact},
+};
 
 /// Universal Person entity — the single canonical identity record.
 ///
@@ -182,12 +185,10 @@ pub struct ListPersonsQuery {
 
 impl Person {
     pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as(
-            "SELECT * FROM persons WHERE id = ?1",
-        )
-        .bind(id.to_string())
-        .fetch_optional(pool)
-        .await
+        sqlx::query_as("SELECT * FROM persons WHERE id = ?1")
+            .bind(id.to_string())
+            .fetch_optional(pool)
+            .await
     }
 
     pub async fn list(pool: &SqlitePool, q: &ListPersonsQuery) -> sqlx::Result<Vec<Self>> {
@@ -255,10 +256,10 @@ impl Person {
         let financial_role = data.financial_role.unwrap_or_else(|| "neutral".into());
         let lifecycle_stage = data.lifecycle_stage.unwrap_or_else(|| "lead".into());
         let lead_score = data.lead_score.unwrap_or(0);
-        let tags = serde_json::to_string(
-            &data.tags.unwrap_or_default()
-        ).unwrap_or_else(|_| "[]".into());
-        let custom_fields = data.custom_fields
+        let tags =
+            serde_json::to_string(&data.tags.unwrap_or_default()).unwrap_or_else(|_| "[]".into());
+        let custom_fields = data
+            .custom_fields
             .map(|v| v.to_string())
             .unwrap_or_else(|| "{}".into());
 
@@ -296,7 +297,11 @@ impl Person {
         Ok(Self::find_by_id(pool, id).await?.expect("just inserted"))
     }
 
-    pub async fn update(pool: &SqlitePool, id: Uuid, data: UpdatePerson) -> sqlx::Result<Option<Self>> {
+    pub async fn update(
+        pool: &SqlitePool,
+        id: Uuid,
+        data: UpdatePerson,
+    ) -> sqlx::Result<Option<Self>> {
         // Fetch current record first
         let existing = match Self::find_by_id(pool, id).await? {
             Some(p) => p,
@@ -308,13 +313,16 @@ impl Person {
         let financial_role = data.financial_role.unwrap_or(existing.financial_role);
         let lifecycle_stage = data.lifecycle_stage.unwrap_or(existing.lifecycle_stage);
         let lead_score = data.lead_score.unwrap_or(existing.lead_score);
-        let tags = data.tags
+        let tags = data
+            .tags
             .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".into()))
             .unwrap_or(existing.tags);
-        let custom_fields = data.custom_fields
+        let custom_fields = data
+            .custom_fields
             .map(|v| v.to_string())
             .unwrap_or(existing.custom_fields);
-        let intelligence_confidence = data.intelligence_confidence
+        let intelligence_confidence = data
+            .intelligence_confidence
             .unwrap_or(existing.intelligence_confidence);
 
         sqlx::query(
@@ -342,7 +350,11 @@ impl Person {
         .bind(data.company_name.or(existing.company_name))
         .bind(data.job_title.or(existing.job_title))
         .bind(data.website.or(existing.website))
-        .bind(data.organization_id.map(|u| u.to_string()).or_else(|| existing.organization_id.map(|u| u.into_string())))
+        .bind(
+            data.organization_id
+                .map(|u| u.to_string())
+                .or_else(|| existing.organization_id.map(|u| u.into_string())),
+        )
         .bind(data.intelligence_summary.or(existing.intelligence_summary))
         .bind(data.intelligence_raw.or(existing.intelligence_raw))
         .bind(intelligence_confidence)
@@ -367,10 +379,7 @@ impl Person {
 }
 
 impl PersonSocialProfile {
-    pub async fn list_for_person(
-        pool: &SqlitePool,
-        person_id: Uuid,
-    ) -> sqlx::Result<Vec<Self>> {
+    pub async fn list_for_person(pool: &SqlitePool, person_id: Uuid) -> sqlx::Result<Vec<Self>> {
         sqlx::query_as(
             "SELECT * FROM person_social_profiles WHERE person_id = ?1 ORDER BY platform ASC",
         )
@@ -428,11 +437,7 @@ impl PersonSocialProfile {
         .await
     }
 
-    pub async fn delete(
-        pool: &SqlitePool,
-        person_id: Uuid,
-        platform: &str,
-    ) -> sqlx::Result<bool> {
+    pub async fn delete(pool: &SqlitePool, person_id: Uuid, platform: &str) -> sqlx::Result<bool> {
         let result = sqlx::query(
             "DELETE FROM person_social_profiles WHERE person_id = ?1 AND platform = ?2",
         )

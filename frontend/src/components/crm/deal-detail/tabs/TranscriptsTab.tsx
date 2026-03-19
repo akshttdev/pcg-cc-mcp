@@ -97,7 +97,7 @@ export function TranscriptsTab({ deal }: TranscriptsTabProps) {
         <div className="rounded-lg border border-dashed border-purple-500/30 bg-purple-500/5 p-6 text-center space-y-2">
           <Mic className="h-6 w-6 mx-auto text-purple-400/60" />
           <p className="text-sm font-medium">No transcripts linked</p>
-          <p className="text-xs text-muted-foreground">Nora auto-links call transcripts from email intake. You can also link manually above.</p>
+          <p className="text-xs text-muted-foreground">Call transcripts are auto-linked from email intake. You can also link manually above.</p>
         </div>
       )}
 

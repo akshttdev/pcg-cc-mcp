@@ -30,19 +30,54 @@ export function ProposalTab({ deal }: ProposalTabProps) {
 
   const generate = useMutation({
     mutationFn: () => crmDealsApi.generateProposal(deal.id),
-    onSuccess: () => {
-      toast.success('Cash generated your proposal');
-      qc.invalidateQueries({ queryKey: crmKeys.kanbanLegacy() });
+    onSuccess: (updatedDeal) => {
+      if (updatedDeal.proposal_text) {
+        toast.success('Proposal generated successfully');
+      } else {
+        toast.error('Proposal generation returned empty — the agent may need more context (intel, transcripts, or operator notes).');
+      }
+      // Update all kanban caches (legacy + org) so the panel re-renders with proposal text
+      const patchKanban = (old: { stages: Array<{ deals: CrmDealWithContact[] }> } | undefined) => {
+        if (!old) return old;
+        return {
+          ...old,
+          stages: old.stages.map((s) => ({
+            ...s,
+            deals: s.deals.map((d) =>
+              d.id === deal.id
+                ? { ...d, proposal_text: updatedDeal.proposal_text, proposal_status: updatedDeal.proposal_status }
+                : d
+            ),
+          })),
+        };
+      };
+      qc.setQueriesData({ queryKey: crmKeys.kanbanAll() }, patchKanban);
+      qc.setQueriesData({ queryKey: crmKeys.orgKanbanAll() }, patchKanban);
+      qc.setQueriesData({ queryKey: crmKeys.kanbanLegacy() }, patchKanban);
       qc.invalidateQueries({ queryKey: crmKeys.dealLegacy(deal.id) });
     },
-    onError: () => toast.error('Proposal generation failed'),
+    onError: () => toast.error('Proposal generation failed — check that the LLM backend is available and try again.'),
   });
 
   const approve = useMutation({
     mutationFn: () => crmDealsApi.approveProposal(deal.id),
     onSuccess: () => {
       toast.success('Proposal approved — ready for Polish');
-      qc.invalidateQueries({ queryKey: crmKeys.kanbanLegacy() });
+      const patchApprove = (old: { stages: Array<{ deals: CrmDealWithContact[] }> } | undefined) => {
+        if (!old) return old;
+        return {
+          ...old,
+          stages: old.stages.map((s) => ({
+            ...s,
+            deals: s.deals.map((d) =>
+              d.id === deal.id ? { ...d, proposal_status: 'approved' } : d
+            ),
+          })),
+        };
+      };
+      qc.setQueriesData({ queryKey: crmKeys.kanbanAll() }, patchApprove);
+      qc.setQueriesData({ queryKey: crmKeys.orgKanbanAll() }, patchApprove);
+      qc.setQueriesData({ queryKey: crmKeys.kanbanLegacy() }, patchApprove);
     },
     onError: () => toast.error('Failed to approve proposal'),
   });
@@ -52,7 +87,21 @@ export function ProposalTab({ deal }: ProposalTabProps) {
     onSuccess: () => {
       toast.success('Proposal saved');
       setEditing(false);
-      qc.invalidateQueries({ queryKey: crmKeys.kanbanLegacy() });
+      const patchSave = (old: { stages: Array<{ deals: CrmDealWithContact[] }> } | undefined) => {
+        if (!old) return old;
+        return {
+          ...old,
+          stages: old.stages.map((s) => ({
+            ...s,
+            deals: s.deals.map((d) =>
+              d.id === deal.id ? { ...d, proposal_text: editText } : d
+            ),
+          })),
+        };
+      };
+      qc.setQueriesData({ queryKey: crmKeys.kanbanAll() }, patchSave);
+      qc.setQueriesData({ queryKey: crmKeys.orgKanbanAll() }, patchSave);
+      qc.setQueriesData({ queryKey: crmKeys.kanbanLegacy() }, patchSave);
     },
     onError: () => toast.error('Failed to save proposal'),
   });
@@ -94,7 +143,7 @@ export function ProposalTab({ deal }: ProposalTabProps) {
           <div>
             <p className="text-sm font-medium">No proposal yet</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Cash will synthesize a proposal from the business report, discovery transcript, and intel wikis.
+              The proposal agent will synthesize a proposal from the business report, discovery transcript, and intel wikis.
             </p>
           </div>
           <Button
@@ -104,7 +153,7 @@ export function ProposalTab({ deal }: ProposalTabProps) {
             disabled={generate.isPending}
           >
             {generate.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
-            {generate.isPending ? 'Cash is writing…' : 'Generate Proposal'}
+            {generate.isPending ? 'Generating…' : 'Generate Proposal'}
           </Button>
         </div>
       )}

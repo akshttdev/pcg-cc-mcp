@@ -5,23 +5,24 @@
 //! 2. Executor: Run stages, manage artifacts, create tasks
 //! 3. Observer: Verify completion, handle failures, broadcast events
 
-use super::{
-    artifact::{Artifact, ArtifactStore, ArtifactType},
-    events::{AgentStatusType, EventBroadcaster},
-    router::{AgentMatch, ExecutionRouter},
-};
-use crate::profiles::{AgentProfile, AgentWorkflow, WorkflowStage};
+use std::{collections::HashMap, sync::Arc};
+
 use chrono::{DateTime, Utc};
 use cinematics::{CinematicsService, Cinematographer};
 use db::models::cinematic_brief::CreateCinematicBrief;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::SqlitePool;
-use std::collections::HashMap;
-use std::sync::Arc;
 use tokio::sync::RwLock;
 use ts_rs::TS;
 use uuid::Uuid;
+
+use super::{
+    artifact::{Artifact, ArtifactStore, ArtifactType},
+    events::{AgentStatusType, EventBroadcaster},
+    router::{AgentMatch, ExecutionRouter},
+};
+use crate::profiles::{AgentProfile, AgentWorkflow, WorkflowStage};
 
 /// Request to execute a workflow
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -153,7 +154,10 @@ impl ExecutionEngine {
     }
 
     /// Set the coordination manager for SSE event bridging
-    pub async fn set_coordination_manager(&self, manager: Arc<crate::coordination::CoordinationManager>) {
+    pub async fn set_coordination_manager(
+        &self,
+        manager: Arc<crate::coordination::CoordinationManager>,
+    ) {
         let mut coord = self.coordination.write().await;
         *coord = Some(manager);
     }
@@ -169,7 +173,9 @@ impl ExecutionEngine {
     pub async fn set_cinematics(&self, cinematics: Arc<CinematicsService>) {
         let mut cine = self.cinematics.write().await;
         *cine = Some(cinematics);
-        tracing::info!("[EXECUTION_ENGINE] Cinematics service configured for image/video generation");
+        tracing::info!(
+            "[EXECUTION_ENGINE] Cinematics service configured for image/video generation"
+        );
     }
 
     /// Set executive tools for media pipeline agents (Editron)
@@ -185,7 +191,10 @@ impl ExecutionEngine {
         if let Some(manager) = coord.as_ref() {
             tracing::info!("[EXECUTION_ENGINE] Emitting coordination event to subscribers");
             if let Err(e) = manager.emit_event(event).await {
-                tracing::debug!("[EXECUTION_ENGINE] Failed to emit coordination event: {}", e);
+                tracing::debug!(
+                    "[EXECUTION_ENGINE] Failed to emit coordination event: {}",
+                    e
+                );
             }
         } else {
             tracing::warn!("[EXECUTION_ENGINE] No coordination manager set - cannot emit event");
@@ -203,7 +212,9 @@ impl ExecutionEngine {
         let pool = match db.as_ref() {
             Some(p) => p,
             None => {
-                tracing::debug!("[EXECUTION_ENGINE] No database configured, skipping AgentFlow creation");
+                tracing::debug!(
+                    "[EXECUTION_ENGINE] No database configured, skipping AgentFlow creation"
+                );
                 return None;
             }
         };
@@ -232,10 +243,13 @@ impl ExecutionEngine {
         .bind(flow_id)
         .bind(task_id)
         .bind(flow_type)
-        .bind(serde_json::json!({
-            "agent": agent_codename,
-            "workflow": workflow_name,
-        }).to_string())
+        .bind(
+            serde_json::json!({
+                "agent": agent_codename,
+                "workflow": workflow_name,
+            })
+            .to_string(),
+        )
         .execute(pool)
         .await;
 
@@ -451,7 +465,8 @@ impl ExecutionEngine {
             agent_codename: agent.codename.clone(),
             workflow_name: Some(workflow.name.clone()),
             timestamp: Utc::now(),
-        }).await;
+        })
+        .await;
 
         // Update agent status
         self.events.agent_status(
@@ -477,7 +492,8 @@ impl ExecutionEngine {
                 }).collect::<Vec<_>>(),
                 "inputs": request.inputs,
             }),
-        ).with_agent(&agent.agent_id);
+        )
+        .with_agent(&agent.agent_id);
 
         self.artifacts.store(plan_artifact).await;
 
@@ -487,11 +503,17 @@ impl ExecutionEngine {
         let mut enriched_inputs = request.inputs.clone();
         if !enriched_inputs.contains_key("request") {
             if let Some(req_text) = &request.request {
-                enriched_inputs.insert("request".to_string(), serde_json::Value::String(req_text.clone()));
+                enriched_inputs.insert(
+                    "request".to_string(),
+                    serde_json::Value::String(req_text.clone()),
+                );
             }
         }
         if let Some(pid) = &request.project_id {
-            enriched_inputs.insert("project_id".to_string(), serde_json::Value::String(pid.to_string()));
+            enriched_inputs.insert(
+                "project_id".to_string(),
+                serde_json::Value::String(pid.to_string()),
+            );
         }
 
         let result = self.execute_stages(execution_id, &enriched_inputs).await;
@@ -505,7 +527,9 @@ impl ExecutionEngine {
         // If agent specified directly
         if let Some(agent_ref) = &request.agent {
             // Try by ID first
-            if let Some((agent, workflow)) = request.workflow_id.as_ref()
+            if let Some((agent, workflow)) = request
+                .workflow_id
+                .as_ref()
                 .and_then(|wid| self.router.get_workflow(agent_ref, wid))
             {
                 return Ok(AgentMatch {
@@ -571,20 +595,25 @@ impl ExecutionEngine {
     ) -> Result<(), String> {
         let (agent, workflow, project_id) = {
             let executions = self.executions.read().await;
-            let instance = executions.get(&execution_id)
-                .ok_or("Execution not found")?;
-            (instance.agent.clone(), instance.workflow.clone(), instance.project_id)
+            let instance = executions.get(&execution_id).ok_or("Execution not found")?;
+            (
+                instance.agent.clone(),
+                instance.workflow.clone(),
+                instance.project_id,
+            )
         };
 
         // Create tasks on board if we have a project
         if let Some(pid) = project_id {
-            self.create_workflow_tasks(execution_id, pid, &agent, &workflow).await;
+            self.create_workflow_tasks(execution_id, pid, &agent, &workflow)
+                .await;
         }
 
         // Get tasks_created AFTER create_workflow_tasks populates them
         let tasks_created = {
             let executions = self.executions.read().await;
-            executions.get(&execution_id)
+            executions
+                .get(&execution_id)
                 .map(|inst| inst.tasks_created.clone())
                 .unwrap_or_default()
         };
@@ -596,7 +625,8 @@ impl ExecutionEngine {
             let instance = executions.get(&execution_id);
             if let Some(inst) = instance {
                 if let Some(first_task_id) = inst.tasks_created.first() {
-                    self.create_agent_flow(*first_task_id, &workflow.name, &agent.codename).await
+                    self.create_agent_flow(*first_task_id, &workflow.name, &agent.codename)
+                        .await
                 } else {
                     None
                 }
@@ -620,16 +650,23 @@ impl ExecutionEngine {
                     "phase": "execution",
                     "agent_id": agent.agent_id,
                 }),
-            ).await;
+            )
+            .await;
         }
 
         // Update status to executing
-        self.update_status(execution_id, ExecutionStatus::Executing {
-            stage: 0,
-            stage_name: workflow.stages.first()
-                .map(|s| s.name.clone())
-                .unwrap_or_else(|| "Unknown".to_string()),
-        }).await;
+        self.update_status(
+            execution_id,
+            ExecutionStatus::Executing {
+                stage: 0,
+                stage_name: workflow
+                    .stages
+                    .first()
+                    .map(|s| s.name.clone())
+                    .unwrap_or_else(|| "Unknown".to_string()),
+            },
+        )
+        .await;
 
         self.events.agent_status(
             &agent.agent_id,
@@ -660,13 +697,16 @@ impl ExecutionEngine {
             );
 
             // Emit to coordination manager
-            self.emit_coordination_event(crate::coordination::CoordinationEvent::ExecutionStageStarted {
-                execution_id: execution_id.to_string(),
-                stage_index: stage_index as u32,
-                stage_name: stage.name.clone(),
-                agent_codename: agent.codename.clone(),
-                timestamp: Utc::now(),
-            }).await;
+            self.emit_coordination_event(
+                crate::coordination::CoordinationEvent::ExecutionStageStarted {
+                    execution_id: execution_id.to_string(),
+                    stage_index: stage_index as u32,
+                    stage_name: stage.name.clone(),
+                    agent_codename: agent.codename.clone(),
+                    timestamp: Utc::now(),
+                },
+            )
+            .await;
 
             // Emit flow event for database persistence (with rich context)
             if let Some(flow_id) = agent_flow_id {
@@ -683,7 +723,8 @@ impl ExecutionEngine {
                         "agent_id": agent.agent_id,
                         "agent_name": agent.codename,
                     }),
-                ).await;
+                )
+                .await;
             }
 
             // Update the single workflow task to "in progress" (only on first stage)
@@ -694,23 +735,29 @@ impl ExecutionEngine {
             }
 
             // Update status
-            self.update_status(execution_id, ExecutionStatus::Executing {
-                stage: stage_index as u32,
-                stage_name: stage.name.clone(),
-            }).await;
+            self.update_status(
+                execution_id,
+                ExecutionStatus::Executing {
+                    stage: stage_index as u32,
+                    stage_name: stage.name.clone(),
+                },
+            )
+            .await;
 
             // Get outputs from previous stages
             let previous_outputs = self.artifacts.get_all_stage_outputs(execution_id).await;
 
             // Execute stage (this is where actual work happens)
-            let result = self.execute_stage(
-                execution_id,
-                stage_index,
-                stage,
-                &agent,
-                inputs,
-                &previous_outputs,
-            ).await;
+            let result = self
+                .execute_stage(
+                    execution_id,
+                    stage_index,
+                    stage,
+                    &agent,
+                    inputs,
+                    &previous_outputs,
+                )
+                .await;
 
             let duration_ms = (Utc::now() - stage_start).num_milliseconds() as u64;
 
@@ -724,15 +771,24 @@ impl ExecutionEngine {
                     const MAX_OUTPUT_LEN: usize = 15000;
                     let output_summary = if let Some(s) = output_for_event.as_str() {
                         if s.len() > MAX_OUTPUT_LEN {
-                            format!("{}...\n[Output truncated. {} total chars]", &s[..MAX_OUTPUT_LEN], s.len())
+                            format!(
+                                "{}...\n[Output truncated. {} total chars]",
+                                &s[..MAX_OUTPUT_LEN],
+                                s.len()
+                            )
                         } else {
                             s.to_string()
                         }
                     } else if let Some(_obj) = output_for_event.as_object() {
                         // Try to get a summary field first, but also include full structured data
-                        let full_json = serde_json::to_string_pretty(&output_for_event).unwrap_or_default();
+                        let full_json =
+                            serde_json::to_string_pretty(&output_for_event).unwrap_or_default();
                         if full_json.len() > MAX_OUTPUT_LEN {
-                            format!("{}...\n[Output truncated. {} total chars]", &full_json[..MAX_OUTPUT_LEN], full_json.len())
+                            format!(
+                                "{}...\n[Output truncated. {} total chars]",
+                                &full_json[..MAX_OUTPUT_LEN],
+                                full_json.len()
+                            )
                         } else {
                             full_json
                         }
@@ -772,13 +828,16 @@ impl ExecutionEngine {
                     );
 
                     // Emit to coordination manager
-                    self.emit_coordination_event(crate::coordination::CoordinationEvent::ExecutionStageCompleted {
-                        execution_id: execution_id.to_string(),
-                        stage_index: stage_index as u32,
-                        stage_name: stage.name.clone(),
-                        output_summary: Some(format!("Completed in {}ms", duration_ms)),
-                        timestamp: Utc::now(),
-                    }).await;
+                    self.emit_coordination_event(
+                        crate::coordination::CoordinationEvent::ExecutionStageCompleted {
+                            execution_id: execution_id.to_string(),
+                            stage_index: stage_index as u32,
+                            stage_name: stage.name.clone(),
+                            output_summary: Some(format!("Completed in {}ms", duration_ms)),
+                            timestamp: Utc::now(),
+                        },
+                    )
+                    .await;
 
                     // Emit flow event for database persistence (with rich output content)
                     if let Some(flow_id) = agent_flow_id {
@@ -796,7 +855,8 @@ impl ExecutionEngine {
                                 "agent_id": agent.agent_id,
                                 "agent_name": agent.codename,
                             }),
-                        ).await;
+                        )
+                        .await;
                     }
 
                     // Task stays "in progress" until all stages complete
@@ -809,11 +869,7 @@ impl ExecutionEngine {
                     );
                 }
                 Err(error) => {
-                    tracing::error!(
-                        "[EXECUTION_ENGINE] Stage {} failed: {}",
-                        stage.name,
-                        error
-                    );
+                    tracing::error!("[EXECUTION_ENGINE] Stage {} failed: {}", stage.name, error);
 
                     // Store error artifact
                     let artifact = Artifact::new(
@@ -837,12 +893,15 @@ impl ExecutionEngine {
                     );
 
                     // Emit to coordination manager
-                    self.emit_coordination_event(crate::coordination::CoordinationEvent::ExecutionFailed {
-                        execution_id: execution_id.to_string(),
-                        error: error.clone(),
-                        stage: Some(stage_index as u32),
-                        timestamp: Utc::now(),
-                    }).await;
+                    self.emit_coordination_event(
+                        crate::coordination::CoordinationEvent::ExecutionFailed {
+                            execution_id: execution_id.to_string(),
+                            error: error.clone(),
+                            stage: Some(stage_index as u32),
+                            timestamp: Utc::now(),
+                        },
+                    )
+                    .await;
 
                     // Emit flow event for database persistence
                     if let Some(flow_id) = agent_flow_id {
@@ -854,7 +913,8 @@ impl ExecutionEngine {
                                 "error": error,
                                 "phase": stage.name,
                             }),
-                        ).await;
+                        )
+                        .await;
                         // Mark the flow as failed
                         self.complete_agent_flow(flow_id, false).await;
                     }
@@ -874,7 +934,8 @@ impl ExecutionEngine {
                     "verification_score": null,
                     "total_artifacts": workflow.stages.len(),
                 }),
-            ).await;
+            )
+            .await;
         }
 
         Ok(())
@@ -934,7 +995,8 @@ impl ExecutionEngine {
 
             // If this is the first stage, enhance the request into a research brief
             if stage_index == 0 {
-                let enhanced = self.research_executor
+                let enhanced = self
+                    .research_executor
                     .create_research_brief(
                         &context.original_request,
                         context.project_name.as_deref(),
@@ -951,7 +1013,8 @@ impl ExecutionEngine {
             }
 
             // Execute the stage with the research executor
-            let result = self.research_executor
+            let result = self
+                .research_executor
                 .execute_stage(
                     execution_id,
                     &stage.name,
@@ -977,14 +1040,13 @@ impl ExecutionEngine {
                 stage.name
             );
 
-            return self.execute_cinematics_stage(execution_id, stage_index, stage, inputs).await;
+            return self
+                .execute_cinematics_stage(execution_id, stage_index, stage, inputs)
+                .await;
         }
 
         // Check if this is a media pipeline agent (Editron)
-        let is_media_agent = matches!(
-            agent.agent_id.as_str(),
-            "editron-post" | "editron"
-        );
+        let is_media_agent = matches!(agent.agent_id.as_str(), "editron-post" | "editron");
 
         if is_media_agent {
             tracing::info!(
@@ -1004,15 +1066,19 @@ impl ExecutionEngine {
                 // Collect previous stage outputs for chaining
                 let previous = self.artifacts.get_all_stage_outputs(execution_id).await;
 
-                match self.build_editron_tool(stage, inputs, project_id, &previous).await {
+                match self
+                    .build_editron_tool(stage, inputs, project_id, &previous)
+                    .await
+                {
                     Some(tool) => {
                         // Box::pin to break async recursion cycle:
                         // execute_stage → execute_tool_implementation → ExecuteWorkflow → engine.execute → execute_stage
                         let tools_clone = exec_tools.clone();
                         let result: std::result::Result<serde_json::Value, crate::NoraError> =
-                            Box::pin(async move {
-                                tools_clone.execute_tool_implementation(tool).await
-                            }).await;
+                            Box::pin(
+                                async move { tools_clone.execute_tool_implementation(tool).await },
+                            )
+                            .await;
                         match result {
                             Ok(output) => return Ok(output),
                             Err(e) => {
@@ -1068,7 +1134,9 @@ impl ExecutionEngine {
         };
 
         let Some(cinematics) = cinematics else {
-            tracing::warn!("[EXECUTION_ENGINE] CinematicsService not configured, using simulated output");
+            tracing::warn!(
+                "[EXECUTION_ENGINE] CinematicsService not configured, using simulated output"
+            );
             return Ok(json!({
                 "stage": stage.name,
                 "status": "completed",
@@ -1089,8 +1157,7 @@ impl ExecutionEngine {
         // Get project_id from execution
         let project_id = {
             let executions = self.executions.read().await;
-            executions.get(&execution_id)
-                .and_then(|e| e.project_id)
+            executions.get(&execution_id).and_then(|e| e.project_id)
         };
 
         let Some(project_id) = project_id else {
@@ -1100,37 +1167,45 @@ impl ExecutionEngine {
         match stage.name.as_str() {
             "Prompt Blocking" => {
                 // Stage 1: Create cinematic brief and plan shots
-                let prompt = inputs.get("prompt")
+                let prompt = inputs
+                    .get("prompt")
                     .and_then(|v| v.as_str())
                     .unwrap_or("Cinematic scene");
 
                 tracing::info!("[CINEMATICS] Creating brief for prompt: {}", prompt);
 
-                let brief = cinematics.create_brief(CreateCinematicBrief {
-                    project_id,
-                    requester_id: "execution_engine".to_string(),
-                    nora_session_id: None,
-                    title: prompt.to_string(),
-                    summary: format!("AI-generated cinematic for: {}", prompt),
-                    script: None,
-                    asset_ids: vec![],
-                    duration_seconds: Some(4),
-                    fps: None,
-                    style_tags: vec![],
-                    metadata: None,
-                }).await.map_err(|e| format!("Failed to create brief: {}", e))?;
+                let brief = cinematics
+                    .create_brief(CreateCinematicBrief {
+                        project_id,
+                        requester_id: "execution_engine".to_string(),
+                        nora_session_id: None,
+                        title: prompt.to_string(),
+                        summary: format!("AI-generated cinematic for: {}", prompt),
+                        script: None,
+                        asset_ids: vec![],
+                        duration_seconds: Some(4),
+                        fps: None,
+                        style_tags: vec![],
+                        metadata: None,
+                    })
+                    .await
+                    .map_err(|e| format!("Failed to create brief: {}", e))?;
 
-                tracing::info!("[CINEMATICS] Created brief {} with title: {}", brief.id, brief.title);
+                tracing::info!(
+                    "[CINEMATICS] Created brief {} with title: {}",
+                    brief.id,
+                    brief.title
+                );
 
                 // Store brief_id in artifacts for next stage
-                self.artifacts.store(
-                    Artifact::new(
+                self.artifacts
+                    .store(Artifact::new(
                         execution_id,
                         ArtifactType::StageData,
                         "cinematics_brief",
                         json!({ "brief_id": brief.id.to_string() }),
-                    ),
-                ).await;
+                    ))
+                    .await;
 
                 Ok(json!({
                     "brief_id": brief.id.to_string(),
@@ -1142,26 +1217,40 @@ impl ExecutionEngine {
             }
             "Render Pass" => {
                 // Stage 2: Trigger ComfyUI rendering
-                let brief_id = self.artifacts.get_all_stage_outputs(execution_id).await
+                let brief_id = self
+                    .artifacts
+                    .get_all_stage_outputs(execution_id)
+                    .await
                     .values()
                     .find_map(|v| v.get("brief_id").and_then(|b| b.as_str()))
                     .ok_or("No brief_id from Prompt Blocking stage")?
                     .to_string();
 
-                let brief_uuid = Uuid::parse_str(&brief_id)
-                    .map_err(|e| format!("Invalid brief_id: {}", e))?;
+                let brief_uuid =
+                    Uuid::parse_str(&brief_id).map_err(|e| format!("Invalid brief_id: {}", e))?;
 
-                tracing::info!("[CINEMATICS] Starting ComfyUI render for brief: {}", brief_id);
+                tracing::info!(
+                    "[CINEMATICS] Starting ComfyUI render for brief: {}",
+                    brief_id
+                );
 
                 // This calls ComfyUI's /prompt API and polls for completion
-                let rendered_brief = cinematics.trigger_render(brief_uuid).await
+                let rendered_brief = cinematics
+                    .trigger_render(brief_uuid)
+                    .await
                     .map_err(|e| format!("ComfyUI render failed: {}", e))?;
 
-                let asset_count = rendered_brief.output_assets.0.as_array()
+                let asset_count = rendered_brief
+                    .output_assets
+                    .0
+                    .as_array()
                     .map(|arr| arr.len())
                     .unwrap_or(0);
 
-                tracing::info!("[CINEMATICS] Render complete: {} assets generated", asset_count);
+                tracing::info!(
+                    "[CINEMATICS] Render complete: {} assets generated",
+                    asset_count
+                );
 
                 Ok(json!({
                     "brief_id": rendered_brief.id.to_string(),
@@ -1172,18 +1261,25 @@ impl ExecutionEngine {
             }
             "Prep for Editron" => {
                 // Stage 3: Assets are registered, package metadata
-                let render_output = self.artifacts.get_all_stage_outputs(execution_id).await
+                let render_output = self
+                    .artifacts
+                    .get_all_stage_outputs(execution_id)
+                    .await
                     .values()
                     .find(|v| v.get("render_complete").is_some())
                     .cloned()
                     .unwrap_or_else(|| json!({}));
 
-                let assets = render_output.get("assets")
+                let assets = render_output
+                    .get("assets")
                     .and_then(|v| v.as_array())
                     .map(|arr| arr.len())
                     .unwrap_or(0);
 
-                tracing::info!("[CINEMATICS] Preparing {} assets for Editron pickup", assets);
+                tracing::info!(
+                    "[CINEMATICS] Preparing {} assets for Editron pickup",
+                    assets
+                );
 
                 Ok(json!({
                     "ready_for_editron": true,
@@ -1216,25 +1312,37 @@ impl ExecutionEngine {
         let project_str = project_id.map(|id| id.to_string());
 
         // Match "Batch Intake" stage or descriptions mentioning ingest/download/dropbox/checksum/sync
-        if stage_lower.contains("batch") || stage_lower.contains("intake")
-            || desc_lower.contains("ingest") || desc_lower.contains("download")
-            || desc_lower.contains("dropbox") || desc_lower.contains("checksum")
+        if stage_lower.contains("batch")
+            || stage_lower.contains("intake")
+            || desc_lower.contains("ingest")
+            || desc_lower.contains("download")
+            || desc_lower.contains("dropbox")
+            || desc_lower.contains("checksum")
         {
-            let source_url = inputs.get("source_url")
+            let source_url = inputs
+                .get("source_url")
                 .or_else(|| inputs.get("dropbox_url"))
                 .and_then(|v| v.as_str())?
                 .to_string();
 
             // Skip checksums for local paths (avoids reading multi-GB files just to hash them)
             let is_local = source_url.starts_with('/') || source_url.starts_with("file://");
-            let checksum_required = inputs.get("checksum_required")
+            let checksum_required = inputs
+                .get("checksum_required")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(!is_local);
 
             return Some(crate::tools::NoraExecutiveTool::IngestMediaBatch {
                 source_url,
-                reference_name: inputs.get("reference_name").and_then(|v| v.as_str()).map(String::from),
-                storage_tier: inputs.get("storage_tier").and_then(|v| v.as_str()).unwrap_or("hot").to_string(),
+                reference_name: inputs
+                    .get("reference_name")
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
+                storage_tier: inputs
+                    .get("storage_tier")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("hot")
+                    .to_string(),
                 checksum_required,
                 project_id: project_str,
                 task_id: None,
@@ -1244,11 +1352,14 @@ impl ExecutionEngine {
         // Match "Sonic Engineering" — must be checked BEFORE the generic "analysis" block
         // because the description contains "analyzes" which would match the generic block.
         // NOTE: desc conditions must NOT match "Smart Assembly" which also mentions beat-lock/music
-        if stage_lower.contains("sonic") || stage_lower.contains("audio engineering")
-            || desc_lower.contains("bpm detection") || desc_lower.contains("beat grid")
+        if stage_lower.contains("sonic")
+            || stage_lower.contains("audio engineering")
+            || desc_lower.contains("bpm detection")
+            || desc_lower.contains("beat grid")
             || desc_lower.contains("energy curve")
         {
-            let audio_path = inputs.get("audio_path")
+            let audio_path = inputs
+                .get("audio_path")
                 .and_then(|v| v.as_str())
                 .unwrap_or("/Users/sirakstudios/Downloads/MA_YesteryBeat_Nostalgia_Main_MP3.mp3")
                 .to_string();
@@ -1256,31 +1367,43 @@ impl ExecutionEngine {
             return Some(crate::tools::NoraExecutiveTool::AnalyzeBeatGrid {
                 audio_path,
                 bpm_hint: inputs.get("bpm_hint").and_then(|v| v.as_f64()),
-                beats_per_bar: inputs.get("beats_per_bar").and_then(|v| v.as_u64()).map(|v| v as u32),
+                beats_per_bar: inputs
+                    .get("beats_per_bar")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as u32),
                 project_id: project_str,
             });
         }
 
         // Match "Visual QC" — must be checked BEFORE the generic "analysis" block
         // Runs Spectra visual QC: extract keyframes, score composition, select optimal in-points
-        if stage_lower.contains("qc") || stage_lower.contains("visual")
-            || desc_lower.contains("composition") || desc_lower.contains("keyframe")
-            || desc_lower.contains("in-point") || desc_lower.contains("vision api")
+        if stage_lower.contains("qc")
+            || stage_lower.contains("visual")
+            || desc_lower.contains("composition")
+            || desc_lower.contains("keyframe")
+            || desc_lower.contains("in-point")
+            || desc_lower.contains("vision api")
         {
-            let batch_id = previous_outputs.values()
+            let batch_id = previous_outputs
+                .values()
                 .find_map(|v| {
-                    v.get("batch_id").and_then(|b| b.as_str())
-                        .or_else(|| v.get("batch").and_then(|b| b.get("id")).and_then(|id| id.as_str()))
+                    v.get("batch_id").and_then(|b| b.as_str()).or_else(|| {
+                        v.get("batch")
+                            .and_then(|b| b.get("id"))
+                            .and_then(|id| id.as_str())
+                    })
                 })?
                 .to_string();
 
             return Some(crate::tools::NoraExecutiveTool::RunVisualQc {
                 batch_id,
-                candidates_per_clip: inputs.get("candidates_per_clip")
-                    .and_then(|v| v.as_u64()).map(|v| v as u32),
-                min_composition_score: inputs.get("min_composition_score")
-                    .and_then(|v| v.as_f64()),
-                target_aspect_ratio: inputs.get("aspect_ratios")
+                candidates_per_clip: inputs
+                    .get("candidates_per_clip")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as u32),
+                min_composition_score: inputs.get("min_composition_score").and_then(|v| v.as_f64()),
+                target_aspect_ratio: inputs
+                    .get("aspect_ratios")
                     .and_then(|v| v.as_array())
                     .and_then(|arr| arr.first())
                     .and_then(|v| v.as_str())
@@ -1290,25 +1413,35 @@ impl ExecutionEngine {
         }
 
         // Match "Scene Analysis" stage or descriptions mentioning analyze/ffmpeg/analysis/storyboard
-        if stage_lower.contains("analysis") || stage_lower.contains("scene")
-            || desc_lower.contains("analyze") || desc_lower.contains("analysis")
-            || desc_lower.contains("storyboard") || desc_lower.contains("ffmpeg")
+        if stage_lower.contains("analysis")
+            || stage_lower.contains("scene")
+            || desc_lower.contains("analyze")
+            || desc_lower.contains("analysis")
+            || desc_lower.contains("storyboard")
+            || desc_lower.contains("ffmpeg")
         {
             // Find batch_id from previous stage outputs
-            let batch_id = previous_outputs.values()
+            let batch_id = previous_outputs
+                .values()
                 .find_map(|v| {
-                    v.get("batch_id").and_then(|b| b.as_str())
-                        .or_else(|| v.get("batch").and_then(|b| b.get("id")).and_then(|id| id.as_str()))
+                    v.get("batch_id").and_then(|b| b.as_str()).or_else(|| {
+                        v.get("batch")
+                            .and_then(|b| b.get("id"))
+                            .and_then(|id| id.as_str())
+                    })
                 })?
                 .to_string();
 
             return Some(crate::tools::NoraExecutiveTool::AnalyzeMediaBatch {
                 batch_id,
-                brief: inputs.get("brief").and_then(|v| v.as_str())
+                brief: inputs
+                    .get("brief")
+                    .and_then(|v| v.as_str())
                     .unwrap_or("Identify hero shots, crowd moments, and key narrative beats")
                     .to_string(),
                 passes: inputs.get("passes").and_then(|v| v.as_u64()).unwrap_or(2) as u32,
-                deliverable_targets: inputs.get("deliverable_targets")
+                deliverable_targets: inputs
+                    .get("deliverable_targets")
                     .and_then(|v| serde_json::from_value(v.clone()).ok())
                     .unwrap_or_else(|| vec!["recap".to_string()]),
                 project_id: project_str,
@@ -1318,19 +1451,27 @@ impl ExecutionEngine {
 
         // Match "Smart Assembly" / "Iterative Edit" or descriptions mentioning assembly/edit/timeline/clips/cuts
         // Uses AssembleRecapEdit for real scene analysis + beat-locked assembly + Premiere XML
-        if stage_lower.contains("assembly") || stage_lower.contains("edit")
-            || desc_lower.contains("assembly") || desc_lower.contains("timeline")
-            || desc_lower.contains("beat-lock") || desc_lower.contains("match clips")
+        if stage_lower.contains("assembly")
+            || stage_lower.contains("edit")
+            || desc_lower.contains("assembly")
+            || desc_lower.contains("timeline")
+            || desc_lower.contains("beat-lock")
+            || desc_lower.contains("match clips")
         {
-            let batch_id = previous_outputs.values()
+            let batch_id = previous_outputs
+                .values()
                 .find_map(|v| {
-                    v.get("batch_id").and_then(|b| b.as_str())
-                        .or_else(|| v.get("batch").and_then(|b| b.get("id")).and_then(|id| id.as_str()))
+                    v.get("batch_id").and_then(|b| b.as_str()).or_else(|| {
+                        v.get("batch")
+                            .and_then(|b| b.get("id"))
+                            .and_then(|id| id.as_str())
+                    })
                 })?
                 .to_string();
 
             // Use AssembleRecapEdit for real scene analysis + beat-locked assembly + XML
-            let audio_path = inputs.get("audio_path")
+            let audio_path = inputs
+                .get("audio_path")
                 .and_then(|v| v.as_str())
                 .unwrap_or("/Users/sirakstudios/Downloads/MA_YesteryBeat_Nostalgia_Main_MP3.mp3")
                 .to_string();
@@ -1339,31 +1480,42 @@ impl ExecutionEngine {
                 batch_id,
                 audio_path,
                 bpm_hint: inputs.get("bpm_hint").and_then(|v| v.as_f64()),
-                target_aspect_ratio: inputs.get("aspect_ratios")
+                target_aspect_ratio: inputs
+                    .get("aspect_ratios")
                     .and_then(|v| v.as_array())
                     .and_then(|arr| arr.first())
                     .and_then(|v| v.as_str())
                     .map(String::from),
                 project_id: project_str,
-                project_name: inputs.get("project_name").and_then(|v| v.as_str()).map(String::from),
+                project_name: inputs
+                    .get("project_name")
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
             });
         }
 
         // Match "Export + Color" / "Delivery" or descriptions mentioning render/export/premiere/xml
         // Prefers ExecuteRenderScript (from AssembleRecapEdit output), falls back to RenderVideoDeliverables
-        if stage_lower.contains("export") || stage_lower.contains("render") || stage_lower.contains("delivery")
-            || desc_lower.contains("render") || desc_lower.contains("export")
-            || desc_lower.contains("premiere") || desc_lower.contains("delivery")
+        if stage_lower.contains("export")
+            || stage_lower.contains("render")
+            || stage_lower.contains("delivery")
+            || desc_lower.contains("render")
+            || desc_lower.contains("export")
+            || desc_lower.contains("premiere")
+            || desc_lower.contains("delivery")
         {
             // Try to find render_script from AssembleRecapEdit output
-            if let Some(render_script) = previous_outputs.values()
+            if let Some(render_script) = previous_outputs
+                .values()
                 .find_map(|v| v.get("render_script").and_then(|s| s.as_str()))
             {
-                let render_output = previous_outputs.values()
+                let render_output = previous_outputs
+                    .values()
                     .find_map(|v| v.get("render_output").and_then(|s| s.as_str()))
                     .unwrap_or("output.mp4")
                     .to_string();
-                let xml_path = previous_outputs.values()
+                let xml_path = previous_outputs
+                    .values()
                     .find_map(|v| v.get("xml_path").and_then(|s| s.as_str()))
                     .unwrap_or("")
                     .to_string();
@@ -1376,10 +1528,15 @@ impl ExecutionEngine {
             }
 
             // Fallback: try edit_session_id for the old RenderVideoDeliverables path
-            if let Some(edit_session_id) = previous_outputs.values()
+            if let Some(edit_session_id) = previous_outputs
+                .values()
                 .find_map(|v| v.get("edit_session_id").and_then(|b| b.as_str()))
             {
-                let priority = match inputs.get("priority").and_then(|v| v.as_str()).unwrap_or("standard") {
+                let priority = match inputs
+                    .get("priority")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("standard")
+                {
                     "rush" | "urgent" | "high" => crate::tools::VideoRenderPriority::Rush,
                     "low" => crate::tools::VideoRenderPriority::Low,
                     _ => crate::tools::VideoRenderPriority::Standard,
@@ -1387,10 +1544,12 @@ impl ExecutionEngine {
 
                 return Some(crate::tools::NoraExecutiveTool::RenderVideoDeliverables {
                     edit_session_id: edit_session_id.to_string(),
-                    destinations: inputs.get("destinations")
+                    destinations: inputs
+                        .get("destinations")
                         .and_then(|v| serde_json::from_value(v.clone()).ok())
                         .unwrap_or_else(|| vec!["local".to_string()]),
-                    formats: inputs.get("formats")
+                    formats: inputs
+                        .get("formats")
                         .and_then(|v| serde_json::from_value(v.clone()).ok())
                         .unwrap_or_else(|| vec!["mp4".to_string()]),
                     priority,
@@ -1424,7 +1583,9 @@ impl ExecutionEngine {
         let title = format!("{}: {}", agent.codename, workflow.name);
 
         // Build description with all stages listed
-        let stages_list = workflow.stages.iter()
+        let stages_list = workflow
+            .stages
+            .iter()
             .enumerate()
             .map(|(i, s)| format!("{}. {} - {}", i + 1, s.name, s.description))
             .collect::<Vec<_>>()
@@ -1432,11 +1593,18 @@ impl ExecutionEngine {
 
         let description = Some(format!(
             "{}\n\n**Workflow Stages:**\n{}",
-            workflow.objective,
-            stages_list
+            workflow.objective, stages_list
         ));
 
-        match creator.create_task(project_id, title.clone(), description, Some(agent.agent_id.clone())).await {
+        match creator
+            .create_task(
+                project_id,
+                title.clone(),
+                description,
+                Some(agent.agent_id.clone()),
+            )
+            .await
+        {
             Ok(task_id) => {
                 self.events.task_created(
                     execution_id,
@@ -1482,13 +1650,25 @@ impl ExecutionEngine {
         result: Result<(), String>,
     ) -> Result<ExecutionResult, String> {
         // Gather data for coordination event before taking lock
-        let (project_id, tasks_count, artifact_count, current_stage, duration_ms, status, _error, exec_result, agent_flow_id) = {
+        let (
+            project_id,
+            tasks_count,
+            artifact_count,
+            current_stage,
+            duration_ms,
+            status,
+            _error,
+            exec_result,
+            agent_flow_id,
+        ) = {
             let mut executions = self.executions.write().await;
-            let instance = executions.get_mut(&execution_id)
+            let instance = executions
+                .get_mut(&execution_id)
                 .ok_or("Execution not found")?;
 
             instance.completed_at = Some(Utc::now());
-            let duration_ms = (instance.completed_at.unwrap() - instance.started_at).num_milliseconds() as u64;
+            let duration_ms =
+                (instance.completed_at.unwrap() - instance.started_at).num_milliseconds() as u64;
             let artifact_count = self.artifacts.count(execution_id).await as u32;
             let project_id = instance.project_id;
             let tasks_count = instance.tasks_created.len() as u32;
@@ -1561,7 +1741,17 @@ impl ExecutionEngine {
 
             let agent_flow_id = instance.agent_flow_id;
 
-            (project_id, tasks_count, artifact_count, current_stage, duration_ms, status, error, exec_result, agent_flow_id)
+            (
+                project_id,
+                tasks_count,
+                artifact_count,
+                current_stage,
+                duration_ms,
+                status,
+                error,
+                exec_result,
+                agent_flow_id,
+            )
         };
 
         // Get the workflow task ID for final status update
@@ -1570,14 +1760,17 @@ impl ExecutionEngine {
         // Emit coordination events after releasing the lock
         match &status {
             ExecutionStatus::Completed => {
-                self.emit_coordination_event(crate::coordination::CoordinationEvent::ExecutionCompleted {
-                    execution_id: execution_id.to_string(),
-                    project_id: project_id.map(|id| id.to_string()),
-                    tasks_created: tasks_count,
-                    artifacts_count: artifact_count,
-                    duration_ms,
-                    timestamp: Utc::now(),
-                }).await;
+                self.emit_coordination_event(
+                    crate::coordination::CoordinationEvent::ExecutionCompleted {
+                        execution_id: execution_id.to_string(),
+                        project_id: project_id.map(|id| id.to_string()),
+                        tasks_created: tasks_count,
+                        artifacts_count: artifact_count,
+                        duration_ms,
+                        timestamp: Utc::now(),
+                    },
+                )
+                .await;
 
                 // Mark AgentFlow as completed in database
                 if let Some(flow_id) = agent_flow_id {
@@ -1590,12 +1783,15 @@ impl ExecutionEngine {
                 }
             }
             ExecutionStatus::Failed { error: e, .. } => {
-                self.emit_coordination_event(crate::coordination::CoordinationEvent::ExecutionFailed {
-                    execution_id: execution_id.to_string(),
-                    error: e.clone(),
-                    stage: Some(current_stage as u32),
-                    timestamp: Utc::now(),
-                }).await;
+                self.emit_coordination_event(
+                    crate::coordination::CoordinationEvent::ExecutionFailed {
+                        execution_id: execution_id.to_string(),
+                        error: e.clone(),
+                        stage: Some(current_stage as u32),
+                        timestamp: Utc::now(),
+                    },
+                )
+                .await;
 
                 // Mark AgentFlow as failed in database
                 if let Some(flow_id) = agent_flow_id {
@@ -1617,7 +1813,12 @@ impl ExecutionEngine {
         let mut results = Vec::new();
 
         for instance in executions.values() {
-            if !matches!(instance.status, ExecutionStatus::Completed | ExecutionStatus::Failed { .. } | ExecutionStatus::Cancelled) {
+            if !matches!(
+                instance.status,
+                ExecutionStatus::Completed
+                    | ExecutionStatus::Failed { .. }
+                    | ExecutionStatus::Cancelled
+            ) {
                 let artifacts = self.artifacts.get_by_execution(instance.id).await;
                 results.push(ExecutionResult {
                     execution_id: instance.id,
@@ -1693,7 +1894,9 @@ impl ExecutionEngine {
             tasks_created: instance.tasks_created.clone(),
             started_at: instance.started_at,
             completed_at: instance.completed_at,
-            duration_ms: instance.completed_at.map(|c| (c - instance.started_at).num_milliseconds() as u64),
+            duration_ms: instance
+                .completed_at
+                .map(|c| (c - instance.started_at).num_milliseconds() as u64),
             error: match &instance.status {
                 ExecutionStatus::Failed { error, .. } => Some(error.clone()),
                 _ => None,

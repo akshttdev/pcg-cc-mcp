@@ -203,8 +203,7 @@ function CrmEventCard({ event }: { event: UnifiedEvent }) {
 
 // ── ActivityTab ───────────────────────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function ActivityTab({ deal, projectId: _ignored }: ActivityTabProps) {
+export function ActivityTab({ deal }: ActivityTabProps) {
   const [formOpen, setFormOpen] = useState(false);
   const projectId = deal.project_id;
 

@@ -34,13 +34,19 @@ pub async fn get_admin_prompt(
     }
 
     let pool = &state.db().pool;
-    let prompt = SystemSetting::get(pool, "topsi_system_prompt").await.ok().flatten();
+    let prompt = SystemSetting::get(pool, "topsi_system_prompt")
+        .await
+        .ok()
+        .flatten();
     let mode = SystemSetting::get(pool, "topsi_prompt_mode")
         .await
         .ok()
         .flatten()
         .unwrap_or_else(|| "standard".to_string());
-    let prompt_sudolang = SystemSetting::get(pool, "topsi_system_prompt_sudolang").await.ok().flatten();
+    let prompt_sudolang = SystemSetting::get(pool, "topsi_system_prompt_sudolang")
+        .await
+        .ok()
+        .flatten();
     let autonomy_level = SystemSetting::get(pool, "topsi_autonomy_level")
         .await
         .ok()
@@ -76,7 +82,10 @@ pub async fn update_admin_prompt(
 
     if let Some(mode) = &request.mode {
         if !matches!(mode.as_str(), "standard" | "sudolang") {
-            return Err(ApiError::BadRequest(format!("Invalid prompt mode: '{}'. Must be 'standard' or 'sudolang'", mode)));
+            return Err(ApiError::BadRequest(format!(
+                "Invalid prompt mode: '{}'. Must be 'standard' or 'sudolang'",
+                mode
+            )));
         }
         SystemSetting::set(pool, "topsi_prompt_mode", mode, Some(&user_id))
             .await
@@ -84,18 +93,31 @@ pub async fn update_admin_prompt(
     }
 
     if let Some(sudolang) = &request.prompt_sudolang {
-        SystemSetting::set(pool, "topsi_system_prompt_sudolang", sudolang, Some(&user_id))
-            .await
-            .map_err(|e| ApiError::InternalError(format!("Failed to save sudolang prompt: {}", e)))?;
+        SystemSetting::set(
+            pool,
+            "topsi_system_prompt_sudolang",
+            sudolang,
+            Some(&user_id),
+        )
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to save sudolang prompt: {}", e)))?;
     }
 
     if let Some(ref level) = request.autonomy_level {
-        if !matches!(level.as_str(), "full" | "supervised" | "approval_required" | "manual") {
-            return Err(ApiError::BadRequest(format!("Invalid autonomy level: '{}'. Must be 'full', 'supervised', 'approval_required', or 'manual'", level)));
+        if !matches!(
+            level.as_str(),
+            "full" | "supervised" | "approval_required" | "manual"
+        ) {
+            return Err(ApiError::BadRequest(format!(
+                "Invalid autonomy level: '{}'. Must be 'full', 'supervised', 'approval_required', or 'manual'",
+                level
+            )));
         }
         SystemSetting::set(pool, "topsi_autonomy_level", level, Some(&user_id))
             .await
-            .map_err(|e| ApiError::InternalError(format!("Failed to save autonomy level: {}", e)))?;
+            .map_err(|e| {
+                ApiError::InternalError(format!("Failed to save autonomy level: {}", e))
+            })?;
 
         // Update the running Topsi instance config
         let topsi_instance = TOPSI_INSTANCE.get();
@@ -142,9 +164,18 @@ pub async fn update_user_settings(
     let pool = &state.db().pool;
     let user_id = access_ctx.user_id.to_string();
 
-    let mode = request.default_confirmation_mode.as_deref().unwrap_or("confirm_destructive");
-    if !matches!(mode, "always_confirm" | "confirm_destructive" | "autonomous") {
-        return Err(ApiError::BadRequest(format!("Invalid confirmation mode: '{}'. Must be 'always_confirm', 'confirm_destructive', or 'autonomous'", mode)));
+    let mode = request
+        .default_confirmation_mode
+        .as_deref()
+        .unwrap_or("confirm_destructive");
+    if !matches!(
+        mode,
+        "always_confirm" | "confirm_destructive" | "autonomous"
+    ) {
+        return Err(ApiError::BadRequest(format!(
+            "Invalid confirmation mode: '{}'. Must be 'always_confirm', 'confirm_destructive', or 'autonomous'",
+            mode
+        )));
     }
 
     // Validate per_tool_overrides shape: must be a flat object of string -> string
@@ -152,11 +183,16 @@ pub async fn update_user_settings(
         if let Some(obj) = overrides.as_object() {
             for (key, val) in obj {
                 if !val.is_string() {
-                    return Err(ApiError::BadRequest(format!("per_tool_overrides value for '{}' must be a string", key)));
+                    return Err(ApiError::BadRequest(format!(
+                        "per_tool_overrides value for '{}' must be a string",
+                        key
+                    )));
                 }
             }
         } else {
-            return Err(ApiError::BadRequest("per_tool_overrides must be a JSON object".to_string()));
+            return Err(ApiError::BadRequest(
+                "per_tool_overrides must be a JSON object".to_string(),
+            ));
         }
     }
 

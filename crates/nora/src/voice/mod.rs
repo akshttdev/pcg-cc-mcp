@@ -55,7 +55,7 @@ use chrono::{DateTime, Utc};
 //     MeshVoiceMessage, MeshVoicePayload, VoiceChannel, VoiceChannelEvent, VoiceChannelSession,
 // };
 pub use config::{AudioConfig, STTConfig, STTProvider, TTSConfig, TTSProvider, VoiceConfig};
-pub use diarization::{DiarizationEngine, DiarizationConfig, DiarizedSegment, AlignedWord};
+pub use diarization::{AlignedWord, DiarizationConfig, DiarizationEngine, DiarizedSegment};
 pub use engine::VoiceEngine;
 // pub use gateway::{
 //     CommandContext, CommandHandler, CommandResponse, ConversationTurn, GatewaySession,

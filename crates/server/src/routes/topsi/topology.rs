@@ -18,9 +18,7 @@ pub async fn get_topology_overview(
     let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
     let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
 
-    let topsi_request = TopsiRequest::new(TopsiRequestType::GetTopology {
-        project_id: None,
-    });
+    let topsi_request = TopsiRequest::new(TopsiRequestType::GetTopology { project_id: None });
 
     let response = topsi
         .process_request(topsi_request, &user_context, None)
@@ -66,7 +64,11 @@ pub async fn get_project_topology(
     let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
 
     // Verify access
-    if !topsi.access_control.can_access_project(&user_context, project_id).await {
+    if !topsi
+        .access_control
+        .can_access_project(&user_context, project_id)
+        .await
+    {
         return Err(ApiError::Forbidden(format!(
             "Access denied to project {}",
             project_id
@@ -109,9 +111,7 @@ pub async fn detect_issues(
     let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
     let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
 
-    let topsi_request = TopsiRequest::new(TopsiRequestType::DetectIssues {
-        project_id: None,
-    });
+    let topsi_request = TopsiRequest::new(TopsiRequestType::DetectIssues { project_id: None });
 
     let response = topsi
         .process_request(topsi_request, &user_context, None)
@@ -155,7 +155,11 @@ pub async fn detect_project_issues(
     let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
 
     // Verify access
-    if !topsi.access_control.can_access_project(&user_context, project_id).await {
+    if !topsi
+        .access_control
+        .can_access_project(&user_context, project_id)
+        .await
+    {
         return Err(ApiError::Forbidden(format!(
             "Access denied to project {}",
             project_id
@@ -277,7 +281,11 @@ pub async fn get_project_recommendations(
     let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
 
     // Verify access
-    if !topsi.access_control.can_access_project(&user_context, project_id).await {
+    if !topsi
+        .access_control
+        .can_access_project(&user_context, project_id)
+        .await
+    {
         return Err(ApiError::Forbidden(format!(
             "Access denied to project {}",
             project_id

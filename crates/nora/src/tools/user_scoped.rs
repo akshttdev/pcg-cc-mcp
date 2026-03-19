@@ -1,7 +1,8 @@
 //! User-scoped tool execution with project membership validation
 
-use super::ExecutiveTools;
 use uuid::Uuid;
+
+use super::ExecutiveTools;
 
 #[allow(dead_code)]
 impl ExecutiveTools {
@@ -17,7 +18,9 @@ impl ExecutiveTools {
             "create_project" => {
                 let project_name = match arguments.get("name").and_then(|v| v.as_str()) {
                     Some(n) => n,
-                    None => return serde_json::json!({"success": false, "error": "Missing project name"}),
+                    None => {
+                        return serde_json::json!({"success": false, "error": "Missing project name"})
+                    }
                 };
                 let project_id = Uuid::new_v4();
                 let slug = project_name.to_lowercase().replace(' ', "-");
@@ -52,7 +55,9 @@ impl ExecutiveTools {
                             "project_id": project_id.to_string()
                         })
                     }
-                    Err(e) => serde_json::json!({"success": false, "error": format!("Failed to create project: {}", e)}),
+                    Err(e) => {
+                        serde_json::json!({"success": false, "error": format!("Failed to create project: {}", e)})
+                    }
                 }
             }
             "list_my_projects" => {
@@ -76,29 +81,39 @@ impl ExecutiveTools {
 
                 match projects {
                     Ok(rows) => {
-                        let project_list: Vec<serde_json::Value> = rows.iter().map(|p| {
-                            serde_json::json!({
-                                "id": p.id.to_string(),
-                                "name": p.name,
-                                "slug": p.slug
+                        let project_list: Vec<serde_json::Value> = rows
+                            .iter()
+                            .map(|p| {
+                                serde_json::json!({
+                                    "id": p.id.to_string(),
+                                    "name": p.name,
+                                    "slug": p.slug
+                                })
                             })
-                        }).collect();
+                            .collect();
                         serde_json::json!({"success": true, "projects": project_list, "count": project_list.len()})
                     }
-                    Err(e) => serde_json::json!({"success": false, "error": format!("Failed to list projects: {}", e)}),
+                    Err(e) => {
+                        serde_json::json!({"success": false, "error": format!("Failed to list projects: {}", e)})
+                    }
                 }
             }
             "create_task" => {
                 let project_name = match arguments.get("project_name").and_then(|v| v.as_str()) {
                     Some(n) => n,
-                    None => return serde_json::json!({"success": false, "error": "Missing project_name"}),
+                    None => {
+                        return serde_json::json!({"success": false, "error": "Missing project_name"})
+                    }
                 };
                 let title = match arguments.get("title").and_then(|v| v.as_str()) {
                     Some(t) => t,
                     None => return serde_json::json!({"success": false, "error": "Missing title"}),
                 };
                 let description = arguments.get("description").and_then(|v| v.as_str());
-                let priority = arguments.get("priority").and_then(|v| v.as_str()).unwrap_or("medium");
+                let priority = arguments
+                    .get("priority")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("medium");
 
                 // Find project by name and verify membership
                 #[derive(sqlx::FromRow)]
@@ -118,8 +133,12 @@ impl ExecutiveTools {
 
                 let project_id = match project {
                     Ok(Some(p)) => p.id,
-                    Ok(None) => return serde_json::json!({"success": false, "error": format!("Project '{}' not found or you don't have access", project_name)}),
-                    Err(e) => return serde_json::json!({"success": false, "error": format!("Database error: {}", e)}),
+                    Ok(None) => {
+                        return serde_json::json!({"success": false, "error": format!("Project '{}' not found or you don't have access", project_name)})
+                    }
+                    Err(e) => {
+                        return serde_json::json!({"success": false, "error": format!("Database error: {}", e)})
+                    }
                 };
 
                 // Find default board for project
@@ -161,13 +180,17 @@ impl ExecutiveTools {
                         "task_id": task_id.to_string(),
                         "project_id": project_id.to_string()
                     }),
-                    Err(e) => serde_json::json!({"success": false, "error": format!("Failed to create task: {}", e)}),
+                    Err(e) => {
+                        serde_json::json!({"success": false, "error": format!("Failed to create task: {}", e)})
+                    }
                 }
             }
             "get_project_tasks" => {
                 let project_name = match arguments.get("project_name").and_then(|v| v.as_str()) {
                     Some(n) => n,
-                    None => return serde_json::json!({"success": false, "error": "Missing project_name"}),
+                    None => {
+                        return serde_json::json!({"success": false, "error": "Missing project_name"})
+                    }
                 };
                 let status_filter = arguments.get("status_filter").and_then(|v| v.as_str());
 
@@ -189,8 +212,12 @@ impl ExecutiveTools {
 
                 let project_id = match project {
                     Ok(Some(p)) => p.id,
-                    Ok(None) => return serde_json::json!({"success": false, "error": format!("Project '{}' not found or you don't have access", project_name)}),
-                    Err(e) => return serde_json::json!({"success": false, "error": format!("Database error: {}", e)}),
+                    Ok(None) => {
+                        return serde_json::json!({"success": false, "error": format!("Project '{}' not found or you don't have access", project_name)})
+                    }
+                    Err(e) => {
+                        return serde_json::json!({"success": false, "error": format!("Database error: {}", e)})
+                    }
                 };
 
                 #[derive(sqlx::FromRow, serde::Serialize)]
@@ -223,16 +250,19 @@ impl ExecutiveTools {
 
                 match query {
                     Ok(tasks) => {
-                        let task_list: Vec<serde_json::Value> = tasks.iter().map(|t| {
-                            serde_json::json!({
-                                "id": t.id.to_string(),
-                                "title": t.title,
-                                "description": t.description,
-                                "status": t.status,
-                                "priority": t.priority,
-                                "created_at": t.created_at
+                        let task_list: Vec<serde_json::Value> = tasks
+                            .iter()
+                            .map(|t| {
+                                serde_json::json!({
+                                    "id": t.id.to_string(),
+                                    "title": t.title,
+                                    "description": t.description,
+                                    "status": t.status,
+                                    "priority": t.priority,
+                                    "created_at": t.created_at
+                                })
                             })
-                        }).collect();
+                            .collect();
                         serde_json::json!({
                             "success": true,
                             "project_name": project_name,
@@ -240,13 +270,17 @@ impl ExecutiveTools {
                             "tasks": task_list
                         })
                     }
-                    Err(e) => serde_json::json!({"success": false, "error": format!("Failed to get tasks: {}", e)}),
+                    Err(e) => {
+                        serde_json::json!({"success": false, "error": format!("Failed to get tasks: {}", e)})
+                    }
                 }
             }
             "update_task_status" => {
                 let task_id_str = match arguments.get("task_id").and_then(|v| v.as_str()) {
                     Some(id) => id,
-                    None => return serde_json::json!({"success": false, "error": "Missing task_id"}),
+                    None => {
+                        return serde_json::json!({"success": false, "error": "Missing task_id"})
+                    }
                 };
                 let status = match arguments.get("status").and_then(|v| v.as_str()) {
                     Some(s) => s,
@@ -255,7 +289,9 @@ impl ExecutiveTools {
 
                 let task_id = match Uuid::parse_str(task_id_str) {
                     Ok(id) => id,
-                    Err(_) => return serde_json::json!({"success": false, "error": "Invalid task_id format"}),
+                    Err(_) => {
+                        return serde_json::json!({"success": false, "error": "Invalid task_id format"})
+                    }
                 };
 
                 // Verify user has access to the project this task belongs to
@@ -284,12 +320,19 @@ impl ExecutiveTools {
                 .await;
 
                 match result {
-                    Ok(_) => serde_json::json!({"success": true, "message": format!("Task status updated to '{}'", status)}),
-                    Err(e) => serde_json::json!({"success": false, "error": format!("Failed to update task: {}", e)}),
+                    Ok(_) => {
+                        serde_json::json!({"success": true, "message": format!("Task status updated to '{}'", status)})
+                    }
+                    Err(e) => {
+                        serde_json::json!({"success": false, "error": format!("Failed to update task: {}", e)})
+                    }
                 }
             }
             "search_web" => {
-                let query = arguments.get("query").and_then(|v| v.as_str()).unwrap_or("");
+                let query = arguments
+                    .get("query")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 serde_json::json!({
                     "success": true,
                     "message": format!("Web search for '{}' - search integration pending", query),
@@ -306,7 +349,10 @@ impl ExecutiveTools {
             }
             "render_page" => {
                 let url = arguments.get("url").and_then(|v| v.as_str()).unwrap_or("");
-                let include_html = arguments.get("include_html").and_then(|v| v.as_bool()).unwrap_or(false);
+                let include_html = arguments
+                    .get("include_html")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 serde_json::json!({
                     "success": true,
                     "message": format!("Rendering '{}' - use execute_tool for full browser rendering", url),

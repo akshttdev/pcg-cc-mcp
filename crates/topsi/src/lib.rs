@@ -19,38 +19,36 @@ pub mod context;
 pub mod meeting;
 pub mod platform_data;
 pub mod prioritization;
-pub mod topology;
 pub mod tools;
+pub mod topology;
 pub mod workflow_builder;
 
 pub use agent::{
-    TopsiAgent, TopsiRequest, TopsiRequestType, TaskExecutionBridge,
-    access_control::{AccessControl, AccessScope, UserContext, ProjectAccess, ProjectRole},
+    access_control::{AccessControl, AccessScope, ProjectAccess, ProjectRole, UserContext},
+    TaskExecutionBridge, TopsiAgent, TopsiRequest, TopsiRequestType,
 };
-pub use platform_data::PlatformDataService;
 pub use config::TopsiConfig;
 pub use context::TopologyContext;
+pub use meeting::{
+    ActionItem, MeetingManager, MeetingNotes, MeetingState, MeetingTranscriptEntry, SpeakerInfo,
+    WakeWordResult,
+};
+pub use platform_data::PlatformDataService;
+pub use prioritization::{
+    EFECalculator, ExpectedFreeEnergy, Goal as PrioritizationGoal, GoalState, GoalType,
+    PriorityCalculator, PriorityLevel, PriorityRecommender, PriorityScore, Recommendation,
+    RecommendationBatch,
+};
+use serde::{Deserialize, Serialize};
 pub use topology::{
-    graph::{TopologyGraph, GraphNode, GraphEdge, ClusterInfo, RouteInfo, ProjectTopology},
+    clusters::ClusterManager,
     engine::TopologyEngine,
+    graph::{ClusterInfo, GraphEdge, GraphNode, ProjectTopology, RouteInfo, TopologyGraph},
+    invariants::{InvariantChecker, InvariantViolation},
     patterns::PatternDetector,
     routing::RoutePlanner,
-    clusters::ClusterManager,
-    invariants::{InvariantChecker, InvariantViolation},
     voice::VoiceTopology,
 };
-pub use meeting::{
-    MeetingManager, MeetingState, MeetingTranscriptEntry, MeetingNotes,
-    ActionItem, SpeakerInfo, WakeWordResult,
-};
-pub use prioritization::{
-    Goal as PrioritizationGoal, GoalState, GoalType,
-    ExpectedFreeEnergy, EFECalculator,
-    PriorityScore, PriorityCalculator, PriorityLevel,
-    Recommendation, RecommendationBatch, PriorityRecommender,
-};
-
-use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -141,17 +139,51 @@ pub struct ToolCallResult {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub enum TopologyChange {
-    NodeAdded { node_id: Uuid, node_type: String },
-    NodeRemoved { node_id: Uuid },
-    NodeStatusChanged { node_id: Uuid, old_status: String, new_status: String },
-    EdgeAdded { edge_id: Uuid, from: Uuid, to: Uuid },
-    EdgeRemoved { edge_id: Uuid },
-    EdgeStatusChanged { edge_id: Uuid, old_status: String, new_status: String },
-    ClusterFormed { cluster_id: Uuid, name: String, node_count: usize },
-    ClusterDissolved { cluster_id: Uuid },
-    RouteCreated { route_id: Uuid, goal: String, path_length: usize },
-    RouteCompleted { route_id: Uuid },
-    RouteFailed { route_id: Uuid, reason: String },
+    NodeAdded {
+        node_id: Uuid,
+        node_type: String,
+    },
+    NodeRemoved {
+        node_id: Uuid,
+    },
+    NodeStatusChanged {
+        node_id: Uuid,
+        old_status: String,
+        new_status: String,
+    },
+    EdgeAdded {
+        edge_id: Uuid,
+        from: Uuid,
+        to: Uuid,
+    },
+    EdgeRemoved {
+        edge_id: Uuid,
+    },
+    EdgeStatusChanged {
+        edge_id: Uuid,
+        old_status: String,
+        new_status: String,
+    },
+    ClusterFormed {
+        cluster_id: Uuid,
+        name: String,
+        node_count: usize,
+    },
+    ClusterDissolved {
+        cluster_id: Uuid,
+    },
+    RouteCreated {
+        route_id: Uuid,
+        goal: String,
+        path_length: usize,
+    },
+    RouteCompleted {
+        route_id: Uuid,
+    },
+    RouteFailed {
+        route_id: Uuid,
+        reason: String,
+    },
 }
 
 /// Summary of the current topology state

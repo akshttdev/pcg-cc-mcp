@@ -38,10 +38,19 @@ use utils::response::ApiResponse;
 // TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::load_task_middleware, middleware::access_control::AccessContext};
+use crate::{
+    DeploymentImpl,
+    error::ApiError,
+    middleware::{access_control::AccessContext, load_task_middleware},
+};
 
 /// Broadcast a task event to all connected WebSocket clients
-fn broadcast_task_event(deployment: &DeploymentImpl, op: &str, task_id: &str, task: Option<&TaskWithAttemptStatus>) {
+fn broadcast_task_event(
+    deployment: &DeploymentImpl,
+    op: &str,
+    task_id: &str,
+    task: Option<&TaskWithAttemptStatus>,
+) {
     let patch = match op {
         "add" | "replace" => {
             if let Some(t) = task {
@@ -102,9 +111,11 @@ pub async fn get_tasks(
         )
         .await?;
 
-    let tasks =
-        Task::find_by_project_id_with_attempt_status(&deployment.db().pool, &query.project_id.to_string())
-            .await?;
+    let tasks = Task::find_by_project_id_with_attempt_status(
+        &deployment.db().pool,
+        &query.project_id.to_string(),
+    )
+    .await?;
 
     Ok(ResponseJson(ApiResponse::success(tasks)))
 }
@@ -187,7 +198,8 @@ pub async fn create_task(
     );
 
     if let Some(ref pod_id) = payload.pod_id {
-        let pod_uuid = Uuid::parse_str(pod_id).map_err(|e| ApiError::BadRequest(format!("Invalid pod_id: {e}")))?;
+        let pod_uuid = Uuid::parse_str(pod_id)
+            .map_err(|e| ApiError::BadRequest(format!("Invalid pod_id: {e}")))?;
         match ProjectPod::find_by_id(&deployment.db().pool, pod_uuid).await? {
             Some(pod) if pod.project_id.to_string() == payload.project_id => {}
             Some(_) => {
@@ -218,8 +230,13 @@ pub async fn create_task(
     let task = Task::create(&deployment.db().pool, &payload, &id).await?;
 
     if let Some(image_ids) = &payload.image_ids {
-        let task_uuid = Uuid::parse_str(&task.id).map_err(|e| ApiError::BadRequest(e.to_string()))?;
-        let image_uuids: Vec<Uuid> = image_ids.iter().map(|s| Uuid::parse_str(s)).collect::<Result<_, _>>().map_err(|e| ApiError::BadRequest(format!("Invalid image_id: {e}")))?;
+        let task_uuid =
+            Uuid::parse_str(&task.id).map_err(|e| ApiError::BadRequest(e.to_string()))?;
+        let image_uuids: Vec<Uuid> = image_ids
+            .iter()
+            .map(|s| Uuid::parse_str(s))
+            .collect::<Result<_, _>>()
+            .map_err(|e| ApiError::BadRequest(format!("Invalid image_id: {e}")))?;
         TaskImage::associate_many_dedup(&deployment.db().pool, task_uuid, &image_uuids).await?;
     }
 
@@ -234,13 +251,24 @@ pub async fn create_task(
             Ok(Some(config)) => {
                 let watcher_ids = config.get_auto_watch_agent_ids();
                 for watcher_id in &watcher_ids {
-                    if let Err(e) = Task::add_agent_watcher(&deployment.db().pool, &task.id, watcher_id).await {
-                        tracing::warn!("Failed to auto-register agent watcher {} on task {}: {}", watcher_id, task.id, e);
+                    if let Err(e) =
+                        Task::add_agent_watcher(&deployment.db().pool, &task.id, watcher_id).await
+                    {
+                        tracing::warn!(
+                            "Failed to auto-register agent watcher {} on task {}: {}",
+                            watcher_id,
+                            task.id,
+                            e
+                        );
                     }
                 }
             }
             Ok(None) => {} // No config for this agent — skip
-            Err(e) => tracing::warn!("Error looking up agent execution config for {}: {}", agent_id, e),
+            Err(e) => tracing::warn!(
+                "Error looking up agent execution config for {}: {}",
+                agent_id,
+                e
+            ),
         }
     }
 
@@ -306,7 +334,8 @@ pub async fn create_task_and_start(
     } = payload;
 
     if let Some(ref pod_id) = task_payload.pod_id {
-        let pod_uuid = Uuid::parse_str(pod_id).map_err(|e| ApiError::BadRequest(format!("Invalid pod_id: {e}")))?;
+        let pod_uuid = Uuid::parse_str(pod_id)
+            .map_err(|e| ApiError::BadRequest(format!("Invalid pod_id: {e}")))?;
         match ProjectPod::find_by_id(&deployment.db().pool, pod_uuid).await? {
             Some(pod) if pod.project_id.to_string() == task_payload.project_id => {}
             Some(_) => {
@@ -337,8 +366,13 @@ pub async fn create_task_and_start(
     let task = Task::create(&deployment.db().pool, &task_payload, &task_id).await?;
 
     if let Some(image_ids) = &task_payload.image_ids {
-        let task_uuid = Uuid::parse_str(&task.id).map_err(|e| ApiError::BadRequest(e.to_string()))?;
-        let image_uuids: Vec<Uuid> = image_ids.iter().map(|s| Uuid::parse_str(s)).collect::<Result<_, _>>().map_err(|e| ApiError::BadRequest(format!("Invalid image_id: {e}")))?;
+        let task_uuid =
+            Uuid::parse_str(&task.id).map_err(|e| ApiError::BadRequest(e.to_string()))?;
+        let image_uuids: Vec<Uuid> = image_ids
+            .iter()
+            .map(|s| Uuid::parse_str(s))
+            .collect::<Result<_, _>>()
+            .map_err(|e| ApiError::BadRequest(format!("Invalid image_id: {e}")))?;
         TaskImage::associate_many(&deployment.db().pool, task_uuid, &image_uuids).await?;
     }
 
@@ -352,8 +386,7 @@ pub async fn create_task_and_start(
             .await
         {
             for watcher_id in config.get_auto_watch_agent_ids() {
-                let _ = Task::add_agent_watcher(&deployment.db().pool, &task.id, &watcher_id)
-                    .await;
+                let _ = Task::add_agent_watcher(&deployment.db().pool, &task.id, &watcher_id).await;
             }
         }
     }
@@ -378,11 +411,14 @@ pub async fn create_task_and_start(
     // This is a conservative estimate; actual cost will be calculated after LLM usage
     const ESTIMATED_VIBE_COST: i64 = 100; // ~$0.10 USD worth of VIBE
 
-    let vibe_bypass = crate::helpers::vibe_check::is_vibe_bypass_active(&deployment.db().pool).await;
+    let vibe_bypass =
+        crate::helpers::vibe_check::is_vibe_bypass_active(&deployment.db().pool).await;
 
     // Check project VIBE budget
     if !vibe_bypass {
-        if let Some(project) = Project::find_by_id(&deployment.db().pool, &task_payload.project_id.to_string()).await? {
+        if let Some(project) =
+            Project::find_by_id(&deployment.db().pool, &task_payload.project_id.to_string()).await?
+        {
             if !project.has_vibe_budget(ESTIMATED_VIBE_COST) {
                 let remaining = project.remaining_vibe().unwrap_or(0);
                 return Err(ApiError::PaymentRequired(format!(
@@ -420,7 +456,8 @@ pub async fn create_task_and_start(
             ));
         }
 
-        let task_uuid = Uuid::parse_str(&task.id).map_err(|e| ApiError::BadRequest(e.to_string()))?;
+        let task_uuid =
+            Uuid::parse_str(&task.id).map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
         let metadata = json!({
             "task_id": &task.id,
@@ -510,7 +547,12 @@ pub async fn create_task_and_start(
     };
 
     // Broadcast task creation to WebSocket clients
-    broadcast_task_event(&deployment, "add", &task_with_status.id, Some(&task_with_status));
+    broadcast_task_event(
+        &deployment,
+        "add",
+        &task_with_status.id,
+        Some(&task_with_status),
+    );
 
     Ok(ResponseJson(ApiResponse::success(task_with_status)))
 }
@@ -521,7 +563,9 @@ pub async fn update_task(
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<UpdateTask>,
 ) -> Result<ResponseJson<ApiResponse<Task>>, ApiError> {
-    access_context.require_editor(&deployment.db().pool, &existing_task.project_id).await?;
+    access_context
+        .require_editor(&deployment.db().pool, &existing_task.project_id)
+        .await?;
 
     // Capture old state for activity logging before fields get moved
     let old_status = existing_task.status.clone();
@@ -545,7 +589,8 @@ pub async fn update_task(
         .or(existing_task.parent_task_attempt);
     let pod_change = payload.pod_id.clone();
     if let Some(Some(ref pod_id)) = pod_change {
-        let pod_uuid = Uuid::parse_str(pod_id).map_err(|e| ApiError::BadRequest(format!("Invalid pod_id: {e}")))?;
+        let pod_uuid = Uuid::parse_str(pod_id)
+            .map_err(|e| ApiError::BadRequest(format!("Invalid pod_id: {e}")))?;
         match ProjectPod::find_by_id(&deployment.db().pool, pod_uuid).await? {
             Some(pod) if pod.project_id.to_string() == existing_task.project_id => {}
             Some(_) => {
@@ -578,12 +623,16 @@ pub async fn update_task(
     };
     let priority = payload.priority.unwrap_or(existing_task.priority.clone());
     let assignee_id = payload.assignee_id.or(existing_task.assignee_id.clone());
-    let assignee_type = payload.assignee_type.or(existing_task.assignee_type.clone());
+    let assignee_type = payload
+        .assignee_type
+        .or(existing_task.assignee_type.clone());
     let assigned_agent = payload
         .assigned_agent
         .or(existing_task.assigned_agent.clone());
     let assigned_mcps = if let Some(mcps) = &payload.assigned_mcps {
-        serde_json::to_string(mcps).ok().or_else(|| existing_task.assigned_mcps.clone())
+        serde_json::to_string(mcps)
+            .ok()
+            .or_else(|| existing_task.assigned_mcps.clone())
     } else {
         existing_task.assigned_mcps.clone()
     };
@@ -593,9 +642,14 @@ pub async fn update_task(
     let approval_status = payload
         .approval_status
         .or(existing_task.approval_status.clone());
-    let parent_task_id = payload.parent_task_id.map(|u| u.to_string()).or(existing_task.parent_task_id);
+    let parent_task_id = payload
+        .parent_task_id
+        .map(|u| u.to_string())
+        .or(existing_task.parent_task_id);
     let tags = if let Some(tags) = &payload.tags {
-        serde_json::to_string(tags).ok().or_else(|| existing_task.tags.clone())
+        serde_json::to_string(tags)
+            .ok()
+            .or_else(|| existing_task.tags.clone())
     } else {
         existing_task.tags.clone()
     };
@@ -654,8 +708,13 @@ pub async fn update_task(
     .await?;
 
     if let Some(image_ids) = &payload.image_ids {
-        let task_uuid = Uuid::parse_str(&task.id).map_err(|e| ApiError::BadRequest(e.to_string()))?;
-        let image_uuids: Vec<Uuid> = image_ids.iter().map(|s| Uuid::parse_str(s)).collect::<Result<_, _>>().map_err(|e| ApiError::BadRequest(format!("Invalid image_id: {e}")))?;
+        let task_uuid =
+            Uuid::parse_str(&task.id).map_err(|e| ApiError::BadRequest(e.to_string()))?;
+        let image_uuids: Vec<Uuid> = image_ids
+            .iter()
+            .map(|s| Uuid::parse_str(s))
+            .collect::<Result<_, _>>()
+            .map_err(|e| ApiError::BadRequest(format!("Invalid image_id: {e}")))?;
         TaskImage::delete_by_task_id(&deployment.db().pool, task_uuid).await?;
         TaskImage::associate_many_dedup(&deployment.db().pool, task_uuid, &image_uuids).await?;
     }
@@ -664,23 +723,51 @@ pub async fn update_task(
     {
         let status_changed = old_status != task.status;
         let (action, metadata) = if status_changed {
-            ("status_changed".to_string(), Some(json!({
-                "from": old_status,
-                "to": task.status,
-            })))
+            (
+                "status_changed".to_string(),
+                Some(json!({
+                    "from": old_status,
+                    "to": task.status,
+                })),
+            )
         } else {
             // Build list of changed fields
             let mut changed = Vec::new();
-            if old_title != task.title { changed.push("title"); }
-            if old_description != task.description { changed.push("description"); }
-            if old_priority != task.priority { changed.push("priority"); }
-            if old_assignee_id != task.assignee_id { changed.push("assignee_id"); }
-            if old_assigned_agent != task.assigned_agent { changed.push("assigned_agent"); }
-            if old_due_date != task.due_date { changed.push("due_date"); }
-            if old_tags != task.tags { changed.push("tags"); }
-            if old_pod_id != task.pod_id { changed.push("pod_id"); }
-            if old_board_id != task.board_id { changed.push("board_id"); }
-            ("updated".to_string(), if changed.is_empty() { None } else { Some(json!({"changed_fields": changed})) })
+            if old_title != task.title {
+                changed.push("title");
+            }
+            if old_description != task.description {
+                changed.push("description");
+            }
+            if old_priority != task.priority {
+                changed.push("priority");
+            }
+            if old_assignee_id != task.assignee_id {
+                changed.push("assignee_id");
+            }
+            if old_assigned_agent != task.assigned_agent {
+                changed.push("assigned_agent");
+            }
+            if old_due_date != task.due_date {
+                changed.push("due_date");
+            }
+            if old_tags != task.tags {
+                changed.push("tags");
+            }
+            if old_pod_id != task.pod_id {
+                changed.push("pod_id");
+            }
+            if old_board_id != task.board_id {
+                changed.push("board_id");
+            }
+            (
+                "updated".to_string(),
+                if changed.is_empty() {
+                    None
+                } else {
+                    Some(json!({"changed_fields": changed}))
+                },
+            )
         };
         let log_entry = CreateActivityLog {
             task_id: task.id.clone(),
@@ -708,10 +795,14 @@ pub async fn update_task(
                 Ok(u) => u,
                 Err(_) => return,
             };
-            let attempts = TaskAttempt::fetch_all(pool, Some(task_uuid)).await.unwrap_or_default();
+            let attempts = TaskAttempt::fetch_all(pool, Some(task_uuid))
+                .await
+                .unwrap_or_default();
             let mut pr_info = None;
             for attempt in &attempts {
-                if let Ok(Some(merge)) = db::models::merge::Merge::find_latest_by_task_attempt_id(pool, attempt.id).await {
+                if let Ok(Some(merge)) =
+                    db::models::merge::Merge::find_latest_by_task_attempt_id(pool, attempt.id).await
+                {
                     if let db::models::merge::Merge::Pr(pr_merge) = &merge {
                         let url = &pr_merge.pr_info.url;
                         let number = pr_merge.pr_info.number;
@@ -727,7 +818,9 @@ pub async fn update_task(
                             })
                             .unwrap_or_else(|| ("unknown".to_string(), "unknown".to_string()));
                         if owner == "unknown" && repo == "unknown" {
-                            tracing::warn!("Skipping watcher review: could not parse owner/repo from PR URL: {url}");
+                            tracing::warn!(
+                                "Skipping watcher review: could not parse owner/repo from PR URL: {url}"
+                            );
                             continue;
                         }
                         pr_info = Some(services::services::qa_review::PrCreatedInfo {
@@ -744,8 +837,12 @@ pub async fn update_task(
             match pr_info {
                 Some(pr) => {
                     services::services::qa_review::spawn_watcher_reviews(
-                        pool, dep.container(), &task_id, &pr,
-                    ).await;
+                        pool,
+                        dep.container(),
+                        &task_id,
+                        &pr,
+                    )
+                    .await;
                 }
                 None => {
                     tracing::warn!(
@@ -756,7 +853,8 @@ pub async fn update_task(
 
             // Broadcast updated task state after watcher triggering so frontend
             // receives the collaborator state change via WebSocket
-            if let Ok(tasks) = Task::find_by_project_id_with_attempt_status(pool, &project_id).await {
+            if let Ok(tasks) = Task::find_by_project_id_with_attempt_status(pool, &project_id).await
+            {
                 if let Some(task_with_status) = tasks.into_iter().find(|t| t.id == task_id) {
                     broadcast_task_event(&dep, "replace", &task_id, Some(&task_with_status));
                 }
@@ -775,7 +873,9 @@ pub async fn update_task(
 
     // Broadcast task update to WebSocket clients
     // Fetch full TaskWithAttemptStatus for accurate attempt info
-    if let Ok(tasks) = Task::find_by_project_id_with_attempt_status(&deployment.db().pool, &task.project_id).await {
+    if let Ok(tasks) =
+        Task::find_by_project_id_with_attempt_status(&deployment.db().pool, &task.project_id).await
+    {
         if let Some(task_with_status) = tasks.into_iter().find(|t| t.id == task.id) {
             broadcast_task_event(&deployment, "replace", &task.id, Some(&task_with_status));
         }
@@ -786,7 +886,6 @@ pub async fn update_task(
 
 /// Check if all Phase 1 CRM research tasks for a deal are done; if so, auto-generate the BA report.
 async fn check_phase1_completion_and_trigger(pool: &sqlx::SqlitePool, task_id: &str) {
-
     #[derive(sqlx::FromRow)]
     struct TaskMeta {
         crm_deal_id: Option<String>,
@@ -803,8 +902,12 @@ async fn check_phase1_completion_and_trigger(pool: &sqlx::SqlitePool, task_id: &
     .flatten();
 
     let Some(meta) = meta else { return };
-    let Some(deal_id_str) = meta.crm_deal_id else { return };
-    if !meta.title.starts_with("Phase 1 Research:") { return }
+    let Some(deal_id_str) = meta.crm_deal_id else {
+        return;
+    };
+    if !meta.title.starts_with("Phase 1 Research:") {
+        return;
+    }
 
     // Are ALL Phase 1 tasks for this deal now done?
     let pending: i64 = sqlx::query_scalar(
@@ -815,9 +918,14 @@ async fn check_phase1_completion_and_trigger(pool: &sqlx::SqlitePool, task_id: &
     .await
     .unwrap_or(1);
 
-    if pending > 0 { return }
+    if pending > 0 {
+        return;
+    }
 
-    tracing::info!("All Phase 1 tasks done for deal {}, triggering BA report generation", deal_id_str);
+    tracing::info!(
+        "All Phase 1 tasks done for deal {}, triggering BA report generation",
+        deal_id_str
+    );
 
     // Fetch deal + contact for report generation
     #[derive(sqlx::FromRow)]
@@ -836,15 +944,26 @@ async fn check_phase1_completion_and_trigger(pool: &sqlx::SqlitePool, task_id: &
 
     let Some(deal) = deal else { return };
 
-    let deal_uuid = match db_uuid_from_str(&deal_id_str) { Some(u) => u, None => return };
+    let deal_uuid = match db_uuid_from_str(&deal_id_str) {
+        Some(u) => u,
+        None => return,
+    };
     let contact_uuid = deal.crm_contact_id.as_deref().and_then(db_uuid_from_str);
     let project_uuid = deal.project_id.as_deref().and_then(db_uuid_from_str);
 
-    crate::routes::crm_deals::generate_phase1_business_report(pool, deal_uuid, contact_uuid, project_uuid).await;
+    crate::routes::crm_deals::generate_phase1_business_report(
+        pool,
+        deal_uuid,
+        contact_uuid,
+        project_uuid,
+    )
+    .await;
 }
 
 fn db_uuid_from_str(s: &str) -> Option<db::db_uuid::DbUuid> {
-    uuid::Uuid::parse_str(s).ok().map(|u| db::db_uuid::DbUuid::from(u))
+    uuid::Uuid::parse_str(s)
+        .ok()
+        .map(|u| db::db_uuid::DbUuid::from(u))
 }
 
 pub async fn delete_task(
@@ -852,7 +971,9 @@ pub async fn delete_task(
     Extension(task): Extension<Task>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<(StatusCode, ResponseJson<ApiResponse<()>>), ApiError> {
-    access_context.require_editor(&deployment.db().pool, &task.project_id).await?;
+    access_context
+        .require_editor(&deployment.db().pool, &task.project_id)
+        .await?;
 
     // Validate no running execution processes
     let task_uuid = Uuid::parse_str(&task.id).map_err(|e| ApiError::BadRequest(e.to_string()))?;
@@ -935,7 +1056,9 @@ pub async fn approve_task(
     Extension(task): Extension<Task>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Task>>, ApiError> {
-    access_context.require_editor(&deployment.db().pool, &task.project_id).await?;
+    access_context
+        .require_editor(&deployment.db().pool, &task.project_id)
+        .await?;
 
     use db::models::task::ApprovalStatus;
 
@@ -975,7 +1098,9 @@ pub async fn request_changes(
     Extension(task): Extension<Task>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Task>>, ApiError> {
-    access_context.require_editor(&deployment.db().pool, &task.project_id).await?;
+    access_context
+        .require_editor(&deployment.db().pool, &task.project_id)
+        .await?;
 
     use db::models::task::ApprovalStatus;
 
@@ -1038,10 +1163,13 @@ pub async fn get_assigned_to_me(
     let tasks = Task::find_by_assignee(&deployment.db().pool, &user_id_str).await?;
 
     // Collect unique project IDs and fetch project names
-    let mut project_names: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut project_names: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
     for task in &tasks {
         if !project_names.contains_key(&task.project_id) {
-            if let Ok(Some(project)) = Project::find_by_id(&deployment.db().pool, &task.project_id).await {
+            if let Ok(Some(project)) =
+                Project::find_by_id(&deployment.db().pool, &task.project_id).await
+            {
                 project_names.insert(task.project_id.clone(), project.name);
             }
         }
@@ -1067,7 +1195,10 @@ pub async fn get_assigned_to_me(
                 status: status_str,
                 priority: priority_str,
                 due_date: task.due_date.map(|d| d.to_rfc3339()),
-                project_name: project_names.get(&project_id).cloned().unwrap_or_else(|| "Unknown".to_string()),
+                project_name: project_names
+                    .get(&project_id)
+                    .cloned()
+                    .unwrap_or_else(|| "Unknown".to_string()),
                 project_id,
                 description: task.description,
                 assigned_agent: task.assigned_agent,
@@ -1092,10 +1223,13 @@ pub async fn get_created_by_me(
     let tasks = Task::find_by_creator(&deployment.db().pool, &user_id_str).await?;
 
     // Collect unique project IDs and fetch project names
-    let mut project_names: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut project_names: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
     for task in &tasks {
         if !project_names.contains_key(&task.project_id) {
-            if let Ok(Some(project)) = Project::find_by_id(&deployment.db().pool, &task.project_id).await {
+            if let Ok(Some(project)) =
+                Project::find_by_id(&deployment.db().pool, &task.project_id).await
+            {
                 project_names.insert(task.project_id.clone(), project.name);
             }
         }
@@ -1119,7 +1253,10 @@ pub async fn get_created_by_me(
                 status: status_str,
                 priority: priority_str,
                 due_date: task.due_date.map(|d| d.to_rfc3339()),
-                project_name: project_names.get(&project_id).cloned().unwrap_or_else(|| "Unknown".to_string()),
+                project_name: project_names
+                    .get(&project_id)
+                    .cloned()
+                    .unwrap_or_else(|| "Unknown".to_string()),
                 project_id,
                 description: task.description,
                 assigned_agent: task.assigned_agent,
@@ -1138,7 +1275,9 @@ pub async fn reject_task(
     Extension(task): Extension<Task>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Task>>, ApiError> {
-    access_context.require_editor(&deployment.db().pool, &task.project_id).await?;
+    access_context
+        .require_editor(&deployment.db().pool, &task.project_id)
+        .await?;
 
     use db::models::task::ApprovalStatus;
 
@@ -1205,36 +1344,49 @@ pub async fn get_watched_tasks(
     let user_id_str = access_context.user_id.to_string();
     let tasks = Task::find_watched_by_user(&deployment.db().pool, &user_id_str).await?;
 
-    let mut project_names: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut project_names: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
     for task in &tasks {
         if !project_names.contains_key(&task.project_id) {
-            if let Ok(Some(project)) = Project::find_by_id(&deployment.db().pool, &task.project_id).await {
+            if let Ok(Some(project)) =
+                Project::find_by_id(&deployment.db().pool, &task.project_id).await
+            {
                 project_names.insert(task.project_id.clone(), project.name);
             }
         }
     }
 
-    let watched: Vec<AssignedTask> = tasks.into_iter().map(|task| {
-        let priority_str = serde_json::to_value(&task.priority).ok()
-            .and_then(|v| v.as_str().map(String::from)).unwrap_or_else(|| "low".to_string());
-        let status_str = serde_json::to_value(&task.status).ok()
-            .and_then(|v| v.as_str().map(String::from)).unwrap_or_else(|| "todo".to_string());
-        let pid = task.project_id.clone();
-        AssignedTask {
-            id: task.id,
-            title: task.title,
-            status: status_str,
-            priority: priority_str,
-            due_date: task.due_date.map(|d| d.to_rfc3339()),
-            project_name: project_names.get(&pid).cloned().unwrap_or_else(|| "Unknown".to_string()),
-            project_id: pid,
-            description: task.description,
-            assigned_agent: task.assigned_agent,
-            assignee_id: task.assignee_id,
-            created_by: Some(task.created_by),
-            tags: task.tags,
-        }
-    }).collect();
+    let watched: Vec<AssignedTask> = tasks
+        .into_iter()
+        .map(|task| {
+            let priority_str = serde_json::to_value(&task.priority)
+                .ok()
+                .and_then(|v| v.as_str().map(String::from))
+                .unwrap_or_else(|| "low".to_string());
+            let status_str = serde_json::to_value(&task.status)
+                .ok()
+                .and_then(|v| v.as_str().map(String::from))
+                .unwrap_or_else(|| "todo".to_string());
+            let pid = task.project_id.clone();
+            AssignedTask {
+                id: task.id,
+                title: task.title,
+                status: status_str,
+                priority: priority_str,
+                due_date: task.due_date.map(|d| d.to_rfc3339()),
+                project_name: project_names
+                    .get(&pid)
+                    .cloned()
+                    .unwrap_or_else(|| "Unknown".to_string()),
+                project_id: pid,
+                description: task.description,
+                assigned_agent: task.assigned_agent,
+                assignee_id: task.assignee_id,
+                created_by: Some(task.created_by),
+                tags: task.tags,
+            }
+        })
+        .collect();
 
     Ok(ResponseJson(ApiResponse::success(watched)))
 }
@@ -1262,7 +1414,9 @@ pub(crate) async fn add_agent_watcher(
     State(deployment): State<DeploymentImpl>,
     Json(body): Json<AddAgentWatcherRequest>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
-    access_context.require_editor(&deployment.db().pool, &task.project_id).await?;
+    access_context
+        .require_editor(&deployment.db().pool, &task.project_id)
+        .await?;
 
     Agent::find_by_id(&deployment.db().pool, &body.agent_id)
         .await
@@ -1290,7 +1444,9 @@ pub(crate) async fn remove_agent_watcher(
     State(deployment): State<DeploymentImpl>,
     axum::extract::Path(AgentWatcherPath { agent_id, .. }): axum::extract::Path<AgentWatcherPath>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
-    access_context.require_editor(&deployment.db().pool, &task.project_id).await?;
+    access_context
+        .require_editor(&deployment.db().pool, &task.project_id)
+        .await?;
 
     Task::remove_agent_watcher(&deployment.db().pool, &task.id, &agent_id).await?;
     Ok(ResponseJson(ApiResponse::success(())))
@@ -1308,10 +1464,8 @@ pub(crate) async fn list_agent_watchers(
     let all_agents = Agent::find_all(&deployment.db().pool)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to fetch agents: {e}")))?;
-    let agent_map: std::collections::HashMap<String, &Agent> = all_agents
-        .iter()
-        .map(|a| (a.id.to_string(), a))
-        .collect();
+    let agent_map: std::collections::HashMap<String, &Agent> =
+        all_agents.iter().map(|a| (a.id.to_string(), a)).collect();
 
     let mut result = Vec::with_capacity(watchers.len());
     for w in watchers {
@@ -1349,9 +1503,15 @@ pub(crate) async fn update_collaborator(
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
 
-    Task::update_collaborator(pool, &task.id, &body.actor_id, &body.actor_type, &body.action)
-        .await
-        .map_err(|e| ApiError::InternalError(format!("Failed to update collaborator: {e}")))?;
+    Task::update_collaborator(
+        pool,
+        &task.id,
+        &body.actor_id,
+        &body.actor_type,
+        &body.action,
+    )
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to update collaborator: {e}")))?;
 
     // Broadcast updated task state to WebSocket clients
     if let Ok(tasks) = Task::find_by_project_id_with_attempt_status(pool, &task.project_id).await {
@@ -1368,14 +1528,26 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     // instead of .nest() to avoid Axum 0.8 path parameter shadowing static routes
     // (/{task_id} via nest was matching /created-by-me, /assigned-to-me etc.)
     let task_id_routes = Router::new()
-        .route("/{task_id}", get(get_task).put(update_task).delete(delete_task))
+        .route(
+            "/{task_id}",
+            get(get_task).put(update_task).delete(delete_task),
+        )
         .route("/{task_id}/approve", post(approve_task))
         .route("/{task_id}/request-changes", post(request_changes))
         .route("/{task_id}/reject", post(reject_task))
         .route("/{task_id}/watch", post(watch_task).delete(unwatch_task))
-        .route("/{task_id}/collaborators", axum::routing::patch(update_collaborator))
-        .route("/{task_id}/agent-watchers", get(list_agent_watchers).post(add_agent_watcher))
-        .route("/{task_id}/agent-watchers/{agent_id}", delete(remove_agent_watcher))
+        .route(
+            "/{task_id}/collaborators",
+            axum::routing::patch(update_collaborator),
+        )
+        .route(
+            "/{task_id}/agent-watchers",
+            get(list_agent_watchers).post(add_agent_watcher),
+        )
+        .route(
+            "/{task_id}/agent-watchers/{agent_id}",
+            delete(remove_agent_watcher),
+        )
         .layer(from_fn_with_state(deployment.clone(), load_task_middleware));
 
     let inner = Router::new()

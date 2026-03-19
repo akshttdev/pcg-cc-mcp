@@ -37,7 +37,7 @@ pub struct IntakeSubmission {
     pub unique_value_proposition: Option<String>,
     pub elevator_pitch: Option<String>,
     // Story & Values
-    pub brand_values: Option<String>,        // comma-separated
+    pub brand_values: Option<String>, // comma-separated
     pub brand_archetype: Option<String>,
     pub brand_voice: Option<String>,
     pub content_tone: Option<String>,
@@ -45,10 +45,10 @@ pub struct IntakeSubmission {
     pub target_audience: Option<String>,
     pub icp_description: Option<String>,
     pub icp_company_size: Option<String>,
-    pub icp_industries: Option<String>,      // comma-separated
+    pub icp_industries: Option<String>, // comma-separated
     // Competitors
-    pub competitor_brands: Option<String>,   // comma-separated
-    pub differentiators: Option<String>,     // comma-separated
+    pub competitor_brands: Option<String>, // comma-separated
+    pub differentiators: Option<String>,   // comma-separated
     // Colours & Visual
     pub primary_color: Option<String>,
     pub secondary_color: Option<String>,
@@ -64,7 +64,7 @@ pub struct IntakeSubmission {
     pub social_youtube: Option<String>,
     pub social_tiktok: Option<String>,
     // Content
-    pub content_pillars: Option<String>,     // comma-separated
+    pub content_pillars: Option<String>, // comma-separated
     pub market_position: Option<String>,
     pub industry: Option<String>,
 }
@@ -152,7 +152,11 @@ pub async fn submit_intake(
     // Convert comma-separated values to JSON arrays
     let to_json_arr = |s: Option<&String>| -> Option<String> {
         s.map(|v| {
-            let items: Vec<&str> = v.split(',').map(|x| x.trim()).filter(|x| !x.is_empty()).collect();
+            let items: Vec<&str> = v
+                .split(',')
+                .map(|x| x.trim())
+                .filter(|x| !x.is_empty())
+                .collect();
             serde_json::to_string(&items).unwrap_or_else(|_| "[]".into())
         })
     };

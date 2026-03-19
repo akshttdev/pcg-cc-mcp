@@ -115,12 +115,11 @@ impl ExecutionSlot {
         pool: &SqlitePool,
         id: Uuid,
     ) -> Result<Option<Self>, ExecutionSlotError> {
-        let slot = sqlx::query_as::<_, ExecutionSlot>(
-            r#"SELECT * FROM execution_slots WHERE id = ?1"#,
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await?;
+        let slot =
+            sqlx::query_as::<_, ExecutionSlot>(r#"SELECT * FROM execution_slots WHERE id = ?1"#)
+                .bind(id)
+                .fetch_optional(pool)
+                .await?;
 
         Ok(slot)
     }
@@ -258,9 +257,7 @@ impl ExecutionSlot {
         let capacity = Self::get_project_capacity(pool, project_id).await?;
 
         match slot_type {
-            SlotType::CodingAgent | SlotType::Script => {
-                Ok(capacity.available_agent_slots > 0)
-            }
+            SlotType::CodingAgent | SlotType::Script => Ok(capacity.available_agent_slots > 0),
             SlotType::BrowserAgent => Ok(capacity.available_browser_slots > 0),
         }
     }

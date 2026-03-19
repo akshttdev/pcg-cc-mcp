@@ -3,15 +3,18 @@
 //! Provides intelligent "what should I do next?" recommendations
 //! based on Active Inference prioritization.
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use ts_rs::TS;
 use uuid::Uuid;
 
-use super::free_energy::PotentialAction;
-use super::goals::{Goal, GoalType};
-use super::priority_score::{PriorityCalculator, PriorityLevel, PriorityScore};
+use super::{
+    free_energy::PotentialAction,
+    goals::{Goal, GoalType},
+    priority_score::{PriorityCalculator, PriorityLevel, PriorityScore},
+};
 
 /// A recommendation for what to work on next
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -90,11 +93,7 @@ impl PriorityRecommender {
     }
 
     /// Generate recommendations for what to work on next
-    pub fn recommend(
-        &self,
-        actions: &[PotentialAction],
-        goals: &[Goal],
-    ) -> RecommendationBatch {
+    pub fn recommend(&self, actions: &[PotentialAction], goals: &[Goal]) -> RecommendationBatch {
         // Calculate priorities for all actions
         let ranked = self.calculator.rank_tasks(actions, goals);
 
@@ -161,7 +160,11 @@ impl PriorityRecommender {
             .iter()
             .filter(|g| impact.contains_key(&g.id))
             .filter(|g| g.deadline.is_some())
-            .min_by(|a, b| a.urgency().partial_cmp(&b.urgency()).unwrap_or(std::cmp::Ordering::Equal))
+            .min_by(|a, b| {
+                a.urgency()
+                    .partial_cmp(&b.urgency())
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
             .and_then(|g| {
                 g.deadline.map(|d| {
                     let days = (d - Utc::now()).num_days();
@@ -225,7 +228,9 @@ impl PriorityRecommender {
 
         // Goal impact
         if !priority.efe.goal_contributions.is_empty() {
-            let top_goal_id = priority.efe.goal_contributions
+            let top_goal_id = priority
+                .efe
+                .goal_contributions
                 .iter()
                 .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
                 .map(|(id, _)| *id);
@@ -265,7 +270,10 @@ impl PriorityRecommender {
                 follow_ups.push("Gather missing information".to_string());
             }
             if !action.downstream_tasks.is_empty() {
-                follow_ups.push(format!("Check {} blocked tasks", action.downstream_tasks.len()));
+                follow_ups.push(format!(
+                    "Check {} blocked tasks",
+                    action.downstream_tasks.len()
+                ));
             }
         }
 
@@ -288,10 +296,8 @@ impl PriorityRecommender {
             .filter(|r| r.priority.level == PriorityLevel::High)
             .count();
 
-        let urgent_goals: Vec<&GoalSummary> = active_goals
-            .iter()
-            .filter(|g| g.urgency > 0.7)
-            .collect();
+        let urgent_goals: Vec<&GoalSummary> =
+            active_goals.iter().filter(|g| g.urgency > 0.7).collect();
 
         let mut parts = Vec::new();
 
@@ -314,8 +320,15 @@ impl PriorityRecommender {
     }
 
     /// Quick "what's next?" for a single top recommendation
-    pub fn whats_next(&self, actions: &[PotentialAction], goals: &[Goal]) -> Option<Recommendation> {
-        self.recommend(actions, goals).recommendations.into_iter().next()
+    pub fn whats_next(
+        &self,
+        actions: &[PotentialAction],
+        goals: &[Goal],
+    ) -> Option<Recommendation> {
+        self.recommend(actions, goals)
+            .recommendations
+            .into_iter()
+            .next()
     }
 }
 
@@ -349,7 +362,8 @@ pub fn create_conference_goal(
         &format!("Complete coverage for {}", name),
         GoalType::ConferenceCoverage,
         0.9,
-    ).with_deadline(deadline);
+    )
+    .with_deadline(deadline);
 
     goal.state.set_metric(
         "speakers",
@@ -401,9 +415,12 @@ mod tests {
         let goal = create_conference_goal(
             "iConnection",
             Utc::now() + Duration::days(30),
-            46, 100,  // speakers
-            57, 100,  // sponsors
-            0, 20,    // articles
+            46,
+            100, // speakers
+            57,
+            100, // sponsors
+            0,
+            20, // articles
         );
 
         assert!(goal.completion() > 0.0);

@@ -10,12 +10,11 @@ pub mod connectors;
 pub mod publisher;
 pub mod scheduler;
 
-pub use publisher::Publisher;
-pub use scheduler::Scheduler;
-
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use db::models::social_account::SocialPlatform;
+pub use publisher::Publisher;
+pub use scheduler::Scheduler;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 

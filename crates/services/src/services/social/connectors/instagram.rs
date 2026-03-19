@@ -5,6 +5,7 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use db::models::social_account::SocialPlatform;
 use reqwest::Client;
 use serde::Deserialize;
 
@@ -12,7 +13,6 @@ use crate::services::social::{
     EngagementMetrics, OAuthTokens, PlatformConnector, PlatformLimits, PlatformMention,
     ProfileInfo, PublishContent, PublishResult, SocialError,
 };
-use db::models::social_account::SocialPlatform;
 
 const META_AUTH_URL: &str = "https://www.facebook.com/v18.0/dialog/oauth";
 const META_TOKEN_URL: &str = "https://graph.facebook.com/v18.0/oauth/access_token";
@@ -170,10 +170,7 @@ impl PlatformConnector for InstagramConnector {
         // Exchange for long-lived token
         let long_lived_url = format!(
             "{}/oauth/access_token?grant_type=fb_exchange_token&client_id={}&client_secret={}&fb_exchange_token={}",
-            GRAPH_API_BASE,
-            &self.client_id,
-            &self.client_secret,
-            &short_lived.access_token
+            GRAPH_API_BASE, &self.client_id, &self.client_secret, &short_lived.access_token
         );
 
         let long_lived_response = self
@@ -196,7 +193,9 @@ impl PlatformConnector for InstagramConnector {
             access_token: long_lived.access_token,
             refresh_token: None, // Meta uses long-lived tokens instead
             expires_at,
-            token_type: long_lived.token_type.unwrap_or_else(|| "Bearer".to_string()),
+            token_type: long_lived
+                .token_type
+                .unwrap_or_else(|| "Bearer".to_string()),
             scope: None,
         })
     }
@@ -213,8 +212,7 @@ impl PlatformConnector for InstagramConnector {
         // First, get connected Instagram accounts via Facebook pages
         let url = format!(
             "{}/me/accounts?fields=instagram_business_account{{id,username,name,profile_picture_url,followers_count,follows_count,media_count}}&access_token={}",
-            GRAPH_API_BASE,
-            access_token
+            GRAPH_API_BASE, access_token
         );
 
         let response = self
@@ -225,7 +223,9 @@ impl PlatformConnector for InstagramConnector {
             .map_err(|e| SocialError::NetworkError(e.to_string()))?;
 
         if !response.status().is_success() {
-            return Err(SocialError::PlatformError("Failed to fetch Instagram account".to_string()));
+            return Err(SocialError::PlatformError(
+                "Failed to fetch Instagram account".to_string(),
+            ));
         }
 
         // Parse the response to find Instagram account
@@ -239,17 +239,24 @@ impl PlatformConnector for InstagramConnector {
             .as_array()
             .and_then(|pages| pages.first())
             .and_then(|page| page.get("instagram_business_account"))
-            .ok_or_else(|| SocialError::PlatformError("No Instagram business account found".to_string()))?;
+            .ok_or_else(|| {
+                SocialError::PlatformError("No Instagram business account found".to_string())
+            })?;
 
         Ok(ProfileInfo {
             platform_account_id: ig_account["id"].as_str().unwrap_or_default().to_string(),
-            username: ig_account["username"].as_str().unwrap_or_default().to_string(),
+            username: ig_account["username"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
             display_name: ig_account["name"].as_str().map(|s| s.to_string()),
             profile_url: Some(format!(
                 "https://instagram.com/{}",
                 ig_account["username"].as_str().unwrap_or_default()
             )),
-            avatar_url: ig_account["profile_picture_url"].as_str().map(|s| s.to_string()),
+            avatar_url: ig_account["profile_picture_url"]
+                .as_str()
+                .map(|s| s.to_string()),
             follower_count: ig_account["followers_count"].as_i64(),
             following_count: ig_account["follows_count"].as_i64(),
             post_count: ig_account["media_count"].as_i64(),
@@ -272,7 +279,14 @@ impl PlatformConnector for InstagramConnector {
         let mut caption = content.caption.clone();
         if !content.hashtags.is_empty() {
             caption.push_str("\n\n");
-            caption.push_str(&content.hashtags.iter().map(|h| format!("#{}", h)).collect::<Vec<_>>().join(" "));
+            caption.push_str(
+                &content
+                    .hashtags
+                    .iter()
+                    .map(|h| format!("#{}", h))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            );
         }
 
         // Step 1: Create media container
@@ -327,10 +341,7 @@ impl PlatformConnector for InstagramConnector {
             for media_url in &content.media_urls {
                 let is_video = media_url.contains(".mp4") || media_url.contains("video");
 
-                let mut params = vec![
-                    ("is_carousel_item", "true"),
-                    ("access_token", access_token),
-                ];
+                let mut params = vec![("is_carousel_item", "true"), ("access_token", access_token)];
 
                 if is_video {
                     params.push(("media_type", "VIDEO"));
@@ -388,7 +399,10 @@ impl PlatformConnector for InstagramConnector {
 
         let publish_response = self
             .client
-            .post(format!("{}/{}/media_publish", GRAPH_API_BASE, ig_account_id))
+            .post(format!(
+                "{}/{}/media_publish",
+                GRAPH_API_BASE, ig_account_id
+            ))
             .form(&publish_params)
             .send()
             .await
@@ -410,10 +424,7 @@ impl PlatformConnector for InstagramConnector {
         Ok(PublishResult {
             platform: SocialPlatform::Instagram,
             platform_post_id: published.id.clone(),
-            platform_url: Some(format!(
-                "https://instagram.com/p/{}",
-                published.id
-            )),
+            platform_url: Some(format!("https://instagram.com/p/{}", published.id)),
             published_at: Utc::now(),
         })
     }
@@ -425,9 +436,7 @@ impl PlatformConnector for InstagramConnector {
     ) -> Result<EngagementMetrics, SocialError> {
         let url = format!(
             "{}/{}?fields=insights.metric(impressions,reach,saved,likes,comments,shares)&access_token={}",
-            GRAPH_API_BASE,
-            platform_post_id,
-            access_token
+            GRAPH_API_BASE, platform_post_id, access_token
         );
 
         let response = self
@@ -484,10 +493,7 @@ impl PlatformConnector for InstagramConnector {
         mention_id: &str,
         content: &str,
     ) -> Result<String, SocialError> {
-        let params = [
-            ("message", content),
-            ("access_token", access_token),
-        ];
+        let params = [("message", content), ("access_token", access_token)];
 
         let response = self
             .client
@@ -547,9 +553,9 @@ impl PlatformConnector for InstagramConnector {
             max_caption_length: 2200,
             max_hashtags: 30,
             max_mentions: 20,
-            max_images: 10, // Carousel limit
-            max_video_length_seconds: 90, // Reels can be longer
-            max_image_size_bytes: 8 * 1024 * 1024, // 8MB
+            max_images: 10,                          // Carousel limit
+            max_video_length_seconds: 90,            // Reels can be longer
+            max_image_size_bytes: 8 * 1024 * 1024,   // 8MB
             max_video_size_bytes: 100 * 1024 * 1024, // 100MB
             supported_media_types: vec![
                 "image/jpeg".to_string(),

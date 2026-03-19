@@ -180,7 +180,11 @@ impl Config {
             ["server", "url"] => Some(self.server.url.clone()),
             ["server", "api_key"] => self.server.api_key.clone(),
             ["server", "username"] => self.server.username.clone(),
-            ["server", "password"] => self.server.password.as_ref().map(|_| "********".to_string()),
+            ["server", "password"] => self
+                .server
+                .password
+                .as_ref()
+                .map(|_| "********".to_string()),
             ["session", "auto_create_tasks"] => Some(self.session.auto_create_tasks.to_string()),
             ["session", "default_project"] => self.session.default_project.clone(),
             ["display", "theme"] => Some(self.display.theme.clone()),

@@ -87,7 +87,7 @@ export default defineConfig({
     {
       name: browser,
       dependencies: ["setup"],
-      testIgnore: /demos\//,
+      testIgnore: /demos\/|quarantine\//,
       use: {
         ...devices[browserDeviceMap[browser] || "Desktop Chrome"],
         storageState: authFile,

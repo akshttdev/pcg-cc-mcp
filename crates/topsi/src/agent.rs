@@ -3,10 +3,18 @@
 //! Topsi is the platform orchestrator that manages all projects and users
 //! with strict data isolation between clients.
 
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use chrono::{DateTime, Utc};
+// Database models for querying real data (topology/agent tools still use these directly)
+use db::models::project::Project;
+use db::models::{agent::Agent, task::Task};
+// Import Nora's LLM infrastructure
+use nora::brain::{
+    infer_provider_from_model, LLMClient, LLMConfig as NoraLLMConfig, LLMProvider, LLMResponse,
+};
+// Import Nora conversation types for agentic loop
+use nora::brain::{ConversationMessage, ToolResult as NoraToolResult};
 use serde::{Deserialize, Serialize};
 use services::services::agent_channels::{AgentChannelService, ChannelOwner};
 use sqlx::SqlitePool;
@@ -14,24 +22,12 @@ use tokio::sync::RwLock;
 use ts_rs::TS;
 use uuid::Uuid;
 
-use crate::config::TopsiConfig;
-use crate::meeting::{MeetingManager, MeetingTranscriptEntry, MeetingNotes};
-use crate::topology::graph::TopologyGraph;
-use crate::topology::voice::VoiceTopology;
-use crate::tools::get_tool_schemas;
-use crate::{DetectedIssue, Result, TopsiError, TopsiResponse, TopologySummary, ToolCallResult};
-
-// Import Nora conversation types for agentic loop
-use nora::brain::{ConversationMessage, ToolResult as NoraToolResult};
-
-// Database models for querying real data (topology/agent tools still use these directly)
-use db::models::project::Project;
-use db::models::agent::Agent;
-use db::models::task::Task;
-
-// Import Nora's LLM infrastructure
-use nora::brain::{
-    infer_provider_from_model, LLMClient, LLMConfig as NoraLLMConfig, LLMProvider, LLMResponse,
+use crate::{
+    config::TopsiConfig,
+    meeting::{MeetingManager, MeetingNotes, MeetingTranscriptEntry},
+    tools::get_tool_schemas,
+    topology::{graph::TopologyGraph, voice::VoiceTopology},
+    DetectedIssue, Result, ToolCallResult, TopologySummary, TopsiError, TopsiResponse,
 };
 
 /// Topsi's system prompt - defines its role as conversational task orchestrator
@@ -217,7 +213,7 @@ When asked to generate notes (at meeting end), use this structure:
 - If you're unsure about something, say so rather than guessing"#;
 
 pub mod access_control;
-pub use access_control::{AccessControl, AccessScope, UserContext, ProjectAccess};
+pub use access_control::{AccessControl, AccessScope, ProjectAccess, UserContext};
 
 /// Bridge trait for task execution — implemented by the server deployment layer.
 /// This keeps the topsi crate decoupled from deployment/executors internals.
@@ -274,37 +270,63 @@ pub struct TopsiAgent {
 fn describe_tool_action(tool_name: &str, args: &serde_json::Value) -> String {
     match tool_name {
         "delete_task" => {
-            let id = args.get("task_id").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let id = args
+                .get("task_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
             format!("Delete task {}", id)
         }
         "bulk_update_tasks" => {
-            let count = args.get("task_ids").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+            let count = args
+                .get("task_ids")
+                .and_then(|v| v.as_array())
+                .map(|a| a.len())
+                .unwrap_or(0);
             let fields: Vec<&str> = ["status", "priority", "assigned_agent"]
                 .iter()
                 .filter(|f| args.get(**f).is_some())
                 .copied()
                 .collect();
-            format!("Bulk update {} tasks (changing: {})", count, fields.join(", "))
+            format!(
+                "Bulk update {} tasks (changing: {})",
+                count,
+                fields.join(", ")
+            )
         }
         "create_task" => {
-            let title = args.get("title").and_then(|v| v.as_str()).unwrap_or("untitled");
+            let title = args
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("untitled");
             format!("Create task '{}'", title)
         }
         "create_project" => {
-            let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
+            let name = args
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unnamed");
             format!("Create project '{}'", name)
         }
         "create_crm_contact" => {
-            let name = args.get("first_name").and_then(|v| v.as_str()).unwrap_or("");
+            let name = args
+                .get("first_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             let last = args.get("last_name").and_then(|v| v.as_str()).unwrap_or("");
             format!("Create CRM contact '{} {}'", name, last)
         }
         "create_crm_deal" => {
-            let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
+            let name = args
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unnamed");
             format!("Create CRM deal '{}'", name)
         }
         "approve_staged_records" => {
-            let run_id = args.get("run_id").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let run_id = args
+                .get("run_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
             format!("Approve staged records for workflow run {}", run_id)
         }
         _ => format!("Execute {} with args: {}", tool_name, args),
@@ -385,7 +407,10 @@ impl TopsiAgent {
         // Wire agent communication channels (Topsi's own agent-scoped email)
         self.channel_service = Some(Arc::new(AgentChannelService::new(pool.clone())));
         // Initialize platform data service
-        self.platform_data = Some(crate::platform_data::PlatformDataService::new(pool.clone(), None));
+        self.platform_data = Some(crate::platform_data::PlatformDataService::new(
+            pool.clone(),
+            None,
+        ));
         self.db = Some(pool);
         self
     }
@@ -442,42 +467,72 @@ impl TopsiAgent {
         let scope = self.access_control.get_scope(user_context).await;
 
         // Log access for audit
-        self.access_control.log_access(
-            user_context,
-            &format!("{:?}", request.request_type),
-            true,
-        ).await;
+        self.access_control
+            .log_access(user_context, &format!("{:?}", request.request_type), true)
+            .await;
 
         match request.request_type {
             TopsiRequestType::Chat { message } => {
-                self.handle_chat(&message, user_context, &scope, session_id).await
+                self.handle_chat(&message, user_context, &scope, session_id)
+                    .await
             }
             TopsiRequestType::GetTopology { project_id } => {
-                self.handle_get_topology(project_id, user_context, &scope).await
+                self.handle_get_topology(project_id, user_context, &scope)
+                    .await
             }
             TopsiRequestType::DetectIssues { project_id } => {
-                self.handle_detect_issues(project_id, user_context, &scope).await
+                self.handle_detect_issues(project_id, user_context, &scope)
+                    .await
             }
-            TopsiRequestType::ListProjects => {
-                self.handle_list_projects(user_context, &scope).await
-            }
+            TopsiRequestType::ListProjects => self.handle_list_projects(user_context, &scope).await,
             TopsiRequestType::ExecuteCommand { command } => {
                 self.handle_command(&command, user_context, &scope).await
             }
-            TopsiRequestType::GetRecommendations { project_id, max_count } => {
-                self.handle_get_recommendations(project_id, max_count, user_context, &scope).await
+            TopsiRequestType::GetRecommendations {
+                project_id,
+                max_count,
+            } => {
+                self.handle_get_recommendations(project_id, max_count, user_context, &scope)
+                    .await
             }
             TopsiRequestType::StartMeeting { project_id, title } => {
-                self.handle_start_meeting(&project_id, title.as_deref(), user_context).await
+                self.handle_start_meeting(&project_id, title.as_deref(), user_context)
+                    .await
             }
-            TopsiRequestType::EndMeeting { session_id, generate_notes } => {
-                self.handle_end_meeting(&session_id, generate_notes, user_context).await
+            TopsiRequestType::EndMeeting {
+                session_id,
+                generate_notes,
+            } => {
+                self.handle_end_meeting(&session_id, generate_notes, user_context)
+                    .await
             }
-            TopsiRequestType::MeetingAudioChunk { session_id, audio_data, chunk_index, duration_ms } => {
-                self.handle_meeting_audio_chunk(&session_id, &audio_data, chunk_index, duration_ms, user_context).await
+            TopsiRequestType::MeetingAudioChunk {
+                session_id,
+                audio_data,
+                chunk_index,
+                duration_ms,
+            } => {
+                self.handle_meeting_audio_chunk(
+                    &session_id,
+                    &audio_data,
+                    chunk_index,
+                    duration_ms,
+                    user_context,
+                )
+                .await
             }
-            TopsiRequestType::MeetingDirectAddress { session_id, message, transcript_context } => {
-                self.handle_meeting_direct_address(&session_id, &message, transcript_context.as_deref(), user_context).await
+            TopsiRequestType::MeetingDirectAddress {
+                session_id,
+                message,
+                transcript_context,
+            } => {
+                self.handle_meeting_direct_address(
+                    &session_id,
+                    &message,
+                    transcript_context.as_deref(),
+                    user_context,
+                )
+                .await
             }
         }
     }
@@ -522,7 +577,11 @@ impl TopsiAgent {
         let history = if let Some(sid) = session_id {
             let store = self.session_history.read().await;
             let msgs = store.get(sid).cloned().unwrap_or_default();
-            tracing::debug!("[TOPSI] Loaded {} history messages for session {}", msgs.len(), sid);
+            tracing::debug!(
+                "[TOPSI] Loaded {} history messages for session {}",
+                msgs.len(),
+                sid
+            );
             msgs
         } else {
             vec![]
@@ -558,13 +617,7 @@ impl TopsiAgent {
 
         // Initial LLM call with conversation history
         let mut response = llm
-            .generate_with_tools_and_history(
-                &system_prompt,
-                message,
-                &context,
-                &tools,
-                &history,
-            )
+            .generate_with_tools_and_history(&system_prompt, message, &context, &tools, &history)
             .await
             .map_err(|e| TopsiError::LLMError(format!("LLM request failed: {}", e)))?;
 
@@ -610,9 +663,8 @@ impl TopsiAgent {
                     );
 
                     // Execute each tool call
-                    let tool_results_json = self
-                        .execute_tool_calls(&calls, user_context, scope)
-                        .await;
+                    let tool_results_json =
+                        self.execute_tool_calls(&calls, user_context, scope).await;
 
                     // Build ToolCallResult records and NoraToolResult for feedback
                     let mut nora_results: Vec<NoraToolResult> = vec![];
@@ -710,11 +762,16 @@ impl TopsiAgent {
         let final_msg = if let Some(msg) = final_message {
             msg
         } else {
-            tracing::warn!("[TOPSI] Loop ended early (iter={}, tokens={}+{}), synthesising answer",
-                iteration, total_input_tokens, total_output_tokens);
+            tracing::warn!(
+                "[TOPSI] Loop ended early (iter={}, tokens={}+{}), synthesising answer",
+                iteration,
+                total_input_tokens,
+                total_output_tokens
+            );
 
             // Try one direct synthesis call (no tools) with what we've gathered
-            let gathered: String = all_tool_calls.iter()
+            let gathered: String = all_tool_calls
+                .iter()
                 .filter(|r| r.success)
                 .take(4)
                 .map(|r| format!("Tool '{}' returned: {}", r.tool_name, r.result))
@@ -724,9 +781,13 @@ impl TopsiAgent {
                 "You gathered this information:\n{}\n\nNow give a direct, conversational answer.",
                 gathered
             );
-            match llm.generate(&system_prompt, message, &synthesis_context).await {
+            match llm
+                .generate(&system_prompt, message, &synthesis_context)
+                .await
+            {
                 Ok(content) => content,
-                Err(_) => "Something went sideways — try asking again with a bit more context.".to_string(),
+                Err(_) => "Something went sideways — try asking again with a bit more context."
+                    .to_string(),
             }
         };
 
@@ -764,14 +825,22 @@ impl TopsiAgent {
     }
 
     /// Build context string for LLM based on user's access scope
-    async fn build_context_for_scope(&self, scope: &AccessScope, user_context: &UserContext) -> String {
+    async fn build_context_for_scope(
+        &self,
+        scope: &AccessScope,
+        user_context: &UserContext,
+    ) -> String {
         let mut context_parts = vec![];
 
         // Add user context
         context_parts.push(format!(
             "User: {} ({})",
             user_context.email.as_deref().unwrap_or("unknown"),
-            if user_context.is_admin { "admin" } else { "user" }
+            if user_context.is_admin {
+                "admin"
+            } else {
+                "user"
+            }
         ));
 
         // Add scope information and real data
@@ -792,7 +861,8 @@ impl TopsiAgent {
                             ));
                         }
                         if projects.len() > 10 {
-                            context_parts.push(format!("... and {} more projects", projects.len() - 10));
+                            context_parts
+                                .push(format!("... and {} more projects", projects.len() - 10));
                         }
                     }
 
@@ -820,18 +890,27 @@ impl TopsiAgent {
 
                         // Get task counts by status
                         if let Ok(todo_count) = sqlx::query_scalar::<_, i64>(
-                            "SELECT COUNT(*) FROM tasks WHERE status = 'todo'"
-                        ).fetch_one(pool).await {
+                            "SELECT COUNT(*) FROM tasks WHERE status = 'todo'",
+                        )
+                        .fetch_one(pool)
+                        .await
+                        {
                             context_parts.push(format!("Todo: {}", todo_count));
                         }
                         if let Ok(in_progress_count) = sqlx::query_scalar::<_, i64>(
-                            "SELECT COUNT(*) FROM tasks WHERE status = 'in_progress'"
-                        ).fetch_one(pool).await {
+                            "SELECT COUNT(*) FROM tasks WHERE status = 'in_progress'",
+                        )
+                        .fetch_one(pool)
+                        .await
+                        {
                             context_parts.push(format!("In Progress: {}", in_progress_count));
                         }
                         if let Ok(done_count) = sqlx::query_scalar::<_, i64>(
-                            "SELECT COUNT(*) FROM tasks WHERE status = 'done'"
-                        ).fetch_one(pool).await {
+                            "SELECT COUNT(*) FROM tasks WHERE status = 'done'",
+                        )
+                        .fetch_one(pool)
+                        .await
+                        {
                             context_parts.push(format!("Done: {}", done_count));
                         }
                     }
@@ -845,7 +924,9 @@ impl TopsiAgent {
                     // Get details for accessible projects
                     context_parts.push("\n## Accessible Projects".to_string());
                     for project_id in ids.iter().take(10) {
-                        if let Ok(Some(project)) = Project::find_by_id(pool, &project_id.to_string()).await {
+                        if let Ok(Some(project)) =
+                            Project::find_by_id(pool, &project_id.to_string()).await
+                        {
                             context_parts.push(format!(
                                 "- {} (ID: {}): {}",
                                 project.name,
@@ -870,7 +951,8 @@ impl TopsiAgent {
                 }
             }
         } else {
-            context_parts.push("Warning: Database not connected - limited data available".to_string());
+            context_parts
+                .push("Warning: Database not connected - limited data available".to_string());
         }
 
         // Add system stats
@@ -886,7 +968,9 @@ impl TopsiAgent {
         user_context: &UserContext,
         scope: &AccessScope,
     ) -> Vec<serde_json::Value> {
-        use db::models::topsi_user_settings::{TopsiUserSettings, ConfirmationMode, classify_tool_risk, ToolRisk};
+        use db::models::topsi_user_settings::{
+            classify_tool_risk, ConfirmationMode, ToolRisk, TopsiUserSettings,
+        };
 
         // Load user confirmation settings once per batch
         let user_settings = if let Some(pool) = &self.db {
@@ -935,8 +1019,13 @@ impl TopsiAgent {
                 "list_edges" => self.tool_list_edges(&call.arguments, scope).await,
                 "find_path" => self.tool_find_path(&call.arguments, scope).await,
                 "detect_issues" => self.tool_detect_issues(&call.arguments, scope).await,
-                "get_topology_summary" => self.tool_get_topology_summary(&call.arguments, scope).await,
-                "create_cluster" => self.tool_create_cluster(&call.arguments, user_context, scope).await,
+                "get_topology_summary" => {
+                    self.tool_get_topology_summary(&call.arguments, scope).await
+                }
+                "create_cluster" => {
+                    self.tool_create_cluster(&call.arguments, user_context, scope)
+                        .await
+                }
                 "verify_access" => self.tool_verify_access(&call.arguments, scope).await,
 
                 // ── Agent & utility tools (stay in agent) ───────────────────
@@ -946,50 +1035,123 @@ impl TopsiAgent {
                 "fetch_web_page" => self.tool_fetch_web_page(&call.arguments).await,
 
                 // ── Specialist delegation (stay in agent) ───────────────────
-                "build_workflow" => self.tool_build_workflow(&call.arguments, user_context).await,
+                "build_workflow" => {
+                    self.tool_build_workflow(&call.arguments, user_context)
+                        .await
+                }
 
                 // ── Platform data tools (delegated to PlatformDataService) ──
-                "list_projects" | "create_project" | "update_project" | "list_organizations"
-                | "get_project_detail" | "create_task" | "start_task_execution"
-                | "get_task_status" | "update_task" | "list_tasks"
-                | "delete_task" | "bulk_update_tasks"
-                | "list_crm_contacts" | "list_crm_deals" | "list_crm_pipelines"
-                | "create_crm_contact" | "create_crm_deal" | "update_crm_deal"
-                | "list_workflow_definitions" | "get_workflow_definition"
-                | "list_workflow_runs" | "get_workflow_run_status"
-                | "review_staged_data" | "approve_staged_records"
+                "list_projects"
+                | "create_project"
+                | "update_project"
+                | "list_organizations"
+                | "get_project_detail"
+                | "create_task"
+                | "start_task_execution"
+                | "get_task_status"
+                | "update_task"
+                | "list_tasks"
+                | "delete_task"
+                | "bulk_update_tasks"
+                | "list_crm_contacts"
+                | "list_crm_deals"
+                | "list_crm_pipelines"
+                | "create_crm_contact"
+                | "create_crm_deal"
+                | "update_crm_deal"
+                | "list_workflow_definitions"
+                | "get_workflow_definition"
+                | "list_workflow_runs"
+                | "get_workflow_run_status"
+                | "review_staged_data"
+                | "approve_staged_records"
                 | "search_entities" => {
                     if let Some(pds) = &self.platform_data {
                         match call.name.as_str() {
                             "list_projects" => pds.list_projects(&call.arguments, scope).await,
-                            "create_project" => pds.create_project(&call.arguments, user_context).await,
-                            "update_project" => pds.update_project(&call.arguments, user_context).await,
+                            "create_project" => {
+                                pds.create_project(&call.arguments, user_context).await
+                            }
+                            "update_project" => {
+                                pds.update_project(&call.arguments, user_context).await
+                            }
                             "list_organizations" => pds.list_organizations().await,
-                            "get_project_detail" => pds.get_project_detail(&call.arguments, scope).await,
-                            "create_task" => pds.create_task(&call.arguments, user_context, scope).await,
-                            "start_task_execution" => pds.start_task_execution(&call.arguments, user_context, scope).await,
+                            "get_project_detail" => {
+                                pds.get_project_detail(&call.arguments, scope).await
+                            }
+                            "create_task" => {
+                                pds.create_task(&call.arguments, user_context, scope).await
+                            }
+                            "start_task_execution" => {
+                                pds.start_task_execution(&call.arguments, user_context, scope)
+                                    .await
+                            }
                             "get_task_status" => pds.get_task_status(&call.arguments, scope).await,
-                            "update_task" => pds.update_task(&call.arguments, user_context, scope).await,
-                            "list_tasks" => pds.list_tasks(&call.arguments, user_context, scope).await,
-                            "delete_task" => pds.delete_task(&call.arguments, user_context, scope).await,
-                            "bulk_update_tasks" => pds.bulk_update_tasks(&call.arguments, user_context, scope).await,
-                            "list_crm_contacts" => pds.list_crm_contacts(&call.arguments, user_context, scope).await,
-                            "list_crm_deals" => pds.list_crm_deals(&call.arguments, user_context, scope).await,
-                            "list_crm_pipelines" => pds.list_crm_pipelines(&call.arguments, user_context, scope).await,
-                            "create_crm_contact" => pds.create_crm_contact(&call.arguments, user_context).await,
-                            "create_crm_deal" => pds.create_crm_deal(&call.arguments, user_context).await,
-                            "update_crm_deal" => pds.update_crm_deal(&call.arguments, user_context).await,
-                            "list_workflow_definitions" => pds.list_workflow_definitions(&call.arguments, scope).await,
-                            "get_workflow_definition" => pds.get_workflow_definition(&call.arguments, scope).await,
-                            "list_workflow_runs" => pds.list_workflow_runs(&call.arguments, user_context, scope).await,
-                            "get_workflow_run_status" => pds.get_workflow_run_status(&call.arguments, scope).await,
-                            "review_staged_data" => pds.review_staged_data(&call.arguments, user_context, scope).await,
-                            "approve_staged_records" => pds.approve_staged_records(&call.arguments, user_context, scope).await,
-                            "search_entities" => pds.search_entities(&call.arguments, user_context, scope).await,
+                            "update_task" => {
+                                pds.update_task(&call.arguments, user_context, scope).await
+                            }
+                            "list_tasks" => {
+                                pds.list_tasks(&call.arguments, user_context, scope).await
+                            }
+                            "delete_task" => {
+                                pds.delete_task(&call.arguments, user_context, scope).await
+                            }
+                            "bulk_update_tasks" => {
+                                pds.bulk_update_tasks(&call.arguments, user_context, scope)
+                                    .await
+                            }
+                            "list_crm_contacts" => {
+                                pds.list_crm_contacts(&call.arguments, user_context, scope)
+                                    .await
+                            }
+                            "list_crm_deals" => {
+                                pds.list_crm_deals(&call.arguments, user_context, scope)
+                                    .await
+                            }
+                            "list_crm_pipelines" => {
+                                pds.list_crm_pipelines(&call.arguments, user_context, scope)
+                                    .await
+                            }
+                            "create_crm_contact" => {
+                                pds.create_crm_contact(&call.arguments, user_context).await
+                            }
+                            "create_crm_deal" => {
+                                pds.create_crm_deal(&call.arguments, user_context).await
+                            }
+                            "update_crm_deal" => {
+                                pds.update_crm_deal(&call.arguments, user_context).await
+                            }
+                            "list_workflow_definitions" => {
+                                pds.list_workflow_definitions(&call.arguments, scope).await
+                            }
+                            "get_workflow_definition" => {
+                                pds.get_workflow_definition(&call.arguments, scope).await
+                            }
+                            "list_workflow_runs" => {
+                                pds.list_workflow_runs(&call.arguments, user_context, scope)
+                                    .await
+                            }
+                            "get_workflow_run_status" => {
+                                pds.get_workflow_run_status(&call.arguments, scope).await
+                            }
+                            "review_staged_data" => {
+                                pds.review_staged_data(&call.arguments, user_context, scope)
+                                    .await
+                            }
+                            "approve_staged_records" => {
+                                pds.approve_staged_records(&call.arguments, user_context, scope)
+                                    .await
+                            }
+                            "search_entities" => {
+                                pds.search_entities(&call.arguments, user_context, scope)
+                                    .await
+                            }
                             _ => unreachable!(),
                         }
                     } else {
-                        Err(TopsiError::ToolError("Platform data service not initialized (no database)".to_string()))
+                        Err(TopsiError::ToolError(
+                            "Platform data service not initialized (no database)".to_string(),
+                        ))
                     }
                 }
 
@@ -1112,9 +1274,12 @@ impl TopsiAgent {
             Some("task") | None => {
                 // Get tasks based on accessible projects
                 let project_ids: Vec<Uuid> = match scope {
-                    AccessScope::Admin => {
-                        Project::find_all(pool).await.unwrap_or_default().iter().filter_map(|p| Uuid::parse_str(&p.id).ok()).collect()
-                    }
+                    AccessScope::Admin => Project::find_all(pool)
+                        .await
+                        .unwrap_or_default()
+                        .iter()
+                        .filter_map(|p| Uuid::parse_str(&p.id).ok())
+                        .collect(),
                     AccessScope::Projects(ids) => ids.iter().copied().collect(),
                     AccessScope::SingleProject(id) => vec![*id],
                     AccessScope::None => vec![],
@@ -1199,11 +1364,7 @@ impl TopsiAgent {
         let issue_types = args
             .get("issue_types")
             .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str())
-                    .collect::<Vec<_>>()
-            });
+            .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>());
 
         let Some(pool) = &self.db else {
             return Ok(serde_json::json!({
@@ -1234,7 +1395,10 @@ impl TopsiAgent {
         }
 
         // Check for unassigned high-priority tasks
-        if issue_types.as_ref().map_or(true, |t| t.contains(&"bottleneck")) {
+        if issue_types
+            .as_ref()
+            .map_or(true, |t| t.contains(&"bottleneck"))
+        {
             let unassigned_high: i64 = sqlx::query_scalar(
                 "SELECT COUNT(*) FROM tasks WHERE (priority = 'critical' OR priority = 'high') AND assigned_agent IS NULL AND status = 'todo'"
             )
@@ -1276,12 +1440,10 @@ impl TopsiAgent {
 
         // Get real counts from database
         let project_count: i64 = match scope {
-            AccessScope::Admin => {
-                sqlx::query_scalar("SELECT COUNT(*) FROM projects")
-                    .fetch_one(pool)
-                    .await
-                    .unwrap_or(0)
-            }
+            AccessScope::Admin => sqlx::query_scalar("SELECT COUNT(*) FROM projects")
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0),
             AccessScope::Projects(ids) => ids.len() as i64,
             AccessScope::SingleProject(_) => 1,
             AccessScope::None => 0,
@@ -1297,26 +1459,23 @@ impl TopsiAgent {
             .await
             .unwrap_or(0);
 
-        let active_task_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM tasks WHERE status = 'in_progress'"
-        )
-        .fetch_one(pool)
-        .await
-        .unwrap_or(0);
+        let active_task_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE status = 'in_progress'")
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0);
 
-        let todo_task_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM tasks WHERE status = 'todo'"
-        )
-        .fetch_one(pool)
-        .await
-        .unwrap_or(0);
+        let todo_task_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE status = 'todo'")
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0);
 
-        let done_task_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM tasks WHERE status = 'done'"
-        )
-        .fetch_one(pool)
-        .await
-        .unwrap_or(0);
+        let done_task_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE status = 'done'")
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0);
 
         // Calculate health score (simple heuristic)
         let health_score = if task_count > 0 {
@@ -1347,7 +1506,10 @@ impl TopsiAgent {
         _user_context: &UserContext,
         _scope: &AccessScope,
     ) -> Result<serde_json::Value> {
-        let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
+        let name = args
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unnamed");
         let node_ids = args.get("node_ids").and_then(|v| v.as_array());
 
         Ok(serde_json::json!({
@@ -1359,10 +1521,7 @@ impl TopsiAgent {
     }
 
     /// List all available agents
-    async fn tool_list_agents(
-        &self,
-        _args: &serde_json::Value,
-    ) -> Result<serde_json::Value> {
+    async fn tool_list_agents(&self, _args: &serde_json::Value) -> Result<serde_json::Value> {
         let Some(pool) = &self.db else {
             return Ok(serde_json::json!({
                 "error": "Database not connected",
@@ -1397,11 +1556,9 @@ impl TopsiAgent {
         }))
     }
 
-    async fn tool_respond_to_user(
-        &self,
-        args: &serde_json::Value,
-    ) -> Result<serde_json::Value> {
-        let message = args.get("message")
+    async fn tool_respond_to_user(&self, args: &serde_json::Value) -> Result<serde_json::Value> {
+        let message = args
+            .get("message")
             .and_then(|v| v.as_str())
             .unwrap_or("I'm Topsi, your topological super intelligence. How can I help you today?");
 
@@ -1413,11 +1570,16 @@ impl TopsiAgent {
 
     async fn tool_search_web(&self, args: &serde_json::Value) -> Result<serde_json::Value> {
         let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
-        let max_results = args.get("max_results").and_then(|v| v.as_u64()).unwrap_or(5) as u32;
+        let max_results = args
+            .get("max_results")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(5) as u32;
 
         let api_key = std::env::var("EXA_API_KEY").unwrap_or_default();
         if api_key.is_empty() {
-            return Ok(serde_json::json!({"success": false, "error": "EXA_API_KEY not configured"}));
+            return Ok(
+                serde_json::json!({"success": false, "error": "EXA_API_KEY not configured"}),
+            );
         }
 
         let client = reqwest::Client::new();
@@ -1430,15 +1592,25 @@ impl TopsiAgent {
             .await
             .map_err(|e| TopsiError::ToolError(format!("Search failed: {}", e)))?;
 
-        let data: serde_json::Value = resp.json().await
+        let data: serde_json::Value = resp
+            .json()
+            .await
             .map_err(|e| TopsiError::ToolError(format!("Search parse failed: {}", e)))?;
 
-        let results = data.get("results").and_then(|r| r.as_array())
-            .map(|arr| arr.iter().map(|r| serde_json::json!({
-                "title": r.get("title").and_then(|t| t.as_str()).unwrap_or(""),
-                "url": r.get("url").and_then(|u| u.as_str()).unwrap_or(""),
-                "snippet": r.get("text").and_then(|t| t.as_str()).unwrap_or(""),
-            })).collect::<Vec<_>>())
+        let results = data
+            .get("results")
+            .and_then(|r| r.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .map(|r| {
+                        serde_json::json!({
+                            "title": r.get("title").and_then(|t| t.as_str()).unwrap_or(""),
+                            "url": r.get("url").and_then(|u| u.as_str()).unwrap_or(""),
+                            "snippet": r.get("text").and_then(|t| t.as_str()).unwrap_or(""),
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            })
             .unwrap_or_default();
 
         Ok(serde_json::json!({"success": true, "query": query, "results": results}))
@@ -1448,9 +1620,14 @@ impl TopsiAgent {
         let url = args.get("url").and_then(|v| v.as_str()).unwrap_or("");
 
         let client = reqwest::Client::new();
-        let response = client.get(url).send().await
+        let response = client
+            .get(url)
+            .send()
+            .await
             .map_err(|e| TopsiError::ToolError(format!("Fetch failed: {}", e)))?;
-        let content = response.text().await
+        let content = response
+            .text()
+            .await
             .map_err(|e| TopsiError::ToolError(format!("Read failed: {}", e)))?;
 
         // Basic tag strip
@@ -1458,15 +1635,22 @@ impl TopsiAgent {
         let mut text = String::with_capacity(content.len());
         for c in content.chars() {
             match c {
-                '<' => { in_tag = true; text.push(' '); }
-                '>' => { in_tag = false; }
+                '<' => {
+                    in_tag = true;
+                    text.push(' ');
+                }
+                '>' => {
+                    in_tag = false;
+                }
                 _ if !in_tag => text.push(c),
                 _ => {}
             }
         }
         let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
 
-        Ok(serde_json::json!({"success": true, "url": url, "content": text, "content_length": text.len()}))
+        Ok(
+            serde_json::json!({"success": true, "url": url, "content": text, "content_length": text.len()}),
+        )
     }
 
     async fn tool_verify_access(
@@ -1531,10 +1715,15 @@ impl TopsiAgent {
             return Ok(serde_json::json!({"error": "Database not connected"}));
         };
         let Some(llm) = &self.llm else {
-            return Ok(serde_json::json!({"error": "LLM not configured — cannot generate workflows"}));
+            return Ok(
+                serde_json::json!({"error": "LLM not configured — cannot generate workflows"}),
+            );
         };
 
-        let action = args.get("action").and_then(|v| v.as_str()).unwrap_or("create");
+        let action = args
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or("create");
         let user_request = match args.get("user_request").and_then(|v| v.as_str()) {
             Some(r) => r,
             None => return Ok(serde_json::json!({"error": "user_request is required"})),
@@ -1544,8 +1733,16 @@ impl TopsiAgent {
         let owner_id = args.get("owner_id").and_then(|v| v.as_str());
 
         match crate::workflow_builder::build_workflow(
-            llm, pool, action, user_request, context, workflow_id, owner_id,
-        ).await {
+            llm,
+            pool,
+            action,
+            user_request,
+            context,
+            workflow_id,
+            owner_id,
+        )
+        .await
+        {
             Ok(result) => Ok(result),
             Err(e) => Ok(serde_json::json!({"error": e})),
         }
@@ -1560,7 +1757,11 @@ impl TopsiAgent {
     ) -> Result<TopsiResponse> {
         // Verify access to the project
         if let Some(pid) = project_id {
-            if !self.access_control.can_access_project(user_context, pid).await {
+            if !self
+                .access_control
+                .can_access_project(user_context, pid)
+                .await
+            {
                 return Err(TopsiError::TopologyError(
                     "Access denied to project".to_string(),
                 ));
@@ -1590,7 +1791,11 @@ impl TopsiAgent {
     ) -> Result<TopsiResponse> {
         // Verify access
         if let Some(pid) = project_id {
-            if !self.access_control.can_access_project(user_context, pid).await {
+            if !self
+                .access_control
+                .can_access_project(user_context, pid)
+                .await
+            {
                 return Err(TopsiError::TopologyError(
                     "Access denied to project".to_string(),
                 ));
@@ -1686,28 +1891,24 @@ impl TopsiAgent {
                     output_tokens: None,
                 })
             }
-            "help" => {
-                Ok(TopsiResponse {
-                    message: "Available commands: status, help, topology, issues".to_string(),
-                    tool_calls: vec![],
-                    topology_changes: vec![],
-                    topology_summary: None,
-                    issues: vec![],
-                    input_tokens: None,
-                    output_tokens: None,
-                })
-            }
-            _ => {
-                Ok(TopsiResponse {
-                    message: format!("Unknown command: {}", parts[0]),
-                    tool_calls: vec![],
-                    topology_changes: vec![],
-                    topology_summary: None,
-                    issues: vec![],
-                    input_tokens: None,
-                    output_tokens: None,
-                })
-            }
+            "help" => Ok(TopsiResponse {
+                message: "Available commands: status, help, topology, issues".to_string(),
+                tool_calls: vec![],
+                topology_changes: vec![],
+                topology_summary: None,
+                issues: vec![],
+                input_tokens: None,
+                output_tokens: None,
+            }),
+            _ => Ok(TopsiResponse {
+                message: format!("Unknown command: {}", parts[0]),
+                tool_calls: vec![],
+                topology_changes: vec![],
+                topology_summary: None,
+                issues: vec![],
+                input_tokens: None,
+                output_tokens: None,
+            }),
         }
     }
 
@@ -1750,14 +1951,22 @@ impl TopsiAgent {
         user_context: &UserContext,
         scope: &AccessScope,
     ) -> Result<TopsiResponse> {
-        use crate::prioritization::free_energy::{IntoPotentialAction, PotentialAction};
-        use crate::prioritization::goals::{Goal, GoalType};
-        use crate::prioritization::recommender::PriorityRecommender;
+        use crate::prioritization::{
+            free_energy::{IntoPotentialAction, PotentialAction},
+            goals::{Goal, GoalType},
+            recommender::PriorityRecommender,
+        };
 
         // Verify access
         if let Some(pid) = project_id {
-            if !self.access_control.can_access_project(user_context, pid).await {
-                return Err(TopsiError::TopologyError("Access denied to project".to_string()));
+            if !self
+                .access_control
+                .can_access_project(user_context, pid)
+                .await
+            {
+                return Err(TopsiError::TopologyError(
+                    "Access denied to project".to_string(),
+                ));
             }
         }
 
@@ -1777,14 +1986,12 @@ impl TopsiAgent {
         let project_ids: Vec<Uuid> = match project_id {
             Some(pid) => vec![pid],
             None => match scope {
-                AccessScope::Admin => {
-                    Project::find_all(pool)
-                        .await
-                        .unwrap_or_default()
-                        .iter()
-                        .filter_map(|p| Uuid::parse_str(&p.id).ok())
-                        .collect()
-                }
+                AccessScope::Admin => Project::find_all(pool)
+                    .await
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(|p| Uuid::parse_str(&p.id).ok())
+                    .collect(),
                 AccessScope::Projects(ids) => ids.iter().copied().collect(),
                 AccessScope::SingleProject(id) => vec![*id],
                 AccessScope::None => vec![],
@@ -1858,9 +2065,10 @@ impl TopsiAgent {
         title: Option<&str>,
         user_context: &UserContext,
     ) -> Result<TopsiResponse> {
-        let pool = self.db.as_ref().ok_or_else(|| {
-            TopsiError::NotInitialized("Database not connected".to_string())
-        })?;
+        let pool = self
+            .db
+            .as_ref()
+            .ok_or_else(|| TopsiError::NotInitialized("Database not connected".to_string()))?;
 
         // Create DB record
         let session = db::models::meeting_session::MeetingSession::create(
@@ -1872,7 +2080,9 @@ impl TopsiAgent {
             },
         )
         .await
-        .map_err(|e| TopsiError::TopologyError(format!("Failed to create meeting session: {}", e)))?;
+        .map_err(|e| {
+            TopsiError::TopologyError(format!("Failed to create meeting session: {}", e))
+        })?;
 
         // Track in-memory state
         self.meeting_manager
@@ -1952,16 +2162,18 @@ impl TopsiAgent {
         duration_ms: u32,
         user_context: &UserContext,
     ) -> Result<TopsiResponse> {
-        let pool = self.db.as_ref().ok_or_else(|| {
-            TopsiError::NotInitialized("Database not connected".to_string())
-        })?;
+        let pool = self
+            .db
+            .as_ref()
+            .ok_or_else(|| TopsiError::NotInitialized("Database not connected".to_string()))?;
 
         // Verify meeting exists and is active
         let meeting_state = self.meeting_manager.get_meeting(session_id).await;
         if meeting_state.is_none() {
-            return Err(TopsiError::TopologyError(
-                format!("No active meeting with session_id: {}", session_id),
-            ));
+            return Err(TopsiError::TopologyError(format!(
+                "No active meeting with session_id: {}",
+                session_id
+            )));
         }
         let meeting_state = meeting_state.unwrap();
 
@@ -2037,7 +2249,8 @@ impl TopsiAgent {
                     )
                     .await?;
 
-                response["topsi_response"] = serde_json::Value::String(meeting_response.message.clone());
+                response["topsi_response"] =
+                    serde_json::Value::String(meeting_response.message.clone());
             }
         }
 
@@ -2114,9 +2327,10 @@ impl TopsiAgent {
         generate_notes: bool,
         _user_context: &UserContext,
     ) -> Result<TopsiResponse> {
-        let pool = self.db.as_ref().ok_or_else(|| {
-            TopsiError::NotInitialized("Database not connected".to_string())
-        })?;
+        let pool = self
+            .db
+            .as_ref()
+            .ok_or_else(|| TopsiError::NotInitialized("Database not connected".to_string()))?;
 
         // Get final state from memory
         let final_state = self.meeting_manager.end_meeting(session_id).await;
@@ -2205,7 +2419,10 @@ impl TopsiAgent {
             "[TOPSI] Meeting ended: session={}, duration={}s, segments={}",
             session_id,
             elapsed_seconds,
-            final_state.as_ref().map(|s| s.transcript.len()).unwrap_or(0)
+            final_state
+                .as_ref()
+                .map(|s| s.transcript.len())
+                .unwrap_or(0)
         );
 
         let mut response = serde_json::json!({
@@ -2236,9 +2453,10 @@ impl TopsiAgent {
         &self,
         session_id: &str,
     ) -> Result<crate::meeting::MeetingNotes> {
-        let pool = self.db.as_ref().ok_or_else(|| {
-            TopsiError::NotInitialized("Database not connected".to_string())
-        })?;
+        let pool = self
+            .db
+            .as_ref()
+            .ok_or_else(|| TopsiError::NotInitialized("Database not connected".to_string()))?;
 
         let segments =
             db::models::meeting_session::MeetingSegment::find_by_session(pool, session_id)
@@ -2261,11 +2479,8 @@ impl TopsiAgent {
             .join("\n");
 
         // Build synthetic MeetingState so we can reuse generate_meeting_notes
-        let mut state = crate::meeting::MeetingState::new(
-            session_id.to_string(),
-            String::new(),
-            String::new(),
-        );
+        let mut state =
+            crate::meeting::MeetingState::new(session_id.to_string(), String::new(), String::new());
         for seg in &segments {
             let entry = crate::meeting::MeetingTranscriptEntry {
                 speaker_label: seg.speaker_label.clone(),
@@ -2278,9 +2493,10 @@ impl TopsiAgent {
             };
             state.transcript.push(entry);
             if let Some(ref label) = seg.speaker_label {
-                state.speakers.entry(label.clone()).or_insert_with(|| {
-                    crate::meeting::SpeakerInfo::new(label.clone())
-                });
+                state
+                    .speakers
+                    .entry(label.clone())
+                    .or_insert_with(|| crate::meeting::SpeakerInfo::new(label.clone()));
             }
         }
 
@@ -2307,16 +2523,17 @@ impl TopsiAgent {
                     }
                     if let Some(js) = response.find('{') {
                         if let Some(je) = response.rfind('}') {
-                            if let Ok(notes) =
-                                serde_json::from_str::<crate::meeting::MeetingNotes>(
-                                    &response[js..=je],
-                                )
-                            {
+                            if let Ok(notes) = serde_json::from_str::<crate::meeting::MeetingNotes>(
+                                &response[js..=je],
+                            ) {
                                 return Ok(notes);
                             }
                         }
                     }
-                    tracing::warn!("Failed to parse regenerated notes JSON; snippet: {}", &response[..response.len().min(400)]);
+                    tracing::warn!(
+                        "Failed to parse regenerated notes JSON; snippet: {}",
+                        &response[..response.len().min(400)]
+                    );
                 }
                 Err(e) => tracing::error!("LLM regen failed: {e}"),
             }
@@ -2351,7 +2568,10 @@ impl TopsiAgent {
   "participants": ["Speaker 1"]
 }"#;
 
-            match llm.generate(MEETING_SYSTEM_PROMPT, user_query, &transcript_text).await {
+            match llm
+                .generate(MEETING_SYSTEM_PROMPT, user_query, &transcript_text)
+                .await
+            {
                 Ok(response) => {
                     // Try to parse LLM output as MeetingNotes
                     if let Ok(notes) = serde_json::from_str::<MeetingNotes>(&response) {

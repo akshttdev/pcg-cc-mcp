@@ -100,7 +100,7 @@ impl GatewayRequest {
              vibe_charged = ?,
              vibe_rewarded = ?,
              fulfilled_at = datetime('now','subsec')
-             WHERE id = ?"
+             WHERE id = ?",
         )
         .bind(provider_node_id)
         .bind(provider_wallet)
@@ -115,11 +115,7 @@ impl GatewayRequest {
         Ok(())
     }
 
-    pub async fn mark_failed(
-        pool: &SqlitePool,
-        id: Uuid,
-        error: &str,
-    ) -> anyhow::Result<()> {
+    pub async fn mark_failed(pool: &SqlitePool, id: Uuid, error: &str) -> anyhow::Result<()> {
         sqlx::query(
             "UPDATE gateway_requests SET status = 'failed', error_message = ?, fulfilled_at = datetime('now','subsec') WHERE id = ?"
         )
@@ -165,7 +161,7 @@ impl GatewayRequest {
                COALESCE(SUM(vibe_rewarded), 0.0) as total_rewarded,
                AVG(CASE WHEN status = 'fulfilled' THEN response_ms END) as avg_ms,
                COUNT(DISTINCT provider_node_id) as active_providers
-             FROM gateway_requests"
+             FROM gateway_requests",
         )
         .fetch_one(pool)
         .await?;
@@ -194,7 +190,7 @@ impl GatewayRequest {
                COALESCE(SUM(vibe_rewarded), 0.0) as total_rewarded,
                AVG(CASE WHEN status = 'fulfilled' THEN response_ms END) as avg_ms,
                COUNT(DISTINCT provider_node_id) as active_providers
-             FROM gateway_requests WHERE subscription_id = ?"
+             FROM gateway_requests WHERE subscription_id = ?",
         )
         .bind(subscription_id)
         .fetch_one(pool)

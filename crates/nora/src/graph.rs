@@ -6,7 +6,10 @@ use tokio::sync::RwLock;
 use ts_rs::TS;
 use uuid::Uuid;
 
-use crate::{agent::{ExecutiveAction, NoraRequest}, NoraError};
+use crate::{
+    agent::{ExecutiveAction, NoraRequest},
+    NoraError,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -147,10 +150,7 @@ impl GraphOrchestrator {
 
     pub async fn get_plan(&self, id: &str) -> Option<GraphPlan> {
         let plans = self.plans.read().await;
-        plans
-            .values()
-            .find(|plan| plan.id == id)
-            .cloned()
+        plans.values().find(|plan| plan.id == id).cloned()
     }
 
     pub async fn update_node_status(

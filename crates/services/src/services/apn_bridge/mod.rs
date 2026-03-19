@@ -7,18 +7,18 @@
 //! - Resource accounting (bandwidth, compute)
 //! - Economic settlement (Vibe tokens)
 
-mod types;
-mod task_distributor;
 mod execution_relay;
 mod resource_accounting;
-
-pub use types::*;
-pub use task_distributor::TaskDistributor;
-pub use execution_relay::ExecutionRelay;
-pub use resource_accounting::ResourceAccounting;
+mod task_distributor;
+mod types;
 
 use std::sync::Arc;
-use tokio::sync::{broadcast, RwLock};
+
+pub use execution_relay::ExecutionRelay;
+pub use resource_accounting::ResourceAccounting;
+pub use task_distributor::TaskDistributor;
+use tokio::sync::{RwLock, broadcast};
+pub use types::*;
 use uuid::Uuid;
 
 /// The main APN Bridge service that coordinates all mesh operations
@@ -70,11 +70,16 @@ impl APNBridge {
     }
 
     /// Distribute a task to the mesh network
-    pub async fn distribute_task(&self, request: TaskDistributionRequest) -> anyhow::Result<TaskDistributionResult> {
+    pub async fn distribute_task(
+        &self,
+        request: TaskDistributionRequest,
+    ) -> anyhow::Result<TaskDistributionResult> {
         let result = self.task_distributor.distribute(request.clone()).await?;
 
         // Record transaction
-        self.resource_accounting.record_task_distributed(&request, &result).await;
+        self.resource_accounting
+            .record_task_distributed(&request, &result)
+            .await;
 
         // Emit event
         let _ = self.event_tx.send(APNEvent::TaskDistributed {
@@ -111,7 +116,12 @@ impl APNBridge {
     }
 
     /// Report task completion
-    pub async fn complete_task(&self, task_id: Uuid, success: bool, vibe_earned: f64) -> anyhow::Result<()> {
+    pub async fn complete_task(
+        &self,
+        task_id: Uuid,
+        success: bool,
+        vibe_earned: f64,
+    ) -> anyhow::Result<()> {
         // Update balance
         self.resource_accounting.credit_vibe(vibe_earned).await;
 

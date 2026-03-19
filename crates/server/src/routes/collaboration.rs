@@ -8,21 +8,23 @@ use axum::{
     response::Json as ResponseJson,
     routing::{get, post},
 };
-use db::models::{
-    context_injection::{ContextInjection, InjectionType},
-    execution_handoff::ExecutionHandoff,
-    execution_pause_history::ExecutionPauseHistory,
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        context_injection::{ContextInjection, InjectionType},
+        execution_handoff::ExecutionHandoff,
+        execution_pause_history::ExecutionPauseHistory,
+    },
 };
 use deployment::Deployment;
 use serde::Deserialize;
 use serde_json::Value;
 use services::services::execution_control::{
-    CollaborationState, ExecutionControlService, PauseRequest, ResumeRequest,
-    ReturnControlRequest, TakeoverRequest,
+    CollaborationState, ExecutionControlService, PauseRequest, ResumeRequest, ReturnControlRequest,
+    TakeoverRequest,
 };
 use ts_rs::TS;
 use utils::response::ApiResponse;
-use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 
@@ -74,7 +76,9 @@ pub async fn pause_execution(
     State(deployment): State<DeploymentImpl>,
     ResponseJson(req): ResponseJson<PauseExecutionRequest>,
 ) -> Result<ResponseJson<ApiResponse<ExecutionPauseHistory>>, ApiError> {
-    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let execution_id = DbUuid::parse(&execution_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let control = ExecutionControlService::new(deployment.db().clone());
 
     let entry = control
@@ -96,7 +100,9 @@ pub async fn resume_execution(
     State(deployment): State<DeploymentImpl>,
     ResponseJson(req): ResponseJson<ResumeExecutionRequest>,
 ) -> Result<ResponseJson<ApiResponse<ExecutionPauseHistory>>, ApiError> {
-    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let execution_id = DbUuid::parse(&execution_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let control = ExecutionControlService::new(deployment.db().clone());
 
     let entry = control
@@ -116,7 +122,9 @@ pub async fn get_pause_history(
     Path(execution_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<ExecutionPauseHistory>>>, ApiError> {
-    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let execution_id = DbUuid::parse(&execution_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let control = ExecutionControlService::new(deployment.db().clone());
 
     let history = control
@@ -135,7 +143,9 @@ pub async fn takeover_execution(
     State(deployment): State<DeploymentImpl>,
     ResponseJson(req): ResponseJson<TakeoverExecutionRequest>,
 ) -> Result<ResponseJson<ApiResponse<ExecutionHandoff>>, ApiError> {
-    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let execution_id = DbUuid::parse(&execution_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let control = ExecutionControlService::new(deployment.db().clone());
 
     let handoff = control
@@ -157,7 +167,9 @@ pub async fn return_control(
     State(deployment): State<DeploymentImpl>,
     ResponseJson(req): ResponseJson<ReturnControlToAgentRequest>,
 ) -> Result<ResponseJson<ApiResponse<ExecutionHandoff>>, ApiError> {
-    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let execution_id = DbUuid::parse(&execution_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let control = ExecutionControlService::new(deployment.db().clone());
 
     let handoff = control
@@ -180,7 +192,9 @@ pub async fn get_handoffs(
     Path(execution_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<ExecutionHandoff>>>, ApiError> {
-    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let execution_id = DbUuid::parse(&execution_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let control = ExecutionControlService::new(deployment.db().clone());
 
     let handoffs = control
@@ -199,7 +213,9 @@ pub async fn inject_context(
     State(deployment): State<DeploymentImpl>,
     ResponseJson(req): ResponseJson<InjectContextRequest>,
 ) -> Result<ResponseJson<ApiResponse<ContextInjection>>, ApiError> {
-    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let execution_id = DbUuid::parse(&execution_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let control = ExecutionControlService::new(deployment.db().clone());
 
     let injection = control
@@ -222,7 +238,9 @@ pub async fn get_injections(
     Path(execution_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<ContextInjection>>>, ApiError> {
-    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let execution_id = DbUuid::parse(&execution_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let control = ExecutionControlService::new(deployment.db().clone());
 
     let injections = control
@@ -238,7 +256,9 @@ pub async fn get_pending_injections(
     Path(execution_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<ContextInjection>>>, ApiError> {
-    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let execution_id = DbUuid::parse(&execution_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let control = ExecutionControlService::new(deployment.db().clone());
 
     let injections = control
@@ -254,7 +274,9 @@ pub async fn acknowledge_injection(
     Path(injection_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<ContextInjection>>, ApiError> {
-    let injection_id = DbUuid::parse(&injection_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let injection_id = DbUuid::parse(&injection_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let control = ExecutionControlService::new(deployment.db().clone());
 
     let injection = control
@@ -270,7 +292,9 @@ pub async fn acknowledge_all_injections(
     Path(execution_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<u64>>, ApiError> {
-    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let execution_id = DbUuid::parse(&execution_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let control = ExecutionControlService::new(deployment.db().clone());
 
     let count = control
@@ -288,7 +312,9 @@ pub async fn get_collaboration_state(
     Path(execution_id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<CollaborationState>>, ApiError> {
-    let execution_id = DbUuid::parse(&execution_id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?.to_uuid();
+    let execution_id = DbUuid::parse(&execution_id)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
+        .to_uuid();
     let control = ExecutionControlService::new(deployment.db().clone());
 
     let state = control
@@ -306,17 +332,38 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         // Pause/Resume
         .route("/executions/{execution_id}/pause", post(pause_execution))
         .route("/executions/{execution_id}/resume", post(resume_execution))
-        .route("/executions/{execution_id}/pause-history", get(get_pause_history))
+        .route(
+            "/executions/{execution_id}/pause-history",
+            get(get_pause_history),
+        )
         // Takeover
-        .route("/executions/{execution_id}/takeover", post(takeover_execution))
-        .route("/executions/{execution_id}/return-control", post(return_control))
+        .route(
+            "/executions/{execution_id}/takeover",
+            post(takeover_execution),
+        )
+        .route(
+            "/executions/{execution_id}/return-control",
+            post(return_control),
+        )
         .route("/executions/{execution_id}/handoffs", get(get_handoffs))
         // Context Injections
         .route("/executions/{execution_id}/inject", post(inject_context))
         .route("/executions/{execution_id}/injections", get(get_injections))
-        .route("/executions/{execution_id}/injections/pending", get(get_pending_injections))
-        .route("/executions/{execution_id}/injections/acknowledge-all", post(acknowledge_all_injections))
-        .route("/injections/{injection_id}/acknowledge", post(acknowledge_injection))
+        .route(
+            "/executions/{execution_id}/injections/pending",
+            get(get_pending_injections),
+        )
+        .route(
+            "/executions/{execution_id}/injections/acknowledge-all",
+            post(acknowledge_all_injections),
+        )
+        .route(
+            "/injections/{injection_id}/acknowledge",
+            post(acknowledge_injection),
+        )
         // Full State
-        .route("/executions/{execution_id}/collaboration", get(get_collaboration_state))
+        .route(
+            "/executions/{execution_id}/collaboration",
+            get(get_collaboration_state),
+        )
 }

@@ -137,17 +137,12 @@ impl MeetingSession {
         Ok(session)
     }
 
-    pub async fn find_by_id(
-        pool: &SqlitePool,
-        id: &str,
-    ) -> Result<Self, MeetingSessionError> {
-        sqlx::query_as::<_, MeetingSession>(
-            r#"SELECT * FROM meeting_sessions WHERE id = ?1"#,
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await?
-        .ok_or(MeetingSessionError::NotFound)
+    pub async fn find_by_id(pool: &SqlitePool, id: &str) -> Result<Self, MeetingSessionError> {
+        sqlx::query_as::<_, MeetingSession>(r#"SELECT * FROM meeting_sessions WHERE id = ?1"#)
+            .bind(id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or(MeetingSessionError::NotFound)
     }
 
     pub async fn find_by_project(
@@ -305,11 +300,7 @@ impl MeetingSession {
     /// Check if a user is a member of the project this meeting belongs to.
     /// project_members.project_id and .user_id are stored as BLOBs;
     /// meeting_sessions.project_id is stored as TEXT (UUID with dashes).
-    pub async fn is_project_member(
-        pool: &SqlitePool,
-        session_id: &str,
-        user_id: &str,
-    ) -> bool {
+    pub async fn is_project_member(pool: &SqlitePool, session_id: &str, user_id: &str) -> bool {
         sqlx::query(
             r#"
             SELECT 1 FROM meeting_sessions ms

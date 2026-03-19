@@ -18,15 +18,17 @@
 //!   SOVEREIGN_STORAGE_SYNC_INTERVAL - seconds between cycles (default: 5)
 //!   SOVEREIGN_STORAGE_NATS_URL     - NATS relay URL
 
+use std::{
+    io::{Read, Write},
+    path::PathBuf,
+    time::Duration,
+};
+
 use anyhow::{Context, Result};
 use flate2::{Compression, read::GzDecoder, write::GzEncoder};
-use serde::{Deserialize, Serialize};
-use std::io::{Read, Write};
-use std::path::PathBuf;
-use std::time::Duration;
-use tokio::time;
-
 use futures::StreamExt;
+use serde::{Deserialize, Serialize};
+use tokio::time;
 
 // ============================================================================
 // Configuration
@@ -55,12 +57,9 @@ impl SovereignStorageConfig {
 
         let provider_id = std::env::var("SOVEREIGN_STORAGE_PROVIDER_ID")
             .or_else(|_| std::env::var("SOVEREIGN_STORAGE_PROVIDER"))
-            .unwrap_or_else(|_| {
-                std::env::var("APN_MASTER_NODES").unwrap_or_default()
-            });
+            .unwrap_or_else(|_| std::env::var("APN_MASTER_NODES").unwrap_or_default());
 
-        let password =
-            std::env::var("SOVEREIGN_STORAGE_PASSWORD").unwrap_or_default();
+        let password = std::env::var("SOVEREIGN_STORAGE_PASSWORD").unwrap_or_default();
 
         let nats_url = std::env::var("SOVEREIGN_STORAGE_NATS_URL")
             .or_else(|_| std::env::var("SOVEREIGN_STORAGE_RELAY_URL"))
@@ -221,10 +220,7 @@ impl SovereignStorageService {
             .await
             .context("Failed to connect to NATS relay")?;
 
-        tracing::info!(
-            "[SOVEREIGN_SYNC] ✅ Connected to {}",
-            self.config.nats_url
-        );
+        tracing::info!("[SOVEREIGN_SYNC] ✅ Connected to {}", self.config.nats_url);
         self.nats_client = Some(client);
         Ok(())
     }
@@ -235,14 +231,10 @@ impl SovereignStorageService {
         // Listen for acks from Pythia on our device-specific ack channel
         let ack_subject = format!("apn.storage.ack.{}", self.config.device_id);
         let mut ack_sub = client.subscribe(ack_subject.clone()).await?;
-        tracing::info!(
-            "[SOVEREIGN_SYNC] 📡 Listening for acks on: {}",
-            ack_subject
-        );
+        tracing::info!("[SOVEREIGN_SYNC] 📡 Listening for acks on: {}", ack_subject);
 
         // Also listen on the provider's serve channel for responses
-        let serve_subject =
-            format!("apn.storage.serve.{}", self.config.provider_id);
+        let serve_subject = format!("apn.storage.serve.{}", self.config.provider_id);
         let mut serve_sub = client.subscribe(serve_subject.clone()).await?;
         tracing::info!(
             "[SOVEREIGN_SYNC] 📡 Listening for serves on: {}",
@@ -295,9 +287,7 @@ impl SovereignStorageService {
                     msg.payload.len(),
                     serve_subject_clone
                 );
-                if let Ok(val) =
-                    serde_json::from_slice::<serde_json::Value>(&msg.payload)
-                {
+                if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&msg.payload) {
                     tracing::debug!("[SOVEREIGN_SYNC] Serve payload: {:?}", val);
                 }
             }
@@ -368,7 +358,9 @@ impl SovereignStorageService {
                         backup_pre_sync(&db_path_for_peer).await;
 
                         if has_workflow_data {
-                            if let Err(e) = import_peer_workflow_data(&db_path_for_peer, &payload).await {
+                            if let Err(e) =
+                                import_peer_workflow_data(&db_path_for_peer, &payload).await
+                            {
                                 tracing::error!(
                                     "[SOVEREIGN_SYNC] Failed to import peer workflow data: {}",
                                     e
@@ -377,7 +369,8 @@ impl SovereignStorageService {
                         }
 
                         if has_org_data {
-                            if let Err(e) = import_peer_org_data(&db_path_for_peer, &payload).await {
+                            if let Err(e) = import_peer_org_data(&db_path_for_peer, &payload).await
+                            {
                                 tracing::error!(
                                     "[SOVEREIGN_SYNC] Failed to import peer org data: {}",
                                     e
@@ -386,7 +379,9 @@ impl SovereignStorageService {
                         }
 
                         if has_artifact_data {
-                            if let Err(e) = import_peer_artifact_data(&db_path_for_peer, &payload).await {
+                            if let Err(e) =
+                                import_peer_artifact_data(&db_path_for_peer, &payload).await
+                            {
                                 tracing::error!(
                                     "[SOVEREIGN_SYNC] Failed to import peer artifact data: {}",
                                     e
@@ -395,7 +390,8 @@ impl SovereignStorageService {
                         }
 
                         if has_crm_data {
-                            if let Err(e) = import_peer_crm_data(&db_path_for_peer, &payload).await {
+                            if let Err(e) = import_peer_crm_data(&db_path_for_peer, &payload).await
+                            {
                                 tracing::error!(
                                     "[SOVEREIGN_SYNC] Failed to import peer CRM data: {}",
                                     e
@@ -419,8 +415,7 @@ impl SovereignStorageService {
     }
 
     async fn sync_loop(&mut self) -> Result<()> {
-        let mut interval =
-            time::interval(Duration::from_secs(self.config.sync_interval_secs));
+        let mut interval = time::interval(Duration::from_secs(self.config.sync_interval_secs));
 
         // Initial sync
         if let Err(e) = self.perform_sync().await {
@@ -455,15 +450,25 @@ impl SovereignStorageService {
             enc.finish().context("gzip finish failed")?
         };
         let payload_size = payload.len();
-        tracing::debug!("[SOVEREIGN_SYNC] Payload: {}KB raw → {}KB gzip", raw_size/1024, payload_size/1024);
+        tracing::debug!(
+            "[SOVEREIGN_SYNC] Payload: {}KB raw → {}KB gzip",
+            raw_size / 1024,
+            payload_size / 1024
+        );
 
         // Publish to Pythia's sync channel: apn.storage.sync.{provider_id}
-        let sync_subject =
-            format!("apn.storage.sync.{}", self.config.provider_id);
+        let sync_subject = format!("apn.storage.sync.{}", self.config.provider_id);
         client
             .publish(sync_subject.clone(), payload.into())
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to publish sync data ({}B raw / {}B gz): {:?}", raw_size, payload_size, e))?;
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to publish sync data ({}B raw / {}B gz): {:?}",
+                    raw_size,
+                    payload_size,
+                    e
+                )
+            })?;
 
         self.last_sync = Some(now);
         tracing::info!(
@@ -486,9 +491,7 @@ impl SovereignStorageService {
 
     async fn build_snapshot(&self, timestamp: &str) -> Result<SyncPayload> {
         let db_path = &self.config.db_path;
-        let db_size = std::fs::metadata(db_path)
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let db_size = std::fs::metadata(db_path).map(|m| m.len()).unwrap_or(0);
 
         let db_url = format!("sqlite://{}?mode=ro", db_path.display());
         let pool = sqlx::sqlite::SqlitePoolOptions::new()
@@ -985,8 +988,9 @@ async fn backup_pre_sync(db_path: &std::path::Path) {
         }
     }
 
-    use sqlx::sqlite::SqliteConnectOptions;
     use std::str::FromStr;
+
+    use sqlx::sqlite::SqliteConnectOptions;
 
     let db_url = format!("sqlite://{}", db_path.display());
     let options = match SqliteConnectOptions::from_str(&db_url) {
@@ -1050,7 +1054,11 @@ fn normalize_uuid(s: &str) -> Option<String> {
         let s = s.to_lowercase();
         return Some(format!(
             "{}-{}-{}-{}-{}",
-            &s[0..8], &s[8..12], &s[12..16], &s[16..20], &s[20..32]
+            &s[0..8],
+            &s[8..12],
+            &s[12..16],
+            &s[16..20],
+            &s[20..32]
         ));
     }
     None
@@ -1073,8 +1081,7 @@ fn get_uuid(row: &serde_json::Value, key: &str) -> Option<String> {
 ///
 /// Only touches rows where `typeof(col) = 'blob'`, so it is a no-op on clean DBs.
 async fn fix_blob_uuids(pool: &sqlx::SqlitePool) {
-    const BLOB_TO_TEXT: &str =
-        "lower(substr(hex(%col%),1,8)||'-'||substr(hex(%col%),9,4)||'-'||\
+    const BLOB_TO_TEXT: &str = "lower(substr(hex(%col%),1,8)||'-'||substr(hex(%col%),9,4)||'-'||\
          substr(hex(%col%),13,4)||'-'||substr(hex(%col%),17,4)||'-'||substr(hex(%col%),21,12))";
 
     // Tables whose rows come entirely from peer sync — safe to delete all BLOB-id rows outright.
@@ -1097,10 +1104,13 @@ async fn fix_blob_uuids(pool: &sqlx::SqlitePool) {
     // Tables where we UPDATE BLOB ids in-place (no secondary unique constraints that would block).
     // These tables either have locally-authored rows or are also safe to update.
     let update_blob_pk_tables: &[(&str, &[&str])] = &[
-        ("tasks",         &["project_id", "board_id", "parent_task_id"]),
-        ("projects",      &["organization_id", "client_id", "folder_id", "owner_id"]),
+        ("tasks", &["project_id", "board_id", "parent_task_id"]),
+        (
+            "projects",
+            &["organization_id", "client_id", "folder_id", "owner_id"],
+        ),
         ("organizations", &["owner_id"]),
-        ("clients",       &["organization_id"]),
+        ("clients", &["organization_id"]),
     ];
 
     for (table, non_pk_cols) in update_blob_pk_tables {
@@ -1116,9 +1126,7 @@ async fn fix_blob_uuids(pool: &sqlx::SqlitePool) {
         }
 
         // Convert remaining BLOB ids to TEXT
-        let upd_sql = format!(
-            "UPDATE {table} SET id = {expr} WHERE typeof(id) = 'blob'"
-        );
+        let upd_sql = format!("UPDATE {table} SET id = {expr} WHERE typeof(id) = 'blob'");
         if let Err(e) = sqlx::query(&upd_sql).execute(pool).await {
             tracing::warn!("[SOVEREIGN_SYNC] blob-uuid fix failed on {table}.id: {e}");
         }
@@ -1126,9 +1134,8 @@ async fn fix_blob_uuids(pool: &sqlx::SqlitePool) {
         // Fix non-PK UUID columns
         for col in *non_pk_cols {
             let col_expr = BLOB_TO_TEXT.replace("%col%", col);
-            let col_sql = format!(
-                "UPDATE {table} SET {col} = {col_expr} WHERE typeof({col}) = 'blob'"
-            );
+            let col_sql =
+                format!("UPDATE {table} SET {col} = {col_expr} WHERE typeof({col}) = 'blob'");
             if let Err(e) = sqlx::query(&col_sql).execute(pool).await {
                 tracing::warn!("[SOVEREIGN_SYNC] blob-uuid fix failed on {table}.{col}: {e}");
             }
@@ -1137,16 +1144,18 @@ async fn fix_blob_uuids(pool: &sqlx::SqlitePool) {
 
     // project_members.project_id — BLOB rows always have TEXT counterparts (duplicate from old sync).
     // Safe to delete outright; TEXT rows are canonical and the peer re-imports as TEXT.
-    if let Err(e) = sqlx::query(
-        "DELETE FROM project_members WHERE typeof(project_id) = 'blob'"
-    ).execute(pool).await {
+    if let Err(e) = sqlx::query("DELETE FROM project_members WHERE typeof(project_id) = 'blob'")
+        .execute(pool)
+        .await
+    {
         tracing::warn!("[SOVEREIGN_SYNC] blob-uuid fix failed on project_members.project_id: {e}");
     }
 }
 
 async fn import_peer_workflow_data(db_path: &std::path::Path, payload: &SyncPayload) -> Result<()> {
-    use sqlx::sqlite::SqliteConnectOptions;
     use std::str::FromStr;
+
+    use sqlx::sqlite::SqliteConnectOptions;
 
     let db_url = format!("sqlite://{}", db_path.display());
     let options = SqliteConnectOptions::from_str(&db_url)?.foreign_keys(false);
@@ -1168,21 +1177,60 @@ async fn import_peer_workflow_data(db_path: &std::path::Path, payload: &SyncPayl
             "INSERT OR IGNORE INTO workflow_executions \
              (id, agent_id, workflow_id, workflow_name, project_id, state, context, \
               current_stage, created_tasks, deliverables, started_at, updated_at, completed_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)"
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
         )
         .bind(id)
         .bind(row.get("agent_id").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("workflow_id").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("workflow_name").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("project_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(
+            row.get("workflow_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
+        )
+        .bind(
+            row.get("workflow_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
+        )
+        .bind(
+            row.get("project_id")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
         .bind(row.get("state").and_then(|v| v.as_str()).unwrap_or("{}"))
         .bind(row.get("context").and_then(|v| v.as_str()).unwrap_or("{}"))
-        .bind(row.get("current_stage").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
-        .bind(row.get("created_tasks").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
-        .bind(row.get("deliverables").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
-        .bind(row.get("started_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
-        .bind(row.get("completed_at").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(normalize_dt))
+        .bind(
+            row.get("current_stage")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32,
+        )
+        .bind(
+            row.get("created_tasks")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
+        .bind(
+            row.get("deliverables")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
+        .bind(
+            row.get("started_at")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt)
+                .unwrap_or_default(),
+        )
+        .bind(
+            row.get("updated_at")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt)
+                .unwrap_or_default(),
+        )
+        .bind(
+            row.get("completed_at")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(normalize_dt),
+        )
         .execute(&pool)
         .await;
 
@@ -1203,21 +1251,59 @@ async fn import_peer_workflow_data(db_path: &std::path::Path, payload: &SyncPayl
             "INSERT OR IGNORE INTO media_batches \
              (id, project_id, reference_name, source_url, storage_tier, checksum_required, \
               status, file_count, total_size_bytes, last_error, metadata, created_at, updated_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)"
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
         )
         .bind(id)
-        .bind(row.get("project_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
-        .bind(row.get("reference_name").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(
+            row.get("project_id")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
+        .bind(
+            row.get("reference_name")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
         .bind(row.get("source_url").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("storage_tier").and_then(|v| v.as_str()).unwrap_or("hot"))
-        .bind(row.get("checksum_required").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
-        .bind(row.get("status").and_then(|v| v.as_str()).unwrap_or("ready"))
+        .bind(
+            row.get("storage_tier")
+                .and_then(|v| v.as_str())
+                .unwrap_or("hot"),
+        )
+        .bind(
+            row.get("checksum_required")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(1) as i32,
+        )
+        .bind(
+            row.get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("ready"),
+        )
         .bind(row.get("file_count").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
-        .bind(row.get("total_size_bytes").and_then(|v| v.as_i64()).unwrap_or(0))
-        .bind(row.get("last_error").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(
+            row.get("total_size_bytes")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0),
+        )
+        .bind(
+            row.get("last_error")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
         .bind(row.get("metadata").and_then(|v| v.as_str()).unwrap_or("{}"))
-        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(
+            row.get("created_at")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt)
+                .unwrap_or_default(),
+        )
+        .bind(
+            row.get("updated_at")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt)
+                .unwrap_or_default(),
+        )
         .execute(&pool)
         .await;
 
@@ -1238,20 +1324,37 @@ async fn import_peer_workflow_data(db_path: &std::path::Path, payload: &SyncPayl
             "INSERT OR IGNORE INTO media_files \
              (id, batch_id, filename, file_path, size_bytes, checksum_sha256, \
               duration_seconds, resolution, codec, fps, metadata, created_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)"
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
         )
         .bind(id)
         .bind(row.get("batch_id").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("filename").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("file_path").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("size_bytes").and_then(|v| v.as_i64()).unwrap_or(0))
-        .bind(row.get("checksum_sha256").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(
+            row.get("checksum_sha256")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
         .bind(row.get("duration_seconds").and_then(|v| v.as_f64()))
-        .bind(row.get("resolution").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
-        .bind(row.get("codec").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(
+            row.get("resolution")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
+        .bind(
+            row.get("codec")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
         .bind(row.get("fps").and_then(|v| v.as_f64()))
         .bind(row.get("metadata").and_then(|v| v.as_str()).unwrap_or("{}"))
-        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(
+            row.get("created_at")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt)
+                .unwrap_or_default(),
+        )
         .execute(&pool)
         .await;
 
@@ -1273,20 +1376,58 @@ async fn import_peer_workflow_data(db_path: &std::path::Path, payload: &SyncPayl
              (id, batch_id, deliverable_type, aspect_ratios, reference_style, \
               include_captions, imovie_project, status, timelines, metadata, \
               created_at, updated_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)"
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
         )
         .bind(id)
         .bind(row.get("batch_id").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("deliverable_type").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("aspect_ratios").and_then(|v| v.as_str()).unwrap_or("[]"))
-        .bind(row.get("reference_style").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
-        .bind(row.get("include_captions").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
-        .bind(row.get("imovie_project").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("status").and_then(|v| v.as_str()).unwrap_or("assembling"))
-        .bind(row.get("timelines").and_then(|v| v.as_str()).unwrap_or("[]"))
+        .bind(
+            row.get("deliverable_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
+        )
+        .bind(
+            row.get("aspect_ratios")
+                .and_then(|v| v.as_str())
+                .unwrap_or("[]"),
+        )
+        .bind(
+            row.get("reference_style")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
+        .bind(
+            row.get("include_captions")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32,
+        )
+        .bind(
+            row.get("imovie_project")
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
+        )
+        .bind(
+            row.get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("assembling"),
+        )
+        .bind(
+            row.get("timelines")
+                .and_then(|v| v.as_str())
+                .unwrap_or("[]"),
+        )
         .bind(row.get("metadata").and_then(|v| v.as_str()).unwrap_or("{}"))
-        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(
+            row.get("created_at")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt)
+                .unwrap_or_default(),
+        )
+        .bind(
+            row.get("updated_at")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt)
+                .unwrap_or_default(),
+        )
         .execute(&pool)
         .await;
 
@@ -1307,17 +1448,34 @@ async fn import_peer_workflow_data(db_path: &std::path::Path, payload: &SyncPayl
             "INSERT OR IGNORE INTO media_batch_analyses \
              (id, batch_id, brief, summary, passes_completed, \
               deliverable_targets, hero_moments, insights, created_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
         )
         .bind(id)
         .bind(row.get("batch_id").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("brief").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("summary").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("passes_completed").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
-        .bind(row.get("deliverable_targets").and_then(|v| v.as_str()).unwrap_or("[]"))
-        .bind(row.get("hero_moments").and_then(|v| v.as_str()).unwrap_or("[]"))
+        .bind(
+            row.get("passes_completed")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32,
+        )
+        .bind(
+            row.get("deliverable_targets")
+                .and_then(|v| v.as_str())
+                .unwrap_or("[]"),
+        )
+        .bind(
+            row.get("hero_moments")
+                .and_then(|v| v.as_str())
+                .unwrap_or("[]"),
+        )
         .bind(row.get("insights").and_then(|v| v.as_str()).unwrap_or("{}"))
-        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(
+            row.get("created_at")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt)
+                .unwrap_or_default(),
+        )
         .execute(&pool)
         .await;
 
@@ -1349,15 +1507,15 @@ async fn import_peer_workflow_data(db_path: &std::path::Path, payload: &SyncPayl
 /// Uses INSERT OR REPLACE so that updates propagate for reference data.
 /// Import order respects FK constraints.
 async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) -> Result<()> {
-    use sqlx::sqlite::SqliteConnectOptions;
     use std::str::FromStr;
+
+    use sqlx::sqlite::SqliteConnectOptions;
 
     // Disable FK enforcement so we can import data even when foreign keys
     // reference rows that haven't been synced yet. INSERT OR IGNORE handles
     // deduplication; the upsert on tasks handles updates.
     let db_url = format!("sqlite://{}", db_path.display());
-    let options = SqliteConnectOptions::from_str(&db_url)?
-        .foreign_keys(false);
+    let options = SqliteConnectOptions::from_str(&db_url)?.foreign_keys(false);
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(1)
         .connect_with(options)
@@ -1420,24 +1578,67 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
                custom_properties=excluded.custom_properties, \
                parent_task_id=excluded.parent_task_id, \
                updated_at=excluded.updated_at \
-             WHERE excluded.updated_at > tasks.updated_at"
+             WHERE excluded.updated_at > tasks.updated_at",
         )
         .bind(&id)
         .bind(get_uuid(row, "project_id").unwrap_or_default())
         .bind(row.get("title").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("description").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(
+            row.get("description")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
         .bind(row.get("status").and_then(|v| v.as_str()).unwrap_or("todo"))
-        .bind(row.get("priority").and_then(|v| v.as_str()).unwrap_or("medium"))
-        .bind(row.get("assigned_agent").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
-        .bind(row.get("custom_properties").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(
+            row.get("priority")
+                .and_then(|v| v.as_str())
+                .unwrap_or("medium"),
+        )
+        .bind(
+            row.get("assigned_agent")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
+        .bind(
+            row.get("custom_properties")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
         .bind(get_uuid(row, "board_id"))
-        .bind(row.get("assignee_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
-        .bind(row.get("tags").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
-        .bind(row.get("due_date").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(normalize_dt))
-        .bind(row.get("created_by").and_then(|v| v.as_str()).unwrap_or("system"))
+        .bind(
+            row.get("assignee_id")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
+        .bind(
+            row.get("tags")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
+        .bind(
+            row.get("due_date")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(normalize_dt),
+        )
+        .bind(
+            row.get("created_by")
+                .and_then(|v| v.as_str())
+                .unwrap_or("system"),
+        )
         .bind(get_uuid(row, "parent_task_id"))
-        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(
+            row.get("created_at")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt)
+                .unwrap_or_default(),
+        )
+        .bind(
+            row.get("updated_at")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt)
+                .unwrap_or_default(),
+        )
         .execute(&pool)
         .await;
 
@@ -1519,7 +1720,7 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
         let result = sqlx::query(
             "INSERT OR IGNORE INTO organization_members \
              (id, organization_id, user_id, role, granted_at) \
-             VALUES ($1, $2, unhex($3), $4, $5)"
+             VALUES ($1, $2, unhex($3), $4, $5)",
         )
         .bind(&id)
         .bind(get_uuid(row, "organization_id").unwrap_or_default())
@@ -1576,7 +1777,7 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
         let result = sqlx::query(
             "INSERT OR IGNORE INTO project_folders \
              (id, organization_id, client_id, name, sort_order, is_active, created_at, updated_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
         )
         .bind(&id)
         .bind(get_uuid(row, "organization_id").unwrap_or_default())
@@ -1584,8 +1785,18 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
         .bind(row.get("name").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("sort_order").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
         .bind(row.get("is_active").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
-        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(
+            row.get("created_at")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt)
+                .unwrap_or_default(),
+        )
+        .bind(
+            row.get("updated_at")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt)
+                .unwrap_or_default(),
+        )
         .execute(&pool)
         .await;
 
@@ -1605,16 +1816,34 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
         let result = sqlx::query(
             "INSERT OR IGNORE INTO project_boards \
              (id, project_id, name, slug, board_type, description, created_at, updated_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
         )
         .bind(&id)
         .bind(get_uuid(row, "project_id").unwrap_or_default())
         .bind(row.get("name").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("slug").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("board_type").and_then(|v| v.as_str()).unwrap_or("kanban"))
-        .bind(row.get("description").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
-        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(
+            row.get("board_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("kanban"),
+        )
+        .bind(
+            row.get("description")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
+        .bind(
+            row.get("created_at")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt)
+                .unwrap_or_default(),
+        )
+        .bind(
+            row.get("updated_at")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt)
+                .unwrap_or_default(),
+        )
         .execute(&pool)
         .await;
 
@@ -1635,18 +1864,36 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
             "INSERT OR IGNORE INTO board_shares \
              (id, board_id, source_organization_id, target_organization_id, permission, \
               share_type, shared_by, is_active, created_at, updated_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)"
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
         )
         .bind(&id)
         .bind(get_uuid(row, "board_id").unwrap_or_default())
         .bind(get_uuid(row, "source_organization_id").unwrap_or_default())
         .bind(get_uuid(row, "target_organization_id").unwrap_or_default())
-        .bind(row.get("permission").and_then(|v| v.as_str()).unwrap_or("read"))
-        .bind(row.get("share_type").and_then(|v| v.as_str()).unwrap_or("org"))
+        .bind(
+            row.get("permission")
+                .and_then(|v| v.as_str())
+                .unwrap_or("read"),
+        )
+        .bind(
+            row.get("share_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("org"),
+        )
         .bind(get_uuid(row, "shared_by"))
         .bind(row.get("is_active").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
-        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(
+            row.get("created_at")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt)
+                .unwrap_or_default(),
+        )
+        .bind(
+            row.get("updated_at")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt)
+                .unwrap_or_default(),
+        )
         .execute(&pool)
         .await;
 
@@ -1667,14 +1914,22 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
         let result = sqlx::query(
             "INSERT OR IGNORE INTO project_members \
              (id, project_id, user_id, role, permissions, granted_by, granted_at) \
-             VALUES ($1, $2, unhex($3), $4, $5, unhex($6), $7)"
+             VALUES ($1, $2, unhex($3), $4, $5, unhex($6), $7)",
         )
         .bind(&id)
         .bind(get_uuid(row, "project_id").unwrap_or_default())
         .bind(row.get("user_id").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("role").and_then(|v| v.as_str()).unwrap_or("member"))
-        .bind(row.get("permissions").and_then(|v| v.as_str()).unwrap_or("{}"))
-        .bind(row.get("granted_by").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(
+            row.get("permissions")
+                .and_then(|v| v.as_str())
+                .unwrap_or("{}"),
+        )
+        .bind(
+            row.get("granted_by")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
         .bind(row.get("granted_at").and_then(|v| v.as_str()).unwrap_or(""))
         .execute(&pool)
         .await;
@@ -1733,14 +1988,18 @@ async fn import_peer_artifact_data(db_path: &std::path::Path, payload: &SyncPayl
         let result = sqlx::query(
             "INSERT OR IGNORE INTO task_attempts \
              (id, task_id, executor, created_at, updated_at, base_branch, branch) \
-             VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7)"
+             VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7)",
         )
         .bind(id)
         .bind(row.get("task_id").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("executor").and_then(|v| v.as_str()))
         .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("base_branch").and_then(|v| v.as_str()).unwrap_or("main"))
+        .bind(
+            row.get("base_branch")
+                .and_then(|v| v.as_str())
+                .unwrap_or("main"),
+        )
         .bind(row.get("branch").and_then(|v| v.as_str()))
         .execute(&pool)
         .await;
@@ -1762,18 +2021,38 @@ async fn import_peer_artifact_data(db_path: &std::path::Path, payload: &SyncPayl
             "INSERT OR IGNORE INTO execution_processes \
              (id, task_attempt_id, status, exit_code, started_at, completed_at, \
               created_at, updated_at, run_reason, executor_action) \
-             VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7, $8, $9, $10)"
+             VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7, $8, $9, $10)",
         )
         .bind(id)
-        .bind(row.get("task_attempt_id").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("status").and_then(|v| v.as_str()).unwrap_or("completed"))
-        .bind(row.get("exit_code").and_then(|v| v.as_i64()).map(|v| v as i32))
+        .bind(
+            row.get("task_attempt_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
+        )
+        .bind(
+            row.get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("completed"),
+        )
+        .bind(
+            row.get("exit_code")
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32),
+        )
         .bind(row.get("started_at").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("completed_at").and_then(|v| v.as_str()))
         .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("run_reason").and_then(|v| v.as_str()).unwrap_or("codingagent"))
-        .bind(row.get("executor_action").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(
+            row.get("run_reason")
+                .and_then(|v| v.as_str())
+                .unwrap_or("codingagent"),
+        )
+        .bind(
+            row.get("executor_action")
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
+        )
         .execute(&pool)
         .await;
 
@@ -1831,12 +2110,20 @@ async fn import_peer_artifact_data(db_path: &std::path::Path, payload: &SyncPayl
         let result = sqlx::query(
             "INSERT OR IGNORE INTO task_artifacts \
              (task_id, artifact_id, artifact_role, display_order, pinned, added_at, added_by) \
-             VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7)"
+             VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7)",
         )
         .bind(task_id)
         .bind(artifact_id)
-        .bind(row.get("artifact_role").and_then(|v| v.as_str()).unwrap_or("supporting"))
-        .bind(row.get("display_order").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
+        .bind(
+            row.get("artifact_role")
+                .and_then(|v| v.as_str())
+                .unwrap_or("supporting"),
+        )
+        .bind(
+            row.get("display_order")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32,
+        )
         .bind(row.get("pinned").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
         .bind(row.get("added_at").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("added_by").and_then(|v| v.as_str()))
@@ -1882,8 +2169,11 @@ async fn import_peer_artifact_data(db_path: &std::path::Path, payload: &SyncPayl
 
     pool.close().await;
 
-    let total = artifacts_imported + task_artifacts_imported + task_attempts_imported
-        + execution_processes_imported + activity_logs_imported;
+    let total = artifacts_imported
+        + task_artifacts_imported
+        + task_attempts_imported
+        + execution_processes_imported
+        + activity_logs_imported;
     if total > 0 {
         tracing::info!(
             "[SOVEREIGN_SYNC] ✅ Imported peer v0.5.0 data: {} artifacts, {} task_artifacts, {} task_attempts, {} exec_processes, {} activity_logs",
@@ -1903,8 +2193,9 @@ async fn import_peer_artifact_data(db_path: &std::path::Path, payload: &SyncPayl
 // ============================================================================
 
 async fn import_peer_crm_data(db_path: &std::path::Path, payload: &SyncPayload) -> Result<()> {
-    use sqlx::sqlite::SqliteConnectOptions;
     use std::str::FromStr;
+
+    use sqlx::sqlite::SqliteConnectOptions;
 
     let db_url = format!("sqlite://{}", db_path.display());
     let options = SqliteConnectOptions::from_str(&db_url)?.foreign_keys(false);
@@ -1930,19 +2221,33 @@ async fn import_peer_crm_data(db_path: &std::path::Path, payload: &SyncPayload) 
             "INSERT OR IGNORE INTO crm_pipelines \
              (id, project_id, name, description, pipeline_type, is_active, is_default, \
               icon, color, created_at, updated_at) \
-             VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7, $8, $9, $10, $11)"
+             VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7, $8, $9, $10, $11)",
         )
         .bind(id)
         .bind(row.get("project_id").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("name").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("description").and_then(|v| v.as_str()))
-        .bind(row.get("pipeline_type").and_then(|v| v.as_str()).unwrap_or("custom"))
+        .bind(
+            row.get("pipeline_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("custom"),
+        )
         .bind(row.get("is_active").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
         .bind(row.get("is_default").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
         .bind(row.get("icon").and_then(|v| v.as_str()))
         .bind(row.get("color").and_then(|v| v.as_str()))
-        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(
+            row.get("created_at")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt)
+                .unwrap_or_default(),
+        )
+        .bind(
+            row.get("updated_at")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt)
+                .unwrap_or_default(),
+        )
         .execute(&pool)
         .await;
 
@@ -1963,21 +2268,47 @@ async fn import_peer_crm_data(db_path: &std::path::Path, payload: &SyncPayload) 
             "INSERT OR IGNORE INTO crm_pipeline_stages \
              (id, pipeline_id, name, description, color, position, is_closed, is_won, \
               probability, auto_move_after_days, notify_on_enter, created_at, updated_at) \
-             VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)"
+             VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
         )
         .bind(id)
-        .bind(row.get("pipeline_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(
+            row.get("pipeline_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
+        )
         .bind(row.get("name").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("description").and_then(|v| v.as_str()))
-        .bind(row.get("color").and_then(|v| v.as_str()).unwrap_or("#6B7280"))
+        .bind(
+            row.get("color")
+                .and_then(|v| v.as_str())
+                .unwrap_or("#6B7280"),
+        )
         .bind(row.get("position").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
         .bind(row.get("is_closed").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
         .bind(row.get("is_won").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
         .bind(row.get("probability").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
-        .bind(row.get("auto_move_after_days").and_then(|v| v.as_i64()).map(|v| v as i32))
-        .bind(row.get("notify_on_enter").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
-        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(
+            row.get("auto_move_after_days")
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32),
+        )
+        .bind(
+            row.get("notify_on_enter")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32,
+        )
+        .bind(
+            row.get("created_at")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt)
+                .unwrap_or_default(),
+        )
+        .bind(
+            row.get("updated_at")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt)
+                .unwrap_or_default(),
+        )
         .execute(&pool)
         .await;
 
@@ -2080,34 +2411,84 @@ async fn import_peer_crm_data(db_path: &std::path::Path, payload: &SyncPayload) 
               crm_pipeline_id, crm_stage_id, position, created_at, updated_at) \
              VALUES (unhex($1), unhex($2), unhex($3), $4, $5, $6, $7, $8, $9, $10, \
                      $11, $12, $13, $14, unhex($15), $16, $17, $18, $19, $20, $21, \
-                     unhex($22), unhex($23), $24, $25, $26)"
+                     unhex($22), unhex($23), $24, $25, $26)",
         )
         .bind(id)
         .bind(row.get("project_id").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("crm_contact_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(
+            row.get("crm_contact_id")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
         .bind(row.get("name").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("description").and_then(|v| v.as_str()))
         .bind(row.get("amount").and_then(|v| v.as_f64()))
-        .bind(row.get("currency").and_then(|v| v.as_str()).unwrap_or("USD"))
-        .bind(row.get("pipeline").and_then(|v| v.as_str()).unwrap_or("default"))
-        .bind(row.get("stage").and_then(|v| v.as_str()).unwrap_or("qualification"))
+        .bind(
+            row.get("currency")
+                .and_then(|v| v.as_str())
+                .unwrap_or("USD"),
+        )
+        .bind(
+            row.get("pipeline")
+                .and_then(|v| v.as_str())
+                .unwrap_or("default"),
+        )
+        .bind(
+            row.get("stage")
+                .and_then(|v| v.as_str())
+                .unwrap_or("qualification"),
+        )
         .bind(row.get("probability").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
-        .bind(row.get("expected_close_date").and_then(|v| v.as_str()).map(normalize_dt))
-        .bind(row.get("actual_close_date").and_then(|v| v.as_str()).map(normalize_dt))
-        .bind(row.get("last_activity_at").and_then(|v| v.as_str()).map(normalize_dt))
+        .bind(
+            row.get("expected_close_date")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt),
+        )
+        .bind(
+            row.get("actual_close_date")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt),
+        )
+        .bind(
+            row.get("last_activity_at")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt),
+        )
         .bind(row.get("owner_user_id").and_then(|v| v.as_str()))
-        .bind(row.get("assigned_agent_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(
+            row.get("assigned_agent_id")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
         .bind(row.get("zoho_deal_id").and_then(|v| v.as_str()))
         .bind(row.get("external_ids").and_then(|v| v.as_str()))
         .bind(row.get("tags").and_then(|v| v.as_str()))
         .bind(row.get("custom_fields").and_then(|v| v.as_str()))
         .bind(row.get("lost_reason").and_then(|v| v.as_str()))
         .bind(row.get("win_reason").and_then(|v| v.as_str()))
-        .bind(row.get("crm_pipeline_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
-        .bind(row.get("crm_stage_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(
+            row.get("crm_pipeline_id")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
+        .bind(
+            row.get("crm_stage_id")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
         .bind(row.get("position").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
-        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(
+            row.get("created_at")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt)
+                .unwrap_or_default(),
+        )
+        .bind(
+            row.get("updated_at")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt)
+                .unwrap_or_default(),
+        )
         .execute(&pool)
         .await;
 
@@ -2131,25 +2512,67 @@ async fn import_peer_crm_data(db_path: &std::path::Path, payload: &SyncPayload) 
               performed_by_user, performed_by_agent_id, metadata, duration_minutes, \
               activity_at, created_at) \
              VALUES (unhex($1), unhex($2), unhex($3), unhex($4), $5, $6, $7, $8, \
-                     unhex($9), unhex($10), unhex($11), $12, unhex($13), $14, $15, $16, $17)"
+                     unhex($9), unhex($10), unhex($11), $12, unhex($13), $14, $15, $16, $17)",
         )
         .bind(id)
         .bind(row.get("project_id").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("crm_contact_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
-        .bind(row.get("crm_deal_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
-        .bind(row.get("activity_type").and_then(|v| v.as_str()).unwrap_or("custom"))
+        .bind(
+            row.get("crm_contact_id")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
+        .bind(
+            row.get("crm_deal_id")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
+        .bind(
+            row.get("activity_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("custom"),
+        )
         .bind(row.get("subject").and_then(|v| v.as_str()))
         .bind(row.get("description").and_then(|v| v.as_str()))
         .bind(row.get("outcome").and_then(|v| v.as_str()))
-        .bind(row.get("email_message_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
-        .bind(row.get("social_mention_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
-        .bind(row.get("task_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(
+            row.get("email_message_id")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
+        .bind(
+            row.get("social_mention_id")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
+        .bind(
+            row.get("task_id")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
         .bind(row.get("performed_by_user").and_then(|v| v.as_str()))
-        .bind(row.get("performed_by_agent_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(
+            row.get("performed_by_agent_id")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty()),
+        )
         .bind(row.get("metadata").and_then(|v| v.as_str()))
-        .bind(row.get("duration_minutes").and_then(|v| v.as_i64()).map(|v| v as i32))
-        .bind(row.get("activity_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
-        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(
+            row.get("duration_minutes")
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32),
+        )
+        .bind(
+            row.get("activity_at")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt)
+                .unwrap_or_default(),
+        )
+        .bind(
+            row.get("created_at")
+                .and_then(|v| v.as_str())
+                .map(normalize_dt)
+                .unwrap_or_default(),
+        )
         .execute(&pool)
         .await;
 
@@ -2162,8 +2585,11 @@ async fn import_peer_crm_data(db_path: &std::path::Path, payload: &SyncPayload) 
 
     pool.close().await;
 
-    let total = pipelines_imported + stages_imported + contacts_imported
-        + deals_imported + activities_imported;
+    let total = pipelines_imported
+        + stages_imported
+        + contacts_imported
+        + deals_imported
+        + activities_imported;
     if total > 0 {
         tracing::info!(
             "[SOVEREIGN_SYNC] ✅ Imported peer v0.6.0 CRM data: {} pipelines, {} stages, {} contacts, {} deals, {} activities",
@@ -2194,10 +2620,16 @@ struct OrgImportCounts {
 
 impl OrgImportCounts {
     fn total(&self) -> usize {
-        self.projects + self.tasks
-            + self.users + self.organizations + self.organization_members
-            + self.clients + self.project_folders + self.project_boards
-            + self.board_shares + self.project_members
+        self.projects
+            + self.tasks
+            + self.users
+            + self.organizations
+            + self.organization_members
+            + self.clients
+            + self.project_folders
+            + self.project_boards
+            + self.board_shares
+            + self.project_members
     }
 }
 
@@ -2220,13 +2652,20 @@ struct ImportCounts {
 
 impl ImportCounts {
     fn total(&self) -> usize {
-        self.workflow_executions + self.media_batches + self.media_files
-            + self.edit_sessions + self.media_batch_analyses
-            + self.users + self.organizations + self.organization_members
-            + self.clients + self.project_folders + self.project_boards
-            + self.board_shares + self.project_members
+        self.workflow_executions
+            + self.media_batches
+            + self.media_files
+            + self.edit_sessions
+            + self.media_batch_analyses
+            + self.users
+            + self.organizations
+            + self.organization_members
+            + self.clients
+            + self.project_folders
+            + self.project_boards
+            + self.board_shares
+            + self.project_members
     }
-
 }
 
 // ============================================================================
@@ -2244,10 +2683,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for JsonRow {
             if let Ok(v) = row.try_get::<String, _>(name) {
                 map.insert(name.to_string(), serde_json::Value::String(v));
             } else if let Ok(v) = row.try_get::<i64, _>(name) {
-                map.insert(
-                    name.to_string(),
-                    serde_json::Value::Number(v.into()),
-                );
+                map.insert(name.to_string(), serde_json::Value::Number(v.into()));
             } else if let Ok(v) = row.try_get::<f64, _>(name) {
                 if let Some(n) = serde_json::Number::from_f64(v) {
                     map.insert(name.to_string(), serde_json::Value::Number(n));

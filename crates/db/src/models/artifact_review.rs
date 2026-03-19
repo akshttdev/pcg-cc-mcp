@@ -154,12 +154,11 @@ impl ArtifactReview {
         pool: &SqlitePool,
         id: Uuid,
     ) -> Result<Option<Self>, ArtifactReviewError> {
-        let review = sqlx::query_as::<_, ArtifactReview>(
-            r#"SELECT * FROM artifact_reviews WHERE id = ?1"#,
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await?;
+        let review =
+            sqlx::query_as::<_, ArtifactReview>(r#"SELECT * FROM artifact_reviews WHERE id = ?1"#)
+                .bind(id)
+                .fetch_optional(pool)
+                .await?;
 
         Ok(review)
     }
@@ -203,9 +202,7 @@ impl ArtifactReview {
     }
 
     /// Find all pending reviews
-    pub async fn find_all_pending(
-        pool: &SqlitePool,
-    ) -> Result<Vec<Self>, ArtifactReviewError> {
+    pub async fn find_all_pending(pool: &SqlitePool) -> Result<Vec<Self>, ArtifactReviewError> {
         let reviews = sqlx::query_as::<_, ArtifactReview>(
             r#"
             SELECT * FROM artifact_reviews

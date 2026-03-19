@@ -86,7 +86,7 @@ export function IntelTab({ deal }: IntelTabProps) {
         <div>
           <p className="text-sm font-medium">Research in progress</p>
           <p className="text-xs text-muted-foreground mt-1">
-            Nora is gathering intelligence on this lead.
+            The intel agent is gathering intelligence on this lead.
           </p>
         </div>
       </div>

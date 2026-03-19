@@ -6,10 +6,15 @@ use axum::{Json, extract::State};
 use chrono::Utc;
 use cinematics::{CinematicsConfig, CinematicsService};
 use db::models::project::Project;
-use nora::{NoraConfig, voice::{TTSConfig, VoiceConfig}};
+use nora::{
+    NoraConfig,
+    voice::{TTSConfig, VoiceConfig},
+};
 
-use super::*;
-use super::config::{apply_llm_overrides, default_capabilities};
+use super::{
+    config::{apply_llm_overrides, default_capabilities},
+    *,
+};
 
 /// Initialize Nora executive assistant (HTTP handler)
 pub async fn initialize_nora(

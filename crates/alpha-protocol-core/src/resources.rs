@@ -3,11 +3,13 @@
 //! Provides utilities for collecting system resource information (CPU, RAM, GPU, storage)
 //! to be shared with the network for task distribution and capacity planning.
 
-use crate::wire::NodeResources;
-use anyhow::Result;
 use std::process::Command;
+
+use anyhow::Result;
 use tokio::task;
 use tracing::debug;
+
+use crate::wire::NodeResources;
 
 /// Collect current system resources
 ///
@@ -61,10 +63,7 @@ fn get_available_storage() -> u64 {
     use sysinfo::Disks;
 
     let disks = Disks::new_with_refreshed_list();
-    let total_available = disks
-        .iter()
-        .map(|disk| disk.available_space())
-        .sum::<u64>();
+    let total_available = disks.iter().map(|disk| disk.available_space()).sum::<u64>();
 
     total_available / 1_073_741_824 // bytes to GB
 }
@@ -179,9 +178,7 @@ pub fn get_hostname() -> Option<String> {
     }
 
     // Fall back to system hostname
-    hostname::get()
-        .ok()
-        .and_then(|h| h.into_string().ok())
+    hostname::get().ok().and_then(|h| h.into_string().ok())
 }
 
 /// Collect lightweight resource snapshot for heartbeat
@@ -235,9 +232,6 @@ mod tests {
     #[test]
     fn test_gpu_detection() {
         let (gpu_available, gpu_model) = detect_gpu();
-        println!(
-            "GPU: available={}, model={:?}",
-            gpu_available, gpu_model
-        );
+        println!("GPU: available={}, model={:?}", gpu_available, gpu_model);
     }
 }

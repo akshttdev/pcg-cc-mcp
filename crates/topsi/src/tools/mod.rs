@@ -880,7 +880,8 @@ pub fn get_topsi_tools() -> Vec<ToolDefinition> {
     vec![
         ToolDefinition {
             name: "list_nodes".to_string(),
-            description: "List all nodes in the topology, optionally filtered by type or status".to_string(),
+            description: "List all nodes in the topology, optionally filtered by type or status"
+                .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -941,7 +942,8 @@ pub fn get_topsi_tools() -> Vec<ToolDefinition> {
         },
         ToolDefinition {
             name: "detect_issues".to_string(),
-            description: "Detect issues in the topology (bottlenecks, cycles, isolated nodes)".to_string(),
+            description: "Detect issues in the topology (bottlenecks, cycles, isolated nodes)"
+                .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {

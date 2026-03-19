@@ -39,6 +39,14 @@ paths:
 - Use `bind_uuid()` for TEXT columns, `bind_uuid_blob()` for legacy BLOB columns
 - `DbUuid` decodes both TEXT and BLOB transparently — always encodes as TEXT
 
+## Database Setup
+
+- **Dev DB**: `dev_assets/db.sqlite` — auto-seeded from `dev_assets_seed/db.sqlite` on first `flox activate`
+- **Test DB**: `dev_assets_seed/test-seed.sqlite` — minimal fixtures for E2E testing. Create with `scripts/create-test-seed.sh`
+- **DATABASE_URL**: Override DB path via env var (default: `sqlite://dev_assets/db.sqlite`). For test isolation: `DATABASE_URL=sqlite:dev_assets/test-db.sqlite`
+- **Missing column errors on startup**: The BLOB→TEXT migration (20260406) expects columns that may not exist in older dev DBs. Fix with: `sqlite3 dev_assets/db.sqlite "ALTER TABLE <table> ADD COLUMN <col> TEXT DEFAULT '...';"` — see migration file for expected columns
+- **Migration checksum mismatches**: If a migration file changes after being applied, update `_sqlx_migrations.checksum` or delete the row and re-run
+
 ## Migrations
 
 - Naming: `YYYYMMDDhhmmss_description.sql` (SQLx convention)
@@ -48,6 +56,8 @@ paths:
 - Add indexes for ALL foreign key columns and frequently-queried fields
 - Use `datetime('now', 'subsec')` for timestamp defaults (not `CURRENT_TIMESTAMP`)
 - After migration changes: `DATABASE_URL="sqlite:dev_assets/db.sqlite" cargo sqlx prepare --workspace`
+- **Data migrations** (e.g., BLOB→TEXT conversion): must handle missing columns gracefully. Use `PRAGMA table_info(<table>)` checks or wrap in conditional logic. These migrations are no-ops on fresh databases but may fail if column order differs from expectations
+- **Renumbering**: When porting migrations from other branches, check for version collisions with `ls crates/db/migrations/ | grep <prefix>`. Renumber if needed (e.g., 20260409 → 20260412)
 
 ## Soft Deletes
 

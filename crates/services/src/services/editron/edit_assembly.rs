@@ -3,8 +3,8 @@
 //! Automated edit creation based on music analysis and footage inventory.
 //! Creates intelligent, beat-synced edits from raw footage.
 
-use std::path::PathBuf;
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
+
 use serde::{Deserialize, Serialize};
 
 use super::{EditronError, EditronResult, VideoMetadata};
@@ -19,10 +19,10 @@ pub struct FootageClip {
     pub frame_rate: f32,
     pub categories: Vec<String>,
     pub tags: Vec<String>,
-    pub energy_level: f32,      // 0.0-1.0
-    pub motion_intensity: f32,  // 0.0-1.0
-    pub in_point: f64,          // Best starting point
-    pub out_point: f64,         // Best ending point
+    pub energy_level: f32,        // 0.0-1.0
+    pub motion_intensity: f32,    // 0.0-1.0
+    pub in_point: f64,            // Best starting point
+    pub out_point: f64,           // Best ending point
     pub hero_moment: Option<f64>, // Peak visual moment
     pub thumbnail: Option<PathBuf>,
 }
@@ -72,8 +72,8 @@ pub struct MusicAnalysis {
     pub path: PathBuf,
     pub duration: f64,
     pub bpm: f32,
-    pub beats: Vec<f64>,        // Beat timestamps in seconds
-    pub downbeats: Vec<f64>,    // Strong beat timestamps (1 of each bar)
+    pub beats: Vec<f64>,     // Beat timestamps in seconds
+    pub downbeats: Vec<f64>, // Strong beat timestamps (1 of each bar)
     pub sections: Vec<MusicSection>,
     pub energy_curve: Vec<(f64, f32)>, // (time, energy 0-1)
 }
@@ -91,11 +91,14 @@ impl MusicAnalysis {
 
     /// Find the nearest beat to a given time
     pub fn nearest_beat(&self, time: f64) -> f64 {
-        self.beats.iter()
+        self.beats
+            .iter()
             .min_by(|a, b| {
                 let diff_a = (time - *a).abs();
                 let diff_b = (time - *b).abs();
-                diff_a.partial_cmp(&diff_b).unwrap_or(std::cmp::Ordering::Equal)
+                diff_a
+                    .partial_cmp(&diff_b)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             })
             .copied()
             .unwrap_or(time)
@@ -103,11 +106,14 @@ impl MusicAnalysis {
 
     /// Find the nearest downbeat to a given time
     pub fn nearest_downbeat(&self, time: f64) -> f64 {
-        self.downbeats.iter()
+        self.downbeats
+            .iter()
             .min_by(|a, b| {
                 let diff_a = (time - *a).abs();
                 let diff_b = (time - *b).abs();
-                diff_a.partial_cmp(&diff_b).unwrap_or(std::cmp::Ordering::Equal)
+                diff_a
+                    .partial_cmp(&diff_b)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             })
             .copied()
             .unwrap_or(time)
@@ -137,7 +143,9 @@ impl MusicAnalysis {
 
     /// Get section at a given time
     pub fn section_at(&self, time: f64) -> Option<&MusicSection> {
-        self.sections.iter().find(|s| time >= s.start && time < s.end)
+        self.sections
+            .iter()
+            .find(|s| time >= s.start && time < s.end)
     }
 
     /// Generate beat grid from BPM
@@ -199,11 +207,11 @@ pub enum SectionType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PacingStyle {
-    Slow,       // Long holds, minimal cuts (4+ seconds per clip)
-    Moderate,   // Standard pacing (2-4 seconds per clip)
-    Fast,       // Quick cuts (1-2 seconds per clip)
-    Rapid,      // Very quick cuts (0.5-1 seconds per clip)
-    Dynamic,    // Varies with music energy
+    Slow,     // Long holds, minimal cuts (4+ seconds per clip)
+    Moderate, // Standard pacing (2-4 seconds per clip)
+    Fast,     // Quick cuts (1-2 seconds per clip)
+    Rapid,    // Very quick cuts (0.5-1 seconds per clip)
+    Dynamic,  // Varies with music energy
 }
 
 impl PacingStyle {
@@ -223,15 +231,15 @@ impl PacingStyle {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimelineClip {
     pub source: PathBuf,
-    pub source_in: f64,     // In point in source clip
-    pub source_out: f64,    // Out point in source clip
-    pub timeline_in: f64,   // Start on timeline
-    pub timeline_out: f64,  // End on timeline
-    pub track: u32,         // Video track number
-    pub opacity: f32,       // 0.0-1.0
-    pub scale: f32,         // 1.0 = 100%
+    pub source_in: f64,       // In point in source clip
+    pub source_out: f64,      // Out point in source clip
+    pub timeline_in: f64,     // Start on timeline
+    pub timeline_out: f64,    // End on timeline
+    pub track: u32,           // Video track number
+    pub opacity: f32,         // 0.0-1.0
+    pub scale: f32,           // 1.0 = 100%
     pub position: (f32, f32), // X, Y offset
-    pub speed: f32,         // 1.0 = normal speed
+    pub speed: f32,           // 1.0 = normal speed
     pub transition_in: Option<TransitionSpec>,
     pub transition_out: Option<TransitionSpec>,
 }
@@ -332,7 +340,7 @@ pub struct AudioClip {
     pub timeline_in: f64,
     pub timeline_out: f64,
     pub track: u32,
-    pub volume: f32,        // 0.0-2.0 (1.0 = unity)
+    pub volume: f32, // 0.0-2.0 (1.0 = unity)
     pub fade_in: Option<f64>,
     pub fade_out: Option<f64>,
     pub is_music: bool,
@@ -401,10 +409,14 @@ impl AssembledEdit {
     /// Sort clips by timeline position
     pub fn sort_clips(&mut self) {
         self.video_clips.sort_by(|a, b| {
-            a.timeline_in.partial_cmp(&b.timeline_in).unwrap_or(std::cmp::Ordering::Equal)
+            a.timeline_in
+                .partial_cmp(&b.timeline_in)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
         self.audio_clips.sort_by(|a, b| {
-            a.timeline_in.partial_cmp(&b.timeline_in).unwrap_or(std::cmp::Ordering::Equal)
+            a.timeline_in
+                .partial_cmp(&b.timeline_in)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
     }
 }
@@ -431,16 +443,16 @@ pub enum MarkerType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssemblyConfig {
     pub name: String,
-    pub target_duration: Option<f64>,  // If None, uses music duration
+    pub target_duration: Option<f64>, // If None, uses music duration
     pub pacing: PacingStyle,
     pub sync_to_beats: bool,
-    pub sync_to_downbeats: bool,       // Major cuts on downbeats
+    pub sync_to_downbeats: bool, // Major cuts on downbeats
     pub allow_speed_ramping: bool,
-    pub max_speed: f32,                // Max speed adjustment
+    pub max_speed: f32, // Max speed adjustment
     pub min_clip_duration: f64,
     pub transition_style: TransitionStyle,
     pub category_sequence: Option<Vec<String>>, // Ordered categories to use
-    pub energy_matching: bool,         // Match clip energy to music energy
+    pub energy_matching: bool,                  // Match clip energy to music energy
 }
 
 impl Default for AssemblyConfig {
@@ -465,10 +477,10 @@ impl Default for AssemblyConfig {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TransitionStyle {
-    Cut,            // Hard cuts only
-    Dissolve,       // Cross dissolves
-    Mixed,          // Variety of transitions
-    Cinematic,      // Film-style transitions
+    Cut,       // Hard cuts only
+    Dissolve,  // Cross dissolves
+    Mixed,     // Variety of transitions
+    Cinematic, // Film-style transitions
 }
 
 /// The main edit assembly engine
@@ -502,27 +514,37 @@ impl EditAssemblyEngine {
 
     /// Get footage by category
     pub fn footage_by_category(&self, category: &str) -> Vec<&FootageClip> {
-        self.footage.iter()
-            .filter(|c| c.categories.iter().any(|cat| cat.eq_ignore_ascii_case(category)))
+        self.footage
+            .iter()
+            .filter(|c| {
+                c.categories
+                    .iter()
+                    .any(|cat| cat.eq_ignore_ascii_case(category))
+            })
             .collect()
     }
 
     /// Get footage by energy level range
     pub fn footage_by_energy(&self, min: f32, max: f32) -> Vec<&FootageClip> {
-        self.footage.iter()
+        self.footage
+            .iter()
             .filter(|c| c.energy_level >= min && c.energy_level <= max)
             .collect()
     }
 
     /// Create an automated edit based on music and footage
     pub fn assemble(&self, config: &AssemblyConfig) -> EditronResult<AssembledEdit> {
-        let music = self.music.as_ref()
+        let music = self
+            .music
+            .as_ref()
             .ok_or_else(|| EditronError::InvalidFormat("No music set for assembly".to_string()))?;
 
         let duration = config.target_duration.unwrap_or(music.duration);
 
         // Determine sequence dimensions (use first clip or default to 4K)
-        let (width, height, frame_rate) = self.footage.first()
+        let (width, height, frame_rate) = self
+            .footage
+            .first()
             .map(|c| (c.width, c.height, c.frame_rate))
             .unwrap_or((3840, 2160, 23.976));
 
@@ -588,34 +610,23 @@ impl EditAssemblyEngine {
             }
 
             // Select appropriate footage
-            let footage_idx = self.select_footage(
-                music,
-                current_time,
-                actual_duration,
-                config,
-                &used_footage,
-            );
+            let footage_idx =
+                self.select_footage(music, current_time, actual_duration, config, &used_footage);
 
             if let Some(idx) = footage_idx {
                 let footage = &self.footage[idx];
 
                 // Determine in/out points in source
-                let (source_in, source_out) = self.calculate_source_range(
-                    footage,
-                    actual_duration,
-                    config,
-                );
+                let (source_in, source_out) =
+                    self.calculate_source_range(footage, actual_duration, config);
 
-                let mut timeline_clip = TimelineClip::new(
-                    footage.path.clone(),
-                    source_in,
-                    source_out,
-                    current_time,
-                );
+                let mut timeline_clip =
+                    TimelineClip::new(footage.path.clone(), source_in, source_out, current_time);
 
                 // Apply speed if needed
                 if config.allow_speed_ramping {
-                    let speed = self.calculate_speed(footage, actual_duration, source_out - source_in);
+                    let speed =
+                        self.calculate_speed(footage, actual_duration, source_out - source_in);
                     if speed != 1.0 && speed <= config.max_speed {
                         timeline_clip = timeline_clip.with_speed(speed);
                     }
@@ -642,7 +653,12 @@ impl EditAssemblyEngine {
     }
 
     /// Calculate target clip duration based on music and pacing
-    fn calculate_clip_duration(&self, music: &MusicAnalysis, time: f64, config: &AssemblyConfig) -> f64 {
+    fn calculate_clip_duration(
+        &self,
+        music: &MusicAnalysis,
+        time: f64,
+        config: &AssemblyConfig,
+    ) -> f64 {
         let (min_dur, max_dur) = config.pacing.duration_range();
 
         match config.pacing {
@@ -665,7 +681,10 @@ impl EditAssemblyEngine {
         // Cut on downbeat if we're near a section change or at high energy moments
         if let Some(section) = music.section_at(time) {
             // Always cut on downbeat for chorus/drop
-            matches!(section.section_type, SectionType::Chorus | SectionType::Drop)
+            matches!(
+                section.section_type,
+                SectionType::Chorus | SectionType::Drop
+            )
         } else {
             false
         }
@@ -688,7 +707,9 @@ impl EditAssemblyEngine {
         let section = music.section_at(time);
 
         // Build candidate list
-        let mut candidates: Vec<(usize, f32)> = self.footage.iter()
+        let mut candidates: Vec<(usize, f32)> = self
+            .footage
+            .iter()
             .enumerate()
             .filter(|(idx, clip)| {
                 // Filter out already used (unless we've used everything)
@@ -709,18 +730,27 @@ impl EditAssemblyEngine {
                 if let Some(section) = section {
                     if let Some(ref sequence) = config.category_sequence {
                         // Check if clip category matches desired sequence
-                        let section_idx = music.sections.iter()
+                        let section_idx = music
+                            .sections
+                            .iter()
                             .position(|s| s.start == section.start)
                             .unwrap_or(0);
                         if let Some(desired_cat) = sequence.get(section_idx % sequence.len()) {
-                            if clip.categories.iter().any(|c| c.eq_ignore_ascii_case(desired_cat)) {
+                            if clip
+                                .categories
+                                .iter()
+                                .any(|c| c.eq_ignore_ascii_case(desired_cat))
+                            {
                                 score *= 1.5;
                             }
                         }
                     }
 
                     // Boost hero shots for chorus/drop
-                    if matches!(section.section_type, SectionType::Chorus | SectionType::Drop) {
+                    if matches!(
+                        section.section_type,
+                        SectionType::Chorus | SectionType::Drop
+                    ) {
                         if clip.hero_moment.is_some() {
                             score *= 1.3;
                         }
@@ -746,7 +776,12 @@ impl EditAssemblyEngine {
     /// 1. If in_point was set by Visual QC (> 0.0), use it as the starting point
     /// 2. If a hero_moment exists, center around it
     /// 3. Fallback to beginning of usable range
-    fn calculate_source_range(&self, footage: &FootageClip, target_duration: f64, _config: &AssemblyConfig) -> (f64, f64) {
+    fn calculate_source_range(
+        &self,
+        footage: &FootageClip,
+        target_duration: f64,
+        _config: &AssemblyConfig,
+    ) -> (f64, f64) {
         let usable = footage.usable_duration();
 
         if usable <= target_duration {
@@ -769,7 +804,12 @@ impl EditAssemblyEngine {
     }
 
     /// Calculate speed adjustment
-    fn calculate_speed(&self, _footage: &FootageClip, target_duration: f64, source_duration: f64) -> f32 {
+    fn calculate_speed(
+        &self,
+        _footage: &FootageClip,
+        target_duration: f64,
+        source_duration: f64,
+    ) -> f32 {
         if source_duration <= 0.0 || target_duration <= 0.0 {
             return 1.0;
         }
@@ -777,7 +817,12 @@ impl EditAssemblyEngine {
     }
 
     /// Create transition based on style
-    fn create_transition(&self, config: &AssemblyConfig, time: f64, music: &MusicAnalysis) -> Option<TransitionSpec> {
+    fn create_transition(
+        &self,
+        config: &AssemblyConfig,
+        time: f64,
+        music: &MusicAnalysis,
+    ) -> Option<TransitionSpec> {
         match config.transition_style {
             TransitionStyle::Cut => None,
             TransitionStyle::Dissolve => {
@@ -874,7 +919,8 @@ impl EditAssemblyEngine {
         }
 
         // Generate energy curve from sections
-        let energy_curve: Vec<(f64, f32)> = sections.iter()
+        let energy_curve: Vec<(f64, f32)> = sections
+            .iter()
             .flat_map(|s| vec![(s.start, s.energy), (s.end - 0.01, s.energy)])
             .collect();
 

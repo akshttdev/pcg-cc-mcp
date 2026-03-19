@@ -29,7 +29,10 @@ pub struct ListEventsQuery {
 
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
-        .route("/agent-flows/{flow_id}/events", get(list_events).post(create_event))
+        .route(
+            "/agent-flows/{flow_id}/events",
+            get(list_events).post(create_event),
+        )
         .route("/agent-flow-events/latest", get(list_latest_events))
         .with_state(deployment.clone())
 }

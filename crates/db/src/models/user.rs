@@ -234,7 +234,9 @@ impl User {
 impl Organization {
     pub async fn find_by_id(pool: &SqlitePool, id: &str) -> Result<Option<Self>, sqlx::Error> {
         // Handle both TEXT and BLOB UUID storage formats
-        let uuid_bytes = uuid::Uuid::parse_str(id).ok().map(|u| u.into_bytes().to_vec());
+        let uuid_bytes = uuid::Uuid::parse_str(id)
+            .ok()
+            .map(|u| u.into_bytes().to_vec());
         sqlx::query_as::<_, Organization>(
             "SELECT CASE WHEN typeof(id)='blob' THEN lower(substr(hex(id),1,8)||'-'||substr(hex(id),9,4)||'-'||substr(hex(id),13,4)||'-'||substr(hex(id),17,4)||'-'||substr(hex(id),21,12)) ELSE id END as id, name, slug, description, avatar_url, CASE WHEN typeof(owner_id)='blob' THEN lower(substr(hex(owner_id),1,8)||'-'||substr(hex(owner_id),9,4)||'-'||substr(hex(owner_id),13,4)||'-'||substr(hex(owner_id),17,4)||'-'||substr(hex(owner_id),21,12)) ELSE owner_id END as owner_id, settings, is_active, created_at, updated_at, invite_token, pending_owner_email, created_by_org_id, address FROM organizations WHERE id = ? OR id = ?"
         )
@@ -314,8 +316,14 @@ impl Organization {
 
         let name = data.name.as_deref().unwrap_or(&existing.name);
         let slug = data.slug.as_deref().unwrap_or(&existing.slug);
-        let description = data.description.as_deref().or(existing.description.as_deref());
-        let avatar_url = data.avatar_url.as_deref().or(existing.avatar_url.as_deref());
+        let description = data
+            .description
+            .as_deref()
+            .or(existing.description.as_deref());
+        let avatar_url = data
+            .avatar_url
+            .as_deref()
+            .or(existing.avatar_url.as_deref());
         let address = data.address.as_deref().or(existing.address.as_deref());
 
         sqlx::query_as::<_, Organization>(
@@ -334,18 +342,22 @@ impl Organization {
     }
 
     pub async fn deactivate(pool: &SqlitePool, id: &str) -> Result<(), sqlx::Error> {
-        sqlx::query("UPDATE organizations SET is_active = 0, updated_at = datetime('now') WHERE id = ?")
-            .bind(id)
-            .execute(pool)
-            .await?;
+        sqlx::query(
+            "UPDATE organizations SET is_active = 0, updated_at = datetime('now') WHERE id = ?",
+        )
+        .bind(id)
+        .execute(pool)
+        .await?;
         Ok(())
     }
 
     pub async fn activate(pool: &SqlitePool, id: &str) -> Result<(), sqlx::Error> {
-        sqlx::query("UPDATE organizations SET is_active = 1, updated_at = datetime('now') WHERE id = ?")
-            .bind(id)
-            .execute(pool)
-            .await?;
+        sqlx::query(
+            "UPDATE organizations SET is_active = 1, updated_at = datetime('now') WHERE id = ?",
+        )
+        .bind(id)
+        .execute(pool)
+        .await?;
         Ok(())
     }
 
@@ -380,11 +392,13 @@ impl Organization {
         org_id: &str,
         user_id: &str,
     ) -> Result<u64, sqlx::Error> {
-        let result = sqlx::query("DELETE FROM organization_members WHERE organization_id = ? AND user_id = ?")
-            .bind(org_id)
-            .bind(user_id)
-            .execute(pool)
-            .await?;
+        let result = sqlx::query(
+            "DELETE FROM organization_members WHERE organization_id = ? AND user_id = ?",
+        )
+        .bind(org_id)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
         Ok(result.rows_affected())
     }
 
@@ -417,19 +431,22 @@ impl Organization {
         .fetch_all(pool)
         .await?;
 
-        Ok(rows.into_iter().map(|r| OrganizationMember {
-            id: r.id,
-            organization_id: r.organization_id,
-            user_id: r.user_id,
-            role: r.role,
-            joined_at: r.joined_at,
-            user: r.username.map(|un| OrgMemberUser {
-                username: un,
-                full_name: r.full_name,
-                email: r.email,
-                avatar_url: r.avatar_url,
-            }),
-        }).collect())
+        Ok(rows
+            .into_iter()
+            .map(|r| OrganizationMember {
+                id: r.id,
+                organization_id: r.organization_id,
+                user_id: r.user_id,
+                role: r.role,
+                joined_at: r.joined_at,
+                user: r.username.map(|un| OrgMemberUser {
+                    username: un,
+                    full_name: r.full_name,
+                    email: r.email,
+                    avatar_url: r.avatar_url,
+                }),
+            })
+            .collect())
     }
 
     pub async fn get_user_role(
@@ -442,7 +459,7 @@ impl Organization {
             role: String,
         }
         let result: Option<RoleRow> = sqlx::query_as(
-            "SELECT role FROM organization_members WHERE organization_id = ? AND user_id = ?"
+            "SELECT role FROM organization_members WHERE organization_id = ? AND user_id = ?",
         )
         .bind(org_id)
         .bind(user_id)

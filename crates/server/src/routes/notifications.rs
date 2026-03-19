@@ -4,16 +4,16 @@ use axum::{
     response::Json as ResponseJson,
     routing::{delete, get, put},
 };
-use db::db_uuid::DbUuid;
-use db::models::activity::ActivityLog;
-use db::models::notification::Notification;
+use db::{
+    db_uuid::DbUuid,
+    models::{activity::ActivityLog, notification::Notification},
+};
 use deployment::Deployment;
 use serde::Deserialize;
 use sqlx::FromRow;
 use utils::response::ApiResponse;
 
-use crate::{DeploymentImpl, error::ApiError};
-use crate::middleware::access_control::AccessContext;
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
 #[derive(Debug, Deserialize)]
 pub struct NotificationQuery {
@@ -85,7 +85,9 @@ pub async fn get_unread_count(
     let pool = &deployment.db().pool;
     let user_id = access.user_id.to_string();
     let count = Notification::count_unread(pool, &user_id).await?;
-    Ok(ResponseJson(ApiResponse::success(serde_json::json!({ "count": count }))))
+    Ok(ResponseJson(ApiResponse::success(
+        serde_json::json!({ "count": count }),
+    )))
 }
 
 /// PUT /notifications/:id/read
@@ -110,7 +112,9 @@ pub async fn mark_all_read(
     let pool = &deployment.db().pool;
     let user_id = access.user_id.to_string();
     let count = Notification::mark_all_read(pool, &user_id).await?;
-    Ok(ResponseJson(ApiResponse::success(serde_json::json!({ "marked": count }))))
+    Ok(ResponseJson(ApiResponse::success(
+        serde_json::json!({ "marked": count }),
+    )))
 }
 
 /// DELETE /notifications/:id

@@ -4,20 +4,17 @@
 //! Follows the ConferenceWorkflowEngine pattern: hold shared state,
 //! execute phases sequentially, accumulate artifacts in PipelineState.
 
+use std::{path::PathBuf, sync::Arc};
+
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
-use std::sync::Arc;
 use ts_rs::TS;
 use uuid::Uuid;
 
-use crate::execution::ExecutionEngine;
-use crate::{NoraError, Result};
-
-use super::assembly::AssemblyProcessor;
-use super::directive::DirectiveGenerator;
-use super::media_catalog::MediaCataloger;
-use super::transcript::TranscriptProcessor;
-use super::types::*;
+use super::{
+    assembly::AssemblyProcessor, directive::DirectiveGenerator, media_catalog::MediaCataloger,
+    transcript::TranscriptProcessor, types::*,
+};
+use crate::{execution::ExecutionEngine, NoraError, Result};
 
 /// Configuration for the content editing pipeline.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -207,20 +204,32 @@ impl ContentEditingEngine {
                 }
             }
         } else {
-            state.errors.push("Skipping assembly: no directive generated".to_string());
+            state
+                .errors
+                .push("Skipping assembly: no directive generated".to_string());
         }
 
         let directive = state.directive.as_ref();
         let result = ContentEditingResult {
             pipeline_id,
             phases_completed,
-            rendered_video_path: state.assembly_result.as_ref().and_then(|a| a.rendered_video_path.clone()),
-            premiere_xml_path: state.assembly_result.as_ref().and_then(|a| a.premiere_xml_path.clone()),
+            rendered_video_path: state
+                .assembly_result
+                .as_ref()
+                .and_then(|a| a.rendered_video_path.clone()),
+            premiere_xml_path: state
+                .assembly_result
+                .as_ref()
+                .and_then(|a| a.premiere_xml_path.clone()),
             total_duration_seconds: directive.map(|d| d.total_duration_seconds).unwrap_or(0.0),
             broll_ratio: directive.map(|d| d.computed_broll_ratio).unwrap_or(0.0),
             interview_ratio: directive.map(|d| d.computed_interview_ratio).unwrap_or(0.0),
             soundbites_used: directive.map(|d| d.soundbites.len()).unwrap_or(0),
-            media_assets_cataloged: state.shot_catalog.as_ref().map(|c| c.assets.len()).unwrap_or(0),
+            media_assets_cataloged: state
+                .shot_catalog
+                .as_ref()
+                .map(|c| c.assets.len())
+                .unwrap_or(0),
             duration_ms: start_time.elapsed().as_millis() as u64,
             errors: state.errors.clone(),
         };
@@ -293,10 +302,7 @@ impl ContentEditingEngine {
         }
 
         // Dispatch entity research to Scout via ExecutionEngine's ResearchExecutor
-        let project_context = state
-            .client_spec
-            .as_ref()
-            .map(|s| s.project_name.as_str());
+        let project_context = state.client_spec.as_ref().map(|s| s.project_name.as_str());
 
         let research_result = self
             .execution_engine
@@ -328,10 +334,9 @@ impl ContentEditingEngine {
 
         // Verify soundbites if transcript is available
         if let Some(transcript) = &state.transcript {
-            let verified = self.directive_generator.verify_soundbites(
-                transcript,
-                &catalog,
-            );
+            let verified = self
+                .directive_generator
+                .verify_soundbites(transcript, &catalog);
             state.verified_soundbites = verified;
         }
 
@@ -419,7 +424,12 @@ impl ContentEditingEngine {
             if clean.is_empty() {
                 continue;
             }
-            if clean.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+            if clean
+                .chars()
+                .next()
+                .map(|c| c.is_uppercase())
+                .unwrap_or(false)
+            {
                 if !current.is_empty() {
                     current.push(' ');
                 }

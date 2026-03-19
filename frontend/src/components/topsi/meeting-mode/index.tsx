@@ -50,6 +50,7 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [duration, setDuration] = useState(0);
   const [participantCount, setParticipantCount] = useState(0);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars, unused-imports/no-unused-vars
   const [_chunkIndex, setChunkIndex] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [meetingTitle, setMeetingTitle] = useState('');

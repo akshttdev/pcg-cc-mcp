@@ -369,8 +369,11 @@ fn set_mcp_servers_in_config_path(
     }
 
     // Set the final attribute
-    let final_attr = path.last()
-        .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> { "Empty config path".into() })?;
+    let final_attr = path
+        .last()
+        .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
+            "Empty config path".into()
+        })?;
     if let Some(obj) = current.as_object_mut() {
         obj.insert(final_attr.to_string(), serde_json::to_value(servers)?);
     } else {
@@ -447,7 +450,8 @@ async fn get_system_settings(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<db::models::system_settings::SystemSetting>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let settings = db::models::system_settings::SystemSetting::get_all(pool).await
+    let settings = db::models::system_settings::SystemSetting::get_all(pool)
+        .await
         .map_err(|e| ApiError::InternalError(format!("Failed to load system settings: {}", e)))?;
     Ok(ResponseJson(ApiResponse::success(settings)))
 }
@@ -464,11 +468,17 @@ async fn update_system_setting(
 ) -> Result<ResponseJson<ApiResponse<String>>, ApiError> {
     // Only allow in debug/dev builds
     if !cfg!(debug_assertions) {
-        return Err(ApiError::Forbidden("System settings can only be modified in development mode".into()));
+        return Err(ApiError::Forbidden(
+            "System settings can only be modified in development mode".into(),
+        ));
     }
 
     let pool = &deployment.db().pool;
-    db::models::system_settings::SystemSetting::set(pool, &key, &body.value, None).await
+    db::models::system_settings::SystemSetting::set(pool, &key, &body.value, None)
+        .await
         .map_err(|e| ApiError::InternalError(format!("Failed to update setting: {}", e)))?;
-    Ok(ResponseJson(ApiResponse::success(format!("Setting '{}' updated", key))))
+    Ok(ResponseJson(ApiResponse::success(format!(
+        "Setting '{}' updated",
+        key
+    ))))
 }

@@ -4,9 +4,12 @@
 //! and the Alpha Protocol Network (APN) node + bridge that agents and the
 //! dashboard depend on.
 
-use std::net::TcpStream;
-use std::process::{Command, Stdio};
-use std::time::Duration;
+use std::{
+    net::TcpStream,
+    process::{Command, Stdio},
+    time::Duration,
+};
+
 use tokio::time::sleep;
 use tracing::{info, warn};
 
@@ -78,7 +81,8 @@ impl Default for ExternalServicesConfig {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(30),
-            apn_wallet_seed: std::env::var("MASTER_WALLET_SEED").ok()
+            apn_wallet_seed: std::env::var("MASTER_WALLET_SEED")
+                .ok()
                 .filter(|s| !s.is_empty() && !s.contains("your twelve word")),
             auto_start_apn: std::env::var("AUTO_START_APN")
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -177,10 +181,16 @@ pub async fn initialize_external_services(config: &ExternalServicesConfig) -> Se
 
     // ── APN Node (Layer 0 - must start first, bridge depends on it) ──
     if is_service_running("127.0.0.1", config.apn_node_port) {
-        info!("[APN] Node already running on port {}", config.apn_node_port);
+        info!(
+            "[APN] Node already running on port {}",
+            config.apn_node_port
+        );
         status.apn_node_running = true;
     } else if config.auto_start_apn {
-        info!("[APN] Node not running, starting on port {}...", config.apn_node_port);
+        info!(
+            "[APN] Node not running, starting on port {}...",
+            config.apn_node_port
+        );
         if let Some(ref binary) = config.apn_node_binary {
             if start_apn_node(binary, config).await {
                 status.apn_node_running = true;
@@ -190,7 +200,9 @@ pub async fn initialize_external_services(config: &ExternalServicesConfig) -> Se
                 warn!("[APN] Failed to start node - mesh networking will not be available");
             }
         } else {
-            warn!("[APN] apn_node binary not found (build with: cargo build --release --bin apn_node)");
+            warn!(
+                "[APN] apn_node binary not found (build with: cargo build --release --bin apn_node)"
+            );
         }
     } else {
         warn!("[APN] Node not running and AUTO_START_APN=false");
@@ -198,17 +210,25 @@ pub async fn initialize_external_services(config: &ExternalServicesConfig) -> Se
 
     // ── APN Bridge (HTTP API for dashboard ↔ APN Core) ──
     if is_service_running("127.0.0.1", config.apn_bridge_port) {
-        info!("[APN] Bridge already running on port {}", config.apn_bridge_port);
+        info!(
+            "[APN] Bridge already running on port {}",
+            config.apn_bridge_port
+        );
         status.apn_bridge_running = true;
     } else if config.auto_start_apn {
-        info!("[APN] Bridge not running, starting on port {}...", config.apn_bridge_port);
+        info!(
+            "[APN] Bridge not running, starting on port {}...",
+            config.apn_bridge_port
+        );
         if let Some(ref script) = config.apn_bridge_script {
             if start_apn_bridge(script, config).await {
                 status.apn_bridge_running = true;
                 status.apn_bridge_started_by_us = true;
                 info!("[APN] Bridge started on port {}", config.apn_bridge_port);
             } else {
-                warn!("[APN] Failed to start bridge - dashboard mesh API will fall back to log parsing");
+                warn!(
+                    "[APN] Failed to start bridge - dashboard mesh API will fall back to log parsing"
+                );
             }
         } else {
             warn!("[APN] apn_bridge_server.py not found");
@@ -224,13 +244,18 @@ pub async fn initialize_external_services(config: &ExternalServicesConfig) -> Se
         if verify_apn_network_sync(config).await {
             info!("[APN] Network sync verified - connected to relay and announcing");
         } else {
-            warn!("[APN] Node running but network sync not yet confirmed (will retry in background)");
+            warn!(
+                "[APN] Node running but network sync not yet confirmed (will retry in background)"
+            );
         }
     }
 
     // ── Ollama ──
     if is_service_running(&config.ollama_host, config.ollama_port) {
-        info!("[EXTERNAL] Ollama is already running on {}:{}", config.ollama_host, config.ollama_port);
+        info!(
+            "[EXTERNAL] Ollama is already running on {}:{}",
+            config.ollama_host, config.ollama_port
+        );
         status.ollama_running = true;
     } else if config.auto_start_ollama {
         info!("[EXTERNAL] Ollama not running, attempting to start...");
@@ -240,7 +265,9 @@ pub async fn initialize_external_services(config: &ExternalServicesConfig) -> Se
             info!("[EXTERNAL] Ollama started successfully");
         } else {
             warn!("[EXTERNAL] Failed to start Ollama - local LLM inference will not be available");
-            warn!("[EXTERNAL] Install Ollama from https://ollama.ai or set AUTO_START_OLLAMA=false");
+            warn!(
+                "[EXTERNAL] Install Ollama from https://ollama.ai or set AUTO_START_OLLAMA=false"
+            );
         }
     } else {
         warn!("[EXTERNAL] Ollama not running and AUTO_START_OLLAMA=false");
@@ -248,7 +275,10 @@ pub async fn initialize_external_services(config: &ExternalServicesConfig) -> Se
 
     // ── ComfyUI ──
     if is_service_running(&config.comfyui_host, config.comfyui_port) {
-        info!("[EXTERNAL] ComfyUI is already running on {}:{}", config.comfyui_host, config.comfyui_port);
+        info!(
+            "[EXTERNAL] ComfyUI is already running on {}:{}",
+            config.comfyui_host, config.comfyui_port
+        );
         status.comfyui_running = true;
     } else if config.auto_start_comfyui {
         info!("[EXTERNAL] ComfyUI not running, attempting to start...");
@@ -258,7 +288,9 @@ pub async fn initialize_external_services(config: &ExternalServicesConfig) -> Se
                 status.comfyui_started_by_us = true;
                 info!("[EXTERNAL] ComfyUI started successfully");
             } else {
-                warn!("[EXTERNAL] Failed to start ComfyUI - image generation will not be available");
+                warn!(
+                    "[EXTERNAL] Failed to start ComfyUI - image generation will not be available"
+                );
             }
         } else {
             warn!("[EXTERNAL] ComfyUI directory not found (set COMFYUI_DIR env var)");
@@ -272,10 +304,26 @@ pub async fn initialize_external_services(config: &ExternalServicesConfig) -> Se
     let mut ready = Vec::new();
     let mut missing = Vec::new();
 
-    if status.apn_node_running { ready.push("APN Node"); } else { missing.push("APN Node"); }
-    if status.apn_bridge_running { ready.push("APN Bridge"); } else { missing.push("APN Bridge"); }
-    if status.ollama_running { ready.push("Ollama"); } else { missing.push("Ollama"); }
-    if status.comfyui_running { ready.push("ComfyUI"); } else { missing.push("ComfyUI"); }
+    if status.apn_node_running {
+        ready.push("APN Node");
+    } else {
+        missing.push("APN Node");
+    }
+    if status.apn_bridge_running {
+        ready.push("APN Bridge");
+    } else {
+        missing.push("APN Bridge");
+    }
+    if status.ollama_running {
+        ready.push("Ollama");
+    } else {
+        missing.push("Ollama");
+    }
+    if status.comfyui_running {
+        ready.push("ComfyUI");
+    } else {
+        missing.push("ComfyUI");
+    }
 
     if missing.is_empty() {
         info!("[EXTERNAL] All services ready: {}", ready.join(", "));
@@ -416,14 +464,24 @@ pub fn kill_existing_apn_nodes() {
     #[cfg(unix)]
     {
         // 1. Try PID file
-        if let Ok(pid_str) = std::fs::read_to_string(&std::env::temp_dir().join("apn_node.pid").to_string_lossy().to_string()) {
+        if let Ok(pid_str) = std::fs::read_to_string(
+            &std::env::temp_dir()
+                .join("apn_node.pid")
+                .to_string_lossy()
+                .to_string(),
+        ) {
             if let Ok(pid) = pid_str.trim().parse::<i32>() {
                 unsafe {
                     libc::kill(pid, libc::SIGTERM);
                 }
                 info!("[APN] Sent SIGTERM to previous node (PID {})", pid);
             }
-            let _ = std::fs::remove_file(&std::env::temp_dir().join("apn_node.pid").to_string_lossy().to_string());
+            let _ = std::fs::remove_file(
+                &std::env::temp_dir()
+                    .join("apn_node.pid")
+                    .to_string_lossy()
+                    .to_string(),
+            );
         }
 
         // 2. Kill any other orphaned apn_node processes (not us)
@@ -482,15 +540,31 @@ async fn start_apn_node(binary_path: &str, config: &ExternalServicesConfig) -> b
     }
 
     // Log to /tmp so we can tail for verification
-    let log_file = std::fs::File::create(&std::env::temp_dir().join("apn_node.log").to_string_lossy().to_string()).ok();
+    let log_file = std::fs::File::create(
+        &std::env::temp_dir()
+            .join("apn_node.log")
+            .to_string_lossy()
+            .to_string(),
+    )
+    .ok();
 
     match cmd
-        .stdout(log_file.as_ref().and_then(|f| f.try_clone().ok()).map_or(Stdio::null(), Stdio::from))
+        .stdout(
+            log_file
+                .as_ref()
+                .and_then(|f| f.try_clone().ok())
+                .map_or(Stdio::null(), Stdio::from),
+        )
         .stderr({
             let stderr_file = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open(&std::env::temp_dir().join("apn_node.log").to_string_lossy().to_string())
+                .open(
+                    &std::env::temp_dir()
+                        .join("apn_node.log")
+                        .to_string_lossy()
+                        .to_string(),
+                )
                 .or_else(|_| std::fs::File::create("/dev/null"));
             match stderr_file {
                 Ok(f) => Stdio::from(f),
@@ -501,7 +575,13 @@ async fn start_apn_node(binary_path: &str, config: &ExternalServicesConfig) -> b
     {
         Ok(child) => {
             // Write PID for clean shutdown
-            if let Err(e) = std::fs::write(&std::env::temp_dir().join("apn_node.pid").to_string_lossy().to_string(), child.id().to_string()) {
+            if let Err(e) = std::fs::write(
+                &std::env::temp_dir()
+                    .join("apn_node.pid")
+                    .to_string_lossy()
+                    .to_string(),
+                child.id().to_string(),
+            ) {
                 warn!("[APN] Failed to write PID file: {}", e);
             }
 
@@ -509,7 +589,11 @@ async fn start_apn_node(binary_path: &str, config: &ExternalServicesConfig) -> b
             for i in 0..20 {
                 sleep(Duration::from_millis(500)).await;
                 if is_service_running("127.0.0.1", config.apn_node_port) {
-                    info!("[APN] Node listening on port {} (took {}ms)", config.apn_node_port, (i + 1) * 500);
+                    info!(
+                        "[APN] Node listening on port {} (took {}ms)",
+                        config.apn_node_port,
+                        (i + 1) * 500
+                    );
                     return true;
                 }
             }
@@ -550,22 +634,29 @@ async fn start_apn_bridge(script_path: &str, config: &ExternalServicesConfig) ->
         .current_dir(&script_dir)
         .env("APN_BRIDGE_PORT", config.apn_bridge_port.to_string())
         .env("APN_RELAY_URL", &config.apn_relay_url)
-        .stdout(match std::fs::File::create(std::env::temp_dir().join("apn_bridge.log")) {
-            Ok(f) => Stdio::from(f),
-            Err(_) => Stdio::null(),
-        })
-        .stderr(match std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(std::env::temp_dir().join("apn_bridge.log"))
-        {
-            Ok(f) => Stdio::from(f),
-            Err(_) => Stdio::null(),
-        })
+        .stdout(
+            match std::fs::File::create(std::env::temp_dir().join("apn_bridge.log")) {
+                Ok(f) => Stdio::from(f),
+                Err(_) => Stdio::null(),
+            },
+        )
+        .stderr(
+            match std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(std::env::temp_dir().join("apn_bridge.log"))
+            {
+                Ok(f) => Stdio::from(f),
+                Err(_) => Stdio::null(),
+            },
+        )
         .spawn()
     {
         Ok(child) => {
-            if let Err(e) = std::fs::write(std::env::temp_dir().join("apn_bridge.pid"), child.id().to_string()) {
+            if let Err(e) = std::fs::write(
+                std::env::temp_dir().join("apn_bridge.pid"),
+                child.id().to_string(),
+            ) {
                 warn!("[APN] Failed to write bridge PID file: {}", e);
             }
 
@@ -573,7 +664,11 @@ async fn start_apn_bridge(script_path: &str, config: &ExternalServicesConfig) ->
             for i in 0..16 {
                 sleep(Duration::from_millis(500)).await;
                 if is_service_running("127.0.0.1", config.apn_bridge_port) {
-                    info!("[APN] Bridge ready on port {} (took {}ms)", config.apn_bridge_port, (i + 1) * 500);
+                    info!(
+                        "[APN] Bridge ready on port {} (took {}ms)",
+                        config.apn_bridge_port,
+                        (i + 1) * 500
+                    );
                     return true;
                 }
             }

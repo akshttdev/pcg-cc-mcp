@@ -180,7 +180,10 @@ impl BrowserAllowlist {
     }
 
     /// Validate a pattern based on its type
-    fn validate_pattern(pattern: &str, pattern_type: &PatternType) -> Result<(), BrowserAllowlistError> {
+    fn validate_pattern(
+        pattern: &str,
+        pattern_type: &PatternType,
+    ) -> Result<(), BrowserAllowlistError> {
         match pattern_type {
             PatternType::Glob => {
                 Pattern::new(pattern)
@@ -210,19 +213,13 @@ impl BrowserAllowlist {
         };
 
         match self.pattern_type {
-            PatternType::Glob => {
-                Pattern::new(&self.pattern)
-                    .map(|p| p.matches(&host_port) || p.matches(url))
-                    .unwrap_or(false)
-            }
-            PatternType::Regex => {
-                Regex::new(&self.pattern)
-                    .map(|r| r.is_match(&host_port) || r.is_match(url))
-                    .unwrap_or(false)
-            }
-            PatternType::Exact => {
-                host_port == self.pattern || url == self.pattern
-            }
+            PatternType::Glob => Pattern::new(&self.pattern)
+                .map(|p| p.matches(&host_port) || p.matches(url))
+                .unwrap_or(false),
+            PatternType::Regex => Regex::new(&self.pattern)
+                .map(|r| r.is_match(&host_port) || r.is_match(url))
+                .unwrap_or(false),
+            PatternType::Exact => host_port == self.pattern || url == self.pattern,
         }
     }
 

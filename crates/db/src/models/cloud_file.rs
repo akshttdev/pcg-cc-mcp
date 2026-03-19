@@ -177,12 +177,10 @@ impl CloudFile {
     }
 
     pub async fn find_by_id(pool: &SqlitePool, id: &str) -> Result<Option<Self>, sqlx::Error> {
-        sqlx::query_as::<_, Self>(
-            "SELECT * FROM cloud_files WHERE id = ? AND deleted_at IS NULL",
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await
+        sqlx::query_as::<_, Self>("SELECT * FROM cloud_files WHERE id = ? AND deleted_at IS NULL")
+            .bind(id)
+            .fetch_optional(pool)
+            .await
     }
 
     pub async fn find_by_content_hash(
@@ -231,12 +229,18 @@ impl CloudFile {
         }
         if let Some(ref search) = params.search {
             sql.push_str(" AND file_name LIKE ? ESCAPE '\\'");
-            let escaped = search.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+            let escaped = search
+                .replace('\\', "\\\\")
+                .replace('%', "\\%")
+                .replace('_', "\\_");
             binds.push(format!("%{}%", escaped));
         }
         if let Some(ref mime) = params.mime_type {
             sql.push_str(" AND mime_type LIKE ? ESCAPE '\\'");
-            let escaped = mime.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+            let escaped = mime
+                .replace('\\', "\\\\")
+                .replace('%', "\\%")
+                .replace('_', "\\_");
             binds.push(format!("{}%", escaped));
         }
 
@@ -266,10 +270,7 @@ impl CloudFile {
         query.fetch_all(pool).await
     }
 
-    pub async fn count(
-        pool: &SqlitePool,
-        org_id: &str,
-    ) -> Result<i64, sqlx::Error> {
+    pub async fn count(pool: &SqlitePool, org_id: &str) -> Result<i64, sqlx::Error> {
         sqlx::query_scalar::<_, i64>(
             "SELECT COUNT(*) FROM cloud_files WHERE organization_id = ? AND deleted_at IS NULL",
         )
@@ -278,10 +279,7 @@ impl CloudFile {
         .await
     }
 
-    pub async fn total_size(
-        pool: &SqlitePool,
-        org_id: &str,
-    ) -> Result<i64, sqlx::Error> {
+    pub async fn total_size(pool: &SqlitePool, org_id: &str) -> Result<i64, sqlx::Error> {
         sqlx::query_scalar::<_, i64>(
             "SELECT COALESCE(SUM(file_size_bytes), 0) FROM cloud_files WHERE organization_id = ? AND deleted_at IS NULL",
         )
@@ -402,17 +400,13 @@ impl CloudContribution {
 // ── OrgCloudSettings CRUD ──────────────────────────────────────────────────
 
 impl OrgCloudSettings {
-    pub async fn get_or_create(
-        pool: &SqlitePool,
-        org_id: &str,
-    ) -> Result<Self, sqlx::Error> {
+    pub async fn get_or_create(pool: &SqlitePool, org_id: &str) -> Result<Self, sqlx::Error> {
         // Try fetch first
-        let existing = sqlx::query_as::<_, Self>(
-            "SELECT * FROM org_cloud_settings WHERE organization_id = ?",
-        )
-        .bind(org_id)
-        .fetch_optional(pool)
-        .await?;
+        let existing =
+            sqlx::query_as::<_, Self>("SELECT * FROM org_cloud_settings WHERE organization_id = ?")
+                .bind(org_id)
+                .fetch_optional(pool)
+                .await?;
 
         if let Some(settings) = existing {
             return Ok(settings);
@@ -448,7 +442,10 @@ impl OrgCloudSettings {
             sets.push(format!("member_can_upload = {}", if v { 1 } else { 0 }));
         }
         if let Some(v) = input.auto_index_data_sources {
-            sets.push(format!("auto_index_data_sources = {}", if v { 1 } else { 0 }));
+            sets.push(format!(
+                "auto_index_data_sources = {}",
+                if v { 1 } else { 0 }
+            ));
         }
         if let Some(v) = input.auto_index_artifacts {
             sets.push(format!("auto_index_artifacts = {}", if v { 1 } else { 0 }));
@@ -457,7 +454,10 @@ impl OrgCloudSettings {
             sets.push(format!("auto_index_media = {}", if v { 1 } else { 0 }));
         }
         if let Some(v) = input.nats_contribution_enabled {
-            sets.push(format!("nats_contribution_enabled = {}", if v { 1 } else { 0 }));
+            sets.push(format!(
+                "nats_contribution_enabled = {}",
+                if v { 1 } else { 0 }
+            ));
         }
 
         let sql = format!(

@@ -3,14 +3,16 @@
 //! Combines identity, mesh networking, and relay into a single
 //! easy-to-use interface for building APN applications.
 
-use anyhow::Result;
-use tokio::sync::mpsc;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
-use crate::identity::NodeIdentity;
-use crate::mesh::{MeshNode, MeshEvent, MeshMessage, PeerInfo};
-use crate::relay::{NatsRelay, RelayConfig, RelayEvent, PeerAnnouncement};
+use anyhow::Result;
+use tokio::sync::{mpsc, RwLock};
+
+use crate::{
+    identity::NodeIdentity,
+    mesh::{MeshEvent, MeshMessage, MeshNode, PeerInfo},
+    relay::{NatsRelay, PeerAnnouncement, RelayConfig, RelayEvent},
+};
 
 /// Node configuration
 #[derive(Debug, Clone)]
@@ -186,12 +188,14 @@ impl AlphaNode {
             let resources = crate::resources::collect_resources().await.ok();
 
             // Announce on relay
-            relay.announce(
-                self.identity.address(),
-                &self.config.capabilities,
-                resources.as_ref(),
-                self.config.device_name.as_deref(),
-            ).await?;
+            relay
+                .announce(
+                    self.identity.address(),
+                    &self.config.capabilities,
+                    resources.as_ref(),
+                    self.config.device_name.as_deref(),
+                )
+                .await?;
 
             // Spawn relay listener (subscribes to incoming messages)
             let relay_for_run = relay.clone_for_listener();
@@ -221,7 +225,9 @@ impl AlphaNode {
                                     from: subject,
                                     message,
                                 });
-                            } else if let Ok(announcement) = serde_json::from_slice::<PeerAnnouncement>(&payload) {
+                            } else if let Ok(announcement) =
+                                serde_json::from_slice::<PeerAnnouncement>(&payload)
+                            {
                                 // Convert PeerAnnouncement to MeshMessage
                                 let message = MeshMessage::PeerAnnouncement {
                                     wallet_address: announcement.wallet_address,
@@ -234,13 +240,19 @@ impl AlphaNode {
                                 });
                             } else if subject.contains("heartbeat") {
                                 // Parse heartbeat message
-                                if let Ok(heartbeat) = serde_json::from_slice::<serde_json::Value>(&payload) {
+                                if let Ok(heartbeat) =
+                                    serde_json::from_slice::<serde_json::Value>(&payload)
+                                {
                                     if let (Some(node_id), Some(resources)) = (
                                         heartbeat.get("node_id").and_then(|v| v.as_str()),
-                                        heartbeat.get("resources")
+                                        heartbeat.get("resources"),
                                     ) {
                                         if !resources.is_null() {
-                                            if let Ok(res) = serde_json::from_value::<crate::wire::NodeResources>(resources.clone()) {
+                                            if let Ok(res) = serde_json::from_value::<
+                                                crate::wire::NodeResources,
+                                            >(
+                                                resources.clone()
+                                            ) {
                                                 let message = MeshMessage::Heartbeat {
                                                     timestamp: chrono::Utc::now().timestamp(),
                                                     resources: Some(res),
@@ -254,7 +266,11 @@ impl AlphaNode {
                                     }
                                 }
                             } else {
-                                tracing::debug!("Could not parse relay message from {}: {:?}", subject, String::from_utf8_lossy(&payload));
+                                tracing::debug!(
+                                    "Could not parse relay message from {}: {:?}",
+                                    subject,
+                                    String::from_utf8_lossy(&payload)
+                                );
                             }
                         }
                         RelayEvent::Error(e) => {
@@ -327,12 +343,14 @@ impl AlphaNode {
 
         // Announce on relay
         if let Some(relay) = &self.relay {
-            relay.announce(
-                self.identity.address(),
-                &self.config.capabilities,
-                resources.as_ref(),
-                self.config.device_name.as_deref(),
-            ).await?;
+            relay
+                .announce(
+                    self.identity.address(),
+                    &self.config.capabilities,
+                    resources.as_ref(),
+                    self.config.device_name.as_deref(),
+                )
+                .await?;
         }
 
         Ok(())
@@ -366,7 +384,10 @@ impl AlphaNode {
             let payload = serde_json::to_vec(&announcement)?;
             relay.publish("apn.heartbeat", &payload).await?;
 
-            tracing::debug!("💓 Published heartbeat to apn.heartbeat with hostname={:?}", announcement.hostname);
+            tracing::debug!(
+                "💓 Published heartbeat to apn.heartbeat with hostname={:?}",
+                announcement.hostname
+            );
         }
 
         Ok(())

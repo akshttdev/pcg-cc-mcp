@@ -13,7 +13,7 @@ pub mod models;
 pub mod repositories;
 pub mod services;
 
-pub use db_uuid::{DbUuid, bind_uuid, bind_uuid_blob, bind_optional_uuid, bind_optional_uuid_blob};
+pub use db_uuid::{DbUuid, bind_optional_uuid, bind_optional_uuid_blob, bind_uuid, bind_uuid_blob};
 
 #[derive(Clone)]
 pub struct DBService {
@@ -27,10 +27,12 @@ pub struct PgDBService {
 
 impl DBService {
     pub async fn new() -> Result<DBService, Error> {
-        let database_url = format!(
-            "sqlite://{}",
-            asset_dir().join("db.sqlite").to_string_lossy()
-        );
+        let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+            format!(
+                "sqlite://{}",
+                asset_dir().join("db.sqlite").to_string_lossy()
+            )
+        });
         // sqlx 0.8+ defaults foreign_keys=ON; disable for migration to allow
         // data-only migrations with production UUIDs that may not exist in dev.
         // Re-enabled post-migration via after_connect hook on the app pool.
@@ -39,7 +41,10 @@ impl DBService {
             .foreign_keys(false);
         let migration_pool = SqlitePool::connect_with(migration_options).await?;
         if std::env::var("SKIP_MIGRATIONS").unwrap_or_default() != "1" {
-            sqlx::migrate!("./migrations").set_ignore_missing(true).run(&migration_pool).await?;
+            sqlx::migrate!("./migrations")
+                .set_ignore_missing(true)
+                .run(&migration_pool)
+                .await?;
         }
         migration_pool.close().await;
 
@@ -83,7 +88,10 @@ impl DBService {
         let migration_options = options.clone().foreign_keys(false);
         let migration_pool = SqlitePool::connect_with(migration_options).await?;
         if std::env::var("SKIP_MIGRATIONS").unwrap_or_default() != "1" {
-            sqlx::migrate!("./migrations").set_ignore_missing(true).run(&migration_pool).await?;
+            sqlx::migrate!("./migrations")
+                .set_ignore_missing(true)
+                .run(&migration_pool)
+                .await?;
         }
         migration_pool.close().await;
 

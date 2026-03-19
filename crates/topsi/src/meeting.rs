@@ -4,8 +4,7 @@
 //! on-demand command execution when directly addressed, and structured
 //! notes generation.
 
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -61,10 +60,7 @@ impl MeetingState {
         self.transcript[start..]
             .iter()
             .map(|entry| {
-                let speaker = entry
-                    .speaker_label
-                    .as_deref()
-                    .unwrap_or("Unknown");
+                let speaker = entry.speaker_label.as_deref().unwrap_or("Unknown");
                 format!("[{}]: {}", speaker, entry.text)
             })
             .collect::<Vec<_>>()
@@ -311,7 +307,10 @@ mod tests {
     fn test_wake_word_detection_basic() {
         let result = MeetingManager::detect_wake_word("Hey Topsi, what do you think?");
         assert!(result.detected);
-        assert_eq!(result.addressed_text, Some("what do you think?".to_string()));
+        assert_eq!(
+            result.addressed_text,
+            Some("what do you think?".to_string())
+        );
     }
 
     #[test]
@@ -328,10 +327,7 @@ mod tests {
     fn test_wake_word_detection_top_see() {
         let result = MeetingManager::detect_wake_word("top see what's the status");
         assert!(result.detected);
-        assert_eq!(
-            result.addressed_text,
-            Some("what's the status".to_string())
-        );
+        assert_eq!(result.addressed_text, Some("what's the status".to_string()));
     }
 
     #[test]
@@ -345,10 +341,7 @@ mod tests {
     fn test_wake_word_case_insensitive() {
         let result = MeetingManager::detect_wake_word("TOPSI, give me a summary");
         assert!(result.detected);
-        assert_eq!(
-            result.addressed_text,
-            Some("give me a summary".to_string())
-        );
+        assert_eq!(result.addressed_text, Some("give me a summary".to_string()));
     }
 
     #[test]
@@ -398,11 +391,7 @@ mod tests {
 
     #[test]
     fn test_recent_context() {
-        let mut state = MeetingState::new(
-            "s1".to_string(),
-            "p1".to_string(),
-            "u1".to_string(),
-        );
+        let mut state = MeetingState::new("s1".to_string(), "p1".to_string(), "u1".to_string());
 
         for i in 0..5 {
             state.transcript.push(MeetingTranscriptEntry {

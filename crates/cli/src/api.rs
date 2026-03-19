@@ -60,18 +60,22 @@ impl ApiClient {
             let text = resp.text().await?;
             // Check if response is HTML (frontend) instead of JSON
             if text.starts_with("<!DOCTYPE") || text.starts_with("<html") {
-                anyhow::bail!("Authentication required. Run: orcha config --set server.username=YOUR_USER");
+                anyhow::bail!(
+                    "Authentication required. Run: orcha config --set server.username=YOUR_USER"
+                );
             }
             // Try parsing as wrapped response {"success": true, "data": [...]}
             if let Ok(wrapped) = serde_json::from_str::<ApiResponse<Vec<Project>>>(&text) {
                 return Ok(wrapped.data.unwrap_or_default());
             }
             // Fallback: try parsing as raw array
-            let projects: Vec<Project> = serde_json::from_str(&text)
-                .context("Failed to parse projects response")?;
+            let projects: Vec<Project> =
+                serde_json::from_str(&text).context("Failed to parse projects response")?;
             Ok(projects)
         } else if resp.status().as_u16() == 401 {
-            anyhow::bail!("Authentication required. Run: orcha config --set server.username=YOUR_USER");
+            anyhow::bail!(
+                "Authentication required. Run: orcha config --set server.username=YOUR_USER"
+            );
         } else {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
@@ -103,7 +107,12 @@ impl ApiClient {
             .find(|p| p.name.to_lowercase() == name.to_lowercase()))
     }
 
-    pub async fn create_project(&self, name: &str, git_repo_path: &str, _description: Option<&str>) -> Result<Project> {
+    pub async fn create_project(
+        &self,
+        name: &str,
+        git_repo_path: &str,
+        _description: Option<&str>,
+    ) -> Result<Project> {
         let request = serde_json::json!({
             "name": name,
             "gitRepoPath": git_repo_path,
@@ -126,8 +135,8 @@ impl ApiClient {
                 }
                 anyhow::bail!("Server returned success but no project data");
             }
-            let project: Project = serde_json::from_str(&text)
-                .context("Failed to parse create project response")?;
+            let project: Project =
+                serde_json::from_str(&text).context("Failed to parse create project response")?;
             Ok(project)
         } else {
             let status = resp.status();
@@ -138,11 +147,7 @@ impl ApiClient {
 
     // ============ Tasks ============
 
-    pub async fn list_tasks(
-        &self,
-        project_id: Uuid,
-        status: Option<&str>,
-    ) -> Result<Vec<Task>> {
+    pub async fn list_tasks(&self, project_id: Uuid, status: Option<&str>) -> Result<Vec<Task>> {
         let mut url = format!("{}/api/projects/{}/tasks", self.base_url, project_id);
         if let Some(s) = status {
             url.push_str(&format!("?status={}", s));
@@ -157,7 +162,12 @@ impl ApiClient {
         }
     }
 
-    pub async fn create_task(&self, project_id: Uuid, board_id: Option<Uuid>, request: &CreateTaskRequest) -> Result<Task> {
+    pub async fn create_task(
+        &self,
+        project_id: Uuid,
+        board_id: Option<Uuid>,
+        request: &CreateTaskRequest,
+    ) -> Result<Task> {
         // Use NORA endpoint (no auth required)
         // If no board_id provided, use a well-known default board ID for PCG project
         // TODO: Fetch boards from API when auth is available

@@ -1,10 +1,15 @@
 use std::str::FromStr;
 
-use sqlx::{sqlite::{SqliteConnectOptions, SqlitePoolOptions}, SqlitePool};
+use sqlx::{
+    SqlitePool,
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+};
 use uuid::Uuid;
 
-use super::project::{CreateProject, Project};
-use super::social_account::{CreateSocialAccount, SocialAccount, SocialPlatform};
+use super::{
+    project::{CreateProject, Project},
+    social_account::{CreateSocialAccount, SocialAccount, SocialPlatform},
+};
 
 pub(crate) async fn setup_test_pool() -> SqlitePool {
     let options = SqliteConnectOptions::from_str("sqlite::memory:?cache=shared")

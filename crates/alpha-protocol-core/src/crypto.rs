@@ -6,13 +6,13 @@
 //! - BLAKE3 for fast hashing
 //! - HKDF-SHA256 for key derivation
 
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use chacha20poly1305::{
     aead::{Aead, KeyInit, OsRng},
     ChaCha20Poly1305, Nonce,
 };
+use sha2::{Digest, Sha256};
 use x25519_dalek::{EphemeralSecret, PublicKey};
-use sha2::{Sha256, Digest};
 
 /// Session key for encrypted communication between two peers
 #[derive(Clone)]
@@ -42,8 +42,8 @@ impl SessionKey {
         let symmetric_key = derive_key(shared_secret.as_bytes(), b"alpha-protocol-v1");
 
         // Create cipher
-        let cipher = ChaCha20Poly1305::new_from_slice(&symmetric_key)
-            .context("Failed to create cipher")?;
+        let cipher =
+            ChaCha20Poly1305::new_from_slice(&symmetric_key).context("Failed to create cipher")?;
 
         Ok(Self {
             cipher,
@@ -61,8 +61,8 @@ impl SessionKey {
     ) -> Result<Self> {
         let symmetric_key = derive_key(shared_secret, b"alpha-protocol-v1");
 
-        let cipher = ChaCha20Poly1305::new_from_slice(&symmetric_key)
-            .context("Failed to create cipher")?;
+        let cipher =
+            ChaCha20Poly1305::new_from_slice(&symmetric_key).context("Failed to create cipher")?;
 
         Ok(Self {
             cipher,
@@ -78,7 +78,8 @@ impl SessionKey {
         let nonce = self.next_nonce();
 
         // Encrypt with ChaCha20-Poly1305
-        let ciphertext = self.cipher
+        let ciphertext = self
+            .cipher
             .encrypt(&nonce, plaintext)
             .map_err(|e| anyhow::anyhow!("Encryption failed: {:?}", e))?;
 
@@ -101,7 +102,8 @@ impl SessionKey {
         let encrypted = &ciphertext[12..];
 
         // Decrypt
-        let plaintext = self.cipher
+        let plaintext = self
+            .cipher
             .decrypt(nonce, encrypted)
             .map_err(|e| anyhow::anyhow!("Decryption failed: {:?}", e))?;
 
@@ -150,8 +152,7 @@ pub fn hash_sha256(data: &[u8]) -> [u8; 32] {
 
 /// Encrypt data with a one-time key (for simple use cases)
 pub fn encrypt(plaintext: &[u8], key: &[u8; 32]) -> Result<Vec<u8>> {
-    let cipher = ChaCha20Poly1305::new_from_slice(key)
-        .context("Invalid key")?;
+    let cipher = ChaCha20Poly1305::new_from_slice(key).context("Invalid key")?;
 
     // Random nonce
     let mut nonce_bytes = [0u8; 12];
@@ -176,8 +177,7 @@ pub fn decrypt(ciphertext: &[u8], key: &[u8; 32]) -> Result<Vec<u8>> {
         anyhow::bail!("Ciphertext too short");
     }
 
-    let cipher = ChaCha20Poly1305::new_from_slice(key)
-        .context("Invalid key")?;
+    let cipher = ChaCha20Poly1305::new_from_slice(key).context("Invalid key")?;
 
     let nonce = Nonce::from_slice(&ciphertext[..12]);
     let encrypted = &ciphertext[12..];
@@ -213,13 +213,15 @@ mod tests {
             shared_a.as_bytes(),
             *peer_a_public.as_bytes(),
             *peer_b_public.as_bytes(),
-        ).unwrap();
+        )
+        .unwrap();
 
         let session_b = SessionKey::from_shared_secret(
             shared_b.as_bytes(),
             *peer_b_public.as_bytes(),
             *peer_a_public.as_bytes(),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Encrypt with A, decrypt with B
         let plaintext = b"Hello, Alpha Protocol!";

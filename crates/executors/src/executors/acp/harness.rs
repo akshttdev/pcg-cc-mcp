@@ -37,20 +37,27 @@ fn load_platform_mcp_servers() -> Vec<proto::McpServer> {
                 if let Some(obj) = config.as_object() {
                     for (key, value) in obj {
                         // Skip the "meta" section
-                        if key == "meta" { continue; }
+                        if key == "meta" {
+                            continue;
+                        }
 
                         // Check if it's an HTTP-type server
                         if value.get("type").and_then(|t| t.as_str()) == Some("http") {
                             if let Some(url) = value.get("url").and_then(|u| u.as_str()) {
-                                let headers = value.get("headers")
+                                let headers = value
+                                    .get("headers")
                                     .and_then(|h| h.as_object())
-                                    .map(|h| h.iter().filter_map(|(k, v)| {
-                                        v.as_str().map(|val| proto::HttpHeader {
-                                            name: k.clone(),
-                                            value: val.to_string(),
-                                            meta: None,
-                                        })
-                                    }).collect::<Vec<_>>())
+                                    .map(|h| {
+                                        h.iter()
+                                            .filter_map(|(k, v)| {
+                                                v.as_str().map(|val| proto::HttpHeader {
+                                                    name: k.clone(),
+                                                    value: val.to_string(),
+                                                    meta: None,
+                                                })
+                                            })
+                                            .collect::<Vec<_>>()
+                                    })
                                     .unwrap_or_default();
 
                                 servers.push(proto::McpServer::Http {
@@ -64,20 +71,30 @@ fn load_platform_mcp_servers() -> Vec<proto::McpServer> {
 
                         // Stdio server
                         if let Some(command) = value.get("command").and_then(|c| c.as_str()) {
-                            let args = value.get("args")
+                            let args = value
+                                .get("args")
                                 .and_then(|a| a.as_array())
-                                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+                                .map(|arr| {
+                                    arr.iter()
+                                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                                        .collect()
+                                })
                                 .unwrap_or_default();
 
-                            let env = value.get("env")
+                            let env = value
+                                .get("env")
                                 .and_then(|e| e.as_object())
-                                .map(|e| e.iter().filter_map(|(k, v)| {
-                                    v.as_str().map(|val| proto::EnvVariable {
-                                        name: k.clone(),
-                                        value: val.to_string(),
-                                        meta: None,
-                                    })
-                                }).collect::<Vec<_>>())
+                                .map(|e| {
+                                    e.iter()
+                                        .filter_map(|(k, v)| {
+                                            v.as_str().map(|val| proto::EnvVariable {
+                                                name: k.clone(),
+                                                value: val.to_string(),
+                                                meta: None,
+                                            })
+                                        })
+                                        .collect::<Vec<_>>()
+                                })
                                 .unwrap_or_default();
 
                             servers.push(proto::McpServer::Stdio {
@@ -90,7 +107,11 @@ fn load_platform_mcp_servers() -> Vec<proto::McpServer> {
                     }
                 }
                 if !servers.is_empty() {
-                    tracing::info!("[ACP] Loaded {} platform MCP server(s) from {:?}", servers.len(), path);
+                    tracing::info!(
+                        "[ACP] Loaded {} platform MCP server(s) from {:?}",
+                        servers.len(),
+                        path
+                    );
                     return servers;
                 }
             }

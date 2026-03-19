@@ -127,13 +127,10 @@ impl AgentChannelService {
         &self,
         owner: &ChannelOwner,
     ) -> Result<EmailAccount, ChannelError> {
-        let accounts = EmailAccount::find_by_owner(
-            &self.pool,
-            owner.owner_type(),
-            &owner.owner_id_hex(),
-        )
-        .await
-        .map_err(|e| ChannelError::Database(sqlx::Error::Protocol(e.to_string())))?;
+        let accounts =
+            EmailAccount::find_by_owner(&self.pool, owner.owner_type(), &owner.owner_id_hex())
+                .await
+                .map_err(|e| ChannelError::Database(sqlx::Error::Protocol(e.to_string())))?;
 
         accounts
             .into_iter()
@@ -246,7 +243,10 @@ impl AgentChannelService {
 
         if !resp.status().is_success() {
             let err = resp.text().await.unwrap_or_default();
-            return Err(ChannelError::Api(format!("Zoho inbox read failed: {}", err)));
+            return Err(ChannelError::Api(format!(
+                "Zoho inbox read failed: {}",
+                err
+            )));
         }
 
         let inbox: ZohoInboxResponse = resp
@@ -282,23 +282,36 @@ impl AgentChannelService {
 
         let url = if let Ok(space) = std::env::var("SIGNALWIRE_SPACE_URL") {
             let space = space.trim_end_matches('/').to_string();
-            format!("https://{}/api/laml/2010-04-01/Accounts/{}/Messages.json", space, account_sid)
+            format!(
+                "https://{}/api/laml/2010-04-01/Accounts/{}/Messages.json",
+                space, account_sid
+            )
         } else {
-            format!("https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json", account_sid)
+            format!(
+                "https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json",
+                account_sid
+            )
         };
 
         let resp = self
             .http
             .post(&url)
             .basic_auth(&account_sid, Some(&auth_token))
-            .form(&[("From", from_number.as_str()), ("To", to), ("Body", message)])
+            .form(&[
+                ("From", from_number.as_str()),
+                ("To", to),
+                ("Body", message),
+            ])
             .send()
             .await
             .map_err(|e| ChannelError::Api(e.to_string()))?;
 
         if !resp.status().is_success() {
             let err = resp.text().await.unwrap_or_default();
-            return Err(ChannelError::Api(format!("Twilio SMS send failed: {}", err)));
+            return Err(ChannelError::Api(format!(
+                "Twilio SMS send failed: {}",
+                err
+            )));
         }
 
         let data: serde_json::Value = resp
@@ -411,6 +424,8 @@ impl AgentChannelService {
             .as_deref()
             .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
             .and_then(|v| v["zoho_account_id"].as_str().map(String::from))
-            .ok_or_else(|| ChannelError::Api("zoho_account_id not found in account metadata".into()))
+            .ok_or_else(|| {
+                ChannelError::Api("zoho_account_id not found in account metadata".into())
+            })
     }
 }

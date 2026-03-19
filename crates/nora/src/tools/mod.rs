@@ -1,21 +1,22 @@
 //! Executive tools and capabilities for Nora
 
-pub mod types;
-mod schemas;
-mod user_scoped;
-mod parse;
 mod execute;
 mod execute_impl;
+mod parse;
+mod schemas;
 #[cfg(test)]
 mod tests;
+pub mod types;
+mod user_scoped;
 
 // Re-export everything from types so external code using `crate::tools::*` still works
-pub use types::*;
-
 use std::{collections::HashMap, sync::Arc};
 
-use services::services::agent_channels::{AgentChannelService, ChannelOwner};
-use services::services::media_pipeline::MediaPipelineService;
+use services::services::{
+    agent_channels::{AgentChannelService, ChannelOwner},
+    media_pipeline::MediaPipelineService,
+};
+pub use types::*;
 
 use crate::{
     executor::TaskExecutor,
@@ -70,7 +71,10 @@ impl ExecutiveTools {
         self.media_pipeline = Some(pipeline);
     }
 
-    pub fn set_workflow_orchestrator(&mut self, orchestrator: Arc<crate::workflow::WorkflowOrchestrator>) {
+    pub fn set_workflow_orchestrator(
+        &mut self,
+        orchestrator: Arc<crate::workflow::WorkflowOrchestrator>,
+    ) {
         self.workflow_orchestrator = Some(orchestrator);
     }
 

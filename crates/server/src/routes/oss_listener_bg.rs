@@ -4,14 +4,14 @@
 //! found an agent_flow workflow is created and Nora generates an upgrade
 //! recommendation that is written back to oss_library_updates.
 
+use chrono;
 use db::models::oss_library::OssLibrary;
 use nora::agent::{NoraRequest, NoraRequestType, RequestPriority};
 use serde::Deserialize;
 use sqlx::SqlitePool;
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 use tracing::{error, info, warn};
 use uuid::Uuid;
-use chrono;
 
 // ── GitHub release payload (only fields we need) ──────────────────────────────
 
@@ -71,7 +71,10 @@ pub async fn check_and_process_library(pool: &SqlitePool, lib: &OssLibrary) -> a
     let release = fetch_latest_release(&lib.github_owner, &lib.github_repo).await?;
 
     if release.prerelease || release.draft {
-        info!("[OSS_LISTENER] '{}' latest is pre-release/draft ({}), skipping", lib.name, release.tag_name);
+        info!(
+            "[OSS_LISTENER] '{}' latest is pre-release/draft ({}), skipping",
+            lib.name, release.tag_name
+        );
         return Ok(());
     }
 
@@ -94,11 +97,17 @@ pub async fn check_and_process_library(pool: &SqlitePool, lib: &OssLibrary) -> a
     .await?;
 
     if exists > 0 {
-        info!("[OSS_LISTENER] '{}' {} already recorded", lib.name, release.tag_name);
+        info!(
+            "[OSS_LISTENER] '{}' {} already recorded",
+            lib.name, release.tag_name
+        );
         return Ok(());
     }
 
-    info!("[OSS_LISTENER] New release: {} {}", lib.name, release.tag_name);
+    info!(
+        "[OSS_LISTENER] New release: {} {}",
+        lib.name, release.tag_name
+    );
 
     let significance = classify_significance(lib.tracked_version.as_deref(), &release.tag_name);
     let update_id = Uuid::new_v4();
@@ -139,7 +148,10 @@ pub async fn check_and_process_library(pool: &SqlitePool, lib: &OssLibrary) -> a
         )
         .await
         {
-            error!("[OSS_LISTENER] Recommendation failed for '{}' {}: {}", lib_name, tag, e);
+            error!(
+                "[OSS_LISTENER] Recommendation failed for '{}' {}: {}",
+                lib_name, tag, e
+            );
             let _ = sqlx::query(
                 "UPDATE oss_library_updates SET recommendation_status = 'failed' WHERE id = ?",
             )
@@ -155,7 +167,10 @@ pub async fn check_and_process_library(pool: &SqlitePool, lib: &OssLibrary) -> a
 // ── GitHub API ────────────────────────────────────────────────────────────────
 
 async fn fetch_latest_release(owner: &str, repo: &str) -> anyhow::Result<GithubRelease> {
-    let url = format!("https://api.github.com/repos/{}/{}/releases/latest", owner, repo);
+    let url = format!(
+        "https://api.github.com/repos/{}/{}/releases/latest",
+        owner, repo
+    );
     let token = std::env::var("GITHUB_TOKEN").ok();
 
     let mut req = reqwest::Client::new()
@@ -187,7 +202,9 @@ fn classify_significance(previous: Option<&str>, current: &str) -> String {
         (n(0), n(1), n(2))
     };
 
-    let Some(prev) = previous else { return "minor".into() };
+    let Some(prev) = previous else {
+        return "minor".into();
+    };
     let (p_maj, p_min, _) = parse(&strip(prev));
     let (c_maj, c_min, _) = parse(&strip(current));
 
@@ -236,7 +253,14 @@ async fn generate_recommendation(
     .execute(pool)
     .await?;
 
-    let prompt = build_recommendation_prompt(lib_name, lib_notes, version, release_notes, release_url, significance);
+    let prompt = build_recommendation_prompt(
+        lib_name,
+        lib_notes,
+        version,
+        release_notes,
+        release_url,
+        significance,
+    );
 
     let recommendation = run_nora_or_fallback(pool, flow_id, &prompt, lib_name, version).await?;
 
@@ -271,7 +295,10 @@ async fn generate_recommendation(
     .execute(pool)
     .await?;
 
-    info!("[OSS_LISTENER] Recommendation complete for {} {}", lib_name, version);
+    info!(
+        "[OSS_LISTENER] Recommendation complete for {} {}",
+        lib_name, version
+    );
     Ok(())
 }
 
@@ -336,7 +363,10 @@ async fn run_nora_or_fallback(
             let timeout = tokio::time::Duration::from_secs(90);
             match tokio::time::timeout(timeout, nora.process_request(req)).await {
                 Ok(Ok(resp)) => return Ok(resp.content),
-                Ok(Err(e)) => warn!("[OSS_LISTENER] Nora error for {} {}: {}", lib_name, version, e),
+                Ok(Err(e)) => warn!(
+                    "[OSS_LISTENER] Nora error for {} {}: {}",
+                    lib_name, version, e
+                ),
                 Err(_) => warn!("[OSS_LISTENER] Nora timeout for {} {}", lib_name, version),
             }
         }

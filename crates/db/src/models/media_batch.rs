@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sqlx::{types::Json, FromRow, SqlitePool, Type};
+use sqlx::{FromRow, SqlitePool, Type, types::Json};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -211,10 +211,7 @@ fn default_checksum() -> bool {
 
 impl MediaBatch {
     /// Create a new media batch
-    pub async fn create(
-        pool: &SqlitePool,
-        create: CreateMediaBatch,
-    ) -> Result<Self, sqlx::Error> {
+    pub async fn create(pool: &SqlitePool, create: CreateMediaBatch) -> Result<Self, sqlx::Error> {
         let now = Utc::now();
         let batch = MediaBatch {
             id: Uuid::new_v4(),

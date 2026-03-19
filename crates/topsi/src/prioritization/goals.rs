@@ -3,9 +3,10 @@
 //! Defines goals with value functions for Active Inference prioritization.
 //! Goals represent desired end states that the system works toward.
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -50,7 +51,11 @@ pub struct MetricValue {
 
 impl MetricValue {
     pub fn new(current: f64, target: f64, weight: f64) -> Self {
-        Self { current, target, weight }
+        Self {
+            current,
+            target,
+            weight,
+        }
     }
 
     /// Progress toward target (0.0 to 1.0)
@@ -82,10 +87,7 @@ impl GoalState {
             return 0.0;
         }
 
-        let weighted_progress: f64 = self.metrics
-            .values()
-            .map(|m| m.progress() * m.weight)
-            .sum();
+        let weighted_progress: f64 = self.metrics.values().map(|m| m.progress() * m.weight).sum();
 
         self.progress = weighted_progress / total_weight;
         self.updated_at = Utc::now();
@@ -94,7 +96,8 @@ impl GoalState {
 
     /// Add or update a metric
     pub fn set_metric(&mut self, name: &str, current: f64, target: f64, weight: f64) {
-        self.metrics.insert(name.to_string(), MetricValue::new(current, target, weight));
+        self.metrics
+            .insert(name.to_string(), MetricValue::new(current, target, weight));
         self.calculate_progress();
     }
 }
@@ -229,16 +232,33 @@ pub fn conference_goal(
 ) -> Goal {
     let mut goal = Goal::new(
         &format!("{} Coverage", conference_name),
-        &format!("Complete coverage for {} including research, content, and media", conference_name),
+        &format!(
+            "Complete coverage for {} including research, content, and media",
+            conference_name
+        ),
         GoalType::ConferenceCoverage,
         0.9, // High value
-    ).with_deadline(deadline);
+    )
+    .with_deadline(deadline);
 
-    goal.state.set_metric("speakers_researched", 0.0, target_speakers as f64, 0.25);
-    goal.state.set_metric("sponsors_researched", 0.0, target_sponsors as f64, 0.20);
-    goal.state.set_metric("articles_written", 0.0, target_articles as f64, 0.30);
-    goal.state.set_metric("graphics_created", 0.0, (target_speakers + target_sponsors) as f64 * 0.5, 0.15);
-    goal.state.set_metric("social_posts_scheduled", 0.0, target_articles as f64 * 3.0, 0.10);
+    goal.state
+        .set_metric("speakers_researched", 0.0, target_speakers as f64, 0.25);
+    goal.state
+        .set_metric("sponsors_researched", 0.0, target_sponsors as f64, 0.20);
+    goal.state
+        .set_metric("articles_written", 0.0, target_articles as f64, 0.30);
+    goal.state.set_metric(
+        "graphics_created",
+        0.0,
+        (target_speakers + target_sponsors) as f64 * 0.5,
+        0.15,
+    );
+    goal.state.set_metric(
+        "social_posts_scheduled",
+        0.0,
+        target_articles as f64 * 3.0,
+        0.10,
+    );
 
     goal
 }
@@ -256,8 +276,7 @@ mod tests {
     #[test]
     fn test_goal_urgency() {
         let future = Utc::now() + Duration::days(30);
-        let goal = Goal::new("Test", "Test goal", GoalType::Custom, 0.5)
-            .with_deadline(future);
+        let goal = Goal::new("Test", "Test goal", GoalType::Custom, 0.5).with_deadline(future);
 
         let urgency = goal.urgency();
         assert!(urgency > 0.0 && urgency < 1.0);

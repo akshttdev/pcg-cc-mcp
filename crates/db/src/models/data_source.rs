@@ -100,14 +100,26 @@ pub fn metadata_template(data_type: &str, source_type: &str) -> serde_json::Valu
     // ── Source-type-specific fields ─────────────────────────────────────
     match source_type {
         "file" => {
-            fields.insert("file_name".into(), serde_json::json!({ "type": "string", "description": "Original filename" }));
+            fields.insert(
+                "file_name".into(),
+                serde_json::json!({ "type": "string", "description": "Original filename" }),
+            );
             fields.insert("file_mime".into(), serde_json::json!({ "type": "string", "description": "MIME type (e.g. application/pdf)" }));
-            fields.insert("file_size_bytes".into(), serde_json::json!({ "type": "number", "description": "File size in bytes" }));
-            fields.insert("file_hash".into(), serde_json::json!({ "type": "string", "description": "SHA-256 hash for dedup" }));
+            fields.insert(
+                "file_size_bytes".into(),
+                serde_json::json!({ "type": "number", "description": "File size in bytes" }),
+            );
+            fields.insert(
+                "file_hash".into(),
+                serde_json::json!({ "type": "string", "description": "SHA-256 hash for dedup" }),
+            );
         }
         "integration" => {
             fields.insert("integration_name".into(), serde_json::json!({ "type": "string", "description": "Name of the integration (slack, hubspot, etc.)" }));
-            fields.insert("external_id".into(), serde_json::json!({ "type": "string", "description": "ID in the external system" }));
+            fields.insert(
+                "external_id".into(),
+                serde_json::json!({ "type": "string", "description": "ID in the external system" }),
+            );
             fields.insert("external_url".into(), serde_json::json!({ "type": "string", "description": "URL to the source in the external system" }));
             fields.insert("synced_at".into(), serde_json::json!({ "type": "string", "format": "date-time", "description": "Last sync timestamp" }));
         }
@@ -121,15 +133,27 @@ pub fn metadata_template(data_type: &str, source_type: &str) -> serde_json::Valu
             fields.insert("participants".into(), serde_json::json!({ "type": "array", "items": { "type": "string" }, "description": "People in the conversation" }));
             fields.insert("channel".into(), serde_json::json!({ "type": "string", "description": "Channel or medium (email, slack, phone, in-person, zoom)" }));
             fields.insert("date".into(), serde_json::json!({ "type": "string", "format": "date", "description": "Date of conversation" }));
-            fields.insert("duration_minutes".into(), serde_json::json!({ "type": "number", "description": "Duration in minutes" }));
+            fields.insert(
+                "duration_minutes".into(),
+                serde_json::json!({ "type": "number", "description": "Duration in minutes" }),
+            );
             fields.insert("topics".into(), serde_json::json!({ "type": "array", "items": { "type": "string" }, "description": "Key topics discussed" }));
             fields.insert("sentiment".into(), serde_json::json!({ "type": "string", "enum": ["positive", "neutral", "negative"], "description": "Overall sentiment" }));
             fields.insert("action_items".into(), serde_json::json!({ "type": "array", "items": { "type": "string" }, "description": "Action items from conversation" }));
         }
         "document" => {
-            fields.insert("author".into(), serde_json::json!({ "type": "string", "description": "Document author" }));
-            fields.insert("version".into(), serde_json::json!({ "type": "string", "description": "Document version" }));
-            fields.insert("page_count".into(), serde_json::json!({ "type": "number", "description": "Number of pages" }));
+            fields.insert(
+                "author".into(),
+                serde_json::json!({ "type": "string", "description": "Document author" }),
+            );
+            fields.insert(
+                "version".into(),
+                serde_json::json!({ "type": "string", "description": "Document version" }),
+            );
+            fields.insert(
+                "page_count".into(),
+                serde_json::json!({ "type": "number", "description": "Number of pages" }),
+            );
             fields.insert("language".into(), serde_json::json!({ "type": "string", "description": "Language code (en, es, etc.)" }));
             fields.insert("tags".into(), serde_json::json!({ "type": "array", "items": { "type": "string" }, "description": "Document tags" }));
         }
@@ -137,27 +161,57 @@ pub fn metadata_template(data_type: &str, source_type: &str) -> serde_json::Valu
             fields.insert("speakers".into(), serde_json::json!({ "type": "array", "items": { "type": "string" }, "description": "Speakers in the transcript" }));
             fields.insert("source".into(), serde_json::json!({ "type": "string", "description": "Source (meeting, interview, podcast, webinar)" }));
             fields.insert("date".into(), serde_json::json!({ "type": "string", "format": "date", "description": "Date of recording" }));
-            fields.insert("duration_minutes".into(), serde_json::json!({ "type": "number", "description": "Duration in minutes" }));
-            fields.insert("language".into(), serde_json::json!({ "type": "string", "description": "Language code" }));
+            fields.insert(
+                "duration_minutes".into(),
+                serde_json::json!({ "type": "number", "description": "Duration in minutes" }),
+            );
+            fields.insert(
+                "language".into(),
+                serde_json::json!({ "type": "string", "description": "Language code" }),
+            );
         }
         "report" => {
             fields.insert("report_type".into(), serde_json::json!({ "type": "string", "description": "Type of report (financial, progress, research, analysis)" }));
-            fields.insert("period".into(), serde_json::json!({ "type": "string", "description": "Reporting period" }));
-            fields.insert("author".into(), serde_json::json!({ "type": "string", "description": "Report author" }));
+            fields.insert(
+                "period".into(),
+                serde_json::json!({ "type": "string", "description": "Reporting period" }),
+            );
+            fields.insert(
+                "author".into(),
+                serde_json::json!({ "type": "string", "description": "Report author" }),
+            );
             fields.insert("confidentiality".into(), serde_json::json!({ "type": "string", "enum": ["public", "internal", "confidential"], "description": "Confidentiality level" }));
         }
         "dataset" => {
-            fields.insert("row_count".into(), serde_json::json!({ "type": "number", "description": "Number of rows/records" }));
-            fields.insert("column_count".into(), serde_json::json!({ "type": "number", "description": "Number of columns/fields" }));
+            fields.insert(
+                "row_count".into(),
+                serde_json::json!({ "type": "number", "description": "Number of rows/records" }),
+            );
+            fields.insert(
+                "column_count".into(),
+                serde_json::json!({ "type": "number", "description": "Number of columns/fields" }),
+            );
             fields.insert("columns".into(), serde_json::json!({ "type": "array", "items": { "type": "string" }, "description": "Column/field names" }));
-            fields.insert("source_system".into(), serde_json::json!({ "type": "string", "description": "Originating system" }));
-            fields.insert("date_range".into(), serde_json::json!({ "type": "string", "description": "Date range covered" }));
+            fields.insert(
+                "source_system".into(),
+                serde_json::json!({ "type": "string", "description": "Originating system" }),
+            );
+            fields.insert(
+                "date_range".into(),
+                serde_json::json!({ "type": "string", "description": "Date range covered" }),
+            );
         }
         "media" => {
             fields.insert("media_type".into(), serde_json::json!({ "type": "string", "enum": ["audio", "video", "image"], "description": "Media type" }));
             fields.insert("duration_seconds".into(), serde_json::json!({ "type": "number", "description": "Duration in seconds (audio/video)" }));
-            fields.insert("resolution".into(), serde_json::json!({ "type": "string", "description": "Resolution (video/image)" }));
-            fields.insert("codec".into(), serde_json::json!({ "type": "string", "description": "Codec or format details" }));
+            fields.insert(
+                "resolution".into(),
+                serde_json::json!({ "type": "string", "description": "Resolution (video/image)" }),
+            );
+            fields.insert(
+                "codec".into(),
+                serde_json::json!({ "type": "string", "description": "Codec or format details" }),
+            );
         }
         _ => {}
     }
@@ -209,12 +263,10 @@ impl DataSource {
 
     /// Find by ID
     pub async fn find_by_id(pool: &SqlitePool, id: &str) -> Result<Option<Self>, sqlx::Error> {
-        sqlx::query_as::<_, Self>(
-            "SELECT * FROM data_sources WHERE id = ? AND archived_at IS NULL",
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await
+        sqlx::query_as::<_, Self>("SELECT * FROM data_sources WHERE id = ? AND archived_at IS NULL")
+            .bind(id)
+            .fetch_optional(pool)
+            .await
     }
 
     /// List by organization
@@ -319,10 +371,7 @@ impl DataSource {
         }
 
         sets.push("updated_at = datetime('now', 'subsec')");
-        let query_str = format!(
-            "UPDATE data_sources SET {} WHERE id = ?",
-            sets.join(", ")
-        );
+        let query_str = format!("UPDATE data_sources SET {} WHERE id = ?", sets.join(", "));
 
         let mut query = sqlx::query(&query_str);
         for val in &binds {

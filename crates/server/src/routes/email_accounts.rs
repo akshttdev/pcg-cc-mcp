@@ -3,21 +3,20 @@
 //! Handles Gmail and Zoho Mail connections, OAuth flows, and email account operations.
 
 use axum::{
-    Router,
+    Json, Router,
     extract::{Path, Query, State},
-    routing::{get, post, delete, patch},
-    Json,
+    routing::{delete, get, patch, post},
+};
+use db::{
+    db_uuid::DbUuid,
+    models::email_account::{CreateEmailAccount, EmailAccount, EmailProvider, UpdateEmailAccount},
 };
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
-use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError};
-use db::models::email_account::{
-    EmailAccount, CreateEmailAccount, UpdateEmailAccount, EmailProvider
-};
 
 #[derive(Debug, Deserialize)]
 pub struct ListAccountsQuery {
@@ -66,10 +65,7 @@ fn parse_state_owner(state: &str) -> (String, String) {
         (ot, oi)
     } else {
         // Legacy: bare UUID => project
-        (
-            "project".to_string(),
-            without_nonce.to_string(),
-        )
+        ("project".to_string(), without_nonce.to_string())
     }
 }
 
@@ -80,7 +76,8 @@ async fn list_accounts(
 ) -> Result<Json<ApiResponse<Vec<EmailAccount>>>, ApiError> {
     let pool = &deployment.db().pool;
 
-    let accounts = if let (Some(owner_type), Some(owner_id)) = (&query.owner_type, &query.owner_id) {
+    let accounts = if let (Some(owner_type), Some(owner_id)) = (&query.owner_type, &query.owner_id)
+    {
         EmailAccount::find_by_owner(pool, owner_type, owner_id).await?
     } else if let Some(project_id) = query.project_id {
         EmailAccount::find_by_project(pool, project_id).await?
@@ -120,7 +117,9 @@ async fn get_account(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<EmailAccount>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid ID".into()))?
+        .to_uuid();
     let account = EmailAccount::find_by_id(pool, id_uuid).await?;
     Ok(Json(ApiResponse::success(account)))
 }
@@ -132,7 +131,9 @@ async fn update_account(
     Json(update): Json<UpdateEmailAccount>,
 ) -> Result<Json<ApiResponse<EmailAccount>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid ID".into()))?
+        .to_uuid();
     let account = EmailAccount::update(pool, id_uuid, update).await?;
     Ok(Json(ApiResponse::success(account)))
 }
@@ -143,7 +144,9 @@ async fn delete_account(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid ID".into()))?
+        .to_uuid();
     EmailAccount::delete(pool, id_uuid).await?;
     Ok(Json(ApiResponse::success(())))
 }
@@ -154,7 +157,9 @@ async fn trigger_sync(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<EmailAccount>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid ID".into()))?
+        .to_uuid();
 
     // Update sync status to indicate sync is starting
     EmailAccount::update_sync_status(pool, id_uuid, "active", None).await?;
@@ -170,17 +175,21 @@ async fn trigger_sync(
 async fn initiate_oauth(
     Json(request): Json<InitiateOAuthRequest>,
 ) -> Result<Json<ApiResponse<OAuthUrlResponse>>, ApiError> {
-    let provider: EmailProvider = request.provider.parse()
+    let provider: EmailProvider = request
+        .provider
+        .parse()
         .map_err(|e: String| ApiError::BadRequest(e))?;
 
     // Generate a state token that encodes the owner along with a random nonce.
     // Format: "owner_type/owner_id:nonce"
     let state_nonce = uuid::Uuid::new_v4().to_string();
-    let (owner_type, owner_id) = match (request.owner_type.as_deref(), request.owner_id.as_deref()) {
+    let (owner_type, owner_id) = match (request.owner_type.as_deref(), request.owner_id.as_deref())
+    {
         (Some(ot), Some(oi)) => (ot.to_string(), oi.to_string()),
         _ => {
-            let pid = request.project_id
-                .ok_or_else(|| ApiError::BadRequest("Either project_id or owner_type+owner_id required".into()))?;
+            let pid = request.project_id.ok_or_else(|| {
+                ApiError::BadRequest("Either project_id or owner_type+owner_id required".into())
+            })?;
             ("project".to_string(), pid.as_simple().to_string())
         }
     };
@@ -189,8 +198,7 @@ async fn initiate_oauth(
 
     let auth_url = match provider {
         EmailProvider::Gmail => {
-            let client_id = std::env::var("GOOGLE_CLIENT_ID")
-                .unwrap_or_default();
+            let client_id = std::env::var("GOOGLE_CLIENT_ID").unwrap_or_default();
             let scopes = EmailAccount::gmail_scopes().join(" ");
 
             format!(
@@ -209,12 +217,13 @@ async fn initiate_oauth(
             )
         }
         EmailProvider::Zoho => {
-            let client_id = std::env::var("ZOHO_CLIENT_ID")
-                .unwrap_or_default();
+            let client_id = std::env::var("ZOHO_CLIENT_ID").unwrap_or_default();
             let scopes = [
                 EmailAccount::zoho_mail_scopes(),
                 EmailAccount::zoho_crm_scopes(),
-            ].concat().join(",");
+            ]
+            .concat()
+            .join(",");
 
             format!(
                 "https://accounts.zoho.com/oauth/v2/auth?\
@@ -232,11 +241,16 @@ async fn initiate_oauth(
             )
         }
         EmailProvider::ImapCustom => {
-            return Err(ApiError::BadRequest("Custom IMAP does not use OAuth".into()));
+            return Err(ApiError::BadRequest(
+                "Custom IMAP does not use OAuth".into(),
+            ));
         }
     };
 
-    Ok(Json(ApiResponse::success(OAuthUrlResponse { auth_url, state: state_raw })))
+    Ok(Json(ApiResponse::success(OAuthUrlResponse {
+        auth_url,
+        state: state_raw,
+    })))
 }
 
 /// GET /email/oauth/gmail/callback - Handle Gmail OAuth callback
@@ -270,15 +284,23 @@ async fn gmail_oauth_callback(
 
     // Check response status and get body for debugging
     let status = token_response.status();
-    let body = token_response.text().await
+    let body = token_response
+        .text()
+        .await
         .map_err(|e| ApiError::InternalError(format!("Failed to read token response: {}", e)))?;
 
     tracing::info!("[GMAIL_OAUTH] Token exchange response status: {}", status);
-    tracing::debug!("[GMAIL_OAUTH] Token exchange response body: {}", &body[..body.len().min(500)]);
+    tracing::debug!(
+        "[GMAIL_OAUTH] Token exchange response body: {}",
+        &body[..body.len().min(500)]
+    );
 
     if !status.is_success() {
         tracing::error!("[GMAIL_OAUTH] Token exchange failed: {}", body);
-        return Err(ApiError::InternalError(format!("Google token exchange failed: {}", body)));
+        return Err(ApiError::InternalError(format!(
+            "Google token exchange failed: {}",
+            body
+        )));
     }
 
     #[derive(Deserialize)]
@@ -288,8 +310,13 @@ async fn gmail_oauth_callback(
         expires_in: Option<i64>,
     }
 
-    let tokens: TokenResponse = serde_json::from_str(&body)
-        .map_err(|e| ApiError::InternalError(format!("Failed to parse token response: {} - body: {}", e, &body[..body.len().min(200)])))?;
+    let tokens: TokenResponse = serde_json::from_str(&body).map_err(|e| {
+        ApiError::InternalError(format!(
+            "Failed to parse token response: {} - body: {}",
+            e,
+            &body[..body.len().min(200)]
+        ))
+    })?;
 
     // Get user info
     let userinfo_response = client
@@ -320,40 +347,47 @@ async fn gmail_oauth_callback(
     };
 
     // Calculate token expiry
-    let token_expires_at = tokens.expires_in.map(|secs| {
-        chrono::Utc::now() + chrono::Duration::seconds(secs)
-    });
+    let token_expires_at = tokens
+        .expires_in
+        .map(|secs| chrono::Utc::now() + chrono::Duration::seconds(secs));
 
     // Create the email account
-    let account = EmailAccount::create(pool, CreateEmailAccount {
-        project_id,
-        provider: EmailProvider::Gmail,
-        account_type: None,
-        email_address: user_info.email,
-        display_name: user_info.name,
-        avatar_url: user_info.picture,
-        access_token: Some(tokens.access_token),
-        refresh_token: tokens.refresh_token,
-        token_expires_at,
-        imap_host: None,
-        imap_port: None,
-        smtp_host: None,
-        smtp_port: None,
-        use_ssl: None,
-        granted_scopes: Some(EmailAccount::gmail_scopes().iter().map(|s| s.to_string()).collect()),
-        metadata: None,
-    }).await?;
+    let account = EmailAccount::create(
+        pool,
+        CreateEmailAccount {
+            project_id,
+            provider: EmailProvider::Gmail,
+            account_type: None,
+            email_address: user_info.email,
+            display_name: user_info.name,
+            avatar_url: user_info.picture,
+            access_token: Some(tokens.access_token),
+            refresh_token: tokens.refresh_token,
+            token_expires_at,
+            imap_host: None,
+            imap_port: None,
+            smtp_host: None,
+            smtp_port: None,
+            use_ssl: None,
+            granted_scopes: Some(
+                EmailAccount::gmail_scopes()
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect(),
+            ),
+            metadata: None,
+        },
+    )
+    .await?;
 
     // Stamp owner_type/owner_id on the new account
-    sqlx::query(
-        "UPDATE email_accounts SET owner_type = ?, owner_id = ? WHERE id = ?"
-    )
-    .bind(&owner_type)
-    .bind(&owner_id)
-    .bind(account.id)
-    .execute(pool)
-    .await
-    .map_err(|e| ApiError::InternalError(format!("Failed to set account owner: {}", e)))?;
+    sqlx::query("UPDATE email_accounts SET owner_type = ?, owner_id = ? WHERE id = ?")
+        .bind(&owner_type)
+        .bind(&owner_id)
+        .bind(account.id)
+        .execute(pool)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to set account owner: {}", e)))?;
 
     Ok(Json(ApiResponse::success(account)))
 }
@@ -378,7 +412,10 @@ async fn zoho_oauth_callback(
     // Exchange code for tokens
     let client = reqwest::Client::new();
     let token_response = client
-        .post(format!("https://accounts.zoho.{}/oauth/v2/token", zoho_domain))
+        .post(format!(
+            "https://accounts.zoho.{}/oauth/v2/token",
+            zoho_domain
+        ))
         .form(&[
             ("code", query.code.as_str()),
             ("client_id", client_id.as_str()),
@@ -392,15 +429,23 @@ async fn zoho_oauth_callback(
 
     // Check response status and get body for debugging
     let status = token_response.status();
-    let body = token_response.text().await
+    let body = token_response
+        .text()
+        .await
         .map_err(|e| ApiError::InternalError(format!("Failed to read token response: {}", e)))?;
 
     tracing::info!("[ZOHO_OAUTH] Token exchange response status: {}", status);
-    tracing::debug!("[ZOHO_OAUTH] Token exchange response body: {}", &body[..body.len().min(500)]);
+    tracing::debug!(
+        "[ZOHO_OAUTH] Token exchange response body: {}",
+        &body[..body.len().min(500)]
+    );
 
     if !status.is_success() {
         tracing::error!("[ZOHO_OAUTH] Token exchange failed: {}", body);
-        return Err(ApiError::InternalError(format!("Zoho token exchange failed: {}", body)));
+        return Err(ApiError::InternalError(format!(
+            "Zoho token exchange failed: {}",
+            body
+        )));
     }
 
     #[derive(Deserialize)]
@@ -410,13 +455,21 @@ async fn zoho_oauth_callback(
         expires_in: Option<i64>,
     }
 
-    let tokens: TokenResponse = serde_json::from_str(&body)
-        .map_err(|e| ApiError::InternalError(format!("Failed to parse token response: {} - body: {}", e, &body[..body.len().min(200)])))?;
+    let tokens: TokenResponse = serde_json::from_str(&body).map_err(|e| {
+        ApiError::InternalError(format!(
+            "Failed to parse token response: {} - body: {}",
+            e,
+            &body[..body.len().min(200)]
+        ))
+    })?;
 
     // Get user info from Zoho
     let userinfo_response = client
         .get(format!("https://mail.zoho.{}/api/accounts", zoho_domain))
-        .header("Authorization", format!("Zoho-oauthtoken {}", tokens.access_token))
+        .header(
+            "Authorization",
+            format!("Zoho-oauthtoken {}", tokens.access_token),
+        )
         .send()
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to get user info: {}", e)))?;
@@ -449,10 +502,14 @@ async fn zoho_oauth_callback(
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to parse Zoho response: {}", e)))?;
 
-    let zoho_account = accounts_response.data.first()
+    let zoho_account = accounts_response
+        .data
+        .first()
         .ok_or_else(|| ApiError::InternalError("No Zoho accounts found".into()))?;
 
-    let primary_email = zoho_account.email_address.iter()
+    let primary_email = zoho_account
+        .email_address
+        .iter()
         .find(|e| e.is_primary)
         .or_else(|| zoho_account.email_address.first())
         .map(|e| e.mail_id.clone())
@@ -467,14 +524,18 @@ async fn zoho_oauth_callback(
     };
 
     // Calculate token expiry
-    let token_expires_at = tokens.expires_in.map(|secs| {
-        chrono::Utc::now() + chrono::Duration::seconds(secs)
-    });
+    let token_expires_at = tokens
+        .expires_in
+        .map(|secs| chrono::Utc::now() + chrono::Duration::seconds(secs));
 
     let scopes: Vec<String> = [
         EmailAccount::zoho_mail_scopes(),
         EmailAccount::zoho_crm_scopes(),
-    ].concat().iter().map(|s| s.to_string()).collect();
+    ]
+    .concat()
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
 
     // Remove any existing account for this owner+provider+email so we can upsert cleanly
     sqlx::query(
@@ -497,38 +558,40 @@ async fn zoho_oauth_callback(
     .ok();
 
     // Create the email account
-    let account = EmailAccount::create(pool, CreateEmailAccount {
-        project_id,
-        provider: EmailProvider::Zoho,
-        account_type: None,
-        email_address: primary_email,
-        display_name: zoho_account.display_name.clone(),
-        avatar_url: None,
-        access_token: Some(tokens.access_token),
-        refresh_token: tokens.refresh_token,
-        token_expires_at,
-        imap_host: None,
-        imap_port: None,
-        smtp_host: None,
-        smtp_port: None,
-        use_ssl: None,
-        granted_scopes: Some(scopes),
-        metadata: Some(serde_json::json!({
-            "zoho_account_id": zoho_account.account_id,
-            "zoho_domain": zoho_domain,
-        })),
-    }).await?;
+    let account = EmailAccount::create(
+        pool,
+        CreateEmailAccount {
+            project_id,
+            provider: EmailProvider::Zoho,
+            account_type: None,
+            email_address: primary_email,
+            display_name: zoho_account.display_name.clone(),
+            avatar_url: None,
+            access_token: Some(tokens.access_token),
+            refresh_token: tokens.refresh_token,
+            token_expires_at,
+            imap_host: None,
+            imap_port: None,
+            smtp_host: None,
+            smtp_port: None,
+            use_ssl: None,
+            granted_scopes: Some(scopes),
+            metadata: Some(serde_json::json!({
+                "zoho_account_id": zoho_account.account_id,
+                "zoho_domain": zoho_domain,
+            })),
+        },
+    )
+    .await?;
 
     // Stamp owner_type/owner_id on the new account
-    sqlx::query(
-        "UPDATE email_accounts SET owner_type = ?, owner_id = ? WHERE id = ?"
-    )
-    .bind(&owner_type)
-    .bind(&owner_id)
-    .bind(account.id)
-    .execute(pool)
-    .await
-    .map_err(|e| ApiError::InternalError(format!("Failed to set account owner: {}", e)))?;
+    sqlx::query("UPDATE email_accounts SET owner_type = ?, owner_id = ? WHERE id = ?")
+        .bind(&owner_type)
+        .bind(&owner_id)
+        .bind(account.id)
+        .execute(pool)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to set account owner: {}", e)))?;
 
     Ok(Json(ApiResponse::success(account)))
 }

@@ -9,8 +9,10 @@ use axum::{
     response::{IntoResponse, Json as ResponseJson},
     routing::{get, post},
 };
-use db::models::execution_process::{ExecutionProcess, ExecutionProcessError};
-use db::models::execution_process_logs::ExecutionProcessLogs;
+use db::models::{
+    execution_process::{ExecutionProcess, ExecutionProcessError},
+    execution_process_logs::ExecutionProcessLogs,
+};
 use deployment::Deployment;
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
 use serde::Deserialize;
@@ -55,11 +57,9 @@ pub async fn get_stored_logs(
     Extension(execution_process): Extension<ExecutionProcess>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Option<ExecutionProcessLogs>>>, ApiError> {
-    let logs = ExecutionProcessLogs::find_by_execution_id(
-        &deployment.db().pool,
-        execution_process.id,
-    )
-    .await?;
+    let logs =
+        ExecutionProcessLogs::find_by_execution_id(&deployment.db().pool, execution_process.id)
+            .await?;
 
     Ok(ResponseJson(ApiResponse::success(logs)))
 }

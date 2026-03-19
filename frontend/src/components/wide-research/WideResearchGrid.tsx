@@ -111,7 +111,7 @@ export function WideResearchGrid({
         {/* Status Legend */}
         <div className="flex flex-wrap gap-3 mt-3">
           {Object.entries(statusCounts)
-            .filter(([_, count]) => count > 0)
+            .filter(([, count]) => count > 0)
             .map(([status, count]) => (
               <div
                 key={status}

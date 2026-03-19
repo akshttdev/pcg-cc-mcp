@@ -3,38 +3,38 @@
 //! Shared workflow execution functions extracted from the route handler.
 //! Used by the workflow engine, trigger system, and Topsi agent.
 
-use db::models::crm_contact::{CrmContact, UpdateCrmContact};
-use db::models::crm_deal::{CrmDeal, UpdateCrmDeal};
-use db::models::company::{Company, UpdateCompany};
-use db::models::notification::{Notification, CreateNotification};
-use db::models::task::{Task, CreateTask, Priority};
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        company::{Company, UpdateCompany},
+        crm_contact::{CrmContact, UpdateCrmContact},
+        crm_deal::{CrmDeal, UpdateCrmDeal},
+        notification::{CreateNotification, Notification},
+        task::{CreateTask, Priority, Task},
+    },
+};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
-use db::db_uuid::DbUuid;
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 // ── Pre-compiled regexes for text extraction ────────────────────────────────
 
-static EMAIL_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}").unwrap()
-});
+static EMAIL_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}").unwrap());
 
-static DOLLAR_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\$[\d,]+(?:\.\d+)?(?:\s*[KkMmBb])?").unwrap()
-});
+static DOLLAR_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\$[\d,]+(?:\.\d+)?(?:\s*[KkMmBb])?").unwrap());
 
-static DATE_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\d{4}-\d{2}-\d{2}").unwrap()
-});
+static DATE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\d{4}-\d{2}-\d{2}").unwrap());
 
-static AT_COMPANY_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\bat\s+([A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+){0,4})").unwrap()
-});
+static AT_COMPANY_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\bat\s+([A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+){0,4})").unwrap());
 
 static LABEL_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^([A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+){0,4})\s*(?::\s+\S|–\s+\S|-\s+\S)").unwrap()
+    Regex::new(r"^([A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+){0,4})\s*(?::\s+\S|–\s+\S|-\s+\S)")
+        .unwrap()
 });
 
 static NAME_ROLE_EMAIL_RE: Lazy<Regex> = Lazy::new(|| {
@@ -87,36 +87,66 @@ pub fn get_schema_for_target(target_type: &str) -> Option<TargetSchema> {
 
 fn crm_contact_schema() -> TargetSchema {
     let mut fields = std::collections::BTreeMap::new();
-    fields.insert("first_name".to_string(), FieldDef {
-        field_type: "string".to_string(), required: false,
-        description: "Contact's first name".to_string(),
-        enum_values: None, format: None,
-    });
-    fields.insert("last_name".to_string(), FieldDef {
-        field_type: "string".to_string(), required: false,
-        description: "Contact's last name".to_string(),
-        enum_values: None, format: None,
-    });
-    fields.insert("email".to_string(), FieldDef {
-        field_type: "string".to_string(), required: false,
-        description: "Email address".to_string(),
-        enum_values: None, format: Some("email".to_string()),
-    });
-    fields.insert("phone".to_string(), FieldDef {
-        field_type: "string".to_string(), required: false,
-        description: "Phone number".to_string(),
-        enum_values: None, format: None,
-    });
-    fields.insert("company_name".to_string(), FieldDef {
-        field_type: "string".to_string(), required: false,
-        description: "Company name".to_string(),
-        enum_values: None, format: None,
-    });
-    fields.insert("job_title".to_string(), FieldDef {
-        field_type: "string".to_string(), required: false,
-        description: "Job title".to_string(),
-        enum_values: None, format: None,
-    });
+    fields.insert(
+        "first_name".to_string(),
+        FieldDef {
+            field_type: "string".to_string(),
+            required: false,
+            description: "Contact's first name".to_string(),
+            enum_values: None,
+            format: None,
+        },
+    );
+    fields.insert(
+        "last_name".to_string(),
+        FieldDef {
+            field_type: "string".to_string(),
+            required: false,
+            description: "Contact's last name".to_string(),
+            enum_values: None,
+            format: None,
+        },
+    );
+    fields.insert(
+        "email".to_string(),
+        FieldDef {
+            field_type: "string".to_string(),
+            required: false,
+            description: "Email address".to_string(),
+            enum_values: None,
+            format: Some("email".to_string()),
+        },
+    );
+    fields.insert(
+        "phone".to_string(),
+        FieldDef {
+            field_type: "string".to_string(),
+            required: false,
+            description: "Phone number".to_string(),
+            enum_values: None,
+            format: None,
+        },
+    );
+    fields.insert(
+        "company_name".to_string(),
+        FieldDef {
+            field_type: "string".to_string(),
+            required: false,
+            description: "Company name".to_string(),
+            enum_values: None,
+            format: None,
+        },
+    );
+    fields.insert(
+        "job_title".to_string(),
+        FieldDef {
+            field_type: "string".to_string(),
+            required: false,
+            description: "Job title".to_string(),
+            enum_values: None,
+            format: None,
+        },
+    );
     TargetSchema {
         target_type: "crm_contact".to_string(),
         description: "CRM Contact".to_string(),
@@ -126,26 +156,46 @@ fn crm_contact_schema() -> TargetSchema {
 
 fn company_schema() -> TargetSchema {
     let mut fields = std::collections::BTreeMap::new();
-    fields.insert("name".to_string(), FieldDef {
-        field_type: "string".to_string(), required: true,
-        description: "Company name".to_string(),
-        enum_values: None, format: None,
-    });
-    fields.insert("website".to_string(), FieldDef {
-        field_type: "string".to_string(), required: false,
-        description: "Company website".to_string(),
-        enum_values: None, format: Some("url".to_string()),
-    });
-    fields.insert("industry".to_string(), FieldDef {
-        field_type: "string".to_string(), required: false,
-        description: "Industry".to_string(),
-        enum_values: None, format: None,
-    });
-    fields.insert("description".to_string(), FieldDef {
-        field_type: "string".to_string(), required: false,
-        description: "Description".to_string(),
-        enum_values: None, format: None,
-    });
+    fields.insert(
+        "name".to_string(),
+        FieldDef {
+            field_type: "string".to_string(),
+            required: true,
+            description: "Company name".to_string(),
+            enum_values: None,
+            format: None,
+        },
+    );
+    fields.insert(
+        "website".to_string(),
+        FieldDef {
+            field_type: "string".to_string(),
+            required: false,
+            description: "Company website".to_string(),
+            enum_values: None,
+            format: Some("url".to_string()),
+        },
+    );
+    fields.insert(
+        "industry".to_string(),
+        FieldDef {
+            field_type: "string".to_string(),
+            required: false,
+            description: "Industry".to_string(),
+            enum_values: None,
+            format: None,
+        },
+    );
+    fields.insert(
+        "description".to_string(),
+        FieldDef {
+            field_type: "string".to_string(),
+            required: false,
+            description: "Description".to_string(),
+            enum_values: None,
+            format: None,
+        },
+    );
     TargetSchema {
         target_type: "company".to_string(),
         description: "Company/Organization".to_string(),
@@ -155,36 +205,66 @@ fn company_schema() -> TargetSchema {
 
 fn crm_deal_schema() -> TargetSchema {
     let mut fields = std::collections::BTreeMap::new();
-    fields.insert("name".to_string(), FieldDef {
-        field_type: "string".to_string(), required: true,
-        description: "Deal name".to_string(),
-        enum_values: None, format: None,
-    });
-    fields.insert("amount".to_string(), FieldDef {
-        field_type: "number".to_string(), required: false,
-        description: "Deal amount".to_string(),
-        enum_values: None, format: None,
-    });
-    fields.insert("currency".to_string(), FieldDef {
-        field_type: "string".to_string(), required: false,
-        description: "Currency code".to_string(),
-        enum_values: None, format: None,
-    });
-    fields.insert("description".to_string(), FieldDef {
-        field_type: "string".to_string(), required: false,
-        description: "Deal description".to_string(),
-        enum_values: None, format: None,
-    });
-    fields.insert("contact_name".to_string(), FieldDef {
-        field_type: "string".to_string(), required: false,
-        description: "Associated contact name".to_string(),
-        enum_values: None, format: None,
-    });
-    fields.insert("contact_email".to_string(), FieldDef {
-        field_type: "string".to_string(), required: false,
-        description: "Associated contact email".to_string(),
-        enum_values: None, format: Some("email".to_string()),
-    });
+    fields.insert(
+        "name".to_string(),
+        FieldDef {
+            field_type: "string".to_string(),
+            required: true,
+            description: "Deal name".to_string(),
+            enum_values: None,
+            format: None,
+        },
+    );
+    fields.insert(
+        "amount".to_string(),
+        FieldDef {
+            field_type: "number".to_string(),
+            required: false,
+            description: "Deal amount".to_string(),
+            enum_values: None,
+            format: None,
+        },
+    );
+    fields.insert(
+        "currency".to_string(),
+        FieldDef {
+            field_type: "string".to_string(),
+            required: false,
+            description: "Currency code".to_string(),
+            enum_values: None,
+            format: None,
+        },
+    );
+    fields.insert(
+        "description".to_string(),
+        FieldDef {
+            field_type: "string".to_string(),
+            required: false,
+            description: "Deal description".to_string(),
+            enum_values: None,
+            format: None,
+        },
+    );
+    fields.insert(
+        "contact_name".to_string(),
+        FieldDef {
+            field_type: "string".to_string(),
+            required: false,
+            description: "Associated contact name".to_string(),
+            enum_values: None,
+            format: None,
+        },
+    );
+    fields.insert(
+        "contact_email".to_string(),
+        FieldDef {
+            field_type: "string".to_string(),
+            required: false,
+            description: "Associated contact email".to_string(),
+            enum_values: None,
+            format: Some("email".to_string()),
+        },
+    );
     TargetSchema {
         target_type: "crm_deal".to_string(),
         description: "CRM Deal/Opportunity".to_string(),
@@ -194,27 +274,51 @@ fn crm_deal_schema() -> TargetSchema {
 
 fn task_schema() -> TargetSchema {
     let mut fields = std::collections::BTreeMap::new();
-    fields.insert("title".to_string(), FieldDef {
-        field_type: "string".to_string(), required: true,
-        description: "Task title".to_string(),
-        enum_values: None, format: None,
-    });
-    fields.insert("description".to_string(), FieldDef {
-        field_type: "string".to_string(), required: false,
-        description: "Task description".to_string(),
-        enum_values: None, format: None,
-    });
-    fields.insert("priority".to_string(), FieldDef {
-        field_type: "string".to_string(), required: false,
-        description: "Task priority".to_string(),
-        enum_values: Some(vec!["low".to_string(), "medium".to_string(), "high".to_string(), "urgent".to_string()]),
-        format: None,
-    });
-    fields.insert("due_date".to_string(), FieldDef {
-        field_type: "string".to_string(), required: false,
-        description: "Due date".to_string(),
-        enum_values: None, format: Some("date".to_string()),
-    });
+    fields.insert(
+        "title".to_string(),
+        FieldDef {
+            field_type: "string".to_string(),
+            required: true,
+            description: "Task title".to_string(),
+            enum_values: None,
+            format: None,
+        },
+    );
+    fields.insert(
+        "description".to_string(),
+        FieldDef {
+            field_type: "string".to_string(),
+            required: false,
+            description: "Task description".to_string(),
+            enum_values: None,
+            format: None,
+        },
+    );
+    fields.insert(
+        "priority".to_string(),
+        FieldDef {
+            field_type: "string".to_string(),
+            required: false,
+            description: "Task priority".to_string(),
+            enum_values: Some(vec![
+                "low".to_string(),
+                "medium".to_string(),
+                "high".to_string(),
+                "urgent".to_string(),
+            ]),
+            format: None,
+        },
+    );
+    fields.insert(
+        "due_date".to_string(),
+        FieldDef {
+            field_type: "string".to_string(),
+            required: false,
+            description: "Due date".to_string(),
+            enum_values: None,
+            format: Some("date".to_string()),
+        },
+    );
     TargetSchema {
         target_type: "task".to_string(),
         description: "Task/Action Item".to_string(),
@@ -237,9 +341,9 @@ pub struct WorkflowNode {
     pub id: String,
     pub name: String,
     #[serde(rename = "type")]
-    pub node_type: String,          // "llm_extract", "llm_analyze", "llm_summarize", "transform", "filter", "merge"
-    pub parameters: Value,          // type-specific config (prompt_template, output_schema, etc.)
-    pub position: NodePosition,     // canvas coordinates
+    pub node_type: String, // "llm_extract", "llm_analyze", "llm_summarize", "transform", "filter", "merge"
+    pub parameters: Value, // type-specific config (prompt_template, output_schema, etc.)
+    pub position: NodePosition, // canvas coordinates
 }
 
 /// A connection between two nodes
@@ -261,12 +365,14 @@ pub struct WorkflowDefinition {
     pub connections: Vec<WorkflowConnection>,
     pub is_system: bool,
     #[serde(default = "default_owner_type")]
-    pub owner_type: String,     // "system", "organization", "user"
+    pub owner_type: String, // "system", "organization", "user"
     pub owner_id: Option<String>,
     pub default_model: Option<String>,
 }
 
-pub fn default_owner_type() -> String { "system".to_string() }
+pub fn default_owner_type() -> String {
+    "system".to_string()
+}
 
 // ── Text extraction helpers ──────────────────────────────────────────────────
 
@@ -325,16 +431,71 @@ pub fn extract_date_near_text(text: &str, context_line: &str) -> Option<String> 
 pub fn extract_company_names_from_text(text: &str) -> Vec<String> {
     let mut companies = Vec::new();
     // Look for organization suffixes: Group, Inc, Corp, LLC, Ltd, Co, Foundation, etc.
-    let org_suffixes = ["Group", "Inc", "Corp", "Corporation", "LLC", "Ltd", "Co", "Company",
-                        "Foundation", "Institute", "Associates", "Partners", "Solutions",
-                        "Technologies", "Systems", "Services", "Global", "International",
-                        "Health", "Medical", "Consulting", "Labs", "Studio", "Agency"];
+    let org_suffixes = [
+        "Group",
+        "Inc",
+        "Corp",
+        "Corporation",
+        "LLC",
+        "Ltd",
+        "Co",
+        "Company",
+        "Foundation",
+        "Institute",
+        "Associates",
+        "Partners",
+        "Solutions",
+        "Technologies",
+        "Systems",
+        "Services",
+        "Global",
+        "International",
+        "Health",
+        "Medical",
+        "Consulting",
+        "Labs",
+        "Studio",
+        "Agency",
+    ];
     // Words that cannot be part of a company name (stop walk-back)
-    let stop_words = ["Attendees", "CEO", "CFO", "CTO", "COO", "VP", "Director", "Manager",
-                      "Head", "Lead", "Senior", "Junior", "Chief", "President", "Chair",
-                      "Date", "Time", "Location", "Agenda", "Notes", "Summary", "Action",
-                      "Items", "Discussion", "Meeting", "Call", "Review", "Update", "Status",
-                      "Follow", "Next", "Steps", "Budget", "Revenue", "Cost", "Total"];
+    let stop_words = [
+        "Attendees",
+        "CEO",
+        "CFO",
+        "CTO",
+        "COO",
+        "VP",
+        "Director",
+        "Manager",
+        "Head",
+        "Lead",
+        "Senior",
+        "Junior",
+        "Chief",
+        "President",
+        "Chair",
+        "Date",
+        "Time",
+        "Location",
+        "Agenda",
+        "Notes",
+        "Summary",
+        "Action",
+        "Items",
+        "Discussion",
+        "Meeting",
+        "Call",
+        "Review",
+        "Update",
+        "Status",
+        "Follow",
+        "Next",
+        "Steps",
+        "Budget",
+        "Revenue",
+        "Cost",
+        "Total",
+    ];
     let words: Vec<&str> = text.split_whitespace().collect();
     for i in 0..words.len() {
         let w = words[i].trim_matches(|c: char| !c.is_alphanumeric());
@@ -346,9 +507,17 @@ pub fn extract_company_names_from_text(text: &str) -> Vec<String> {
             while j > 0 && parts.len() <= max_walk {
                 j -= 1;
                 let prev = words[j].trim_matches(|c: char| !c.is_alphanumeric());
-                if prev.is_empty() { break; }
-                if stop_words.contains(&prev) { break; }
-                let starts_upper = prev.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
+                if prev.is_empty() {
+                    break;
+                }
+                if stop_words.contains(&prev) {
+                    break;
+                }
+                let starts_upper = prev
+                    .chars()
+                    .next()
+                    .map(|c| c.is_uppercase())
+                    .unwrap_or(false);
                 if starts_upper && prev.len() >= 2 {
                     parts.insert(0, prev);
                 } else {
@@ -368,7 +537,10 @@ pub fn extract_company_names_from_text(text: &str) -> Vec<String> {
         let trimmed = line.trim();
         if let Some(rest) = trimmed.strip_prefix("COMPANY:") {
             let company_part = rest.trim().split('|').next().unwrap_or("").trim();
-            if !company_part.is_empty() && !companies.contains(&company_part.to_string()) && companies.len() < 10 {
+            if !company_part.is_empty()
+                && !companies.contains(&company_part.to_string())
+                && companies.len() < 10
+            {
                 companies.push(company_part.to_string());
             }
         }
@@ -381,19 +553,57 @@ pub fn extract_company_names_from_text(text: &str) -> Vec<String> {
         if let Some(m) = cap.get(1) {
             let candidate = m.as_str().trim().to_string();
             // Filter out common false positives (people names are handled by contact extraction)
-            let false_positives = ["The", "This", "That", "These", "Those", "Our", "Your",
-                                   "His", "Her", "Its", "My", "January", "February", "March",
-                                   "April", "May", "June", "July", "August", "September",
-                                   "October", "November", "December", "Monday", "Tuesday",
-                                   "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
-                                   // Job title/department words that aren't company names
-                                   "Business", "Product", "Engineering", "Marketing", "Sales",
-                                   "Operations", "Human", "Finance", "Legal", "Research"];
+            let false_positives = [
+                "The",
+                "This",
+                "That",
+                "These",
+                "Those",
+                "Our",
+                "Your",
+                "His",
+                "Her",
+                "Its",
+                "My",
+                "January",
+                "February",
+                "March",
+                "April",
+                "May",
+                "June",
+                "July",
+                "August",
+                "September",
+                "October",
+                "November",
+                "December",
+                "Monday",
+                "Tuesday",
+                "Wednesday",
+                "Thursday",
+                "Friday",
+                "Saturday",
+                "Sunday",
+                // Job title/department words that aren't company names
+                "Business",
+                "Product",
+                "Engineering",
+                "Marketing",
+                "Sales",
+                "Operations",
+                "Human",
+                "Finance",
+                "Legal",
+                "Research",
+            ];
             let first_word = candidate.split_whitespace().next().unwrap_or("");
             let word_count = candidate.split_whitespace().count();
             // Require at least 2 words for "at X" companies (single words too ambiguous)
-            if word_count >= 2 && !false_positives.contains(&first_word) && candidate.len() >= 3
-                && !companies.contains(&candidate) && companies.len() < 10
+            if word_count >= 2
+                && !false_positives.contains(&first_word)
+                && candidate.len() >= 3
+                && !companies.contains(&candidate)
+                && companies.len() < 10
             {
                 companies.push(candidate);
             }
@@ -404,20 +614,52 @@ pub fn extract_company_names_from_text(text: &str) -> Vec<String> {
     // (lines starting with a capitalized name followed by colon or dash)
     let label_re = &*LABEL_RE;
     for line in text.lines() {
-        let trimmed = line.trim().trim_start_matches('-').trim().trim_start_matches('*').trim();
+        let trimmed = line
+            .trim()
+            .trim_start_matches('-')
+            .trim()
+            .trim_start_matches('*')
+            .trim();
         if let Some(cap) = label_re.captures(trimmed) {
             if let Some(m) = cap.get(1) {
                 let candidate = m.as_str().trim().to_string();
                 // Must not be a generic label
-                let generic_labels = ["Date", "Time", "Location", "Agenda", "Notes", "Summary",
-                                      "Action", "Items", "Discussion", "Meeting", "Budget",
-                                      "Revenue", "Status", "Update", "Follow", "Next",
-                                      "Estimated", "Expected", "Total", "Contact", "Phone",
-                                      "Email", "Description", "Details", "Subject", "Title",
-                                      "Priority", "Attendees", "Participants"];
+                let generic_labels = [
+                    "Date",
+                    "Time",
+                    "Location",
+                    "Agenda",
+                    "Notes",
+                    "Summary",
+                    "Action",
+                    "Items",
+                    "Discussion",
+                    "Meeting",
+                    "Budget",
+                    "Revenue",
+                    "Status",
+                    "Update",
+                    "Follow",
+                    "Next",
+                    "Estimated",
+                    "Expected",
+                    "Total",
+                    "Contact",
+                    "Phone",
+                    "Email",
+                    "Description",
+                    "Details",
+                    "Subject",
+                    "Title",
+                    "Priority",
+                    "Attendees",
+                    "Participants",
+                ];
                 let first_word = candidate.split_whitespace().next().unwrap_or("");
-                if !generic_labels.contains(&first_word) && candidate.len() >= 3
-                    && !companies.contains(&candidate) && companies.len() < 10
+                if !generic_labels.contains(&first_word)
+                    && candidate.len() >= 3
+                    && !companies.contains(&candidate)
+                    && companies.len() < 10
                 {
                     companies.push(candidate);
                 }
@@ -442,7 +684,9 @@ pub fn extract_contacts_from_text(text: &str) -> Vec<ExtractedContact> {
     let email_re_simple = |s: &str| -> Option<String> {
         // Find email-like pattern in a string
         for word in s.split_whitespace() {
-            let w = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '@' && c != '.' && c != '_' && c != '-');
+            let w = word.trim_matches(|c: char| {
+                !c.is_alphanumeric() && c != '@' && c != '.' && c != '_' && c != '-'
+            });
             if w.contains('@') && w.contains('.') && w.len() > 5 {
                 return Some(w.to_string());
             }
@@ -454,7 +698,10 @@ pub fn extract_contacts_from_text(text: &str) -> Vec<ExtractedContact> {
         for segment in s.split_whitespace().collect::<Vec<_>>().windows(3) {
             let combined = segment.join(" ");
             let digits: String = combined.chars().filter(|c| c.is_ascii_digit()).collect();
-            if digits.len() >= 10 && digits.len() <= 11 && combined.contains(|c: char| c == '(' || c == '-') {
+            if digits.len() >= 10
+                && digits.len() <= 11
+                && combined.contains(|c: char| c == '(' || c == '-')
+            {
                 return Some(combined);
             }
         }
@@ -469,13 +716,20 @@ pub fn extract_contacts_from_text(text: &str) -> Vec<ExtractedContact> {
             let parts: Vec<&str> = trimmed.split('|').map(|s| s.trim()).collect();
             if let Some(name_role) = parts.first() {
                 let (name, role) = if let Some(comma_pos) = name_role.find(',') {
-                    (name_role[..comma_pos].trim().to_string(), Some(name_role[comma_pos+1..].trim().to_string()))
+                    (
+                        name_role[..comma_pos].trim().to_string(),
+                        Some(name_role[comma_pos + 1..].trim().to_string()),
+                    )
                 } else {
                     (name_role.trim().to_string(), None)
                 };
                 // Clean "Dr. " prefix but keep it recognizable
                 let clean_name = name.replace("Dr. ", "").trim().to_string();
-                let display_name = if name.starts_with("Dr.") { name.clone() } else { clean_name.clone() };
+                let display_name = if name.starts_with("Dr.") {
+                    name.clone()
+                } else {
+                    clean_name.clone()
+                };
                 if display_name.len() >= 3 && display_name.contains(' ') {
                     contacts.push(ExtractedContact {
                         name: display_name,
@@ -493,11 +747,15 @@ pub fn extract_contacts_from_text(text: &str) -> Vec<ExtractedContact> {
     if contacts.is_empty() {
         for line in text.lines() {
             let trimmed = line.trim();
-            if trimmed.to_lowercase().contains("attendee") || trimmed.contains("(CEO") || trimmed.contains("(CFO") || trimmed.contains("(CTO") {
+            if trimmed.to_lowercase().contains("attendee")
+                || trimmed.contains("(CEO")
+                || trimmed.contains("(CFO")
+                || trimmed.contains("(CTO")
+            {
                 // Parse "Name (Role, Company)" patterns
                 let mut rest = trimmed;
                 if let Some(pos) = trimmed.find(':') {
-                    rest = &trimmed[pos+1..];
+                    rest = &trimmed[pos + 1..];
                 }
                 for segment in rest.split(',') {
                     let seg = segment.trim();
@@ -506,11 +764,20 @@ pub fn extract_contacts_from_text(text: &str) -> Vec<ExtractedContact> {
                         let role_info = seg[paren_pos..].trim_matches(|c| c == '(' || c == ')');
                         if name.len() >= 3 && name.contains(' ') && contacts.len() < 10 {
                             let (role, company) = if let Some(comma) = role_info.find(',') {
-                                (Some(role_info[..comma].trim().to_string()), Some(role_info[comma+1..].trim().to_string()))
+                                (
+                                    Some(role_info[..comma].trim().to_string()),
+                                    Some(role_info[comma + 1..].trim().to_string()),
+                                )
                             } else {
                                 (Some(role_info.trim().to_string()), None)
                             };
-                            contacts.push(ExtractedContact { name: name.to_string(), role, email: None, phone: None, company });
+                            contacts.push(ExtractedContact {
+                                name: name.to_string(),
+                                role,
+                                email: None,
+                                phone: None,
+                                company,
+                            });
                         }
                     }
                 }
@@ -531,18 +798,24 @@ pub fn extract_contacts_from_text(text: &str) -> Vec<ExtractedContact> {
                 let role_lower = role_str.to_lowercase();
                 if let Some(pos) = role_lower.rfind(" at ") {
                     let r = role_str[..pos].trim().to_string();
-                    let c = role_str[pos+4..].trim().to_string();
+                    let c = role_str[pos + 4..].trim().to_string();
                     (Some(r), if c.is_empty() { None } else { Some(c) })
                 } else if let Some(pos) = role_lower.find(" of ") {
                     let r = role_str[..pos].trim().to_string();
-                    let c = role_str[pos+4..].trim().to_string();
+                    let c = role_str[pos + 4..].trim().to_string();
                     (Some(r), if c.is_empty() { None } else { Some(c) })
                 } else {
                     (Some(role_str), None)
                 }
             };
             if contacts.len() < 10 {
-                contacts.push(ExtractedContact { name, role, email: Some(email), phone: None, company });
+                contacts.push(ExtractedContact {
+                    name,
+                    role,
+                    email: Some(email),
+                    phone: None,
+                    company,
+                });
             }
         }
     }
@@ -551,48 +824,73 @@ pub fn extract_contacts_from_text(text: &str) -> Vec<ExtractedContact> {
     if contacts.is_empty() {
         let emails = extract_emails_from_text(text);
         for email in &emails {
-            if contacts.len() >= 10 { break; }
+            if contacts.len() >= 10 {
+                break;
+            }
             let mut found_name: Option<String> = None;
             let mut found_role: Option<String> = None;
             let mut found_company: Option<String> = None;
 
             for line in text.lines() {
-                if !line.contains(email.as_str()) { continue; }
+                if !line.contains(email.as_str()) {
+                    continue;
+                }
                 let trimmed = line.trim();
 
                 // Pattern: "Name (email)" or "Name <email>"
                 let before_email = if let Some(pos) = trimmed.find(email.as_str()) {
-                    trimmed[..pos].trim().trim_end_matches(|c: char| c == '(' || c == '<' || c == ',' || c == ' ')
-                } else { "" };
+                    trimmed[..pos]
+                        .trim()
+                        .trim_end_matches(|c: char| c == '(' || c == '<' || c == ',' || c == ' ')
+                } else {
+                    ""
+                };
 
                 if !before_email.is_empty() {
                     // Walk backwards through the before_email to extract the name
-                    let clean = before_email.trim_start_matches(|c: char| c == '-' || c == '*' || c == ' ');
+                    let clean =
+                        before_email.trim_start_matches(|c: char| c == '-' || c == '*' || c == ' ');
                     // Check if there's a comma-separated role+company before name
                     if let Some(comma_pos) = clean.rfind(',') {
                         let name_part = clean[..comma_pos].trim();
                         // The name_part might itself contain "Name, Role of Company"
-                        if name_part.contains(' ') && name_part.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                        if name_part.contains(' ')
+                            && name_part
+                                .chars()
+                                .next()
+                                .map(|c| c.is_uppercase())
+                                .unwrap_or(false)
+                        {
                             found_name = Some(name_part.to_string());
                         }
-                        let role_part = clean[comma_pos+1..].trim();
+                        let role_part = clean[comma_pos + 1..].trim();
                         if !role_part.is_empty() {
                             // Parse "VP of Business Development at CompanyName" or "CEO of CompanyName"
                             // Prefer " at " (last occurrence) over " of " since it typically separates role from company
                             let role_lower = role_part.to_lowercase();
                             if let Some(pos) = role_lower.rfind(" at ") {
                                 found_role = Some(role_part[..pos].trim().to_string());
-                                let c = role_part[pos+4..].trim().to_string();
-                                if !c.is_empty() { found_company = Some(c); }
+                                let c = role_part[pos + 4..].trim().to_string();
+                                if !c.is_empty() {
+                                    found_company = Some(c);
+                                }
                             } else if let Some(pos) = role_lower.find(" of ") {
                                 found_role = Some(role_part[..pos].trim().to_string());
-                                let c = role_part[pos+4..].trim().to_string();
-                                if !c.is_empty() { found_company = Some(c); }
+                                let c = role_part[pos + 4..].trim().to_string();
+                                if !c.is_empty() {
+                                    found_company = Some(c);
+                                }
                             } else {
                                 found_role = Some(role_part.to_string());
                             }
                         }
-                    } else if clean.contains(' ') && clean.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                    } else if clean.contains(' ')
+                        && clean
+                            .chars()
+                            .next()
+                            .map(|c| c.is_uppercase())
+                            .unwrap_or(false)
+                    {
                         found_name = Some(clean.to_string());
                     }
                 }
@@ -602,7 +900,8 @@ pub fn extract_contacts_from_text(text: &str) -> Vec<ExtractedContact> {
             let name = found_name.unwrap_or_else(|| {
                 // e.g. sarah.kim@novabridge.ai -> Sarah Kim
                 let local = email.split('@').next().unwrap_or("");
-                let parts: Vec<String> = local.split(|c: char| c == '.' || c == '_' || c == '-')
+                let parts: Vec<String> = local
+                    .split(|c: char| c == '.' || c == '_' || c == '-')
                     .filter(|p| !p.is_empty() && p.len() > 1)
                     .map(|p| {
                         let mut chars = p.chars();
@@ -612,10 +911,18 @@ pub fn extract_contacts_from_text(text: &str) -> Vec<ExtractedContact> {
                         }
                     })
                     .collect();
-                if parts.len() >= 2 { parts.join(" ") } else { local.to_string() }
+                if parts.len() >= 2 {
+                    parts.join(" ")
+                } else {
+                    local.to_string()
+                }
             });
 
-            if name.len() >= 3 && !contacts.iter().any(|c| c.email.as_deref() == Some(email.as_str())) {
+            if name.len() >= 3
+                && !contacts
+                    .iter()
+                    .any(|c| c.email.as_deref() == Some(email.as_str()))
+            {
                 contacts.push(ExtractedContact {
                     name,
                     role: found_role,
@@ -632,11 +939,21 @@ pub fn extract_contacts_from_text(text: &str) -> Vec<ExtractedContact> {
 
 // ── Mock LLM: content-aware extraction ──────────────────────────────────────
 
-pub fn generate_mock_step_result(step_id: &str, content: &str, title: &str, previous_results: &[(&str, &str)], node_type: &str, output_schema: &str, target_schemas: &[String]) -> String {
+pub fn generate_mock_step_result(
+    step_id: &str,
+    content: &str,
+    title: &str,
+    previous_results: &[(&str, &str)],
+    node_type: &str,
+    output_schema: &str,
+    target_schemas: &[String],
+) -> String {
     // Match on exact step_id first (system workflows), then infer from downstream
     // output nodes (target_schemas), output_schema parameter, or node title.
     let key = match step_id {
-        "extract_companies" | "extract_contacts" | "identify_opportunities" | "identify_deals" => step_id.to_string(),
+        "extract_companies" | "extract_contacts" | "identify_opportunities" | "identify_deals" => {
+            step_id.to_string()
+        }
 
         _ => {
             // Priority: downstream output node types → output_schema param → node title
@@ -650,23 +967,38 @@ pub fn generate_mock_step_result(step_id: &str, content: &str, title: &str, prev
                 )
             } else {
                 // Fall back to output_schema param, then node title
-                let hint = if output_schema.is_empty() { title } else { output_schema };
+                let hint = if output_schema.is_empty() {
+                    title
+                } else {
+                    output_schema
+                };
                 let schema_lower = hint.to_lowercase();
                 (
                     schema_lower.contains("compan"),
-                    schema_lower.contains("contact") || schema_lower.contains("person") || schema_lower.contains("people"),
+                    schema_lower.contains("contact")
+                        || schema_lower.contains("person")
+                        || schema_lower.contains("people"),
                     schema_lower.contains("deal") || schema_lower.contains("opportunit"),
                 )
             };
-            let multi_type_count = [has_companies, has_contacts, has_deals].iter().filter(|&&b| b).count();
+            let multi_type_count = [has_companies, has_contacts, has_deals]
+                .iter()
+                .filter(|&&b| b)
+                .count();
 
             if multi_type_count >= 2 {
                 "multi_extract".to_string()
-            } else if has_companies { "extract_companies".to_string() }
-            else if has_contacts { "extract_contacts".to_string() }
-            else if has_deals { "identify_deals".to_string() }
-            else if node_type == "llm_analyze" { "identify_opportunities".to_string() }
-            else { step_id.to_string() }
+            } else if has_companies {
+                "extract_companies".to_string()
+            } else if has_contacts {
+                "extract_contacts".to_string()
+            } else if has_deals {
+                "identify_deals".to_string()
+            } else if node_type == "llm_analyze" {
+                "identify_opportunities".to_string()
+            } else {
+                step_id.to_string()
+            }
         }
     };
     match key.as_str() {
@@ -1005,7 +1337,10 @@ pub fn generate_mock_step_result(step_id: &str, content: &str, title: &str, prev
 pub fn extract_records_from_output(data: &Value, target_type: &str) -> Vec<Value> {
     // Skip error responses from failed LLM calls
     if data.get("error").is_some() {
-        tracing::warn!("[WORKFLOW] Skipping record extraction — node returned an error: {}", data);
+        tracing::warn!(
+            "[WORKFLOW] Skipping record extraction — node returned an error: {}",
+            data
+        );
         return vec![];
     }
 
@@ -1032,8 +1367,10 @@ pub fn extract_records_from_output(data: &Value, target_type: &str) -> Vec<Value
     // If it's a single object with recognized entity fields, wrap it
     if let Some(obj) = data.as_object().filter(|o| !o.is_empty()) {
         // Only wrap if it looks like an actual entity record (has name/title/email)
-        let looks_like_record = obj.contains_key("name") || obj.contains_key("title")
-            || obj.contains_key("email") || obj.contains_key("first_name");
+        let looks_like_record = obj.contains_key("name")
+            || obj.contains_key("title")
+            || obj.contains_key("email")
+            || obj.contains_key("first_name");
         if looks_like_record {
             return vec![data.clone()];
         }
@@ -1073,9 +1410,15 @@ pub fn is_fallback_placeholder(record: &Value) -> bool {
         obj.get("first_name").and_then(|v| v.as_str()),
         obj.get("last_name").and_then(|v| v.as_str()),
     ) {
-        if !first.is_empty() && !last.is_empty()
-            && first != "Unknown" && last != "Contact"
-            && first.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+        if !first.is_empty()
+            && !last.is_empty()
+            && first != "Unknown"
+            && last != "Contact"
+            && first
+                .chars()
+                .next()
+                .map(|c| c.is_uppercase())
+                .unwrap_or(false)
         {
             return false;
         }
@@ -1121,7 +1464,6 @@ pub fn is_fallback_placeholder(record: &Value) -> bool {
     false
 }
 
-
 /// Compute a confidence score (0.0-1.0) for a staging record based on simple heuristics.
 /// - Start at 1.0
 /// - Subtract 0.15 for each missing required field
@@ -1130,7 +1472,12 @@ pub fn is_fallback_placeholder(record: &Value) -> bool {
 /// - Subtract 0.1 if more than half of all fields are null/empty
 /// - Cap at 0.1 if the record is a fallback placeholder (no LLM connected)
 /// - Floor at 0.0
-pub fn compute_confidence(record: &Value, target_type: &str, validation_errors: &[String], is_duplicate: bool) -> f64 {
+pub fn compute_confidence(
+    record: &Value,
+    target_type: &str,
+    validation_errors: &[String],
+    is_duplicate: bool,
+) -> f64 {
     // If this record was produced by the mock/fallback engine, cap confidence very low
     if is_fallback_placeholder(record) {
         tracing::warn!(
@@ -1138,7 +1485,6 @@ pub fn compute_confidence(record: &Value, target_type: &str, validation_errors: 
         );
         return 0.1;
     }
-
 
     let mut score: f64 = 1.0;
 
@@ -1206,7 +1552,10 @@ pub fn build_schema_prompt_text(target_type: &str) -> Option<String> {
 
     let schema = get_schema_for_target(schema_target)?;
 
-    let mut parts = vec![format!("Output JSON must contain a \"{}\" array.", array_key)];
+    let mut parts = vec![format!(
+        "Output JSON must contain a \"{}\" array.",
+        array_key
+    )];
 
     let mut required_fields = Vec::new();
     let mut optional_fields = Vec::new();
@@ -1233,20 +1582,34 @@ pub fn build_schema_prompt_text(target_type: &str) -> Option<String> {
 
     // Add anti-hallucination instruction based on entity type
     let entity_hint = match target_type {
-        "crm_contacts" => "Each entry must be a REAL person explicitly named in the source content. Do NOT use document titles, section headings, or metadata as contact names.",
-        "crm_companies" | "companies" => "Each entry must be a REAL company/organization explicitly named in the source. Do NOT use document titles, dates, or headings as company names.",
-        "crm_deals" | "deals" => "Each entry must represent a REAL business opportunity described in the source.",
-        "tasks" => "Each entry must be a REAL action item or follow-up explicitly described in the source.",
+        "crm_contacts" => {
+            "Each entry must be a REAL person explicitly named in the source content. Do NOT use document titles, section headings, or metadata as contact names."
+        }
+        "crm_companies" | "companies" => {
+            "Each entry must be a REAL company/organization explicitly named in the source. Do NOT use document titles, dates, or headings as company names."
+        }
+        "crm_deals" | "deals" => {
+            "Each entry must represent a REAL business opportunity described in the source."
+        }
+        "tasks" => {
+            "Each entry must be a REAL action item or follow-up explicitly described in the source."
+        }
         _ => "Only extract entities explicitly mentioned in the source content.",
     };
-    parts.push(format!("IMPORTANT: {} If none exist, return an empty array.", entity_hint));
+    parts.push(format!(
+        "IMPORTANT: {} If none exist, return an empty array.",
+        entity_hint
+    ));
 
     Some(parts.join(" "))
 }
 
 /// Validate a single record (serde_json::Value) against the TargetSchema for the given target_type.
 /// Returns Ok(()) if valid, or Err(Vec<String>) with a list of human-readable validation errors.
-pub fn validate_record_against_schema(record: &Value, target_type: &str) -> Result<(), Vec<String>> {
+pub fn validate_record_against_schema(
+    record: &Value,
+    target_type: &str,
+) -> Result<(), Vec<String>> {
     let schema = match get_schema_for_target(target_type) {
         Some(s) => s,
         None => return Ok(()), // unknown target type — skip validation
@@ -1307,7 +1670,8 @@ pub fn validate_record_against_schema(record: &Value, target_type: &str) -> Resu
                     if !enum_values.iter().any(|e| e == s) {
                         errors.push(format!(
                             "Field '{}' value '{}' not in allowed values: [{}]",
-                            field_name, s,
+                            field_name,
+                            s,
                             enum_values.join(", ")
                         ));
                     }
@@ -1341,8 +1705,12 @@ pub fn value_type_name(v: &Value) -> &'static str {
 pub fn levenshtein_distance(a: &str, b: &str) -> usize {
     let a_len = a.len();
     let b_len = b.len();
-    if a_len == 0 { return b_len; }
-    if b_len == 0 { return a_len; }
+    if a_len == 0 {
+        return b_len;
+    }
+    if b_len == 0 {
+        return a_len;
+    }
 
     let mut prev: Vec<usize> = (0..=b_len).collect();
     let mut curr = vec![0usize; b_len + 1];
@@ -1351,9 +1719,7 @@ pub fn levenshtein_distance(a: &str, b: &str) -> usize {
         curr[0] = i + 1;
         for (j, cb) in b.chars().enumerate() {
             let cost = if ca == cb { 0 } else { 1 };
-            curr[j + 1] = (prev[j] + cost)
-                .min(prev[j + 1] + 1)
-                .min(curr[j] + 1);
+            curr[j + 1] = (prev[j] + cost).min(prev[j + 1] + 1).min(curr[j] + 1);
         }
         std::mem::swap(&mut prev, &mut curr);
     }
@@ -1363,12 +1729,24 @@ pub fn levenshtein_distance(a: &str, b: &str) -> usize {
 /// Fuzzy name match: lowercases, trims whitespace, then checks Levenshtein distance.
 /// Returns true if distance <= 2 for short names (<=6 chars) or >80% similarity.
 pub fn fuzzy_name_match(a: &str, b: &str) -> bool {
-    let a = a.to_lowercase().split_whitespace().collect::<Vec<_>>().join(" ");
-    let b = b.to_lowercase().split_whitespace().collect::<Vec<_>>().join(" ");
-    if a == b { return true; }
+    let a = a
+        .to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let b = b
+        .to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if a == b {
+        return true;
+    }
     let dist = levenshtein_distance(&a, &b);
     let max_len = a.len().max(b.len());
-    if max_len == 0 { return true; }
+    if max_len == 0 {
+        return true;
+    }
     if max_len <= 6 {
         dist <= 2
     } else {
@@ -1380,10 +1758,27 @@ pub fn fuzzy_name_match(a: &str, b: &str) -> bool {
 /// Normalize a company name by stripping common suffixes and trimming
 pub fn normalize_company_name(name: &str) -> String {
     let suffixes = [
-        " incorporated", " corporation", " company", " limited",
-        " inc.", " inc", " llc.", " llc", " ltd.", " ltd",
-        " corp.", " corp", " co.", " co", " l.l.c.", " l.l.c",
-        " plc", " gmbh", " ag", " s.a.", " sa",
+        " incorporated",
+        " corporation",
+        " company",
+        " limited",
+        " inc.",
+        " inc",
+        " llc.",
+        " llc",
+        " ltd.",
+        " ltd",
+        " corp.",
+        " corp",
+        " co.",
+        " co",
+        " l.l.c.",
+        " l.l.c",
+        " plc",
+        " gmbh",
+        " ag",
+        " s.a.",
+        " sa",
     ];
     let mut normalized = name.to_lowercase().trim().to_string();
     // Strip trailing punctuation like commas
@@ -1496,12 +1891,10 @@ pub async fn check_company_duplicate(
     let normalized_input = normalize_company_name(name);
 
     // Fetch all companies and compare with normalized names
-    let companies = sqlx::query_as::<_, (Uuid, String)>(
-        "SELECT id, name FROM companies"
-    )
-    .fetch_all(pool)
-    .await
-    .ok()?;
+    let companies = sqlx::query_as::<_, (Uuid, String)>("SELECT id, name FROM companies")
+        .fetch_all(pool)
+        .await
+        .ok()?;
 
     for (id, existing_name) in &companies {
         let normalized_existing = normalize_company_name(existing_name);
@@ -1513,7 +1906,7 @@ pub async fn check_company_duplicate(
     // Also try matching by website domain if available
     if let Some(website) = record["website"].as_str().filter(|s| !s.is_empty()) {
         let result = sqlx::query_as::<_, (Uuid,)>(
-            "SELECT id FROM companies WHERE LOWER(website) = LOWER(?1) LIMIT 1"
+            "SELECT id FROM companies WHERE LOWER(website) = LOWER(?1) LIMIT 1",
         )
         .bind(website)
         .fetch_optional(pool)
@@ -1538,7 +1931,7 @@ pub async fn check_deal_duplicate(
     let name = record["name"].as_str().filter(|s| !s.is_empty())?;
 
     let result = sqlx::query_as::<_, (Uuid,)>(
-        "SELECT id FROM crm_deals WHERE project_id = ?1 AND LOWER(name) = LOWER(?2) LIMIT 1"
+        "SELECT id FROM crm_deals WHERE project_id = ?1 AND LOWER(name) = LOWER(?2) LIMIT 1",
     )
     .bind(project_id)
     .bind(name)
@@ -1563,7 +1956,7 @@ pub async fn check_task_duplicate(
     let title = record["title"].as_str().filter(|s| !s.is_empty())?;
 
     let result = sqlx::query_as::<_, (Uuid,)>(
-        "SELECT id FROM tasks WHERE project_id = ?1 AND LOWER(title) = LOWER(?2) LIMIT 1"
+        "SELECT id FROM tasks WHERE project_id = ?1 AND LOWER(title) = LOWER(?2) LIMIT 1",
     )
     .bind(project_id)
     .bind(title)
@@ -1592,7 +1985,7 @@ pub async fn check_intra_batch_duplicate(
                 r#"SELECT id FROM workflow_output_staging
                    WHERE workflow_run_id = ?1 AND target_type = 'crm_contact'
                    AND json_extract(record_data, '$.email') = ?2
-                   AND status != 'rejected' LIMIT 1"#
+                   AND status != 'rejected' LIMIT 1"#,
             )
             .bind(workflow_run_id)
             .bind(email)
@@ -1637,7 +2030,7 @@ pub async fn check_intra_batch_duplicate(
                 r#"SELECT id, json_extract(record_data, '$.name') as staged_name
                    FROM workflow_output_staging
                    WHERE workflow_run_id = ?1 AND target_type = 'company'
-                   AND status != 'rejected'"#
+                   AND status != 'rejected'"#,
             )
             .bind(workflow_run_id)
             .fetch_all(pool)
@@ -1671,18 +2064,25 @@ pub async fn execute_action_node(
     match node.node_type.as_str() {
         // ── Conditional: evaluate a simple condition against upstream data ────
         "conditional" => {
-            let condition = node.parameters.get("condition")
+            let condition = node
+                .parameters
+                .get("condition")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            let true_label = node.parameters.get("true_label")
+            let true_label = node
+                .parameters
+                .get("true_label")
                 .and_then(|v| v.as_str())
                 .unwrap_or("true");
-            let false_label = node.parameters.get("false_label")
+            let false_label = node
+                .parameters
+                .get("false_label")
                 .and_then(|v| v.as_str())
                 .unwrap_or("false");
 
             // Merge all upstream outputs
-            let input_data: String = previous_results.iter()
+            let input_data: String = previous_results
+                .iter()
                 .map(|(_, result, _)| result.to_string())
                 .collect::<Vec<_>>()
                 .join("\n");
@@ -1693,19 +2093,23 @@ pub async fn execute_action_node(
                 !input_data.is_empty()
             } else if condition.starts_with("count>") {
                 // Support count>N pattern: check if JSON array has more than N items
-                let threshold: usize = condition.strip_prefix("count>")
+                let threshold: usize = condition
+                    .strip_prefix("count>")
                     .and_then(|s| s.trim().parse().ok())
                     .unwrap_or(0);
                 serde_json::from_str::<Value>(&input_data)
                     .ok()
                     .and_then(|v| v.as_array().map(|a| a.len()))
-                    .unwrap_or(0) > threshold
+                    .unwrap_or(0)
+                    > threshold
             } else if condition.starts_with("contains:") {
                 let search = condition.strip_prefix("contains:").unwrap_or("").trim();
                 input_data.to_lowercase().contains(&search.to_lowercase())
             } else {
                 // Default: check if condition string is present in input
-                input_data.to_lowercase().contains(&condition.to_lowercase())
+                input_data
+                    .to_lowercase()
+                    .contains(&condition.to_lowercase())
             };
 
             let branch = if result { true_label } else { false_label };
@@ -1719,13 +2123,20 @@ pub async fn execute_action_node(
                     input_data
                 }
             });
-            tracing::info!("[WORKFLOW] Conditional node '{}': condition='{}' → branch='{}'", node.id, condition, branch);
+            tracing::info!(
+                "[WORKFLOW] Conditional node '{}': condition='{}' → branch='{}'",
+                node.id,
+                condition,
+                branch
+            );
             Some((output.to_string(), None))
         }
 
         // ── Send notification: log a notification (in-app or email placeholder) ──
         "send_notification" => {
-            let notification_type = node.parameters.get("notification_type")
+            let notification_type = node
+                .parameters
+                .get("notification_type")
                 .and_then(|v| v.as_str())
                 .map(|t| match t {
                     "in_app" | "info" => "info",
@@ -1735,18 +2146,25 @@ pub async fn execute_action_node(
                     _ => "info",
                 })
                 .unwrap_or("info");
-            let recipient = node.parameters.get("recipient")
+            let recipient = node
+                .parameters
+                .get("recipient")
                 .and_then(|v| v.as_str())
                 .unwrap_or("admin");
-            let subject = node.parameters.get("subject")
+            let subject = node
+                .parameters
+                .get("subject")
                 .and_then(|v| v.as_str())
                 .unwrap_or("Workflow Notification");
-            let message_template = node.parameters.get("message_template")
+            let message_template = node
+                .parameters
+                .get("message_template")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
 
             // Substitute {{previous_results}} in the message
-            let prev_text: String = previous_results.iter()
+            let prev_text: String = previous_results
+                .iter()
                 .map(|(id, result, _)| format!("[{}]: {}", id, result))
                 .collect::<Vec<_>>()
                 .join("\n");
@@ -1754,7 +2172,10 @@ pub async fn execute_action_node(
 
             tracing::info!(
                 "[WORKFLOW] Notification node '{}': type={}, recipient={}, subject='{}'",
-                node.id, notification_type, recipient, subject
+                node.id,
+                notification_type,
+                recipient,
+                subject
             );
 
             // Resolve recipient to user_id
@@ -1768,19 +2189,22 @@ pub async fn execute_action_node(
                             substr(hex(id),13,4),
                             substr(hex(id),17,4),
                             substr(hex(id),21,12))
-                        FROM users WHERE is_admin = 1 LIMIT 1"#
-                    ).fetch_optional(pool).await {
+                        FROM users WHERE is_admin = 1 LIMIT 1"#,
+                    )
+                    .fetch_optional(pool)
+                    .await
+                    {
                         Ok(Some(uid)) => Some(uid.to_lowercase()),
                         _ => None,
                     }
                 }
                 "assigned_user" | "assignee" => {
                     // Try to find assignee from previous results context
-                    previous_results.iter()
-                        .find_map(|(_, result, _)| {
-                            serde_json::from_str::<Value>(result).ok()
-                                .and_then(|v| v["assignee_id"].as_str().map(|s| s.to_string()))
-                        })
+                    previous_results.iter().find_map(|(_, result, _)| {
+                        serde_json::from_str::<Value>(result)
+                            .ok()
+                            .and_then(|v| v["assignee_id"].as_str().map(|s| s.to_string()))
+                    })
                 }
                 other => {
                     // Treat as a direct user_id or email
@@ -1809,7 +2233,10 @@ pub async fn execute_action_node(
                     }
                 }
             } else {
-                tracing::warn!("[WORKFLOW] Could not resolve recipient '{}' to a user_id", recipient);
+                tracing::warn!(
+                    "[WORKFLOW] Could not resolve recipient '{}' to a user_id",
+                    recipient
+                );
             }
 
             let output = json!({
@@ -1825,24 +2252,35 @@ pub async fn execute_action_node(
 
         // ── Assign to agent: create a task and assign it to a specific agent ──
         "assign_to_agent" => {
-            let agent_codename = node.parameters.get("agent_codename")
+            let agent_codename = node
+                .parameters
+                .get("agent_codename")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            let title_template = node.parameters.get("task_title_template")
+            let title_template = node
+                .parameters
+                .get("task_title_template")
                 .and_then(|v| v.as_str())
                 .unwrap_or("Agent Task");
-            let description_template = node.parameters.get("task_description_template")
+            let description_template = node
+                .parameters
+                .get("task_description_template")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            let completion_criteria = node.parameters.get("completion_criteria")
+            let completion_criteria = node
+                .parameters
+                .get("completion_criteria")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            let auto_start = node.parameters.get("auto_start")
+            let auto_start = node
+                .parameters
+                .get("auto_start")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
 
             // Substitute upstream results into templates
-            let prev_text: String = previous_results.iter()
+            let prev_text: String = previous_results
+                .iter()
                 .map(|(id, result, _)| format!("[{}]: {}", id, result))
                 .collect::<Vec<_>>()
                 .join("\n");
@@ -1856,7 +2294,11 @@ pub async fn execute_action_node(
                 project_id: project_id.to_string(),
                 pod_id: None,
                 board_id: None,
-                title: if title.len() > 200 { title[..200].to_string() } else { title },
+                title: if title.len() > 200 {
+                    title[..200].to_string()
+                } else {
+                    title
+                },
                 description: Some(description),
                 priority: Some(Priority::Medium),
                 assignee_id: None,
@@ -1875,17 +2317,28 @@ pub async fn execute_action_node(
                 custom_properties: None,
                 scheduled_start: None,
                 scheduled_end: None,
-                completion_criteria: if completion_criteria.is_empty() { None } else { Some(completion_criteria.to_string()) },
+                completion_criteria: if completion_criteria.is_empty() {
+                    None
+                } else {
+                    Some(completion_criteria.to_string())
+                },
                 output_format: None,
                 collaborators: None,
             };
 
             match Task::create(pool, &create_task, &task_id.to_string()).await {
                 Ok(task) => {
-                    let status_msg = if auto_start { "created (auto_start=true, queued)" } else { "created" };
+                    let status_msg = if auto_start {
+                        "created (auto_start=true, queued)"
+                    } else {
+                        "created"
+                    };
                     tracing::info!(
                         "[WORKFLOW] assign_to_agent node '{}': task {} {} for agent '{}'",
-                        node.id, task.id, status_msg, agent_codename
+                        node.id,
+                        task.id,
+                        status_msg,
+                        agent_codename
                     );
                     let output = json!({
                         "task_created": true,
@@ -1897,7 +2350,11 @@ pub async fn execute_action_node(
                     Some((output.to_string(), None))
                 }
                 Err(e) => {
-                    tracing::error!("[WORKFLOW] assign_to_agent node '{}': failed to create task: {}", node.id, e);
+                    tracing::error!(
+                        "[WORKFLOW] assign_to_agent node '{}': failed to create task: {}",
+                        node.id,
+                        e
+                    );
                     let output = json!({
                         "task_created": false,
                         "error": format!("{}", e),
@@ -1909,20 +2366,30 @@ pub async fn execute_action_node(
 
         // ── HTTP request: make an external API call ──
         "http_request" => {
-            let method = node.parameters.get("method")
+            let method = node
+                .parameters
+                .get("method")
                 .and_then(|v| v.as_str())
                 .unwrap_or("GET")
                 .to_uppercase();
-            let url = node.parameters.get("url")
+            let url = node
+                .parameters
+                .get("url")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            let headers = node.parameters.get("headers")
+            let headers = node
+                .parameters
+                .get("headers")
                 .and_then(|v| v.as_str())
                 .unwrap_or("{}");
-            let body = node.parameters.get("body")
+            let body = node
+                .parameters
+                .get("body")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            let output_path = node.parameters.get("output_path")
+            let output_path = node
+                .parameters
+                .get("output_path")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
 
@@ -1932,14 +2399,20 @@ pub async fn execute_action_node(
             }
 
             // Substitute upstream results into URL and body
-            let prev_text: String = previous_results.iter()
+            let prev_text: String = previous_results
+                .iter()
                 .map(|(_, result, _)| result.to_string())
                 .collect::<Vec<_>>()
                 .join("\n");
             let url = url.replace("{{previous_results}}", &prev_text);
             let body = body.replace("{{previous_results}}", &prev_text);
 
-            tracing::info!("[WORKFLOW] http_request node '{}': {} {}", node.id, method, url);
+            tracing::info!(
+                "[WORKFLOW] http_request node '{}': {} {}",
+                node.id,
+                method,
+                url
+            );
 
             let client = reqwest::Client::new();
             let mut request = match method.as_str() {
@@ -1963,10 +2436,16 @@ pub async fn execute_action_node(
 
             // Add body for POST/PUT/PATCH
             if !body.is_empty() && matches!(method.as_str(), "POST" | "PUT" | "PATCH") {
-                request = request.header("Content-Type", "application/json").body(body);
+                request = request
+                    .header("Content-Type", "application/json")
+                    .body(body);
             }
 
-            match request.timeout(std::time::Duration::from_secs(30)).send().await {
+            match request
+                .timeout(std::time::Duration::from_secs(30))
+                .send()
+                .await
+            {
                 Ok(response) => {
                     let status = response.status().as_u16();
                     let response_text = response.text().await.unwrap_or_default();
@@ -1999,7 +2478,11 @@ pub async fn execute_action_node(
                     Some((output.to_string(), None))
                 }
                 Err(e) => {
-                    tracing::error!("[WORKFLOW] http_request node '{}': request failed: {}", node.id, e);
+                    tracing::error!(
+                        "[WORKFLOW] http_request node '{}': request failed: {}",
+                        node.id,
+                        e
+                    );
                     let output = json!({
                         "status": 0,
                         "success": false,
@@ -2012,33 +2495,45 @@ pub async fn execute_action_node(
 
         // ── Update CRM contact: find by match field and update ──
         "update_crm_contact" => {
-            let match_field = node.parameters.get("match_field")
+            let match_field = node
+                .parameters
+                .get("match_field")
                 .and_then(|v| v.as_str())
                 .unwrap_or("email");
-            let update_fields_str = node.parameters.get("update_fields")
+            let update_fields_str = node
+                .parameters
+                .get("update_fields")
                 .and_then(|v| v.as_str())
                 .unwrap_or("{}");
 
             // Parse upstream data to find records to update
-            let input_data: String = previous_results.iter()
+            let input_data: String = previous_results
+                .iter()
                 .map(|(_, result, _)| result.to_string())
                 .collect::<Vec<_>>()
                 .join("\n");
 
             let records = parse_records_from_input(&input_data);
-            let update_template: Value = serde_json::from_str(update_fields_str).unwrap_or(json!({}));
+            let update_template: Value =
+                serde_json::from_str(update_fields_str).unwrap_or(json!({}));
             let mut updated_count = 0;
             let mut errors: Vec<String> = Vec::new();
 
             for record in &records {
-                let match_value = record.get(match_field).and_then(|v| v.as_str()).unwrap_or("");
-                if match_value.is_empty() { continue; }
+                let match_value = record
+                    .get(match_field)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if match_value.is_empty() {
+                    continue;
+                }
 
                 // Try to find the contact by email (most common match field)
                 // For other match fields, we'd need additional lookup methods
                 if match_field == "email" {
                     // Use org_id from record, or fall back to workflow context
-                    let org_id = record.get("organization_id")
+                    let org_id = record
+                        .get("organization_id")
                         .and_then(|v| v.as_str())
                         .and_then(|s| Uuid::parse_str(s).ok())
                         .or(context_org_id);
@@ -2049,24 +2544,46 @@ pub async fn execute_action_node(
                             Ok(Some(contact)) => {
                                 let update = build_contact_update(&update_template, record);
                                 match CrmContact::update(pool, &contact.id, update).await {
-                                    Ok(_) => { updated_count += 1; }
-                                    Err(e) => { errors.push(format!("Update failed for {}: {}", match_value, e)); }
+                                    Ok(_) => {
+                                        updated_count += 1;
+                                    }
+                                    Err(e) => {
+                                        errors.push(format!(
+                                            "Update failed for {}: {}",
+                                            match_value, e
+                                        ));
+                                    }
                                 }
                             }
-                            Ok(None) => { errors.push(format!("Contact not found: {}={}", match_field, match_value)); }
-                            Err(e) => { errors.push(format!("Lookup failed: {}", e)); }
+                            Ok(None) => {
+                                errors.push(format!(
+                                    "Contact not found: {}={}",
+                                    match_field, match_value
+                                ));
+                            }
+                            Err(e) => {
+                                errors.push(format!("Lookup failed: {}", e));
+                            }
                         }
                     } else {
-                        errors.push(format!("No organization_id for contact lookup: {}", match_value));
+                        errors.push(format!(
+                            "No organization_id for contact lookup: {}",
+                            match_value
+                        ));
                     }
                 } else {
-                    errors.push(format!("Match field '{}' not yet supported — use 'email'", match_field));
+                    errors.push(format!(
+                        "Match field '{}' not yet supported — use 'email'",
+                        match_field
+                    ));
                 }
             }
 
             tracing::info!(
                 "[WORKFLOW] update_crm_contact node '{}': updated={}, errors={}",
-                node.id, updated_count, errors.len()
+                node.id,
+                updated_count,
+                errors.len()
             );
             let output = json!({
                 "updated": updated_count,
@@ -2078,29 +2595,41 @@ pub async fn execute_action_node(
 
         // ── Update CRM deal: find by match field and update ──
         "update_crm_deal" => {
-            let match_field = node.parameters.get("match_field")
+            let match_field = node
+                .parameters
+                .get("match_field")
                 .and_then(|v| v.as_str())
                 .unwrap_or("name");
-            let update_fields_str = node.parameters.get("update_fields")
+            let update_fields_str = node
+                .parameters
+                .get("update_fields")
                 .and_then(|v| v.as_str())
                 .unwrap_or("{}");
 
-            let input_data: String = previous_results.iter()
+            let input_data: String = previous_results
+                .iter()
                 .map(|(_, result, _)| result.to_string())
                 .collect::<Vec<_>>()
                 .join("\n");
 
             let records = parse_records_from_input(&input_data);
-            let update_template: Value = serde_json::from_str(update_fields_str).unwrap_or(json!({}));
+            let update_template: Value =
+                serde_json::from_str(update_fields_str).unwrap_or(json!({}));
             let mut updated_count = 0;
             let mut errors: Vec<String> = Vec::new();
 
             for record in &records {
-                let match_value = record.get(match_field).and_then(|v| v.as_str()).unwrap_or("");
-                if match_value.is_empty() { continue; }
+                let match_value = record
+                    .get(match_field)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if match_value.is_empty() {
+                    continue;
+                }
 
                 if match_field == "name" {
-                    let org_id = record.get("organization_id")
+                    let org_id = record
+                        .get("organization_id")
                         .and_then(|v| v.as_str())
                         .and_then(|s| Uuid::parse_str(s).ok())
                         .or(context_org_id);
@@ -2111,24 +2640,46 @@ pub async fn execute_action_node(
                             Ok(Some(deal)) => {
                                 let update = build_deal_update(&update_template, record);
                                 match CrmDeal::update(pool, &deal.id, update).await {
-                                    Ok(_) => { updated_count += 1; }
-                                    Err(e) => { errors.push(format!("Update failed for {}: {}", match_value, e)); }
+                                    Ok(_) => {
+                                        updated_count += 1;
+                                    }
+                                    Err(e) => {
+                                        errors.push(format!(
+                                            "Update failed for {}: {}",
+                                            match_value, e
+                                        ));
+                                    }
                                 }
                             }
-                            Ok(None) => { errors.push(format!("Deal not found: {}={}", match_field, match_value)); }
-                            Err(e) => { errors.push(format!("Lookup failed: {}", e)); }
+                            Ok(None) => {
+                                errors.push(format!(
+                                    "Deal not found: {}={}",
+                                    match_field, match_value
+                                ));
+                            }
+                            Err(e) => {
+                                errors.push(format!("Lookup failed: {}", e));
+                            }
                         }
                     } else {
-                        errors.push(format!("No organization_id for deal lookup: {}", match_value));
+                        errors.push(format!(
+                            "No organization_id for deal lookup: {}",
+                            match_value
+                        ));
                     }
                 } else {
-                    errors.push(format!("Match field '{}' not yet supported — use 'name'", match_field));
+                    errors.push(format!(
+                        "Match field '{}' not yet supported — use 'name'",
+                        match_field
+                    ));
                 }
             }
 
             tracing::info!(
                 "[WORKFLOW] update_crm_deal node '{}': updated={}, errors={}",
-                node.id, updated_count, errors.len()
+                node.id,
+                updated_count,
+                errors.len()
             );
             let output = json!({
                 "updated": updated_count,
@@ -2140,47 +2691,75 @@ pub async fn execute_action_node(
 
         // ── Update CRM company: find by match field and update ──
         "update_crm_company" => {
-            let match_field = node.parameters.get("match_field")
+            let match_field = node
+                .parameters
+                .get("match_field")
                 .and_then(|v| v.as_str())
                 .unwrap_or("name");
-            let update_fields_str = node.parameters.get("update_fields")
+            let update_fields_str = node
+                .parameters
+                .get("update_fields")
                 .and_then(|v| v.as_str())
                 .unwrap_or("{}");
 
-            let input_data: String = previous_results.iter()
+            let input_data: String = previous_results
+                .iter()
                 .map(|(_, result, _)| result.to_string())
                 .collect::<Vec<_>>()
                 .join("\n");
 
             let records = parse_records_from_input(&input_data);
-            let update_template: Value = serde_json::from_str(update_fields_str).unwrap_or(json!({}));
+            let update_template: Value =
+                serde_json::from_str(update_fields_str).unwrap_or(json!({}));
             let mut updated_count = 0;
             let mut errors: Vec<String> = Vec::new();
 
             for record in &records {
-                let match_value = record.get(match_field).and_then(|v| v.as_str()).unwrap_or("");
-                if match_value.is_empty() { continue; }
+                let match_value = record
+                    .get(match_field)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if match_value.is_empty() {
+                    continue;
+                }
 
                 if match_field == "name" {
                     match Company::find_by_name(pool, match_value).await {
                         Ok(Some(company)) => {
                             let update = build_company_update(&update_template, record);
                             match Company::update(pool, &company.id, update).await {
-                                Ok(_) => { updated_count += 1; }
-                                Err(e) => { errors.push(format!("Update failed for {}: {}", match_value, e)); }
+                                Ok(_) => {
+                                    updated_count += 1;
+                                }
+                                Err(e) => {
+                                    errors
+                                        .push(format!("Update failed for {}: {}", match_value, e));
+                                }
                             }
                         }
-                        Ok(None) => { errors.push(format!("Company not found: {}={}", match_field, match_value)); }
-                        Err(e) => { errors.push(format!("Lookup failed: {}", e)); }
+                        Ok(None) => {
+                            errors.push(format!(
+                                "Company not found: {}={}",
+                                match_field, match_value
+                            ));
+                        }
+                        Err(e) => {
+                            errors.push(format!("Lookup failed: {}", e));
+                        }
                     }
                 } else {
-                    errors.push(format!("Match field '{}' not yet supported — use 'name'", match_field));
+                    errors.push(format!(
+                        "Match field '{}' not yet supported — use 'name'",
+                        match_field
+                    ));
                 }
             }
 
             tracing::info!(
                 "[WORKFLOW] update_crm_company node '{}': updated={}, errors={}",
-                node.id, updated_count, errors.len()
+                node.id,
+                updated_count,
+                errors.len()
             );
             let output = json!({
                 "updated": updated_count,
@@ -2209,8 +2788,16 @@ fn parse_records_from_input(input: &str) -> Vec<Value> {
 /// Build an UpdateCrmContact from a template + record data
 fn build_contact_update(template: &Value, record: &Value) -> UpdateCrmContact {
     let get_str = |key: &str| -> Option<String> {
-        template.get(key).and_then(|v| v.as_str()).map(|s| s.to_string())
-            .or_else(|| record.get(key).and_then(|v| v.as_str()).map(|s| s.to_string()))
+        template
+            .get(key)
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| {
+                record
+                    .get(key)
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
     };
     UpdateCrmContact {
         first_name: get_str("first_name"),
@@ -2227,7 +2814,10 @@ fn build_contact_update(template: &Value, record: &Value) -> UpdateCrmContact {
         website: get_str("website"),
         source: None,
         lifecycle_stage: None,
-        lead_score: template.get("lead_score").and_then(|v| v.as_i64()).map(|n| n as i32),
+        lead_score: template
+            .get("lead_score")
+            .and_then(|v| v.as_i64())
+            .map(|n| n as i32),
         owner_user_id: get_str("owner_user_id"),
         assigned_agent_id: None,
         tags: None,
@@ -2249,8 +2839,16 @@ fn build_contact_update(template: &Value, record: &Value) -> UpdateCrmContact {
 /// Build an UpdateCrmDeal from a template + record data
 fn build_deal_update(template: &Value, record: &Value) -> UpdateCrmDeal {
     let get_str = |key: &str| -> Option<String> {
-        template.get(key).and_then(|v| v.as_str()).map(|s| s.to_string())
-            .or_else(|| record.get(key).and_then(|v| v.as_str()).map(|s| s.to_string()))
+        template
+            .get(key)
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| {
+                record
+                    .get(key)
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
     };
     UpdateCrmDeal {
         crm_contact_id: None,
@@ -2260,7 +2858,9 @@ fn build_deal_update(template: &Value, record: &Value) -> UpdateCrmDeal {
         position: None,
         name: get_str("name"),
         description: get_str("description"),
-        amount: template.get("amount").and_then(|v| v.as_f64())
+        amount: template
+            .get("amount")
+            .and_then(|v| v.as_f64())
             .or_else(|| record.get("amount").and_then(|v| v.as_f64())),
         currency: get_str("currency"),
         expected_close_date: get_str("expected_close_date"),
@@ -2280,8 +2880,16 @@ fn build_deal_update(template: &Value, record: &Value) -> UpdateCrmDeal {
 /// Build an UpdateCompany from a template + record data
 fn build_company_update(template: &Value, record: &Value) -> UpdateCompany {
     let get_str = |key: &str| -> Option<String> {
-        template.get(key).and_then(|v| v.as_str()).map(|s| s.to_string())
-            .or_else(|| record.get(key).and_then(|v| v.as_str()).map(|s| s.to_string()))
+        template
+            .get(key)
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| {
+                record
+                    .get(key)
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
     };
     UpdateCompany {
         name: get_str("name"),
@@ -2301,7 +2909,10 @@ fn build_company_update(template: &Value, record: &Value) -> UpdateCompany {
         linkedin_url: get_str("linkedin_url"),
         twitter_handle: None,
         facebook_url: None,
-        founded_year: template.get("founded_year").and_then(|v| v.as_i64()).map(|n| n as i32),
+        founded_year: template
+            .get("founded_year")
+            .and_then(|v| v.as_i64())
+            .map(|n| n as i32),
         employee_count: get_str("employee_count"),
         tags: get_str("tags"),
         business_hours: None,
@@ -2324,12 +2935,14 @@ pub async fn execute_node_with_llm(
     pool: &sqlx::SqlitePool,
     node: &WorkflowNode,
     content: &str,
-    previous_results: &[(&str, &str, &str)],  // (node_id, output, schema_name)
+    previous_results: &[(&str, &str, &str)], // (node_id, output, schema_name)
 
     model: &str,
     target_schemas: &[String],
 ) -> (String, Option<Value>) {
-    let user_prompt = node.parameters.get("prompt_template")
+    let user_prompt = node
+        .parameters
+        .get("prompt_template")
         .and_then(|v| v.as_str())
         .unwrap_or("");
 
@@ -2368,24 +2981,28 @@ pub async fn execute_node_with_llm(
 
     // Build the actual prompt by substituting template variables
     // {{previous_results}} — backwards-compatible merged text of all upstream outputs
-    let prev_text = previous_results.iter()
+    let prev_text = previous_results
+        .iter()
         .map(|(id, result, _)| format!("[{}]: {}", id, result))
-
         .collect::<Vec<_>>()
         .join("\n\n");
 
     // Build schema text dynamically from output_schemas definitions
     let schema_text = if !target_schemas.is_empty() {
-        let schemas: Vec<String> = target_schemas.iter().filter_map(|t| {
-            build_schema_prompt_text(t)
-        }).collect();
+        let schemas: Vec<String> = target_schemas
+            .iter()
+            .filter_map(|t| build_schema_prompt_text(t))
+            .collect();
         schemas.join("\n\n")
     } else {
         String::new()
     };
 
     // Wrap content with clear delimiters so the LLM distinguishes data from instructions
-    let wrapped_content = format!("--- BEGIN SOURCE CONTENT ---\n{}\n--- END SOURCE CONTENT ---", content);
+    let wrapped_content = format!(
+        "--- BEGIN SOURCE CONTENT ---\n{}\n--- END SOURCE CONTENT ---",
+        content
+    );
 
     let mut prompt = prompt_template
         .replace("{{content}}", &wrapped_content)
@@ -2431,7 +3048,9 @@ pub async fn execute_node_with_llm(
     };
 
     // Determine output mode: "text", "structured", or "auto" (default)
-    let output_mode = node.parameters.get("output_mode")
+    let output_mode = node
+        .parameters
+        .get("output_mode")
         .and_then(|v| v.as_str())
         .unwrap_or("auto");
     let expect_json = match output_mode {
@@ -2448,7 +3067,11 @@ pub async fn execute_node_with_llm(
     };
     tracing::debug!(
         "[WORKFLOW] Node '{}' type='{}' target_schemas={:?} content_len={} prompt_len={}",
-        node.id, node.node_type, target_schemas, content.len(), prompt.len()
+        node.id,
+        node.node_type,
+        target_schemas,
+        content.len(),
+        prompt.len()
     );
 
     let messages = vec![
@@ -2457,17 +3080,23 @@ pub async fn execute_node_with_llm(
     ];
 
     // Use per-node model override if set, otherwise use the workflow-level model
-    let node_model = node.parameters.get("model")
+    let node_model = node
+        .parameters
+        .get("model")
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
         .or_else(|| if model.is_empty() { None } else { Some(model) });
 
-    match WorkflowLLMService::completion(pool, messages.clone(), node_model, Some(2048), None).await {
+    match WorkflowLLMService::completion(pool, messages.clone(), node_model, Some(2048), None).await
+    {
         Ok((text, metadata)) => {
             tracing::info!(
                 "[WORKFLOW] Node '{}' routed via {} ({}), tokens: {:?}/{:?}",
-                node.id, metadata.model_used, metadata.provider,
-                metadata.input_tokens, metadata.output_tokens
+                node.id,
+                metadata.model_used,
+                metadata.provider,
+                metadata.input_tokens,
+                metadata.output_tokens
             );
             let usage_meta = json!({
                 "model_used": metadata.model_used,
@@ -2506,18 +3135,30 @@ pub async fn execute_node_with_llm(
                     node.id
                 );
                 let repair_messages = vec![
-                    WorkflowLLMService::system_message("You are a data extraction and analysis assistant. Always output valid JSON. Do not include markdown formatting or preamble — respond with raw JSON only."),
+                    WorkflowLLMService::system_message(
+                        "You are a data extraction and analysis assistant. Always output valid JSON. Do not include markdown formatting or preamble — respond with raw JSON only.",
+                    ),
                     WorkflowLLMService::user_message(&format!(
                         "The previous response was not valid JSON. Please fix it and return only valid JSON. Do not include any explanation or markdown formatting.\n\nOriginal response:\n{}",
                         text
                     )),
                 ];
 
-                match WorkflowLLMService::completion(pool, repair_messages, node_model, Some(2048), None).await {
+                match WorkflowLLMService::completion(
+                    pool,
+                    repair_messages,
+                    node_model,
+                    Some(2048),
+                    None,
+                )
+                .await
+                {
                     Ok((retry_text, retry_meta)) => {
                         tracing::info!(
                             "[WORKFLOW] Node '{}' repair retry via {} ({})",
-                            node.id, retry_meta.model_used, retry_meta.provider
+                            node.id,
+                            retry_meta.model_used,
+                            retry_meta.provider
                         );
                         // Merge usage metadata
                         let combined_usage = json!({
@@ -2543,29 +3184,54 @@ pub async fn execute_node_with_llm(
                         }
                     }
                     Err(e) => {
-                        tracing::warn!("[WORKFLOW] Repair retry failed for node '{}': {e}", node.id);
+                        tracing::warn!(
+                            "[WORKFLOW] Repair retry failed for node '{}': {e}",
+                            node.id
+                        );
                     }
                 }
 
                 // Return original text even if repair failed — validation will catch errors downstream
                 return (text.to_string(), Some(usage_meta));
             }
-            tracing::warn!("[WORKFLOW] Empty response from router for node '{}'", node.id);
+            tracing::warn!(
+                "[WORKFLOW] Empty response from router for node '{}'",
+                node.id
+            );
         }
         Err(e) => {
-            tracing::error!("[WORKFLOW] WorkflowLLMService failed for node '{}': {e}. Check that API keys are configured (e.g. ANTHROPIC_API_KEY env var).", node.id);
+            tracing::error!(
+                "[WORKFLOW] WorkflowLLMService failed for node '{}': {e}. Check that API keys are configured (e.g. ANTHROPIC_API_KEY env var).",
+                node.id
+            );
         }
     }
 
     // Fallback to content-aware mock extraction when no LLM is available.
     // Pass target_schemas so mock can infer output type from downstream output nodes.
-    tracing::warn!("[WORKFLOW] Falling back to mock extraction for node '{}' ({})", node.id, node.name);
-    let output_schema = node.parameters.get("output_schema")
+    tracing::warn!(
+        "[WORKFLOW] Falling back to mock extraction for node '{}' ({})",
+        node.id,
+        node.name
+    );
+    let output_schema = node
+        .parameters
+        .get("output_schema")
         .and_then(|v| v.as_str())
         .unwrap_or("");
     let node_type = &node.node_type;
-    let prev_refs: Vec<(&str, &str)> = previous_results.iter().map(|(id, out, _)| (*id, *out)).collect();
-    let mock_result = generate_mock_step_result(&node.id, content, &node.name, &prev_refs, node_type, output_schema, target_schemas);
+    let prev_refs: Vec<(&str, &str)> = previous_results
+        .iter()
+        .map(|(id, out, _)| (*id, *out))
+        .collect();
+    let mock_result = generate_mock_step_result(
+        &node.id,
+        content,
+        &node.name,
+        &prev_refs,
+        node_type,
+        output_schema,
+        target_schemas,
+    );
     (mock_result, None)
-
 }

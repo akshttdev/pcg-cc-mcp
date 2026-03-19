@@ -36,16 +36,14 @@ async fn load_platform_roles(pool: &sqlx::SqlitePool, user_id: &str) -> Vec<Stri
     struct RoleRow {
         role: String,
     }
-    sqlx::query_as::<_, RoleRow>(
-        "SELECT role FROM user_platform_roles WHERE user_id = ?"
-    )
-    .bind(user_id)
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default()
-    .into_iter()
-    .map(|r| r.role)
-    .collect()
+    sqlx::query_as::<_, RoleRow>("SELECT role FROM user_platform_roles WHERE user_id = ?")
+        .bind(user_id)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.role)
+        .collect()
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -140,16 +138,15 @@ pub async fn login(
 
     // Run onboarding for existing users who don't have Orcha yet
     // Check if user has a home_project_id
-    let has_home: bool = sqlx::query_scalar::<_, Option<String>>(
-        "SELECT home_project_id FROM users WHERE id = ?",
-    )
-    .bind(&user_id_blob)
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten()
-    .and_then(|v| v)
-    .is_some();
+    let has_home: bool =
+        sqlx::query_scalar::<_, Option<String>>("SELECT home_project_id FROM users WHERE id = ?")
+            .bind(&user_id_blob)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|v| v)
+            .is_some();
 
     if !has_home {
         let user_uuid = Uuid::parse_str(&user.id).unwrap_or_else(|_| Uuid::new_v4());
@@ -216,7 +213,8 @@ pub async fn login(
         .collect();
 
     let platform_roles = load_platform_roles(pool, &user.id).await;
-    let effective_admin = user.is_admin == 1 || platform_roles.iter().any(|r| r == "platform_admin");
+    let effective_admin =
+        user.is_admin == 1 || platform_roles.iter().any(|r| r == "platform_admin");
 
     let profile = UserProfile {
         id: user.id.to_string(),
@@ -353,7 +351,8 @@ pub async fn get_current_user(
         .collect();
 
     let platform_roles = load_platform_roles(pool, &user.id).await;
-    let effective_admin = user.is_admin == 1 || platform_roles.iter().any(|r| r == "platform_admin");
+    let effective_admin =
+        user.is_admin == 1 || platform_roles.iter().any(|r| r == "platform_admin");
 
     let profile = UserProfile {
         id: user.id.to_string(),
@@ -413,7 +412,9 @@ pub async fn register(
     .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
     if existing.unwrap_or(0) > 0 {
-        return Err(ApiError::BadRequest("Username or email already taken".into()));
+        return Err(ApiError::BadRequest(
+            "Username or email already taken".into(),
+        ));
     }
 
     // 3. Hash password and create user
@@ -532,7 +533,9 @@ pub async fn register(
     Ok((
         StatusCode::OK,
         [(header::SET_COOKIE, cookie)],
-        ResponseJson(ApiResponse::<LoginResponse, LoginResponse>::success(response)),
+        ResponseJson(ApiResponse::<LoginResponse, LoginResponse>::success(
+            response,
+        )),
     )
         .into_response())
 }

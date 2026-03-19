@@ -1,21 +1,12 @@
-use axum::{
-    Extension, Json, Router,
-    extract::State,
-    routing::post,
-};
+use axum::{Extension, Json, Router, extract::State, routing::post};
+use db::models::entity_conversion;
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use db::models::entity_conversion;
-
-use crate::{
-    DeploymentImpl,
-    error::ApiError,
-    middleware::access_control::AccessContext,
-};
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
@@ -40,7 +31,9 @@ pub async fn convert_entity(
 ) -> Result<Json<ApiResponse<ConvertEntityResponse>>, ApiError> {
     // Only admins can convert entities
     if !access_context.is_admin {
-        return Err(ApiError::Forbidden("Only admins can convert entities".into()));
+        return Err(ApiError::Forbidden(
+            "Only admins can convert entities".into(),
+        ));
     }
 
     let pool = &deployment.db().pool;
@@ -48,45 +41,73 @@ pub async fn convert_entity(
     let result = match (payload.source_type.as_str(), payload.target_type.as_str()) {
         ("organization", "client") => {
             let target_org_id = payload.target_parent_id.ok_or_else(|| {
-                ApiError::BadRequest("target_parent_id (destination org) is required for org → client conversion".into())
+                ApiError::BadRequest(
+                    "target_parent_id (destination org) is required for org → client conversion"
+                        .into(),
+                )
             })?;
             let new_id = entity_conversion::org_to_client(pool, payload.source_id, target_org_id)
                 .await
                 .map_err(|e| ApiError::BadRequest(e.to_string()))?;
-            ConvertEntityResponse { new_id: new_id.to_string(), new_type: "client".into() }
+            ConvertEntityResponse {
+                new_id: new_id.to_string(),
+                new_type: "client".into(),
+            }
         }
         ("organization", "project") => {
             let target_org_id = payload.target_parent_id.ok_or_else(|| {
-                ApiError::BadRequest("target_parent_id (destination org) is required for org → project conversion".into())
+                ApiError::BadRequest(
+                    "target_parent_id (destination org) is required for org → project conversion"
+                        .into(),
+                )
             })?;
             let new_id = entity_conversion::org_to_project(pool, payload.source_id, target_org_id)
                 .await
                 .map_err(|e| ApiError::BadRequest(e.to_string()))?;
-            ConvertEntityResponse { new_id: new_id.to_string(), new_type: "project".into() }
+            ConvertEntityResponse {
+                new_id: new_id.to_string(),
+                new_type: "project".into(),
+            }
         }
         ("client", "organization") => {
             let new_id = entity_conversion::client_to_org(pool, payload.source_id)
                 .await
                 .map_err(|e| ApiError::BadRequest(e.to_string()))?;
-            ConvertEntityResponse { new_id: new_id.to_string(), new_type: "organization".into() }
+            ConvertEntityResponse {
+                new_id: new_id.to_string(),
+                new_type: "organization".into(),
+            }
         }
         ("client", "project") => {
-            let new_id = entity_conversion::client_to_project(pool, payload.source_id, payload.target_parent_id)
-                .await
-                .map_err(|e| ApiError::BadRequest(e.to_string()))?;
-            ConvertEntityResponse { new_id: new_id.to_string(), new_type: "project".into() }
+            let new_id = entity_conversion::client_to_project(
+                pool,
+                payload.source_id,
+                payload.target_parent_id,
+            )
+            .await
+            .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+            ConvertEntityResponse {
+                new_id: new_id.to_string(),
+                new_type: "project".into(),
+            }
         }
         ("project", "client") => {
             let new_id = entity_conversion::project_to_client(pool, payload.source_id)
                 .await
                 .map_err(|e| ApiError::BadRequest(e.to_string()))?;
-            ConvertEntityResponse { new_id: new_id.to_string(), new_type: "client".into() }
+            ConvertEntityResponse {
+                new_id: new_id.to_string(),
+                new_type: "client".into(),
+            }
         }
         ("project", "organization") => {
             let new_id = entity_conversion::project_to_org(pool, payload.source_id)
                 .await
                 .map_err(|e| ApiError::BadRequest(e.to_string()))?;
-            ConvertEntityResponse { new_id: new_id.to_string(), new_type: "organization".into() }
+            ConvertEntityResponse {
+                new_id: new_id.to_string(),
+                new_type: "organization".into(),
+            }
         }
         _ => {
             return Err(ApiError::BadRequest(format!(

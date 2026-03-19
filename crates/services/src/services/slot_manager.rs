@@ -1,13 +1,15 @@
-use std::sync::Arc;
-use tokio::sync::RwLock;
-use std::collections::HashMap;
-use uuid::Uuid;
-use db::models::execution_slot::{
-    CreateExecutionSlot, ExecutionSlot, ExecutionSlotError, ProjectCapacity, SlotType,
+use std::{collections::HashMap, sync::Arc};
+
+use db::{
+    DBService,
+    models::execution_slot::{
+        CreateExecutionSlot, ExecutionSlot, ExecutionSlotError, ProjectCapacity, SlotType,
+    },
 };
-use db::DBService;
 use thiserror::Error;
+use tokio::sync::RwLock;
 use tracing::{info, warn};
+use uuid::Uuid;
 
 #[derive(Debug, Error)]
 pub enum SlotManagerError {
@@ -49,8 +51,8 @@ impl SlotManager {
         slot_type: SlotType,
     ) -> Result<ExecutionSlot, SlotManagerError> {
         // Check if we can acquire a slot
-        let can_acquire = ExecutionSlot::can_acquire(&self.db.pool, project_id, slot_type.clone())
-            .await?;
+        let can_acquire =
+            ExecutionSlot::can_acquire(&self.db.pool, project_id, slot_type.clone()).await?;
 
         if !can_acquire {
             warn!(
@@ -132,7 +134,10 @@ impl SlotManager {
     }
 
     /// Get project capacity information
-    pub async fn get_capacity(&self, project_id: Uuid) -> Result<ProjectCapacity, SlotManagerError> {
+    pub async fn get_capacity(
+        &self,
+        project_id: Uuid,
+    ) -> Result<ProjectCapacity, SlotManagerError> {
         let capacity = ExecutionSlot::get_project_capacity(&self.db.pool, project_id).await?;
         Ok(capacity)
     }

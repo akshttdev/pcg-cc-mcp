@@ -4,14 +4,16 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use db::models::agent_flow::{
-    AgentFlow, AgentPhase, CreateAgentFlow, FlowStatus, FlowType, UpdateAgentFlow,
+use db::{
+    db_uuid::DbUuid,
+    models::agent_flow::{
+        AgentFlow, AgentPhase, CreateAgentFlow, FlowStatus, FlowType, UpdateAgentFlow,
+    },
 };
 use deployment::Deployment;
 use serde::Deserialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
-use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 
@@ -50,14 +52,20 @@ pub struct ApproveFlowPayload {
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/agent-flows", get(list_flows).post(create_flow))
-        .route("/agent-flows/awaiting-approval", get(list_awaiting_approval))
+        .route(
+            "/agent-flows/awaiting-approval",
+            get(list_awaiting_approval),
+        )
         .route(
             "/agent-flows/{flow_id}",
             get(get_flow).patch(update_flow).delete(delete_flow),
         )
         .route("/agent-flows/{flow_id}/transition", post(transition_phase))
         .route("/agent-flows/{flow_id}/complete", post(complete_flow))
-        .route("/agent-flows/{flow_id}/request-approval", post(request_approval))
+        .route(
+            "/agent-flows/{flow_id}/request-approval",
+            post(request_approval),
+        )
         .route("/agent-flows/{flow_id}/approve", post(approve_flow))
         .with_state(deployment.clone())
 }
@@ -116,7 +124,9 @@ async fn get_flow(
     State(deployment): State<DeploymentImpl>,
     Path(flow_id): Path<String>,
 ) -> Result<Json<ApiResponse<AgentFlow>>, ApiError> {
-    let flow_id = DbUuid::parse(&flow_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let flow_id = DbUuid::parse(&flow_id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     let flow = AgentFlow::find_by_id(&deployment.db().pool, flow_id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Agent flow not found".into()))?;
@@ -129,7 +139,9 @@ async fn update_flow(
     Path(flow_id): Path<String>,
     Json(payload): Json<UpdateAgentFlow>,
 ) -> Result<Json<ApiResponse<AgentFlow>>, ApiError> {
-    let flow_id = DbUuid::parse(&flow_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let flow_id = DbUuid::parse(&flow_id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     // Verify flow exists
     AgentFlow::find_by_id(&deployment.db().pool, flow_id)
         .await?
@@ -173,7 +185,9 @@ async fn delete_flow(
     State(deployment): State<DeploymentImpl>,
     Path(flow_id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    let flow_id = DbUuid::parse(&flow_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let flow_id = DbUuid::parse(&flow_id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     let pool = &deployment.db().pool;
 
     // Verify flow exists
@@ -194,8 +208,11 @@ async fn transition_phase(
     Path(flow_id): Path<String>,
     Json(payload): Json<TransitionPhasePayload>,
 ) -> Result<Json<ApiResponse<AgentFlow>>, ApiError> {
-    let flow_id = DbUuid::parse(&flow_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
-    let flow = AgentFlow::transition_to_phase(&deployment.db().pool, flow_id, payload.phase).await?;
+    let flow_id = DbUuid::parse(&flow_id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
+    let flow =
+        AgentFlow::transition_to_phase(&deployment.db().pool, flow_id, payload.phase).await?;
     Ok(Json(ApiResponse::success(flow)))
 }
 
@@ -204,7 +221,9 @@ async fn complete_flow(
     Path(flow_id): Path<String>,
     Json(payload): Json<CompleteFlowPayload>,
 ) -> Result<Json<ApiResponse<AgentFlow>>, ApiError> {
-    let flow_id = DbUuid::parse(&flow_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let flow_id = DbUuid::parse(&flow_id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     let flow =
         AgentFlow::complete(&deployment.db().pool, flow_id, payload.verification_score).await?;
     Ok(Json(ApiResponse::success(flow)))
@@ -214,7 +233,9 @@ async fn request_approval(
     State(deployment): State<DeploymentImpl>,
     Path(flow_id): Path<String>,
 ) -> Result<Json<ApiResponse<AgentFlow>>, ApiError> {
-    let flow_id = DbUuid::parse(&flow_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let flow_id = DbUuid::parse(&flow_id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     let flow = AgentFlow::request_approval(&deployment.db().pool, flow_id).await?;
     Ok(Json(ApiResponse::success(flow)))
 }
@@ -224,7 +245,9 @@ async fn approve_flow(
     Path(flow_id): Path<String>,
     Json(payload): Json<ApproveFlowPayload>,
 ) -> Result<Json<ApiResponse<AgentFlow>>, ApiError> {
-    let flow_id = DbUuid::parse(&flow_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?.to_uuid();
+    let flow_id = DbUuid::parse(&flow_id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
     let flow = AgentFlow::approve(&deployment.db().pool, flow_id, &payload.approved_by).await?;
     Ok(Json(ApiResponse::success(flow)))
 }

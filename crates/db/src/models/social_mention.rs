@@ -349,13 +349,12 @@ impl SocialMention {
 
 #[cfg(test)]
 mod tests {
+    use chrono::Utc;
+
     use super::*;
     use crate::models::test_utils::{
-        create_test_project,
-        create_test_social_account,
-        setup_test_pool,
+        create_test_project, create_test_social_account, setup_test_pool,
     };
-    use chrono::Utc;
 
     #[tokio::test]
     async fn social_mention_inbox_flow() {
@@ -443,7 +442,10 @@ mod tests {
         assert_eq!(updated.status, "replied");
         assert!(updated.replied_at.is_some());
         assert_eq!(updated.priority, "normal");
-        assert_eq!(updated.reply_content.as_deref(), Some("Appreciate the love!"));
+        assert_eq!(
+            updated.reply_content.as_deref(),
+            Some("Appreciate the love!")
+        );
 
         let high_priority_after = SocialMention::find_high_priority(&pool, project_id)
             .await

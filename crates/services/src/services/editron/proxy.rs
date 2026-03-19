@@ -6,11 +6,15 @@
 //! - Automatic proxy switching for export
 //! - Multiple proxy quality presets
 
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
+
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use tokio::process::Command;
-use super::{EditronError, EditronResult, VideoCodec, AudioCodec};
+
+use super::{AudioCodec, EditronError, EditronResult, VideoCodec};
 
 /// Proxy quality presets
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -189,7 +193,10 @@ impl ProxyWorkflowManager {
         if let Some(factor) = settings.scale_factor {
             vf.push(format!("scale=iw*{}:ih*{}", factor, factor));
         } else if let (Some(w), Some(h)) = (settings.max_width, settings.max_height) {
-            vf.push(format!("scale='min({},iw)':min'({},ih)':force_original_aspect_ratio=decrease", w, h));
+            vf.push(format!(
+                "scale='min({},iw)':min'({},ih)':force_original_aspect_ratio=decrease",
+                w, h
+            ));
         }
 
         if !vf.is_empty() {
@@ -230,7 +237,11 @@ impl ProxyWorkflowManager {
     }
 
     /// Generate proxy for a single file
-    pub async fn generate_proxy(&self, original: &Path, preset: ProxyPreset) -> EditronResult<ProxyFile> {
+    pub async fn generate_proxy(
+        &self,
+        original: &Path,
+        preset: ProxyPreset,
+    ) -> EditronResult<ProxyFile> {
         if !original.exists() {
             return Err(EditronError::FileNotFound(original.to_path_buf()));
         }
@@ -240,10 +251,7 @@ impl ProxyWorkflowManager {
 
         let (output, args) = self.proxy_command(original, &preset);
 
-        let result = Command::new(&self.ffmpeg_path)
-            .args(&args)
-            .output()
-            .await?;
+        let result = Command::new(&self.ffmpeg_path).args(&args).output().await?;
 
         if !result.status.success() {
             let stderr = String::from_utf8_lossy(&result.stderr);
@@ -282,9 +290,7 @@ impl ProxyWorkflowManager {
         stream::iter(files)
             .map(|file| {
                 let preset = preset.clone();
-                async move {
-                    self.generate_proxy(&file, preset).await
-                }
+                async move { self.generate_proxy(&file, preset).await }
             })
             .buffer_unordered(max_concurrent)
             .collect()
@@ -297,10 +303,14 @@ impl ProxyWorkflowManager {
 
         let output = Command::new(ffprobe_path)
             .args([
-                "-v", "quiet",
-                "-select_streams", "v:0",
-                "-show_entries", "stream=width,height",
-                "-of", "csv=p=0",
+                "-v",
+                "quiet",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=width,height",
+                "-of",
+                "csv=p=0",
                 &path.to_string_lossy(),
             ])
             .output()
@@ -335,7 +345,8 @@ impl ProxyWorkflowManager {
 
     /// Generate Premiere Pro proxy attachment script
     pub fn premiere_attach_proxies_script(&self, proxies: &[ProxyFile]) -> String {
-        let mut script = String::from(r#"
+        let mut script = String::from(
+            r#"
 // Attach Proxy Files to Original Media
 var project = app.project;
 
@@ -353,7 +364,8 @@ function attachProxy(originalPath, proxyPath) {
     return false;
 }
 
-"#);
+"#,
+        );
 
         for proxy in proxies {
             script.push_str(&format!(
@@ -377,11 +389,14 @@ function attachProxy(originalPath, proxyPath) {
                 let path = entry.path();
                 if path.extension().map(|e| e == "mp4").unwrap_or(false) {
                     // Check if this is a proxy file by suffix
-                    let filename = path.file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("");
+                    let filename = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
 
-                    for suffix in ["_proxy_quarter", "_proxy_half", "_proxy_720p", "_proxy_1080p"] {
+                    for suffix in [
+                        "_proxy_quarter",
+                        "_proxy_half",
+                        "_proxy_720p",
+                        "_proxy_1080p",
+                    ] {
                         if filename.ends_with(suffix) {
                             count += 1;
                             break;
@@ -397,11 +412,11 @@ function attachProxy(originalPath, proxyPath) {
     /// Estimate proxy size reduction
     pub fn estimate_size_reduction(original_size: u64, preset: &ProxyPreset) -> u64 {
         let factor = match preset {
-            ProxyPreset::QuarterRes => 0.05,  // ~5% of original
-            ProxyPreset::HalfRes => 0.15,     // ~15% of original
-            ProxyPreset::Res720p => 0.10,     // ~10% of original
-            ProxyPreset::Res1080p => 0.20,    // ~20% of original
-            ProxyPreset::Custom(_) => 0.15,   // Estimate
+            ProxyPreset::QuarterRes => 0.05, // ~5% of original
+            ProxyPreset::HalfRes => 0.15,    // ~15% of original
+            ProxyPreset::Res720p => 0.10,    // ~10% of original
+            ProxyPreset::Res1080p => 0.20,   // ~20% of original
+            ProxyPreset::Custom(_) => 0.15,  // Estimate
         };
         (original_size as f64 * factor) as u64
     }
@@ -439,10 +454,7 @@ mod tests {
     #[test]
     fn test_proxy_path_generation() {
         let manager = ProxyWorkflowManager::new("/tmp/proxies", "/usr/local/bin/ffmpeg");
-        let path = manager.proxy_path(
-            Path::new("/videos/test.mp4"),
-            &ProxyPreset::HalfRes,
-        );
+        let path = manager.proxy_path(Path::new("/videos/test.mp4"), &ProxyPreset::HalfRes);
         assert!(path.to_string_lossy().contains("_proxy_half"));
     }
 

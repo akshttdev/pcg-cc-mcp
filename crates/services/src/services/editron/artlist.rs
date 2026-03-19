@@ -3,26 +3,29 @@
 //! Provides access to Artlist's music catalog through their Business API.
 //! Uses OAuth 2.0 Client Credentials flow for authentication.
 
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use backon::{ExponentialBuilder, Retryable};
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::sync::RwLock;
 use ts_rs::TS;
 
-use super::music::{
-    LicenseInfo, LicenseType, MusicGenre, MusicMood, MusicPlatform, MusicSearchCriteria,
-    MusicTrack,
+use super::{
+    EditronError,
+    music::{
+        LicenseInfo, LicenseType, MusicGenre, MusicMood, MusicPlatform, MusicSearchCriteria,
+        MusicTrack,
+    },
 };
-use super::EditronError;
 
 /// Artlist API endpoints
-const ARTLIST_TOKEN_URL: &str =
-    "https://artlist-business-api-prod-cognito.artlist.io/oauth2/token";
+const ARTLIST_TOKEN_URL: &str = "https://artlist-business-api-prod-cognito.artlist.io/oauth2/token";
 const ARTLIST_API_BASE: &str = "https://api.artlist.io/business/v1";
 
 /// Artlist service error types
@@ -183,7 +186,10 @@ impl ArtlistClient {
 
     /// Create from config
     pub fn from_config(config: &ArtlistConfig) -> Result<Self, ArtlistError> {
-        let client_id = config.client_id.as_ref().ok_or(ArtlistError::NotConfigured)?;
+        let client_id = config
+            .client_id
+            .as_ref()
+            .ok_or(ArtlistError::NotConfigured)?;
         let client_secret = config
             .client_secret
             .as_ref()
@@ -320,10 +326,16 @@ impl ArtlistClient {
 
         // Add duration range
         if let Some(min_duration) = criteria.min_duration {
-            params.push(("duration_min".to_string(), (min_duration as u32).to_string()));
+            params.push((
+                "duration_min".to_string(),
+                (min_duration as u32).to_string(),
+            ));
         }
         if let Some(max_duration) = criteria.max_duration {
-            params.push(("duration_max".to_string(), (max_duration as u32).to_string()));
+            params.push((
+                "duration_max".to_string(),
+                (max_duration as u32).to_string(),
+            ));
         }
 
         // Add vocal filter
@@ -502,7 +514,9 @@ impl ArtlistTrack {
             moods,
             tags: self.tags,
             platform: MusicPlatform::Artlist,
-            url: self.url.or_else(|| Some(format!("https://artlist.io/song/{}", self.id))),
+            url: self
+                .url
+                .or_else(|| Some(format!("https://artlist.io/song/{}", self.id))),
             local_path: None,
             preview_url: self.preview_url,
             license: LicenseInfo {

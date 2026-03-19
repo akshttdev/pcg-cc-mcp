@@ -15,16 +15,29 @@ pub(super) struct MediaResult {
 /// - image/* → fetched, base64-encoded, described via Claude Vision
 pub(super) async fn fetch_and_describe_media(media: Vec<(String, Option<String>)>) -> MediaResult {
     if media.is_empty() {
-        return MediaResult { text_content: None, image_description: None };
+        return MediaResult {
+            text_content: None,
+            image_description: None,
+        };
     }
 
     let account_sid = match std::env::var("TWILIO_ACCOUNT_SID") {
         Ok(v) => v,
-        Err(_) => return MediaResult { text_content: None, image_description: None },
+        Err(_) => {
+            return MediaResult {
+                text_content: None,
+                image_description: None,
+            };
+        }
     };
     let auth_token = match std::env::var("TWILIO_AUTH_TOKEN") {
         Ok(v) => v,
-        Err(_) => return MediaResult { text_content: None, image_description: None },
+        Err(_) => {
+            return MediaResult {
+                text_content: None,
+                image_description: None,
+            };
+        }
     };
     let api_key = std::env::var("ANTHROPIC_API_KEY")
         .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
@@ -35,23 +48,39 @@ pub(super) async fn fetch_and_describe_media(media: Vec<(String, Option<String>)
         .build()
     {
         Ok(c) => c,
-        Err(_) => return MediaResult { text_content: None, image_description: None },
+        Err(_) => {
+            return MediaResult {
+                text_content: None,
+                image_description: None,
+            };
+        }
     };
 
     let mut image_blocks: Vec<serde_json::Value> = Vec::new();
     let mut text_parts: Vec<String> = Vec::new();
 
     for (url, content_type) in media.iter().take(5) {
-        let mime = content_type.as_deref().unwrap_or("application/octet-stream");
+        let mime = content_type
+            .as_deref()
+            .unwrap_or("application/octet-stream");
 
         if mime.starts_with("text/plain") {
             // This is the user's message body sent as a media attachment by SignalWire
-            match client.get(url).basic_auth(&account_sid, Some(&auth_token)).send().await {
+            match client
+                .get(url)
+                .basic_auth(&account_sid, Some(&auth_token))
+                .send()
+                .await
+            {
                 Ok(resp) if resp.status().is_success() => {
                     if let Ok(text) = resp.text().await {
                         let trimmed = text.trim().to_string();
                         if !trimmed.is_empty() {
-                            info!("Fetched text/plain media ({} chars): {:?}", trimmed.len(), &trimmed[..trimmed.len().min(100)]);
+                            info!(
+                                "Fetched text/plain media ({} chars): {:?}",
+                                trimmed.len(),
+                                &trimmed[..trimmed.len().min(100)]
+                            );
                             text_parts.push(trimmed);
                         }
                     }
@@ -60,7 +89,12 @@ pub(super) async fn fetch_and_describe_media(media: Vec<(String, Option<String>)
                 Err(e) => warn!("Text media fetch error for {}: {}", url, e),
             }
         } else if mime.starts_with("image/") {
-            match client.get(url).basic_auth(&account_sid, Some(&auth_token)).send().await {
+            match client
+                .get(url)
+                .basic_auth(&account_sid, Some(&auth_token))
+                .send()
+                .await
+            {
                 Ok(resp) if resp.status().is_success() => {
                     if let Ok(bytes) = resp.bytes().await {
                         use base64::Engine;
@@ -79,7 +113,11 @@ pub(super) async fn fetch_and_describe_media(media: Vec<(String, Option<String>)
         }
     }
 
-    let text_content = if text_parts.is_empty() { None } else { Some(text_parts.join("\n")) };
+    let text_content = if text_parts.is_empty() {
+        None
+    } else {
+        Some(text_parts.join("\n"))
+    };
 
     // Describe images with Claude Vision if we have any
     let image_description = if image_blocks.is_empty() || api_key.is_none() {
@@ -119,14 +157,18 @@ pub(super) async fn fetch_and_describe_media(media: Vec<(String, Option<String>)
         }
     };
 
-    MediaResult { text_content, image_description }
+    MediaResult {
+        text_content,
+        image_description,
+    }
 }
 
 /// Fetch and extract readable content from any URLs in an SMS body.
 /// Returns a summarised string of ingested content, or None if no URLs found.
 pub(super) async fn ingest_sms_content(body: &str) -> Option<String> {
     // Find URLs in the message
-    let urls: Vec<&str> = body.split_whitespace()
+    let urls: Vec<&str> = body
+        .split_whitespace()
         .filter(|w| w.starts_with("http://") || w.starts_with("https://"))
         .collect();
 
@@ -145,7 +187,8 @@ pub(super) async fn ingest_sms_content(body: &str) -> Option<String> {
     for url in urls.iter().take(3) {
         match client.get(*url).send().await {
             Ok(resp) if resp.status().is_success() => {
-                let content_type = resp.headers()
+                let content_type = resp
+                    .headers()
                     .get("content-type")
                     .and_then(|v| v.to_str().ok())
                     .unwrap_or("")
@@ -175,7 +218,11 @@ pub(super) async fn ingest_sms_content(body: &str) -> Option<String> {
         }
     }
 
-    if parts.is_empty() { None } else { Some(parts.join("\n\n")) }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join("\n\n"))
+    }
 }
 
 /// Strip HTML tags and collapse whitespace to get readable text.
@@ -198,8 +245,11 @@ fn extract_text_from_html(html: &str) -> String {
                     in_script_or_style = true;
                 } else if tag_lower.starts_with("/script") || tag_lower.starts_with("/style") {
                     in_script_or_style = false;
-                } else if tag_lower == "br" || tag_lower == "p" || tag_lower == "/p"
-                    || tag_lower.starts_with("h") || tag_lower.starts_with("/h")
+                } else if tag_lower == "br"
+                    || tag_lower == "p"
+                    || tag_lower == "/p"
+                    || tag_lower.starts_with("h")
+                    || tag_lower.starts_with("/h")
                 {
                     out.push('\n');
                 }

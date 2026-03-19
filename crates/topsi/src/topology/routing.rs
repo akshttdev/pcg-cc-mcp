@@ -1,11 +1,14 @@
 //! Route planning - Find optimal paths through the topology
 
-use super::graph::{ProjectTopology, TopologyGraph, RouteInfo};
-use super::engine::{TopologyEngine, Path};
-use crate::{Goal, Result, TopsiError};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use uuid::Uuid;
+
+use super::{
+    engine::{Path, TopologyEngine},
+    graph::{ProjectTopology, RouteInfo, TopologyGraph},
+};
+use crate::{Goal, Result, TopsiError};
 
 /// A planned execution route
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -45,23 +48,12 @@ pub struct RoutePlanner;
 
 impl RoutePlanner {
     /// Plan a route for a goal
-    pub fn plan_route(
-        topology: &ProjectTopology,
-        goal: &Goal,
-    ) -> Result<ExecutionPlan> {
+    pub fn plan_route(topology: &ProjectTopology, goal: &Goal) -> Result<ExecutionPlan> {
         match goal {
-            Goal::ExecuteTask(task_id) => {
-                Self::plan_task_execution(topology, *task_id)
-            }
-            Goal::ReachCapability(capability) => {
-                Self::plan_capability_reach(topology, capability)
-            }
-            Goal::ConnectNodes { from, to } => {
-                Self::plan_connection(topology, *from, *to)
-            }
-            Goal::FindAgent(capabilities) => {
-                Self::plan_agent_search(topology, capabilities)
-            }
+            Goal::ExecuteTask(task_id) => Self::plan_task_execution(topology, *task_id),
+            Goal::ReachCapability(capability) => Self::plan_capability_reach(topology, capability),
+            Goal::ConnectNodes { from, to } => Self::plan_connection(topology, *from, *to),
+            Goal::FindAgent(capabilities) => Self::plan_agent_search(topology, capabilities),
             Goal::ExecuteWorkflow(workflow_id) => {
                 Self::plan_workflow_execution(topology, workflow_id)
             }
@@ -69,24 +61,27 @@ impl RoutePlanner {
     }
 
     /// Plan execution path to a task
-    fn plan_task_execution(
-        topology: &ProjectTopology,
-        task_id: Uuid,
-    ) -> Result<ExecutionPlan> {
+    fn plan_task_execution(topology: &ProjectTopology, task_id: Uuid) -> Result<ExecutionPlan> {
         let graph = &topology.graph;
 
         // Find the task node
-        let task_node = graph.nodes.values()
+        let task_node = graph
+            .nodes
+            .values()
             .find(|n| n.node_type == "task" && n.ref_id == task_id.to_string())
             .ok_or_else(|| TopsiError::NodeNotFound(task_id))?;
 
         // Find available agents
-        let agents: Vec<_> = graph.nodes.values()
+        let agents: Vec<_> = graph
+            .nodes
+            .values()
             .filter(|n| n.node_type == "agent" && n.is_active())
             .collect();
 
         if agents.is_empty() {
-            return Err(TopsiError::RoutingError("No active agents available".to_string()));
+            return Err(TopsiError::RoutingError(
+                "No active agents available".to_string(),
+            ));
         }
 
         // Find best path from any agent to the task
@@ -115,7 +110,8 @@ impl RoutePlanner {
         let steps = Self::path_to_steps(graph, &path)?;
 
         // Find alternatives (best_agent_id is guaranteed Some when best_path is Some)
-        let agent_id = best_agent_id.ok_or_else(|| TopsiError::RoutingError("No agent selected".to_string()))?;
+        let agent_id = best_agent_id
+            .ok_or_else(|| TopsiError::RoutingError("No agent selected".to_string()))?;
         let alternatives = Self::find_alternatives(graph, agent_id, task_node.id, &path);
 
         Ok(ExecutionPlan {
@@ -136,7 +132,9 @@ impl RoutePlanner {
         let graph = &topology.graph;
 
         // Find nodes with the capability
-        let target_nodes: Vec<_> = graph.nodes.values()
+        let target_nodes: Vec<_> = graph
+            .nodes
+            .values()
             .filter(|n| n.is_active() && n.has_capability(capability))
             .collect();
 
@@ -148,12 +146,16 @@ impl RoutePlanner {
         }
 
         // Find agents as starting points
-        let agents: Vec<_> = graph.nodes.values()
+        let agents: Vec<_> = graph
+            .nodes
+            .values()
             .filter(|n| n.node_type == "agent" && n.is_active())
             .collect();
 
         if agents.is_empty() {
-            return Err(TopsiError::RoutingError("No active agents available".to_string()));
+            return Err(TopsiError::RoutingError(
+                "No active agents available".to_string(),
+            ));
         }
 
         // Find best path from any agent to any target
@@ -177,14 +179,15 @@ impl RoutePlanner {
             }
         }
 
-        let path = best_path.ok_or_else(|| TopsiError::RoutingError(format!(
-            "No path to capability '{}' found",
-            capability
-        )))?;
+        let path = best_path.ok_or_else(|| {
+            TopsiError::RoutingError(format!("No path to capability '{}' found", capability))
+        })?;
 
         let steps = Self::path_to_steps(graph, &path)?;
-        let from = from_id.ok_or_else(|| TopsiError::RoutingError("No source node selected".to_string()))?;
-        let to = to_id.ok_or_else(|| TopsiError::RoutingError("No target node selected".to_string()))?;
+        let from = from_id
+            .ok_or_else(|| TopsiError::RoutingError("No source node selected".to_string()))?;
+        let to =
+            to_id.ok_or_else(|| TopsiError::RoutingError("No target node selected".to_string()))?;
         let alternatives = Self::find_alternatives(graph, from, to, &path);
 
         Ok(ExecutionPlan {
@@ -198,11 +201,7 @@ impl RoutePlanner {
     }
 
     /// Plan a connection between two nodes
-    fn plan_connection(
-        topology: &ProjectTopology,
-        from: Uuid,
-        to: Uuid,
-    ) -> Result<ExecutionPlan> {
+    fn plan_connection(topology: &ProjectTopology, from: Uuid, to: Uuid) -> Result<ExecutionPlan> {
         let graph = &topology.graph;
 
         let path = TopologyEngine::find_shortest_path(graph, from, to)
@@ -229,19 +228,25 @@ impl RoutePlanner {
         let graph = &topology.graph;
 
         // Find agents with all required capabilities
-        let matching_agents: Vec<_> = graph.nodes.values()
+        let matching_agents: Vec<_> = graph
+            .nodes
+            .values()
             .filter(|n| {
-                n.node_type == "agent" && n.is_active() &&
-                capabilities.iter().all(|c| n.has_capability(c))
+                n.node_type == "agent"
+                    && n.is_active()
+                    && capabilities.iter().all(|c| n.has_capability(c))
             })
             .collect();
 
         if matching_agents.is_empty() {
             // Try to find agents with partial matches
-            let partial_matches: Vec<_> = graph.nodes.values()
+            let partial_matches: Vec<_> = graph
+                .nodes
+                .values()
                 .filter(|n| {
-                    n.node_type == "agent" && n.is_active() &&
-                    capabilities.iter().any(|c| n.has_capability(c))
+                    n.node_type == "agent"
+                        && n.is_active()
+                        && capabilities.iter().any(|c| n.has_capability(c))
                 })
                 .collect();
 
@@ -265,7 +270,10 @@ impl RoutePlanner {
 
             return Ok(ExecutionPlan {
                 route_id: Uuid::new_v4(),
-                goal: format!("Find agent with capabilities {:?} (partial match)", capabilities),
+                goal: format!(
+                    "Find agent with capabilities {:?} (partial match)",
+                    capabilities
+                ),
                 path: steps,
                 total_weight: 0.0,
                 estimated_duration_ms: None,
@@ -275,8 +283,13 @@ impl RoutePlanner {
 
         // Return the best matching agent (highest weight)
         // matching_agents is guaranteed non-empty (checked above), so indexing [0] is safe as fallback
-        let best = matching_agents.iter()
-            .max_by(|a, b| a.weight.partial_cmp(&b.weight).unwrap_or(std::cmp::Ordering::Equal))
+        let best = matching_agents
+            .iter()
+            .max_by(|a, b| {
+                a.weight
+                    .partial_cmp(&b.weight)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
             .unwrap_or(&matching_agents[0]);
 
         let steps = vec![RouteStep {
@@ -288,7 +301,8 @@ impl RoutePlanner {
             edge_type: None,
         }];
 
-        let alternatives: Vec<AlternativeRoute> = matching_agents.iter()
+        let alternatives: Vec<AlternativeRoute> = matching_agents
+            .iter()
             .filter(|a| a.id != best.id)
             .take(3)
             .map(|a| AlternativeRoute {
@@ -316,12 +330,13 @@ impl RoutePlanner {
         let graph = &topology.graph;
 
         // Find workflow node
-        let workflow_node = graph.nodes.values()
+        let workflow_node = graph
+            .nodes
+            .values()
             .find(|n| n.node_type == "workflow" && n.ref_id == workflow_id)
-            .ok_or_else(|| TopsiError::RoutingError(format!(
-                "Workflow '{}' not found",
-                workflow_id
-            )))?;
+            .ok_or_else(|| {
+                TopsiError::RoutingError(format!("Workflow '{}' not found", workflow_id))
+            })?;
 
         // Find all connected nodes in execution order
         let mut execution_order = Vec::new();
@@ -343,7 +358,8 @@ impl RoutePlanner {
         }
 
         // Build steps
-        let steps: Vec<RouteStep> = execution_order.iter()
+        let steps: Vec<RouteStep> = execution_order
+            .iter()
             .filter_map(|id| {
                 graph.get_node(*id).map(|n| RouteStep {
                     node_id: n.id,
@@ -371,7 +387,8 @@ impl RoutePlanner {
         let mut steps = Vec::new();
 
         for (i, node_id) in path.nodes.iter().enumerate() {
-            let node = graph.get_node(*node_id)
+            let node = graph
+                .get_node(*node_id)
                 .ok_or_else(|| TopsiError::NodeNotFound(*node_id))?;
 
             let (edge_id, edge_type) = if i < path.edges.len() {
@@ -411,7 +428,8 @@ impl RoutePlanner {
     ) -> Vec<AlternativeRoute> {
         let all_paths = TopologyEngine::find_all_paths(graph, from, to, 4, 10);
 
-        all_paths.into_iter()
+        all_paths
+            .into_iter()
             .filter(|p| p.nodes != exclude.nodes)
             .take(3)
             .map(|p| AlternativeRoute {
@@ -437,13 +455,19 @@ impl RoutePlanner {
 
         // Find new path from start to end of original route
         if original_route.path.len() < 2 {
-            return Err(TopsiError::RoutingError("Route too short to reroute".to_string()));
+            return Err(TopsiError::RoutingError(
+                "Route too short to reroute".to_string(),
+            ));
         }
 
         let from = original_route.path[0];
         let to = match original_route.path.last() {
             Some(id) => *id,
-            None => return Err(TopsiError::RoutingError("Route has no destination".to_string())),
+            None => {
+                return Err(TopsiError::RoutingError(
+                    "Route has no destination".to_string(),
+                ))
+            }
         };
 
         let path = TopologyEngine::find_shortest_path(&graph, from, to)

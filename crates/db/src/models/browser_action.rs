@@ -163,12 +163,11 @@ impl BrowserAction {
         pool: &SqlitePool,
         id: Uuid,
     ) -> Result<Option<Self>, BrowserActionError> {
-        let action = sqlx::query_as::<_, BrowserAction>(
-            r#"SELECT * FROM browser_actions WHERE id = ?1"#,
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await?;
+        let action =
+            sqlx::query_as::<_, BrowserAction>(r#"SELECT * FROM browser_actions WHERE id = ?1"#)
+                .bind(id)
+                .fetch_optional(pool)
+                .await?;
 
         Ok(action)
     }
@@ -241,11 +240,17 @@ impl BrowserAction {
 
     /// Check if action was successful
     pub fn is_success(&self) -> bool {
-        self.result.as_ref().map(|r| *r == ActionResult::Success).unwrap_or(false)
+        self.result
+            .as_ref()
+            .map(|r| *r == ActionResult::Success)
+            .unwrap_or(false)
     }
 
     /// Check if action was blocked by allowlist
     pub fn was_blocked(&self) -> bool {
-        self.result.as_ref().map(|r| *r == ActionResult::Blocked).unwrap_or(false)
+        self.result
+            .as_ref()
+            .map(|r| *r == ActionResult::Blocked)
+            .unwrap_or(false)
     }
 }

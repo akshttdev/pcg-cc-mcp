@@ -21,34 +21,34 @@
 //! └─────────────────────────────────────────────────────────────┘
 //! ```
 
+pub mod crypto;
+pub mod economics;
 pub mod identity;
 pub mod identity_storage;
-pub mod crypto;
-pub mod wire;
 pub mod mesh;
-pub mod relay;
-pub mod node;
-pub mod economics;
 pub mod mining;
+pub mod node;
+pub mod relay;
 pub mod resources;
-pub mod reward_tracker;
 pub mod reward_distributor;
+pub mod reward_tracker;
+pub mod wire;
 
 // Re-exports
+pub use crypto::{decrypt, encrypt, SessionKey};
+pub use economics::{
+    calculate_rewards, display_to_vibe, vibe_to_display, ContributionProof, NodeReputation,
+    ResourceContribution, ResourceTracker, RewardRates, StakePool, VibeAmount,
+};
 pub use identity::{NodeIdentity, WalletInfo};
-pub use crypto::{encrypt, decrypt, SessionKey};
-pub use wire::{Message, MessageType, NodeResources};
-pub use mesh::{MeshNode, PeerInfo, MeshMessage};
+pub use mesh::{MeshMessage, MeshNode, PeerInfo};
 pub use node::{AlphaNode, NodeConfig};
 pub use resources::collect_resources;
-pub use economics::{
-    ResourceContribution, ResourceTracker, RewardRates,
-    NodeReputation, StakePool, ContributionProof,
-    calculate_rewards, vibe_to_display, display_to_vibe,
-    VibeAmount,
+pub use reward_distributor::{DistributorConfig, DistributorStats, RewardDistributor};
+pub use reward_tracker::{
+    RewardTracker as PeerRewardTracker, RewardTrackerConfig, RewardTrackerStats,
 };
-pub use reward_tracker::{RewardTracker as PeerRewardTracker, RewardTrackerStats, RewardTrackerConfig};
-pub use reward_distributor::{RewardDistributor, DistributorConfig, DistributorStats};
+pub use wire::{Message, MessageType, NodeResources};
 
 /// Protocol version
 pub const PROTOCOL_VERSION: &str = "alpha/1.0.0";
@@ -64,11 +64,14 @@ pub fn init() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("alpha_protocol_core=debug".parse()?)
+                .add_directive("alpha_protocol_core=debug".parse()?),
         )
         .init();
 
-    tracing::info!("Alpha Protocol Core v{} initialized", env!("CARGO_PKG_VERSION"));
+    tracing::info!(
+        "Alpha Protocol Core v{} initialized",
+        env!("CARGO_PKG_VERSION")
+    );
     Ok(())
 }
 

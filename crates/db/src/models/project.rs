@@ -112,11 +112,10 @@ pub enum SearchMatchType {
 
 impl Project {
     pub async fn count(pool: &SqlitePool) -> Result<i64, sqlx::Error> {
-        let result: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL"
-        )
-        .fetch_one(pool)
-        .await?;
+        let result: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL")
+                .fetch_one(pool)
+                .await?;
         Ok(result.0)
     }
 
@@ -192,12 +191,11 @@ impl Project {
         pool: &SqlitePool,
         git_repo_path: &str,
     ) -> Result<bool, sqlx::Error> {
-        let result: Option<(i64,)> = sqlx::query_as(
-            "SELECT 1 FROM projects WHERE git_repo_path = ? LIMIT 1"
-        )
-        .bind(git_repo_path)
-        .fetch_optional(pool)
-        .await?;
+        let result: Option<(i64,)> =
+            sqlx::query_as("SELECT 1 FROM projects WHERE git_repo_path = ? LIMIT 1")
+                .bind(git_repo_path)
+                .fetch_optional(pool)
+                .await?;
         Ok(result.is_some())
     }
 
@@ -224,11 +222,12 @@ impl Project {
         pool: &SqlitePool,
         name: &str,
     ) -> Result<Option<Self>, sqlx::Error> {
-        let row: Option<(String,)> =
-            sqlx::query_as("SELECT id FROM projects WHERE LOWER(name) = LOWER(?) AND deleted_at IS NULL LIMIT 1")
-                .bind(name)
-                .fetch_optional(pool)
-                .await?;
+        let row: Option<(String,)> = sqlx::query_as(
+            "SELECT id FROM projects WHERE LOWER(name) = LOWER(?) AND deleted_at IS NULL LIMIT 1",
+        )
+        .bind(name)
+        .fetch_optional(pool)
+        .await?;
 
         if let Some((id,)) = row {
             Project::find_by_id(pool, &id).await
@@ -344,7 +343,8 @@ impl Project {
 
     /// Get remaining VIBE budget
     pub fn remaining_vibe(&self) -> Option<i64> {
-        self.vibe_budget_limit.map(|limit| limit - self.vibe_spent_amount)
+        self.vibe_budget_limit
+            .map(|limit| limit - self.vibe_spent_amount)
     }
 
     /// Soft delete a project by setting deleted_at timestamp
@@ -359,12 +359,11 @@ impl Project {
     }
 
     pub async fn exists(pool: &SqlitePool, id: &str) -> Result<bool, sqlx::Error> {
-        let result: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM projects WHERE id = ? AND deleted_at IS NULL"
-        )
-        .bind(id)
-        .fetch_one(pool)
-        .await?;
+        let result: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM projects WHERE id = ? AND deleted_at IS NULL")
+                .bind(id)
+                .fetch_one(pool)
+                .await?;
 
         Ok(result.0 > 0)
     }
@@ -425,13 +424,11 @@ impl Project {
         project_id: &str,
         folder_id: Option<&str>,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "UPDATE projects SET folder_id = ?, updated_at = datetime('now') WHERE id = ?",
-        )
-        .bind(folder_id)
-        .bind(project_id)
-        .execute(pool)
-        .await?;
+        sqlx::query("UPDATE projects SET folder_id = ?, updated_at = datetime('now') WHERE id = ?")
+            .bind(folder_id)
+            .bind(project_id)
+            .execute(pool)
+            .await?;
         Ok(())
     }
 
@@ -510,12 +507,11 @@ impl Project {
         let mut ancestor_count = 1; // the proposed parent itself
         let mut current_id = proposed_parent_id.to_string();
         loop {
-            let parent: Option<(Option<String>,)> = sqlx::query_as(
-                "SELECT parent_project_id FROM projects WHERE id = ?",
-            )
-            .bind(&current_id)
-            .fetch_optional(pool)
-            .await?;
+            let parent: Option<(Option<String>,)> =
+                sqlx::query_as("SELECT parent_project_id FROM projects WHERE id = ?")
+                    .bind(&current_id)
+                    .fetch_optional(pool)
+                    .await?;
 
             match parent {
                 Some((Some(pid),)) => {
@@ -546,12 +542,11 @@ impl Project {
             id: String,
         }
 
-        let children: Vec<IdRow> = sqlx::query_as(
-            "SELECT id FROM projects WHERE parent_project_id = ?",
-        )
-        .bind(project_id)
-        .fetch_all(pool)
-        .await?;
+        let children: Vec<IdRow> =
+            sqlx::query_as("SELECT id FROM projects WHERE parent_project_id = ?")
+                .bind(project_id)
+                .fetch_all(pool)
+                .await?;
 
         if children.is_empty() {
             return Ok(0);

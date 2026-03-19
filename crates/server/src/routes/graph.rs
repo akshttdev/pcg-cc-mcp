@@ -4,12 +4,11 @@
 //! relationships between companies, persons, proposals, orgs, and projects.
 
 use axum::{
-    Router,
+    Json, Router,
     extract::{Path, State},
     routing::{get, post},
-    Json,
 };
-use db::models::entity_graph::{company_subgraph, sync_company_graph, EntitySubgraph};
+use db::models::entity_graph::{EntitySubgraph, company_subgraph, sync_company_graph};
 use deployment::Deployment;
 use serde::Serialize;
 use utils::response::ApiResponse;

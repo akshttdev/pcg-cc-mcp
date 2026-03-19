@@ -4,23 +4,24 @@
 //! Each organization connects its own QBO account.
 
 use axum::{
-    Router,
+    Json, Router,
     extract::{Path, Query, State},
     response::Redirect,
     routing::{delete, get, patch, post},
-    Json,
 };
 use chrono::{Duration, Utc};
+use db::{
+    db_uuid::DbUuid,
+    models::quickbooks_account::{
+        CreateQuickBooksAccount, QuickBooksAccount, QuickBooksEntityMap, UpdateQuickBooksAccount,
+    },
+};
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
-use db::db_uuid::DbUuid;
 
 use crate::{DeploymentImpl, error::ApiError};
-use db::models::quickbooks_account::{
-    CreateQuickBooksAccount, QuickBooksAccount, QuickBooksEntityMap, UpdateQuickBooksAccount,
-};
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -91,9 +92,7 @@ pub struct SyncRequest {
 
 /// GET /quickbooks/connect?organization_id=...
 /// Initiates OAuth 2.0 authorization code flow with Intuit
-async fn connect(
-    Query(query): Query<ConnectQuery>,
-) -> Result<Redirect, ApiError> {
+async fn connect(Query(query): Query<ConnectQuery>) -> Result<Redirect, ApiError> {
     let client_id = qb_client_id()?;
     let redirect_uri = qb_redirect_uri();
 
@@ -124,18 +123,19 @@ async fn callback(
     // Check for error from Intuit
     if let Some(error) = query.error {
         tracing::error!("QuickBooks OAuth error: {}", error);
-        return Ok(Redirect::temporary(
-            &format!("/settings/integrations?qb_error={}", urlencoding::encode(&error)),
-        ));
+        return Ok(Redirect::temporary(&format!(
+            "/settings/integrations?qb_error={}",
+            urlencoding::encode(&error)
+        )));
     }
 
-    let code = query.code.ok_or_else(|| {
-        ApiError::BadRequest("Missing authorization code".into())
-    })?;
+    let code = query
+        .code
+        .ok_or_else(|| ApiError::BadRequest("Missing authorization code".into()))?;
 
-    let realm_id = query.realm_id.ok_or_else(|| {
-        ApiError::BadRequest("Missing realmId".into())
-    })?;
+    let realm_id = query
+        .realm_id
+        .ok_or_else(|| ApiError::BadRequest("Missing realmId".into()))?;
 
     let state = query.state.unwrap_or_default();
 
@@ -181,7 +181,11 @@ async fn callback(
     let expires_at = Utc::now() + Duration::seconds(tokens.expires_in);
     let pool = &deployment.db().pool;
 
-    let environment = if qb_is_sandbox() { "sandbox" } else { "production" };
+    let environment = if qb_is_sandbox() {
+        "sandbox"
+    } else {
+        "production"
+    };
     let env_enum = if qb_is_sandbox() {
         db::models::quickbooks_account::QBEnvironment::Sandbox
     } else {
@@ -189,16 +193,14 @@ async fn callback(
     };
 
     // Fetch company name from QBO
-    let company_name = fetch_company_name(
-        &tokens.access_token,
-        &realm_id,
-        environment,
-    )
-    .await
-    .ok();
+    let company_name = fetch_company_name(&tokens.access_token, &realm_id, environment)
+        .await
+        .ok();
 
     // Check if this org+realm already exists
-    let existing = QuickBooksAccount::find_by_realm(pool, organization_id, &realm_id).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let existing = QuickBooksAccount::find_by_realm(pool, organization_id, &realm_id)
+        .await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
 
     if let Some(existing_account) = existing {
         // Update existing connection
@@ -267,8 +269,9 @@ async fn status(
     Query(query): Query<ListQuery>,
 ) -> Result<Json<ApiResponse<QBConnectionStatus>>, ApiError> {
     let pool = &deployment.db().pool;
-    let accounts =
-        QuickBooksAccount::find_by_organization(pool, query.organization_id).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let accounts = QuickBooksAccount::find_by_organization(pool, query.organization_id)
+        .await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
 
     let status = if let Some(account) = accounts.into_iter().next() {
         let needs_reauth = account.needs_token_refresh() || account.status == "expired";
@@ -295,8 +298,9 @@ async fn list_accounts(
     Query(query): Query<ListQuery>,
 ) -> Result<Json<ApiResponse<Vec<QuickBooksAccount>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let accounts =
-        QuickBooksAccount::find_by_organization(pool, query.organization_id).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let accounts = QuickBooksAccount::find_by_organization(pool, query.organization_id)
+        .await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
     Ok(Json(ApiResponse::success(accounts)))
 }
 
@@ -306,8 +310,12 @@ async fn get_account(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<QuickBooksAccount>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
-    let account = QuickBooksAccount::find_by_id(pool, id_uuid).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid ID".into()))?
+        .to_uuid();
+    let account = QuickBooksAccount::find_by_id(pool, id_uuid)
+        .await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
     Ok(Json(ApiResponse::success(account)))
 }
 
@@ -319,8 +327,12 @@ async fn update_account(
     Json(update): Json<UpdateQuickBooksAccount>,
 ) -> Result<Json<ApiResponse<QuickBooksAccount>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
-    let account = QuickBooksAccount::update(pool, id_uuid, update).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid ID".into()))?
+        .to_uuid();
+    let account = QuickBooksAccount::update(pool, id_uuid, update)
+        .await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
     Ok(Json(ApiResponse::success(account)))
 }
 
@@ -331,15 +343,21 @@ async fn disconnect(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid ID".into()))?
+        .to_uuid();
 
     // Revoke the token at Intuit (best effort)
-    let account = QuickBooksAccount::find_by_id(pool, id_uuid).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let account = QuickBooksAccount::find_by_id(pool, id_uuid)
+        .await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
     if let Some(ref token) = account.refresh_token {
         let _ = revoke_token(token).await;
     }
 
-    QuickBooksAccount::delete(pool, id_uuid).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
+    QuickBooksAccount::delete(pool, id_uuid)
+        .await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
     Ok(Json(ApiResponse::success(())))
 }
 
@@ -350,14 +368,20 @@ async fn refresh_token(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
-    let account = QuickBooksAccount::find_by_id(pool, id_uuid).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid ID".into()))?
+        .to_uuid();
+    let account = QuickBooksAccount::find_by_id(pool, id_uuid)
+        .await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
 
-    let refresh = account.refresh_token.as_deref().ok_or_else(|| {
-        ApiError::BadRequest("No refresh token available".into())
-    })?;
+    let refresh = account
+        .refresh_token
+        .as_deref()
+        .ok_or_else(|| ApiError::BadRequest("No refresh token available".into()))?;
 
-    let tokens = exchange_refresh_token(refresh).await
+    let tokens = exchange_refresh_token(refresh)
+        .await
         .map_err(|e| ApiError::InternalError(e.to_string()))?;
     let expires_at = Utc::now() + Duration::seconds(tokens.expires_in);
 
@@ -382,11 +406,17 @@ async fn trigger_sync(
     Json(_req): Json<SyncRequest>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
-    let _account = QuickBooksAccount::find_by_id(pool, id_uuid).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid ID".into()))?
+        .to_uuid();
+    let _account = QuickBooksAccount::find_by_id(pool, id_uuid)
+        .await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
 
     // TODO: Implement actual sync logic - for now mark the sync attempt
-    QuickBooksAccount::update_sync_status(pool, id_uuid, "active").await.map_err(|e| ApiError::InternalError(e.to_string()))?;
+    QuickBooksAccount::update_sync_status(pool, id_uuid, "active")
+        .await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
 
     Ok(Json(ApiResponse::success(serde_json::json!({
         "message": "Sync initiated",
@@ -401,8 +431,11 @@ async fn list_entity_maps(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<QuickBooksEntityMap>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid ID".into()))?.to_uuid();
-    let maps = QuickBooksEntityMap::list_for_account(pool, id_uuid).await
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid ID".into()))?
+        .to_uuid();
+    let maps = QuickBooksEntityMap::list_for_account(pool, id_uuid)
+        .await
         .map_err(|e| ApiError::InternalError(e.to_string()))?;
     Ok(Json(ApiResponse::success(maps)))
 }

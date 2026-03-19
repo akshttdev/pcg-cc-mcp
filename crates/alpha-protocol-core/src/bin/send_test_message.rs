@@ -1,5 +1,4 @@
-use alpha_protocol_core::mesh::MeshMessage;
-use alpha_protocol_core::wire::NodeResources;
+use alpha_protocol_core::{mesh::MeshMessage, wire::NodeResources};
 use async_nats;
 
 #[tokio::main]
@@ -11,7 +10,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a proper MeshMessage::PeerAnnouncement
     let announcement = MeshMessage::PeerAnnouncement {
-        wallet_address: "0x09465b9572fb354fdf4e34040386f180d1ff0c2a3a668333bedee17b266a4b74".to_string(),
+        wallet_address: "0x09465b9572fb354fdf4e34040386f180d1ff0c2a3a668333bedee17b266a4b74"
+            .to_string(),
         capabilities: vec![
             "compute".to_string(),
             "relay".to_string(),
@@ -23,13 +23,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Broadcast on discovery channel
     println!("📤 Broadcasting PeerAnnouncement on apn.discovery");
     let payload = serde_json::to_vec(&announcement)?;
-    client.publish("apn.discovery".to_string(), payload.into()).await?;
+    client
+        .publish("apn.discovery".to_string(), payload.into())
+        .await?;
     println!("✅ Discovery announcement broadcasted!");
 
     // Send direct message to Omega 1
     let omega_dm_subject = "apn.dm.apn_9c47c2fb";
-    println!("📤 Sending direct message to Omega 1 at {}", omega_dm_subject);
-    client.publish(omega_dm_subject.to_string(), serde_json::to_vec(&announcement)?.into()).await?;
+    println!(
+        "📤 Sending direct message to Omega 1 at {}",
+        omega_dm_subject
+    );
+    client
+        .publish(
+            omega_dm_subject.to_string(),
+            serde_json::to_vec(&announcement)?.into(),
+        )
+        .await?;
     println!("✅ Direct message sent to Omega 1!");
 
     // Flush to ensure messages are sent

@@ -1,24 +1,23 @@
 use axum::{
     Router,
-    http::{StatusCode, Method, header},
+    http::{Method, StatusCode, header},
     middleware,
     response::IntoResponse,
     routing::{IntoMakeService, get},
 };
-use tower_http::cors::{CorsLayer, AllowOrigin};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use crate::{DeploymentImpl, middleware as app_middleware};
 
 pub mod activity;
 pub mod agent_flow_events;
-pub mod artifacts;
-pub mod editron_export;
 pub mod agent_flows;
 pub mod airtable;
 pub mod apn_data;
-pub mod aptos;
 pub mod approvals;
+pub mod aptos;
 pub mod artifact_reviews;
+pub mod artifacts;
 pub mod auth;
 pub mod bowser;
 pub mod cms;
@@ -26,103 +25,104 @@ pub mod collaboration;
 pub mod comments;
 pub mod config;
 pub mod containers;
+pub mod editron_export;
 pub mod filesystem;
 // pub mod github;
 pub mod agent_chat;
 pub mod agent_wallets;
 pub mod agents;
-pub mod board_shares;
-pub mod events;
-pub mod execution_processes;
-pub mod execution_summaries;
-pub mod frontend;
-pub mod health;
-pub mod images;
-pub mod mission_control;
-pub mod nora;
-pub mod permissions;
-pub mod project_boards;
-pub mod project_controllers;
-pub mod projects;
-pub mod task_artifacts;
-pub mod task_attempts;
-pub mod task_templates;
-pub mod tasks;
-pub mod twilio;
-pub mod bot_bridge;
-pub mod users;
+pub mod automations;
 pub mod autonomy;
+pub mod board_shares;
+pub mod bot_bridge;
 pub mod cinematics;
-pub mod webhooks;
-pub mod dropbox;
-pub mod quickbooks;
-pub mod wide_research;
-pub mod token_usage;
-pub mod system_metrics;
-pub mod event_stream;
-pub mod social_accounts;
-pub mod social_posts;
-pub mod social_inbox;
-pub mod email_accounts;
+pub mod clients;
+pub mod command_center;
+pub mod communications;
+pub mod companies;
 pub mod crm_activities;
 pub mod crm_contacts;
 pub mod crm_deals;
 pub mod crm_pipelines;
-pub mod onboarding;
-pub mod org_onboarding;
-pub mod multiplayer;
-pub mod model_pricing;
-pub mod vibe_treasury;
-pub mod topsi;
-pub mod orcha;
-pub mod mesh;
-pub mod peer_rewards;
-pub mod marketplace;
-pub mod pulse;
-pub mod pythia;
-pub mod wallet;
-pub mod invitations;
-pub mod org_invitations;
-pub mod organizations;
-pub mod clients;
-pub mod project_folders;
-pub mod sidebar;
-pub mod entity_conversion;
-pub mod knowledge;
-pub mod repos;
-pub mod scratch;
-pub mod sessions;
-pub mod tags;
-pub mod notifications;
-pub mod workflow_templates;
-pub mod persons;
-pub mod proposals;
+pub mod data_source_workflows;
+pub mod data_sources;
 pub mod deliverables;
-pub mod operator_rates;
-pub mod command_center;
-pub mod automations;
+pub mod discord;
+pub mod dropbox;
+pub mod email_accounts;
+pub mod entity_conversion;
+pub mod event_stream;
+pub mod events;
+pub mod execution_processes;
+pub mod execution_summaries;
 pub mod feedback;
-pub mod intelligence;
+pub mod frontend;
+pub mod graph;
+pub mod health;
+pub mod images;
 pub mod intake;
+pub mod intelligence;
+pub mod invitations;
+pub mod invite_dispatch;
+pub mod knowledge;
+pub mod marketplace;
 pub mod media_library;
-pub mod review;
-pub mod pcg_router;
+pub mod meet;
+pub mod mesh;
+pub mod mission_control;
+pub mod model_pricing;
+pub mod multiplayer;
+pub mod nora;
+pub mod nora_classifier;
+pub mod notifications;
+pub mod onboarding;
+pub mod operator_rates;
+pub mod orcha;
+pub mod org_cloud;
+pub mod org_invitations;
+pub mod org_onboarding;
+pub mod organizations;
 pub mod oss_listener;
 pub mod oss_listener_bg;
-pub mod companies;
-pub mod data_sources;
-pub mod data_source_workflows;
+pub mod output_schemas;
+pub mod pcg_router;
+pub mod peer_rewards;
+pub mod permissions;
+pub mod persons;
+pub mod project_boards;
+pub mod project_controllers;
+pub mod project_folders;
+pub mod projects;
+pub mod proposals;
+pub mod pulse;
+pub mod pythia;
+pub mod quickbooks;
+pub mod repos;
+pub mod review;
+pub mod scratch;
+pub mod sessions;
+pub mod sidebar;
+pub mod social_accounts;
+pub mod social_inbox;
+pub mod social_posts;
+pub mod system_metrics;
+pub mod tags;
+pub mod task_artifacts;
+pub mod task_attempts;
+pub mod task_templates;
+pub mod tasks;
+pub mod token_usage;
+pub mod topsi;
+pub mod twilio;
+pub mod users;
+pub mod vibe_treasury;
+pub mod wallet;
+pub mod webhooks;
+pub mod wide_research;
 pub mod workflow_engine;
 pub mod workflow_staging;
+pub mod workflow_templates;
 pub mod workflow_triggers;
-pub mod output_schemas;
-pub mod discord;
-pub mod graph;
-pub mod invite_dispatch;
-pub mod meet;
-pub mod nora_classifier;
-pub mod communications;
-pub mod org_cloud;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -137,14 +137,13 @@ async fn metrics_handler() -> impl IntoResponse {
 
 pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
     // Admin routes with require_admin middleware applied BEFORE state
-    let admin_routes =
-        Router::new()
-            .merge(users::router(&deployment))
-            .merge(operator_rates::router(&deployment))
-            .layer(middleware::from_fn_with_state(
-                deployment.clone(),
-                app_middleware::require_admin,
-            ));
+    let admin_routes = Router::new()
+        .merge(users::router(&deployment))
+        .merge(operator_rates::router(&deployment))
+        .layer(middleware::from_fn_with_state(
+            deployment.clone(),
+            app_middleware::require_admin,
+        ));
 
     // Protected routes that require authentication
     // These routes handle sensitive data and must not be publicly accessible
@@ -280,8 +279,8 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .with_state(deployment);
 
     // CORS configuration
-    let allowed_origins = std::env::var("ALLOWED_ORIGINS")
-        .unwrap_or_else(|_| "http://localhost:3001".to_string());
+    let allowed_origins =
+        std::env::var("ALLOWED_ORIGINS").unwrap_or_else(|_| "http://localhost:3001".to_string());
 
     // Collect valid HTTP origins for standard matching
     let parsed_origins: Vec<header::HeaderValue> = allowed_origins
@@ -301,7 +300,14 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
                     || origin_str.starts_with("https://tauri.")
                     || parsed_origins.iter().any(|allowed| allowed == origin)
             }))
-            .allow_methods([Method::GET, Method::POST, Method::PUT, Method::PATCH, Method::DELETE, Method::OPTIONS])
+            .allow_methods([
+                Method::GET,
+                Method::POST,
+                Method::PUT,
+                Method::PATCH,
+                Method::DELETE,
+                Method::OPTIONS,
+            ])
             .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION, header::COOKIE])
             .allow_credentials(true)
     } else {

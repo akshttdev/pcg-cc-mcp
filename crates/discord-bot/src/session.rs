@@ -1,8 +1,9 @@
 //! Discord voice session state and event types
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Which PCG agent is present in this session
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -145,8 +146,7 @@ impl UserAudioBuffer {
         let silence_threshold = 75; // 75 ticks * 20ms = 1500ms
         let max_duration_ms = 8000;
 
-        self.silent_ticks >= silence_threshold
-            || self.duration_ms() >= max_duration_ms
+        self.silent_ticks >= silence_threshold || self.duration_ms() >= max_duration_ms
     }
 
     pub fn take(&mut self) -> Vec<i16> {

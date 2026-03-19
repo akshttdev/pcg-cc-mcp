@@ -207,7 +207,9 @@ impl AccessContext {
                 .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
         if let Some(m) = member {
-            let role = m.role.parse::<ProjectRole>()
+            let role = m
+                .role
+                .parse::<ProjectRole>()
                 .map_err(|e| ApiError::InternalError(e))?;
             let has_access = match required_role {
                 ProjectRole::Viewer => role.can_read(),
@@ -228,13 +230,12 @@ impl AccessContext {
             client_id: Option<String>,
         }
 
-        let project_info: Option<ProjectOrgClient> = sqlx::query_as(
-            "SELECT organization_id, client_id FROM projects WHERE id = ?"
-        )
-        .bind(project_id)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+        let project_info: Option<ProjectOrgClient> =
+            sqlx::query_as("SELECT organization_id, client_id FROM projects WHERE id = ?")
+                .bind(project_id)
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
         if let Some(info) = &project_info {
             #[derive(sqlx::FromRow)]
@@ -281,7 +282,7 @@ impl AccessContext {
                 let org_admin_via_client: Option<RoleRow> = sqlx::query_as(
                     r#"SELECT om.role FROM organization_members om
                        JOIN clients c ON c.organization_id = om.organization_id
-                       WHERE c.id = ? AND om.user_id = ? AND om.role = 'admin'"#
+                       WHERE c.id = ? AND om.user_id = ? AND om.role = 'admin'"#,
                 )
                 .bind(client_id)
                 .bind(&user_id_bytes)
@@ -305,7 +306,7 @@ impl AccessContext {
                 // 3. Check direct client membership — all client members get
                 // access to projects under their client.
                 let client_role: Option<RoleRow> = sqlx::query_as(
-                    "SELECT role FROM client_members WHERE client_id = ? AND user_id = ?"
+                    "SELECT role FROM client_members WHERE client_id = ? AND user_id = ?",
                 )
                 .bind(client_id)
                 .bind(&user_id_bytes)
@@ -377,7 +378,7 @@ impl AccessContext {
 
         // Check direct project membership
         let direct: Option<i64> = sqlx::query_scalar(
-            "SELECT 1 FROM project_members WHERE project_id = ? AND user_id = ? LIMIT 1"
+            "SELECT 1 FROM project_members WHERE project_id = ? AND user_id = ? LIMIT 1",
         )
         .bind(project_id)
         .bind(&user_id_bytes)
@@ -396,13 +397,12 @@ impl AccessContext {
             client_id: Option<String>,
         }
 
-        let parent: Option<ProjectParent> = sqlx::query_as(
-            "SELECT organization_id, client_id FROM projects WHERE id = ?"
-        )
-        .bind(project_id)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+        let parent: Option<ProjectParent> =
+            sqlx::query_as("SELECT organization_id, client_id FROM projects WHERE id = ?")
+                .bind(project_id)
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
         if let Some(p) = &parent {
             // Org member gets full access to org projects
@@ -427,7 +427,7 @@ impl AccessContext {
                 let org_admin_via_client: Option<i64> = sqlx::query_scalar(
                     r#"SELECT 1 FROM organization_members om
                        JOIN clients c ON c.organization_id = om.organization_id
-                       WHERE c.id = ? AND om.user_id = ? AND om.role = 'admin' LIMIT 1"#
+                       WHERE c.id = ? AND om.user_id = ? AND om.role = 'admin' LIMIT 1"#,
                 )
                 .bind(client_id)
                 .bind(&user_id_bytes)
@@ -441,7 +441,7 @@ impl AccessContext {
 
                 // Direct client member gets full access to client projects
                 let client_member: Option<i64> = sqlx::query_scalar(
-                    "SELECT 1 FROM client_members WHERE client_id = ? AND user_id = ? LIMIT 1"
+                    "SELECT 1 FROM client_members WHERE client_id = ? AND user_id = ? LIMIT 1",
                 )
                 .bind(client_id)
                 .bind(&user_id_bytes)
@@ -495,7 +495,10 @@ impl AccessContext {
         board_id: Option<&str>,
     ) -> Result<ProjectRole, ApiError> {
         // Try standard hierarchical check first
-        match self.check_project_access_hierarchical(pool, project_id, required_role).await {
+        match self
+            .check_project_access_hierarchical(pool, project_id, required_role)
+            .await
+        {
             Ok(role) => return Ok(role),
             Err(_) if board_id.is_some() => {
                 // Fall through to board share check
@@ -531,16 +534,14 @@ async fn load_platform_roles(pool: &sqlx::SqlitePool, user_id: &str) -> Vec<Stri
         role: String,
     }
 
-    sqlx::query_as::<_, RoleRow>(
-        "SELECT role FROM user_platform_roles WHERE user_id = ?"
-    )
-    .bind(user_id)
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default()
-    .into_iter()
-    .map(|r| r.role)
-    .collect()
+    sqlx::query_as::<_, RoleRow>("SELECT role FROM user_platform_roles WHERE user_id = ?")
+        .bind(user_id)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.role)
+        .collect()
 }
 
 /// Build AccessContext from a verified session, loading platform roles
@@ -613,7 +614,8 @@ pub async fn get_current_user(
                     user_id,
                     user_session.is_admin == 1,
                     user_session.is_active == 1,
-                ).await);
+                )
+                .await);
             }
         }
     }
@@ -661,7 +663,8 @@ pub async fn get_current_user(
                 user_id,
                 user_session.is_admin == 1,
                 user_session.is_active == 1,
-            ).await);
+            )
+            .await);
         }
     }
 

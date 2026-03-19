@@ -6,23 +6,23 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use deployment::Deployment;
-use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
+use super::auth_sqlite::{UserOrganization, UserProfile};
 use crate::{DeploymentImpl, error::ApiError};
-use super::auth_sqlite::{UserProfile, UserOrganization};
 
 /// JWT claims from external provider (e.g., Jungleverse)
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ExternalClaims {
-    pub sub: String,        // External user ID
-    pub email: String,      // User email
+    pub sub: String,          // External user ID
+    pub email: String,        // User email
     pub name: Option<String>, // User display name
-    pub provider: String,   // Provider name (e.g., "jungleverse")
-    pub iat: i64,           // Issued at
-    pub exp: i64,           // Expiration
+    pub provider: String,     // Provider name (e.g., "jungleverse")
+    pub iat: i64,             // Issued at
+    pub exp: i64,             // Expiration
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -186,7 +186,8 @@ pub async fn validate_external_token(
         .collect();
 
     let platform_roles = super::auth_sqlite::load_platform_roles_pub(pool, &user.id).await;
-    let effective_admin = user.is_admin == 1 || platform_roles.iter().any(|r| r == "platform_admin");
+    let effective_admin =
+        user.is_admin == 1 || platform_roles.iter().any(|r| r == "platform_admin");
 
     let profile = UserProfile {
         id: user.id.clone(),

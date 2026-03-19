@@ -2,11 +2,11 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
-    routing::{get, post, delete},
+    routing::{delete, get, post},
 };
 use db::models::{
-    task_artifact::{ArtifactRole, LinkArtifactToTask, TaskArtifact},
     execution_artifact::ExecutionArtifact,
+    task_artifact::{ArtifactRole, LinkArtifactToTask, TaskArtifact},
 };
 use deployment::Deployment;
 use serde::Deserialize;
@@ -132,9 +132,8 @@ async fn update_role(
     Path((task_id, artifact_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<UpdateRolePayload>,
 ) -> Result<Json<ApiResponse<TaskArtifact>>, ApiError> {
-    let link =
-        TaskArtifact::update_role(&deployment.db().pool, task_id, artifact_id, payload.role)
-            .await?;
+    let link = TaskArtifact::update_role(&deployment.db().pool, task_id, artifact_id, payload.role)
+        .await?;
     Ok(Json(ApiResponse::success(link)))
 }
 
@@ -151,9 +150,13 @@ async fn reorder_artifact(
     Path((task_id, artifact_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<ReorderPayload>,
 ) -> Result<Json<ApiResponse<TaskArtifact>>, ApiError> {
-    let link =
-        TaskArtifact::reorder(&deployment.db().pool, task_id, artifact_id, payload.new_order)
-            .await?;
+    let link = TaskArtifact::reorder(
+        &deployment.db().pool,
+        task_id,
+        artifact_id,
+        payload.new_order,
+    )
+    .await?;
     Ok(Json(ApiResponse::success(link)))
 }
 

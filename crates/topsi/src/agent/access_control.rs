@@ -5,10 +5,13 @@
 //! - Admin full visibility (master credential)
 //! - No cross-client data leakage
 
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
+
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 use tokio::sync::RwLock;
 use ts_rs::TS;
 use uuid::Uuid;
@@ -114,7 +117,10 @@ impl ProjectRole {
 
     /// Check if role can execute
     pub fn can_execute(&self) -> bool {
-        matches!(self, ProjectRole::Owner | ProjectRole::Editor | ProjectRole::Executor)
+        matches!(
+            self,
+            ProjectRole::Owner | ProjectRole::Editor | ProjectRole::Executor
+        )
     }
 
     /// Check if role can manage permissions
@@ -182,12 +188,11 @@ impl AccessControl {
             email: String,
         }
 
-        let admin_rows: Vec<AdminRow> = sqlx::query_as(
-            "SELECT id, email FROM users WHERE is_admin = 1"
-        )
-        .fetch_all(pool)
-        .await
-        .map_err(TopsiError::DatabaseError)?;
+        let admin_rows: Vec<AdminRow> =
+            sqlx::query_as("SELECT id, email FROM users WHERE is_admin = 1")
+                .fetch_all(pool)
+                .await
+                .map_err(TopsiError::DatabaseError)?;
 
         let mut admins = self.admin_users.write().await;
         admins.clear();
@@ -207,7 +212,7 @@ impl AccessControl {
         #[derive(sqlx::FromRow)]
         struct MemberRow {
             user_id: Vec<u8>,
-            project_id: Vec<u8>,  // BLOB in SQLite — must use from_slice
+            project_id: Vec<u8>, // BLOB in SQLite — must use from_slice
             role: String,
             granted_at: String,
             project_name: String,
@@ -218,7 +223,7 @@ impl AccessControl {
             SELECT pm.user_id, pm.project_id, pm.role, pm.granted_at, p.name as project_name
             FROM project_members pm
             JOIN projects p ON p.id = pm.project_id
-            "#
+            "#,
         )
         .fetch_all(pool)
         .await;
@@ -273,7 +278,8 @@ impl AccessControl {
     pub async fn get_access_scope(&self, context: &UserContext) -> AccessScope {
         // Admins get full access
         if context.is_admin || self.admin_users.read().await.contains(&context.user_id) {
-            self.log_access_check(&context.user_id, "get_scope", None, true, "admin_access").await;
+            self.log_access_check(&context.user_id, "get_scope", None, true, "admin_access")
+                .await;
             return AccessScope::Admin;
         }
 
@@ -283,7 +289,8 @@ impl AccessControl {
             let project_ids: HashSet<Uuid> = projects.keys().copied().collect();
 
             if project_ids.is_empty() {
-                self.log_access_check(&context.user_id, "get_scope", None, false, "no_projects").await;
+                self.log_access_check(&context.user_id, "get_scope", None, false, "no_projects")
+                    .await;
                 return AccessScope::None;
             }
 
@@ -293,15 +300,36 @@ impl AccessControl {
                     Some(id) => *id,
                     None => return AccessScope::None,
                 };
-                self.log_access_check(&context.user_id, "get_scope", Some(pid), true, "single_project").await;
+                self.log_access_check(
+                    &context.user_id,
+                    "get_scope",
+                    Some(pid),
+                    true,
+                    "single_project",
+                )
+                .await;
                 return AccessScope::SingleProject(pid);
             }
 
-            self.log_access_check(&context.user_id, "get_scope", None, true, &format!("{}_projects", project_ids.len())).await;
+            self.log_access_check(
+                &context.user_id,
+                "get_scope",
+                None,
+                true,
+                &format!("{}_projects", project_ids.len()),
+            )
+            .await;
             return AccessScope::Projects(project_ids);
         }
 
-        self.log_access_check(&context.user_id, "get_scope", None, false, "no_access_entry").await;
+        self.log_access_check(
+            &context.user_id,
+            "get_scope",
+            None,
+            false,
+            "no_access_entry",
+        )
+        .await;
         AccessScope::None
     }
 
@@ -309,7 +337,14 @@ impl AccessControl {
     pub async fn can_access_project(&self, context: &UserContext, project_id: Uuid) -> bool {
         // Admins can access everything
         if context.is_admin || self.admin_users.read().await.contains(&context.user_id) {
-            self.log_access_check(&context.user_id, "project_access", Some(project_id), true, "admin").await;
+            self.log_access_check(
+                &context.user_id,
+                "project_access",
+                Some(project_id),
+                true,
+                "admin",
+            )
+            .await;
             return true;
         }
 
@@ -325,8 +360,9 @@ impl AccessControl {
             "project_access",
             Some(project_id),
             has_access,
-            if has_access { "granted" } else { "denied" }
-        ).await;
+            if has_access { "granted" } else { "denied" },
+        )
+        .await;
 
         has_access
     }
@@ -396,7 +432,9 @@ impl AccessControl {
 
         tracing::info!(
             "Granted {:?} access to project {} for user {}",
-            role, project_id, user_id
+            role,
+            project_id,
+            user_id
         );
 
         Ok(())
@@ -409,7 +447,8 @@ impl AccessControl {
             projects.remove(&project_id);
             tracing::info!(
                 "Revoked access to project {} for user {}",
-                project_id, user_id
+                project_id,
+                user_id
             );
         }
         Ok(())
@@ -469,8 +508,13 @@ impl AccessControl {
             action,
             None,
             granted,
-            if granted { "Access granted" } else { "Access denied" },
-        ).await;
+            if granted {
+                "Access granted"
+            } else {
+                "Access denied"
+            },
+        )
+        .await;
     }
 
     /// Get recent audit entries (for security review)
@@ -584,11 +628,17 @@ mod tests {
         // Editor can view and edit
         assert!(ac.can_perform_action(&editor_ctx, project_id, "view").await);
         assert!(ac.can_perform_action(&editor_ctx, project_id, "edit").await);
-        assert!(!ac.can_perform_action(&editor_ctx, project_id, "manage").await);
+        assert!(
+            !ac.can_perform_action(&editor_ctx, project_id, "manage")
+                .await
+        );
 
         // Owner can do everything
         assert!(ac.can_perform_action(&owner_ctx, project_id, "view").await);
         assert!(ac.can_perform_action(&owner_ctx, project_id, "edit").await);
-        assert!(ac.can_perform_action(&owner_ctx, project_id, "manage").await);
+        assert!(
+            ac.can_perform_action(&owner_ctx, project_id, "manage")
+                .await
+        );
     }
 }

@@ -7,19 +7,23 @@
 //! - Stage 4: knowledge graph registration
 //! - CRM deal automation helpers
 
-use db::db_uuid::DbUuid;
-use db::models::{
-    call_intake_item::CallIntakeItem,
-    company::Company,
-    crm_deal::{CreateCrmDeal, CrmDeal},
-    project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource},
-    proposal::{CreateProposal, Proposal},
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        call_intake_item::CallIntakeItem,
+        company::Company,
+        crm_deal::{CreateCrmDeal, CrmDeal},
+        project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource},
+        proposal::{CreateProposal, Proposal},
+    },
 };
 use tracing::{info, warn};
 use uuid::Uuid;
 
-use super::{ExtractedIndividual, ExtractedIntake, ExtractedParticipant};
-use super::report::{run_company_research_pass, run_report_generation};
+use super::{
+    ExtractedIndividual, ExtractedIntake, ExtractedParticipant,
+    report::{run_company_research_pass, run_report_generation},
+};
 
 // ── Core pipeline ─────────────────────────────────────────────────────────────
 
@@ -63,14 +67,26 @@ pub async fn run_intake_pipeline(
     };
 
     // Stage 2: Associate participants to CRM persons
-    let primary_person_id = associate_participants(&pool, &extracted.participants, &item, organization_id, assigned_to).await;
+    let primary_person_id = associate_participants(
+        &pool,
+        &extracted.participants,
+        &item,
+        organization_id,
+        assigned_to,
+    )
+    .await;
 
     // Stage 2b: Auto-create CRM deal for the primary prospect in the Acquisition pipeline
     let crm_deal_id = if let Some(pid) = primary_person_id {
         ensure_crm_deal_for_person(
-            &pool, pid, item_id, organization_id,
-            &extracted.call_summary, "Lead",
-        ).await
+            &pool,
+            pid,
+            item_id,
+            organization_id,
+            &extracted.call_summary,
+            "Lead",
+        )
+        .await
     } else {
         None
     };
@@ -114,8 +130,13 @@ pub async fn run_intake_pipeline(
 
     // Stage 4b: Create tasks from action items (email-driven workflow kickoff)
     create_tasks_from_action_items(
-        &pool, &extracted.action_items, &item, organization_id, primary_person_id,
-    ).await;
+        &pool,
+        &extracted.action_items,
+        &item,
+        organization_id,
+        primary_person_id,
+    )
+    .await;
 
     // Stage 5 & 6: Run company research passes, then generate comprehensive report
     // This runs in background so intake item is already marked processed
@@ -130,12 +151,23 @@ pub async fn run_intake_pipeline(
                 if biz.name.len() > 2 {
                     // Skip internal companies (PCG, Sirak Studios variants)
                     let lower = biz.name.to_lowercase();
-                    if lower.contains("powerclub") || lower.contains("pcg")
-                        || lower.contains("sirak") || lower.contains("cyra")
-                        || lower.contains("cyrax") || lower.contains("cyroax") {
+                    if lower.contains("powerclub")
+                        || lower.contains("pcg")
+                        || lower.contains("sirak")
+                        || lower.contains("cyra")
+                        || lower.contains("cyrax")
+                        || lower.contains("cyroax")
+                    {
                         continue;
                     }
-                    match Company::find_or_create(&pool_clone, &biz.name, organization_id.map(DbUuid::from), None).await {
+                    match Company::find_or_create(
+                        &pool_clone,
+                        &biz.name,
+                        organization_id.map(DbUuid::from),
+                        None,
+                    )
+                    .await
+                    {
                         Ok(co) => {
                             // Update company description if we have one and it's richer
                             if let Some(desc) = &biz.description {
@@ -168,8 +200,13 @@ pub async fn run_intake_pipeline(
         for biz in &businesses {
             if biz.name.len() > 2 {
                 for pass in 1u32..=3 {
-                    if let Err(e) = run_company_research_pass(&pool_clone, &biz.name, item_id, pass).await {
-                        warn!("Company research pass {} failed for '{}': {}", pass, biz.name, e);
+                    if let Err(e) =
+                        run_company_research_pass(&pool_clone, &biz.name, item_id, pass).await
+                    {
+                        warn!(
+                            "Company research pass {} failed for '{}': {}",
+                            pass, biz.name, e
+                        );
                         break;
                     }
                 }
@@ -193,9 +230,16 @@ pub async fn run_intake_pipeline(
         // Now generate the comprehensive report with all research context
         if let Some(pid) = primary_person_id {
             if let Err(e) = run_report_generation(
-                pool_clone.clone(), pid, "business_audit".into(),
-                businesses, individuals, item_id, crm_deal_id,
-            ).await {
+                pool_clone.clone(),
+                pid,
+                "business_audit".into(),
+                businesses,
+                individuals,
+                item_id,
+                crm_deal_id,
+            )
+            .await
+            {
                 warn!("Auto-report generation failed for person {}: {}", pid, e);
             }
         }
@@ -230,7 +274,8 @@ async fn associate_participants(
 
         // Fall back to name match (with company for disambiguation)
         let person_id = if person_id.is_none() {
-            find_person_by_name_and_company(pool, &participant.name, participant.company.as_deref()).await
+            find_person_by_name_and_company(pool, &participant.name, participant.company.as_deref())
+                .await
         } else {
             person_id
         };
@@ -243,7 +288,9 @@ async fn associate_participants(
             }
             id
         } else {
-            match create_person_from_intake(pool, participant, item, organization_id, assigned_to).await {
+            match create_person_from_intake(pool, participant, item, organization_id, assigned_to)
+                .await
+            {
                 Some(id) => id,
                 None => continue,
             }
@@ -285,7 +332,9 @@ async fn link_person_to_org(
 
 pub(super) async fn find_person_by_email(pool: &sqlx::SqlitePool, email: &str) -> Option<Uuid> {
     #[derive(sqlx::FromRow)]
-    struct Row { id: Uuid }
+    struct Row {
+        id: Uuid,
+    }
 
     sqlx::query_as::<_, Row>(
         "SELECT id FROM persons WHERE email = ? COLLATE NOCASE \
@@ -310,7 +359,9 @@ pub(super) async fn find_person_by_name_and_company(
     company: Option<&str>,
 ) -> Option<Uuid> {
     #[derive(sqlx::FromRow)]
-    struct Row { id: Uuid }
+    struct Row {
+        id: Uuid,
+    }
 
     // 1. Exact full_name match
     let exact = sqlx::query_as::<_, Row>(
@@ -362,8 +413,8 @@ pub(super) async fn find_person_by_name_and_company(
                    AND company_name LIKE ? \
                  LIMIT 1",
             )
-            .bind(format!("{single} %"))   // "Robbi %" matches "Robbi Jan"
-            .bind(single)                  // exact single name
+            .bind(format!("{single} %")) // "Robbi %" matches "Robbi Jan"
+            .bind(single) // exact single name
             .bind(format!("%{co}%"))
             .fetch_optional(pool)
             .await
@@ -399,7 +450,9 @@ pub(super) async fn find_person_by_name_and_company(
     if parts.len() >= 2 {
         if let Some(co) = company {
             for part in &parts {
-                if part.len() < 3 { continue; }
+                if part.len() < 3 {
+                    continue;
+                }
                 let found = sqlx::query_as::<_, Row>(
                     "SELECT id FROM persons \
                      WHERE full_name LIKE ? \
@@ -469,7 +522,9 @@ async fn create_person_from_intake(
                         company_name.trim(),
                         organization_id.map(DbUuid::from),
                         None,
-                    ).await {
+                    )
+                    .await
+                    {
                         let _ = sqlx::query(
                             "INSERT OR IGNORE INTO person_company_roles \
                              (id, person_id, company_id, role, is_primary) \
@@ -503,15 +558,13 @@ async fn auto_create_proposal(
     assigned_to: Option<Uuid>,
 ) {
     // Skip if a proposal already exists for this lead
-    let exists: bool = sqlx::query_scalar(
-        "SELECT COUNT(*) > 0 FROM proposals WHERE lead_id = ?",
-    )
-    .bind(person_id)
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten()
-    .unwrap_or(false);
+    let exists: bool = sqlx::query_scalar("SELECT COUNT(*) > 0 FROM proposals WHERE lead_id = ?")
+        .bind(person_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or(false);
 
     if exists {
         return;
@@ -531,18 +584,22 @@ async fn auto_create_proposal(
         item.call_date.as_deref().unwrap_or("—"),
     );
 
-    let _ = Proposal::create(pool, CreateProposal {
-        title,
-        lead_id: Some(person_id),
-        organization_id,
-        owner_id: assigned_to,
-        project_id: None,
-        company_id: None,
-        description: Some(description),
-        quote_amount_vibe: None,
-        deal_type: None,
-        contact_ids: Some(vec![person_id.to_string()]),
-    }).await;
+    let _ = Proposal::create(
+        pool,
+        CreateProposal {
+            title,
+            lead_id: Some(person_id),
+            organization_id,
+            owner_id: assigned_to,
+            project_id: None,
+            company_id: None,
+            description: Some(description),
+            quote_amount_vibe: None,
+            deal_type: None,
+            contact_ids: Some(vec![person_id.to_string()]),
+        },
+    )
+    .await;
 
     info!("Auto-created proposal for new lead {}", person_id);
 }
@@ -580,7 +637,9 @@ async fn register_call_in_knowledge_graph(
 ) {
     // Find any project this person is linked to via proposals or project_members
     #[derive(sqlx::FromRow)]
-    struct Row { project_id: Option<Uuid> }
+    struct Row {
+        project_id: Option<Uuid>,
+    }
 
     let maybe_project: Option<Uuid> = sqlx::query_as::<_, Row>(
         "SELECT p.project_id FROM proposals p
@@ -595,7 +654,10 @@ async fn register_call_in_knowledge_graph(
     .and_then(|r| r.project_id);
 
     if let Some(project_id) = maybe_project {
-        let title = format!("Call: {}", extracted.call_summary.chars().take(80).collect::<String>());
+        let title = format!(
+            "Call: {}",
+            extracted.call_summary.chars().take(80).collect::<String>()
+        );
         let summary = format!(
             "Topics: {}. Pain points: {}.",
             extracted.topics.join(", "),
@@ -618,18 +680,18 @@ async fn register_call_in_knowledge_graph(
 
 async fn trigger_research_if_needed(pool: &sqlx::SqlitePool, person_id: Uuid) {
     #[derive(sqlx::FromRow)]
-    struct Row { intelligence_status: Option<String> }
+    struct Row {
+        intelligence_status: Option<String>,
+    }
 
-    let status = sqlx::query_as::<_, Row>(
-        "SELECT intelligence_status FROM persons WHERE id = ?",
-    )
-    .bind(person_id)
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten()
-    .and_then(|r| r.intelligence_status)
-    .unwrap_or_else(|| "idle".into());
+    let status = sqlx::query_as::<_, Row>("SELECT intelligence_status FROM persons WHERE id = ?")
+        .bind(person_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|r| r.intelligence_status)
+        .unwrap_or_else(|| "idle".into());
 
     // Only trigger if idle or failed (not already running/queued/done)
     if matches!(status.as_str(), "idle" | "failed") {
@@ -659,7 +721,9 @@ async fn ingest_contextual_individuals(
     _intake_item_id: Uuid,
     organization_id: Option<Uuid>,
 ) {
-    let Some(org_id) = organization_id else { return };
+    let Some(org_id) = organization_id else {
+        return;
+    };
 
     for ind in individuals {
         // Skip if they're a prospect — handled by associate_participants already
@@ -692,7 +756,9 @@ async fn ingest_contextual_individuals(
             .execute(pool)
             .await
             .is_ok();
-            if !ok { continue; }
+            if !ok {
+                continue;
+            }
             id
         };
 
@@ -700,7 +766,11 @@ async fn ingest_contextual_individuals(
         let summary = format!(
             "{}{}{} — mentioned in call context. Notes: {}",
             ind.role.as_deref().unwrap_or(""),
-            if ind.role.is_some() && ind.company.is_some() { " at " } else { "" },
+            if ind.role.is_some() && ind.company.is_some() {
+                " at "
+            } else {
+                ""
+            },
             ind.company.as_deref().unwrap_or(""),
             ind.notes.as_deref().unwrap_or("No additional context"),
         );
@@ -751,7 +821,9 @@ async fn ensure_crm_deal_for_person(
 
     // Find the Acquisition (sales) pipeline for this org
     #[derive(sqlx::FromRow)]
-    struct PipelineRow { id: Uuid }
+    struct PipelineRow {
+        id: Uuid,
+    }
 
     let pipeline = sqlx::query_as::<_, PipelineRow>(
         "SELECT id FROM crm_pipelines WHERE organization_id = ? AND pipeline_type = 'sales'
@@ -767,7 +839,9 @@ async fn ensure_crm_deal_for_person(
 
     // Find the named stage in this pipeline
     #[derive(sqlx::FromRow)]
-    struct StageRow { id: Vec<u8> }
+    struct StageRow {
+        id: Vec<u8>,
+    }
 
     let stage = sqlx::query_as::<_, StageRow>(
         "SELECT id FROM crm_pipeline_stages WHERE pipeline_id = ? AND name = ? LIMIT 1",
@@ -783,18 +857,18 @@ async fn ensure_crm_deal_for_person(
 
     // Look up person name + contact for dedup check
     #[derive(sqlx::FromRow)]
-    struct PersonRow { full_name: String }
+    struct PersonRow {
+        full_name: String,
+    }
 
-    let person_name = sqlx::query_as::<_, PersonRow>(
-        "SELECT full_name FROM persons WHERE id = ?",
-    )
-    .bind(person_id)
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten()
-    .map(|r| r.full_name)
-    .unwrap_or_else(|| "Unknown".to_string());
+    let person_name = sqlx::query_as::<_, PersonRow>("SELECT full_name FROM persons WHERE id = ?")
+        .bind(person_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .map(|r| r.full_name)
+        .unwrap_or_else(|| "Unknown".to_string());
 
     let deal_name = format!("{} — Discovery Lead", person_name);
 
@@ -802,60 +876,67 @@ async fn ensure_crm_deal_for_person(
     let org_db_id = DbUuid::from(org_id);
     if let Ok(Some(existing)) = CrmDeal::find_by_name_and_org(pool, &deal_name, &org_db_id).await {
         // Link intake item to existing deal
-        let _ = sqlx::query(
-            "UPDATE call_intake_items SET crm_deal_id = ? WHERE id = ?",
-        )
-        .bind(existing.id.as_str())
-        .bind(intake_item_id)
-        .execute(pool)
-        .await;
+        let _ = sqlx::query("UPDATE call_intake_items SET crm_deal_id = ? WHERE id = ?")
+            .bind(existing.id.as_str())
+            .bind(intake_item_id)
+            .execute(pool)
+            .await;
         return Uuid::parse_str(existing.id.as_str()).ok();
     }
 
     // Find crm_contact_id for this person if available
     #[derive(sqlx::FromRow)]
-    struct ContactRow { id: Uuid }
-    let contact_id = sqlx::query_as::<_, ContactRow>(
-        "SELECT id FROM crm_contacts WHERE person_id = ? LIMIT 1",
-    )
-    .bind(person_id)
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten()
-    .map(|r| r.id);
+    struct ContactRow {
+        id: Uuid,
+    }
+    let contact_id =
+        sqlx::query_as::<_, ContactRow>("SELECT id FROM crm_contacts WHERE person_id = ? LIMIT 1")
+            .bind(person_id)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten()
+            .map(|r| r.id);
 
     // Create the deal
-    let deal_result = CrmDeal::create(pool, CreateCrmDeal {
-        organization_id: org_db_id,
-        client_id: None,
-        crm_contact_id: contact_id.map(DbUuid::from),
-        crm_pipeline_id: Some(DbUuid::from(pipeline_id)),
-        crm_stage_id: Some(DbUuid::from(stage_id)),
-        name: deal_name,
-        description: Some(summary[..summary.len().min(500)].to_string()),
-        amount: None,
-        currency: None,
-        expected_close_date: None,
-        tags: None,
-        custom_fields: None,
-    }).await;
+    let deal_result = CrmDeal::create(
+        pool,
+        CreateCrmDeal {
+            organization_id: org_db_id,
+            client_id: None,
+            crm_contact_id: contact_id.map(DbUuid::from),
+            crm_pipeline_id: Some(DbUuid::from(pipeline_id)),
+            crm_stage_id: Some(DbUuid::from(stage_id)),
+            name: deal_name,
+            description: Some(summary[..summary.len().min(500)].to_string()),
+            amount: None,
+            currency: None,
+            expected_close_date: None,
+            tags: None,
+            custom_fields: None,
+        },
+    )
+    .await;
 
     match deal_result {
         Ok(deal) => {
-            info!("Auto-created CRM deal {} for person {} in pipeline {}", deal.id, person_id, pipeline_id);
+            info!(
+                "Auto-created CRM deal {} for person {} in pipeline {}",
+                deal.id, person_id, pipeline_id
+            );
             // Link intake item to deal
-            let _ = sqlx::query(
-                "UPDATE call_intake_items SET crm_deal_id = ? WHERE id = ?",
-            )
-            .bind(deal.id.as_str())
-            .bind(intake_item_id)
-            .execute(pool)
-            .await;
+            let _ = sqlx::query("UPDATE call_intake_items SET crm_deal_id = ? WHERE id = ?")
+                .bind(deal.id.as_str())
+                .bind(intake_item_id)
+                .execute(pool)
+                .await;
             Uuid::parse_str(deal.id.as_str()).ok()
         }
         Err(e) => {
-            warn!("Failed to create CRM deal for person {}: {:?}", person_id, e);
+            warn!(
+                "Failed to create CRM deal for person {}: {:?}",
+                person_id, e
+            );
             None
         }
     }
@@ -871,7 +952,9 @@ pub(super) async fn advance_deal_stage(pool: &sqlx::SqlitePool, deal_id: Uuid, s
 
     if let Some(ref pipeline_id) = deal.crm_pipeline_id {
         #[derive(sqlx::FromRow)]
-        struct StageRow { id: String }
+        struct StageRow {
+            id: String,
+        }
 
         let stage = sqlx::query_as::<_, StageRow>(
             "SELECT id FROM crm_pipeline_stages WHERE pipeline_id = ? AND name = ? LIMIT 1",
@@ -985,23 +1068,26 @@ async fn create_tasks_from_action_items(
         );
 
         // Dedup: skip if a task with the same title already exists in this project
-        let exists: bool = sqlx::query_scalar(
-            "SELECT COUNT(*) > 0 FROM tasks WHERE project_id = ? AND title = ?",
-        )
-        .bind(project_id)
-        .bind(&title)
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten()
-        .unwrap_or(false);
+        let exists: bool =
+            sqlx::query_scalar("SELECT COUNT(*) > 0 FROM tasks WHERE project_id = ? AND title = ?")
+                .bind(project_id)
+                .bind(&title)
+                .fetch_optional(pool)
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or(false);
 
         if exists {
             continue;
         }
 
         let task_id = Uuid::new_v4();
-        let priority = if owner_lower.contains("nora") { "high" } else { "medium" };
+        let priority = if owner_lower.contains("nora") {
+            "high"
+        } else {
+            "medium"
+        };
 
         let result = sqlx::query(
             "INSERT INTO tasks (id, project_id, title, description, status, priority,
@@ -1034,7 +1120,9 @@ async fn create_tasks_from_action_items(
 
 /// Map owner name references to user IDs and agent IDs.
 /// Returns (assignee_id, agent_id, created_by).
-fn resolve_task_assignee(owner_lower: &str) -> (Option<&'static str>, Option<&'static str>, &'static str) {
+fn resolve_task_assignee(
+    owner_lower: &str,
+) -> (Option<&'static str>, Option<&'static str>, &'static str) {
     if owner_lower.contains("nora") {
         // Nora tasks: assigned to Nora agent, created by system
         (None, Some(SIRAK_CONFIG.nora_agent_id), "nora-intake")

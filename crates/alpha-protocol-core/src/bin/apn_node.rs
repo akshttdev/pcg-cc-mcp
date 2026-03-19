@@ -12,14 +12,15 @@
 //!   --new               Generate new identity
 //!   --import <PHRASE>   Import from mnemonic phrase
 
+use std::env;
+
 use alpha_protocol_core::{
-    node::{AlphaNodeBuilder, NodeEvent},
     identity::NodeIdentity,
     identity_storage,
+    node::{AlphaNodeBuilder, NodeEvent},
     DEFAULT_NATS_RELAY,
 };
 use tokio::sync::mpsc;
-use std::env;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -43,28 +44,33 @@ async fn main() -> anyhow::Result<()> {
     while i < args.len() {
         match args[i].as_str() {
             "--port" => {
-                port = args.get(i + 1)
+                port = args
+                    .get(i + 1)
                     .ok_or_else(|| anyhow::anyhow!("--port requires a value"))?
                     .parse()?;
                 i += 2;
             }
             "--relay" => {
-                relay_url = args.get(i + 1)
+                relay_url = args
+                    .get(i + 1)
                     .ok_or_else(|| anyhow::anyhow!("--relay requires a value"))?
                     .clone();
                 i += 2;
             }
             "--bootstrap" => {
-                let peer = args.get(i + 1)
+                let peer = args
+                    .get(i + 1)
                     .ok_or_else(|| anyhow::anyhow!("--bootstrap requires a value"))?
                     .clone();
                 bootstrap_peers.push(peer);
                 i += 2;
             }
             "--import" => {
-                mnemonic = Some(args.get(i + 1)
-                    .ok_or_else(|| anyhow::anyhow!("--import requires a mnemonic phrase"))?
-                    .clone());
+                mnemonic = Some(
+                    args.get(i + 1)
+                        .ok_or_else(|| anyhow::anyhow!("--import requires a mnemonic phrase"))?
+                        .clone(),
+                );
                 i += 2;
             }
             "--new" => {
@@ -72,7 +78,8 @@ async fn main() -> anyhow::Result<()> {
                 i += 1;
             }
             "--heartbeat-interval" => {
-                heartbeat_interval = args.get(i + 1)
+                heartbeat_interval = args
+                    .get(i + 1)
                     .ok_or_else(|| anyhow::anyhow!("--heartbeat-interval requires a value"))?
                     .parse()?;
                 i += 2;
@@ -82,9 +89,11 @@ async fn main() -> anyhow::Result<()> {
                 i += 1;
             }
             "--name" => {
-                device_name = Some(args.get(i + 1)
-                    .ok_or_else(|| anyhow::anyhow!("--name requires a value"))?
-                    .clone());
+                device_name = Some(
+                    args.get(i + 1)
+                        .ok_or_else(|| anyhow::anyhow!("--name requires a value"))?
+                        .clone(),
+                );
                 i += 2;
             }
             "--help" | "-h" => {
@@ -155,7 +164,9 @@ async fn main() -> anyhow::Result<()> {
     // Setup heartbeat interval
     let mut heartbeat_timer = if enable_heartbeat {
         println!("💓 Heartbeat enabled (interval: {}s)\n", heartbeat_interval);
-        Some(tokio::time::interval(std::time::Duration::from_secs(heartbeat_interval)))
+        Some(tokio::time::interval(std::time::Duration::from_secs(
+            heartbeat_interval,
+        )))
     } else {
         None
     };

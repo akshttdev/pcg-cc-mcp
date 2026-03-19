@@ -162,9 +162,7 @@ impl QuickBooksAccount {
 
     /// QuickBooks Online OAuth 2.0 scopes
     pub fn oauth_scopes() -> Vec<&'static str> {
-        vec![
-            "com.intuit.quickbooks.accounting",
-        ]
+        vec!["com.intuit.quickbooks.accounting"]
     }
 
     pub async fn create(
@@ -203,17 +201,12 @@ impl QuickBooksAccount {
         Ok(account)
     }
 
-    pub async fn find_by_id(
-        pool: &SqlitePool,
-        id: Uuid,
-    ) -> Result<Self, QuickBooksAccountError> {
-        sqlx::query_as::<_, QuickBooksAccount>(
-            r#"SELECT * FROM quickbooks_accounts WHERE id = ?1"#,
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await?
-        .ok_or(QuickBooksAccountError::NotFound)
+    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Self, QuickBooksAccountError> {
+        sqlx::query_as::<_, QuickBooksAccount>(r#"SELECT * FROM quickbooks_accounts WHERE id = ?1"#)
+            .bind(id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or(QuickBooksAccountError::NotFound)
     }
 
     pub async fn find_by_organization(

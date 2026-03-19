@@ -166,7 +166,9 @@ impl ChatMessage {
             .into_iter()
             .map(|(data, media_type)| ContentBlock::ImageBase64 { media_type, data })
             .collect();
-        blocks.push(ContentBlock::Text { text: text_str.clone() });
+        blocks.push(ContentBlock::Text {
+            text: text_str.clone(),
+        });
 
         Self {
             role: MessageRole::User,

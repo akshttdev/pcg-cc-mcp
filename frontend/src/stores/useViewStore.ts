@@ -126,6 +126,7 @@ export const useViewStore = create<ViewStore>()(
       name: 'pcg-view-storage',
       partialize: (state) => {
         // Exclude contentFullscreen from persistence — session-only state
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars, unused-imports/no-unused-vars
         const { contentFullscreen, ...persisted } = state;
         return persisted;
       },

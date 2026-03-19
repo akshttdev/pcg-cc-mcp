@@ -35,6 +35,60 @@ export default function PulsePage() {
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const queryClient = useQueryClient();
 
+  // Project-scoped dashboard — hooks must be called unconditionally
+  const { data: stats } = useQuery({
+    queryKey: pulseKeys.stats(projectId ?? ''),
+    queryFn: () => pulseApi.getStats(projectId!),
+    refetchInterval: 30000,
+    enabled: !!projectId,
+  });
+
+  const { data: contentData, isLoading: contentLoading } = useQuery({
+    queryKey: pulseKeys.content(projectId ?? ''),
+    queryFn: () => pulseApi.getLatestContent(projectId!, 50),
+    enabled: !!projectId && (activeTab === 'content' || activeTab === 'overview'),
+  });
+
+  const { data: sources } = useQuery({
+    queryKey: pulseKeys.sources(projectId ?? ''),
+    queryFn: () => pulseApi.getSources(projectId!),
+    enabled: !!projectId && (activeTab === 'sources' || activeTab === 'overview'),
+  });
+
+  const { data: alerts } = useQuery({
+    queryKey: pulseKeys.alerts(projectId ?? ''),
+    queryFn: () => pulseApi.getAlerts(projectId!),
+    enabled: !!projectId && (activeTab === 'alerts' || activeTab === 'overview'),
+  });
+
+  const { data: alertRules } = useQuery({
+    queryKey: pulseKeys.alertRules(projectId ?? ''),
+    queryFn: () => pulseApi.getAlertRules(projectId!),
+    enabled: !!projectId && activeTab === 'alerts',
+  });
+
+  const { data: trackingConfig } = useQuery({
+    queryKey: pulseKeys.tracking(projectId ?? ''),
+    queryFn: () => pulseApi.getTrackingConfig(projectId!),
+    enabled: !!projectId && activeTab === 'config',
+  });
+
+  const collectMutation = useMutation({
+    mutationFn: () => pulseApi.triggerCollection(projectId!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: pulseKeys.all() });
+    },
+  });
+
+  const actionMutation = useMutation({
+    mutationFn: ({ contentId, action }: { contentId: string; action: { action: string } }) =>
+      pulseApi.contentAction(projectId!, contentId, action),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: pulseKeys.contentAll() });
+      queryClient.invalidateQueries({ queryKey: pulseKeys.statsAll() });
+    },
+  });
+
   // If no project ID, show the legacy widget view
   if (!projectId) {
     const content = (
@@ -56,59 +110,6 @@ export default function PulsePage() {
     }
     return <div className="container mx-auto p-6 max-w-6xl">{content}</div>;
   }
-
-  // Project-scoped dashboard
-  const { data: stats } = useQuery({
-    queryKey: pulseKeys.stats(projectId),
-    queryFn: () => pulseApi.getStats(projectId),
-    refetchInterval: 30000,
-  });
-
-  const { data: contentData, isLoading: contentLoading } = useQuery({
-    queryKey: pulseKeys.content(projectId),
-    queryFn: () => pulseApi.getLatestContent(projectId, 50),
-    enabled: activeTab === 'content' || activeTab === 'overview',
-  });
-
-  const { data: sources } = useQuery({
-    queryKey: pulseKeys.sources(projectId),
-    queryFn: () => pulseApi.getSources(projectId),
-    enabled: activeTab === 'sources' || activeTab === 'overview',
-  });
-
-  const { data: alerts } = useQuery({
-    queryKey: pulseKeys.alerts(projectId),
-    queryFn: () => pulseApi.getAlerts(projectId),
-    enabled: activeTab === 'alerts' || activeTab === 'overview',
-  });
-
-  const { data: alertRules } = useQuery({
-    queryKey: pulseKeys.alertRules(projectId),
-    queryFn: () => pulseApi.getAlertRules(projectId),
-    enabled: activeTab === 'alerts',
-  });
-
-  const { data: trackingConfig } = useQuery({
-    queryKey: pulseKeys.tracking(projectId),
-    queryFn: () => pulseApi.getTrackingConfig(projectId),
-    enabled: activeTab === 'config',
-  });
-
-  const collectMutation = useMutation({
-    mutationFn: () => pulseApi.triggerCollection(projectId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: pulseKeys.all() });
-    },
-  });
-
-  const actionMutation = useMutation({
-    mutationFn: ({ contentId, action }: { contentId: string; action: { action: string } }) =>
-      pulseApi.contentAction(projectId, contentId, action),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: pulseKeys.contentAll() });
-      queryClient.invalidateQueries({ queryKey: pulseKeys.statsAll() });
-    },
-  });
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'overview', label: 'Overview', icon: <Activity className="w-4 h-4" /> },

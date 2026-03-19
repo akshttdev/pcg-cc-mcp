@@ -4,8 +4,9 @@
 //! They are the canonical types used by Dashboard and Pythia to interact
 //! with the network substrate.
 
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+use serde::{Deserialize, Serialize};
 
 /// Health check response from APN Core
 #[derive(Debug, Clone, Serialize, Deserialize)]

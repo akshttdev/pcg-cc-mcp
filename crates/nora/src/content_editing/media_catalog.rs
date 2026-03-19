@@ -6,14 +6,11 @@
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
+use services::services::{beat_analysis::BeatAnalysisEngine, scene_analysis::SceneAnalysisEngine};
 use tokio::process::Command;
 
-use services::services::beat_analysis::BeatAnalysisEngine;
-use services::services::scene_analysis::SceneAnalysisEngine;
-
-use crate::{NoraError, Result};
-
 use super::types::*;
+use crate::{NoraError, Result};
 
 /// Media file extensions to catalog.
 const VIDEO_EXTENSIONS: &[&str] = &[
@@ -48,16 +45,10 @@ impl MediaCataloger {
 
     /// Catalog all media files under the given root directory.
     pub async fn catalog_directory(&self, root: &Path) -> Result<ShotCatalog> {
-        tracing::info!(
-            "[MEDIA_CATALOG] Cataloging directory: {}",
-            root.display()
-        );
+        tracing::info!("[MEDIA_CATALOG] Cataloging directory: {}", root.display());
 
         let media_files = self.find_media_files(root)?;
-        tracing::info!(
-            "[MEDIA_CATALOG] Found {} media files",
-            media_files.len()
-        );
+        tracing::info!("[MEDIA_CATALOG] Found {} media files", media_files.len());
 
         let mut assets: Vec<MediaAsset> = Vec::new();
         let mut interview_indices: Vec<usize> = Vec::new();
@@ -73,9 +64,10 @@ impl MediaCataloger {
 
                     match asset.media_type {
                         MediaType::Interview => interview_indices.push(idx),
-                        MediaType::Drone | MediaType::Cinematic | MediaType::BTS | MediaType::VerticalHighlight => {
-                            broll_indices.push(idx)
-                        }
+                        MediaType::Drone
+                        | MediaType::Cinematic
+                        | MediaType::BTS
+                        | MediaType::VerticalHighlight => broll_indices.push(idx),
                         MediaType::Music => music_indices.push(idx),
                         _ => {}
                     }
@@ -83,11 +75,7 @@ impl MediaCataloger {
                     assets.push(asset);
                 }
                 Err(e) => {
-                    tracing::warn!(
-                        "[MEDIA_CATALOG] Failed to probe {}: {}",
-                        path.display(),
-                        e
-                    );
+                    tracing::warn!("[MEDIA_CATALOG] Failed to probe {}: {}", path.display(), e);
                 }
             }
         }
@@ -224,8 +212,7 @@ impl MediaCataloger {
             return Ok(());
         }
 
-        let entries = std::fs::read_dir(dir)
-            .map_err(|e| NoraError::IoError(e))?;
+        let entries = std::fs::read_dir(dir).map_err(|e| NoraError::IoError(e))?;
 
         for entry in entries {
             let entry = entry.map_err(|e| NoraError::IoError(e))?;
@@ -298,16 +285,15 @@ impl MediaCataloger {
         let (width, height, codec) = json["streams"]
             .as_array()
             .and_then(|streams| {
-                streams.iter().find(|s| s["codec_type"].as_str() == Some("video"))
+                streams
+                    .iter()
+                    .find(|s| s["codec_type"].as_str() == Some("video"))
             })
             .map(|vs| {
                 (
                     vs["width"].as_u64().unwrap_or(0) as u32,
                     vs["height"].as_u64().unwrap_or(0) as u32,
-                    vs["codec_name"]
-                        .as_str()
-                        .unwrap_or("unknown")
-                        .to_string(),
+                    vs["codec_name"].as_str().unwrap_or("unknown").to_string(),
                 )
             })
             .unwrap_or_else(|| {
@@ -335,13 +321,16 @@ impl MediaCataloger {
         let media_type = classify_media(path, &parent_folder, &filename, width, height);
         let camera = extract_camera_designation(&filename);
         let energy_level = classify_energy(path, &parent_folder, &filename, &media_type);
-        let content_tags = generate_content_tags(&parent_folder, &filename, &media_type, width, height);
+        let content_tags =
+            generate_content_tags(&parent_folder, &filename, &media_type, width, height);
 
         // Extract fps from video stream
         let fps = json["streams"]
             .as_array()
             .and_then(|streams| {
-                streams.iter().find(|s| s["codec_type"].as_str() == Some("video"))
+                streams
+                    .iter()
+                    .find(|s| s["codec_type"].as_str() == Some("video"))
             })
             .and_then(|vs| {
                 // Parse "30/1" or "29.97" format
@@ -349,7 +338,11 @@ impl MediaCataloger {
                     if let Some(slash) = r.find('/') {
                         let num: f64 = r[..slash].parse().ok()?;
                         let den: f64 = r[slash + 1..].parse().ok()?;
-                        if den > 0.0 { Some(num / den) } else { None }
+                        if den > 0.0 {
+                            Some(num / den)
+                        } else {
+                            None
+                        }
                     } else {
                         r.parse().ok()
                     }
@@ -416,7 +409,10 @@ fn classify_media(
     }
 
     // Behind the scenes / production team
-    if parent_lower.contains("production") || parent_lower.contains("bts") || parent_lower.contains("behind") {
+    if parent_lower.contains("production")
+        || parent_lower.contains("bts")
+        || parent_lower.contains("behind")
+    {
         return MediaType::BTS;
     }
 
@@ -486,10 +482,16 @@ fn classify_energy(
     }
 
     // Keywords that suggest energy level
-    if name_lower.contains("crowd") || name_lower.contains("keynote") || name_lower.contains("stage") {
+    if name_lower.contains("crowd")
+        || name_lower.contains("keynote")
+        || name_lower.contains("stage")
+    {
         return EnergyLevel::High;
     }
-    if name_lower.contains("setup") || name_lower.contains("lobby") || name_lower.contains("exterior") {
+    if name_lower.contains("setup")
+        || name_lower.contains("lobby")
+        || name_lower.contains("exterior")
+    {
         return EnergyLevel::Low;
     }
 
@@ -590,9 +592,7 @@ fn is_media_file(path: &Path) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Convert SceneAnalysisEngine's ContentType to our SceneContentType.
-fn convert_content_type(
-    ct: &services::services::scene_analysis::ContentType,
-) -> SceneContentType {
+fn convert_content_type(ct: &services::services::scene_analysis::ContentType) -> SceneContentType {
     match ct {
         services::services::scene_analysis::ContentType::HighEnergy => SceneContentType::HighEnergy,
         services::services::scene_analysis::ContentType::Establishing => {
@@ -800,26 +800,38 @@ mod tests {
     fn test_energy_classification() {
         let arv_energy = classify_energy(
             Path::new("/media/B-Roll/ARv1_7974.MP4"),
-            "B-Roll", "ARv1_7974.MP4", &MediaType::EventAction
+            "B-Roll",
+            "ARv1_7974.MP4",
+            &MediaType::EventAction,
         );
         assert_eq!(arv_energy, EnergyLevel::High);
 
         let drone_energy = classify_energy(
             Path::new("/media/B-Roll/DJI_0001.mp4"),
-            "B-Roll", "DJI_0001.mp4", &MediaType::Drone
+            "B-Roll",
+            "DJI_0001.mp4",
+            &MediaType::Drone,
         );
         assert_eq!(drone_energy, EnergyLevel::Medium);
 
         let interview_energy = classify_energy(
             Path::new("/media/testimonial DAVE/clip.mp4"),
-            "testimonial DAVE", "clip.mp4", &MediaType::Interview
+            "testimonial DAVE",
+            "clip.mp4",
+            &MediaType::Interview,
         );
         assert_eq!(interview_energy, EnergyLevel::Low);
     }
 
     #[test]
     fn test_content_tags() {
-        let tags = generate_content_tags("B-Roll", "ARv1_7974.MP4", &MediaType::EventAction, 3840, 2160);
+        let tags = generate_content_tags(
+            "B-Roll",
+            "ARv1_7974.MP4",
+            &MediaType::EventAction,
+            3840,
+            2160,
+        );
         assert!(tags.contains(&"4k".to_string()));
         assert!(tags.contains(&"event".to_string()));
         assert!(tags.contains(&"action-review".to_string()));

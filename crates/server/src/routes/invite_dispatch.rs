@@ -7,30 +7,33 @@
 //!   GET  /companies/:id/export-analysis          — download business analysis markdown document
 
 use axum::{
-    Router,
+    Json, Router,
     extract::{Path, State},
     http::header,
     response::Response,
     routing::{get, post},
-    Json,
 };
 use chrono::Utc;
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        company::Company,
+        meeting_session::MeetingSession,
+        person::Person,
+        project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource},
+        proposal::Proposal,
+        scheduled_meeting::{
+            CreateScheduledMeeting, CreateScheduledMeetingInvitee, ScheduledMeeting,
+            ScheduledMeetingWithInvitees,
+        },
+    },
+};
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
-use db::db_uuid::DbUuid;
-use db::models::company::Company;
-use db::models::meeting_session::MeetingSession;
-use db::models::person::Person;
-use db::models::proposal::Proposal;
-use db::models::project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource};
-use db::models::scheduled_meeting::{
-    CreateScheduledMeeting, CreateScheduledMeetingInvitee, ScheduledMeeting,
-    ScheduledMeetingWithInvitees,
-};
 
 // ── Request / Response types ──────────────────────────────────────────────────
 
@@ -62,7 +65,7 @@ pub struct ScheduleMeetingResponse {
 pub struct InviteDispatchResult {
     pub person_id: String,
     pub channel: String,
-    pub status: String,  // "sent" | "skipped" | "error"
+    pub status: String, // "sent" | "skipped" | "error"
     pub message: String,
 }
 
@@ -150,10 +153,7 @@ async fn dispatch_invite(
             "skipped".to_string(),
             format!("Manual outreach required via {channel} for {person_name}"),
         ),
-        _ => (
-            "skipped".to_string(),
-            format!("Unknown channel: {channel}"),
-        ),
+        _ => ("skipped".to_string(), format!("Unknown channel: {channel}")),
     }
 }
 
@@ -162,11 +162,14 @@ async fn send_email(to: &str, body: &str) -> (String, String) {
     let api_key = std::env::var("SENDGRID_API_KEY").unwrap_or_default();
     if api_key.is_empty() {
         tracing::info!("📧 [EMAIL-STUB] To: {to}\n{body}");
-        return ("sent".to_string(), format!("Email logged (SENDGRID_API_KEY not configured) → {to}"));
+        return (
+            "sent".to_string(),
+            format!("Email logged (SENDGRID_API_KEY not configured) → {to}"),
+        );
     }
 
-    let from = std::env::var("FROM_EMAIL")
-        .unwrap_or_else(|_| "nora@powerclubglobal.com".to_string());
+    let from =
+        std::env::var("FROM_EMAIL").unwrap_or_else(|_| "nora@powerclubglobal.com".to_string());
 
     let payload = serde_json::json!({
         "personalizations": [{"to": [{"email": to}]}],
@@ -184,7 +187,10 @@ async fn send_email(to: &str, body: &str) -> (String, String) {
         .await
     {
         Ok(r) if r.status().is_success() => ("sent".to_string(), format!("Email sent → {to}")),
-        Ok(r) => ("error".to_string(), format!("SendGrid {} → {to}", r.status())),
+        Ok(r) => (
+            "error".to_string(),
+            format!("SendGrid {} → {to}", r.status()),
+        ),
         Err(e) => ("error".to_string(), format!("HTTP error: {e}")),
     }
 }
@@ -197,7 +203,10 @@ async fn send_sms(to: &str, body: &str) -> (String, String) {
 
     if sid.is_empty() {
         tracing::info!("📱 [SMS-STUB] To: {to}\n{body}");
-        return ("sent".to_string(), format!("SMS logged (Twilio not configured) → {to}"));
+        return (
+            "sent".to_string(),
+            format!("SMS logged (Twilio not configured) → {to}"),
+        );
     }
 
     let url = format!("https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json");
@@ -223,7 +232,10 @@ async fn send_whatsapp(to: &str, body: &str) -> (String, String) {
 
     if sid.is_empty() {
         tracing::info!("💬 [WHATSAPP-STUB] To: {to}\n{body}");
-        return ("sent".to_string(), format!("WhatsApp logged (Twilio not configured) → {to}"));
+        return (
+            "sent".to_string(),
+            format!("WhatsApp logged (Twilio not configured) → {to}"),
+        );
     }
 
     let to_wa = format!("whatsapp:{to}");
@@ -231,12 +243,19 @@ async fn send_whatsapp(to: &str, body: &str) -> (String, String) {
     match reqwest::Client::new()
         .post(&url)
         .basic_auth(&sid, Some(&token))
-        .form(&[("From", from.as_str()), ("To", to_wa.as_str()), ("Body", body)])
+        .form(&[
+            ("From", from.as_str()),
+            ("To", to_wa.as_str()),
+            ("Body", body),
+        ])
         .send()
         .await
     {
         Ok(r) if r.status().is_success() => ("sent".to_string(), format!("WhatsApp sent → {to}")),
-        Ok(r) => ("error".to_string(), format!("Twilio WA {} → {to}", r.status())),
+        Ok(r) => (
+            "error".to_string(),
+            format!("Twilio WA {} → {to}", r.status()),
+        ),
         Err(e) => ("error".to_string(), format!("HTTP error: {e}")),
     }
 }
@@ -251,7 +270,12 @@ async fn send_instagram_dm(recipient_id_or_handle: &str, body: &str) -> (String,
 
     if token.is_empty() {
         tracing::info!("📸 [INSTAGRAM-STUB] To: @{recipient_id_or_handle}\n{body}");
-        return ("sent".to_string(), format!("Instagram DM logged (META_PAGE_ACCESS_TOKEN not configured) → @{recipient_id_or_handle}"));
+        return (
+            "sent".to_string(),
+            format!(
+                "Instagram DM logged (META_PAGE_ACCESS_TOKEN not configured) → @{recipient_id_or_handle}"
+            ),
+        );
     }
 
     let url = format!("https://graph.facebook.com/v19.0/{ig_user_id}/messages");
@@ -266,8 +290,14 @@ async fn send_instagram_dm(recipient_id_or_handle: &str, body: &str) -> (String,
         .send()
         .await
     {
-        Ok(r) if r.status().is_success() => ("sent".to_string(), format!("Instagram DM sent → {recipient_id_or_handle}")),
-        Ok(r) => ("error".to_string(), format!("Meta API {} → {recipient_id_or_handle}", r.status())),
+        Ok(r) if r.status().is_success() => (
+            "sent".to_string(),
+            format!("Instagram DM sent → {recipient_id_or_handle}"),
+        ),
+        Ok(r) => (
+            "error".to_string(),
+            format!("Meta API {} → {recipient_id_or_handle}", r.status()),
+        ),
         Err(e) => ("error".to_string(), format!("HTTP error: {e}")),
     }
 }
@@ -278,10 +308,16 @@ async fn send_linkedin_message(profile: &str, body: &str) -> (String, String) {
     let token = std::env::var("LINKEDIN_ACCESS_TOKEN").unwrap_or_default();
     if token.is_empty() {
         tracing::info!("💼 [LINKEDIN-STUB] To: {profile}\n{body}");
-        return ("sent".to_string(), format!("LinkedIn DM logged (LINKEDIN_ACCESS_TOKEN not configured) → {profile}"));
+        return (
+            "sent".to_string(),
+            format!("LinkedIn DM logged (LINKEDIN_ACCESS_TOKEN not configured) → {profile}"),
+        );
     }
     // TODO: resolve profile URL → URN via LinkedIn People API, then POST to messaging endpoint
-    ("skipped".to_string(), "LinkedIn messaging: set LINKEDIN_ACCESS_TOKEN and implement URN resolution".to_string())
+    (
+        "skipped".to_string(),
+        "LinkedIn messaging: set LINKEDIN_ACCESS_TOKEN and implement URN resolution".to_string(),
+    )
 }
 
 /// Twitter/X DM — requires TWITTER_BEARER_TOKEN.
@@ -289,10 +325,16 @@ async fn send_twitter_dm(handle: &str, body: &str) -> (String, String) {
     let token = std::env::var("TWITTER_BEARER_TOKEN").unwrap_or_default();
     if token.is_empty() {
         tracing::info!("🐦 [TWITTER-STUB] To: @{handle}\n{body}");
-        return ("sent".to_string(), format!("Twitter DM logged (TWITTER_BEARER_TOKEN not configured) → @{handle}"));
+        return (
+            "sent".to_string(),
+            format!("Twitter DM logged (TWITTER_BEARER_TOKEN not configured) → @{handle}"),
+        );
     }
     // TODO: resolve handle → numeric user ID, then POST /2/dm_conversations/with/:id/messages
-    ("skipped".to_string(), "Twitter DMs: set TWITTER_BEARER_TOKEN and implement user ID resolution".to_string())
+    (
+        "skipped".to_string(),
+        "Twitter DMs: set TWITTER_BEARER_TOKEN and implement user ID resolution".to_string(),
+    )
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
@@ -347,7 +389,10 @@ async fn schedule_meeting(
     for inv in &meeting_record.invitees {
         let pid = inv.person_id.parse::<Uuid>().unwrap_or(Uuid::nil());
         let person = Person::find_by_id(pool, pid).await.ok().flatten();
-        let name = person.as_ref().map(|p| p.full_name.as_str()).unwrap_or("Valued Contact");
+        let name = person
+            .as_ref()
+            .map(|p| p.full_name.as_str())
+            .unwrap_or("Valued Contact");
 
         let (status, message) = dispatch_invite(
             &inv.channel,
@@ -415,12 +460,13 @@ async fn publish_meeting(
         .and_then(|v| v["summary"].as_str().map(|s| s.to_string()));
 
     let date_part = session.started_at.get(..10).unwrap_or(&session.started_at);
-    let title = body.source_title.unwrap_or_else(|| {
-        format!("Meeting: {} — {}", session.title, date_part)
-    });
+    let title = body
+        .source_title
+        .unwrap_or_else(|| format!("Meeting: {} — {}", session.title, date_part));
 
     let summary = notes_summary.unwrap_or_else(|| {
-        session.transcript
+        session
+            .transcript
             .as_ref()
             .map(|t| format!("[Transcript — {} chars]", t.len()))
             .unwrap_or_else(|| "No notes or transcript captured".to_string())
@@ -536,10 +582,13 @@ async fn export_company_analysis(
     match &company.intelligence_summary {
         Some(s) => {
             let conf = company.intelligence_confidence.unwrap_or(0.0) * 100.0;
-            let ran = company.intelligence_last_run_at
+            let ran = company
+                .intelligence_last_run_at
                 .map(|d| d.format("%B %d, %Y").to_string())
                 .unwrap_or_else(|| "—".to_string());
-            doc.push_str(&format!("{s}\n\n> Confidence: **{conf:.0}%** | Last run: {ran}\n\n"));
+            doc.push_str(&format!(
+                "{s}\n\n> Confidence: **{conf:.0}%** | Last run: {ran}\n\n"
+            ));
         }
         None => doc.push_str("_No intelligence summary. Run company research to generate._\n\n"),
     }
@@ -617,8 +666,14 @@ async fn export_company_analysis(
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/proposals/{id}/schedule-meeting", post(schedule_meeting))
-        .route("/proposals/{id}/scheduled-meetings", get(list_scheduled_meetings))
+        .route(
+            "/proposals/{id}/scheduled-meetings",
+            get(list_scheduled_meetings),
+        )
         .route("/topsi/meeting/{id}/publish", post(publish_meeting))
-        .route("/companies/{id}/export-analysis", get(export_company_analysis))
+        .route(
+            "/companies/{id}/export-analysis",
+            get(export_company_analysis),
+        )
         .with_state(deployment.clone())
 }

@@ -4,18 +4,16 @@
 //! `v_project_knowledge_completeness` view and blends it into
 //! each PotentialAction's data_completeness field.
 
-use sqlx::SqlitePool;
 use std::collections::HashMap;
+
+use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use super::free_energy::PotentialAction;
 
 /// Enrich a set of PotentialActions with project-level knowledge completeness.
 /// Call this before `EFECalculator::rank_actions()`.
-pub async fn enrich_actions_with_knowledge(
-    actions: &mut [PotentialAction],
-    pool: &SqlitePool,
-) {
+pub async fn enrich_actions_with_knowledge(actions: &mut [PotentialAction], pool: &SqlitePool) {
     // Collect unique project IDs from actions
     // We need a way to map action -> project. Actions carry a task ID;
     // we batch-query tasks to get project_ids, then fetch completeness.

@@ -40,7 +40,7 @@ export function useDealActions() {
     setResearchLoading(true);
     try {
       await intelligenceApi.triggerResearch(personId);
-      toast.success('Research triggered — Nora is gathering intel');
+      toast.success('Research triggered — gathering intel on this contact');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to trigger research');
     } finally {

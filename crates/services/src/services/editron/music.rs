@@ -7,10 +7,14 @@
 //! - Music licensing documentation
 //! - Audio analysis for edit sync
 
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
+
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use tokio::process::Command;
+
 use super::{EditronError, EditronResult};
 
 /// Supported music licensing platforms
@@ -61,11 +65,29 @@ impl MusicMood {
     /// Get related moods for broader search
     pub fn related_moods(&self) -> Vec<MusicMood> {
         match self {
-            MusicMood::Uplifting => vec![MusicMood::Inspirational, MusicMood::Happy, MusicMood::Energetic],
-            MusicMood::Happy => vec![MusicMood::Uplifting, MusicMood::Playful, MusicMood::Energetic],
-            MusicMood::Cinematic => vec![MusicMood::Epic, MusicMood::Dramatic, MusicMood::Emotional],
-            MusicMood::Corporate => vec![MusicMood::Modern, MusicMood::Uplifting, MusicMood::Inspirational],
-            MusicMood::Relaxing => vec![MusicMood::Peaceful, MusicMood::Ambient, MusicMood::Emotional],
+            MusicMood::Uplifting => vec![
+                MusicMood::Inspirational,
+                MusicMood::Happy,
+                MusicMood::Energetic,
+            ],
+            MusicMood::Happy => vec![
+                MusicMood::Uplifting,
+                MusicMood::Playful,
+                MusicMood::Energetic,
+            ],
+            MusicMood::Cinematic => {
+                vec![MusicMood::Epic, MusicMood::Dramatic, MusicMood::Emotional]
+            }
+            MusicMood::Corporate => vec![
+                MusicMood::Modern,
+                MusicMood::Uplifting,
+                MusicMood::Inspirational,
+            ],
+            MusicMood::Relaxing => vec![
+                MusicMood::Peaceful,
+                MusicMood::Ambient,
+                MusicMood::Emotional,
+            ],
             _ => vec![],
         }
     }
@@ -364,7 +386,11 @@ impl MusicSearchCriteria {
     pub fn cinematic() -> Self {
         Self {
             moods: vec![MusicMood::Cinematic, MusicMood::Epic, MusicMood::Emotional],
-            genres: vec![MusicGenre::Orchestral, MusicGenre::Soundtrack, MusicGenre::Trailer],
+            genres: vec![
+                MusicGenre::Orchestral,
+                MusicGenre::Soundtrack,
+                MusicGenre::Trailer,
+            ],
             instrumental: Some(true),
             ..Default::default()
         }
@@ -373,8 +399,16 @@ impl MusicSearchCriteria {
     /// Create criteria for corporate/commercial
     pub fn corporate() -> Self {
         Self {
-            moods: vec![MusicMood::Corporate, MusicMood::Modern, MusicMood::Inspirational],
-            genres: vec![MusicGenre::Pop, MusicGenre::Electronic, MusicGenre::Acoustic],
+            moods: vec![
+                MusicMood::Corporate,
+                MusicMood::Modern,
+                MusicMood::Inspirational,
+            ],
+            genres: vec![
+                MusicGenre::Pop,
+                MusicGenre::Electronic,
+                MusicGenre::Acoustic,
+            ],
             min_bpm: Some(90),
             max_bpm: Some(120),
             instrumental: Some(true),
@@ -386,7 +420,12 @@ impl MusicSearchCriteria {
     pub fn chill() -> Self {
         Self {
             moods: vec![MusicMood::Relaxing, MusicMood::Peaceful, MusicMood::Ambient],
-            genres: vec![MusicGenre::LoFi, MusicGenre::Chillhop, MusicGenre::Ambient, MusicGenre::Acoustic],
+            genres: vec![
+                MusicGenre::LoFi,
+                MusicGenre::Chillhop,
+                MusicGenre::Ambient,
+                MusicGenre::Acoustic,
+            ],
             max_bpm: Some(100),
             instrumental: Some(true),
             ..Default::default()
@@ -396,7 +435,11 @@ impl MusicSearchCriteria {
     /// Create criteria for fashion/lifestyle
     pub fn fashion_lifestyle() -> Self {
         Self {
-            moods: vec![MusicMood::Modern, MusicMood::Uplifting, MusicMood::Energetic],
+            moods: vec![
+                MusicMood::Modern,
+                MusicMood::Uplifting,
+                MusicMood::Energetic,
+            ],
             genres: vec![MusicGenre::Electronic, MusicGenre::Pop, MusicGenre::House],
             min_bpm: Some(110),
             max_bpm: Some(128),
@@ -530,26 +573,30 @@ impl MusicLibrary {
             "lifestyle" | "fashion" | "athleisure" => (
                 MusicSearchCriteria::fashion_lifestyle(),
                 "Modern, upbeat electronic/pop music works well for fashion and lifestyle content. \
-                The 110-128 BPM range provides energy while maintaining a sophisticated feel."
+                The 110-128 BPM range provides energy while maintaining a sophisticated feel.",
             ),
             "corporate" | "commercial" | "business" => (
                 MusicSearchCriteria::corporate(),
                 "Clean, professional music with an inspirational tone. Acoustic elements mixed \
-                with modern production create a trustworthy, forward-thinking atmosphere."
+                with modern production create a trustworthy, forward-thinking atmosphere.",
             ),
             "cinematic" | "film" | "dramatic" => (
                 MusicSearchCriteria::cinematic(),
                 "Orchestral and soundtrack music provides emotional depth and production value. \
-                Building dynamics work well for narrative content."
+                Building dynamics work well for narrative content.",
             ),
             "chill" | "relaxed" | "ambient" => (
                 MusicSearchCriteria::chill(),
                 "Lo-fi and ambient tracks create a calm, approachable atmosphere. \
-                Lower BPM and minimal arrangements keep focus on the visuals."
+                Lower BPM and minimal arrangements keep focus on the visuals.",
             ),
             "fitness" | "sports" | "action" => (
                 MusicSearchCriteria {
-                    moods: vec![MusicMood::Energetic, MusicMood::Powerful, MusicMood::Aggressive],
+                    moods: vec![
+                        MusicMood::Energetic,
+                        MusicMood::Powerful,
+                        MusicMood::Aggressive,
+                    ],
                     genres: vec![MusicGenre::Electronic, MusicGenre::HipHop, MusicGenre::Rock],
                     min_bpm: Some(120),
                     max_bpm: Some(150),
@@ -557,9 +604,10 @@ impl MusicLibrary {
                     ..Default::default()
                 },
                 "High-energy tracks with strong beats drive action and fitness content. \
-                Electronic and hip-hop elements add modern edge."
+                Electronic and hip-hop elements add modern edge.",
             ),
-            "automotive" | "car" | "car show" | "cars" | "motorsport" | "racing" | "mopar" | "muscle car" => (
+            "automotive" | "car" | "car show" | "cars" | "motorsport" | "racing" | "mopar"
+            | "muscle car" => (
                 MusicSearchCriteria {
                     moods: vec![MusicMood::Energetic, MusicMood::Powerful, MusicMood::Modern],
                     genres: vec![MusicGenre::Electronic, MusicGenre::Rock, MusicGenre::Trap],
@@ -570,7 +618,7 @@ impl MusicLibrary {
                 },
                 "Driving electronic and rock tracks with heavy bass and powerful builds match \
                 the energy of automotive events. 115-140 BPM provides a muscular, kinetic feel \
-                without being frantic. Trap elements add modern punch for car show recaps."
+                without being frantic. Trap elements add modern punch for car show recaps.",
             ),
             "concert" | "music event" | "festival" | "live music" => (
                 MusicSearchCriteria {
@@ -582,19 +630,27 @@ impl MusicLibrary {
                     ..Default::default()
                 },
                 "Festival-energy electronic and house tracks complement concert and live music recaps. \
-                Uplifting builds with anthemic drops mirror the crowd energy arc."
+                Uplifting builds with anthemic drops mirror the crowd energy arc.",
             ),
             "gala" | "formal" | "charity" | "awards" | "black tie" => (
                 MusicSearchCriteria {
-                    moods: vec![MusicMood::Inspirational, MusicMood::Cinematic, MusicMood::Uplifting],
-                    genres: vec![MusicGenre::Orchestral, MusicGenre::Electronic, MusicGenre::Pop],
+                    moods: vec![
+                        MusicMood::Inspirational,
+                        MusicMood::Cinematic,
+                        MusicMood::Uplifting,
+                    ],
+                    genres: vec![
+                        MusicGenre::Orchestral,
+                        MusicGenre::Electronic,
+                        MusicGenre::Pop,
+                    ],
                     min_bpm: Some(90),
                     max_bpm: Some(120),
                     instrumental: Some(true),
                     ..Default::default()
                 },
                 "Elegant orchestral textures with modern production suit formal galas and awards. \
-                Mid-tempo pacing feels sophisticated without dragging."
+                Mid-tempo pacing feels sophisticated without dragging.",
             ),
             "parade" | "march" | "celebration" | "carnival" => (
                 MusicSearchCriteria {
@@ -606,11 +662,11 @@ impl MusicLibrary {
                     ..Default::default()
                 },
                 "Upbeat, celebratory tracks with funky grooves and bright energy capture the \
-                communal joy of parades and outdoor celebrations."
+                communal joy of parades and outdoor celebrations.",
             ),
             _ => (
                 MusicSearchCriteria::lifestyle_upbeat(),
-                "General upbeat music suitable for most content types."
+                "General upbeat music suitable for most content types.",
             ),
         };
 
@@ -645,16 +701,10 @@ impl MusicLibrary {
         // Calculate beat times based on BPM
         let beat_interval = 60.0 / bpm;
         let beat_count = (duration / beat_interval) as usize;
-        let beat_times: Vec<f64> = (0..beat_count)
-            .map(|i| i as f64 * beat_interval)
-            .collect();
+        let beat_times: Vec<f64> = (0..beat_count).map(|i| i as f64 * beat_interval).collect();
 
         // Downbeats (every 4 beats assuming 4/4 time)
-        let downbeat_times: Vec<f64> = beat_times
-            .iter()
-            .step_by(4)
-            .cloned()
-            .collect();
+        let downbeat_times: Vec<f64> = beat_times.iter().step_by(4).cloned().collect();
 
         // Get loudness
         let loudness = self.measure_loudness(path).await.unwrap_or(-14.0);
@@ -674,22 +724,28 @@ impl MusicLibrary {
 
     /// Get audio duration
     async fn get_audio_duration(&self, path: &Path) -> EditronResult<f64> {
-        let ffprobe = self.ffmpeg_path.parent()
+        let ffprobe = self
+            .ffmpeg_path
+            .parent()
             .map(|p| p.join("ffprobe"))
             .unwrap_or_else(|| PathBuf::from("ffprobe"));
 
         let output = Command::new(ffprobe)
             .args([
-                "-v", "quiet",
-                "-show_entries", "format=duration",
-                "-of", "csv=p=0",
+                "-v",
+                "quiet",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "csv=p=0",
                 &path.to_string_lossy(),
             ])
             .output()
             .await?;
 
         let duration_str = String::from_utf8_lossy(&output.stdout);
-        duration_str.trim()
+        duration_str
+            .trim()
             .parse()
             .map_err(|_| EditronError::FFmpeg("Failed to parse duration".to_string()))
     }
@@ -699,9 +755,12 @@ impl MusicLibrary {
         // Use astats filter for onset detection
         let _output = Command::new(&self.ffmpeg_path)
             .args([
-                "-i", &path.to_string_lossy(),
-                "-af", "aresample=44100,lowpass=f=150,highpass=f=20",
-                "-f", "null",
+                "-i",
+                &path.to_string_lossy(),
+                "-af",
+                "aresample=44100,lowpass=f=150,highpass=f=20",
+                "-f",
+                "null",
                 "-",
             ])
             .output()
@@ -716,9 +775,12 @@ impl MusicLibrary {
     async fn measure_loudness(&self, path: &Path) -> EditronResult<f32> {
         let output = Command::new(&self.ffmpeg_path)
             .args([
-                "-i", &path.to_string_lossy(),
-                "-af", "loudnorm=I=-16:TP=-1.5:LRA=11:print_format=summary",
-                "-f", "null",
+                "-i",
+                &path.to_string_lossy(),
+                "-af",
+                "loudnorm=I=-16:TP=-1.5:LRA=11:print_format=summary",
+                "-f",
+                "null",
                 "-",
             ])
             .output()
@@ -754,24 +816,25 @@ impl MusicLibrary {
     pub fn export_license_doc(&self, project_name: &str) -> String {
         let mut doc = format!("# Music License Documentation\n");
         doc.push_str(&format!("## Project: {}\n", project_name));
-        doc.push_str(&format!("## Generated: {}\n\n", chrono::Utc::now().format("%Y-%m-%d")));
+        doc.push_str(&format!(
+            "## Generated: {}\n\n",
+            chrono::Utc::now().format("%Y-%m-%d")
+        ));
 
         doc.push_str("### Licensed Tracks\n\n");
         doc.push_str("| Track | Platform | License Type | Download Date |\n");
         doc.push_str("|-------|----------|--------------|---------------|\n");
 
         for track in self.tracks.values() {
-            let date = track.license.download_date
+            let date = track
+                .license
+                .download_date
                 .map(|d| d.format("%Y-%m-%d").to_string())
                 .unwrap_or_else(|| "N/A".to_string());
 
             doc.push_str(&format!(
                 "| {} - {} | {:?} | {:?} | {} |\n",
-                track.title,
-                track.artist,
-                track.platform,
-                track.license.license_type,
-                date
+                track.title, track.artist, track.platform, track.license.license_type, date
             ));
         }
 
@@ -792,7 +855,8 @@ impl MusicLibrary {
 
     /// Search local library
     pub fn search_local(&self, criteria: &MusicSearchCriteria) -> Vec<&MusicTrack> {
-        self.tracks.values()
+        self.tracks
+            .values()
             .filter(|track| {
                 // Filter by mood
                 if !criteria.moods.is_empty() {
@@ -811,19 +875,27 @@ impl MusicLibrary {
                 // Filter by BPM
                 if let Some(bpm) = track.bpm {
                     if let Some(min) = criteria.min_bpm {
-                        if bpm < min { return false; }
+                        if bpm < min {
+                            return false;
+                        }
                     }
                     if let Some(max) = criteria.max_bpm {
-                        if bpm > max { return false; }
+                        if bpm > max {
+                            return false;
+                        }
                     }
                 }
 
                 // Filter by duration
                 if let Some(min) = criteria.min_duration {
-                    if track.duration < min { return false; }
+                    if track.duration < min {
+                        return false;
+                    }
                 }
                 if let Some(max) = criteria.max_duration {
-                    if track.duration > max { return false; }
+                    if track.duration > max {
+                        return false;
+                    }
                 }
 
                 true
@@ -994,22 +1066,37 @@ pub fn suggest_search_terms(content_description: &str) -> Vec<String> {
     let mut terms = vec![];
 
     // Mood-based suggestions
-    if desc_lower.contains("upbeat") || desc_lower.contains("happy") || desc_lower.contains("positive") {
+    if desc_lower.contains("upbeat")
+        || desc_lower.contains("happy")
+        || desc_lower.contains("positive")
+    {
         terms.extend(vec!["uplifting", "happy", "feel good"]);
     }
-    if desc_lower.contains("fashion") || desc_lower.contains("lifestyle") || desc_lower.contains("trendy") {
+    if desc_lower.contains("fashion")
+        || desc_lower.contains("lifestyle")
+        || desc_lower.contains("trendy")
+    {
         terms.extend(vec!["fashion", "stylish", "modern pop"]);
     }
-    if desc_lower.contains("fitness") || desc_lower.contains("workout") || desc_lower.contains("gym") {
+    if desc_lower.contains("fitness")
+        || desc_lower.contains("workout")
+        || desc_lower.contains("gym")
+    {
         terms.extend(vec!["workout", "energetic", "powerful"]);
     }
     if desc_lower.contains("chill") || desc_lower.contains("relax") || desc_lower.contains("calm") {
         terms.extend(vec!["chill", "relaxing", "lo-fi"]);
     }
-    if desc_lower.contains("corporate") || desc_lower.contains("business") || desc_lower.contains("professional") {
+    if desc_lower.contains("corporate")
+        || desc_lower.contains("business")
+        || desc_lower.contains("professional")
+    {
         terms.extend(vec!["corporate", "inspiring", "motivational"]);
     }
-    if desc_lower.contains("cinematic") || desc_lower.contains("dramatic") || desc_lower.contains("epic") {
+    if desc_lower.contains("cinematic")
+        || desc_lower.contains("dramatic")
+        || desc_lower.contains("epic")
+    {
         terms.extend(vec!["cinematic", "epic", "trailer"]);
     }
 
@@ -1049,8 +1136,14 @@ mod tests {
     fn test_epidemic_mood_term_mapping() {
         assert_eq!(MusicMood::Uplifting.epidemic_term(), "uplifting");
         assert_eq!(MusicMood::Cinematic.epidemic_term(), "cinematic");
-        assert_eq!(MusicMood::from_epidemic_term("happy"), Some(MusicMood::Happy));
-        assert_eq!(MusicMood::from_epidemic_term("cheerful"), Some(MusicMood::Happy));
+        assert_eq!(
+            MusicMood::from_epidemic_term("happy"),
+            Some(MusicMood::Happy)
+        );
+        assert_eq!(
+            MusicMood::from_epidemic_term("cheerful"),
+            Some(MusicMood::Happy)
+        );
         assert_eq!(MusicMood::from_epidemic_term("unknown_mood"), None);
     }
 
@@ -1058,8 +1151,14 @@ mod tests {
     fn test_soundstripe_mood_term_mapping() {
         assert_eq!(MusicMood::Uplifting.soundstripe_term(), "Uplifting");
         assert_eq!(MusicMood::Melancholic.soundstripe_term(), "Melancholy");
-        assert_eq!(MusicMood::from_soundstripe_term("Uplifting"), Some(MusicMood::Uplifting));
-        assert_eq!(MusicMood::from_soundstripe_term("feel good"), Some(MusicMood::Happy));
+        assert_eq!(
+            MusicMood::from_soundstripe_term("Uplifting"),
+            Some(MusicMood::Uplifting)
+        );
+        assert_eq!(
+            MusicMood::from_soundstripe_term("feel good"),
+            Some(MusicMood::Happy)
+        );
         assert_eq!(MusicMood::from_soundstripe_term("nope"), None);
     }
 
@@ -1067,8 +1166,14 @@ mod tests {
     fn test_epidemic_genre_term_mapping() {
         assert_eq!(MusicGenre::HipHop.epidemic_term(), "hip hop");
         assert_eq!(MusicGenre::DrumAndBass.epidemic_term(), "drum and bass");
-        assert_eq!(MusicGenre::from_epidemic_term("hip hop"), Some(MusicGenre::HipHop));
-        assert_eq!(MusicGenre::from_epidemic_term("edm"), Some(MusicGenre::Electronic));
+        assert_eq!(
+            MusicGenre::from_epidemic_term("hip hop"),
+            Some(MusicGenre::HipHop)
+        );
+        assert_eq!(
+            MusicGenre::from_epidemic_term("edm"),
+            Some(MusicGenre::Electronic)
+        );
         assert_eq!(MusicGenre::from_epidemic_term("nope"), None);
     }
 
@@ -1076,8 +1181,14 @@ mod tests {
     fn test_soundstripe_genre_term_mapping() {
         assert_eq!(MusicGenre::HipHop.soundstripe_term(), "Hip Hop");
         assert_eq!(MusicGenre::LoFi.soundstripe_term(), "Lo-Fi");
-        assert_eq!(MusicGenre::from_soundstripe_term("Hip Hop"), Some(MusicGenre::HipHop));
-        assert_eq!(MusicGenre::from_soundstripe_term("lo-fi"), Some(MusicGenre::LoFi));
+        assert_eq!(
+            MusicGenre::from_soundstripe_term("Hip Hop"),
+            Some(MusicGenre::HipHop)
+        );
+        assert_eq!(
+            MusicGenre::from_soundstripe_term("lo-fi"),
+            Some(MusicGenre::LoFi)
+        );
         assert_eq!(MusicGenre::from_soundstripe_term("nope"), None);
     }
 

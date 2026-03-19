@@ -514,8 +514,8 @@ pub struct LocalWhisperSTT {
 
 impl LocalWhisperSTT {
     pub async fn new(config: &STTConfig) -> VoiceResult<Self> {
-        let server_url = std::env::var("WHISPER_URL")
-            .unwrap_or_else(|_| "http://localhost:8101".to_string());
+        let server_url =
+            std::env::var("WHISPER_URL").unwrap_or_else(|_| "http://localhost:8101".to_string());
 
         info!("Initializing Local Whisper STT with server: {}", server_url);
 
@@ -527,7 +527,8 @@ impl LocalWhisperSTT {
     }
 
     async fn check_server_health(&self) -> bool {
-        match self.client
+        match self
+            .client
             .get(format!("{}/health", self.server_url))
             .timeout(std::time::Duration::from_secs(2))
             .send()

@@ -11,7 +11,7 @@
 
 use db::models::pcg_router_model::PcgRouterModel;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sqlx::SqlitePool;
 
 // ── Public types ────────────────────────────────────────────────────────────
@@ -264,9 +264,7 @@ impl WorkflowLLMService {
                     .into_iter()
                     .find(|c| c.name == "extract_data")
                     .ok_or_else(|| {
-                        anyhow::anyhow!(
-                            "Model called unexpected tool instead of extract_data"
-                        )
+                        anyhow::anyhow!("Model called unexpected tool instead of extract_data")
                     })?;
                 Ok((call.arguments, meta))
             }
@@ -334,22 +332,47 @@ fn forward_to_provider<'a>(
     api_key: &'a str,
     max_tokens: Option<i64>,
     temperature: Option<f64>,
-) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<(LLMResponse, TokenUsage)>> + Send + 'a>>
-{
+) -> std::pin::Pin<
+    Box<dyn std::future::Future<Output = anyhow::Result<(LLMResponse, TokenUsage)>> + Send + 'a>,
+> {
     Box::pin(async move {
         match model.provider.as_str() {
             "anthropic" => {
-                forward_to_anthropic(http, model, messages, tools, api_key, max_tokens, temperature)
-                    .await
+                forward_to_anthropic(
+                    http,
+                    model,
+                    messages,
+                    tools,
+                    api_key,
+                    max_tokens,
+                    temperature,
+                )
+                .await
             }
             "openai" | "openrouter" | "mistral" | "xai" | "deepseek" | "groq" | "cohere"
             | "qwen" => {
-                forward_openai_compat(http, model, messages, tools, api_key, max_tokens, temperature)
-                    .await
+                forward_openai_compat(
+                    http,
+                    model,
+                    messages,
+                    tools,
+                    api_key,
+                    max_tokens,
+                    temperature,
+                )
+                .await
             }
             "gemini" => {
-                forward_to_gemini(http, model, messages, tools, api_key, max_tokens, temperature)
-                    .await
+                forward_to_gemini(
+                    http,
+                    model,
+                    messages,
+                    tools,
+                    api_key,
+                    max_tokens,
+                    temperature,
+                )
+                .await
             }
             other => anyhow::bail!("Unknown provider: {}", other),
         }
@@ -395,11 +418,8 @@ async fn forward_to_anthropic(
                     }
 
                     for tc in tool_calls {
-                        let args_str = tc["function"]["arguments"]
-                            .as_str()
-                            .unwrap_or("{}");
-                        let args: Value =
-                            serde_json::from_str(args_str).unwrap_or(json!({}));
+                        let args_str = tc["function"]["arguments"].as_str().unwrap_or("{}");
+                        let args: Value = serde_json::from_str(args_str).unwrap_or(json!({}));
                         content_blocks.push(json!({
                             "type": "tool_use",
                             "id": tc["id"],
@@ -422,9 +442,7 @@ async fn forward_to_anthropic(
             "tool" => {
                 // Convert OpenAI tool-result to Anthropic tool_result content block.
                 // Anthropic expects tool results inside a "user" message.
-                let tool_call_id = msg["tool_call_id"]
-                    .as_str()
-                    .unwrap_or("unknown");
+                let tool_call_id = msg["tool_call_id"].as_str().unwrap_or("unknown");
                 let content = match &msg["content"] {
                     Value::String(s) => s.clone(),
                     other => other.to_string(),
@@ -719,8 +737,7 @@ fn parse_openai_response(body: &Value) -> anyhow::Result<(LLMResponse, TokenUsag
                     let id = tc["id"].as_str()?.to_string();
                     let name = tc["function"]["name"].as_str()?.to_string();
                     let args_str = tc["function"]["arguments"].as_str().unwrap_or("{}");
-                    let arguments: Value =
-                        serde_json::from_str(args_str).unwrap_or(json!({}));
+                    let arguments: Value = serde_json::from_str(args_str).unwrap_or(json!({}));
                     Some(ToolCallRequest {
                         id,
                         name,
@@ -742,10 +759,7 @@ fn parse_openai_response(body: &Value) -> anyhow::Result<(LLMResponse, TokenUsag
     }
 
     // Plain text response
-    let content = message["content"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
+    let content = message["content"].as_str().unwrap_or("").to_string();
 
     Ok((
         LLMResponse::Text {
@@ -761,10 +775,8 @@ fn parse_openai_response(body: &Value) -> anyhow::Result<(LLMResponse, TokenUsag
 fn calculate_cost(model: &PcgRouterModel, usage: &TokenUsage) -> Option<i64> {
     match (usage.input_tokens, usage.output_tokens) {
         (Some(inp), Some(out)) => {
-            let input_cost =
-                (inp as f64 / 1_000_000.0) * model.cost_per_million_input as f64;
-            let output_cost =
-                (out as f64 / 1_000_000.0) * model.cost_per_million_output as f64;
+            let input_cost = (inp as f64 / 1_000_000.0) * model.cost_per_million_input as f64;
+            let output_cost = (out as f64 / 1_000_000.0) * model.cost_per_million_output as f64;
             Some(((input_cost + output_cost) * 1_000_000.0) as i64)
         }
         _ => None,

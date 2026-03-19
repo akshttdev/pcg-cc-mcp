@@ -3,10 +3,13 @@
 //! Handles saving and loading node identities to prevent wallet regeneration
 //! on restart. Similar to the Python APN Core implementation.
 
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
+
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::path::{Path, PathBuf};
 
 use crate::identity::NodeIdentity;
 
@@ -66,7 +69,10 @@ pub fn load_identity() -> Result<Option<NodeIdentity>> {
     let identity_file = get_identity_file_path()?;
 
     if !identity_file.exists() {
-        tracing::info!("No existing identity file found at {}", identity_file.display());
+        tracing::info!(
+            "No existing identity file found at {}",
+            identity_file.display()
+        );
         return Ok(None);
     }
 
@@ -81,7 +87,9 @@ pub fn load_identity() -> Result<Option<NodeIdentity>> {
 
     // Validate required fields
     if stored.node_id.is_empty() || stored.wallet_address.is_empty() || stored.mnemonic.is_empty() {
-        anyhow::bail!("Identity file is missing required fields. Backup and delete to generate new identity.");
+        anyhow::bail!(
+            "Identity file is missing required fields. Backup and delete to generate new identity."
+        );
     }
 
     // Recreate identity from mnemonic
@@ -107,9 +115,7 @@ pub fn load_identity() -> Result<Option<NodeIdentity>> {
 /// Save identity to file (with backup)
 pub fn save_identity(identity: &NodeIdentity) -> Result<()> {
     let identity_file = get_identity_file_path()?;
-    let backup_file = identity_file.with_extension(
-        format!("json{}", BACKUP_SUFFIX)
-    );
+    let backup_file = identity_file.with_extension(format!("json{}", BACKUP_SUFFIX));
 
     // Create backup if file exists
     if identity_file.exists() {
@@ -120,12 +126,10 @@ pub fn save_identity(identity: &NodeIdentity) -> Result<()> {
 
     // Prepare identity data
     let stored = StoredIdentity::from(identity);
-    let json = serde_json::to_string_pretty(&stored)
-        .context("Failed to serialize identity")?;
+    let json = serde_json::to_string_pretty(&stored).context("Failed to serialize identity")?;
 
     // Write identity file
-    fs::write(&identity_file, &json)
-        .context("Failed to write identity file")?;
+    fs::write(&identity_file, &json).context("Failed to write identity file")?;
 
     // Set secure permissions (owner only) on Unix
     #[cfg(unix)]
@@ -135,8 +139,8 @@ pub fn save_identity(identity: &NodeIdentity) -> Result<()> {
     }
 
     // Verify the saved file can be read back
-    let verification = fs::read_to_string(&identity_file)
-        .context("Failed to verify saved identity file")?;
+    let verification =
+        fs::read_to_string(&identity_file).context("Failed to verify saved identity file")?;
     let verified: StoredIdentity = serde_json::from_str(&verification)
         .context("Identity verification failed - saved file is not valid JSON")?;
 

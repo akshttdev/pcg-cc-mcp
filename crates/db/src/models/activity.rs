@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool, Type};
 use ts_rs::TS;
+
 // IMPORTANT: Use DbUuid (not uuid::Uuid) for all SQLite-bound UUID fields.
 // uuid::Uuid encodes as a 16-byte BLOB, but our tables store UUIDs as TEXT.
 // DbUuid always encodes as TEXT and decodes both BLOB and TEXT transparently.

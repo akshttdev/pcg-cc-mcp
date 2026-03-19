@@ -3,10 +3,15 @@
 //! Handles contact creation, lead scoring, lifecycle management, and Zoho CRM sync.
 
 use axum::{
-    Router,
+    Json, Router,
     extract::{Path, Query, State},
-    routing::{get, post, delete, patch},
-    Json,
+    routing::{delete, get, patch, post},
+};
+use db::{
+    db_uuid::DbUuid,
+    models::crm_contact::{
+        ContactSearchParams, CreateCrmContact, CrmContact, LifecycleStage, UpdateCrmContact,
+    },
 };
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
@@ -14,10 +19,6 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
-use db::db_uuid::DbUuid;
-use db::models::crm_contact::{
-    CrmContact, CreateCrmContact, UpdateCrmContact, ContactSearchParams, LifecycleStage
-};
 
 #[derive(Debug, Deserialize)]
 pub struct ListContactsQuery {
@@ -68,7 +69,8 @@ async fn list_contacts(
 
     let org_id = DbUuid::from(query.organization_id);
     let contacts = if let Some(stage_str) = query.lifecycle_stage {
-        let stage: LifecycleStage = stage_str.parse()
+        let stage: LifecycleStage = stage_str
+            .parse()
             .map_err(|_| ApiError::BadRequest(format!("Invalid lifecycle stage: {}", stage_str)))?;
         let params = ContactSearchParams {
             organization_id: Some(org_id.clone()),
@@ -84,7 +86,6 @@ async fn list_contacts(
         CrmContact::search(pool, params).await?
     } else {
         CrmContact::find_by_organization(pool, &org_id, query.limit).await?
-
     };
 
     Ok(Json(ApiResponse::success(contacts)))
@@ -99,8 +100,9 @@ async fn create_contact(
 
     // Check if contact with this email already exists
     if let Some(ref email) = data.email {
-        if let Some(existing) = CrmContact::find_by_email(pool, &data.organization_id, email).await? {
-
+        if let Some(existing) =
+            CrmContact::find_by_email(pool, &data.organization_id, email).await?
+        {
             return Err(ApiError::Conflict(format!(
                 "Contact with email {} already exists: {}",
                 email, existing.id
@@ -119,7 +121,8 @@ async fn search_contacts(
 ) -> Result<Json<ApiResponse<Vec<CrmContact>>>, ApiError> {
     let pool = &deployment.db().pool;
 
-    let lifecycle_stage = query.lifecycle_stage
+    let lifecycle_stage = query
+        .lifecycle_stage
         .and_then(|s| s.parse::<LifecycleStage>().ok());
 
     let params = ContactSearchParams {
@@ -154,10 +157,9 @@ async fn get_contact_stats(
         WHERE organization_id = ?1
         GROUP BY COALESCE(lifecycle_stage, 'unknown')
         ORDER BY count DESC
-        "#
+        "#,
     )
     .bind(organization_id.as_str())
-
     .fetch_all(pool)
     .await?;
 
@@ -184,10 +186,9 @@ async fn get_contact_stats(
             last_activity_at IS NULL
             OR last_activity_at < datetime('now', '-7 days')
         )
-        "#
+        "#,
     )
     .bind(organization_id.as_str())
-
     .fetch_one(pool)
     .await?;
 
@@ -296,8 +297,10 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/crm/contacts", get(list_contacts))
         .route("/crm/contacts", post(create_contact))
         .route("/crm/contacts/search", get(search_contacts))
-        .route("/crm/contacts/stats/{organization_id}", get(get_contact_stats))
-
+        .route(
+            "/crm/contacts/stats/{organization_id}",
+            get(get_contact_stats),
+        )
         .route("/crm/contacts/{id}", get(get_contact))
         .route("/crm/contacts/{id}", patch(update_contact))
         .route("/crm/contacts/{id}", delete(delete_contact))
@@ -305,6 +308,8 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/crm/contacts/{id}/contacted", post(record_contacted))
         .route("/crm/contacts/{id}/replied", post(record_replied))
         .route("/crm/contacts/{id}/lead-score", post(update_lead_score))
-        .route("/crm/contacts/by-email/{organization_id}/{email}", get(get_contact_by_email))
-
+        .route(
+            "/crm/contacts/by-email/{organization_id}/{email}",
+            get(get_contact_by_email),
+        )
 }

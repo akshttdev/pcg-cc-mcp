@@ -12,9 +12,8 @@ use serde::Deserialize;
 use serde_json::Value;
 use tokio::process::Command;
 
-use crate::{NoraError, Result};
-
 use super::types::*;
+use crate::{NoraError, Result};
 
 /// Handles audio extraction, Whisper transcription, and LLM-based cleaning.
 pub struct TranscriptProcessor {
@@ -32,10 +31,7 @@ impl TranscriptProcessor {
 
     /// Full pipeline: extract audio → transcribe → clean → structure.
     pub async fn process(&self, video_path: &Path) -> Result<StructuredTranscript> {
-        tracing::info!(
-            "[TRANSCRIPT] Processing: {}",
-            video_path.display()
-        );
+        tracing::info!("[TRANSCRIPT] Processing: {}", video_path.display());
 
         // Step 1: Extract audio as WAV (16kHz mono for Whisper)
         let wav_path = self.extract_audio(video_path).await?;
@@ -78,7 +74,9 @@ impl TranscriptProcessor {
             ])
             .output()
             .await
-            .map_err(|e| NoraError::ExecutionError(format!("FFmpeg audio extraction failed: {}", e)))?;
+            .map_err(|e| {
+                NoraError::ExecutionError(format!("FFmpeg audio extraction failed: {}", e))
+            })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -132,9 +130,7 @@ impl TranscriptProcessor {
             .multipart(form)
             .send()
             .await
-            .map_err(|e| {
-                NoraError::ExecutionError(format!("Whisper API request failed: {}", e))
-            })?;
+            .map_err(|e| NoraError::ExecutionError(format!("Whisper API request failed: {}", e)))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -197,9 +193,7 @@ impl TranscriptProcessor {
 
     /// Detect sentence boundaries from word-level timestamps.
     /// Uses punctuation (.!?) and pause gaps (>0.3s) to find natural breaks.
-    pub fn detect_sentence_boundaries(
-        segments: &[TranscriptSegment],
-    ) -> Vec<SentenceBoundary> {
+    pub fn detect_sentence_boundaries(segments: &[TranscriptSegment]) -> Vec<SentenceBoundary> {
         let mut sentences = Vec::new();
         let sentence_end_chars = ['.', '!', '?'];
 
@@ -266,13 +260,13 @@ impl TranscriptProcessor {
     ) -> (bool, bool) {
         let tolerance = 0.5; // 500ms tolerance for boundary matching
 
-        let starts_at = sentences.iter().any(|s| {
-            (s.start_seconds - start_seconds).abs() < tolerance
-        });
+        let starts_at = sentences
+            .iter()
+            .any(|s| (s.start_seconds - start_seconds).abs() < tolerance);
 
-        let ends_at = sentences.iter().any(|s| {
-            (s.end_seconds - end_seconds).abs() < tolerance
-        });
+        let ends_at = sentences
+            .iter()
+            .any(|s| (s.end_seconds - end_seconds).abs() < tolerance);
 
         (starts_at, ends_at)
     }
@@ -363,11 +357,7 @@ Rules:
     }
 
     /// Call the LLM for transcript cleaning.
-    async fn call_cleaning_llm(
-        &self,
-        system_prompt: &str,
-        user_prompt: &str,
-    ) -> Option<Value> {
+    async fn call_cleaning_llm(&self, system_prompt: &str, user_prompt: &str) -> Option<Value> {
         let api_key = match std::env::var("OPENAI_API_KEY") {
             Ok(key) => key,
             Err(_) => {
@@ -400,10 +390,7 @@ Rules:
                 serde_json::from_str(content).ok()
             }
             Ok(resp) => {
-                tracing::warn!(
-                    "[TRANSCRIPT] LLM cleaning failed ({})",
-                    resp.status()
-                );
+                tracing::warn!("[TRANSCRIPT] LLM cleaning failed ({})", resp.status());
                 None
             }
             Err(e) => {
@@ -424,9 +411,10 @@ Rules:
             .enumerate()
             .map(|(i, seg)| {
                 let (speaker, segment_type) = if let Some(ref ann) = annotations {
-                    let seg_ann = ann["segments"]
-                        .as_array()
-                        .and_then(|arr| arr.iter().find(|s| s["line"].as_u64() == Some((i + 1) as u64)));
+                    let seg_ann = ann["segments"].as_array().and_then(|arr| {
+                        arr.iter()
+                            .find(|s| s["line"].as_u64() == Some((i + 1) as u64))
+                    });
 
                     let speaker = seg_ann
                         .and_then(|s| s["speaker"].as_str())
@@ -559,7 +547,11 @@ pub fn levenshtein_ratio(a: &str, b: &str) -> f64 {
 
     for i in 1..=len_a {
         for j in 1..=len_b {
-            let cost = if a_chars[i - 1] == b_chars[j - 1] { 0 } else { 1 };
+            let cost = if a_chars[i - 1] == b_chars[j - 1] {
+                0
+            } else {
+                1
+            };
             matrix[i][j] = (matrix[i - 1][j] + 1)
                 .min(matrix[i][j - 1] + 1)
                 .min(matrix[i - 1][j - 1] + cost);
@@ -604,18 +596,66 @@ mod tests {
             end_seconds: 55.0,
             segment_type: SegmentType::Testimonial,
             words: vec![
-                WordTiming { word: "My".to_string(), start_seconds: 40.0, end_seconds: 40.2 },
-                WordTiming { word: "name".to_string(), start_seconds: 40.3, end_seconds: 40.5 },
-                WordTiming { word: "is".to_string(), start_seconds: 40.6, end_seconds: 40.7 },
-                WordTiming { word: "David".to_string(), start_seconds: 40.8, end_seconds: 41.0 },
-                WordTiming { word: "Lewis.".to_string(), start_seconds: 41.1, end_seconds: 41.5 },
-                WordTiming { word: "I".to_string(), start_seconds: 42.0, end_seconds: 42.1 },
-                WordTiming { word: "have".to_string(), start_seconds: 42.2, end_seconds: 42.4 },
-                WordTiming { word: "been".to_string(), start_seconds: 42.5, end_seconds: 42.7 },
-                WordTiming { word: "in".to_string(), start_seconds: 42.8, end_seconds: 42.9 },
-                WordTiming { word: "the".to_string(), start_seconds: 43.0, end_seconds: 43.1 },
-                WordTiming { word: "entertainment".to_string(), start_seconds: 43.2, end_seconds: 43.8 },
-                WordTiming { word: "space.".to_string(), start_seconds: 43.9, end_seconds: 44.2 },
+                WordTiming {
+                    word: "My".to_string(),
+                    start_seconds: 40.0,
+                    end_seconds: 40.2,
+                },
+                WordTiming {
+                    word: "name".to_string(),
+                    start_seconds: 40.3,
+                    end_seconds: 40.5,
+                },
+                WordTiming {
+                    word: "is".to_string(),
+                    start_seconds: 40.6,
+                    end_seconds: 40.7,
+                },
+                WordTiming {
+                    word: "David".to_string(),
+                    start_seconds: 40.8,
+                    end_seconds: 41.0,
+                },
+                WordTiming {
+                    word: "Lewis.".to_string(),
+                    start_seconds: 41.1,
+                    end_seconds: 41.5,
+                },
+                WordTiming {
+                    word: "I".to_string(),
+                    start_seconds: 42.0,
+                    end_seconds: 42.1,
+                },
+                WordTiming {
+                    word: "have".to_string(),
+                    start_seconds: 42.2,
+                    end_seconds: 42.4,
+                },
+                WordTiming {
+                    word: "been".to_string(),
+                    start_seconds: 42.5,
+                    end_seconds: 42.7,
+                },
+                WordTiming {
+                    word: "in".to_string(),
+                    start_seconds: 42.8,
+                    end_seconds: 42.9,
+                },
+                WordTiming {
+                    word: "the".to_string(),
+                    start_seconds: 43.0,
+                    end_seconds: 43.1,
+                },
+                WordTiming {
+                    word: "entertainment".to_string(),
+                    start_seconds: 43.2,
+                    end_seconds: 43.8,
+                },
+                WordTiming {
+                    word: "space.".to_string(),
+                    start_seconds: 43.9,
+                    end_seconds: 44.2,
+                },
             ],
         }];
 
@@ -649,16 +689,14 @@ mod tests {
         ];
 
         // Aligned: starts at sentence 1, ends at sentence 2
-        let (starts, ends) = TranscriptProcessor::check_sentence_alignment(
-            "full text", &sentences, 40.0, 44.2
-        );
+        let (starts, ends) =
+            TranscriptProcessor::check_sentence_alignment("full text", &sentences, 40.0, 44.2);
         assert!(starts);
         assert!(ends);
 
         // Misaligned: starts mid-sentence
-        let (starts, ends) = TranscriptProcessor::check_sentence_alignment(
-            "mid text", &sentences, 41.0, 44.2
-        );
+        let (starts, ends) =
+            TranscriptProcessor::check_sentence_alignment("mid text", &sentences, 41.0, 44.2);
         assert!(!starts);
         assert!(ends);
     }

@@ -35,9 +35,7 @@ impl BrandIntakeToken {
         .execute(pool)
         .await?;
 
-        Self::find_by_token(pool, token)
-            .await
-            .map(|o| o.unwrap())
+        Self::find_by_token(pool, token).await.map(|o| o.unwrap())
     }
 
     pub async fn find_by_token(

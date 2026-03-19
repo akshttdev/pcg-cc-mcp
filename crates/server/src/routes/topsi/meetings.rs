@@ -1,7 +1,9 @@
 //! Meeting-related handlers for Topsi
 
-use super::*;
-use super::voice::{get_or_init_voice_engine, sanitize_text_for_tts};
+use super::{
+    voice::{get_or_init_voice_engine, sanitize_text_for_tts},
+    *,
+};
 
 // ============================================================================
 // Meeting Request/Response Types
@@ -50,7 +52,6 @@ pub struct MeetingAudioChunkResponse {
     pub topsi_audio_response: Option<String>,
     pub segment_index: i32,
 }
-
 
 /// Request to end a meeting
 #[derive(Debug, Deserialize, TS)]
@@ -234,7 +235,6 @@ pub async fn list_meetings(
     let limit = params.limit.unwrap_or(50);
     let offset = params.offset.unwrap_or(0);
 
-
     let sessions = db::models::meeting_session::MeetingSession::list(
         pool,
         params.project_id.as_deref(),
@@ -266,7 +266,10 @@ pub async fn list_meetings(
 
     // Batch segment counts for all sessions
     #[derive(sqlx::FromRow)]
-    struct SegCountRow { session_id: String, cnt: i64 }
+    struct SegCountRow {
+        session_id: String,
+        cnt: i64,
+    }
     let seg_counts: Vec<SegCountRow> = sqlx::query_as(
         "SELECT meeting_session_id as session_id, COUNT(*) as cnt FROM meeting_segments GROUP BY meeting_session_id"
     )
@@ -281,7 +284,6 @@ pub async fn list_meetings(
     let meetings: Vec<MeetingSessionSummary> = sessions
         .into_iter()
         .filter(|s| status_filter.map_or(true, |f| s.status == f))
-
         .map(|s| {
             let notes_value = s
                 .notes
@@ -322,15 +324,16 @@ pub async fn join_meeting(
 ) -> Result<Json<JoinMeetingResponse>, ApiError> {
     let pool = &state.db().pool;
 
-
-    let session = db::models::meeting_session::MeetingSession::find_by_id(pool, &request.session_id)
-        .await
-        .map_err(|_| ApiError::NotFound(format!("Meeting session not found: {}", request.session_id)))?;
+    let session =
+        db::models::meeting_session::MeetingSession::find_by_id(pool, &request.session_id)
+            .await
+            .map_err(|_| {
+                ApiError::NotFound(format!("Meeting session not found: {}", request.session_id))
+            })?;
 
     if session.status != "active" {
         return Err(ApiError::BadRequest("Meeting is not active".to_string()));
     }
-
 
     let new_count = session.participant_count.unwrap_or(0) + 1;
     let updated = db::models::meeting_session::MeetingSession::update(
@@ -356,9 +359,10 @@ pub async fn join_meeting(
 
     tracing::info!(
         "[MEETING] Session {} (project: {}) joined — participants: {}",
-        session.id, session.project_id, new_count
+        session.id,
+        session.project_id,
+        new_count
     );
-
 
     Ok(Json(JoinMeetingResponse {
         session_id: updated.id,
@@ -376,17 +380,21 @@ pub async fn meeting_text_message(
 ) -> Result<Json<MeetingMessageResponse>, ApiError> {
     let pool = &state.db().pool;
 
-    let session = db::models::meeting_session::MeetingSession::find_by_id(pool, &request.session_id)
-        .await
-        .map_err(|_| ApiError::NotFound(format!("Meeting session not found: {}", request.session_id)))?;
+    let session =
+        db::models::meeting_session::MeetingSession::find_by_id(pool, &request.session_id)
+            .await
+            .map_err(|_| {
+                ApiError::NotFound(format!("Meeting session not found: {}", request.session_id))
+            })?;
 
     if session.status != "active" {
         return Err(ApiError::BadRequest("Meeting is not active".to_string()));
     }
 
-    let count = db::models::meeting_session::MeetingSegment::count_by_session(pool, &request.session_id)
-        .await
-        .unwrap_or(0);
+    let count =
+        db::models::meeting_session::MeetingSegment::count_by_session(pool, &request.session_id)
+            .await
+            .unwrap_or(0);
 
     let text = if request.is_link.unwrap_or(false) {
         format!("[SHARED LINK] {}", request.text)
@@ -411,7 +419,12 @@ pub async fn meeting_text_message(
     .map_err(|e| ApiError::InternalError(e.to_string()))?;
 
     let speaker = request.speaker_label.as_deref().unwrap_or("participant");
-    tracing::info!("[MEETING] Text message from {} in session {}: {}", speaker, request.session_id, &text[..text.len().min(80)]);
+    tracing::info!(
+        "[MEETING] Text message from {} in session {}: {}",
+        speaker,
+        request.session_id,
+        &text[..text.len().min(80)]
+    );
 
     Ok(Json(MeetingMessageResponse {
         session_id: request.session_id,
@@ -419,7 +432,6 @@ pub async fn meeting_text_message(
         text,
     }))
 }
-
 
 /// Start a new meeting session
 pub async fn start_meeting(
@@ -547,11 +559,15 @@ pub async fn meeting_audio_chunk(
         .map_err(|e| ApiError::InternalError(format!("Meeting audio processing failed: {}", e)))?;
 
     // Parse response
-    let response_json: serde_json::Value = serde_json::from_str(&response.message)
-        .unwrap_or_else(|_| serde_json::json!({}));
+    let response_json: serde_json::Value =
+        serde_json::from_str(&response.message).unwrap_or_else(|_| serde_json::json!({}));
 
-    let is_addressed = response_json["is_topsi_addressed"].as_bool().unwrap_or(false);
-    let topsi_response_text = response_json["topsi_response"].as_str().map(|s| s.to_string());
+    let is_addressed = response_json["is_topsi_addressed"]
+        .as_bool()
+        .unwrap_or(false);
+    let topsi_response_text = response_json["topsi_response"]
+        .as_str()
+        .map(|s| s.to_string());
 
     // Step 3: If Topsi responded, synthesize audio response
     let topsi_audio = if let Some(ref response_text) = topsi_response_text {
@@ -623,8 +639,8 @@ pub async fn end_meeting(
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to end meeting: {}", e)))?;
 
-    let response_json: serde_json::Value = serde_json::from_str(&response.message)
-        .unwrap_or_else(|_| serde_json::json!({}));
+    let response_json: serde_json::Value =
+        serde_json::from_str(&response.message).unwrap_or_else(|_| serde_json::json!({}));
 
     let notes: Option<topsi::MeetingNotes> = response_json
         .get("notes")
@@ -658,8 +674,9 @@ pub async fn meeting_status(
 
     // Access control
     if !session.has_access(&user_context.user_id, user_context.is_admin) {
-
-        return Err(ApiError::Forbidden("Access denied to this meeting".to_string()));
+        return Err(ApiError::Forbidden(
+            "Access denied to this meeting".to_string(),
+        ));
     }
 
     let segment_count =
@@ -698,11 +715,14 @@ pub async fn get_meeting_notes(
         .map_err(|_| ApiError::NotFound(format!("Meeting session not found: {}", session_id)))?;
 
     if !session.has_access(&user_context.user_id, user_context.is_admin) {
-
-        return Err(ApiError::Forbidden("Access denied to this meeting".to_string()));
+        return Err(ApiError::Forbidden(
+            "Access denied to this meeting".to_string(),
+        ));
     }
 
-    let notes = session.notes.and_then(|n| serde_json::from_str::<serde_json::Value>(&n).ok());
+    let notes = session
+        .notes
+        .and_then(|n| serde_json::from_str::<serde_json::Value>(&n).ok());
 
     Ok(Json(serde_json::json!({
         "session_id": session_id,
@@ -727,22 +747,31 @@ pub async fn regenerate_meeting_notes(
         .map_err(|_| ApiError::NotFound(format!("Meeting session not found: {}", session_id)))?;
 
     if !session.has_access(&user_context.user_id, user_context.is_admin) {
-        return Err(ApiError::Forbidden("Access denied to this meeting".to_string()));
+        return Err(ApiError::Forbidden(
+            "Access denied to this meeting".to_string(),
+        ));
     }
 
     // Fetch transcript segments to regenerate notes from
-    let segments =
-        db::models::meeting_session::MeetingSegment::find_by_session(&pool, &session_id)
-            .await
-            .unwrap_or_default();
+    let segments = db::models::meeting_session::MeetingSegment::find_by_session(&pool, &session_id)
+        .await
+        .unwrap_or_default();
 
     if segments.is_empty() {
-        return Err(ApiError::BadRequest("No transcript segments available to generate notes from".to_string()));
+        return Err(ApiError::BadRequest(
+            "No transcript segments available to generate notes from".to_string(),
+        ));
     }
 
     let transcript_text = segments
         .iter()
-        .map(|s| format!("[{}] {}", s.speaker_label.as_deref().unwrap_or("Speaker"), s.text))
+        .map(|s| {
+            format!(
+                "[{}] {}",
+                s.speaker_label.as_deref().unwrap_or("Speaker"),
+                s.text
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -833,16 +862,14 @@ pub async fn get_meeting_transcript(
         .map_err(|_| ApiError::NotFound(format!("Meeting session not found: {}", session_id)))?;
 
     if !session.has_access(&user_context.user_id, user_context.is_admin) {
-
-        return Err(ApiError::Forbidden("Access denied to this meeting".to_string()));
+        return Err(ApiError::Forbidden(
+            "Access denied to this meeting".to_string(),
+        ));
     }
 
-    let segments =
-        db::models::meeting_session::MeetingSegment::find_by_session(&pool, &session_id)
-            .await
-            .map_err(|e| {
-                ApiError::InternalError(format!("Failed to fetch transcript: {}", e))
-            })?;
+    let segments = db::models::meeting_session::MeetingSegment::find_by_session(&pool, &session_id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to fetch transcript: {}", e)))?;
 
     let total_count = segments.len() as i64;
 
@@ -852,7 +879,6 @@ pub async fn get_meeting_transcript(
         total_count,
     }))
 }
-
 
 /// Share a meeting with other users
 pub async fn share_meeting(

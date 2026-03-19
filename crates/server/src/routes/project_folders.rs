@@ -3,21 +3,19 @@ use axum::{
     extract::{Path, State},
     routing::get,
 };
-use db::models::{
-    project::Project,
-    project_folder::{CreateProjectFolder, ProjectFolder, UpdateProjectFolder},
-    user::Organization,
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        project::Project,
+        project_folder::{CreateProjectFolder, ProjectFolder, UpdateProjectFolder},
+        user::Organization,
+    },
 };
 use deployment::Deployment;
 use utils::response::ApiResponse;
 use uuid::Uuid;
-use db::db_uuid::DbUuid;
 
-use crate::{
-    DeploymentImpl,
-    error::ApiError,
-    middleware::access_control::AccessContext,
-};
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
 /// Check if user has access to an org (is member or admin)
 async fn require_org_access(
@@ -30,7 +28,9 @@ async fn require_org_access(
     }
     let role = Organization::get_user_role(pool, org_id, access_context.user_id.as_str()).await?;
     if role.is_none() {
-        return Err(ApiError::Forbidden("Not a member of this organization".into()));
+        return Err(ApiError::Forbidden(
+            "Not a member of this organization".into(),
+        ));
     }
     Ok(())
 }
@@ -47,7 +47,9 @@ async fn require_org_admin(
     let role = Organization::get_user_role(pool, org_id, access_context.user_id.as_str()).await?;
     match role.as_deref() {
         Some("admin") => Ok(()),
-        _ => Err(ApiError::Forbidden("Only org admins can manage project folders".into())),
+        _ => Err(ApiError::Forbidden(
+            "Only org admins can manage project folders".into(),
+        )),
     }
 }
 
@@ -58,7 +60,9 @@ pub async fn list_folders(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Vec<ProjectFolder>>>, ApiError> {
     require_org_access(&deployment.db().pool, &access_context, &org_id).await?;
-    let org_uuid = DbUuid::parse(&org_id).map_err(|_| ApiError::BadRequest("Invalid org ID".into()))?.to_uuid();
+    let org_uuid = DbUuid::parse(&org_id)
+        .map_err(|_| ApiError::BadRequest("Invalid org ID".into()))?
+        .to_uuid();
     let folders = ProjectFolder::find_by_organization(&deployment.db().pool, org_uuid).await?;
     Ok(Json(ApiResponse::success(folders)))
 }
@@ -72,7 +76,9 @@ pub async fn create_folder(
 ) -> Result<Json<ApiResponse<ProjectFolder>>, ApiError> {
     require_org_admin(&deployment.db().pool, &access_context, &org_id).await?;
 
-    let org_uuid = DbUuid::parse(&org_id).map_err(|_| ApiError::BadRequest("Invalid org ID".into()))?.to_uuid();
+    let org_uuid = DbUuid::parse(&org_id)
+        .map_err(|_| ApiError::BadRequest("Invalid org ID".into()))?
+        .to_uuid();
     let id = Uuid::new_v4();
     let folder = ProjectFolder::create(&deployment.db().pool, id, org_uuid, &data).await?;
     Ok(Json(ApiResponse::success(folder)))
@@ -84,12 +90,19 @@ pub async fn get_folder(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<ProjectFolder>>, ApiError> {
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid folder ID".into()))?.to_uuid();
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid folder ID".into()))?
+        .to_uuid();
     let folder = ProjectFolder::find_by_id(&deployment.db().pool, id_uuid)
         .await?
         .ok_or_else(|| ApiError::NotFound("Project folder not found".into()))?;
 
-    require_org_access(&deployment.db().pool, &access_context, &folder.organization_id.to_string()).await?;
+    require_org_access(
+        &deployment.db().pool,
+        &access_context,
+        &folder.organization_id.to_string(),
+    )
+    .await?;
     Ok(Json(ApiResponse::success(folder)))
 }
 
@@ -100,12 +113,19 @@ pub async fn update_folder(
     State(deployment): State<DeploymentImpl>,
     Json(data): Json<UpdateProjectFolder>,
 ) -> Result<Json<ApiResponse<ProjectFolder>>, ApiError> {
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid folder ID".into()))?.to_uuid();
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid folder ID".into()))?
+        .to_uuid();
     let existing = ProjectFolder::find_by_id(&deployment.db().pool, id_uuid)
         .await?
         .ok_or_else(|| ApiError::NotFound("Project folder not found".into()))?;
 
-    require_org_admin(&deployment.db().pool, &access_context, &existing.organization_id.to_string()).await?;
+    require_org_admin(
+        &deployment.db().pool,
+        &access_context,
+        &existing.organization_id.to_string(),
+    )
+    .await?;
 
     let folder = ProjectFolder::update(&deployment.db().pool, id_uuid, &data).await?;
     Ok(Json(ApiResponse::success(folder)))
@@ -117,12 +137,19 @@ pub async fn delete_folder(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid folder ID".into()))?.to_uuid();
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid folder ID".into()))?
+        .to_uuid();
     let existing = ProjectFolder::find_by_id(&deployment.db().pool, id_uuid)
         .await?
         .ok_or_else(|| ApiError::NotFound("Project folder not found".into()))?;
 
-    require_org_admin(&deployment.db().pool, &access_context, &existing.organization_id.to_string()).await?;
+    require_org_admin(
+        &deployment.db().pool,
+        &access_context,
+        &existing.organization_id.to_string(),
+    )
+    .await?;
 
     ProjectFolder::delete(&deployment.db().pool, id_uuid).await?;
     Ok(Json(ApiResponse::success(())))
@@ -134,12 +161,19 @@ pub async fn add_project_to_folder(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid folder ID".into()))?.to_uuid();
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid folder ID".into()))?
+        .to_uuid();
     let folder = ProjectFolder::find_by_id(&deployment.db().pool, id_uuid)
         .await?
         .ok_or_else(|| ApiError::NotFound("Project folder not found".into()))?;
 
-    require_org_admin(&deployment.db().pool, &access_context, &folder.organization_id.to_string()).await?;
+    require_org_admin(
+        &deployment.db().pool,
+        &access_context,
+        &folder.organization_id.to_string(),
+    )
+    .await?;
 
     // Verify project exists
     if !Project::exists(&deployment.db().pool, &project_id).await? {
@@ -156,12 +190,19 @@ pub async fn remove_project_from_folder(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    let id_uuid = DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid folder ID".into()))?.to_uuid();
+    let id_uuid = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid folder ID".into()))?
+        .to_uuid();
     let folder = ProjectFolder::find_by_id(&deployment.db().pool, id_uuid)
         .await?
         .ok_or_else(|| ApiError::NotFound("Project folder not found".into()))?;
 
-    require_org_admin(&deployment.db().pool, &access_context, &folder.organization_id.to_string()).await?;
+    require_org_admin(
+        &deployment.db().pool,
+        &access_context,
+        &folder.organization_id.to_string(),
+    )
+    .await?;
 
     Project::set_folder(&deployment.db().pool, &project_id, None).await?;
     Ok(Json(ApiResponse::success(())))

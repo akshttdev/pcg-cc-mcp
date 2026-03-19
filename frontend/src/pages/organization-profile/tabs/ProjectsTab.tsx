@@ -14,6 +14,7 @@ interface SidebarClientWithFolders extends SidebarClient {
 }
 
 export function ProjectsTab({
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars, unused-imports/no-unused-vars
   orgId: _orgId,
   sidebarOrg,
   clientFilter,

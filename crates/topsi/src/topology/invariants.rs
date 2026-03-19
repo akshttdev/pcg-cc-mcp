@@ -3,8 +3,9 @@
 //! This module defines and enforces invariants across the topology,
 //! ensuring consistency and preventing invalid states.
 
-use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::graph::TopologyGraph;
@@ -48,9 +49,7 @@ impl Default for InvariantChecker {
 impl InvariantChecker {
     /// Create a new invariant checker
     pub fn new() -> Self {
-        Self {
-            strict_mode: false,
-        }
+        Self { strict_mode: false }
     }
 
     /// Enable strict mode
@@ -123,7 +122,10 @@ impl InvariantChecker {
                 violations.push(InvariantViolation {
                     invariant_name: "no_self_loops".to_string(),
                     severity: ViolationSeverity::Warning,
-                    message: format!("Edge {} is a self-loop on node {}", edge_id, edge.from_node_id),
+                    message: format!(
+                        "Edge {} is a self-loop on node {}",
+                        edge_id, edge.from_node_id
+                    ),
                     affected_nodes: vec![edge.from_node_id],
                     affected_edges: vec![*edge_id],
                     suggested_fix: Some("Remove the self-referential edge".to_string()),
@@ -144,16 +146,10 @@ impl InvariantChecker {
                 violations.push(InvariantViolation {
                     invariant_name: "valid_node_status".to_string(),
                     severity: ViolationSeverity::Warning,
-                    message: format!(
-                        "Node {} has invalid status: {}",
-                        node_id, node.status
-                    ),
+                    message: format!("Node {} has invalid status: {}", node_id, node.status),
                     affected_nodes: vec![*node_id],
                     affected_edges: vec![],
-                    suggested_fix: Some(format!(
-                        "Set status to one of: {:?}",
-                        valid_statuses
-                    )),
+                    suggested_fix: Some(format!("Set status to one of: {:?}", valid_statuses)),
                 });
             }
         }
@@ -170,10 +166,7 @@ impl InvariantChecker {
                 violations.push(InvariantViolation {
                     invariant_name: "positive_edge_weights".to_string(),
                     severity: ViolationSeverity::Error,
-                    message: format!(
-                        "Edge {} has negative weight: {}",
-                        edge_id, edge.weight
-                    ),
+                    message: format!("Edge {} has negative weight: {}", edge_id, edge.weight),
                     affected_nodes: vec![edge.from_node_id, edge.to_node_id],
                     affected_edges: vec![*edge_id],
                     suggested_fix: Some("Set weight to a non-negative value".to_string()),
@@ -201,8 +194,9 @@ impl InvariantChecker {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use indexmap::IndexMap;
+
+    use super::*;
 
     fn create_empty_graph() -> TopologyGraph {
         TopologyGraph {

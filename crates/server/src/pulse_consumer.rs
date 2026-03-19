@@ -158,10 +158,7 @@ pub async fn start_pulse_consumer(nats_url: &str, db_pool: SqlitePool) {
 }
 
 /// Resolve a project_id from the event, either from pcg_project_id or by looking up project name.
-async fn resolve_project_id(
-    db_pool: &SqlitePool,
-    event: &PulseContentEvent,
-) -> Option<uuid::Uuid> {
+async fn resolve_project_id(db_pool: &SqlitePool, event: &PulseContentEvent) -> Option<uuid::Uuid> {
     // First try the explicit PCG project ID
     if let Some(ref pid) = event.pcg_project_id {
         if let Ok(uuid) = uuid::Uuid::parse_str(pid) {
@@ -170,13 +167,12 @@ async fn resolve_project_id(
     }
 
     // Fall back to looking up by project name
-    let row: Option<(uuid::Uuid,)> = sqlx::query_as(
-        "SELECT id FROM projects WHERE name = ? LIMIT 1",
-    )
-    .bind(&event.project)
-    .fetch_optional(db_pool)
-    .await
-    .ok()?;
+    let row: Option<(uuid::Uuid,)> =
+        sqlx::query_as("SELECT id FROM projects WHERE name = ? LIMIT 1")
+            .bind(&event.project)
+            .fetch_optional(db_pool)
+            .await
+            .ok()?;
 
     row.map(|r| r.0)
 }
@@ -196,7 +192,10 @@ async fn handle_content_event(
     let project_id = match resolve_project_id(db_pool, &event).await {
         Some(pid) => pid,
         None => {
-            warn!("Could not resolve project for Pulse event: {}", event.project);
+            warn!(
+                "Could not resolve project for Pulse event: {}",
+                event.project
+            );
             // Still log as activity even without a project
             let _ = sqlx::query(
                 r#"INSERT INTO activity_log (id, project_id, action, actor_type, actor_id, details, created_at)
@@ -216,7 +215,9 @@ async fn handle_content_event(
         .and_then(|s| uuid::Uuid::parse_str(s).ok());
 
     // Check for duplicate content
-    if let Ok(true) = PulseContentItem::exists_by_hash(db_pool, project_id, &event.content_hash).await {
+    if let Ok(true) =
+        PulseContentItem::exists_by_hash(db_pool, project_id, &event.content_hash).await
+    {
         return; // Already stored
     }
 
@@ -286,7 +287,10 @@ async fn handle_alert_event(
     let project_id = match resolve_project_id(db_pool, item).await {
         Some(pid) => pid,
         None => {
-            warn!("Could not resolve project for Pulse alert: {}", item.project);
+            warn!(
+                "Could not resolve project for Pulse alert: {}",
+                item.project
+            );
             return;
         }
     };
@@ -297,7 +301,9 @@ async fn handle_alert_event(
         .and_then(|s| uuid::Uuid::parse_str(s).ok());
 
     // Ensure the content item exists in our DB first
-    if let Ok(false) = PulseContentItem::exists_by_hash(db_pool, project_id, &item.content_hash).await {
+    if let Ok(false) =
+        PulseContentItem::exists_by_hash(db_pool, project_id, &item.content_hash).await
+    {
         let create_data = CreatePulseContentItem {
             project_id,
             organization_id,
@@ -455,10 +461,7 @@ async fn dispatch_alert_sms(
         {
             Ok(()) => sent_count += 1,
             Err(e) => {
-                warn!(
-                    "Failed to send alert SMS to contact {}: {}",
-                    contact.id, e
-                );
+                warn!("Failed to send alert SMS to contact {}: {}", contact.id, e);
             }
         }
     }
@@ -480,19 +483,13 @@ async fn dispatch_content_sms(
     let contacts = match CrmContact::find_subscribed_to_tag(db_pool, &tag).await {
         Ok(c) => c,
         Err(e) => {
-            error!(
-                "Failed to find subscribed contacts for {}: {}",
-                tag, e
-            );
+            error!("Failed to find subscribed contacts for {}: {}", tag, e);
             return;
         }
     };
 
     for contact in &contacts {
-        if let Err(e) = sender
-            .send_pulse_content_notification(contact, event)
-            .await
-        {
+        if let Err(e) = sender.send_pulse_content_notification(contact, event).await {
             warn!(
                 "Failed to send content SMS to contact {}: {}",
                 contact.id, e
