@@ -13,9 +13,9 @@ ORCHA is a sovereign full-stack project management and AI orchestration platform
 
 As of 2026-03-18, the platform consists of:
 
-- **23 Rust crates** forming the backend monorepo
+- **20 workspace members** (18 Rust crates + 2 Tauri apps) forming the backend monorepo
 - **60+ frontend pages** and **311+ React components** in the TypeScript/React frontend
-- **202 database migrations** against SQLite (PostgreSQL feature-gated)
+- **215 database migrations** against SQLite (PostgreSQL feature-gated)
 - **4 MCP servers** exposing **26+ tools** for agent interaction
 - **8 executor backends** enabling multi-provider AI agent orchestration
 - **9 named agents** (Nora, Topsi, Scout, Astra, Cash, Lux, Maci, Auri, Editron)
@@ -31,14 +31,14 @@ The platform is in late alpha — CRM pipeline and manual workflow execution are
 |--------|-----------|--------|-----------------|
 | **CRM Pipeline (9-stage)** | 85% | Functional | F11: call scheduling display-only; F3: won stage person invite stub; Agent Flow Engine missing |
 | **Agentic Intake Pipeline** | 100% | Complete | None |
-| **Workflow Automation** | 70% | Partial | Manual run only; no triggers (cron/event); 6 of 17 node types missing |
+| **Workflow Automation** | 80% | Functional | ~~Manual run only~~ Schedule triggers run every 5m (interval: 5m/15m/30m/hourly/daily/weekly); webhook + event triggers exist; 19+ node types implemented; missing: loop, parallel, approval gates, sub-workflow |
 | **Agent Orchestration** | 60% | Partial | **P0 BLOCKER**: No Agent Flow Orchestration Engine (data model exists, no background worker) |
 | **Task Management** | 80% | Functional | No subtask hierarchy UI; no dependency visualization; no Gantt/DAG view |
 | **Notification System** | 95% | Complete | Minor: Activity button text includes count badge [Source: MEMORY.md#E2E Testing] |
 | **Content Pipeline** | 75% | Functional | 9 platforms wired; post composer + review queue done; scheduling partial |
 | **Sovereign Data/Intelligence** | 65% | Partial | 59% files unclassified; Phase 2 (enrichment, search, dashboards) not started [Source: 2026-03-17--plan--intelligence-roadmap.md] |
 | **APN Mesh Network** | 40% | Phase 1 | Mesh + crypto + heartbeat done; task distribution, remote execution, economics pending |
-| **VIBE Token Economy** | 25% | Stub | Uptime tracking + testnet stubs only; no real settlement |
+| **VIBE Token Economy** | 40% | Partial | Internal VIBE ledger operational (VibeTransaction, ModelPricing, marketplace with 85% provider credit); no on-chain settlement; no external payment processing |
 | **Authentication/RBAC** | 70% | Functional | No session timeout, no CSRF; role_based_ui exists but not enforced |
 | **E2E Testing** | 80% | Good | 30 passed, 3 failed (env), 5 skipped; 28/31 demo tests passing [Source: MEMORY.md#E2E Testing] |
 | **CI/CD Pipeline** | 50% | Basic | GitHub Actions exists (fmt, clippy, test, audit); no deployment pipeline |
