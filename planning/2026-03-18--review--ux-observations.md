@@ -115,3 +115,55 @@ Add error handling in CompanyBrandGuidePage: if `company` query returns null/err
 | MCP-2 | LOW | Stale test deals visible in Lead column — cleaned up (deleted 6 duplicate Devon Franklin + 2 test deals). **Fixed.** | Cleanup — done |
 | MCP-3 | LOW | Probability shows "—" and Deal Value shows "—" for Hudson deal despite having data | Data display |
 | MCP-4 | LOW | Topsi shows "Disconnected" then "Connected" inconsistently between page loads | Topsi connection |
+
+### Functional Testing Results (MCP Walkthrough cont.)
+
+#### Operator Context (Overview Tab)
+- **WORKS**: Click-to-edit inline textarea with helpful placeholder text
+- **WORKS**: "Save Context" saves successfully (toast: "Context saved")
+- **BUG (MCP-5, MEDIUM)**: After saving context, the display reverts to "No context yet" instead of showing saved text. Context saves to DB but UI doesn't re-render with saved value. Operator sees stale empty state. Likely a missing query invalidation after the mutation.
+
+#### Tab Switching (TabPanel Component)
+- **WORKS**: All 8 deal panel tabs switch correctly via data-testid click
+- **WORKS**: Tab content renders for Overview, Intel, Transcripts, Proposal, Deck & Close
+- **WORKS**: Status dot indicators (green for Intel, amber for Proposal draft) display correctly
+
+#### Intel Tab
+- **WORKS**: Person intelligence summary displays with "Profile" link → /people/:id
+- **WORKS**: Company intelligence summary displays with "Profile" link → /companies/:id  
+- **WORKS**: "Run Additional Research" button visible
+- **WORKS**: "View Full Intelligence Profile" link visible
+- **GAP**: Confidence shows "0%" even though intelligence_status is "done"
+
+#### Transcripts Tab
+- **WORKS**: Shows transcript count "(1)" and summary text
+- **WORKS**: Expandable "Full transcript" accordion
+- **WORKS**: "Link" button for attaching new transcripts
+- **NOTE**: Timestamp shows "in about 1 hour" — relative time working
+
+#### Proposal Tab
+- **WORKS**: Renders full proposal markdown with status badge "Draft"
+- **WORKS**: "Edit" button for manual editing
+- **WORKS**: "Regenerate" button (triggers Cash LLM)
+- **WORKS**: "Approve Proposal" button visible and clickable
+- **NOTE**: Proposal text includes raw JSON ```json block — should render as deliverables table
+
+#### Deck & Close Tab
+- **WORKS**: Three-section layout (Deck, Invoice, Close)
+- **WORKS**: "Generate Deck" button (triggers Lux LLM)
+- **GAP**: "Send Invoice" disabled — says "Amount: not set" even though deal has $25K amount in DB
+- **WORKS**: "Mark Won" button with description of auto-creation behavior
+
+#### Contact Links (Overview Tab)
+- **WORKS**: "View profile" → /people/p-joshua-marotta-001
+- **WORKS**: "Co. Profile" → /companies/5b3d9e7c-...
+- **WORKS**: Org "Open" → /organizations/02020202-...
+- **WORKS**: Company "Profile" links in Organization section
+
+#### Kanban Board
+- **WORKS**: Deal cards clickable, open detail panel
+- **WORKS**: Company links on deal cards navigate to /companies/:id
+- **WORKS**: Stage headers show agent names (Scout, Astra, Cash, Lux, etc.)
+- **WORKS**: Deal count and pipeline value in header
+- **WORKS**: "+ Add deal" buttons in each column
+- **GAP**: "Add Deal" button in header — not tested (creates deal without contact?)
