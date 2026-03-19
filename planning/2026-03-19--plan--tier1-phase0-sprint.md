@@ -573,40 +573,112 @@ FRONTEND_PORT=3000 npx playwright test --reporter=list
 | `crates/server/src/routes/data_source_workflows.rs` | Modify — update cooldown callers | #4 |
 | `crates/server/src/main.rs` | Modify — graceful shutdown + worker registry | #5, #9 |
 | `crates/server/src/workers/mod.rs` | Create — BackgroundWorker trait + registry | #5 |
-| `crates/server/src/routes/vibe_usage.rs` | Create — vibe usage aggregation endpoints | #6 |
-| `frontend/src/pages/ai-usage.tsx` | Modify — redirect to vibe-usage API | #6 |
-| `crates/db/src/models/crm_deal.rs` | Modify — add deal stage FSM validation | #9 |
+| `crates/server/src/routes/vibe_treasury.rs` | Modify — add cost aggregation endpoints (by-model, by-date, by-project) | #6 |
+| `crates/db/src/models/vibe_transaction.rs` | Modify — add GROUP BY aggregation queries | #6 |
+| `frontend/src/pages/ai-usage.tsx` | Modify — redirect from token_usage to vibe endpoints | #6 |
+| `crates/db/src/models/crm_deal.rs` | Modify — add deal stage FSM validation + pipeline membership check | #9 |
+| `crates/db/src/models/crm_pipeline.rs` | Modify — add `valid_next_stages()` method on CrmPipelineStage | #9 |
+| `crates/server/src/events/mod.rs` | Create — DomainEvent enum + broadcast channel | #9 |
 | `crates/db/src/models/agent_response.rs` | Create — response envelope types | #7 |
 | `crates/db/src/models/agent_flow.rs` | Modify — NeedsClarification status | #8 |
 | `crates/server/src/routes/agent_flows.rs` | Modify — clarification endpoint | #8 |
 | `crates/server/src/agent_flow_executor.rs` | Create — background worker loop | #9 |
 | `crates/server/src/routes/feedback.rs` | Modify — friction fields | #10 |
 | `frontend/src/components/feedback/` | Create/modify — friction form | #10 |
-| `crates/db/migrations/2026031900000X_*.sql` | Create — new migrations | #8, #10 |
+| `crates/db/migrations/20260413000000_*.sql` | Create — new migrations (NeedsClarification column, friction fields) | #8, #10 |
 
 ---
 
-## Gap Analysis Findings (2026-03-19 pre-implementation audit)
+## Gap Analysis Findings (2026-03-19, two research phases)
 
-8 parallel research agents audited the codebase against the sprint plan. Key findings:
+### Phase 1: Codebase Audit (8 parallel agents)
 
-### Scope corrections
+#### Scope corrections
 1. **crm_deals.rs access control was already complete** — all 20 handlers protected. Real gaps: `crm_contacts.rs` (12 endpoints, ZERO checks) and `crm_pipelines.rs` (13 endpoints, ZERO checks). Retargeted item #1.
 2. **Cost bridge misdirected** — plan said "populate cost_cents in TokenUsage::create()". Reality: `TokenUsage::create()` is rarely called; all billing flows through `vibe_transactions`. Redirected dashboard to read from source of truth instead of patching dead table.
 3. **Background task count was 14, actual is 16** — missed PR Monitor Service (stored JoinHandle, never awaited) and APN Node subprocess (detached, no shutdown). Updated item #5.
 4. **Items #7 and #9 merged** — response protocol and engine are tightly coupled; building separately creates design-in-a-vacuum risk.
 
-### New items added
+#### New items added
 - **1d/1e**: Access control for crm_contacts.rs + crm_pipelines.rs (security-critical)
 - **2f**: `vite build` step in CI (frontend build failures undetected)
 - **5d**: APN Node subprocess cleanup on shutdown
 - **CRM deal FSM prototype**: `move_deal_stage()` has no ordering validation — prototype FSM alongside agent flow FSM
 
-### Confirmed (no changes needed)
+#### Confirmed (no changes needed)
 - Item #3 (lint-staged): stash exists as described, ready to apply
 - Item #4 (cooldown race): exact check-then-act race confirmed at lines 172/249 in webhook handler
 - Item #8 (NeedsClarification): existing FlowStatus enum ready for new variant
 - Item #10 (friction logging): current feedback system extensible via JSON metadata, no schema migration needed
+
+### Phase 2: Implementation Readiness Audit (7 parallel agents)
+
+#### Build state
+- 23 workspace crates, nightly-2025-05-18 toolchain
+- Latest migration: `20260412000000` — next should be `20260413000000`
+- `crates/server/src/workers/`, `events/`, `agent_flow_executor.rs` — all need creating (none exist)
+- `validator` crate not in any Cargo.toml — needs adding
+- Existing lint suppressions only in nora/services WIP code (5 files)
+
+#### Dispatch patterns for agent engine
+- **API mode**: `WorkflowLLMService::completion_with_tools(pool, messages, tools, model_hint, max_tokens, temp)` → returns `(LLMResponse, RoutingMetadata)`. Supports tool-calling and structured output. Internally routes via `pcg_router::route_completion()`.
+- **Executor mode**: `container.start_execution(task_attempt, executor_action)` → spawns `CodingAgent::spawn()` subprocess in git worktree. 8 executor backends (Claude, Gemini, Qwen, Cursor, CodeX, Duck, AMP, OpenCode).
+- Both paths are well-defined; agent flow executor can dispatch via either based on `flow_config.dispatch_mode`.
+
+#### Frontend readiness
+- `useAgentFlows`, `useAgentFlowEvents`, `useAgentFlowMutations` hooks all exist in `frontend/src/hooks/useAgentFlows.ts`
+- `agentFlowsApi` client has complete CRUD + transition + approval + event endpoints
+- Query keys factory pattern in `frontend/src/lib/query-keys.ts` — `agentFlowKeys.*` ready
+- `frontend/src/pages/vibe.tsx` already displays `VibeTransaction` history with cost data
+- `frontend/src/pages/ai-usage.tsx` reads from `token_usage` (dead data) — needs redirect to vibe
+
+#### Cost bridge simplification
+- Frontend already has `vibeApi` client with `getConfig()`, `verifyDeposit()`, transaction list
+- Existing vibe routes in `crates/server/src/routes/vibe_treasury.rs` — can extend rather than create new module
+- `VibeTransaction::sum_by_source()` aggregation exists; need GROUP BY model/provider/date variants
+- `ModelPricing::calculate_cost()` returns `CostEstimate { cost_cents, cost_usd, cost_vibe }`
+
+#### Deal FSM — cross-pipeline bug confirmed
+- `move_to_stage()` at `crm_deal.rs:404-537` accepts ANY `stage_id` without checking pipeline membership
+- `CrmPipelineStage` has `position: i32` (unique per pipeline), `is_closed`, `is_won`, `stage_type` — all FSM building blocks exist
+- `CrmPipelineStage::reorder()` method exists for stage position management
+- Stage ordering: `ORDER BY position` in `find_by_pipeline()` — canonical sequence defined
+
+#### DomainEvent — not from scratch
+- `tokio::sync::broadcast` already used in `crates/nora/src/execution/events.rs` (EventBroadcaster, capacity 1000) and `crates/nora/src/coordination.rs` (CoordinationManager)
+- SSE event streaming for agent flows uses DB polling (500ms) in `event_stream.rs`
+- `DeploymentImpl` does not hold a broadcast channel yet — need to add if centralizing
+- Pattern: create `DomainEvent` enum, store `broadcast::Sender` in app state, subscribe in workers
+
+#### Lint-staged stash scope
+- Stash `stash@{0}` contains **657 files** — mass import reordering via `simple-import-sort` plugin
+- Core config: `.githooks/pre-commit`, `lint-staged@^16.4.0`, `eslint-plugin-simple-import-sort@^12.1.1`
+- Also increases ESLint max-warnings from 110 → 180
+- Must be applied FIRST to avoid merge conflicts with all other frontend changes
+
+### Phase 2 Addendum: Pipeline Roadmap Validation
+
+Cross-referenced against `planning/roadmap/reference/2026-03-18--reference--consolidated-pipeline-roadmap.md` and `2026-03-18--reference--dealflow-pipeline-status.md` from `research/5-year-product-roadmap` branch.
+
+#### Sprint items that directly address roadmap needs
+| Roadmap Need | Sprint Item | Roadmap Priority |
+|---|---|---|
+| Agent Flow Orchestration Engine (P0 Blocker #3) | Item #9 | P0 — "largest remaining architecture gap" |
+| Human gate enforcement | Item #9 FSM + Item #8 NeedsClarification | Part of Horizon 1 #1-#2 |
+| Agent retry/re-trigger | Item #9 (basic re-dispatch) | Part of Blocker #3 |
+| CI pipeline (tech debt CRITICAL #4) | Item #2 | Critical |
+| Graceful shutdown (tech debt HIGH) | Item #5 | High |
+| Org-level authz on CRM routes | Items #1d, #1e | Listed as "Deferred" in roadmap — we're fixing it |
+
+#### Roadmap features noted but NOT in sprint scope
+- **F11**: Call scheduling input UI (45 min, frontend UX, not engine work)
+- **F3**: Person invite in `mark_deal_won` (45 min, downstream of engine)
+- **Follow Up stage migration** (stage exists, cleanup only)
+- **Workflow triggers** (cron + entity-change — Phase 2+)
+- **assign_to_agent / http_request nodes** (workflow node types, Phase 2+)
+
+#### Architectural direction note
+Roadmap shows agents (Scout, Astra, Cash, Lux) as **direct async spawns on stage advance** in `crm_deals.rs`. Our engine dispatches via background worker. Phase 1: coexist (engine is opt-in via `ENABLE_AGENT_FLOW_ENGINE=1`). Future: engine subsumes inline spawns for retry/timeout/observability benefits. The inline spawns in `crm_deals.rs` are NOT modified in this sprint.
 
 ---
 
