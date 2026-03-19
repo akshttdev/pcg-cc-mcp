@@ -267,8 +267,38 @@ impl WorkflowTrigger {
         Ok(())
     }
 
+    /// Atomically claim a trigger if it's past its cooldown period.
+    /// Uses UPDATE...WHERE to prevent race conditions: only one concurrent
+    /// caller can claim a trigger within its cooldown window.
+    /// Returns Some(trigger) if claimed, None if still in cooldown.
+    pub async fn try_claim_trigger(
+        pool: &SqlitePool,
+        trigger_id: &str,
+    ) -> Result<Option<Self>, sqlx::Error> {
+        // Atomic: update last_triggered_at + increment count ONLY if cooldown has elapsed.
+        // The WHERE clause ensures only one concurrent request wins.
+        let result = sqlx::query_as::<_, Self>(
+            r#"UPDATE workflow_triggers
+               SET trigger_count = trigger_count + 1,
+                   last_triggered_at = datetime('now', 'subsec'),
+                   updated_at = datetime('now', 'subsec')
+               WHERE id = ?1
+                 AND (
+                   cooldown_seconds <= 0
+                   OR last_triggered_at IS NULL
+                   OR (julianday('now') - julianday(last_triggered_at)) * 86400 >= cooldown_seconds
+                 )
+               RETURNING *"#,
+        )
+        .bind(trigger_id)
+        .fetch_optional(pool)
+        .await?;
+        Ok(result)
+    }
+
     /// Check if a trigger is within its cooldown period.
     /// Returns true if the trigger can fire (not in cooldown).
+    /// NOTE: Prefer `try_claim_trigger()` for concurrent-safe cooldown enforcement.
     pub fn is_past_cooldown(&self) -> bool {
         if self.cooldown_seconds <= 0 {
             return true;
