@@ -130,7 +130,7 @@ export function CrmPipelineBoard({
   useEffect(() => {
     if (!selectedDeal || !kanbanData?.stages) return;
     for (const stageData of kanbanData.stages) {
-      const updated = stageData.deals.find((d) => d.id === selectedDeal.id);
+      const updated: CrmDealWithContact | undefined = stageData.deals.find((d) => d.id === selectedDeal.id);
       if (updated && updated !== selectedDeal) {
         setSelectedDeal(updated);
         return;
