@@ -131,3 +131,25 @@ New env vars for this branch:
 - `20260406000000_crm_blob_to_text.sql` — CRM BLOB→TEXT conversion (672 lines)
 - `20260407000000_clean_blob_stages.sql` — Clean orphaned BLOB stages
 - `20260412000000_company_brand_profiles.sql` — New table (renumbered from 20260409 to avoid collision with org_cloud)
+
+## Final E2E Test Results (all DB fixes applied)
+
+| Test | Pass | Fail | Notes |
+|------|------|------|-------|
+| pipeline-userflows (promoted) | 22 | 0 | Fully green |
+| dealflow-pipeline | 19 | 0 | All passing after seed data + dynamic pipeline |
+| hudson-as-sirak | 3 | 0 | All passing with Sirak org membership |
+| hudson-exact-flow | 4 | 0 | All passing with seed data |
+| company-links | 9 | 0 | All passing with company_name fix |
+| trace-company-nav | 6 | 0 | All passing |
+| **Total non-LLM** | **63** | **0** | |
+| full-pipeline-walkthrough | TBD | | LLM required (Anthropic key available) |
+| operator-walkthrough | TBD | | LLM required |
+| visual-pipeline-walkthrough | TBD | | LLM required (demo-only) |
+
+### Additional DB Fixes Applied
+```sql
+-- Contact data completeness
+UPDATE crm_contacts SET company_name = 'Hudson''s Car Club', full_name = 'Joshua Marotta'
+WHERE id = 'ct-joshua-marotta-001';
+```
