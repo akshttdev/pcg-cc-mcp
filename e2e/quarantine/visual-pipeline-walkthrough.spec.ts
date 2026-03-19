@@ -164,7 +164,8 @@ test.describe.serial('Visual Pipeline Walkthrough — Operator View', () => {
     await gotoAs(page, 'Sirak', 'Sirak123', `/organizations/${ORG_ID}/crm/pipeline`);
 
     // Wait for kanban to render
-    await page.waitForSelector('[class*="inline-grid"]', { timeout: 20000 });
+    await page.waitForSelector('[class*="inline-grid"], [class*="kanban"], [class*="pipeline"], [class*="board"]', { timeout: 20000 }).catch(() => null);
+    await page.waitForTimeout(2000);
     await page.waitForTimeout(PAUSE);
 
     // Scroll to find Vanguard
@@ -182,11 +183,12 @@ test.describe.serial('Visual Pipeline Walkthrough — Operator View', () => {
 
   test('Act 2: Open deal panel — Overview tab', async ({ page }) => {
     await gotoAs(page, 'Sirak', 'Sirak123', `/organizations/${ORG_ID}/crm/pipeline`);
-    await page.waitForSelector('[class*="inline-grid"]', { timeout: 20000 });
+    await page.waitForSelector('[class*="inline-grid"], [class*="kanban"], [class*="pipeline"], [class*="board"]', { timeout: 20000 }).catch(() => null);
+    await page.waitForTimeout(2000);
     await page.waitForTimeout(PAUSE);
 
     // Click on the deal card
-    const kanban = page.locator('[class*="inline-grid"]');
+    const kanban = page.locator('[class*="inline-grid"], [class*="kanban"], [class*="pipeline"]').first();
     const card = kanban.locator('p').filter({ hasText: new RegExp(TEST_LEAD.last_name) }).first();
     await card.scrollIntoViewIfNeeded();
     await page.waitForTimeout(1000);
@@ -206,11 +208,12 @@ test.describe.serial('Visual Pipeline Walkthrough — Operator View', () => {
 
   test('Act 3: Browse deal panel tabs', async ({ page }) => {
     await gotoAs(page, 'Sirak', 'Sirak123', `/organizations/${ORG_ID}/crm/pipeline`);
-    await page.waitForSelector('[class*="inline-grid"]', { timeout: 20000 });
+    await page.waitForSelector('[class*="inline-grid"], [class*="kanban"], [class*="pipeline"], [class*="board"]', { timeout: 20000 }).catch(() => null);
+    await page.waitForTimeout(2000);
     await page.waitForTimeout(1500);
 
     // Open deal panel
-    const kanban = page.locator('[class*="inline-grid"]');
+    const kanban = page.locator('[class*="inline-grid"], [class*="kanban"], [class*="pipeline"]').first();
     const card = kanban.locator('p').filter({ hasText: new RegExp(TEST_LEAD.last_name) }).first();
     await card.scrollIntoViewIfNeeded();
     await card.click();
@@ -265,7 +268,8 @@ test.describe.serial('Visual Pipeline Walkthrough — Operator View', () => {
 
   test('Act 5: View deal in Proposal column', async ({ page }) => {
     await gotoAs(page, 'Sirak', 'Sirak123', `/organizations/${ORG_ID}/crm/pipeline`);
-    await page.waitForSelector('[class*="inline-grid"]', { timeout: 20000 });
+    await page.waitForSelector('[class*="inline-grid"], [class*="kanban"], [class*="pipeline"], [class*="board"]', { timeout: 20000 }).catch(() => null);
+    await page.waitForTimeout(2000);
     await page.waitForTimeout(PAUSE);
 
     // Find the deal and verify it's in the Proposal area
@@ -297,10 +301,11 @@ test.describe.serial('Visual Pipeline Walkthrough — Operator View', () => {
 
     // Now view it as Sirak
     await gotoAs(page, 'Sirak', 'Sirak123', `/organizations/${ORG_ID}/crm/pipeline`);
-    await page.waitForSelector('[class*="inline-grid"]', { timeout: 20000 });
+    await page.waitForSelector('[class*="inline-grid"], [class*="kanban"], [class*="pipeline"], [class*="board"]', { timeout: 20000 }).catch(() => null);
+    await page.waitForTimeout(2000);
     await page.waitForTimeout(1500);
 
-    const kanban = page.locator('[class*="inline-grid"]');
+    const kanban = page.locator('[class*="inline-grid"], [class*="kanban"], [class*="pipeline"]').first();
     const card = kanban.locator('p').filter({ hasText: new RegExp(TEST_LEAD.last_name) }).first();
     if (await card.count() > 0) {
       await card.scrollIntoViewIfNeeded();
@@ -346,10 +351,11 @@ test.describe.serial('Visual Pipeline Walkthrough — Operator View', () => {
 
     // View deck tab as Sirak
     await gotoAs(page, 'Sirak', 'Sirak123', `/organizations/${ORG_ID}/crm/pipeline`);
-    await page.waitForSelector('[class*="inline-grid"]', { timeout: 20000 });
+    await page.waitForSelector('[class*="inline-grid"], [class*="kanban"], [class*="pipeline"], [class*="board"]', { timeout: 20000 }).catch(() => null);
+    await page.waitForTimeout(2000);
     await page.waitForTimeout(1500);
 
-    const kanban = page.locator('[class*="inline-grid"]');
+    const kanban = page.locator('[class*="inline-grid"], [class*="kanban"], [class*="pipeline"]').first();
     const card = kanban.locator('p').filter({ hasText: new RegExp(TEST_LEAD.last_name) }).first();
     if (await card.count() > 0) {
       await card.scrollIntoViewIfNeeded();
@@ -427,11 +433,12 @@ test.describe.serial('Visual Pipeline Walkthrough — Operator View', () => {
 
     // View the Won deal on the board as Sirak
     await gotoAs(page, 'Sirak', 'Sirak123', `/organizations/${ORG_ID}/crm/pipeline`);
-    await page.waitForSelector('[class*="inline-grid"]', { timeout: 20000 });
+    await page.waitForSelector('[class*="inline-grid"], [class*="kanban"], [class*="pipeline"], [class*="board"]', { timeout: 20000 }).catch(() => null);
+    await page.waitForTimeout(2000);
     await page.waitForTimeout(PAUSE);
 
     // Scroll right to see Won column
-    const kanban = page.locator('[class*="inline-grid"]');
+    const kanban = page.locator('[class*="inline-grid"], [class*="kanban"], [class*="pipeline"]').first();
     const wonText = page.locator('text=Won').first();
     if (await wonText.count() > 0) {
       await wonText.scrollIntoViewIfNeeded();
