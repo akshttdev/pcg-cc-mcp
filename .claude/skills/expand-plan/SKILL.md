@@ -13,7 +13,7 @@ Given a planning file path (or the most recent `planning/*.md` on the current br
 
 Use these when available to enhance research quality:
 
-- **Sequential Thinking** (`mcp__sequential-thinking__sequentialthinking`): Use for complex reasoning steps — analyzing contradictions, dependency ordering, gap identification. Start a thinking session before Phase 3 (Gap Analysis) to reason through dependencies and conflicts systematically.
+- **Sequential Thinking** (`mcp__sequential-thinking__sequentialthinking`): Use for complex reasoning steps — analyzing contradictions, dependency ordering, gap identification. Use **5-20 thoughts** depending on complexity (simple validations: 5, multi-PR dependency analysis: 15-20). Start a thinking session before Phase 3 (Gap Analysis) to reason through dependencies and conflicts systematically.
 - **Context7** (via Agent tool): If the plan references external libraries or frameworks, agents can use Context7 MCP to fetch up-to-date documentation.
 - **GitHub** (via Agent tool): If the plan references PRs, issues, or CI workflows, agents can use GitHub MCP to verify PR status, check CI results, or read issue context.
 
@@ -49,7 +49,17 @@ For each sprint item, check for:
 5. **Test coverage**: Does the verification plan cover all items?
 6. **Dependency ordering**: Does the PR dependency chain match the execution schedule?
 
-## Phase 4: Modularity Scan (use Agent tool, 3 concurrent)
+## Phase 4: E2E Test & Frontend Verification Audit
+
+Review existing E2E tests and demos for patterns relevant to the sprint:
+
+1. **Scan `e2e/` directory** for tests covering affected pages/features — note patterns, helpers, and fixtures used
+2. **Scan `e2e/demos/`** for demo scripts that exercise similar workflows
+3. **For any frontend UI changes or new implementations**: add Playwright MCP verification instructions to the plan's test section — specify pages to navigate, snapshots to take, console errors to check
+4. **UX feedback**: Note any UX issues discovered during Playwright walkthroughs and add them to the planning file under a "UX Observations" section
+5. **Test gaps**: Flag sprint items that modify frontend but have no corresponding E2E coverage
+
+## Phase 5: Modularity Scan (use Agent tool, 3 concurrent)
 
 Launch agents to find low-effort extraction opportunities in files touched by the sprint:
 
@@ -57,7 +67,7 @@ Launch agents to find low-effort extraction opportunities in files touched by th
 - **Frontend**: Duplicate hooks, components, constants, shared patterns
 - **Cross-cutting**: Repeated access control, error handling, config loading patterns
 
-## Phase 5: Update the Plan
+## Phase 6: Update the Plan
 
 Apply findings to the planning file:
 
