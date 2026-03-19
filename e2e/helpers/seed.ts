@@ -90,7 +90,7 @@ export async function createTestDeal(
 ) {
   const data = {
     organization_id: organizationId,
-    pipeline_id: pipelineId,
+    crm_pipeline_id: pipelineId,
     name: overrides?.name || `${TEST_PREFIX} Deal ${Date.now()}`,
     crm_contact_id: overrides?.crm_contact_id,
     crm_stage_id: overrides?.crm_stage_id,
