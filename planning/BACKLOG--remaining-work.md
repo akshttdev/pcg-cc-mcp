@@ -726,3 +726,94 @@ Dealflow pipeline v2, company profiles, brand guides, Dockerfile fixes, VIBE tok
 **What:** `/companies/:id` page loads with correct URL but doesn't display the company name or data in the main content area. Sidebar renders correctly. May be a missing data fetch or component rendering issue.
 **Recommendation:** Investigate CompanyProfilePage data loading — check if it queries by TEXT or BLOB ID.
 **Status:** DEFERRED — documented via test.fixme() in quarantine tests
+
+---
+
+## Modularity — Backend (from Phase 0 Sprint research, 2026-03-19)
+
+### Env Var Helpers
+**What:** 96+ scattered `std::env::var()` calls across 37 route files → shared `get_env_required()`/`get_env_optional()` in `crates/utils/src/config.rs`. `quickbooks.rs` already has good local pattern to follow.
+**Effort:** 45-60 min + migration across files
+**Status:** NOT STARTED
+
+### Model Error Macro
+**What:** 30+ files with identical `#[derive(Debug, Error)]` boilerplate → `define_model_error!` macro in `crates/db/src/lib.rs`.
+**Effort:** 30 min + migration
+**Status:** NOT STARTED
+
+### Inline FromRow Cleanup
+**What:** 83+ inline `#[derive(sqlx::FromRow)]` structs in route files → shared types in `crates/db/src/query_results.rs` (`UuidRow`, `CountRow`, `OptionalIdRow`).
+**Effort:** 2 hours
+**Status:** NOT STARTED
+
+### DB Error Wrapping Trait
+**What:** 1,060+ `ApiError::InternalError(format!("..."))` conversions → `DbErrorExt` trait with consistent logging.
+**Effort:** 50 min + migration
+**Status:** NOT STARTED
+
+### Large Backend File Splits
+**What:** Files beyond `crm_deals.rs` that exceed 1,000 lines:
+- `sovereign_storage.rs` (2,699L) — extract conflict resolution
+- `brand.rs` (1,863L) → settings, guidelines, voice
+- `tasks.rs` (1,572L) → crud, bulk ops, dependencies
+- `intelligence.rs` (1,443L) → artifact index, entity resolution, topology
+- `workflow_staging.rs` (1,401L) → validation, commit handlers
+- `meet.rs` (1,372L) → sessions, participants
+**Effort:** 2-4 hours per file
+**Status:** NOT STARTED
+
+---
+
+## Modularity — Frontend (from Phase 0 Sprint research, 2026-03-19)
+
+### useAsyncModalAction Hook
+**What:** 72 NiceModal dialogs share identical loading/error state pattern (~20 lines each). Extract to shared hook.
+**Effort:** 1.5 hours
+**Status:** NOT STARTED
+
+### LoadingButton Component
+**What:** 20+ dialog submit buttons duplicate disabled+spinner logic. Create `<LoadingButton>` in `components/ui/`.
+**Effort:** 45 min
+**Status:** NOT STARTED
+
+### EmptyState Component
+**What:** Inconsistent empty state rendering across components. Create standardized `<EmptyState>` component.
+**Effort:** 30 min
+**Status:** NOT STARTED
+
+### localStorage Typed Wrapper
+**What:** 63 raw `localStorage` calls with magic string keys → typed `appStorage` object in `lib/storage.ts`.
+**Effort:** 1.5 hours
+**Status:** NOT STARTED
+
+### Validation Utilities
+**What:** 20+ inline `required` field checks with `toast.error()` → shared `validators` module in `lib/validation.ts`.
+**Effort:** 1 hour
+**Status:** NOT STARTED
+
+### Spinner Standardization
+**What:** Mixed `Loader`/`Loader2`/`RefreshCw`/custom CSS spinners → standardize on existing `components/ui/loader.tsx`.
+**Effort:** 1 hour
+**Status:** NOT STARTED
+
+### Stream Hook Backoff Utility
+**What:** 4 hooks (`useJsonPatchStream`, `useJsonPatchWsStream`, `useLogStream`, `useDiffStream`) duplicate exponential backoff retry logic.
+**Effort:** 1-2 hours
+**Status:** NOT STARTED
+
+### Query/Mutation Hook Factory
+**What:** Simple CRUD hooks repeat identical `useQuery`/`useMutationWithToast` boilerplate → factory functions.
+**Effort:** 2 hours
+**Status:** NOT STARTED
+
+### Large Frontend Component Splits
+**What:** Components exceeding 800 lines:
+- `NoraAssistant.tsx` (1,027L) → conversation, tool execution, controls
+- `StagingReviewPanel.tsx` (933L) → diff viewer, commit panel
+- `topsi.tsx` (937L) → meeting mode, controls, chat
+- `AgentSettings.tsx` (918L) → model config, capabilities, test panel
+- `crm.tsx` (898L) → pipeline view, filters, deal management
+- `TaskDetailsPanel.tsx` (837L) → artifacts tab, execution tab, collaboration
+- `WelcomeWizard.tsx` (783L) → individual step components
+**Effort:** 2-4 hours per component
+**Status:** NOT STARTED
