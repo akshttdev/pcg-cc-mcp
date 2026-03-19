@@ -2,18 +2,18 @@
  * Demo: Dealflow Pipeline — Operator Walkthrough
  *
  * End-to-end feature demo showcasing the CRM dealflow pipeline from the
- * operator's perspective:
+ * operator's perspective, using a **UI-first approach**:
  *   1. Login and navigate to the Sirak Studios CRM Pipeline board
- *   2. Create a deal (company + contact + deal via API), verify on board
+ *   2. Create a deal via the "Add Deal" UI dialog (not API)
  *   3. Open deal detail panel via card click, verify tabs
  *   4. Add operator context via UI (click, type, save, toast)
- *   5. Browse Intel tab — verify person + company intelligence
+ *   5. Browse Intel tab — verify empty state for new deal
  *   6. Browse Transcripts tab — verify content or empty state
  *   7. Generate proposal (LLM) — requires ANTHROPIC_API_KEY
  *   8. Approve proposal via UI
  *   9. Browse Deck & Close tab — verify sections visible
- *  10. Navigate to person profile page
- *  11. Cleanup test entities via API
+ *  10. Close panel + navigate to companies page
+ *  11. Cleanup test deal via API
  *
  * Prerequisites:
  *   - Dev server running on FRONTEND_PORT
@@ -27,22 +27,16 @@ import { t, demoPause, login, apiLogin, TEST_DATA_PREFIX } from "../helpers";
 
 const ORG_ID = "02020202-0202-0202-0202-020202020202"; // Sirak Studios
 
-const DEMO_LEAD = {
-  company: `${TEST_DATA_PREFIX} Aurora Design Co`,
-  first: "Elena",
-  last: "Vasquez",
-  email: `elena-${Date.now()}@auroradesign.co`,
-  title: "Creative Director",
-  deal_name: `${TEST_DATA_PREFIX} Aurora Design Co — Brand Refresh`,
-  context:
-    "Elena is looking for a full brand refresh and digital strategy overhaul for their boutique design agency. Budget range $20-30K. Timeline: Q3 launch.",
-};
+const DEAL_NAME = `${TEST_DATA_PREFIX} Aurora Design Co — Brand Refresh`;
+const DEAL_AMOUNT = "25000";
+const DEAL_DESCRIPTION =
+  "Elena is looking for a full brand refresh and digital strategy overhaul for their boutique design agency. Budget range $20-30K. Timeline: Q3 launch.";
+
+const OPERATOR_CONTEXT =
+  "Met Elena at the Design Summit last week. She mentioned urgency around Q3 rebrand. Key decision-maker; reports directly to CEO. Prefers async communication via email.";
 
 // Shared state across sequential tests
-let companyId: string;
-let contactId: string;
-let dealId: string;
-let pipelineId: string;
+let dealId: string | undefined;
 
 // ── Test Flow ────────────────────────────────────────────────────────────────
 
@@ -58,20 +52,25 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
     await page.goto(`/organizations/${ORG_ID}/crm/pipeline`);
 
     // Wait for the pipeline board to render
+    await page.waitForSelector(
+      '[class*="inline-grid"], [class*="kanban"], [class*="pipeline"], [class*="board"]',
+      { timeout: t(20_000) },
+    );
+
     await expect(page.getByText("Acquisition Pipeline")).toBeVisible({
-      timeout: t(20_000),
+      timeout: t(10_000),
     });
 
-    // Check for pipeline stage columns
-    const bodyText = await page.textContent("body");
-    const stageIndicators = ["Lead", "Intel", "Proposal", "Won", "Lost"];
+    // Verify pipeline stage columns
+    const stageNames = ["Lead", "Intel", "Proposal", "Won", "Lost"];
     let stagesFound = 0;
-    for (const stage of stageIndicators) {
+    const bodyText = await page.textContent("body");
+    for (const stage of stageNames) {
       if (bodyText?.includes(stage)) stagesFound++;
     }
     expect(
       stagesFound,
-      `Expected multiple pipeline stages visible, found ${stagesFound}`,
+      `Expected pipeline stages visible, found ${stagesFound}/5`,
     ).toBeGreaterThanOrEqual(3);
 
     console.log(
@@ -80,102 +79,73 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
     await page.waitForTimeout(demoPause.medium);
   });
 
-  // ── Part 2: Create company, contact, and deal via API ────────────────────
+  // ── Part 2: Create deal via "Add Deal" UI dialog ──────────────────────────
 
-  test("Part 2: Create company, contact, and deal", async ({
-    page,
-    request,
-  }) => {
+  test("Part 2: Create deal via Add Deal dialog", async ({ page }) => {
     test.setTimeout(60_000);
-    await apiLogin(request);
 
-    // Discover the Acquisition pipeline
-    const pipelinesRes = await request.get(
-      `/api/crm/pipelines?organization_id=${ORG_ID}`,
-    );
-    expect(pipelinesRes.ok()).toBeTruthy();
-    const pipelines = await pipelinesRes.json();
-    const pipelineList = pipelines.data ?? pipelines ?? [];
-    const acq =
-      pipelineList.find(
-        (p: { name: string }) => p.name === "Acquisition",
-      ) || pipelineList[0];
-    expect(acq, "No pipeline found — need Acquisition pipeline").toBeTruthy();
-    pipelineId = acq.id;
-    console.log(`[Part 2] Pipeline: ${acq.name} (${pipelineId})`);
-
-    // Create company
-    const coRes = await request.post("/api/companies", {
-      data: {
-        name: DEMO_LEAD.company,
-        industry: "Design & Creative Services",
-        created_by_org_id: ORG_ID,
-      },
+    // Click "Add Deal" button on the pipeline board
+    const addDealBtn = page.getByRole("button", {
+      name: "Add Deal",
+      exact: true,
     });
-    const coBody = await coRes.json();
-    companyId = coBody.data?.id;
-    if (!companyId) {
-      // Try finding existing
-      const listRes = await request.get("/api/companies?limit=500");
-      const list = await listRes.json();
-      companyId = (list.data ?? []).find(
-        (c: { name: string }) => c.name === DEMO_LEAD.company,
-      )?.id;
-    }
-    expect(companyId, "Company creation failed").toBeTruthy();
-    console.log(`[Part 2] Company: ${companyId}`);
+    await expect(addDealBtn).toBeVisible({ timeout: t(10_000) });
+    await addDealBtn.click();
 
-    // Create CRM contact
-    const ctRes = await request.post("/api/crm/contacts", {
-      data: {
-        organization_id: ORG_ID,
-        first_name: DEMO_LEAD.first,
-        last_name: DEMO_LEAD.last,
-        email: DEMO_LEAD.email,
-        job_title: DEMO_LEAD.title,
-        company_name: DEMO_LEAD.company,
-      },
-    });
-    expect(ctRes.ok()).toBeTruthy();
-    const ctBody = await ctRes.json();
-    contactId = ctBody.data?.id;
-    expect(contactId, "Contact creation failed").toBeTruthy();
-    console.log(`[Part 2] Contact: ${contactId}`);
+    // Wait for the "Create Deal" dialog to open
+    await expect(
+      page.getByRole("heading", { name: "Create Deal" }),
+    ).toBeVisible({ timeout: t(5_000) });
+    await page.waitForTimeout(demoPause.short);
 
-    // Create deal
-    const dealRes = await request.post("/api/crm/deals", {
-      data: {
-        name: DEMO_LEAD.deal_name,
-        organization_id: ORG_ID,
-        crm_pipeline_id: pipelineId,
-        crm_contact_id: contactId,
-        description: DEMO_LEAD.context,
-        amount: 25000,
-      },
-    });
-    expect(dealRes.ok()).toBeTruthy();
-    const dealBody = await dealRes.json();
-    dealId = dealBody.data?.id;
-    expect(dealId, "Deal creation failed").toBeTruthy();
-    console.log(`[Part 2] Deal: ${dealId}`);
+    // Fill deal name (required)
+    await page.getByRole("textbox", { name: "Deal Name *" }).fill(DEAL_NAME);
 
-    // Reload pipeline board and verify the deal card appears
-    await page.goto(`/organizations/${ORG_ID}/crm/pipeline`);
+    // Fill amount
+    await page.getByRole("spinbutton", { name: "Amount" }).fill(DEAL_AMOUNT);
+
+    // Fill description
+    await page
+      .getByRole("textbox", { name: "Description" })
+      .fill(DEAL_DESCRIPTION);
+
     await page.waitForTimeout(demoPause.medium);
 
-    const dealCard = page
-      .locator("button")
-      .filter({ hasText: /Aurora Design/i })
-      .first();
-    await expect(dealCard).toBeVisible({ timeout: t(15_000) });
-    console.log("[Part 2] Deal card visible on pipeline board");
+    // Stage dropdown defaults to "Lead" — no need to change it.
+    // This ensures the deal gets a crm_stage_id and appears on the kanban.
+
+    // Click "Create Deal" button (enables after name is filled)
+    const createBtn = page.getByRole("button", { name: "Create Deal" });
+    await expect(createBtn).toBeEnabled({ timeout: t(3_000) });
+    await createBtn.click();
+
+    // Wait for success and dialog to close
+    await page.waitForTimeout(demoPause.medium);
+
+    // The dialog may auto-close. Wait for the board to re-render with the new deal.
+    await page
+      .waitForSelector(
+        '[class*="inline-grid"], [class*="kanban"], [class*="pipeline"], [class*="board"]',
+        { timeout: t(15_000) },
+      )
+      .catch(() => null);
+    await page.waitForTimeout(demoPause.medium);
+
+    console.log("[Part 2] Deal created via UI dialog");
+
+    // Verify the deal card appears on the kanban (may need the board to re-query)
+    const bodyText = await page.textContent("body");
+    const dealVisible = bodyText?.includes("Aurora Design");
+    console.log(`[Part 2] Deal visible on board: ${dealVisible}`);
+    expect(dealVisible, "Deal should appear on the pipeline board").toBeTruthy();
+
+    console.log("[Part 2] Deal card visible on pipeline board in Lead column");
     await page.waitForTimeout(demoPause.medium);
   });
 
   // ── Part 3: Open deal detail panel ───────────────────────────────────────
 
   test("Part 3: Open deal detail panel", async ({ page }) => {
-    test.skip(!dealId, "No deal created");
     test.setTimeout(30_000);
 
     // Click the deal card to open the slide-in detail panel
@@ -187,13 +157,18 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
     await dealCard.click();
 
     // Wait for the dialog (slide-in panel) to appear
-    await page.waitForSelector('[role="dialog"]', { timeout: t(10_000) });
-
     const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: t(5_000) });
+    await expect(dialog).toBeVisible({ timeout: t(10_000) });
 
-    // Check for tab buttons — these use data-testid="tab-{value}"
-    const expectedTabs = ["overview", "intel", "transcripts", "proposal"];
+    // Verify dialog heading contains deal name
+    const dialogText = await dialog.textContent();
+    expect(
+      dialogText?.includes("Aurora Design"),
+      "Dialog should contain deal name",
+    ).toBeTruthy();
+
+    // Verify tabs are visible
+    const expectedTabs = ["overview", "intel", "transcripts", "proposal", "deck"];
     let tabsFound = 0;
     for (const tab of expectedTabs) {
       const tabEl = page.getByTestId(`tab-${tab}`);
@@ -215,10 +190,9 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
   // ── Part 4: Add operator context ─────────────────────────────────────────
 
   test("Part 4: Add operator context", async ({ page }) => {
-    test.skip(!dealId, "No deal created");
     test.setTimeout(30_000);
 
-    // Ensure we're on the Overview tab (default)
+    // Overview tab is default active — click it to be sure
     const overviewTab = page.getByTestId("tab-overview");
     if (await overviewTab.isVisible().catch(() => false)) {
       await overviewTab.click();
@@ -232,7 +206,7 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
     if (hasTrigger) {
       await contextTrigger.click();
     } else {
-      // May already have context — try clicking the operator context section
+      // May already have context area — try clicking the operator context section
       const contextSection = page
         .locator('[role="dialog"]')
         .getByText(/operator context/i)
@@ -249,14 +223,11 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
     const textareaVisible = await textarea.isVisible().catch(() => false);
 
     if (textareaVisible) {
-      await textarea.fill(DEMO_LEAD.context);
+      await textarea.fill(OPERATOR_CONTEXT);
       await page.waitForTimeout(demoPause.short);
 
       // Click Save Context
-      const saveBtn = page
-        .locator('[role="dialog"]')
-        .getByRole("button", { name: /save context/i })
-        .first();
+      const saveBtn = page.getByRole("button", { name: /save context/i });
       if (await saveBtn.isVisible().catch(() => false)) {
         await saveBtn.click();
 
@@ -283,38 +254,33 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
   // ── Part 5: Browse Intel tab ─────────────────────────────────────────────
 
   test("Part 5: Browse Intel tab", async ({ page }) => {
-    test.skip(!dealId, "No deal created");
     test.setTimeout(30_000);
 
-    // Click the Intel tab
     const intelTab = page.getByTestId("tab-intel");
     await expect(intelTab).toBeVisible({ timeout: t(5_000) });
     await intelTab.click();
     await page.waitForTimeout(demoPause.medium);
 
-    // Verify intel content is shown within the dialog
+    // For a newly created deal, Intel tab shows empty state (no intel run yet)
     const dialog = page.locator('[role="dialog"]');
     const dialogText = await dialog.textContent();
 
-    // Intel tab should show person intelligence and/or company intelligence
-    const hasPersonIntel =
-      dialogText?.includes("Person") ||
+    const hasIntelContent =
       dialogText?.includes("Intelligence") ||
-      dialogText?.includes(DEMO_LEAD.first);
-    const hasCompanyIntel =
+      dialogText?.includes("Person") ||
       dialogText?.includes("Company") ||
-      dialogText?.includes("Research") ||
-      dialogText?.includes("Aurora");
+      dialogText?.includes("No intelligence") ||
+      dialogText?.includes("no intelligence");
 
     console.log(
-      `[Part 5] Intel tab — person intel: ${!!hasPersonIntel}, company intel: ${!!hasCompanyIntel}`,
+      `[Part 5] Intel tab — has content/empty state: ${!!hasIntelContent}`,
     );
 
-    // At minimum the tab should have rendered something
+    // Tab should render with some content (even if just empty state text)
     expect(
       dialogText?.length,
       "Intel tab should have content",
-    ).toBeGreaterThan(50);
+    ).toBeGreaterThan(10);
 
     await page.waitForTimeout(demoPause.medium);
   });
@@ -322,30 +288,31 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
   // ── Part 6: Browse Transcripts tab ───────────────────────────────────────
 
   test("Part 6: Browse Transcripts tab", async ({ page }) => {
-    test.skip(!dealId, "No deal created");
     test.setTimeout(30_000);
 
-    // Click the Transcripts tab
     const transcriptsTab = page.getByTestId("tab-transcripts");
     await expect(transcriptsTab).toBeVisible({ timeout: t(5_000) });
     await transcriptsTab.click();
     await page.waitForTimeout(demoPause.medium);
 
-    // Verify transcript content or empty state
     const dialog = page.locator('[role="dialog"]');
     const dialogText = await dialog.textContent();
 
     const hasTranscripts =
       dialogText?.includes("Transcript") ||
-      dialogText?.includes("Discovery") ||
       dialogText?.includes("transcript");
     const hasEmptyState =
       dialogText?.includes("No transcripts") ||
-      dialogText?.includes("no transcripts") ||
-      dialogText?.includes("No discovery");
+      dialogText?.includes("no transcripts");
+    const hasLinkButton = await page
+      .locator('[role="dialog"]')
+      .getByRole("button", { name: /link/i })
+      .first()
+      .isVisible()
+      .catch(() => false);
 
     console.log(
-      `[Part 6] Transcripts tab — has content: ${!!hasTranscripts}, empty state: ${!!hasEmptyState}`,
+      `[Part 6] Transcripts tab — has content: ${!!hasTranscripts}, empty state: ${!!hasEmptyState}, link button: ${hasLinkButton}`,
     );
 
     // Either transcripts or an empty-state message should be visible
@@ -360,7 +327,6 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
   // ── Part 7: Generate proposal (LLM) ─────────────────────────────────────
 
   test("Part 7: Generate proposal via LLM", async ({ page }) => {
-    test.skip(!dealId, "No deal created");
     test.setTimeout(120_000);
 
     test.fixme(
@@ -368,7 +334,6 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
       "No ANTHROPIC_API_KEY — skipping proposal generation",
     );
 
-    // Click the Proposal tab
     const proposalTab = page.getByTestId("tab-proposal");
     await expect(proposalTab).toBeVisible({ timeout: t(5_000) });
     await proposalTab.click();
@@ -378,23 +343,22 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
 
     // Look for Generate or Regenerate button
     const generateBtn = dialog
-      .getByRole("button", { name: /generate|regenerate/i })
+      .getByRole("button", { name: /generate proposal|regenerate/i })
       .first();
     const hasGenerateBtn = await generateBtn.isVisible().catch(() => false);
 
     if (hasGenerateBtn) {
       await generateBtn.click();
-      console.log("[Part 7] Clicked generate/regenerate proposal button");
+      console.log("[Part 7] Clicked Generate Proposal button");
 
-      // Wait for LLM response — proposal text should appear
+      // Wait for LLM response — proposal text should appear (up to 60s)
       await page
         .waitForSelector(
           '[role="dialog"] [class*="prose"], [role="dialog"] [class*="markdown"]',
-          { timeout: 90_000 },
+          { timeout: 60_000 },
         )
         .catch(() => null);
 
-      // Check if proposal content appeared
       const dialogText = await dialog.textContent();
       const hasProposal =
         (dialogText?.length ?? 0) > 500 ||
@@ -408,7 +372,7 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
       // Proposal may already exist
       const dialogText = await dialog.textContent();
       console.log(
-        `[Part 7] No generate button found — proposal may already exist (content: ${dialogText?.length ?? 0} chars)`,
+        `[Part 7] No generate button found — proposal may already exist (${dialogText?.length ?? 0} chars)`,
       );
     }
 
@@ -418,7 +382,6 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
   // ── Part 8: Approve proposal ─────────────────────────────────────────────
 
   test("Part 8: Approve proposal", async ({ page }) => {
-    test.skip(!dealId, "No deal created");
     test.setTimeout(30_000);
 
     // Ensure we're on the Proposal tab
@@ -431,18 +394,18 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
     const dialog = page.locator('[role="dialog"]');
 
     // Look for Approve Proposal button
-    const approveBtn = dialog
-      .getByRole("button", { name: /approve proposal/i })
-      .first();
+    const approveBtn = page.getByRole("button", {
+      name: /approve proposal/i,
+    });
     const hasApproveBtn = await approveBtn.isVisible().catch(() => false);
 
     if (hasApproveBtn) {
       await approveBtn.click();
       console.log("[Part 8] Clicked Approve Proposal");
 
-      // Wait for status to change — look for "Approved" badge
       await page.waitForTimeout(demoPause.medium);
 
+      // Verify status changes to Approved
       const dialogText = await dialog.textContent();
       const isApproved =
         dialogText?.includes("Approved") || dialogText?.includes("approved");
@@ -466,10 +429,9 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
   // ── Part 9: Browse Deck & Close tab ──────────────────────────────────────
 
   test("Part 9: Browse Deck & Close tab", async ({ page }) => {
-    test.skip(!dealId, "No deal created");
     test.setTimeout(30_000);
 
-    // Click the Deck & Close tab
+    // Click the Deck tab
     const deckTab = page.getByTestId("tab-deck");
     const hasDeckTab = await deckTab.isVisible().catch(() => false);
 
@@ -490,19 +452,19 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
     // Verify expected sections are present
     const hasGenerateDeck =
       dialogText?.includes("Generate Deck") ||
-      dialogText?.includes("generate deck");
-    const hasMarkWon =
-      dialogText?.includes("Mark Won") ||
-      dialogText?.includes("Close Deal") ||
-      dialogText?.includes("mark won");
+      dialogText?.includes("Sales Deck");
     const hasInvoice =
       dialogText?.includes("Invoice") || dialogText?.includes("invoice");
+    const hasCloseDeal =
+      dialogText?.includes("Mark Won") ||
+      dialogText?.includes("Close Deal") ||
+      dialogText?.includes("close deal");
 
     console.log(
-      `[Part 9] Deck & Close — Generate Deck: ${!!hasGenerateDeck}, Mark Won: ${!!hasMarkWon}, Invoice: ${!!hasInvoice}`,
+      `[Part 9] Deck & Close — Generate Deck: ${!!hasGenerateDeck}, Invoice: ${!!hasInvoice}, Close Deal: ${!!hasCloseDeal}`,
     );
 
-    // At minimum the tab should render with some content
+    // Tab should render with some content
     expect(
       dialogText?.length,
       "Deck & Close tab should have content",
@@ -511,13 +473,12 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
     await page.waitForTimeout(demoPause.medium);
   });
 
-  // ── Part 10: Navigate to person profile ──────────────────────────────────
+  // ── Part 10: Close panel + navigate ──────────────────────────────────────
 
-  test("Part 10: Navigate to person profile", async ({ page }) => {
-    test.skip(!dealId || !contactId, "No deal or contact created");
+  test("Part 10: Close panel and navigate to companies", async ({ page }) => {
     test.setTimeout(30_000);
 
-    // Close the dialog panel first
+    // Close the dialog panel
     const closeBtn = page
       .locator('[role="dialog"]')
       .getByRole("button", { name: /close/i })
@@ -527,28 +488,17 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
       await page.waitForTimeout(demoPause.short);
     }
 
-    // Navigate to person profile page
-    await page.goto(`/people/${contactId}`);
+    // Navigate to companies page to verify the board is still intact
+    await page.goto(`/organizations/${ORG_ID}/crm/companies`);
     await page.waitForTimeout(demoPause.medium);
 
-    // Verify the person page loaded — should show name and company info
     const bodyText = await page.textContent("body");
-    const hasName =
-      bodyText?.includes(DEMO_LEAD.first) ||
-      bodyText?.includes(DEMO_LEAD.last);
-    const hasCompany =
-      bodyText?.includes("Aurora") || bodyText?.includes(DEMO_LEAD.company);
-
-    console.log(
-      `[Part 10] Person page — name: ${!!hasName}, company: ${!!hasCompany}`,
-    );
-
-    // Verify the page has meaningful content
     expect(
       bodyText?.length,
-      "Person page should have content",
+      "Companies page should have content",
     ).toBeGreaterThan(100);
 
+    console.log("[Part 10] Navigated to companies page");
     await page.waitForTimeout(demoPause.medium);
   });
 
@@ -557,17 +507,27 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
   test("Part 11: Cleanup test data", async ({ request }) => {
     await apiLogin(request);
 
-    if (dealId) {
-      await request.delete(`/api/crm/deals/${dealId}`).catch(() => {});
-      console.log(`[Part 11] Deleted deal: ${dealId}`);
+    // Find and delete the test deal by name via API
+    const dealsRes = await request.get(
+      `/api/crm/deals?organization_id=${ORG_ID}`,
+    );
+    if (dealsRes.ok()) {
+      const dealsBody = await dealsRes.json();
+      const deals = dealsBody.data || dealsBody || [];
+      for (const deal of deals) {
+        if (
+          (deal.name as string | undefined)?.includes("Aurora Design") &&
+          (deal.name as string | undefined)?.startsWith(TEST_DATA_PREFIX)
+        ) {
+          dealId = deal.id;
+          await request.delete(`/api/crm/deals/${deal.id}`).catch(() => {});
+          console.log(`[Part 11] Deleted deal: ${deal.id}`);
+        }
+      }
     }
-    if (contactId) {
-      await request.delete(`/api/crm/contacts/${contactId}`).catch(() => {});
-      console.log(`[Part 11] Deleted contact: ${contactId}`);
-    }
-    if (companyId) {
-      await request.delete(`/api/companies/${companyId}`).catch(() => {});
-      console.log(`[Part 11] Deleted company: ${companyId}`);
+
+    if (!dealId) {
+      console.log("[Part 11] No test deal found to clean up");
     }
 
     console.log("[Part 11] Cleanup complete");
