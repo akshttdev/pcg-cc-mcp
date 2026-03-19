@@ -127,6 +127,15 @@
     "typescript": "^5.9.2",
     "vite": "^5.4.20"
   },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{js,jsx,json,css,md}": [
+      "prettier --write"
+    ]
+  },
   "duck_metadata": {
     "forked_from": "vibe-kanban",
     "duck_version": "1.0.0",

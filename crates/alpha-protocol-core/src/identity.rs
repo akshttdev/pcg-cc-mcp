@@ -169,7 +169,8 @@ mod tests {
         assert!(identity.address().starts_with("0x"));
         assert_eq!(identity.address().len(), 66); // 0x + 64 hex chars
 
-        let words: Vec<_> = identity.mnemonic_phrase().split_whitespace().collect();
+        let phrase = identity.mnemonic_phrase();
+        let words: Vec<_> = phrase.split_whitespace().collect();
         assert_eq!(words.len(), 12);
     }
 
@@ -200,7 +201,8 @@ mod tests {
     fn test_24_word_mnemonic() {
         let identity = NodeIdentity::generate_24_word().unwrap();
 
-        let words: Vec<_> = identity.mnemonic_phrase().split_whitespace().collect();
+        let phrase = identity.mnemonic_phrase();
+        let words: Vec<_> = phrase.split_whitespace().collect();
         assert_eq!(words.len(), 24);
     }
 }
