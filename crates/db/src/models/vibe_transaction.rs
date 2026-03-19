@@ -370,7 +370,10 @@ impl VibeTransaction {
         Ok(tx)
     }
 
-    /// Get cost aggregation for an organization (joins via projects.organization_id)
+    /// Get cost aggregation for an organization.
+    /// Captures BOTH cost paths:
+    ///   1. source_type='project' → join projects.organization_id
+    ///   2. source_type='agent'  → join task_id → tasks.project_id → projects.organization_id
     pub async fn org_cost_summary(
         pool: &SqlitePool,
         org_id: &str,
@@ -383,8 +386,13 @@ impl VibeTransaction {
                 COALESCE(SUM(vt.input_tokens), 0) as total_input_tokens,
                 COALESCE(SUM(vt.output_tokens), 0) as total_output_tokens
             FROM vibe_transactions vt
-            JOIN projects p ON CAST(vt.source_id AS TEXT) = p.id
-            WHERE p.organization_id = ?1 AND vt.source_type = 'project'"#,
+            LEFT JOIN projects p_direct
+                ON vt.source_type = 'project' AND CAST(vt.source_id AS TEXT) = p_direct.id
+            LEFT JOIN tasks t
+                ON vt.source_type = 'agent' AND vt.task_id = t.id
+            LEFT JOIN projects p_task
+                ON t.project_id = p_task.id
+            WHERE COALESCE(p_direct.organization_id, p_task.organization_id) = ?1"#,
         )
         .bind(org_id)
         .fetch_one(pool)
@@ -392,7 +400,7 @@ impl VibeTransaction {
         Ok(row)
     }
 
-    /// Get cost breakdown by model for an organization
+    /// Get cost breakdown by model for an organization (both project + agent paths)
     pub async fn org_cost_by_model(
         pool: &SqlitePool,
         org_id: &str,
@@ -407,8 +415,13 @@ impl VibeTransaction {
                 COALESCE(SUM(vt.input_tokens), 0) as input_tokens,
                 COALESCE(SUM(vt.output_tokens), 0) as output_tokens
             FROM vibe_transactions vt
-            JOIN projects p ON CAST(vt.source_id AS TEXT) = p.id
-            WHERE p.organization_id = ?1 AND vt.source_type = 'project'
+            LEFT JOIN projects p_direct
+                ON vt.source_type = 'project' AND CAST(vt.source_id AS TEXT) = p_direct.id
+            LEFT JOIN tasks t
+                ON vt.source_type = 'agent' AND vt.task_id = t.id
+            LEFT JOIN projects p_task
+                ON t.project_id = p_task.id
+            WHERE COALESCE(p_direct.organization_id, p_task.organization_id) = ?1
             GROUP BY vt.model, vt.provider
             ORDER BY total_vibe DESC"#,
         )
@@ -418,22 +431,27 @@ impl VibeTransaction {
         Ok(rows)
     }
 
-    /// Get cost breakdown by project for an organization
+    /// Get cost breakdown by project for an organization (both project + agent paths)
     pub async fn org_cost_by_project(
         pool: &SqlitePool,
         org_id: &str,
     ) -> Result<Vec<ProjectCostRow>, VibeTransactionError> {
         let rows = sqlx::query_as::<_, ProjectCostRow>(
             r#"SELECT
-                p.id as project_id,
-                p.name as project_name,
+                COALESCE(p_direct.id, p_task.id) as project_id,
+                COALESCE(p_direct.name, p_task.name, 'Unlinked') as project_name,
                 COALESCE(SUM(vt.amount_vibe), 0) as total_vibe,
                 COALESCE(SUM(vt.calculated_cost_cents), 0) as total_cost_cents,
                 COUNT(*) as transaction_count
             FROM vibe_transactions vt
-            JOIN projects p ON CAST(vt.source_id AS TEXT) = p.id
-            WHERE p.organization_id = ?1 AND vt.source_type = 'project'
-            GROUP BY p.id, p.name
+            LEFT JOIN projects p_direct
+                ON vt.source_type = 'project' AND CAST(vt.source_id AS TEXT) = p_direct.id
+            LEFT JOIN tasks t
+                ON vt.source_type = 'agent' AND vt.task_id = t.id
+            LEFT JOIN projects p_task
+                ON t.project_id = p_task.id
+            WHERE COALESCE(p_direct.organization_id, p_task.organization_id) = ?1
+            GROUP BY COALESCE(p_direct.id, p_task.id), COALESCE(p_direct.name, p_task.name)
             ORDER BY total_vibe DESC"#,
         )
         .bind(org_id)
