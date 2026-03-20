@@ -756,11 +756,6 @@ export type UpdateAgentFlow = { status: FlowStatus | null, current_phase: AgentP
 
 export type RespondClarificationPayload = { response: string, resume_status?: FlowStatus, };
 
-export type OrgCostSummary = { total_vibe: number, total_cost_cents: number, transaction_count: number, total_input_tokens: number, total_output_tokens: number, };
-
-export type ModelCostRow = { model: string, total_vibe: number, total_cost_cents: number, transaction_count: number, };
-
-export type ProjectCostRow = { project_id: string | null, project_name: string | null, total_vibe: number, total_cost_cents: number, transaction_count: number, };
 
 export type FlowEventType = "phase_started" | "phase_completed" | "artifact_created" | "artifact_updated" | "approval_requested" | "approval_decision" | "wide_research_started" | "subagent_progress" | "wide_research_completed" | "agent_handoff" | "flow_paused" | "flow_resumed" | "flow_failed" | "flow_completed";
 
