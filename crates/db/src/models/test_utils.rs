@@ -15,7 +15,7 @@ pub(crate) async fn setup_test_pool() -> SqlitePool {
     let options = SqliteConnectOptions::from_str("sqlite::memory:?cache=shared")
         .expect("invalid sqlite config")
         .create_if_missing(true)
-        .foreign_keys(true);
+        .foreign_keys(false);
 
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
@@ -32,21 +32,31 @@ async fn bootstrap_schema(pool: &SqlitePool) {
     let statements = [
         r#"
         CREATE TABLE IF NOT EXISTS projects (
-            id BLOB PRIMARY KEY,
+            id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
-            git_repo_path TEXT NOT NULL,
-            setup_script TEXT,
-            dev_script TEXT,
+            git_repo_path TEXT NOT NULL DEFAULT '',
+            setup_script TEXT DEFAULT '',
+            dev_script TEXT DEFAULT '',
             cleanup_script TEXT,
             copy_files TEXT,
+            organization_id TEXT,
+            client_id TEXT,
+            folder_id TEXT,
+            parent_project_id TEXT,
+            sort_order INTEGER DEFAULT 0,
+            vibe_budget_limit INTEGER,
+            vibe_spent_amount INTEGER NOT NULL DEFAULT 0,
+            aptos_address TEXT,
+            aptos_funded INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT (datetime('now','subsec')),
-            updated_at TEXT NOT NULL DEFAULT (datetime('now','subsec'))
+            updated_at TEXT NOT NULL DEFAULT (datetime('now','subsec')),
+            deleted_at TEXT
         );
         "#,
         r#"
         CREATE TABLE IF NOT EXISTS tasks (
             id BLOB PRIMARY KEY,
-            project_id BLOB NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
             title TEXT,
             description TEXT,
             status TEXT,
@@ -63,7 +73,7 @@ async fn bootstrap_schema(pool: &SqlitePool) {
         r#"
         CREATE TABLE IF NOT EXISTS social_accounts (
             id BLOB PRIMARY KEY,
-            project_id BLOB NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
             platform TEXT NOT NULL,
             account_type TEXT NOT NULL DEFAULT 'personal',
             platform_account_id TEXT NOT NULL,
@@ -88,9 +98,9 @@ async fn bootstrap_schema(pool: &SqlitePool) {
         r#"
         CREATE TABLE IF NOT EXISTS social_posts (
             id BLOB PRIMARY KEY,
-            project_id BLOB NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-            social_account_id BLOB REFERENCES social_accounts(id) ON DELETE SET NULL,
-            task_id BLOB REFERENCES tasks(id) ON DELETE SET NULL,
+            project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            social_account_id TEXT REFERENCES social_accounts(id) ON DELETE SET NULL,
+            task_id TEXT REFERENCES tasks(id) ON DELETE SET NULL,
             content_type TEXT NOT NULL DEFAULT 'post',
             caption TEXT,
             content_blocks TEXT,
@@ -107,7 +117,7 @@ async fn bootstrap_schema(pool: &SqlitePool) {
             is_evergreen INTEGER NOT NULL DEFAULT 0,
             recycle_after_days INTEGER,
             last_recycled_at TEXT,
-            created_by_agent_id BLOB REFERENCES agents(id) ON DELETE SET NULL,
+            created_by_agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
             approved_by TEXT,
             approved_at TEXT,
             platform_post_id TEXT,
@@ -128,8 +138,8 @@ async fn bootstrap_schema(pool: &SqlitePool) {
         r#"
         CREATE TABLE IF NOT EXISTS social_mentions (
             id BLOB PRIMARY KEY,
-            social_account_id BLOB NOT NULL REFERENCES social_accounts(id) ON DELETE CASCADE,
-            project_id BLOB NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            social_account_id TEXT NOT NULL REFERENCES social_accounts(id) ON DELETE CASCADE,
+            project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
             mention_type TEXT NOT NULL,
             platform TEXT NOT NULL,
             platform_mention_id TEXT NOT NULL,
@@ -140,7 +150,7 @@ async fn bootstrap_schema(pool: &SqlitePool) {
             author_is_verified INTEGER DEFAULT 0,
             content TEXT,
             media_urls TEXT,
-            parent_post_id BLOB REFERENCES social_posts(id) ON DELETE SET NULL,
+            parent_post_id TEXT REFERENCES social_posts(id) ON DELETE SET NULL,
             parent_platform_id TEXT,
             status TEXT NOT NULL DEFAULT 'unread',
             sentiment TEXT,
@@ -148,7 +158,7 @@ async fn bootstrap_schema(pool: &SqlitePool) {
             replied_at TEXT,
             replied_by TEXT,
             reply_content TEXT,
-            assigned_agent_id BLOB REFERENCES agents(id) ON DELETE SET NULL,
+            assigned_agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
             auto_response_sent INTEGER DEFAULT 0,
             received_at TEXT NOT NULL,
             created_at TEXT NOT NULL DEFAULT (datetime('now','subsec')),
@@ -158,7 +168,7 @@ async fn bootstrap_schema(pool: &SqlitePool) {
         r#"
         CREATE TABLE IF NOT EXISTS email_accounts (
             id BLOB PRIMARY KEY,
-            project_id BLOB NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
             provider TEXT NOT NULL,
             account_type TEXT NOT NULL DEFAULT 'primary',
             email_address TEXT NOT NULL,
@@ -184,9 +194,38 @@ async fn bootstrap_schema(pool: &SqlitePool) {
             sync_frequency_minutes INTEGER DEFAULT 15,
             auto_reply_enabled INTEGER DEFAULT 0,
             signature TEXT,
+            owner_type TEXT NOT NULL DEFAULT 'project',
+            owner_id TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL DEFAULT (datetime('now','subsec')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now','subsec')),
             UNIQUE(project_id, provider, email_address)
+        );
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS quickbooks_accounts (
+            id TEXT PRIMARY KEY NOT NULL,
+            organization_id TEXT NOT NULL,
+            realm_id TEXT NOT NULL,
+            company_name TEXT,
+            access_token TEXT,
+            refresh_token TEXT,
+            token_expires_at TEXT,
+            environment TEXT NOT NULL DEFAULT 'sandbox',
+            sync_enabled INTEGER NOT NULL DEFAULT 1,
+            sync_frequency_minutes INTEGER NOT NULL DEFAULT 60,
+            last_sync_at TEXT,
+            sync_invoices INTEGER NOT NULL DEFAULT 1,
+            sync_customers INTEGER NOT NULL DEFAULT 1,
+            sync_payments INTEGER NOT NULL DEFAULT 1,
+            sync_expenses INTEGER NOT NULL DEFAULT 1,
+            sync_time_tracking INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'active',
+            last_error TEXT,
+            metadata TEXT,
+            connected_by TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','subsec')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now','subsec')),
+            UNIQUE(organization_id, realm_id)
         );
         "#,
     ];
