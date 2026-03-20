@@ -11,7 +11,7 @@
 > These items are ordered by ROI score. See the analysis doc for scoring methodology.
 > **Dogfooding is the strategy**: every item below serves dual purpose — build the platform AND discover the product through daily real-work usage.
 
-### S0-01. CI Strictness Fix [ROI: 50.0] ✅ DONE (PR #51)
+### S0-01. CI Strictness Fix [ROI: 50.0] ✅ DONE (PR #53)
 **Source:** [`roadmap/research/04-infra--cicd-gaps.md`](roadmap/research/04-infra--cicd-gaps.md)
 **What:** Strict `-D warnings` clippy, all 23 pre-existing clippy errors fixed, `cargo fmt` clean, type generation passes, system deps added (`libgtk-3-dev`, `libwebkit2gtk-4.1-dev`).
 **Follow-up:** ESLint `--max-warnings` at 860 (was 110) due to `simple-import-sort` on untouched files. Run `eslint --fix` across codebase to reduce. TaskStatus enum constants (replace hardcoded strings with `TaskStatus::as_str()`) — see sprint plan for details.

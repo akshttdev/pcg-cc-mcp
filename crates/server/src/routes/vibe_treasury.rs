@@ -1,5 +1,5 @@
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, Query, State},
     http::HeaderMap,
     routing::{get, post},
@@ -18,7 +18,7 @@ use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
 #[derive(Debug, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -93,6 +93,19 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route(
             "/projects/{project_id}/vibe/transactions",
             get(list_transactions),
+        )
+        // Org-scoped cost aggregation
+        .route(
+            "/organizations/{org_id}/costs/summary",
+            get(get_org_cost_summary),
+        )
+        .route(
+            "/organizations/{org_id}/costs/by-model",
+            get(get_org_cost_by_model),
+        )
+        .route(
+            "/organizations/{org_id}/costs/by-project",
+            get(get_org_cost_by_project),
         )
         .with_state(deployment.clone())
 }
@@ -429,4 +442,44 @@ async fn admin_faucet(
     );
 
     Ok(Json(ApiResponse::success(deposit)))
+}
+
+// ── Org-scoped cost aggregation endpoints ─────────────────────────────────
+
+use db::models::vibe_transaction::{ModelCostRow, OrgCostSummary, ProjectCostRow};
+
+/// GET /organizations/:org_id/costs/summary — total VIBE + USD cost for an org
+async fn get_org_cost_summary(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(org_id): Path<String>,
+) -> Result<Json<ApiResponse<OrgCostSummary>>, ApiError> {
+    let pool = &deployment.db().pool;
+    access_context.require_org_membership(pool, &org_id).await?;
+    let summary = VibeTransaction::org_cost_summary(pool, &org_id).await?;
+    Ok(Json(ApiResponse::success(summary)))
+}
+
+/// GET /organizations/:org_id/costs/by-model — cost breakdown by LLM model
+async fn get_org_cost_by_model(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(org_id): Path<String>,
+) -> Result<Json<ApiResponse<Vec<ModelCostRow>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    access_context.require_org_membership(pool, &org_id).await?;
+    let rows = VibeTransaction::org_cost_by_model(pool, &org_id).await?;
+    Ok(Json(ApiResponse::success(rows)))
+}
+
+/// GET /organizations/:org_id/costs/by-project — cost breakdown by project
+async fn get_org_cost_by_project(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(org_id): Path<String>,
+) -> Result<Json<ApiResponse<Vec<ProjectCostRow>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    access_context.require_org_membership(pool, &org_id).await?;
+    let rows = VibeTransaction::org_cost_by_project(pool, &org_id).await?;
+    Ok(Json(ApiResponse::success(rows)))
 }

@@ -58,6 +58,7 @@ pub enum FlowStatus {
     Failed,
     Paused,
     AwaitingApproval,
+    NeedsClarification,
 }
 
 impl std::fmt::Display for FlowStatus {
@@ -70,7 +71,50 @@ impl std::fmt::Display for FlowStatus {
             FlowStatus::Failed => write!(f, "failed"),
             FlowStatus::Paused => write!(f, "paused"),
             FlowStatus::AwaitingApproval => write!(f, "awaiting_approval"),
+            FlowStatus::NeedsClarification => write!(f, "needs_clarification"),
         }
+    }
+}
+
+impl FlowStatus {
+    /// Valid transitions from each status
+    pub fn valid_transitions(&self) -> &[FlowStatus] {
+        match self {
+            FlowStatus::Planning => &[
+                FlowStatus::Executing,
+                FlowStatus::Failed,
+                FlowStatus::NeedsClarification,
+            ],
+            FlowStatus::Executing => &[
+                FlowStatus::Verifying,
+                FlowStatus::Completed,
+                FlowStatus::Failed,
+                FlowStatus::Paused,
+                FlowStatus::NeedsClarification,
+            ],
+            FlowStatus::Verifying => &[
+                FlowStatus::Completed,
+                FlowStatus::Executing, // re-execute on verification failure
+                FlowStatus::Failed,
+                FlowStatus::NeedsClarification,
+            ],
+            FlowStatus::NeedsClarification => &[
+                FlowStatus::Planning,
+                FlowStatus::Executing,
+                FlowStatus::Failed,
+            ],
+            FlowStatus::Paused => &[FlowStatus::Executing, FlowStatus::Failed],
+            FlowStatus::AwaitingApproval => &[
+                FlowStatus::Executing,
+                FlowStatus::Completed,
+                FlowStatus::Failed,
+            ],
+            FlowStatus::Completed | FlowStatus::Failed => &[],
+        }
+    }
+
+    pub fn can_transition_to(&self, target: &FlowStatus) -> bool {
+        self.valid_transitions().contains(target)
     }
 }
 
@@ -127,6 +171,10 @@ pub struct AgentFlow {
     pub human_approval_required: bool,
     pub approved_by: Option<String>,
     pub approved_at: Option<DateTime<Utc>>,
+
+    /// JSON-serialized ClarificationRequest when status = NeedsClarification
+    #[sqlx(default)]
+    pub clarification_request: Option<String>,
 
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

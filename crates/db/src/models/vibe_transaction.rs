@@ -372,6 +372,96 @@ impl VibeTransaction {
         Ok(tx)
     }
 
+    /// Get cost aggregation for an organization.
+    /// Captures BOTH cost paths:
+    ///   1. source_type='project' → join projects.organization_id
+    ///   2. source_type='agent'  → join task_id → tasks.project_id → projects.organization_id
+    pub async fn org_cost_summary(
+        pool: &SqlitePool,
+        org_id: &str,
+    ) -> Result<OrgCostSummary, VibeTransactionError> {
+        let row = sqlx::query_as::<_, OrgCostSummary>(
+            r#"SELECT
+                COALESCE(SUM(vt.amount_vibe), 0) as total_vibe,
+                COALESCE(SUM(vt.calculated_cost_cents), 0) as total_cost_cents,
+                COUNT(*) as transaction_count,
+                COALESCE(SUM(vt.input_tokens), 0) as total_input_tokens,
+                COALESCE(SUM(vt.output_tokens), 0) as total_output_tokens
+            FROM vibe_transactions vt
+            LEFT JOIN projects p_direct
+                ON vt.source_type = 'project' AND lower(substr(hex(vt.source_id),1,8)||'-'||substr(hex(vt.source_id),9,4)||'-'||substr(hex(vt.source_id),13,4)||'-'||substr(hex(vt.source_id),17,4)||'-'||substr(hex(vt.source_id),21,12)) = p_direct.id
+            LEFT JOIN tasks t
+                ON vt.source_type = 'agent' AND vt.task_id IS NOT NULL AND lower(substr(hex(vt.task_id),1,8)||'-'||substr(hex(vt.task_id),9,4)||'-'||substr(hex(vt.task_id),13,4)||'-'||substr(hex(vt.task_id),17,4)||'-'||substr(hex(vt.task_id),21,12)) = t.id
+            LEFT JOIN projects p_task
+                ON t.project_id = p_task.id
+            WHERE COALESCE(p_direct.organization_id, p_task.organization_id) = ?1"#,
+        )
+        .bind(org_id)
+        .fetch_one(pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// Get cost breakdown by model for an organization (both project + agent paths)
+    pub async fn org_cost_by_model(
+        pool: &SqlitePool,
+        org_id: &str,
+    ) -> Result<Vec<ModelCostRow>, VibeTransactionError> {
+        let rows = sqlx::query_as::<_, ModelCostRow>(
+            r#"SELECT
+                COALESCE(vt.model, 'unknown') as model,
+                COALESCE(vt.provider, 'unknown') as provider,
+                COALESCE(SUM(vt.amount_vibe), 0) as total_vibe,
+                COALESCE(SUM(vt.calculated_cost_cents), 0) as total_cost_cents,
+                COUNT(*) as transaction_count,
+                COALESCE(SUM(vt.input_tokens), 0) as input_tokens,
+                COALESCE(SUM(vt.output_tokens), 0) as output_tokens
+            FROM vibe_transactions vt
+            LEFT JOIN projects p_direct
+                ON vt.source_type = 'project' AND lower(substr(hex(vt.source_id),1,8)||'-'||substr(hex(vt.source_id),9,4)||'-'||substr(hex(vt.source_id),13,4)||'-'||substr(hex(vt.source_id),17,4)||'-'||substr(hex(vt.source_id),21,12)) = p_direct.id
+            LEFT JOIN tasks t
+                ON vt.source_type = 'agent' AND vt.task_id IS NOT NULL AND lower(substr(hex(vt.task_id),1,8)||'-'||substr(hex(vt.task_id),9,4)||'-'||substr(hex(vt.task_id),13,4)||'-'||substr(hex(vt.task_id),17,4)||'-'||substr(hex(vt.task_id),21,12)) = t.id
+            LEFT JOIN projects p_task
+                ON t.project_id = p_task.id
+            WHERE COALESCE(p_direct.organization_id, p_task.organization_id) = ?1
+            GROUP BY vt.model, vt.provider
+            ORDER BY total_vibe DESC"#,
+        )
+        .bind(org_id)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Get cost breakdown by project for an organization (both project + agent paths)
+    pub async fn org_cost_by_project(
+        pool: &SqlitePool,
+        org_id: &str,
+    ) -> Result<Vec<ProjectCostRow>, VibeTransactionError> {
+        let rows = sqlx::query_as::<_, ProjectCostRow>(
+            r#"SELECT
+                COALESCE(p_direct.id, p_task.id) as project_id,
+                COALESCE(p_direct.name, p_task.name, 'Unlinked') as project_name,
+                COALESCE(SUM(vt.amount_vibe), 0) as total_vibe,
+                COALESCE(SUM(vt.calculated_cost_cents), 0) as total_cost_cents,
+                COUNT(*) as transaction_count
+            FROM vibe_transactions vt
+            LEFT JOIN projects p_direct
+                ON vt.source_type = 'project' AND lower(substr(hex(vt.source_id),1,8)||'-'||substr(hex(vt.source_id),9,4)||'-'||substr(hex(vt.source_id),13,4)||'-'||substr(hex(vt.source_id),17,4)||'-'||substr(hex(vt.source_id),21,12)) = p_direct.id
+            LEFT JOIN tasks t
+                ON vt.source_type = 'agent' AND vt.task_id IS NOT NULL AND lower(substr(hex(vt.task_id),1,8)||'-'||substr(hex(vt.task_id),9,4)||'-'||substr(hex(vt.task_id),13,4)||'-'||substr(hex(vt.task_id),17,4)||'-'||substr(hex(vt.task_id),21,12)) = t.id
+            LEFT JOIN projects p_task
+                ON t.project_id = p_task.id
+            WHERE COALESCE(p_direct.organization_id, p_task.organization_id) = ?1
+            GROUP BY COALESCE(p_direct.id, p_task.id), COALESCE(p_direct.name, p_task.name)
+            ORDER BY total_vibe DESC"#,
+        )
+        .bind(org_id)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows)
+    }
+
     /// Mark a transaction sync as failed
     pub async fn mark_sync_failed(
         pool: &SqlitePool,
@@ -400,4 +490,36 @@ impl VibeTransaction {
 
         Ok(tx)
     }
+}
+
+#[derive(Debug, FromRow, Serialize, TS)]
+#[ts(export)]
+pub struct OrgCostSummary {
+    pub total_vibe: i64,
+    pub total_cost_cents: i64,
+    pub transaction_count: i64,
+    pub total_input_tokens: i64,
+    pub total_output_tokens: i64,
+}
+
+#[derive(Debug, FromRow, Serialize, TS)]
+#[ts(export)]
+pub struct ModelCostRow {
+    pub model: String,
+    pub provider: String,
+    pub total_vibe: i64,
+    pub total_cost_cents: i64,
+    pub transaction_count: i64,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+}
+
+#[derive(Debug, FromRow, Serialize, TS)]
+#[ts(export)]
+pub struct ProjectCostRow {
+    pub project_id: Option<String>,
+    pub project_name: String,
+    pub total_vibe: i64,
+    pub total_cost_cents: i64,
+    pub transaction_count: i64,
 }
