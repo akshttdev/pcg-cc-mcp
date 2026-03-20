@@ -387,9 +387,9 @@ impl VibeTransaction {
                 COALESCE(SUM(vt.output_tokens), 0) as total_output_tokens
             FROM vibe_transactions vt
             LEFT JOIN projects p_direct
-                ON vt.source_type = 'project' AND CAST(vt.source_id AS TEXT) = p_direct.id
+                ON vt.source_type = 'project' AND lower(substr(hex(vt.source_id),1,8)||'-'||substr(hex(vt.source_id),9,4)||'-'||substr(hex(vt.source_id),13,4)||'-'||substr(hex(vt.source_id),17,4)||'-'||substr(hex(vt.source_id),21,12)) = p_direct.id
             LEFT JOIN tasks t
-                ON vt.source_type = 'agent' AND vt.task_id = t.id
+                ON vt.source_type = 'agent' AND vt.task_id IS NOT NULL AND lower(substr(hex(vt.task_id),1,8)||'-'||substr(hex(vt.task_id),9,4)||'-'||substr(hex(vt.task_id),13,4)||'-'||substr(hex(vt.task_id),17,4)||'-'||substr(hex(vt.task_id),21,12)) = t.id
             LEFT JOIN projects p_task
                 ON t.project_id = p_task.id
             WHERE COALESCE(p_direct.organization_id, p_task.organization_id) = ?1"#,
@@ -416,9 +416,9 @@ impl VibeTransaction {
                 COALESCE(SUM(vt.output_tokens), 0) as output_tokens
             FROM vibe_transactions vt
             LEFT JOIN projects p_direct
-                ON vt.source_type = 'project' AND CAST(vt.source_id AS TEXT) = p_direct.id
+                ON vt.source_type = 'project' AND lower(substr(hex(vt.source_id),1,8)||'-'||substr(hex(vt.source_id),9,4)||'-'||substr(hex(vt.source_id),13,4)||'-'||substr(hex(vt.source_id),17,4)||'-'||substr(hex(vt.source_id),21,12)) = p_direct.id
             LEFT JOIN tasks t
-                ON vt.source_type = 'agent' AND vt.task_id = t.id
+                ON vt.source_type = 'agent' AND vt.task_id IS NOT NULL AND lower(substr(hex(vt.task_id),1,8)||'-'||substr(hex(vt.task_id),9,4)||'-'||substr(hex(vt.task_id),13,4)||'-'||substr(hex(vt.task_id),17,4)||'-'||substr(hex(vt.task_id),21,12)) = t.id
             LEFT JOIN projects p_task
                 ON t.project_id = p_task.id
             WHERE COALESCE(p_direct.organization_id, p_task.organization_id) = ?1
@@ -445,9 +445,9 @@ impl VibeTransaction {
                 COUNT(*) as transaction_count
             FROM vibe_transactions vt
             LEFT JOIN projects p_direct
-                ON vt.source_type = 'project' AND CAST(vt.source_id AS TEXT) = p_direct.id
+                ON vt.source_type = 'project' AND lower(substr(hex(vt.source_id),1,8)||'-'||substr(hex(vt.source_id),9,4)||'-'||substr(hex(vt.source_id),13,4)||'-'||substr(hex(vt.source_id),17,4)||'-'||substr(hex(vt.source_id),21,12)) = p_direct.id
             LEFT JOIN tasks t
-                ON vt.source_type = 'agent' AND vt.task_id = t.id
+                ON vt.source_type = 'agent' AND vt.task_id IS NOT NULL AND lower(substr(hex(vt.task_id),1,8)||'-'||substr(hex(vt.task_id),9,4)||'-'||substr(hex(vt.task_id),13,4)||'-'||substr(hex(vt.task_id),17,4)||'-'||substr(hex(vt.task_id),21,12)) = t.id
             LEFT JOIN projects p_task
                 ON t.project_id = p_task.id
             WHERE COALESCE(p_direct.organization_id, p_task.organization_id) = ?1
@@ -515,7 +515,7 @@ pub struct ModelCostRow {
 #[derive(Debug, FromRow, Serialize, TS)]
 #[ts(export)]
 pub struct ProjectCostRow {
-    pub project_id: String,
+    pub project_id: Option<String>,
     pub project_name: String,
     pub total_vibe: i64,
     pub total_cost_cents: i64,
