@@ -103,10 +103,7 @@ impl FlowStatus {
                 FlowStatus::Executing,
                 FlowStatus::Failed,
             ],
-            FlowStatus::Paused => &[
-                FlowStatus::Executing,
-                FlowStatus::Failed,
-            ],
+            FlowStatus::Paused => &[FlowStatus::Executing, FlowStatus::Failed],
             FlowStatus::AwaitingApproval => &[
                 FlowStatus::Executing,
                 FlowStatus::Completed,

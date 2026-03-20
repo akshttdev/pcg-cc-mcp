@@ -24,7 +24,8 @@ impl AgentFlowExecutor {
     /// Process one tick: find actionable flows and dispatch them.
     async fn tick(&self) {
         // Find flows in Planning status (need to start execution)
-        let planning_flows = match AgentFlow::find_by_status(&self.pool, FlowStatus::Planning).await {
+        let planning_flows = match AgentFlow::find_by_status(&self.pool, FlowStatus::Planning).await
+        {
             Ok(flows) => flows,
             Err(e) => {
                 tracing::error!("[AgentFlowEngine] Failed to query planning flows: {}", e);
@@ -33,22 +34,24 @@ impl AgentFlowExecutor {
         };
 
         // Find flows in Executing status (check for completion)
-        let executing_flows = match AgentFlow::find_by_status(&self.pool, FlowStatus::Executing).await {
-            Ok(flows) => flows,
-            Err(e) => {
-                tracing::error!("[AgentFlowEngine] Failed to query executing flows: {}", e);
-                return;
-            }
-        };
+        let executing_flows =
+            match AgentFlow::find_by_status(&self.pool, FlowStatus::Executing).await {
+                Ok(flows) => flows,
+                Err(e) => {
+                    tracing::error!("[AgentFlowEngine] Failed to query executing flows: {}", e);
+                    return;
+                }
+            };
 
         // Find flows in Verifying status (check verification results)
-        let verifying_flows = match AgentFlow::find_by_status(&self.pool, FlowStatus::Verifying).await {
-            Ok(flows) => flows,
-            Err(e) => {
-                tracing::error!("[AgentFlowEngine] Failed to query verifying flows: {}", e);
-                return;
-            }
-        };
+        let verifying_flows =
+            match AgentFlow::find_by_status(&self.pool, FlowStatus::Verifying).await {
+                Ok(flows) => flows,
+                Err(e) => {
+                    tracing::error!("[AgentFlowEngine] Failed to query verifying flows: {}", e);
+                    return;
+                }
+            };
 
         let total = planning_flows.len() + executing_flows.len() + verifying_flows.len();
         if total > 0 {
@@ -92,12 +95,8 @@ impl AgentFlowExecutor {
         }
 
         // Phase 1: just log and transition. Phase 2 will add real agent dispatch.
-        if let Err(e) = AgentFlow::transition_to_phase(
-            &self.pool,
-            flow.id,
-            AgentPhase::Execution,
-        )
-        .await
+        if let Err(e) =
+            AgentFlow::transition_to_phase(&self.pool, flow.id, AgentPhase::Execution).await
         {
             tracing::error!(
                 "[AgentFlowEngine] Failed to transition flow {} to executing: {}",
@@ -115,12 +114,8 @@ impl AgentFlowExecutor {
                 "[AgentFlowEngine] Flow {} execution complete, moving to verification",
                 flow.id
             );
-            if let Err(e) = AgentFlow::transition_to_phase(
-                &self.pool,
-                flow.id,
-                AgentPhase::Verification,
-            )
-            .await
+            if let Err(e) =
+                AgentFlow::transition_to_phase(&self.pool, flow.id, AgentPhase::Verification).await
             {
                 tracing::error!(
                     "[AgentFlowEngine] Failed to transition flow {} to verifying: {}",
@@ -173,6 +168,7 @@ impl BackgroundWorker for AgentFlowExecutor {
 
     async fn run(&self, shutdown: CancellationToken) {
         use std::time::Duration;
+
         use tokio::time::interval;
 
         let mut ticker = interval(Duration::from_secs(15));

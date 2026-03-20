@@ -286,9 +286,7 @@ async fn respond_clarification(
         )));
     }
 
-    let resume_to = payload
-        .resume_status
-        .unwrap_or(FlowStatus::Executing);
+    let resume_to = payload.resume_status.unwrap_or(FlowStatus::Executing);
 
     if !FlowStatus::NeedsClarification.can_transition_to(&resume_to) {
         return Err(ApiError::BadRequest(format!(

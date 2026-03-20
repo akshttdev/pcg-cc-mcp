@@ -456,8 +456,10 @@ impl TopologyEngine {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use super::super::graph::{GraphEdge, GraphNode};
+    use super::{
+        super::graph::{GraphEdge, GraphNode},
+        *,
+    };
 
     fn create_test_graph() -> TopologyGraph {
         let mut graph = TopologyGraph::new();
