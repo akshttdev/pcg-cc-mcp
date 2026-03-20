@@ -144,7 +144,7 @@ async fn start_node(
     *state.is_running.write().await = true;
 
     // Clone state for event handler
-    let state_clone = Arc::clone(&state.inner());
+    let state_clone = Arc::clone(state.inner());
     let app_clone = app.clone();
 
     // Run node with event handler and heartbeat loop

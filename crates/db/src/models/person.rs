@@ -243,7 +243,7 @@ impl Person {
             qb = qb.bind(s.clone()).bind(s);
         }
         if let Some(ref query) = q.query {
-            let like = format!("%{}%", query);
+            let like = format!("%{query}%");
             qb = qb.bind(like.clone()).bind(like.clone()).bind(like);
         }
 

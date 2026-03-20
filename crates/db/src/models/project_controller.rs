@@ -35,7 +35,7 @@ impl std::str::FromStr for ControllerMessageRole {
             "user" => Ok(Self::User),
             "assistant" => Ok(Self::Assistant),
             "system" => Ok(Self::System),
-            _ => Err(format!("Unknown role: {}", s)),
+            _ => Err(format!("Unknown role: {s}")),
         }
     }
 }

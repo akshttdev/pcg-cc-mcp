@@ -176,7 +176,7 @@ struct DataSource {
 
 fn build_client(token: &str) -> Result<Client> {
     let mut headers = HeaderMap::new();
-    let cookie = format!("session={}", token);
+    let cookie = format!("session={token}");
     headers.insert(header::COOKIE, HeaderValue::from_str(&cookie)?);
     Ok(Client::builder()
         .default_headers(headers)
@@ -230,7 +230,7 @@ fn local_path_for(source: &DataSource, sync_folder: &Path) -> PathBuf {
         .unwrap_or("");
 
     let ext = source.file_type.as_deref().unwrap_or("");
-    let base_name = if ext.is_empty() || source.title.ends_with(&format!(".{}", ext)) {
+    let base_name = if ext.is_empty() || source.title.ends_with(&format!(".{ext}")) {
         safe_filename(&source.title)
     } else {
         format!("{}.{}", safe_filename(&source.title), ext)
@@ -591,20 +591,17 @@ fn print_status() {
                 .count();
             let uploaded = state.uploaded_hashes.len();
             println!("\nSync State:");
-            println!("  Local files: {}", local_count);
-            println!(
-                "  Cloud-only:  {} (metadata only, no local file on server)",
-                cloud_only
-            );
-            println!("  Uploaded:    {}", uploaded);
+            println!("  Local files: {local_count}");
+            println!("  Cloud-only:  {cloud_only} (metadata only, no local file on server)");
+            println!("  Uploaded:    {uploaded}");
 
             if cfg.sync_folder.exists() {
                 let file_count = walkdir_files(&cfg.sync_folder).len();
-                println!("  Files in folder: {}", file_count);
+                println!("  Files in folder: {file_count}");
             }
         }
         Err(e) => {
-            eprintln!("No config found: {}", e);
+            eprintln!("No config found: {e}");
             eprintln!("Run: pcg-sync configure --server <url> --token <session>");
         }
     }

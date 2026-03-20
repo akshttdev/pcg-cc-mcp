@@ -17,7 +17,7 @@ mod tests {
             priority: Some(Priority::High),
             tags: Some(vec!["test".to_string()]),
             assignee_id: None,
-            assignee_type: None,
+
             board_id: None,
             pod_id: None,
         };
@@ -34,7 +34,7 @@ mod tests {
             priority: Some(Priority::Medium),
             tags: Some(vec!["integration".to_string(), "test".to_string()]),
             assignee_id: Some("user-123".to_string()),
-            assignee_type: None,
+
             board_id: None,
             pod_id: None,
         };
@@ -56,7 +56,7 @@ mod tests {
             priority: None,
             tags: None,
             assignee_id: None,
-            assignee_type: None,
+
             board_id: None,
             pod_id: None,
         };

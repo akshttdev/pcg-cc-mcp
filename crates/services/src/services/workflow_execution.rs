@@ -2874,6 +2874,7 @@ fn build_deal_update(template: &Value, record: &Value) -> UpdateCrmDeal {
         proposal_status: None,
         deck_url: None,
         invoice_id: None,
+        expedited: None,
     }
 }
 

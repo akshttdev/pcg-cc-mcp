@@ -72,19 +72,19 @@ impl OrganizationRepository {
         let mut bind_count = 1;
 
         if name.is_some() {
-            query.push_str(&format!(", name = ${}", bind_count));
+            query.push_str(&format!(", name = ${bind_count}"));
             bind_count += 1;
         }
         if slug.is_some() {
-            query.push_str(&format!(", slug = ${}", bind_count));
+            query.push_str(&format!(", slug = ${bind_count}"));
             bind_count += 1;
         }
         if is_active.is_some() {
-            query.push_str(&format!(", is_active = ${}", bind_count));
+            query.push_str(&format!(", is_active = ${bind_count}"));
             bind_count += 1;
         }
 
-        query.push_str(&format!(" WHERE id = ${} RETURNING *", bind_count));
+        query.push_str(&format!(" WHERE id = ${bind_count} RETURNING *"));
 
         let mut q = sqlx::query_as::<_, Organization>(&query);
 

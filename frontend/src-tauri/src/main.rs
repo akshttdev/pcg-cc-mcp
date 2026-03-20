@@ -117,7 +117,7 @@ fn main() {
                     *state.apn_node.lock().unwrap() = Some(child);
                 }
                 Err(e) => {
-                    eprintln!("Failed to start APN node: {}", e);
+                    eprintln!("Failed to start APN node: {e}");
                 }
             }
 
@@ -131,7 +131,7 @@ fn main() {
                     *state.bridge_server.lock().unwrap() = Some(child);
                 }
                 Err(e) => {
-                    eprintln!("Failed to start bridge server: {}", e);
+                    eprintln!("Failed to start bridge server: {e}");
                 }
             }
 
@@ -146,12 +146,10 @@ fn main() {
                 };
 
                 // Stop bridge server — scope the MutexGuard so it drops before bridge_server
-                {
-                    if let Ok(mut bridge) = bridge_server.lock() {
-                        if let Some(mut child) = bridge.take() {
-                            println!("Stopping bridge server...");
-                            let _ = child.kill();
-                        }
+                if let Ok(mut bridge) = bridge_server.lock() {
+                    if let Some(mut child) = bridge.take() {
+                        println!("Stopping bridge server...");
+                        let _ = child.kill();
                     }
                 };
 

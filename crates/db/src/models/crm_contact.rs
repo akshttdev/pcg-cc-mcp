@@ -46,7 +46,7 @@ impl std::fmt::Display for ContactSource {
             ContactSource::GmailSync => "gmail_sync",
             ContactSource::Workflow => "workflow",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -76,7 +76,7 @@ impl std::fmt::Display for LifecycleStage {
             LifecycleStage::Evangelist => "evangelist",
             LifecycleStage::Churned => "churned",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -93,7 +93,7 @@ impl std::str::FromStr for LifecycleStage {
             "customer" => Ok(LifecycleStage::Customer),
             "evangelist" => Ok(LifecycleStage::Evangelist),
             "churned" => Ok(LifecycleStage::Churned),
-            _ => Err(format!("Unknown lifecycle stage: {}", s)),
+            _ => Err(format!("Unknown lifecycle stage: {s}")),
         }
     }
 }
@@ -407,7 +407,7 @@ impl CrmContact {
 
         if let Some(ref client_id) = params.client_id {
             let idx = bindings.len() + 2;
-            query.push_str(&format!(" AND client_id = ?{}", idx));
+            query.push_str(&format!(" AND client_id = ?{idx}"));
             bindings.push(client_id.to_string());
         }
 
@@ -416,24 +416,24 @@ impl CrmContact {
             query.push_str(&format!(
                 " AND (full_name LIKE ?{idx} OR email LIKE ?{idx} OR company_name LIKE ?{idx})"
             ));
-            bindings.push(format!("%{}%", q));
+            bindings.push(format!("%{q}%"));
         }
 
         if let Some(ref stage) = params.lifecycle_stage {
             let idx = bindings.len() + 2;
-            query.push_str(&format!(" AND lifecycle_stage = ?{}", idx));
+            query.push_str(&format!(" AND lifecycle_stage = ?{idx}"));
             bindings.push(stage.to_string());
         }
 
         if let Some(ref company) = params.company_name {
             let idx = bindings.len() + 2;
-            query.push_str(&format!(" AND company_name LIKE ?{}", idx));
-            bindings.push(format!("%{}%", company));
+            query.push_str(&format!(" AND company_name LIKE ?{idx}"));
+            bindings.push(format!("%{company}%"));
         }
 
         if let Some(min_score) = params.min_lead_score {
             let idx = bindings.len() + 2;
-            query.push_str(&format!(" AND lead_score >= ?{}", idx));
+            query.push_str(&format!(" AND lead_score >= ?{idx}"));
             bindings.push(min_score.to_string());
         }
 
@@ -441,7 +441,7 @@ impl CrmContact {
 
         let limit = params.limit.unwrap_or(50);
         let offset = params.offset.unwrap_or(0);
-        query.push_str(&format!(" LIMIT {} OFFSET {}", limit, offset));
+        query.push_str(&format!(" LIMIT {limit} OFFSET {offset}"));
 
         // Build the query dynamically
         let mut db_query = sqlx::query_as::<_, CrmContact>(&query).bind(org_id.to_string());

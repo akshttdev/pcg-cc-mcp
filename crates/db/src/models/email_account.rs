@@ -31,7 +31,7 @@ impl std::fmt::Display for EmailProvider {
             EmailProvider::Zoho => "zoho",
             EmailProvider::ImapCustom => "imap_custom",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -43,7 +43,7 @@ impl std::str::FromStr for EmailProvider {
             "gmail" => Ok(EmailProvider::Gmail),
             "zoho" => Ok(EmailProvider::Zoho),
             "imap_custom" | "custom" | "imap" => Ok(EmailProvider::ImapCustom),
-            _ => Err(format!("Unknown email provider: {}", s)),
+            _ => Err(format!("Unknown email provider: {s}")),
         }
     }
 }
@@ -164,7 +164,7 @@ impl EmailAccount {
         let provider = data.provider.to_string();
         let account_type = data
             .account_type
-            .map(|t| format!("{:?}", t).to_lowercase())
+            .map(|t| format!("{t:?}").to_lowercase())
             .unwrap_or_else(|| "primary".to_string());
         let metadata = data.metadata.map(|v| v.to_string());
         let granted_scopes = data
@@ -334,7 +334,7 @@ impl EmailAccount {
         id: Uuid,
         data: UpdateEmailAccount,
     ) -> Result<Self, EmailAccountError> {
-        let status = data.status.map(|s| format!("{:?}", s).to_lowercase());
+        let status = data.status.map(|s| format!("{s:?}").to_lowercase());
         let metadata = data.metadata.map(|v| v.to_string());
         let granted_scopes = data
             .granted_scopes
@@ -539,7 +539,8 @@ mod tests {
     #[tokio::test]
     async fn create_and_query_email_accounts() {
         let pool = setup_test_pool().await;
-        let project_id = Some(create_test_project(&pool).await);
+        let raw_project_id = create_test_project(&pool).await;
+        let project_id = Some(raw_project_id);
 
         let created = EmailAccount::create(
             &pool,
@@ -574,13 +575,13 @@ mod tests {
             .expect("account missing");
         assert_eq!(fetched.display_name.as_deref(), Some("Team Account"));
 
-        let by_project = EmailAccount::find_by_project(&pool, project_id.unwrap())
+        let by_project = EmailAccount::find_by_project(&pool, raw_project_id)
             .await
             .expect("project lookup failed");
         assert_eq!(by_project.len(), 1);
 
         let by_provider =
-            EmailAccount::find_by_provider(&pool, project_id.unwrap(), EmailProvider::Gmail)
+            EmailAccount::find_by_provider(&pool, raw_project_id, EmailProvider::Gmail)
                 .await
                 .expect("provider lookup failed");
         assert_eq!(by_provider.len(), 1);

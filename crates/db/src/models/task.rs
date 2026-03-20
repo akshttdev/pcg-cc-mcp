@@ -125,9 +125,9 @@ pub struct TaskWithAttemptStatus {
     /// Latest execution summary for the task (populated from most recent attempt)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_execution_summary: Option<ExecutionSummaryBrief>,
-    /// Collaborators who have worked on this task
+    /// Collaborators who have worked on this task (parsed from JSON)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub collaborators: Option<Vec<TaskCollaborator>>,
+    pub parsed_collaborators: Option<Vec<TaskCollaborator>>,
     /// Total VIBE cost for this task (aggregated from vibe_transactions)
     #[serde(default)]
     pub vibe_cost: Option<i64>,
@@ -307,13 +307,13 @@ impl Task {
     pub fn to_prompt(&self) -> String {
         let mut parts = vec![format!("Title: {}", &self.title)];
         if let Some(description) = &self.description {
-            parts.push(format!("Description: {}", description));
+            parts.push(format!("Description: {description}"));
         }
         if let Some(criteria) = &self.completion_criteria {
-            parts.push(format!("Completion Criteria: {}", criteria));
+            parts.push(format!("Completion Criteria: {criteria}"));
         }
         if let Some(fmt) = &self.output_format {
-            parts.push(format!("Output Format: {}", fmt));
+            parts.push(format!("Output Format: {fmt}"));
         }
         parts.join("\n\n")
     }
@@ -452,7 +452,7 @@ ORDER BY t.created_at DESC"#,
                 last_attempt_failed: rec.last_attempt_failed != 0,
                 executor: rec.executor,
                 last_execution_summary: None, // Loaded separately via API when needed
-                collaborators: rec
+                parsed_collaborators: rec
                     .collaborators
                     .as_deref()
                     .and_then(|json| serde_json::from_str(json).ok()),
@@ -469,10 +469,8 @@ ORDER BY t.created_at DESC"#,
     }
 
     pub async fn find_by_id(pool: &SqlitePool, id: &str) -> Result<Option<Self>, sqlx::Error> {
-        let sql = format!(
-            "SELECT {} FROM tasks WHERE id = $1 AND deleted_at IS NULL",
-            TASK_SELECT_SQL
-        );
+        let sql =
+            format!("SELECT {TASK_SELECT_SQL} FROM tasks WHERE id = $1 AND deleted_at IS NULL");
         sqlx::query_as::<_, Task>(&sql)
             .bind(id)
             .fetch_optional(pool)
@@ -480,10 +478,8 @@ ORDER BY t.created_at DESC"#,
     }
 
     pub async fn find_by_rowid(pool: &SqlitePool, rowid: i64) -> Result<Option<Self>, sqlx::Error> {
-        let sql = format!(
-            "SELECT {} FROM tasks WHERE rowid = $1 AND deleted_at IS NULL",
-            TASK_SELECT_SQL
-        );
+        let sql =
+            format!("SELECT {TASK_SELECT_SQL} FROM tasks WHERE rowid = $1 AND deleted_at IS NULL");
         sqlx::query_as::<_, Task>(&sql)
             .bind(rowid)
             .fetch_optional(pool)
@@ -496,8 +492,7 @@ ORDER BY t.created_at DESC"#,
         project_id: &str,
     ) -> Result<Option<Self>, sqlx::Error> {
         let sql = format!(
-            "SELECT {} FROM tasks WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL",
-            TASK_SELECT_SQL
+            "SELECT {TASK_SELECT_SQL} FROM tasks WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL"
         );
         sqlx::query_as::<_, Task>(&sql)
             .bind(id)
@@ -538,8 +533,7 @@ ORDER BY t.created_at DESC"#,
                 completion_criteria, output_format
                )
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
-               RETURNING {}"#,
-            TASK_SELECT_SQL
+               RETURNING {TASK_SELECT_SQL}"#
         );
 
         sqlx::query_as::<_, Task>(&sql)
@@ -561,10 +555,10 @@ ORDER BY t.created_at DESC"#,
             .bind(requires_approval)
             .bind(&data.parent_task_id)
             .bind(&tags_json)
-            .bind(&data.due_date)
+            .bind(data.due_date)
             .bind(&custom_properties)
-            .bind(&data.scheduled_start)
-            .bind(&data.scheduled_end)
+            .bind(data.scheduled_start)
+            .bind(data.scheduled_end)
             .bind(&data.screenshot)
             .bind(&data.completion_criteria)
             .bind(&data.output_format)
@@ -572,6 +566,8 @@ ORDER BY t.created_at DESC"#,
             .await
     }
 
+    // TODO: refactor into struct
+    #[allow(clippy::too_many_arguments)]
     pub async fn update(
         pool: &SqlitePool,
         id: &str,
@@ -614,8 +610,7 @@ ORDER BY t.created_at DESC"#,
                    output_format = $23,
                    updated_at = datetime('now', 'subsec')
                WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL
-               RETURNING {}"#,
-            TASK_SELECT_SQL
+               RETURNING {TASK_SELECT_SQL}"#
         );
 
         sqlx::query_as::<_, Task>(&sql)
@@ -636,10 +631,10 @@ ORDER BY t.created_at DESC"#,
             .bind(&approval_status)
             .bind(&parent_task_id)
             .bind(&tags)
-            .bind(&due_date)
+            .bind(due_date)
             .bind(&custom_properties)
-            .bind(&scheduled_start)
-            .bind(&scheduled_end)
+            .bind(scheduled_start)
+            .bind(scheduled_end)
             .bind(&completion_criteria)
             .bind(&output_format)
             .fetch_one(pool)
@@ -760,8 +755,7 @@ ORDER BY t.created_at DESC"#,
         attempt_id: &str,
     ) -> Result<Vec<Self>, sqlx::Error> {
         let sql = format!(
-            "SELECT {} FROM tasks WHERE parent_task_attempt = $1 AND deleted_at IS NULL ORDER BY created_at DESC",
-            TASK_SELECT_SQL
+            "SELECT {TASK_SELECT_SQL} FROM tasks WHERE parent_task_attempt = $1 AND deleted_at IS NULL ORDER BY created_at DESC"
         );
         sqlx::query_as::<_, Task>(&sql)
             .bind(attempt_id)
@@ -859,10 +853,9 @@ ORDER BY t.created_at DESC"#,
         user_id: &str,
     ) -> Result<Vec<Self>, sqlx::Error> {
         // SQLite JSON: search for watcher entries in collaborators array
-        let pattern = format!("%\"actor_id\":\"{}\"%\"actor_type\":\"watcher\"%", user_id);
+        let pattern = format!("%\"actor_id\":\"{user_id}\"%\"actor_type\":\"watcher\"%");
         let sql = format!(
-            "SELECT {} FROM tasks WHERE collaborators LIKE $1 AND deleted_at IS NULL ORDER BY updated_at DESC",
-            TASK_SELECT_SQL
+            "SELECT {TASK_SELECT_SQL} FROM tasks WHERE collaborators LIKE $1 AND deleted_at IS NULL ORDER BY updated_at DESC"
         );
         sqlx::query_as::<_, Task>(&sql)
             .bind(&pattern)
@@ -971,7 +964,7 @@ ORDER BY t.created_at DESC"#,
         assignee_id: &str,
     ) -> Result<Vec<Self>, sqlx::Error> {
         let sql = format!(
-            r#"SELECT {}
+            r#"SELECT {TASK_SELECT_SQL}
                FROM tasks
                WHERE assignee_id = $1
                AND status != 'completed'
@@ -985,8 +978,7 @@ ORDER BY t.created_at DESC"#,
                    ELSE 4
                  END,
                  due_date ASC NULLS LAST,
-                 created_at DESC"#,
-            TASK_SELECT_SQL
+                 created_at DESC"#
         );
         sqlx::query_as::<_, Task>(&sql)
             .bind(assignee_id)
@@ -999,8 +991,7 @@ ORDER BY t.created_at DESC"#,
         created_by: &str,
     ) -> Result<Vec<Self>, sqlx::Error> {
         let sql = format!(
-            "SELECT {} FROM tasks WHERE created_by = $1 AND deleted_at IS NULL ORDER BY updated_at DESC",
-            TASK_SELECT_SQL
+            "SELECT {TASK_SELECT_SQL} FROM tasks WHERE created_by = $1 AND deleted_at IS NULL ORDER BY updated_at DESC"
         );
         sqlx::query_as::<_, Task>(&sql)
             .bind(created_by)

@@ -124,7 +124,7 @@ pub async fn update_admin_prompt(
         if let Some(instance_lock) = topsi_instance {
             let mut instance = instance_lock.write().await;
             if let Some(ref mut agent) = *instance {
-                agent.config.autonomy_level = topsi::config::AutonomyLevel::from_str(level);
+                agent.config.autonomy_level = topsi::config::AutonomyLevel::parse_level(level);
             }
         }
     }

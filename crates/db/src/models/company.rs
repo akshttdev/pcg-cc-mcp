@@ -255,10 +255,10 @@ impl Company {
         website: Option<String>,
     ) -> Result<Self, CompanyError> {
         // Prefer org-scoped lookup for deduplication when org is known
-        if let Some(ref org_id) = created_by_org_id {
-            if let Some(existing) = Self::find_by_name_and_org(pool, name, org_id).await? {
-                return Ok(existing);
-            }
+        if let Some(ref org_id) = created_by_org_id
+            && let Some(existing) = Self::find_by_name_and_org(pool, name, org_id).await?
+        {
+            return Ok(existing);
         }
 
         // Fallback to global name lookup
@@ -274,7 +274,7 @@ impl Company {
             count: i64,
         }
         let c: Count = sqlx::query_as("SELECT COUNT(*) as count FROM companies WHERE slug LIKE ?")
-            .bind(format!("{}%", base_slug))
+            .bind(format!("{base_slug}%"))
             .fetch_one(pool)
             .await?;
         let slug = if c.count == 0 {
@@ -394,7 +394,7 @@ impl Company {
         qb.push(" WHERE lower(hex(id)) = lower(?)")
             .push_bind(hex_no_dashes);
         qb.build().execute(pool).await?;
-        Ok(Self::find_by_id(pool, id).await?)
+        Self::find_by_id(pool, id).await
     }
 
     pub async fn delete(pool: &SqlitePool, id: &DbUuid) -> Result<bool, CompanyError> {

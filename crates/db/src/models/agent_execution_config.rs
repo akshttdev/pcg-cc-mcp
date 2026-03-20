@@ -747,9 +747,7 @@ impl RalphIteration {
         backpressure_results: Option<&BackpressureResults>,
         all_passed: bool,
     ) -> Result<Self, AgentExecutionConfigError> {
-        let bp_json = backpressure_results
-            .map(|r| serde_json::to_string(r).ok())
-            .flatten();
+        let bp_json = backpressure_results.and_then(|r| serde_json::to_string(r).ok());
 
         sqlx::query(
             r#"

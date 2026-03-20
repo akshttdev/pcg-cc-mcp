@@ -202,8 +202,8 @@ async fn bootstrap_schema(pool: &SqlitePool) {
 pub(crate) async fn create_test_project(pool: &SqlitePool) -> Uuid {
     let project_id = Uuid::new_v4();
     let data = CreateProject {
-        name: format!("Test Project {}", project_id),
-        git_repo_path: format!("/tmp/{}", project_id),
+        name: format!("Test Project {project_id}"),
+        git_repo_path: format!("/tmp/{project_id}"),
         use_existing_repo: true,
         setup_script: None,
         dev_script: None,

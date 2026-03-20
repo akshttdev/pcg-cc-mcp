@@ -37,7 +37,7 @@ impl std::str::FromStr for BrandVoice {
             "casual" => Ok(BrandVoice::Casual),
             "playful" => Ok(BrandVoice::Playful),
             "authoritative" => Ok(BrandVoice::Authoritative),
-            _ => Err(format!("Invalid brand voice: {}", s)),
+            _ => Err(format!("Invalid brand voice: {s}")),
         }
     }
 }

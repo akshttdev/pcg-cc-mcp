@@ -28,7 +28,7 @@ impl std::fmt::Display for PulseContentStatus {
             Self::Actioned => "actioned",
             Self::Dismissed => "dismissed",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 

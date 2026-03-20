@@ -204,7 +204,7 @@ impl OrgOnboarding {
             let name = segment_type.display_name();
             let agent_name = segment_type.default_agent_name();
             let seg_status = "pending";
-            let segment_type_str = serde_json::to_value(&segment_type)
+            let segment_type_str = serde_json::to_value(segment_type)
                 .ok()
                 .and_then(|v| v.as_str().map(|s| s.to_string()))
                 .unwrap_or_else(|| "custom".to_string());
@@ -255,7 +255,7 @@ impl OrgOnboarding {
                 existing.completed_at
             };
 
-        let status_str = serde_json::to_value(&status)
+        let status_str = serde_json::to_value(status)
             .ok()
             .and_then(|v| v.as_str().map(|s| s.to_string()))
             .unwrap_or_else(|| "active".to_string());
@@ -307,9 +307,7 @@ impl OrgOnboardingSegment {
         .fetch_all(pool)
         .await?;
 
-        rows.iter()
-            .map(|row| org_onboarding_segment_from_row(row))
-            .collect()
+        rows.iter().map(org_onboarding_segment_from_row).collect()
     }
 
     /// Find a segment by ID
@@ -367,7 +365,7 @@ impl OrgOnboardingSegment {
             existing.completed_at
         };
 
-        let status_str = serde_json::to_value(&status)
+        let status_str = serde_json::to_value(status)
             .ok()
             .and_then(|v| v.as_str().map(|s| s.to_string()))
             .unwrap_or_else(|| "pending".to_string());

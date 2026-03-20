@@ -2,9 +2,10 @@
 //!
 //! Creates tasks in the Bug Reports project for user feedback.
 
-use axum::{Router, extract::State, response::Json as ResponseJson, routing::post};
+use axum::{Extension, Router, extract::State, response::Json as ResponseJson, routing::post};
 use db::{
     constants::{BUGREPORTS_BOARD_ID, BUGREPORTS_PROJECT_ID},
+    db_uuid::DbUuid,
     models::{
         agent::Agent,
         data_source::{CreateDataSource, DataSource},
@@ -16,7 +17,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use ts_rs::TS;
 use utils::response::ApiResponse;
-use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 
@@ -63,7 +63,7 @@ pub struct SubmitFeedbackRequest {
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub struct SubmitFeedbackResponse {
-    pub task_id: Uuid,
+    pub task_id: String,
     pub message: String,
 }
 
@@ -71,10 +71,22 @@ pub struct SubmitFeedbackResponse {
 ///
 /// Submit user feedback which creates a task in the Bug Reports project.
 pub async fn submit_feedback(
+    Extension(access_context): Extension<crate::middleware::access_control::AccessContext>,
     State(deployment): State<DeploymentImpl>,
     ResponseJson(req): ResponseJson<SubmitFeedbackRequest>,
 ) -> Result<ResponseJson<ApiResponse<SubmitFeedbackResponse>>, ApiError> {
+    // Authentication is enforced by require_auth middleware (route is in protected_routes)
+    let _user_id = &access_context.user_id;
     let pool = &deployment.db().pool;
+
+    // Validate frustration_level range
+    if let Some(level) = req.frustration_level
+        && !(1..=5).contains(&level)
+    {
+        return Err(ApiError::BadRequest(
+            "frustration_level must be between 1 and 5".to_string(),
+        ));
+    }
 
     // Map severity to priority
     let priority = match req.severity.as_deref() {
@@ -135,7 +147,7 @@ pub async fn submit_feedback(
         tags.push("dogfood".to_string());
     }
 
-    let task_id = Uuid::new_v4();
+    let task_id = DbUuid::new();
     let task_id_str = task_id.to_string();
     let create_task = CreateTask {
         project_id: BUGREPORTS_PROJECT_ID.to_string(),
@@ -245,7 +257,7 @@ pub async fn submit_feedback(
     }
 
     Ok(ResponseJson(ApiResponse::success(SubmitFeedbackResponse {
-        task_id,
+        task_id: task_id_str,
         message: "Thank you for your feedback! We'll review it shortly.".to_string(),
     })))
 }

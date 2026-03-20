@@ -287,12 +287,11 @@ impl MeetingSession {
         if self.started_by == user_id {
             return true;
         }
-        if let Some(ref shared) = self.shared_with {
-            if let Ok(shared_users) = serde_json::from_str::<Vec<String>>(shared) {
-                if shared_users.contains(&user_id.to_string()) {
-                    return true;
-                }
-            }
+        if let Some(ref shared) = self.shared_with
+            && let Ok(shared_users) = serde_json::from_str::<Vec<String>>(shared)
+            && shared_users.contains(&user_id.to_string())
+        {
+            return true;
         }
         false
     }

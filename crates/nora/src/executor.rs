@@ -741,7 +741,7 @@ impl TaskExecutor {
         .unwrap_or(0);
 
         let in_progress_tasks: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = 'in_progress'",
+            "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = 'inprogress'",
         )
         .bind(project_id)
         .fetch_one(&self.pool)

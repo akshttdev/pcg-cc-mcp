@@ -38,9 +38,9 @@ impl MediaFileSceneAnalysis {
                  usable = excluded.usable,
                  segments = excluded.segments"#,
         )
-        .bind(&record.id)
-        .bind(&record.media_file_id)
-        .bind(&record.batch_id)
+        .bind(record.id)
+        .bind(record.media_file_id)
+        .bind(record.batch_id)
         .bind(&record.file_path)
         .bind(record.overall_energy)
         .bind(record.peak_energy_timestamp)
@@ -102,9 +102,9 @@ impl MediaFileVisualQc {
                  summary = excluded.summary,
                  analyzed_frames = excluded.analyzed_frames"#,
         )
-        .bind(&record.id)
-        .bind(&record.media_file_id)
-        .bind(&record.batch_id)
+        .bind(record.id)
+        .bind(record.media_file_id)
+        .bind(record.batch_id)
         .bind(&record.file_path)
         .bind(record.best_in_point)
         .bind(record.best_composition_score)
@@ -172,9 +172,9 @@ impl MediaFileBeatAnalysis {
                  sections = excluded.sections,
                  energy_curve = excluded.energy_curve"#,
         )
-        .bind(&record.id)
-        .bind(&record.media_file_id)
-        .bind(&record.batch_id)
+        .bind(record.id)
+        .bind(record.media_file_id)
+        .bind(record.batch_id)
         .bind(&record.file_path)
         .bind(record.bpm)
         .bind(record.beat_interval)
@@ -227,9 +227,9 @@ impl MediaFileTag {
                 (id, media_file_id, batch_id, tag, source, confidence)
                VALUES (?, ?, ?, ?, ?, ?)"#,
         )
-        .bind(&record.id)
-        .bind(&record.media_file_id)
-        .bind(&record.batch_id)
+        .bind(record.id)
+        .bind(record.media_file_id)
+        .bind(record.batch_id)
         .bind(&record.tag)
         .bind(&record.source)
         .bind(record.confidence)

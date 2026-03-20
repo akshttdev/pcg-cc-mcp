@@ -1,4 +1,19 @@
+import {
+  Archive,
+  Bot,
+  CheckCircle,
+  Copy,
+  Edit,
+  Loader2,
+  MoreHorizontal,
+  Trash2,
+  XCircle,
+  Zap,
+} from 'lucide-react';
 import { useCallback } from 'react';
+import type { AgentWithParsedFields } from 'shared/types';
+
+import { TimeTrackerWidget } from '@/components/time-tracking/TimeTrackerWidget';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -8,33 +23,20 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { KanbanCard } from '@/components/ui/shadcn-io/kanban';
-import {
-  Archive,
-  CheckCircle,
-  Copy,
-  Edit,
-  Loader2,
-  MoreHorizontal,
-  Trash2,
-  XCircle,
-  Bot,
-  Zap,
-} from 'lucide-react';
-import { TimeTrackerWidget } from '@/components/time-tracking/TimeTrackerWidget';
+import { TagChips } from '@/components/ui/tag-chips';
+import type { AgentFlow, TaskWithArchive, UserListItem } from '@/lib/api';
+
 import { AgentFlowBadges } from './AgentFlowBadges';
 import { ExecutionSummaryInline } from './ExecutionSummaryInline';
-import { TagChips } from '@/components/ui/tag-chips';
 import {
-  PriorityBadge,
-  PRIORITY_BORDER_COLORS,
-  DueDateBadge,
   CollaboratorAvatars,
-  useResolvedAssignee,
+  DueDateBadge,
+  PRIORITY_BORDER_COLORS,
+  PriorityBadge,
   useResolvedAgent,
+  useResolvedAssignee,
   useScrollIntoView,
 } from './task-card-parts';
-import type { AgentFlow, UserListItem, TaskWithArchive } from '@/lib/api';
-import type { AgentWithParsedFields } from 'shared/types';
 
 type Task = TaskWithArchive;
 
@@ -97,10 +99,14 @@ export function TaskCard({
       onClick={handleClick}
       isOpen={isOpen}
       forwardedRef={localRef}
-      className={[
-        dimmed ? 'opacity-60' : '',
-        (task.priority && PRIORITY_BORDER_COLORS[task.priority]) || '',
-      ].filter(Boolean).join(' ') || undefined}
+      className={
+        [
+          dimmed ? 'opacity-60' : '',
+          (task.priority && PRIORITY_BORDER_COLORS[task.priority]) || '',
+        ]
+          .filter(Boolean)
+          .join(' ') || undefined
+      }
     >
       <div className="flex flex-col gap-1.5 min-w-0">
         <div className="flex items-start gap-2 min-w-0">
@@ -177,19 +183,21 @@ export function TaskCard({
           {task.last_attempt_failed && !task.has_merged_attempt && (
             <XCircle className="h-3 w-3 text-destructive" />
           )}
-          {agentFlow && (
-            <AgentFlowBadges flow={agentFlow} compact />
-          )}
+          {agentFlow && <AgentFlowBadges flow={agentFlow} compact />}
           {task.last_execution_summary && (
-            <ExecutionSummaryInline summary={task.last_execution_summary} compact />
-          )}
-          {task.collaborators && task.collaborators.length > 0 && (
-            <CollaboratorAvatars
-              collaborators={task.collaborators}
-              usersMap={usersMap}
-              agentsMap={agentsMap}
+            <ExecutionSummaryInline
+              summary={task.last_execution_summary}
+              compact
             />
           )}
+          {task.parsed_collaborators &&
+            task.parsed_collaborators.length > 0 && (
+              <CollaboratorAvatars
+                collaborators={task.parsed_collaborators}
+                usersMap={usersMap}
+                agentsMap={agentsMap}
+              />
+            )}
         </div>
       </div>
       {task.tags && <TagChips tags={task.tags} maxVisible={2} size="xs" />}
@@ -236,9 +244,14 @@ export function TaskCard({
               </div>
             )}
             {resolvedAgent && (
-              <div className="flex items-center gap-1 text-xs text-muted-foreground" title={resolvedAgent.tooltip}>
+              <div
+                className="flex items-center gap-1 text-xs text-muted-foreground"
+                title={resolvedAgent.tooltip}
+              >
                 <Bot className="h-3 w-3 text-blue-500" />
-                <span className="truncate max-w-[80px]">{resolvedAgent.displayName}</span>
+                <span className="truncate max-w-[80px]">
+                  {resolvedAgent.displayName}
+                </span>
               </div>
             )}
           </div>
@@ -249,7 +262,9 @@ export function TaskCard({
             >
               <Zap className="h-2.5 w-2.5" />
               <span>{Number(task.vibe_cost)}</span>
-              <span className="text-amber-500 dark:text-amber-500/70">VIBE</span>
+              <span className="text-amber-500 dark:text-amber-500/70">
+                VIBE
+              </span>
             </div>
           )}
         </div>

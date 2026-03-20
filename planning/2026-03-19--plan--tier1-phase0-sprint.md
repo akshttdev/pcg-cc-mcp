@@ -446,6 +446,34 @@ All decisions resolved during planning — captured here for reference.
 
 ---
 
+## PR #53 Regression Analysis (2026-03-19)
+
+Full regression analysis performed against `main`. Findings and fixes below.
+
+### P0 Bugs Found & Fixed
+
+| Bug | File | Fix |
+|-----|------|-----|
+| `duration_ms` always 0 — `Instant::now().elapsed()` instead of using `start` | `workflow_triggers.rs:388` | Added `start` timer, use `start.elapsed()` |
+| `'in_progress'` should be `'inprogress'` (no underscore) | `crm_deal_automations.rs:165,180,448` + 10 more across 5 crates | Replaced all 13+ occurrences, added `canonical_status` normalization in Topsi/Nora |
+| `BrandSetupWizard` saves to org API when used on company page | `CompanyBrandGuidePage.tsx` | Added `apiOverride` prop |
+| `UpdateCrmDeal` missing `expedited` field | `crm_deal.rs`, `crm.ts`, `OverviewTab.tsx` | Added field, removed `as any` |
+| Hex UUID slice panic | `crm_deal_transitions.rs:672` | Added length guard |
+| CSS injection via font names | `BrandGuidePage`, `CompanyBrandGuidePage` | Added `sanitizeFont()` |
+| Feedback endpoint no auth | `feedback.rs`, `mod.rs` | Moved to `protected_routes` |
+| `.expect()` in shutdown handlers | `workers/mod.rs` | Replaced with error logging |
+| Schedule loop not using atomic cooldown | `data_source_workflows.rs` | Migrated to `try_claim_trigger()` |
+| `collaborators` type conflict on `TaskWithAttemptStatus` | `task.rs`, shared/types.ts, 6 frontend files | Renamed to `parsed_collaborators` |
+
+### Remaining (low — tracked for follow-up)
+- `workflow_triggers.rs:172` — manual-fire webhook still uses racy `is_past_cooldown()`
+- `workers/mod.rs:53` — `JoinHandle` dropped from `tokio::spawn`
+- `main.rs` — no drain timeout on `axum::serve`
+- TaskStatus enum constants (`as_str()` method) — replace hardcoded SQL strings
+- Potential snake_case migration for task statuses
+
+---
+
 ## In-Sprint Modularity Extractions (~4h, embedded in PRs)
 
 | Extraction | Effort | PR |

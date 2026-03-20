@@ -127,7 +127,7 @@ impl SocialPost {
         let id = Uuid::new_v4();
         let content_type = data
             .content_type
-            .map(|t| format!("{:?}", t).to_lowercase())
+            .map(|t| format!("{t:?}").to_lowercase())
             .unwrap_or_else(|| "post".to_string());
         let content_blocks = data.content_blocks.map(|v| v.to_string());
         let media_urls = data
@@ -296,7 +296,7 @@ impl SocialPost {
         id: Uuid,
         data: UpdateSocialPost,
     ) -> Result<Self, SocialPostError> {
-        let status = data.status.map(|s| format!("{:?}", s).to_lowercase());
+        let status = data.status.map(|s| format!("{s:?}").to_lowercase());
         let content_blocks = data.content_blocks.map(|v| v.to_string());
         let media_urls = data
             .media_urls
@@ -399,6 +399,8 @@ impl SocialPost {
         Ok(())
     }
 
+    // TODO: refactor into struct
+    #[allow(clippy::too_many_arguments)]
     pub async fn update_metrics(
         pool: &SqlitePool,
         id: Uuid,

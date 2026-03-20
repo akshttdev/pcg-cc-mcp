@@ -26,7 +26,7 @@ impl std::fmt::Display for PulseSourceType {
             Self::Reddit => "reddit",
             Self::Web => "web",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 

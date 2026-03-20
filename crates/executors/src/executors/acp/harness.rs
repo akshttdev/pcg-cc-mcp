@@ -31,63 +31,27 @@ fn load_platform_mcp_servers() -> Vec<proto::McpServer> {
     ];
 
     for path in &config_paths {
-        if let Ok(content) = std::fs::read_to_string(path) {
-            if let Ok(config) = serde_json::from_str::<serde_json::Value>(&content) {
-                let mut servers = Vec::new();
-                if let Some(obj) = config.as_object() {
-                    for (key, value) in obj {
-                        // Skip the "meta" section
-                        if key == "meta" {
-                            continue;
-                        }
+        if let Ok(content) = std::fs::read_to_string(path)
+            && let Ok(config) = serde_json::from_str::<serde_json::Value>(&content)
+        {
+            let mut servers = Vec::new();
+            if let Some(obj) = config.as_object() {
+                for (key, value) in obj {
+                    // Skip the "meta" section
+                    if key == "meta" {
+                        continue;
+                    }
 
-                        // Check if it's an HTTP-type server
-                        if value.get("type").and_then(|t| t.as_str()) == Some("http") {
-                            if let Some(url) = value.get("url").and_then(|u| u.as_str()) {
-                                let headers = value
-                                    .get("headers")
-                                    .and_then(|h| h.as_object())
-                                    .map(|h| {
-                                        h.iter()
-                                            .filter_map(|(k, v)| {
-                                                v.as_str().map(|val| proto::HttpHeader {
-                                                    name: k.clone(),
-                                                    value: val.to_string(),
-                                                    meta: None,
-                                                })
-                                            })
-                                            .collect::<Vec<_>>()
-                                    })
-                                    .unwrap_or_default();
-
-                                servers.push(proto::McpServer::Http {
-                                    name: key.clone(),
-                                    url: url.to_string(),
-                                    headers,
-                                });
-                            }
-                            continue;
-                        }
-
-                        // Stdio server
-                        if let Some(command) = value.get("command").and_then(|c| c.as_str()) {
-                            let args = value
-                                .get("args")
-                                .and_then(|a| a.as_array())
-                                .map(|arr| {
-                                    arr.iter()
-                                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                                        .collect()
-                                })
-                                .unwrap_or_default();
-
-                            let env = value
-                                .get("env")
-                                .and_then(|e| e.as_object())
-                                .map(|e| {
-                                    e.iter()
+                    // Check if it's an HTTP-type server
+                    if value.get("type").and_then(|t| t.as_str()) == Some("http") {
+                        if let Some(url) = value.get("url").and_then(|u| u.as_str()) {
+                            let headers = value
+                                .get("headers")
+                                .and_then(|h| h.as_object())
+                                .map(|h| {
+                                    h.iter()
                                         .filter_map(|(k, v)| {
-                                            v.as_str().map(|val| proto::EnvVariable {
+                                            v.as_str().map(|val| proto::HttpHeader {
                                                 name: k.clone(),
                                                 value: val.to_string(),
                                                 meta: None,
@@ -97,23 +61,59 @@ fn load_platform_mcp_servers() -> Vec<proto::McpServer> {
                                 })
                                 .unwrap_or_default();
 
-                            servers.push(proto::McpServer::Stdio {
+                            servers.push(proto::McpServer::Http {
                                 name: key.clone(),
-                                command: PathBuf::from(command),
-                                args,
-                                env,
+                                url: url.to_string(),
+                                headers,
                             });
                         }
+                        continue;
+                    }
+
+                    // Stdio server
+                    if let Some(command) = value.get("command").and_then(|c| c.as_str()) {
+                        let args = value
+                            .get("args")
+                            .and_then(|a| a.as_array())
+                            .map(|arr| {
+                                arr.iter()
+                                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+
+                        let env = value
+                            .get("env")
+                            .and_then(|e| e.as_object())
+                            .map(|e| {
+                                e.iter()
+                                    .filter_map(|(k, v)| {
+                                        v.as_str().map(|val| proto::EnvVariable {
+                                            name: k.clone(),
+                                            value: val.to_string(),
+                                            meta: None,
+                                        })
+                                    })
+                                    .collect::<Vec<_>>()
+                            })
+                            .unwrap_or_default();
+
+                        servers.push(proto::McpServer::Stdio {
+                            name: key.clone(),
+                            command: PathBuf::from(command),
+                            args,
+                            env,
+                        });
                     }
                 }
-                if !servers.is_empty() {
-                    tracing::info!(
-                        "[ACP] Loaded {} platform MCP server(s) from {:?}",
-                        servers.len(),
-                        path
-                    );
-                    return servers;
-                }
+            }
+            if !servers.is_empty() {
+                tracing::info!(
+                    "[ACP] Loaded {} platform MCP server(s) from {:?}",
+                    servers.len(),
+                    path
+                );
+                return servers;
             }
         }
     }

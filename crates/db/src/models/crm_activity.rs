@@ -72,7 +72,7 @@ impl std::fmt::Display for CrmActivityType {
             CrmActivityType::DocumentViewed => "document_viewed",
             CrmActivityType::Custom => "custom",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -105,7 +105,7 @@ impl std::str::FromStr for CrmActivityType {
             "page_visited" => Ok(CrmActivityType::PageVisited),
             "document_viewed" => Ok(CrmActivityType::DocumentViewed),
             "custom" => Ok(CrmActivityType::Custom),
-            _ => Err(format!("Unknown activity type: {}", s)),
+            _ => Err(format!("Unknown activity type: {s}")),
         }
     }
 }

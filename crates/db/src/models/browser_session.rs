@@ -20,7 +20,9 @@ pub enum BrowserSessionError {
 #[derive(Debug, Clone, Type, Serialize, Deserialize, PartialEq, TS)]
 #[sqlx(type_name = "browser_type", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum BrowserType {
+    #[default]
     Chromium,
     Firefox,
     Webkit,
@@ -33,12 +35,6 @@ impl std::fmt::Display for BrowserType {
             BrowserType::Firefox => write!(f, "firefox"),
             BrowserType::Webkit => write!(f, "webkit"),
         }
-    }
-}
-
-impl Default for BrowserType {
-    fn default() -> Self {
-        BrowserType::Chromium
     }
 }
 

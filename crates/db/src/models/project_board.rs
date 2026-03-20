@@ -125,7 +125,7 @@ impl ProjectBoard {
         .bind(&payload.project_id)
         .bind(&payload.name)
         .bind(&payload.slug)
-        .bind(&payload.board_type)
+        .bind(payload.board_type)
         .bind(&payload.description)
         .bind(&payload.metadata)
         .fetch_one(pool)
@@ -162,7 +162,7 @@ impl ProjectBoard {
         )
         .bind(&name)
         .bind(&slug)
-        .bind(&board_type)
+        .bind(board_type)
         .bind(&description)
         .bind(&metadata)
         .bind(id)
@@ -210,7 +210,7 @@ impl ProjectBoard {
         )
         .bind(&board_id)
         .bind(project_id)
-        .bind(&board_type)
+        .bind(board_type)
         .fetch_one(pool)
         .await
     }
