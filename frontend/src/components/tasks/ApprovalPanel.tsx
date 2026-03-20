@@ -1,18 +1,25 @@
+import {
+  AlertCircle,
+  CheckCircle,
+  Clock,
+  MessageSquare,
+  XCircle,
+} from 'lucide-react';
 import { useState } from 'react';
-import { taskApprovalApi } from '@/lib/api';
-import { useMutationWithToast } from '@/hooks/useMutationWithToast';
-import { taskKeys } from '@/lib/query-keys';
-import type { Task, ApprovalStatus } from 'shared/types';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
+import type { ApprovalStatus, Task, TaskWithAttemptStatus } from 'shared/types';
 import { toast } from 'sonner';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Textarea } from '@/components/ui/textarea';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import { taskApprovalApi } from '@/lib/api';
+import { taskKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
-import { CheckCircle, XCircle, Clock, AlertCircle, MessageSquare } from 'lucide-react';
 
 interface ApprovalPanelProps {
-  task: Task;
+  task: Task | TaskWithAttemptStatus;
   canApprove?: boolean;
 }
 
@@ -22,7 +29,8 @@ const APPROVAL_STATUS_CONFIG: Record<
 > = {
   pending: {
     icon: Clock,
-    color: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+    color:
+      'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
     label: 'Pending Approval',
   },
   approved: {
@@ -37,7 +45,8 @@ const APPROVAL_STATUS_CONFIG: Record<
   },
   changesrequested: {
     icon: AlertCircle,
-    color: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
+    color:
+      'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
     label: 'Changes Requested',
   },
 };
@@ -102,7 +111,12 @@ export function ApprovalPanel({ task, canApprove = true }: ApprovalPanelProps) {
   };
 
   return (
-    <Card className={cn('border-2', isApproved && 'border-green-200 dark:border-green-800')}>
+    <Card
+      className={cn(
+        'border-2',
+        isApproved && 'border-green-200 dark:border-green-800'
+      )}
+    >
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -120,7 +134,9 @@ export function ApprovalPanel({ task, canApprove = true }: ApprovalPanelProps) {
         {/* Current Status Info */}
         <div className="text-sm text-muted-foreground">
           {isPending && (
-            <p>This task requires approval before it can be marked as complete.</p>
+            <p>
+              This task requires approval before it can be marked as complete.
+            </p>
           )}
           {isApproved && (
             <p>This task has been approved and can proceed to completion.</p>
@@ -129,7 +145,10 @@ export function ApprovalPanel({ task, canApprove = true }: ApprovalPanelProps) {
             <p>This task has been rejected and needs to be revised.</p>
           )}
           {status === 'changesrequested' && (
-            <p>Changes have been requested. Please review the feedback and make necessary updates.</p>
+            <p>
+              Changes have been requested. Please review the feedback and make
+              necessary updates.
+            </p>
           )}
         </div>
 
@@ -192,9 +211,13 @@ export function ApprovalPanel({ task, canApprove = true }: ApprovalPanelProps) {
                   <Button
                     size="sm"
                     onClick={handleRequestChanges}
-                    disabled={!comment.trim() || requestChangesMutation.isPending}
+                    disabled={
+                      !comment.trim() || requestChangesMutation.isPending
+                    }
                   >
-                    {requestChangesMutation.isPending ? 'Sending...' : 'Send Request'}
+                    {requestChangesMutation.isPending
+                      ? 'Sending...'
+                      : 'Send Request'}
                   </Button>
                 </div>
               </div>
@@ -206,14 +229,17 @@ export function ApprovalPanel({ task, canApprove = true }: ApprovalPanelProps) {
         {(status === 'rejected' || status === 'changesrequested') && (
           <div className="p-3 bg-muted/50 rounded-lg">
             <p className="text-sm text-muted-foreground mb-2">
-              Once you've made the necessary changes, you can re-request approval.
+              Once you've made the necessary changes, you can re-request
+              approval.
             </p>
             <Button
               variant="outline"
               onClick={() => {
                 // This would reset status to pending
                 // For now, just show a toast
-                toast.info('Feature coming soon: Re-request approval after making changes');
+                toast.info(
+                  'Feature coming soon: Re-request approval after making changes'
+                );
               }}
               className="w-full"
             >
@@ -227,7 +253,8 @@ export function ApprovalPanel({ task, canApprove = true }: ApprovalPanelProps) {
         {!canApprove && isPending && (
           <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
             <p className="text-sm text-yellow-800 dark:text-yellow-200">
-              You don't have permission to approve this task. Please contact an admin or the task owner.
+              You don't have permission to approve this task. Please contact an
+              admin or the task owner.
             </p>
           </div>
         )}

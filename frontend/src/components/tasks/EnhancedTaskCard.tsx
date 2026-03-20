@@ -1,7 +1,32 @@
+import {
+  Bot,
+  CheckCircle,
+  Clapperboard,
+  Code,
+  Copy,
+  Edit,
+  FileText,
+  Image,
+  Loader2,
+  MoreHorizontal,
+  Play,
+  Terminal,
+  Trash2,
+  Video,
+  XCircle,
+} from 'lucide-react';
 import { useCallback } from 'react';
+import type {
+  AgentFlowEvent,
+  ArtifactType,
+  ExecutionArtifact,
+  TaskWithAttemptStatus,
+} from 'shared/types';
+import type { AgentWithParsedFields } from 'shared/types';
+
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,49 +34,33 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { KanbanCard } from '@/components/ui/shadcn-io/kanban';
-import {
-  Bot,
-  CheckCircle,
-  Copy,
-  Edit,
-  Loader2,
-  MoreHorizontal,
-  Trash2,
-  XCircle,
-  Terminal,
-  FileText,
-  Image,
-  Video,
-  Code,
-  Play,
-  Clapperboard,
-} from 'lucide-react';
+import { TagChips } from '@/components/ui/tag-chips';
+import type { AgentFlow, UserListItem } from '@/lib/api';
+
 import { AgentFlowBadges } from './AgentFlowBadges';
 import { ExecutionSummaryInline } from './ExecutionSummaryInline';
-import { TagChips } from '@/components/ui/tag-chips';
 import {
-  PriorityBadge,
   CollaboratorAvatars,
-  useResolvedAssignee,
+  PriorityBadge,
   useResolvedAgent,
+  useResolvedAssignee,
   useScrollIntoView,
 } from './task-card-parts';
-import type { TaskWithAttemptStatus, ExecutionArtifact, ArtifactType, AgentFlowEvent } from 'shared/types';
-import type { AgentFlow, UserListItem } from '@/lib/api';
-import type { AgentWithParsedFields } from 'shared/types';
 
-
-const VIDEO_EDIT_TYPES: ArtifactType[] = ['video_edit_session', 'render_deliverable'];
+const VIDEO_EDIT_TYPES: ArtifactType[] = [
+  'video_edit_session',
+  'render_deliverable',
+];
 
 type Task = TaskWithAttemptStatus;
 
 // Task card display modes based on primary artifact/content type
 export type TaskCardMode =
-  | 'terminal'    // Code execution, diffs, logs (default for coding tasks)
-  | 'visual'      // Images, screenshots, visual_brief
-  | 'document'    // content_draft, research_report, strategy_document
-  | 'media'       // video, walkthrough, browser_recording
-  | 'compact';    // Minimal card for quick tasks
+  | 'terminal' // Code execution, diffs, logs (default for coding tasks)
+  | 'visual' // Images, screenshots, visual_brief
+  | 'document' // content_draft, research_report, strategy_document
+  | 'media' // video, walkthrough, browser_recording
+  | 'compact'; // Minimal card for quick tasks
 
 interface EnhancedTaskCardProps {
   task: Task;
@@ -87,19 +96,41 @@ function deriveCardMode(
 
   // Check primary artifact type
   if (primaryArtifact) {
-    const visualTypes: ArtifactType[] = ['screenshot', 'visual_brief', 'platform_screenshot'];
-    const documentTypes: ArtifactType[] = ['research_report', 'strategy_document', 'content_draft', 'content_calendar', 'competitor_analysis'];
+    const visualTypes: ArtifactType[] = [
+      'screenshot',
+      'visual_brief',
+      'platform_screenshot',
+    ];
+    const documentTypes: ArtifactType[] = [
+      'research_report',
+      'strategy_document',
+      'content_draft',
+      'content_calendar',
+      'competitor_analysis',
+    ];
     const mediaTypes: ArtifactType[] = ['walkthrough', 'browser_recording'];
 
     if (visualTypes.includes(primaryArtifact.artifact_type)) return 'visual';
-    if (documentTypes.includes(primaryArtifact.artifact_type)) return 'document';
+    if (documentTypes.includes(primaryArtifact.artifact_type))
+      return 'document';
     if (mediaTypes.includes(primaryArtifact.artifact_type)) return 'media';
   }
 
   // Check task tags or custom properties for hints
   const tags = task.tags?.toLowerCase() || '';
-  if (tags.includes('design') || tags.includes('visual') || tags.includes('image')) return 'visual';
-  if (tags.includes('content') || tags.includes('blog') || tags.includes('document') || tags.includes('research')) return 'document';
+  if (
+    tags.includes('design') ||
+    tags.includes('visual') ||
+    tags.includes('image')
+  )
+    return 'visual';
+  if (
+    tags.includes('content') ||
+    tags.includes('blog') ||
+    tags.includes('document') ||
+    tags.includes('research')
+  )
+    return 'document';
   if (tags.includes('video') || tags.includes('recording')) return 'media';
 
   // Default to terminal for coding tasks
@@ -183,7 +214,8 @@ function ArtifactPreview({
             </span>
             {metadata.duration_seconds && (
               <span className="text-[9px] text-white/70">
-                {Math.floor(metadata.duration_seconds / 60)}:{String(metadata.duration_seconds % 60).padStart(2, '0')}
+                {Math.floor(metadata.duration_seconds / 60)}:
+                {String(metadata.duration_seconds % 60).padStart(2, '0')}
               </span>
             )}
           </div>
@@ -193,15 +225,23 @@ function ArtifactPreview({
               onClick={async (e) => {
                 e.stopPropagation();
                 try {
-                  const res = await fetch(`/api/artifacts/${artifact.id}/review-link`, {
-                    method: 'POST',
-                    credentials: 'include',
-                  });
+                  const res = await fetch(
+                    `/api/artifacts/${artifact.id}/review-link`,
+                    {
+                      method: 'POST',
+                      credentials: 'include',
+                    }
+                  );
                   const data = await res.json();
                   if (data?.data?.token) {
-                    window.open(`${window.location.origin}/review/${data.data.token}`, '_blank');
+                    window.open(
+                      `${window.location.origin}/review/${data.data.token}`,
+                      '_blank'
+                    );
                   }
-                } catch { /* ignore */ }
+                } catch {
+                  /* ignore */
+                }
               }}
               className="absolute top-1.5 right-1.5 flex items-center gap-1 bg-amber-500/90 hover:bg-amber-400 text-white rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors"
             >
@@ -243,7 +283,11 @@ export function EnhancedTaskCard({
 
   const localRef = useScrollIntoView(isOpen);
   const assignee = useResolvedAssignee(task.assignee_id, usersMap);
-  const resolvedAgent = useResolvedAgent(task.assigned_agent, agentsMap, workflowEvents);
+  const resolvedAgent = useResolvedAgent(
+    task.assigned_agent,
+    agentsMap,
+    workflowEvents
+  );
 
   const handleClick = useCallback(() => {
     if (selectionMode && onToggleSelection) {
@@ -365,19 +409,21 @@ export function EnhancedTaskCard({
           {task.last_attempt_failed && !task.has_merged_attempt && (
             <XCircle className="h-3 w-3 text-destructive" />
           )}
-          {agentFlow && (
-            <AgentFlowBadges flow={agentFlow} compact />
-          )}
+          {agentFlow && <AgentFlowBadges flow={agentFlow} compact />}
           {task.last_execution_summary && (
-            <ExecutionSummaryInline summary={task.last_execution_summary} compact />
-          )}
-          {task.collaborators && task.collaborators.length > 0 && (
-            <CollaboratorAvatars
-              collaborators={task.collaborators}
-              usersMap={usersMap}
-              agentsMap={agentsMap}
+            <ExecutionSummaryInline
+              summary={task.last_execution_summary}
+              compact
             />
           )}
+          {task.parsed_collaborators &&
+            task.parsed_collaborators.length > 0 && (
+              <CollaboratorAvatars
+                collaborators={task.parsed_collaborators}
+                usersMap={usersMap}
+                agentsMap={agentsMap}
+              />
+            )}
         </div>
       </div>
 
@@ -399,7 +445,9 @@ export function EnhancedTaskCard({
       {artifacts.length > 0 && (
         <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
           <FileText className="h-3 w-3" />
-          <span>{artifacts.length} artifact{artifacts.length !== 1 ? 's' : ''}</span>
+          <span>
+            {artifacts.length} artifact{artifacts.length !== 1 ? 's' : ''}
+          </span>
         </div>
       )}
 
@@ -417,7 +465,8 @@ export function EnhancedTaskCard({
             <>
               <Bot className="h-3 w-3 text-muted-foreground" />
               <span className="text-muted-foreground">
-                {workflowEvents.length} workflow event{workflowEvents.length !== 1 ? 's' : ''}
+                {workflowEvents.length} workflow event
+                {workflowEvents.length !== 1 ? 's' : ''}
               </span>
             </>
           )}

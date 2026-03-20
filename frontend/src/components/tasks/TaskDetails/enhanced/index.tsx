@@ -1,25 +1,26 @@
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import {
-  FileText,
   Clock,
-  Zap,
-  LayoutGrid,
-  RefreshCw,
   Coins,
-  Minimize2,
+  FileText,
+  LayoutGrid,
   Maximize2,
+  Minimize2,
+  RefreshCw,
+  Zap,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import type { TaskWithAttemptStatus } from 'shared/types';
 
-import { TaskHeader } from './TaskHeader';
-import { OverviewTab } from './tabs/OverviewTab';
-import { ArtifactsTab } from './tabs/ArtifactsTab';
-import { WorkflowTab } from './tabs/WorkflowTab';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { cn } from '@/lib/utils';
+
 import { ActivityTab } from './tabs/ActivityTab';
+import { ArtifactsTab } from './tabs/ArtifactsTab';
+import { OverviewTab } from './tabs/OverviewTab';
 import { VibeBudgetTab } from './tabs/VibeBudgetTab';
+import { WorkflowTab } from './tabs/WorkflowTab';
+import { TaskHeader } from './TaskHeader';
 import { useTaskPanelData } from './useTaskPanelData';
 
 type DetailTab = 'overview' | 'artifacts' | 'workflow' | 'activity' | 'vibe';
@@ -81,10 +82,7 @@ export function EnhancedTaskDetailsPanel({
 
   return (
     <div
-      className={cn(
-        'flex flex-col h-full bg-background border-l',
-        className
-      )}
+      className={cn('flex flex-col h-full bg-background border-l', className)}
     >
       <TaskHeader
         task={task}
@@ -175,10 +173,24 @@ export function EnhancedTaskDetailsPanel({
               className="h-8 w-8"
               title={compactMode ? 'Show all tabs' : 'Compact view'}
             >
-              {compactMode ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
+              {compactMode ? (
+                <Maximize2 className="h-4 w-4" />
+              ) : (
+                <Minimize2 className="h-4 w-4" />
+              )}
             </Button>
-            <Button variant="ghost" size="icon" onClick={handleRefresh} className="h-8 w-8">
-              <RefreshCw className={cn('h-4 w-4', (artifactsLoading || workflowLoading) && 'animate-spin')} />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleRefresh}
+              className="h-8 w-8"
+            >
+              <RefreshCw
+                className={cn(
+                  'h-4 w-4',
+                  (artifactsLoading || workflowLoading) && 'animate-spin'
+                )}
+              />
             </Button>
           </div>
         </div>
@@ -227,7 +239,7 @@ export function EnhancedTaskDetailsPanel({
           <ActivityTab
             taskId={task.id}
             workflowEvents={workflowEvents}
-            collaborators={task.collaborators}
+            collaborators={task.parsed_collaborators}
             chatMessages={chatMessages}
           />
         </TabsContent>

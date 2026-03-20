@@ -125,9 +125,9 @@ pub struct TaskWithAttemptStatus {
     /// Latest execution summary for the task (populated from most recent attempt)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_execution_summary: Option<ExecutionSummaryBrief>,
-    /// Collaborators who have worked on this task
+    /// Collaborators who have worked on this task (parsed from JSON)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub collaborators: Option<Vec<TaskCollaborator>>,
+    pub parsed_collaborators: Option<Vec<TaskCollaborator>>,
     /// Total VIBE cost for this task (aggregated from vibe_transactions)
     #[serde(default)]
     pub vibe_cost: Option<i64>,
@@ -452,7 +452,7 @@ ORDER BY t.created_at DESC"#,
                 last_attempt_failed: rec.last_attempt_failed != 0,
                 executor: rec.executor,
                 last_execution_summary: None, // Loaded separately via API when needed
-                collaborators: rec
+                parsed_collaborators: rec
                     .collaborators
                     .as_deref()
                     .and_then(|json| serde_json::from_str(json).ok()),
