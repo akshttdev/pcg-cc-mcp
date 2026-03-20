@@ -2,20 +2,37 @@
 # Pre-commit hook: auto-fix clippy + fmt on staged Rust files, lint-staged on frontend
 # Install: git config core.hooksPath .githooks
 
-# ── Rust: clippy --fix + fmt on changed crates ──
+set -e
+
+# ── Rust: clippy --fix + cargo fmt on changed crates ──
 STAGED_RS=$(git diff --cached --name-only --diff-filter=ACM -- '*.rs')
 if [ -n "$STAGED_RS" ]; then
-  # Find which crates have staged changes
-  CRATES=$(echo "$STAGED_RS" | sed -n 's|^\(crates/[^/]*\)/.*|\1|p' | sort -u | sed 's|crates/|-p |' | tr '\n' ' ')
-  if [ -n "$CRATES" ]; then
-    # Auto-fix clippy errors on changed crates
-    eval cargo clippy --fix $CRATES --allow-dirty --allow-staged -- -D warnings 2>/dev/null
-    # Format changed files
-    echo "$STAGED_RS" | xargs rustfmt 2>/dev/null
+  # Extract unique crate names from staged file paths
+  CRATE_ARGS=""
+  for crate in $(echo "$STAGED_RS" | sed -n 's|^crates/\([^/]*\)/.*|\1|p' | sort -u); do
+    CRATE_ARGS="$CRATE_ARGS -p $crate"
+  done
+
+  if [ -n "$CRATE_ARGS" ]; then
+    echo "[pre-commit] Running clippy --fix on:$CRATE_ARGS"
+    # shellcheck disable=SC2086
+    cargo clippy --fix $CRATE_ARGS --allow-dirty --allow-staged -- -D warnings || {
+      echo "[pre-commit] clippy --fix failed — check errors above"
+      exit 1
+    }
+
+    echo "[pre-commit] Running cargo fmt"
+    # shellcheck disable=SC2086
+    cargo fmt $CRATE_ARGS
+
     # Re-stage fixed files
     echo "$STAGED_RS" | xargs git add
   fi
 fi
 
 # ── Frontend: eslint --fix + prettier via lint-staged ──
-cd frontend && npx lint-staged
+STAGED_FE=$(git diff --cached --name-only --diff-filter=ACM -- 'frontend/*.ts' 'frontend/*.tsx' 'frontend/*.js' 'frontend/*.json' 'frontend/*.css' 'shared/*.ts')
+if [ -n "$STAGED_FE" ]; then
+  echo "[pre-commit] Running lint-staged on frontend files"
+  cd frontend && npx lint-staged
+fi

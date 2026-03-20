@@ -296,7 +296,7 @@ impl RecapAssemblyEngine {
         // Narrative arc modulation
         if narrative_position < 0.15 {
             beats += 2.0; // Let audience breathe
-        } else if narrative_position >= 0.40 && narrative_position <= 0.70 {
+        } else if (0.40..=0.70).contains(&narrative_position) {
             beats -= 1.0; // Tightest pacing in peak zone
         } else if narrative_position >= 0.85 {
             beats += 2.0; // Emotional slowdown
@@ -900,10 +900,10 @@ impl RecapAssemblyEngine {
                 }
 
                 // Diversity — penalize consecutive same-type clips for visual variety
-                if let Some(last_type) = last_content_type {
-                    if clip.dominant_content_type == *last_type {
-                        score -= 0.3;
-                    }
+                if let Some(last_type) = last_content_type
+                    && clip.dominant_content_type == *last_type
+                {
+                    score -= 0.3;
                 }
 
                 // Hero moment bonus — clips whose peak energy aligns with Peak/HeroMoment
@@ -1166,12 +1166,12 @@ impl RecapAssemblyEngine {
 
         // Build input list
         let mut inputs = Vec::new();
-        for (_i, p) in placements.iter().enumerate() {
+        for p in placements.iter() {
             inputs.push(format!("  -i \"{}\" \\", p.source_path.to_string_lossy()));
         }
         // Music input is the last one
         let music_idx = n;
-        inputs.push(format!("  -i \"{}\" \\", music_path));
+        inputs.push(format!("  -i \"{music_path}\" \\"));
 
         // Build filter_complex
         let mut filters = Vec::new();
@@ -1179,7 +1179,7 @@ impl RecapAssemblyEngine {
 
         // Step 1: Trim + scale each clip (with speed ramp support)
         for (i, p) in placements.iter().enumerate() {
-            let label = format!("v{}", i);
+            let label = format!("v{i}");
             if (p.speed - 1.0).abs() > 0.01 {
                 // Speed ramp: setpts divisor stretches/compresses time
                 filters.push(format!(
@@ -1226,7 +1226,7 @@ impl RecapAssemblyEngine {
                     .iter()
                     .map(|&i| format!("[{}]", segment_labels[i]))
                     .collect();
-                let label = format!("sec{}", si);
+                let label = format!("sec{si}");
                 filters.push(format!(
                     "{}concat=n={}:v=1:a=0[{}]",
                     concat_inputs,
@@ -1297,7 +1297,7 @@ impl RecapAssemblyEngine {
                 let out_label = if i == section_transitions.len() - 1 {
                     "xfinal".to_string()
                 } else {
-                    format!("x{}", i)
+                    format!("x{i}")
                 };
 
                 // All inputs are at AVTB (settb=AVTB on clips), so xfade inputs
@@ -1305,8 +1305,7 @@ impl RecapAssemblyEngine {
                 // conversion needed — fps=30000/1001 is applied only on the final
                 // fade line to convert AVTB to clean timebase before encoding.
                 filters.push(format!(
-                    "[{}][{}]xfade=transition={}:duration={:.3}:offset={:.3}[{}]",
-                    current_label, next_label, xfade_type, xfade_dur, offset, out_label
+                    "[{current_label}][{next_label}]xfade=transition={xfade_type}:duration={xfade_dur:.3}:offset={offset:.3}[{out_label}]"
                 ));
 
                 accumulated_duration += section_durations[i + 1] - xfade_dur;
@@ -1338,14 +1337,14 @@ impl RecapAssemblyEngine {
         // Assemble the command
         script.push_str("ffmpeg -y \\\n");
         for input in &inputs {
-            script.push_str(&format!("{}\n", input));
+            script.push_str(&format!("{input}\n"));
         }
         script.push_str("  -filter_complex \"\n");
         for (i, f) in filters.iter().enumerate() {
             if i < filters.len() - 1 {
-                script.push_str(&format!("    {};\n", f));
+                script.push_str(&format!("    {f};\n"));
             } else {
-                script.push_str(&format!("    {}\n", f));
+                script.push_str(&format!("    {f}\n"));
             }
         }
         script.push_str("  \" \\\n");
@@ -1354,7 +1353,7 @@ impl RecapAssemblyEngine {
         script.push_str("  -c:v libx264 -preset medium -crf 18 -r 29.97 \\\n");
         script.push_str("  -c:a aac -b:a 192k \\\n");
         script.push_str("  -movflags +faststart \\\n");
-        script.push_str(&format!("  \"{}\"\n", output_path));
+        script.push_str(&format!("  \"{output_path}\"\n"));
 
         script
     }
@@ -1415,7 +1414,7 @@ impl RecapAssemblyEngine {
                 ));
                 xml.push_str("            <media>\n");
                 xml.push_str("              <video><track><clipitem>\n");
-                xml.push_str(&format!("                <file id=\"{}\">\n", fid));
+                xml.push_str(&format!("                <file id=\"{fid}\">\n"));
                 xml.push_str(&format!(
                     "                  <name>{}</name>\n",
                     escape_xml(&p.clip_filename)
@@ -1425,8 +1424,7 @@ impl RecapAssemblyEngine {
                     escape_xml(&file_url)
                 ));
                 xml.push_str(&format!(
-                    "                  <rate><timebase>{}</timebase><ntsc>TRUE</ntsc></rate>\n",
-                    timebase
+                    "                  <rate><timebase>{timebase}</timebase><ntsc>TRUE</ntsc></rate>\n"
                 ));
                 xml.push_str("                  <media>\n");
                 xml.push_str("                    <video><samplecharacteristics>\n");
@@ -1462,7 +1460,7 @@ impl RecapAssemblyEngine {
             escape_xml(&result.name)
         ));
         xml.push_str("            <media><audio><track><clipitem>\n");
-        xml.push_str(&format!("              <file id=\"{}\">\n", music_file_id));
+        xml.push_str(&format!("              <file id=\"{music_file_id}\">\n"));
         xml.push_str(&format!(
             "                <name>{}</name>\n",
             escape_xml(
@@ -1478,8 +1476,7 @@ impl RecapAssemblyEngine {
             escape_xml(&music_url)
         ));
         xml.push_str(&format!(
-            "                <rate><timebase>{}</timebase><ntsc>TRUE</ntsc></rate>\n",
-            timebase
+            "                <rate><timebase>{timebase}</timebase><ntsc>TRUE</ntsc></rate>\n"
         ));
         xml.push_str("                <media><audio><samplecharacteristics>\n");
         xml.push_str("                  <samplerate>44100</samplerate><depth>16</depth>\n");
@@ -1498,15 +1495,13 @@ impl RecapAssemblyEngine {
             "        <name>{}</name>\n",
             escape_xml(&result.name)
         ));
-        xml.push_str(&format!("        <duration>{}</duration>\n", total_frames));
+        xml.push_str(&format!("        <duration>{total_frames}</duration>\n"));
         xml.push_str(&format!(
-            "        <rate><timebase>{}</timebase><ntsc>TRUE</ntsc></rate>\n",
-            timebase
+            "        <rate><timebase>{timebase}</timebase><ntsc>TRUE</ntsc></rate>\n"
         ));
         xml.push_str("        <timecode>\n");
         xml.push_str(&format!(
-            "          <rate><timebase>{}</timebase><ntsc>TRUE</ntsc></rate>\n",
-            timebase
+            "          <rate><timebase>{timebase}</timebase><ntsc>TRUE</ntsc></rate>\n"
         ));
         xml.push_str("          <string>01:00:00:00</string>\n");
         xml.push_str("          <frame>108000</frame>\n");
@@ -1526,8 +1521,7 @@ impl RecapAssemblyEngine {
         xml.push_str("              <pixelaspectratio>Square</pixelaspectratio>\n");
         xml.push_str("              <fielddominance>none</fielddominance>\n");
         xml.push_str(&format!(
-            "              <rate><timebase>{}</timebase><ntsc>TRUE</ntsc></rate>\n",
-            timebase
+            "              <rate><timebase>{timebase}</timebase><ntsc>TRUE</ntsc></rate>\n"
         ));
         xml.push_str("            </samplecharacteristics></format>\n");
         xml.push_str("            <track>\n");
@@ -1545,8 +1539,7 @@ impl RecapAssemblyEngine {
             ));
             xml.push_str("                <enabled>TRUE</enabled>\n");
             xml.push_str(&format!(
-                "                <rate><timebase>{}</timebase><ntsc>TRUE</ntsc></rate>\n",
-                timebase
+                "                <rate><timebase>{timebase}</timebase><ntsc>TRUE</ntsc></rate>\n"
             ));
             xml.push_str(&format!(
                 "                <start>{}</start>\n",
@@ -1564,7 +1557,7 @@ impl RecapAssemblyEngine {
                 "                <out>{}</out>\n",
                 secs_to_frames(p.source_out)
             ));
-            xml.push_str(&format!("                <file id=\"{}\"/>\n", fid));
+            xml.push_str(&format!("                <file id=\"{fid}\"/>\n"));
 
             // Speed/rate for non-1.0 speed clips
             if (p.speed - 1.0).abs() > 0.01 {
@@ -1609,8 +1602,7 @@ impl RecapAssemblyEngine {
                         escape_xml(effect_name)
                     ));
                     xml.push_str(&format!(
-                        "                  <duration>{}</duration>\n",
-                        trans_frames
+                        "                  <duration>{trans_frames}</duration>\n"
                     ));
                     xml.push_str("                  <alignment>center</alignment>\n");
                     xml.push_str("                </transitionitem>\n");
@@ -1637,11 +1629,10 @@ impl RecapAssemblyEngine {
         ));
         xml.push_str("                <enabled>TRUE</enabled>\n");
         xml.push_str(&format!(
-            "                <rate><timebase>{}</timebase><ntsc>TRUE</ntsc></rate>\n",
-            timebase
+            "                <rate><timebase>{timebase}</timebase><ntsc>TRUE</ntsc></rate>\n"
         ));
         xml.push_str("                <start>0</start>\n");
-        xml.push_str(&format!("                <end>{}</end>\n", total_frames));
+        xml.push_str(&format!("                <end>{total_frames}</end>\n"));
 
         if let Some(ref win) = result.music_window {
             xml.push_str(&format!(
@@ -1654,13 +1645,10 @@ impl RecapAssemblyEngine {
             ));
         } else {
             xml.push_str("                <in>0</in>\n");
-            xml.push_str(&format!("                <out>{}</out>\n", total_frames));
+            xml.push_str(&format!("                <out>{total_frames}</out>\n"));
         }
 
-        xml.push_str(&format!(
-            "                <file id=\"{}\"/>\n",
-            music_file_id
-        ));
+        xml.push_str(&format!("                <file id=\"{music_file_id}\"/>\n"));
         xml.push_str("              </clipitem>\n");
         xml.push_str("            </track>\n");
         xml.push_str("          </audio>\n");
@@ -1737,7 +1725,7 @@ fn escape_xml(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::{beat_analysis::EnergyDirection, scene_analysis::SegmentAnalysis};
+    use crate::services::beat_analysis::EnergyDirection;
 
     fn make_beat(ts: f64, num: u32, bar: u32, beat_in_bar: u32) -> BeatMarker {
         BeatMarker {

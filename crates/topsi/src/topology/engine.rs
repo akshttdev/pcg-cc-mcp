@@ -7,7 +7,7 @@ use std::{
 
 use uuid::Uuid;
 
-use super::graph::{GraphEdge, GraphNode, TopologyGraph};
+use super::graph::TopologyGraph;
 
 /// A path through the topology
 #[derive(Debug, Clone)]

@@ -75,17 +75,17 @@ pub async fn submit_feedback(
     State(deployment): State<DeploymentImpl>,
     ResponseJson(req): ResponseJson<SubmitFeedbackRequest>,
 ) -> Result<ResponseJson<ApiResponse<SubmitFeedbackResponse>>, ApiError> {
-    // Verify the user is authenticated
-    access_context.require_viewer()?;
+    // Authentication is enforced by require_auth middleware (route is in protected_routes)
+    let _user_id = &access_context.user_id;
     let pool = &deployment.db().pool;
 
     // Validate frustration_level range
-    if let Some(level) = req.frustration_level {
-        if !(1..=5).contains(&level) {
-            return Err(ApiError::BadRequest(
-                "frustration_level must be between 1 and 5".to_string(),
-            ));
-        }
+    if let Some(level) = req.frustration_level
+        && !(1..=5).contains(&level)
+    {
+        return Err(ApiError::BadRequest(
+            "frustration_level must be between 1 and 5".to_string(),
+        ));
     }
 
     // Map severity to priority

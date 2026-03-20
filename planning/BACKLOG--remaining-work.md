@@ -16,6 +16,22 @@
 **What:** Strict `-D warnings` clippy, all 23 pre-existing clippy errors fixed, `cargo fmt` clean, type generation passes, system deps added (`libgtk-3-dev`, `libwebkit2gtk-4.1-dev`).
 **Follow-up:** ESLint `--max-warnings` at 860 (was 110) due to `simple-import-sort` on untouched files. Run `eslint --fix` across codebase to reduce. TaskStatus enum constants (replace hardcoded strings with `TaskStatus::as_str()`) — see sprint plan for details.
 
+### S0-01b. Add E2E Tests to CI [ROI: 40.0]
+**Source:** PR #53 review findings
+**What:** Add Playwright E2E test step to CI workflow. Run on `main` only (not feature branches) to avoid wasteful CI runs. Use test seed DB, headless Chromium, and the existing `e2e/` suite. Merge to main first, then feature branches pick it up on rebase/merge.
+**Effort:** 0.5 days | **Sprint:** 0.1 | **Status:** NOT STARTED
+**Implementation:** Add job to `ci.yml` gated on `github.ref == 'refs/heads/main'`. Use `scripts/create-test-seed.sh` for DB, `npx playwright test --reporter=list`. Exclude `e2e/quarantine/` and `e2e/demos/`.
+
+### S0-01c. Reduce ESLint max-warnings [ROI: 30.0]
+**Source:** PR #51 CI fixes
+**What:** Run `eslint --fix` across entire frontend to auto-fix `simple-import-sort` warnings, then reduce `--max-warnings` from 860 back to ~120. Do on main to avoid polluting feature branch diffs.
+**Effort:** 0.25 days | **Sprint:** 0.1 | **Status:** NOT STARTED
+
+### S0-01d. Fix 467 Pre-existing Clippy Warnings [ROI: 25.0]
+**Source:** PR #51 CI fixes
+**What:** 13 clippy lint categories currently allowed in CI (`-A` flags). Run `cargo clippy --fix` per-crate to resolve 467 warnings (326 `uninlined_format_args`, 68 `collapsible_if`, etc.), then remove `-A` flags. Do on main.
+**Effort:** 1 day | **Sprint:** 0.1 | **Status:** NOT STARTED
+
 ### S0-02. Bridge Dual Cost System [ROI: 18.0]
 **Source:** [`roadmap/architecture-gaps-analysis.md` §GAP-S0-03](roadmap/architecture-gaps-analysis.md)
 **What:** `ai-usage.tsx` reads `TokenUsage.cost_cents` (never populated) instead of `VibeTransaction` (has real cost data). Bridge the gap so the dashboard shows actual costs.
