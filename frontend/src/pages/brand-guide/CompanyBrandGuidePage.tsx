@@ -135,8 +135,10 @@ export function CompanyBrandGuidePage() {
   const primary = profile.primaryColor || '#000000';
   const secondary = profile.secondaryColor || '#FFFFFF';
   const accent = profile.accentColor || '#AF9041';
-  const headingFont = profile.typographyHeading || 'serif';
-  const bodyFont = profile.typographyBody || 'sans-serif';
+  // Sanitize font names to prevent CSS injection via stored profile data
+  const sanitizeFont = (f: string) => f.replace(/['"\\;{}()<>]/g, '');
+  const headingFont = sanitizeFont(profile.typographyHeading || 'serif');
+  const bodyFont = sanitizeFont(profile.typographyBody || 'sans-serif');
   const logoUrl = profile.logoUrl ? resolveApiUrl(profile.logoUrl) : null;
   const clearbitLogo = profile.clearbitLogoUrl;
   const effectiveLogo = logoUrl || clearbitLogo || company.logo_url || null;

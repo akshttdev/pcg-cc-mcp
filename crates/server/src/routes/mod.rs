@@ -215,6 +215,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(topsi::topsi_routes())
         .merge(nora_classifier::router(&deployment))
         .merge(org_cloud::router(&deployment))
+        .merge(feedback::router(&deployment))
         .layer(middleware::from_fn_with_state(
             deployment.clone(),
             app_middleware::require_auth,
@@ -262,7 +263,6 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(cms::router(&deployment))
         .merge(tasks::global_router(&deployment))
         .merge(model_pricing::router(&deployment))
-        .merge(feedback::router(&deployment))
         .merge(vibe_treasury::public_router(&deployment))
         .merge(meet::meet_routes(&deployment))
         .merge(review::router(&deployment))

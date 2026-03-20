@@ -5,6 +5,7 @@
 use axum::{Router, extract::State, response::Json as ResponseJson, routing::post};
 use db::{
     constants::{BUGREPORTS_BOARD_ID, BUGREPORTS_PROJECT_ID},
+    db_uuid::DbUuid,
     models::{
         agent::Agent,
         data_source::{CreateDataSource, DataSource},
@@ -16,7 +17,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use ts_rs::TS;
 use utils::response::ApiResponse;
-use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 
@@ -63,7 +63,7 @@ pub struct SubmitFeedbackRequest {
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub struct SubmitFeedbackResponse {
-    pub task_id: Uuid,
+    pub task_id: String,
     pub message: String,
 }
 
@@ -147,7 +147,7 @@ pub async fn submit_feedback(
         tags.push("dogfood".to_string());
     }
 
-    let task_id = Uuid::new_v4();
+    let task_id = DbUuid::new();
     let task_id_str = task_id.to_string();
     let create_task = CreateTask {
         project_id: BUGREPORTS_PROJECT_ID.to_string(),
@@ -257,7 +257,7 @@ pub async fn submit_feedback(
     }
 
     Ok(ResponseJson(ApiResponse::success(SubmitFeedbackResponse {
-        task_id,
+        task_id: task_id_str,
         message: "Thank you for your feedback! We'll review it shortly.".to_string(),
     })))
 }

@@ -6,7 +6,7 @@
 STAGED_RS=$(git diff --cached --name-only --diff-filter=ACM -- '*.rs')
 if [ -n "$STAGED_RS" ]; then
   # Find which crates have staged changes
-  CRATES=$(echo "$STAGED_RS" | grep -oP 'crates/[^/]+' | sort -u | sed 's|crates/|-p |' | tr '\n' ' ')
+  CRATES=$(echo "$STAGED_RS" | sed -n 's|^\(crates/[^/]*\)/.*|\1|p' | sort -u | sed 's|crates/|-p |' | tr '\n' ' ')
   if [ -n "$CRATES" ]; then
     # Auto-fix clippy errors on changed crates
     eval cargo clippy --fix $CRATES --allow-dirty --allow-staged -- -D warnings 2>/dev/null

@@ -1,25 +1,41 @@
-import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { organizationsApi, type OrgBrandProfile, resolveApiUrl } from '@/lib/api';
-import { organizationKeys } from '@/lib/query-keys';
-import { Loader2, ArrowLeft, Instagram, Linkedin, Twitter, Facebook, Youtube, Printer, Palette, Wand2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import {
+  ArrowLeft,
+  Facebook,
+  Instagram,
+  Linkedin,
+  Loader2,
+  Palette,
+  Printer,
+  Twitter,
+  Wand2,
+  Youtube,
+} from 'lucide-react';
+import { useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
 
-import type { BrandPageProps, OrgKnowledgeData } from './types';
+import { Button } from '@/components/ui/button';
+import {
+  organizationsApi,
+  type OrgBrandProfile,
+  resolveApiUrl,
+} from '@/lib/api';
+import { organizationKeys } from '@/lib/query-keys';
+
 import { BrandSetupWizard } from './BrandSetupWizard';
-import { PageBreak } from './sections/PagePrimitives';
-import { CoverPage } from './sections/CoverPage';
-import { FoundationPage } from './sections/FoundationPage';
-import { VisualIdentityPage } from './sections/VisualIdentityPage';
-import { LogoSystemPage } from './sections/LogoSystemPage';
-import { VoicePersonalityPage } from './sections/VoicePersonalityPage';
-import { MoodBoardPage } from './sections/MoodBoardPage';
-import { AudienceMarketPage } from './sections/AudienceMarketPage';
 import { ApplicationsPage } from './sections/ApplicationsPage';
-import { MerchandisePage } from './sections/MerchandisePage';
-import { DigitalPresencePage } from './sections/DigitalPresencePage';
+import { AudienceMarketPage } from './sections/AudienceMarketPage';
 import { BackCover } from './sections/BackCover';
+import { CoverPage } from './sections/CoverPage';
+import { DigitalPresencePage } from './sections/DigitalPresencePage';
+import { FoundationPage } from './sections/FoundationPage';
+import { LogoSystemPage } from './sections/LogoSystemPage';
+import { MerchandisePage } from './sections/MerchandisePage';
+import { MoodBoardPage } from './sections/MoodBoardPage';
+import { PageBreak } from './sections/PagePrimitives';
+import { VisualIdentityPage } from './sections/VisualIdentityPage';
+import { VoicePersonalityPage } from './sections/VoicePersonalityPage';
+import type { BrandPageProps, OrgKnowledgeData } from './types';
 
 export function BrandGuidePage() {
   const { orgId } = useParams<{ orgId: string }>();
@@ -31,15 +47,17 @@ export function BrandGuidePage() {
     enabled: !!orgId,
   });
 
-  const { data: profile, isLoading: profileLoading } = useQuery<OrgBrandProfile | null>({
-    queryKey: organizationKeys.brandProfile(orgId!),
-    queryFn: () => organizationsApi.getBrandProfile(orgId!),
-    enabled: !!orgId,
-  });
+  const { data: profile, isLoading: profileLoading } =
+    useQuery<OrgBrandProfile | null>({
+      queryKey: organizationKeys.brandProfile(orgId!),
+      queryFn: () => organizationsApi.getBrandProfile(orgId!),
+      enabled: !!orgId,
+    });
 
   const { data: knowledge } = useQuery<OrgKnowledgeData>({
     queryKey: organizationKeys.knowledge(orgId!),
-    queryFn: () => organizationsApi.getKnowledge(orgId!) as Promise<OrgKnowledgeData>,
+    queryFn: () =>
+      organizationsApi.getKnowledge(orgId!) as Promise<OrgKnowledgeData>,
     enabled: !!orgId,
   });
 
@@ -60,7 +78,8 @@ export function BrandGuidePage() {
             {org ? `No brand guide for ${org.name}` : 'Brand guide not found'}
           </h2>
           <p className="text-sm text-gray-500 max-w-md">
-            Set up a brand profile to generate a comprehensive brand guide with colors, typography, voice, and positioning.
+            Set up a brand profile to generate a comprehensive brand guide with
+            colors, typography, voice, and positioning.
           </p>
         </div>
         {org && orgId && (
@@ -95,19 +114,46 @@ export function BrandGuidePage() {
   const primary = profile.primaryColor || '#000000';
   const secondary = profile.secondaryColor || '#FFFFFF';
   const accent = profile.accentColor || '#AF9041';
-  const headingFont = profile.typographyHeading || 'serif';
-  const bodyFont = profile.typographyBody || 'sans-serif';
+  // Sanitize font names to prevent CSS injection via stored profile data
+  const sanitizeFont = (f: string) => f.replace(/['"\\;{}()<>]/g, '');
+  const headingFont = sanitizeFont(profile.typographyHeading || 'serif');
+  const bodyFont = sanitizeFont(profile.typographyBody || 'sans-serif');
   const logoUrl = profile.logoUrl ? resolveApiUrl(profile.logoUrl) : null;
   const clearbitLogo = profile.clearbitLogoUrl;
   const effectiveLogo = logoUrl || clearbitLogo || null;
 
   const socials = [
-    { icon: Instagram, handle: profile.socialInstagram, label: 'Instagram', url: `https://instagram.com/${profile.socialInstagram?.replace('@', '')}` },
-    { icon: Linkedin, handle: profile.socialLinkedin, label: 'LinkedIn', url: `https://linkedin.com/company/${profile.socialLinkedin?.replace('@', '')}` },
-    { icon: Twitter, handle: profile.socialTwitter, label: 'X / Twitter', url: `https://x.com/${profile.socialTwitter?.replace('@', '')}` },
-    { icon: Facebook, handle: profile.socialFacebook, label: 'Facebook', url: `https://facebook.com/${profile.socialFacebook?.replace('@', '')}` },
-    { icon: Youtube, handle: profile.socialYoutube, label: 'YouTube', url: `https://youtube.com/${profile.socialYoutube}` },
-  ].filter(s => s.handle);
+    {
+      icon: Instagram,
+      handle: profile.socialInstagram,
+      label: 'Instagram',
+      url: `https://instagram.com/${profile.socialInstagram?.replace('@', '')}`,
+    },
+    {
+      icon: Linkedin,
+      handle: profile.socialLinkedin,
+      label: 'LinkedIn',
+      url: `https://linkedin.com/company/${profile.socialLinkedin?.replace('@', '')}`,
+    },
+    {
+      icon: Twitter,
+      handle: profile.socialTwitter,
+      label: 'X / Twitter',
+      url: `https://x.com/${profile.socialTwitter?.replace('@', '')}`,
+    },
+    {
+      icon: Facebook,
+      handle: profile.socialFacebook,
+      label: 'Facebook',
+      url: `https://facebook.com/${profile.socialFacebook?.replace('@', '')}`,
+    },
+    {
+      icon: Youtube,
+      handle: profile.socialYoutube,
+      label: 'YouTube',
+      url: `https://youtube.com/${profile.socialYoutube}`,
+    },
+  ].filter((s) => s.handle);
 
   const pageProps: BrandPageProps = {
     org: { name: org.name, address: (org as any).address ?? null },
@@ -150,7 +196,6 @@ export function BrandGuidePage() {
       `}</style>
 
       <div className="brand-guide min-h-screen bg-white">
-
         {/* Navigation bar (screen only) */}
         <div className="no-print sticky top-0 z-50 bg-black/95 backdrop-blur border-b border-yellow-900/30 px-6 py-3 flex items-center justify-between">
           <Link
@@ -161,8 +206,15 @@ export function BrandGuidePage() {
             Back to {org.name}
           </Link>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] uppercase tracking-widest text-yellow-600 font-semibold">Brand Guide</span>
-            <Button size="sm" variant="outline" className="text-xs gap-1.5 border-yellow-700/40 text-yellow-500 hover:bg-yellow-900/20 hover:text-yellow-400" onClick={() => window.print()}>
+            <span className="text-[10px] uppercase tracking-widest text-yellow-600 font-semibold">
+              Brand Guide
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs gap-1.5 border-yellow-700/40 text-yellow-500 hover:bg-yellow-900/20 hover:text-yellow-400"
+              onClick={() => window.print()}
+            >
               <Printer className="h-3.5 w-3.5" />
               Print / PDF
             </Button>
@@ -213,13 +265,16 @@ export function BrandGuidePage() {
         <PageBreak />
 
         {/* Page 8 -- Digital Presence */}
-        <DigitalPresencePage {...pageProps} socials={socials} knowledge={knowledge} />
+        <DigitalPresencePage
+          {...pageProps}
+          socials={socials}
+          knowledge={knowledge}
+        />
 
         <PageBreak />
 
         {/* Back Cover */}
         <BackCover {...pageProps} />
-
       </div>
     </>
   );
