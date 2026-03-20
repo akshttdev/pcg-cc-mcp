@@ -351,11 +351,13 @@ async fn main() -> Result<(), VibeKanbanError> {
         schedule_shutdown.clone(),
     );
 
+    // Create shutdown registry (must be before workers that use it)
+    let registry = server::workers::ShutdownRegistry::new();
+
     // Spawn Agent Flow Orchestration Engine (disabled by default)
     if std::env::var("ENABLE_AGENT_FLOW_ENGINE").unwrap_or_default() == "1" {
-        let executor = server::agent_flow_executor::AgentFlowExecutor::new(
-            deployment.db().pool.clone(),
-        );
+        let executor =
+            server::agent_flow_executor::AgentFlowExecutor::new(deployment.db().pool.clone());
         registry.spawn_worker(executor).await;
         tracing::info!("[AgentFlowEngine] Enabled via ENABLE_AGENT_FLOW_ENGINE=1");
     }
@@ -592,8 +594,7 @@ async fn main() -> Result<(), VibeKanbanError> {
         });
     }
 
-    // Create shutdown registry and wire graceful shutdown
-    let registry = server::workers::ShutdownRegistry::new();
+    // Wire graceful shutdown
     let shutdown_registry = registry.clone();
 
     // Register existing shutdown tokens with the registry

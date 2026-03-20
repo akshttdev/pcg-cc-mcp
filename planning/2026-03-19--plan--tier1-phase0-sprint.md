@@ -204,11 +204,16 @@ Redirect dashboard from dead `token_usage` table to `vibe_transactions` (source 
   - `GET /api/vibe/costs/by-project?org_id=&days=`
 - **Access control**: `require_org_membership()` on all cost endpoints (org-scoped, NOT project-scoped `require_editor()`). [DEPENDENCY: needs #1d from PR #51 to extract this to AccessContext — PR #54 merges after #51]
 - Add GROUP BY queries to `vibe_transaction.rs` model
+  - **DONE**: dual-path JOINs (project direct + agent via task_id→project)
+  - **FIXED**: BLOB→TEXT hex conversion in JOINs (vibe_transactions uses BLOB UUIDs, projects/tasks use TEXT)
+  - **NOTE**: agent transactions without `task_id` are excluded from org aggregation (by design — only the 0-amount pending record lacks task_id)
 - Create `frontend/src/lib/api/costs.ts` — dedicated cost API module (don't extend vibeApi in workflows.ts)
 - Extract `ai-usage.tsx` (518 lines) tab components into separate files during refactor
 - Update extracted tab components + `TokenUsageWidget.tsx` to call new cost API
-- Run `cargo sqlx prepare --workspace` after adding new queries
-- Run `npm run generate-types` if new response structs added
+- **DONE**: `cargo sqlx prepare --workspace` + `npm run generate-types` (types added to generate_types.rs, shared/types.ts updated)
+- **FIXED**: ShutdownRegistry scope error after merge (registry creation moved before executor block)
+- **Regression analysis**: no stale references, no dead code, no import gaps, all access control complete, router wiring correct
+- **Deferred**: date range filtering on cost endpoints, full `vibe_transactions` BLOB→TEXT migration, hex conversion SQL deduplication
 
 ### 7. Structured Response Protocol (S0-03 + Arch D) [FOUNDATION — merged with #9]
 **Effort**: Combined with #9 | **PR**: #55
