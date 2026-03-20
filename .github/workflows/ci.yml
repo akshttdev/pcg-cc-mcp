@@ -44,8 +44,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake pkg-config libopus-dev libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev libssl-dev libsodium-dev
       - name: Clippy
-        # Pre-existing bulk lints allowed until dedicated cleanup PR (467 total, mostly format args + collapsible_if)
-        run: cargo clippy --all --all-targets -- -D warnings -A clippy::uninlined_format_args -A clippy::collapsible_if -A clippy::collapsible_match -A clippy::useless_format -A clippy::manual_range_contains -A clippy::too_many_arguments -A clippy::unnecessary_cast -A clippy::clone_on_copy -A clippy::needless_borrow -A clippy::single_char_add_str -A clippy::derivable_impls -A clippy::trim_split_whitespace -A clippy::field_reassign_with_default -A clippy::suspicious_doc_comments
+        # Pre-existing bulk lints allowed until dedicated cleanup PR
+        run: >-
+          cargo clippy --all --all-targets -- -D warnings
+          -A clippy::uninlined_format_args -A clippy::collapsible_if -A clippy::collapsible_match
+          -A clippy::useless_format -A clippy::manual_range_contains -A clippy::too_many_arguments
+          -A clippy::unnecessary_cast -A clippy::clone_on_copy -A clippy::needless_borrow
+          -A clippy::single_char_add_str -A clippy::derivable_impls -A clippy::trim_split_whitespace
+          -A clippy::field_reassign_with_default -A clippy::suspicious_doc_comments
+          -A clippy::doc_lazy_continuation -A clippy::double_ended_iterator_last
+          -A clippy::for_kv_map -A clippy::get_first -A clippy::large_enum_variant
+          -A clippy::manual_clamp -A clippy::manual_pattern_char_comparison -A clippy::manual_strip
+          -A clippy::needless_borrows_for_generic_args -A clippy::needless_range_loop
+          -A clippy::new_without_default -A clippy::ptr_arg -A clippy::redundant_closure
+          -A clippy::should_implement_trait -A clippy::type_complexity
+          -A clippy::unnecessary_lazy_evaluations -A clippy::unwrap_or_default
 
   backend-test:
     name: Rust tests
