@@ -494,13 +494,13 @@ impl ArtlistTrack {
         let genre = self
             .genres
             .first()
-            .and_then(MusicGenre::from_artlist_term)
+            .and_then(|s| MusicGenre::from_artlist_term(s))
             .unwrap_or(MusicGenre::Pop);
 
         let moods: Vec<MusicMood> = self
             .moods
             .iter()
-            .filter_map(MusicMood::from_artlist_term)
+            .filter_map(|s| MusicMood::from_artlist_term(s))
             .collect();
 
         MusicTrack {

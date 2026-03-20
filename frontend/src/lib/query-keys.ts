@@ -550,6 +550,14 @@ export const commandCenterKeys = {
   dashboard: () => ['command-center'] as const,
 };
 
+// ── Costs ─────────────────────────────────────────────────────────────────
+
+export const costKeys = {
+  orgSummary: (orgId: string, days?: number) => ['costs', 'summary', orgId, days] as const,
+  orgByModel: (orgId: string, days?: number) => ['costs', 'by-model', orgId, days] as const,
+  orgByProject: (orgId: string, days?: number) => ['costs', 'by-project', orgId, days] as const,
+};
+
 // ── Unified export ─────────────────────────────────────────────────────────
 
 export const queryKeys = {
@@ -599,4 +607,5 @@ export const queryKeys = {
   orcha: orchaKeys,
   agentWatchers: agentWatcherKeys,
   commandCenter: commandCenterKeys,
+  costs: costKeys,
 } as const;

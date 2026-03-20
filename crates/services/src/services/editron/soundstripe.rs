@@ -449,7 +449,7 @@ impl SoundstripeClient {
             .attributes
             .moods
             .iter()
-            .filter_map(MusicMood::from_soundstripe_term)
+            .filter_map(|s| MusicMood::from_soundstripe_term(s))
             .collect();
 
         // Extract download URL from included audio_files

@@ -493,6 +493,79 @@ Full regression analysis performed against `main`. Findings and fixes below.
 
 ---
 
+## PR #55 Review & Fixes (2026-03-20)
+
+### Critical Issues Found & Fixed
+- **Agent flow routes unauthenticated** — moved `agent_flows::router()` + `agent_flow_events::router()` to `protected_routes`
+- **TOCTOU race in `transition_to_phase`** — added `expected_status` parameter with WHERE guard
+- **Missing types in `shared/types.ts`** — merged pr/54 with proper `sqlx prepare` + `generate-types`
+- **`costs.ts` not exported from API barrel** — added to `index.ts`
+- **Missing `#[derive(TS)]` on `RespondClarificationPayload`** — added
+
+### Clippy Cleanup (82 errors → 0)
+First pass (39 errors from CI report):
+- `new_without_default`, `manual_pattern_char_comparison`, `double_ended_iterator_last`,
+  `needless_borrows_for_generic_args`, `lines_filter_map_ok`, `manual_strip`, `manual_clamp`,
+  `needless_range_loop`, `for_kv_map`, `get_first`, `redundant_closure`, `ptr_arg`,
+  `should_implement_trait`, `doc_lazy_continuation`, unused imports/variables
+
+Second pass (43 additional errors from clean rebuild):
+- Dead code in nora: `BowserBridge` fields, `extract_title`, `update_flow_status`, `fetch_url`,
+  `html_to_text`, `config` fields on TTS structs — annotated with `#[allow(dead_code)]` or prefixed `_`
+- `while_let_on_iterator` → `for ch in chars.by_ref()` in nora agent.rs
+- `io_other_error` → `std::io::Error::other()` in nora agent.rs
+- `bind_instead_of_map` → `.map()` in nora execute_impl.rs
+- `only_used_in_recursion` — allow annotation on media_catalog recursive param
+- `consecutive_str_replace` → merged char arrays
+
+### Frontend Fixes
+- Added `needs_clarification` to all `Record<FlowStatus, ...>` maps in AgentFlowBoard/Card
+- Added status colors (amber) and icons for NeedsClarification
+
+### Test Schema Fix
+- Merged pr/54 test bootstrap schema update to match migrated production DB
+
+---
+
+## PR #55 Regression Test Results (2026-03-20)
+
+### Summary
+- Files analyzed: 146 changed | Commits: 51 | Lines: +1,195 / -4,708
+
+### Critical (1)
+| # | Issue | File | Status |
+|---|-------|------|--------|
+| 1 | `bigint` type mismatch — ts-rs maps `i64` → `bigint` but JSON delivers `number`. Cost dashboard will have runtime type disagreement | `shared/types.ts:99-103` | Tracked — needs `#[ts(type = "number")]` on cost struct fields |
+
+### High (4)
+| # | Issue | File | Status |
+|---|-------|------|--------|
+| 2 | No org-level auth on agent_flows — any authenticated user can manipulate any flow | `agent_flows.rs` (all handlers) | Pre-existing — tracked for Phase 2 |
+| 3 | FSM bypass via PATCH — `update_flow` writes arbitrary status without FSM validation | `agent_flows.rs:141-186` | Pre-existing — tracked for Phase 2 |
+| 4 | `AgentFlowBadges.tsx` local FlowStatus missing `needs_clarification` — shows wrong badge | `AgentFlowBadges.tsx:28` | Fix before merge |
+| 5 | No query key factory for costs API | `query-keys.ts` | Fix before merge |
+
+### Medium (6)
+| # | Issue | File | Status |
+|---|-------|------|--------|
+| 6 | TOCTOU in respond_clarification — SELECT then UPDATE without atomic guard | `agent_flows.rs:268-321` | Partially mitigated by transition_to_phase guard |
+| 7 | handle_verifying_flow bypasses FSM — raw SQL with hardcoded strings | `agent_flow_executor.rs:146` | Tracked for Phase 2 |
+| 8 | Clippy allow list nearly doubled (13→27 lints) | `ci.yml` | Tracked in backlog CI-3 |
+| 9 | `query-config.ts` and `costs.ts` are dead code (no consumers) | `frontend/src/` | Expected — wired when dashboard hooks built |
+| 10 | ClarificationRequest no TS type generated | `shared/types.ts` | Add `#[ts(export)]` in follow-up |
+| 11 | Test bootstrap schema fix not visible in diff | — | Verify `cargo test -p db` |
+
+### Clean Areas
+- SQL injection: all queries use bind params
+- No panics (unwrap/expect) in non-test code
+- Cost endpoint auth: correct `require_org_membership()` on all 3 endpoints
+- BLOB/TEXT JOINs: correct hex conversion in cost aggregation
+- Migration: safe additive nullable column
+- Frontend FlowStatus maps: correct in AgentFlowBoard/Card (but not AgentFlowBadges)
+- Types: `shared/types.ts` matches Rust structs (except bigint issue)
+
+---
+
 ## In-Sprint Modularity Extractions (~4h, embedded in PRs)
 
 | Extraction | Effort | PR |
