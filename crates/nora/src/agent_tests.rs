@@ -7,7 +7,6 @@ mod tests {
     use crate::{
         agent::{NoraAgent, NoraRequest, NoraRequestType, RequestPriority},
         memory::ConversationMemory,
-        personality::PersonalityConfig,
         NoraConfig,
     };
 

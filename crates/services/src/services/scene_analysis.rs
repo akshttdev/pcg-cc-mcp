@@ -107,6 +107,7 @@ pub struct SceneAnalysisEngine {
 }
 
 impl SceneAnalysisEngine {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             ffmpeg_path: PathBuf::from("ffmpeg"),
@@ -274,13 +275,13 @@ impl SceneAnalysisEngine {
             if line.contains("lavfi.signalstats.YAVG=") {
                 current_yavg = line
                     .split('=')
-                    .last()
+                    .next_back()
                     .and_then(|v| v.trim().parse::<f64>().ok());
             }
             if line.contains("lavfi.signalstats.HUEAVG=") {
                 current_hueavg = line
                     .split('=')
-                    .last()
+                    .next_back()
                     .and_then(|v| v.trim().parse::<f64>().ok());
             }
         }
@@ -586,7 +587,7 @@ impl SceneAnalysisEngine {
     fn parse_metadata_value(text: &str, key: &str) -> Option<f64> {
         for line in text.lines() {
             if line.contains(key) {
-                if let Some(val_str) = line.split('=').last() {
+                if let Some(val_str) = line.split('=').next_back() {
                     if let Ok(v) = val_str.trim().parse::<f64>() {
                         return Some(v);
                     }
@@ -599,7 +600,7 @@ impl SceneAnalysisEngine {
     #[allow(dead_code)]
     fn parse_inline_value(line: &str) -> Option<f64> {
         line.split('=')
-            .last()
+            .next_back()
             .and_then(|v| v.trim().parse::<f64>().ok())
     }
 }

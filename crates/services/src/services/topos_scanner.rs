@@ -234,10 +234,7 @@ impl ToposScannerService {
     }
 
     /// Ensure a project has the standard filing structure
-    pub fn ensure_project_structure(
-        &self,
-        project_path: &PathBuf,
-    ) -> Result<(), ToposScannerError> {
+    pub fn ensure_project_structure(&self, project_path: &Path) -> Result<(), ToposScannerError> {
         ensure_project_structure(project_path)?;
         Ok(())
     }

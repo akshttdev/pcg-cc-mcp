@@ -162,7 +162,7 @@ fn hello_world() {
 
     #[test]
     fn test_run_visual_qc_tool_parse() {
-        let tools = ExecutiveTools::new();
+        let _tools = ExecutiveTools::new();
         let args = serde_json::json!({
             "batch_id": "abc-123",
             "candidates_per_clip": 3,

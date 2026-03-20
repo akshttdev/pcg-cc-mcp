@@ -172,10 +172,4 @@ impl SlotManager {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // Unit tests would go here
-    // Testing slot acquisition, release, and capacity checks
-}
+// TODO: add unit tests for slot acquisition, release, and capacity checks

@@ -267,7 +267,7 @@ async fn get_network_peers() -> Result<Vec<NetworkPeer>, String> {
 
     if let Ok(file) = File::open(log_path) {
         let reader = BufReader::new(file);
-        let lines: Vec<String> = reader.lines().filter_map(|l| l.ok()).collect();
+        let lines: Vec<String> = reader.lines().map_while(Result::ok).collect();
 
         // Regex to match peer announcements
         let peer_regex = Regex::new(

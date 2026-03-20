@@ -55,7 +55,7 @@ mod tests {
         assert!(!polished.is_empty(), "Response should not be empty");
 
         // Check for potential British transformations
-        let has_transformation = polished != original
+        let _has_transformation = polished != original
             || polished.to_lowercase().contains("rather")
             || polished.to_lowercase().contains("quite")
             || polished.to_lowercase().contains("shall");

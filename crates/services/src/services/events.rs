@@ -149,6 +149,7 @@ enum HookTables {
 
 #[derive(Serialize, Deserialize, TS)]
 #[serde(tag = "type", content = "data", rename_all = "SCREAMING_SNAKE_CASE")]
+#[allow(clippy::large_enum_variant)] // TODO: Box large variants to reduce enum size
 pub enum RecordTypes {
     Task(Task),
     TaskAttempt(TaskAttempt),

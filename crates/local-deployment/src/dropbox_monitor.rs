@@ -84,7 +84,7 @@ impl DropboxMonitor {
             .source_url
             .clone()
             .context("Dropbox source missing source_url")?;
-        let storage_tier = MediaStorageTier::from_str(&source.storage_tier)
+        let storage_tier = MediaStorageTier::parse_tier(&source.storage_tier)
             .map_err(|err| anyhow::anyhow!(err.to_string()))?;
 
         let request = MediaBatchIngestRequest {

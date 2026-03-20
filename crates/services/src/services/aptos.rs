@@ -861,8 +861,8 @@ impl AptosService {
     /// Parse hex-encoded key (with or without 0x prefix)
     fn parse_hex_key(key: &str) -> Result<Vec<u8>> {
         let key = key.trim();
-        let hex_str = if key.starts_with("0x") {
-            &key[2..]
+        let hex_str = if let Some(stripped) = key.strip_prefix("0x") {
+            stripped
         } else {
             key
         };
@@ -918,7 +918,7 @@ impl AptosService {
     fn derive_address_from_public_key(public_key: &PublicKey) -> String {
         let mut hasher = Sha3_256::new();
         hasher.update(public_key.as_bytes());
-        hasher.update(&[0x00]); // Ed25519 signature scheme identifier
+        hasher.update([0x00]); // Ed25519 signature scheme identifier
         let hash = hasher.finalize();
         format!("0x{}", hex::encode(hash))
     }
