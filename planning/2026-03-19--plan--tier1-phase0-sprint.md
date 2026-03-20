@@ -198,9 +198,12 @@ Redirect dashboard from dead `token_usage` table to `vibe_transactions` (source 
   - `GET /api/vibe/costs/by-project?org_id=&days=`
 - **Access control**: `require_editor()` on all cost endpoints
 - Add GROUP BY queries to `vibe_transaction.rs` model
+  - **DONE**: dual-path JOINs (project direct + agent via task_id→project)
+  - **FIXED**: BLOB→TEXT hex conversion in JOINs (vibe_transactions uses BLOB UUIDs, projects/tasks use TEXT)
+  - **NOTE**: agent transactions without `task_id` are excluded from org aggregation (by design — only the 0-amount pending record lacks task_id)
 - Update `ai-usage.tsx` + `TokenUsageWidget.tsx` to call vibe endpoints
-- Run `cargo sqlx prepare --workspace` after adding new queries
-- Run `npm run generate-types` if new response structs added
+- **TODO before merge**: `cargo sqlx prepare --workspace` + `npm run generate-types`
+- **Deferred**: date range filtering on cost endpoints (no `since`/`until` params yet), full `vibe_transactions` BLOB→TEXT migration
 
 ### 7. Structured Response Protocol (S0-03 + Arch D) [FOUNDATION — merged with #9]
 **Effort**: Combined with #9 | **PR**: #54
