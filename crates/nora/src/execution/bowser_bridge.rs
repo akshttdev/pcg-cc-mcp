@@ -50,6 +50,7 @@ struct RenderScriptOutput {
 }
 
 /// Bridge to Bowser service for JavaScript rendering
+#[allow(dead_code)]
 pub struct BowserBridge {
     bowser: Option<BowserService>,
     pool: SqlitePool,
@@ -293,17 +294,17 @@ fn html_to_text(html: &str) -> String {
     text.trim().to_string()
 }
 
-/// Extract title from HTML
-fn extract_title(html: &str) -> Option<String> {
-    if let Ok(re) = regex::Regex::new(r"<title[^>]*>([^<]+)</title>") {
-        if let Some(cap) = re.captures(html) {
-            if let Some(title) = cap.get(1) {
-                return Some(title.as_str().trim().to_string());
-            }
-        }
-    }
-    None
-}
+// /// Extract title from HTML
+// fn extract_title(html: &str) -> Option<String> {
+//     if let Ok(re) = regex::Regex::new(r"<title[^>]*>([^<]+)</title>") {
+//         if let Some(cap) = re.captures(html) {
+//             if let Some(title) = cap.get(1) {
+//                 return Some(title.as_str().trim().to_string());
+//             }
+//         }
+//     }
+//     None
+// }
 
 #[cfg(test)]
 mod tests {
@@ -318,9 +319,9 @@ mod tests {
         assert!(!text.contains("script"));
     }
 
-    #[test]
-    fn test_extract_title() {
-        let html = "<html><head><title>Conference 2026</title></head></html>";
-        assert_eq!(extract_title(html), Some("Conference 2026".to_string()));
-    }
+    // #[test]
+    // fn test_extract_title() {
+    //     let html = "<html><head><title>Conference 2026</title></head></html>";
+    //     assert_eq!(extract_title(html), Some("Conference 2026".to_string()));
+    // }
 }

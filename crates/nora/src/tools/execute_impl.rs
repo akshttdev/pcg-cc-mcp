@@ -84,9 +84,9 @@ impl ExecutiveTools {
                         // Simplified board types: only Default and Custom
                         board_type
                             .as_ref()
-                            .and_then(|bt| match bt.to_lowercase().as_str() {
-                                "default" | "main" => Some(ProjectBoardType::Default),
-                                "custom" | _ => Some(ProjectBoardType::Custom),
+                            .map(|bt| match bt.to_lowercase().as_str() {
+                                "default" | "main" => ProjectBoardType::Default,
+                                _ => ProjectBoardType::Custom,
                             });
 
                     match executor

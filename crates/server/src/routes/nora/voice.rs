@@ -342,7 +342,7 @@ pub async fn update_voice_config(
     let new_config = request.config.clone();
     let new_engine = VoiceEngine::new(new_config.clone())
         .await
-        .map_err(|err| voice_error_to_api(err))?;
+        .map_err(voice_error_to_api)?;
 
     // Update in-memory configuration
     nora.config.voice = new_config.clone();

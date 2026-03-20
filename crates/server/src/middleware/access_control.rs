@@ -232,7 +232,7 @@ impl AccessContext {
             let role = m
                 .role
                 .parse::<ProjectRole>()
-                .map_err(|e| ApiError::InternalError(e))?;
+                .map_err(ApiError::InternalError)?;
             let has_access = match required_role {
                 ProjectRole::Viewer => role.can_read(),
                 ProjectRole::Editor => role.can_write(),

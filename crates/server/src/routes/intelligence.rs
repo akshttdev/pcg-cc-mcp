@@ -727,6 +727,7 @@ pub async fn get_company_intelligence_status(
     )))
 }
 
+#[allow(dead_code)]
 async fn run_company_research(
     pool: &sqlx::SqlitePool,
     company_id: Uuid,

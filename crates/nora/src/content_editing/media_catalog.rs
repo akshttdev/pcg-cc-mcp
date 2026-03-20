@@ -207,15 +207,16 @@ impl MediaCataloger {
     }
 
     /// Recursive directory walker.
+    #[allow(clippy::only_used_in_recursion)]
     fn walk_dir(&self, dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
         if !dir.is_dir() {
             return Ok(());
         }
 
-        let entries = std::fs::read_dir(dir).map_err(|e| NoraError::IoError(e))?;
+        let entries = std::fs::read_dir(dir).map_err(NoraError::IoError)?;
 
         for entry in entries {
-            let entry = entry.map_err(|e| NoraError::IoError(e))?;
+            let entry = entry.map_err(NoraError::IoError)?;
             let path = entry.path();
 
             if path.is_dir() {

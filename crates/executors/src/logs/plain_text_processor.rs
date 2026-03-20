@@ -151,7 +151,7 @@ impl PlainTextBuffer {
 
     /// Check if the buffer is empty.
     pub fn is_empty(&self) -> bool {
-        debug_assert!(self.lines.len() == 0 || self.total_len > 0);
+        debug_assert!(self.lines.is_empty() || self.total_len > 0);
         self.total_len == 0
     }
 }

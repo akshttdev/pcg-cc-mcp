@@ -1,10 +1,10 @@
 # Tier 1 Phase 0 Sprint — Foundation & Dogfood Readiness
 
 **Date**: 2026-03-19
-**Branch**: `feature/2026-03-19--tier1-phase0`
-**Worktree**: `/Users/mediamonsters/topos/pcg-cc-mcp` (root)
-**Base**: `main` (commit `ed66d568b`)
-**Status**: IN PROGRESS — PRs #53, #54, #55 open for review
+**Branch**: `pr/55-agent-engine` (consolidated from `feature/2026-03-19--tier1-phase0`)
+**Worktree**: `/Users/mediamonsters/topos/pcg-cc-mcp/.claude/worktrees/main-worktree`
+**Base**: `main`
+**Status**: PR #53 MERGED ✅, PR #54 MERGED ✅, PR #55 in CI (clippy cleanup in progress)
 **Goal**: Fix regressions, harden CI, build Agent Flow Engine foundation, enable internal dev workflow dogfooding
 **Team**: 2-3 devs + Claude Code
 **Duration**: Flexible (ship when done)
@@ -104,8 +104,8 @@ Add `validator` to workspace deps. Apply `#[derive(Validate)]` to new structs on
 
 ## Sprint Items
 
-### 1. Fix PR #50 Regressions + Access Control Gaps [CRITICAL — Day 1]
-**Effort**: 1 day | **PR**: #51
+### 1. Fix PR #50 Regressions + Access Control Gaps [CRITICAL] ✅ DONE (PR #53, merged 2026-03-20)
+**Effort**: 1 day | **PR**: #53
 
 **~~1a. Harden kanban access control~~** — ALREADY DONE (all 20 handlers in `crm_deals.rs` confirmed to have `Extension(access_context)` + org membership checks; retargeted to contacts/pipelines in #1d/#1e)
 
@@ -128,8 +128,8 @@ Add `validator` to workspace deps. Apply `#[derive(Validate)]` to new structs on
 - Extract research/proposal/deck triggers (~400 lines) → `crm_deal_automations.rs`
 - Core CRUD stays in `crm_deals.rs` (~1,700 lines)
 
-### 2. Fix CI Pipeline [HIGH — Day 1-2]
-**Effort**: 1.5 days | **PR**: #51
+### 2. Fix CI Pipeline [HIGH] ✅ DONE (PR #53, merged 2026-03-20)
+**Effort**: 1.5 days | **PR**: #53
 
 **Strategy**: Format only files modified in sprint. Pre-commit hooks (#3) enforce incrementally on future commits.
 
@@ -142,8 +142,8 @@ Add `validator` to workspace deps. Apply `#[derive(Validate)]` to new structs on
 
 **CI fmt strategy**: Modify existing `rustfmt.toml` (already has `reorder_imports`, `group_imports`, `imports_granularity`) to add `ignore` list for vendored crates (`vendor/serenity-voice-model`). Use `#[rustfmt::skip]` for pre-existing violations outside sprint scope. Verify `cargo fmt --check` passes on main first — if it doesn't, determine scope of pre-existing violations before committing to full-codebase check.
 
-### 3. Apply Lint-Staged Config [QUICK WIN — Day 1]
-**Effort**: 0.25 days | **PR**: #51
+### 3. Apply Lint-Staged Config [QUICK WIN] ✅ DONE (PR #53, merged 2026-03-20)
+**Effort**: 0.25 days | **PR**: #53
 
 Selectively restore config from stash (NOT cherry-pick — stash uses `git checkout stash@{0} -- <file>`):
 - `.githooks/pre-commit`, `frontend/package.json` (lint-staged + simple-import-sort deps), `frontend/.eslintrc.cjs`
@@ -153,8 +153,8 @@ Selectively restore config from stash (NOT cherry-pick — stash uses `git check
 - **Verified**: `stash@{0}` = "lint-staged + import-sort setup + eslint --fix". Contains `.githooks/pre-commit` (+5), `frontend/package.json` (+7/-), `frontend/.eslintrc.cjs` (+4/-) plus 654 auto-reformatted files to discard
 - Run `pnpm install` after restoring `frontend/package.json`
 
-### 4. Cooldown Race Condition Fix (S0-05) [HIGH — Day 2]
-**Effort**: 0.5 days | **PR**: #52
+### 4. Cooldown Race Condition Fix (S0-05) [HIGH] ✅ DONE (PR #53, merged 2026-03-20)
+**Effort**: 0.5 days | **PR**: #53
 
 **Model fix**: `crates/db/src/models/workflow_trigger.rs` — new atomic method:
 ```sql
@@ -171,8 +171,8 @@ RETURNING *
 - Replace `if !trigger.is_past_cooldown() { continue; }` with `try_claim_trigger()` atomic call
 - Run `cargo sqlx prepare --workspace` after adding new query
 
-### 5. Graceful Shutdown + Worker Registry (S0-12 + Arch A/B) [HIGH — Day 2-3]
-**Effort**: 1.5 days | **PR**: #52
+### 5. Graceful Shutdown + Worker Registry (S0-12 + Arch A/B) [HIGH] ✅ DONE (PR #53, merged 2026-03-20)
+**Effort**: 1.5 days | **PR**: #53
 
 **5a. Signal handler** — `main.rs` line 586
 ```rust
@@ -192,7 +192,7 @@ Configurable drain timeout: env `SHUTDOWN_DRAIN_TIMEOUT_SECS` (default 30s, high
 
 **5d. APN Node subprocess cleanup** — call `kill_existing_apn_nodes()` in shutdown handler
 
-### 6. Bridge Dual Cost System (S0-02) [HIGH — Day 3]
+### 6. Bridge Dual Cost System (S0-02) [HIGH] ✅ DONE (PR #54, merged 2026-03-20)
 **Effort**: 1 day | **PR**: #54
 
 Redirect dashboard from dead `token_usage` table to `vibe_transactions` (source of truth).
@@ -215,15 +215,18 @@ Redirect dashboard from dead `token_usage` table to `vibe_transactions` (source 
 - **Regression analysis**: no stale references, no dead code, no import gaps, all access control complete, router wiring correct
 - **Deferred**: date range filtering on cost endpoints, full `vibe_transactions` BLOB→TEXT migration, hex conversion SQL deduplication
 
-### 7. Structured Response Protocol (S0-03 + Arch D) [FOUNDATION — merged with #9]
+### 7. Structured Response Protocol (S0-03 + Arch D) ✅ DONE (PR #55, in review)
 **Effort**: Combined with #9 | **PR**: #55
+**Gap**: `ResponseMetrics` struct not implemented (deferred)
 
 - `crates/db/src/models/agent_response.rs` — `AgentResponseEnvelope`, `AgentResponseStatus` (Done/NeedsClarification/Failed/InProgress), `ClarificationRequest`, `ResponseMetrics`
 - `#[derive(TS)]` for frontend type generation
 - Run `npm run generate-types` after creating types
 
-### 8. Clarification as First-Class Status (S0-04) [FOUNDATION — Day 4]
+### 8. Clarification as First-Class Status (S0-04) ⚠️ PARTIAL (PR #55, in review)
 **Effort**: 0.5 days | **PR**: #55
+**Done**: FlowStatus::NeedsClarification variant, migration, DB column, valid transitions, respond_clarification endpoint
+**Gaps**: No frontend clarification form (users can't respond to clarification requests via UI)
 
 - Add `NeedsClarification` as 8th variant to `FlowStatus` in `agent_flow.rs`
 - Migration `20260413000001`: add `clarification_request` TEXT column to `agent_flows`
@@ -231,8 +234,19 @@ Redirect dashboard from dead `token_usage` table to `vibe_transactions` (source 
 - Frontend: render clarification form when flow is in this status
 - Run `cargo sqlx prepare --workspace` after migration
 
-### 9. Agent Flow Orchestration Engine — Phase 1 (S0-06 + Arch A/B/C) [KEYSTONE — Day 4-8]
+### 9. Agent Flow Orchestration Engine — Phase 1 (S0-06 + Arch A/B/C) ⚠️ STUB ONLY (PR #55, in review)
 **Effort**: 5 days | **PR**: #55
+**Done**: BackgroundWorker impl, status polling, phase transition logic, FSM validation, TOCTOU guards
+**Gaps (9 sub-items not implemented)**:
+1. No actual LLM dispatch (API or executor) — transitions are immediate stubs
+2. No `AgentFlowExecutorConfig` with env vars
+3. No `DomainEvent` enum or `events/mod.rs`
+4. No `emit_and_persist()` event broadcasting
+5. No `valid_stage_transitions()` on CrmPipelineStage
+6. No `flow_config.dispatch_mode` field
+7. No test harness / mock dispatcher
+8. No `AwaitingApproval` handling in executor
+9. No event emission on phase transitions
 
 **New file**: `crates/server/src/agent_flow_executor.rs` — implements `BackgroundWorker`, polls every 15s.
 
@@ -310,8 +324,10 @@ agent_flow_executor::spawn(pool.clone(), flow_shutdown);
 
 **Phase 2 note**: Inline stage-trigger agents (Scout, Astra, Cash, Lux) in `crm_deals.rs` coexist with engine in Phase 1. Phase 2 migrates them to engine for retry/timeout/observability. NOT modified this sprint.
 
-### 10. Dogfood Friction Logging (S0-19) [DOGFOOD — Day 6-7]
+### 10. Dogfood Friction Logging (S0-19) ⚠️ PARTIAL (PR #53, merged 2026-03-20)
 **Effort**: 1.5 days | **PR**: #53
+**Done**: Frontend friction form in FeedbackDialog, friction type, frustration level picker, backend friction fields (optional)
+**Gaps**: No migration for friction columns, no sidebar "Report Friction" button, no `#[derive(Validate)]`, no structured friction schema
 
 Extend `crates/server/src/routes/feedback.rs`:
 - `friction_area: Option<String>` — enum: workflow_editor, crm_pipeline, task_management, etc.
@@ -328,11 +344,9 @@ Extend `crates/server/src/routes/feedback.rs`:
 
 | GitHub PR | Plan Items | Branch | Status |
 |-----------|-----------|--------|--------|
-| **#53** | Plan #51 + #52 + #53 (CI, access control, stability, friction) | `pr/51-ci-regressions-access-control` | OPEN |
-| **#54** | Plan #54 (cost bridge) | `pr/54-cost-bridge` | OPEN |
-| **#55** | Plan #55 (agent engine) | `pr/55-agent-engine` | OPEN |
-
-Merge order: #53 first (foundation), #54 and #55 can follow in either order. #55 merges last.
+| **#53** | Items #1-5, #10 (CI, access control, stability, friction) | `pr/51-ci-regressions-access-control` | ✅ MERGED 2026-03-20 |
+| **#54** | Item #6 (cost bridge) | `pr/54-cost-bridge` | ✅ MERGED 2026-03-20 |
+| **#55** | Items #7-9 (agent engine) | `pr/55-agent-engine` | 🔄 IN REVIEW — clippy cleanup in progress |
 
 ---
 

@@ -168,6 +168,7 @@ impl ResearchTools {
     }
 
     /// Fetch and extract content from a URL
+    #[allow(dead_code)]
     pub async fn fetch_url(&self, url: &str) -> Result<String, String> {
         tracing::info!("[RESEARCH_TOOLS] Fetching URL: {}", url);
 
@@ -594,6 +595,7 @@ Return a JSON object with your findings."#,
 }
 
 /// Simple HTML to text conversion
+#[allow(dead_code)]
 fn html_to_text(html: &str) -> String {
     let mut text = html.to_string();
 

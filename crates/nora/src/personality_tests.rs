@@ -30,8 +30,8 @@ mod tests {
         let _personality = BritishPersonality::new(config.clone());
 
         assert_eq!(config.accent_strength, 0.8);
-        assert_eq!(config.executive_vocabulary, true);
-        assert_eq!(config.british_expressions, true);
+        assert!(config.executive_vocabulary);
+        assert!(config.british_expressions);
     }
 
     #[test]
@@ -98,7 +98,7 @@ mod tests {
         // Should process the text
         assert!(!executive.is_empty(), "Should return a response");
         // Executive language may be more elaborate or similar length
-        assert!(executive.len() > 0, "Response should have content");
+        assert!(!executive.is_empty(), "Response should have content");
     }
 
     #[test]
@@ -113,7 +113,7 @@ mod tests {
 
         // Should process the text
         assert!(!response.is_empty(), "Response should not be empty");
-        assert!(response.len() > 0, "Response should have content");
+        assert!(!response.is_empty(), "Response should have content");
     }
 
     #[test]
