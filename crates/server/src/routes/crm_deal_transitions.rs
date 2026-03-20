@@ -669,16 +669,14 @@ pub async fn manage_stage_review_tasks(
                 .await
                 .ok()
                 .flatten()
-                .map(|hex| {
+                .and_then(|hex| {
+                    // hex(id) returns 32 chars for a 16-byte UUID BLOB
+                    if hex.len() != 32 { return None; }
                     let h = hex.to_lowercase();
-                    format!(
+                    Some(format!(
                         "{}-{}-{}-{}-{}",
-                        &h[..8],
-                        &h[8..12],
-                        &h[12..16],
-                        &h[16..20],
-                        &h[20..]
-                    )
+                        &h[..8], &h[8..12], &h[12..16], &h[16..20], &h[20..]
+                    ))
                 });
 
         let _ = sqlx::query(

@@ -71,10 +71,20 @@ pub struct SubmitFeedbackResponse {
 ///
 /// Submit user feedback which creates a task in the Bug Reports project.
 pub async fn submit_feedback(
+    Extension(access_context): Extension<crate::middleware::access_control::AccessContext>,
     State(deployment): State<DeploymentImpl>,
     ResponseJson(req): ResponseJson<SubmitFeedbackRequest>,
 ) -> Result<ResponseJson<ApiResponse<SubmitFeedbackResponse>>, ApiError> {
+    // Verify the user is authenticated
+    access_context.require_viewer()?;
     let pool = &deployment.db().pool;
+
+    // Validate frustration_level range
+    if let Some(level) = req.frustration_level {
+        if !(1..=5).contains(&level) {
+            return Err(ApiError::BadRequest("frustration_level must be between 1 and 5".to_string()));
+        }
+    }
 
     // Map severity to priority
     let priority = match req.severity.as_deref() {

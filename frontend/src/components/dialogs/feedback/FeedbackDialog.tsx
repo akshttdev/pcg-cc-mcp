@@ -124,13 +124,13 @@ export const FeedbackDialog = NiceModal.create(() => {
 
       // Validate file type
       if (!file.type.startsWith('image/')) {
-        alert('Please select an image file');
+        toast.error('Please select an image file');
         return;
       }
 
       // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
-        alert('Image must be less than 5MB');
+        toast.error('Image must be less than 5MB');
         return;
       }
 
@@ -302,7 +302,9 @@ export const FeedbackDialog = NiceModal.create(() => {
                   <Label className="text-sm font-medium">Severity</Label>
                   <Select
                     value={severity}
-                    onValueChange={(v) => setSeverity(v as any)}
+                    onValueChange={(v) =>
+                      setSeverity(v as 'low' | 'medium' | 'high' | 'critical')
+                    }
                   >
                     <SelectTrigger className="mt-1.5">
                       <SelectValue />
@@ -516,6 +518,7 @@ export const FeedbackDialog = NiceModal.create(() => {
                       className="absolute top-2 right-2 h-6 w-6 p-0"
                       onClick={removeScreenshot}
                       disabled={isSubmitting}
+                      aria-label="Remove screenshot"
                     >
                       <X className="h-3 w-3" />
                     </Button>
