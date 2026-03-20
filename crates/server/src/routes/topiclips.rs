@@ -16,9 +16,8 @@ use topiclips::{TopiClipGenerator, TopiClipsConfig, TopiClipsService};
 use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
-use db::db_uuid::DbUuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param};
 
 // ============================================================================
 // Request/Response Types
@@ -172,7 +171,7 @@ pub async fn get_session(
     State(deployment): State<DeploymentImpl>,
     Path(session_id): Path<String>,
 ) -> Result<ResponseJson<ApiResponse<TopiClipSession>>, ApiError> {
-    let session_uuid = DbUuid::parse(&session_id).map_err(|_| ApiError::BadRequest("Invalid session ID".into()))?.to_uuid();
+    let session_uuid = parse_db_uuid_param(&session_id, "session ID")?.to_uuid();
     let session = TopiClipSession::find_by_id(&deployment.db().pool, session_uuid)
         .await?
         .ok_or_else(|| ApiError::NotFound("Session not found".into()))?;
@@ -185,7 +184,7 @@ pub async fn generate_session(
 ) -> Result<ResponseJson<ApiResponse<TopiClipSession>>, ApiError> {
     let service = topiclips_service(&deployment);
 
-    let session_uuid = DbUuid::parse(&session_id).map_err(|_| ApiError::BadRequest("Invalid session ID".into()))?.to_uuid();
+    let session_uuid = parse_db_uuid_param(&session_id, "session ID")?.to_uuid();
     let session = service.generate(session_uuid).await.map_err(map_err)?;
 
     Ok(ResponseJson(ApiResponse::success(session)))
@@ -197,7 +196,7 @@ pub async fn get_timeline(
 ) -> Result<ResponseJson<ApiResponse<TopiClipTimelineEntry>>, ApiError> {
     let service = topiclips_service(&deployment);
 
-    let session_uuid = DbUuid::parse(&session_id).map_err(|_| ApiError::BadRequest("Invalid session ID".into()))?.to_uuid();
+    let session_uuid = parse_db_uuid_param(&session_id, "session ID")?.to_uuid();
     let timeline = service.get_timeline_entry(session_uuid).await.map_err(map_err)?;
 
     Ok(ResponseJson(ApiResponse::success(timeline)))
@@ -275,7 +274,7 @@ pub async fn update_daily_schedule(
     Path(project_id): Path<String>,
     Json(payload): Json<UpdateSchedulePayload>,
 ) -> Result<ResponseJson<ApiResponse<TopiClipDailySchedule>>, ApiError> {
-    let project_uuid = DbUuid::parse(&project_id).map_err(|_| ApiError::BadRequest("Invalid project ID".into()))?.to_uuid();
+    let project_uuid = parse_db_uuid_param(&project_id, "project ID")?.to_uuid();
     let existing = TopiClipDailySchedule::find_by_project(&deployment.db().pool, project_uuid)
         .await?
         .ok_or_else(|| ApiError::NotFound("Schedule not found".into()))?;
@@ -305,7 +304,7 @@ pub async fn force_daily_generate(
     Path(project_id): Path<String>,
 ) -> Result<ResponseJson<ApiResponse<TopiClipSession>>, ApiError> {
     let service = topiclips_service(&deployment);
-    let project_uuid = DbUuid::parse(&project_id).map_err(|_| ApiError::BadRequest("Invalid project ID".into()))?.to_uuid();
+    let project_uuid = parse_db_uuid_param(&project_id, "project ID")?.to_uuid();
 
     // Calculate period (last 24 hours)
     let end = chrono::Utc::now();

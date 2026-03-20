@@ -121,7 +121,7 @@ pub struct SubscriptionCreated {
 fn generate_api_key() -> (String, String) {
     // Two UUIDs joined = 64 hex chars of entropy
     let token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
-    let full = format!("apn_{}", token);
+    let full = format!("apn_{token}");
     let prefix = full[..12].to_string(); // "apn_" + first 8 chars
     (full, prefix)
 }

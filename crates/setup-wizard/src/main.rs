@@ -333,7 +333,7 @@ async fn run_wizard() -> Result<SetupConfig> {
 
     let projects_path = PathBuf::from(projects_path_str);
 
-    let default_topsi = home_dir.join(format!(".local/share/pcg/data/{}/topsi.db", username));
+    let default_topsi = home_dir.join(format!(".local/share/pcg/data/{username}/topsi.db"));
 
     let topsi_db_path_str = Text::new("Topsi database:")
         .with_default(&default_topsi.to_string_lossy())
@@ -525,7 +525,7 @@ primary = "{}"
             .device
             .gpu_info
             .as_ref()
-            .map(|gpu| format!("gpu = \"{}\"", gpu))
+            .map(|gpu| format!("gpu = \"{gpu}\""))
             .unwrap_or_default(),
         config.user.username,
         config.device.device_id,
@@ -699,10 +699,10 @@ fn detect_gpu() -> Option<String> {
         if output.status.success() {
             if let Ok(pci_info) = String::from_utf8(output.stdout) {
                 for line in pci_info.lines() {
-                    if line.contains("VGA") || line.contains("3D controller") {
-                        if line.contains("AMD") || line.contains("Radeon") {
-                            return Some(line.split(':').nth(2)?.trim().to_string());
-                        }
+                    if (line.contains("VGA") || line.contains("3D controller"))
+                        && (line.contains("AMD") || line.contains("Radeon"))
+                    {
+                        return Some(line.split(':').nth(2)?.trim().to_string());
                     }
                 }
             }

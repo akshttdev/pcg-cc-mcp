@@ -153,9 +153,9 @@ impl OutputHandler {
     /// Print a task status
     pub fn print_task(&self, action: &str, title: &str, id: Option<&str>) {
         let action_colored = match action {
-            "created" => format!("Task Created: ").bright_green(),
-            "completed" => format!("Task Completed: ").bright_cyan(),
-            "updated" => format!("Task Updated: ").bright_yellow(),
+            "created" => "Task Created: ".to_string().bright_green(),
+            "completed" => "Task Completed: ".to_string().bright_cyan(),
+            "updated" => "Task Updated: ".to_string().bright_yellow(),
             _ => format!("Task {}: ", action).normal(),
         };
 
@@ -382,6 +382,7 @@ impl OutputHandler {
     }
 
     /// Print session report
+    #[allow(clippy::too_many_arguments)] // TODO: refactor into a SessionReport struct
     pub fn print_session_report(
         &self,
         duration: &str,
@@ -527,14 +528,14 @@ impl OutputHandler {
 
     fn render_markdown_line(&self, line: &str) -> String {
         // Headers
-        if line.starts_with("### ") {
-            return format!("{}", line[4..].bright_yellow().bold());
+        if let Some(rest) = line.strip_prefix("### ") {
+            return format!("{}", rest.bright_yellow().bold());
         }
-        if line.starts_with("## ") {
-            return format!("{}", line[3..].bright_cyan().bold());
+        if let Some(rest) = line.strip_prefix("## ") {
+            return format!("{}", rest.bright_cyan().bold());
         }
-        if line.starts_with("# ") {
-            return format!("{}", line[2..].bright_white().bold().underline());
+        if let Some(rest) = line.strip_prefix("# ") {
+            return format!("{}", rest.bright_white().bold().underline());
         }
 
         // Code blocks

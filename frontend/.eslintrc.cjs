@@ -15,7 +15,7 @@ module.exports = {
   ],
   ignorePatterns: ['dist', '.eslintrc.cjs'],
   parser: '@typescript-eslint/parser',
-  plugins: ['react-refresh', '@typescript-eslint', 'unused-imports', 'i18next'],
+  plugins: ['react-refresh', '@typescript-eslint', 'unused-imports', 'i18next', 'simple-import-sort'],
   parserOptions: {
     ecmaVersion: 'latest',
     sourceType: 'module',
@@ -32,6 +32,8 @@ module.exports = {
       },
     ],
     '@typescript-eslint/no-explicit-any': 'warn',
+    'simple-import-sort/imports': 'warn',
+    'simple-import-sort/exports': 'warn',
     // i18n rule - only active when LINT_I18N=true
     'i18next/no-literal-string': i18nCheck
       ? [

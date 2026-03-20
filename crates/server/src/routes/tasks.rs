@@ -86,7 +86,7 @@ fn task_to_with_attempt_status(task: Task) -> TaskWithAttemptStatus {
         last_attempt_failed: false,
         executor: String::new(),
         last_execution_summary: None,
-        collaborators: None,
+        parsed_collaborators: None,
         vibe_cost: None,
         vibe_model: None,
     }
@@ -541,7 +541,7 @@ pub async fn create_task_and_start(
         last_attempt_failed: false,
         executor: task_attempt.executor,
         last_execution_summary: None,
-        collaborators: None,
+        parsed_collaborators: None,
         vibe_cost: None,
         vibe_model: None,
     };
@@ -951,7 +951,7 @@ async fn check_phase1_completion_and_trigger(pool: &sqlx::SqlitePool, task_id: &
     let contact_uuid = deal.crm_contact_id.as_deref().and_then(db_uuid_from_str);
     let project_uuid = deal.project_id.as_deref().and_then(db_uuid_from_str);
 
-    crate::routes::crm_deals::generate_phase1_business_report(
+    crate::routes::crm_deal_automations::generate_phase1_business_report(
         pool,
         deal_uuid,
         contact_uuid,

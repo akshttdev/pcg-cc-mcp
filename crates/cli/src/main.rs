@@ -1,3 +1,4 @@
+#![allow(clippy::uninlined_format_args)]
 //! PCG CLI - Interactive Development Session Management
 //!
 //! Provides a Claude Code-like terminal experience integrated with PCG Dashboard

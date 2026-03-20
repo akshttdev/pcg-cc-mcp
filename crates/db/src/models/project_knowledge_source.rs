@@ -45,7 +45,7 @@ impl std::str::FromStr for KnowledgeSourceType {
             "context_injection" => Ok(Self::ContextInjection),
             "entity" => Ok(Self::Entity),
             "topology_snapshot" => Ok(Self::TopologySnapshot),
-            _ => Err(format!("Unknown knowledge source type: {}", s)),
+            _ => Err(format!("Unknown knowledge source type: {s}")),
         }
     }
 }
@@ -330,9 +330,7 @@ impl ProjectKnowledgeSource {
 
             let health_status = if critical > 0 {
                 "critical".to_string()
-            } else if warning > 0 {
-                "warning".to_string()
-            } else if total_issues > 0 {
+            } else if warning > 0 || total_issues > 0 {
                 "warning".to_string()
             } else {
                 "healthy".to_string()

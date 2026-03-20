@@ -470,7 +470,7 @@ pub async fn initialize_topsi_on_startup(state: &DeploymentImpl) -> Result<Strin
     // Load persisted autonomy level from system_settings
     let pool = &state.db().pool;
     if let Ok(Some(level_str)) = SystemSetting::get(pool, "topsi_autonomy_level").await {
-        config.autonomy_level = topsi::config::AutonomyLevel::from_str(&level_str);
+        config.autonomy_level = topsi::config::AutonomyLevel::parse_level(&level_str);
         tracing::info!("Loaded persisted autonomy level: {}", level_str);
     }
 

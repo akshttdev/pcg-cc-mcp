@@ -42,7 +42,7 @@ impl std::str::FromStr for ConversationStatus {
             "active" => Ok(Self::Active),
             "archived" => Ok(Self::Archived),
             "expired" => Ok(Self::Expired),
-            _ => Err(format!("Unknown status: {}", s)),
+            _ => Err(format!("Unknown status: {s}")),
         }
     }
 }
@@ -77,7 +77,7 @@ impl std::str::FromStr for MessageRole {
             "assistant" => Ok(Self::Assistant),
             "system" => Ok(Self::System),
             "tool" => Ok(Self::Tool),
-            _ => Err(format!("Unknown role: {}", s)),
+            _ => Err(format!("Unknown role: {s}")),
         }
     }
 }
@@ -473,6 +473,8 @@ impl AgentConversationMessage {
     }
 
     /// Add an assistant message (convenience method)
+    // TODO: refactor into struct
+    #[allow(clippy::too_many_arguments)]
     pub async fn add_assistant_message(
         pool: &SqlitePool,
         conversation_id: Uuid,

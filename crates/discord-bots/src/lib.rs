@@ -1,3 +1,5 @@
+#![allow(clippy::uninlined_format_args)]
+
 pub mod backend;
 pub mod config;
 pub mod nora_bot;

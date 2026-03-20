@@ -171,10 +171,10 @@ impl PythiaClient {
     ) -> Result<TransactionList, PythiaClientError> {
         let mut url = format!("{}/api/rewards/transactions?", self.base_url);
         if let Some(w) = wallet {
-            url.push_str(&format!("wallet={}&", w));
+            url.push_str(&format!("wallet={w}&"));
         }
         if let Some(l) = limit {
-            url.push_str(&format!("limit={}", l));
+            url.push_str(&format!("limit={l}"));
         }
 
         let resp = self

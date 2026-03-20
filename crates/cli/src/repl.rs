@@ -6,7 +6,6 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use colored::Colorize;
-use futures;
 use rustyline::{error::ReadlineError, history::DefaultHistory, Editor};
 use uuid::Uuid;
 
@@ -880,7 +879,7 @@ impl PcgRepl {
                 let name = args[1..].join(" ");
 
                 // Use work_dir as default git repo path for the new project
-                let git_path = self.work_dir.join(&name.replace(' ', "-").to_lowercase());
+                let git_path = self.work_dir.join(name.replace(' ', "-").to_lowercase());
                 let git_path_str = git_path.to_string_lossy().to_string();
 
                 self.output.print_info(&format!(

@@ -24,7 +24,7 @@ paths:
 
 ## UUID Handling — Use DbUuid, not uuid::Uuid
 
-- **Path parameters**: Use `Path<String>`, not `Path<Uuid>`. Validate with `DbUuid::parse(&id).map_err(|e| ApiError::BadRequest(...))?`
+- **Path parameters**: Use `Path<String>`, not `Path<Uuid>`. Validate with `parse_db_uuid_param(&id, "deal ID")?` from `crate::helpers::uuid_params`
 - **NEVER** use `Uuid::parse_str()` — use `DbUuid::parse()` instead. DbUuid is the project's canonical UUID type.
 - **NEVER** use `uuid::Uuid::new_v4()` — use `DbUuid::new()` instead
 - **Interfaces**: Use `String` or `DbUuid` in function signatures. Push BLOB conversions to the DB consumer via `bind_uuid_blob()`.
@@ -35,6 +35,7 @@ paths:
   - `DbUuid::from_string(s)` — wrap without validation (trusted input only)
   - `bind_uuid(&db_uuid)` — bind to TEXT column
   - `bind_uuid_blob(&db_uuid)` — bind to legacy BLOB column
+- **Route handler helper**: `parse_db_uuid_param(&str, &str)` in `crates/server/src/helpers/uuid_params.rs` — wraps `DbUuid::parse` with `ApiError::BadRequest`. Always use this in route handlers instead of raw `.map_err()`.
 
 ## Error Types
 
@@ -45,7 +46,9 @@ paths:
 
 ## Access Control
 
-- Always check permissions via `AccessContext` methods: `.require_viewer()`, `.require_editor()`, `.require_admin()`
+- Always check permissions via `AccessContext` methods: `.require_viewer()`, `.require_editor()`, `.require_admin()`, `.require_org_membership()`
+- **Org-scoped endpoints**: use `access_context.require_org_membership(pool, org_id).await?` — defined in `crates/server/src/middleware/access_control.rs`
+- **Resource-scoped endpoints**: load the resource, extract its `organization_id`, then call `require_org_membership`. See `require_deal_org_access()` in `crm_deals.rs` and `require_pipeline_org_access()` in `crm_pipelines.rs` for patterns.
 - Use model-loading middleware to verify access before the handler runs
 - Never trust client-supplied user IDs — use `access_context.user_id` from the auth token
 
@@ -86,7 +89,8 @@ paths:
 - One responsibility per function — if a function does setup + work + cleanup, split it
 - Prefer composing small functions over writing long procedural blocks
 - Use iterators and combinators (`.map()`, `.filter()`, `.collect()`) over imperative loops where readable
-- Extract repeated patterns into shared utility functions in `crates/utils/`
+- Extract repeated patterns into shared utility functions in `crates/server/src/helpers/` or `crates/utils/`
+- **Large route files**: split by concern — e.g., `crm_deals.rs` (CRUD), `crm_deal_transitions.rs` (stage movement/gating), `crm_deal_automations.rs` (AI triggers, LLM calls, report generation)
 
 ## Input Validation
 

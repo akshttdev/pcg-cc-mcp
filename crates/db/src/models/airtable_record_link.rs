@@ -22,7 +22,7 @@ impl AirtableOrigin {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "pcg" => AirtableOrigin::Pcg,
             _ => AirtableOrigin::Airtable,
@@ -54,7 +54,7 @@ impl AirtableSyncStatus {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "pending_push" => AirtableSyncStatus::PendingPush,
             "pending_pull" => AirtableSyncStatus::PendingPull,
@@ -84,12 +84,12 @@ pub struct AirtableRecordLink {
 impl AirtableRecordLink {
     /// Get the origin as an enum
     pub fn origin_enum(&self) -> AirtableOrigin {
-        AirtableOrigin::from_str(&self.origin)
+        AirtableOrigin::parse(&self.origin)
     }
 
     /// Get the sync status as an enum
     pub fn sync_status_enum(&self) -> AirtableSyncStatus {
-        AirtableSyncStatus::from_str(&self.sync_status)
+        AirtableSyncStatus::parse(&self.sync_status)
     }
 }
 

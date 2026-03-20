@@ -17,9 +17,9 @@ impl From<sqlx::Error> for ConversionError {
 impl std::fmt::Display for ConversionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ConversionError::Database(e) => write!(f, "Database error: {}", e),
-            ConversionError::NotFound(msg) => write!(f, "Not found: {}", msg),
-            ConversionError::InvalidConversion(msg) => write!(f, "Invalid conversion: {}", msg),
+            ConversionError::Database(e) => write!(f, "Database error: {e}"),
+            ConversionError::NotFound(msg) => write!(f, "Not found: {msg}"),
+            ConversionError::InvalidConversion(msg) => write!(f, "Invalid conversion: {msg}"),
         }
     }
 }

@@ -62,7 +62,7 @@ pub fn project_artifacts_dir(project_name: &str) -> Option<PathBuf> {
 }
 
 /// Ensure standard project directories exist
-pub fn ensure_project_structure(project_path: &PathBuf) -> std::io::Result<()> {
+pub fn ensure_project_structure(project_path: &std::path::Path) -> std::io::Result<()> {
     use topos_structure::*;
 
     let dirs = [

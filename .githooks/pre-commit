@@ -1,0 +1,36 @@
+#!/bin/sh
+# Pre-commit hook: fmt staged Rust files + lint-staged on frontend
+# Install: git config core.hooksPath .githooks
+
+set -e
+
+# ── Rust: cargo fmt on staged .rs files only ──
+STAGED_RS=$(git diff --cached --name-only --diff-filter=ACM -- '*.rs')
+if [ -n "$STAGED_RS" ]; then
+  echo "[pre-commit] Formatting staged Rust files"
+  # Format only the staged files (not entire crates)
+  echo "$STAGED_RS" | while read -r f; do
+    if [ -f "$f" ]; then
+      rustfmt --edition 2021 "$f" 2>/dev/null || true
+    fi
+  done
+  # Re-stage formatted files
+  echo "$STAGED_RS" | xargs git add
+fi
+
+# ── Rust: remind about type generation if TS-exported structs changed ──
+if [ -n "$STAGED_RS" ] && echo "$STAGED_RS" | xargs grep -l 'derive.*TS\|ts(export)' 2>/dev/null | head -1 > /dev/null 2>&1; then
+  if echo "$STAGED_RS" | xargs grep -l 'derive.*TS\|ts(export)' 2>/dev/null | head -1 | grep -q .; then
+    echo ""
+    echo "[pre-commit] ⚠ Staged files contain #[derive(TS)] changes."
+    echo "             Run 'npm run generate-types' and commit shared/types.ts"
+    echo ""
+  fi
+fi
+
+# ── Frontend: eslint --fix + prettier via lint-staged ──
+STAGED_FE=$(git diff --cached --name-only --diff-filter=ACM -- 'frontend/*.ts' 'frontend/*.tsx' 'frontend/*.js' 'frontend/*.json' 'frontend/*.css' 'shared/*.ts')
+if [ -n "$STAGED_FE" ]; then
+  echo "[pre-commit] Running lint-staged on frontend files"
+  cd frontend && npx lint-staged
+fi

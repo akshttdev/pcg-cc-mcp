@@ -304,6 +304,8 @@ impl VibeTransaction {
     }
 
     /// Update cost details on an existing (typically zero-amount placeholder) transaction
+    // TODO: refactor into struct
+    #[allow(clippy::too_many_arguments)]
     pub async fn update_cost(
         pool: &SqlitePool,
         id: Uuid,

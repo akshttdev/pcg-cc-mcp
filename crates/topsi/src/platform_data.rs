@@ -1007,7 +1007,13 @@ impl PlatformDataService {
 
         if let Some(status) = args.get("status").and_then(|v| v.as_str()) {
             updates.push("status = ?");
-            values.push(status.to_string());
+            // Normalize status variants (LLMs may send snake_case or kebab-case)
+            let canonical_status = match status {
+                "in_progress" | "in-progress" => "inprogress",
+                "in_review" | "in-review" => "inreview",
+                other => other,
+            };
+            values.push(canonical_status.to_string());
         }
         if let Some(title) = args.get("title").and_then(|v| v.as_str()) {
             updates.push("title = ?");
@@ -1107,7 +1113,12 @@ impl PlatformDataService {
 
             if let Some(status) = status_filter {
                 query.push_str(" AND status = ?");
-                bind_values.push(status.to_string());
+                let canonical_status = match status {
+                    "in_progress" | "in-progress" => "inprogress",
+                    "in_review" | "in-review" => "inreview",
+                    other => other,
+                };
+                bind_values.push(canonical_status.to_string());
             }
             if let Some(agent) = agent_filter {
                 query.push_str(" AND assigned_agent = ?");

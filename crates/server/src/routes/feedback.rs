@@ -2,9 +2,10 @@
 //!
 //! Creates tasks in the Bug Reports project for user feedback.
 
-use axum::{Router, extract::State, response::Json as ResponseJson, routing::post};
+use axum::{Extension, Router, extract::State, response::Json as ResponseJson, routing::post};
 use db::{
     constants::{BUGREPORTS_BOARD_ID, BUGREPORTS_PROJECT_ID},
+    db_uuid::DbUuid,
     models::{
         agent::Agent,
         data_source::{CreateDataSource, DataSource},
@@ -16,7 +17,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use ts_rs::TS;
 use utils::response::ApiResponse;
-use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 
@@ -27,7 +27,7 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
 #[derive(Debug, Clone, Deserialize, TS)]
 #[ts(export)]
 pub struct SubmitFeedbackRequest {
-    /// Type of feedback: bug, feature, improvement, question, other
+    /// Type of feedback: bug, feature, improvement, question, friction, other
     pub feedback_type: String,
     /// Brief title/summary
     pub title: String,
@@ -39,12 +39,31 @@ pub struct SubmitFeedbackRequest {
     pub severity: Option<String>,
     /// Base64 encoded screenshot image (optional)
     pub screenshot: Option<String>,
+    // ── Friction logging fields (dogfooding) ──
+    /// Page/route where friction occurred (e.g. "/crm/deals")
+    #[ts(optional)]
+    pub page_url: Option<String>,
+    /// What the user was trying to do
+    #[ts(optional)]
+    pub user_intent: Option<String>,
+    /// What went wrong or felt slow/confusing
+    #[ts(optional)]
+    pub friction_point: Option<String>,
+    /// Expected behavior vs actual
+    #[ts(optional)]
+    pub expected_behavior: Option<String>,
+    /// Time spent blocked (seconds, self-reported)
+    #[ts(optional)]
+    pub time_lost_seconds: Option<i32>,
+    /// Frustration level: 1 (minor) to 5 (show-stopper)
+    #[ts(optional)]
+    pub frustration_level: Option<i32>,
 }
 
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub struct SubmitFeedbackResponse {
-    pub task_id: Uuid,
+    pub task_id: String,
     pub message: String,
 }
 
@@ -52,17 +71,34 @@ pub struct SubmitFeedbackResponse {
 ///
 /// Submit user feedback which creates a task in the Bug Reports project.
 pub async fn submit_feedback(
+    Extension(access_context): Extension<crate::middleware::access_control::AccessContext>,
     State(deployment): State<DeploymentImpl>,
     ResponseJson(req): ResponseJson<SubmitFeedbackRequest>,
 ) -> Result<ResponseJson<ApiResponse<SubmitFeedbackResponse>>, ApiError> {
+    // Authentication is enforced by require_auth middleware (route is in protected_routes)
+    let _user_id = &access_context.user_id;
     let pool = &deployment.db().pool;
+
+    // Validate frustration_level range
+    if let Some(level) = req.frustration_level
+        && !(1..=5).contains(&level)
+    {
+        return Err(ApiError::BadRequest(
+            "frustration_level must be between 1 and 5".to_string(),
+        ));
+    }
 
     // Map severity to priority
     let priority = match req.severity.as_deref() {
         Some("critical") => Priority::Critical,
         Some("high") => Priority::High,
         Some("low") => Priority::Low,
-        _ => Priority::Medium,
+        _ => match req.frustration_level {
+            Some(5) => Priority::Critical,
+            Some(4) => Priority::High,
+            Some(1) => Priority::Low,
+            _ => Priority::Medium,
+        },
     };
 
     // Build title with type prefix
@@ -71,6 +107,7 @@ pub async fn submit_feedback(
         "feature" => "[Feature Request]",
         "improvement" => "[Improvement]",
         "question" => "[Question]",
+        "friction" => "[Friction]",
         _ => "[Feedback]",
     };
     let full_title = format!("{} {}", type_prefix, req.title);
@@ -84,11 +121,33 @@ pub async fn submit_feedback(
     if let Some(severity) = &req.severity {
         full_description.push_str(&format!("\nSeverity: {}", severity));
     }
+    // Append friction context
+    if let Some(ref page) = req.page_url {
+        full_description.push_str(&format!("\nPage: {}", page));
+    }
+    if let Some(ref intent) = req.user_intent {
+        full_description.push_str(&format!("\nUser intent: {}", intent));
+    }
+    if let Some(ref friction) = req.friction_point {
+        full_description.push_str(&format!("\nFriction point: {}", friction));
+    }
+    if let Some(ref expected) = req.expected_behavior {
+        full_description.push_str(&format!("\nExpected: {}", expected));
+    }
+    if let Some(time) = req.time_lost_seconds {
+        full_description.push_str(&format!("\nTime lost: {}s", time));
+    }
+    if let Some(level) = req.frustration_level {
+        full_description.push_str(&format!("\nFrustration: {}/5", level));
+    }
 
     // Build tags based on feedback type
-    let tags = vec![req.feedback_type.clone(), "user-submitted".to_string()];
+    let mut tags = vec![req.feedback_type.clone(), "user-submitted".to_string()];
+    if req.feedback_type == "friction" {
+        tags.push("dogfood".to_string());
+    }
 
-    let task_id = Uuid::new_v4();
+    let task_id = DbUuid::new();
     let task_id_str = task_id.to_string();
     let create_task = CreateTask {
         project_id: BUGREPORTS_PROJECT_ID.to_string(),
@@ -149,6 +208,12 @@ pub async fn submit_feedback(
         "severity": req.severity,
         "email": req.email,
         "task_id": task_id_str,
+        "page_url": req.page_url,
+        "user_intent": req.user_intent,
+        "friction_point": req.friction_point,
+        "expected_behavior": req.expected_behavior,
+        "time_lost_seconds": req.time_lost_seconds,
+        "frustration_level": req.frustration_level,
     });
     // Look up project's organization_id for the trigger filter
     let project_id_str = BUGREPORTS_PROJECT_ID.to_string();
@@ -192,7 +257,7 @@ pub async fn submit_feedback(
     }
 
     Ok(ResponseJson(ApiResponse::success(SubmitFeedbackResponse {
-        task_id,
+        task_id: task_id_str,
         message: "Thank you for your feedback! We'll review it shortly.".to_string(),
     })))
 }

@@ -35,7 +35,7 @@ impl std::str::FromStr for ContextEntryType {
             "blocker" => Ok(Self::Blocker),
             "intermediate_result" | "result" => Ok(Self::IntermediateResult),
             "directive" => Ok(Self::Directive),
-            _ => Err(format!("Invalid entry type: '{}'", s)),
+            _ => Err(format!("Invalid entry type: '{s}'")),
         }
     }
 }
@@ -65,7 +65,7 @@ impl std::str::FromStr for ContextEntryStatus {
             "active" => Ok(Self::Active),
             "resolved" => Ok(Self::Resolved),
             "superseded" => Ok(Self::Superseded),
-            _ => Err(format!("Invalid status: '{}'", s)),
+            _ => Err(format!("Invalid status: '{s}'")),
         }
     }
 }
@@ -98,7 +98,7 @@ impl std::str::FromStr for ContextPriority {
             "normal" => Ok(Self::Normal),
             "high" => Ok(Self::High),
             "critical" => Ok(Self::Critical),
-            _ => Err(format!("Invalid priority: '{}'", s)),
+            _ => Err(format!("Invalid priority: '{s}'")),
         }
     }
 }

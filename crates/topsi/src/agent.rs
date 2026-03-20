@@ -898,7 +898,7 @@ impl TopsiAgent {
                             context_parts.push(format!("Todo: {}", todo_count));
                         }
                         if let Ok(in_progress_count) = sqlx::query_scalar::<_, i64>(
-                            "SELECT COUNT(*) FROM tasks WHERE status = 'in_progress'",
+                            "SELECT COUNT(*) FROM tasks WHERE status = 'inprogress'",
                         )
                         .fetch_one(pool)
                         .await
@@ -1378,7 +1378,7 @@ impl TopsiAgent {
         // Check for tasks stuck in progress
         if issue_types.as_ref().map_or(true, |t| t.contains(&"stale")) {
             let stale_tasks: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM tasks WHERE status = 'in_progress' AND updated_at < datetime('now', '-7 days')"
+                "SELECT COUNT(*) FROM tasks WHERE status = 'inprogress' AND updated_at < datetime('now', '-7 days')"
             )
             .fetch_one(pool)
             .await
@@ -1460,7 +1460,7 @@ impl TopsiAgent {
             .unwrap_or(0);
 
         let active_task_count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE status = 'in_progress'")
+            sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE status = 'inprogress'")
                 .fetch_one(pool)
                 .await
                 .unwrap_or(0);
@@ -2002,7 +2002,7 @@ impl TopsiAgent {
         let mut all_tasks: Vec<Task> = Vec::new();
         for pid in &project_ids {
             let tasks: Vec<Task> = sqlx::query_as(
-                "SELECT * FROM tasks WHERE project_id = ? AND status IN ('todo', 'in_progress') ORDER BY created_at DESC LIMIT 50",
+                "SELECT * FROM tasks WHERE project_id = ? AND status IN ('todo', 'inprogress') ORDER BY created_at DESC LIMIT 50",
             )
             .bind(pid)
             .fetch_all(pool)

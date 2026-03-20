@@ -13,6 +13,7 @@ pub mod sovereign_stack;
 pub mod sovereign_storage;
 pub mod task_scheduler;
 pub mod twilio_sms;
+pub mod workers;
 
 // #[cfg(feature = "cloud")]
 // type DeploymentImpl = duck_kanban_cloud::deployment::CloudDeployment;

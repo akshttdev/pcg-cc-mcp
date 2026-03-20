@@ -69,7 +69,7 @@ impl std::str::FromStr for OrganizationRole {
             "admin" => Ok(OrganizationRole::Admin),
             "member" => Ok(OrganizationRole::Member),
             "viewer" => Ok(OrganizationRole::Viewer),
-            _ => Err(format!("Invalid role: {}", s)),
+            _ => Err(format!("Invalid role: {s}")),
         }
     }
 }

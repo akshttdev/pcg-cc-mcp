@@ -232,11 +232,17 @@ impl ExecutiveTools {
                 }
 
                 let query = if let Some(status) = status_filter {
+                    // Normalize status variants (LLMs may send snake_case or kebab-case)
+                    let canonical_status = match status {
+                        "in_progress" | "in-progress" => "inprogress",
+                        "in_review" | "in-review" => "inreview",
+                        other => other,
+                    };
                     sqlx::query_as::<_, TaskRow>(
                         "SELECT id, title, description, status, priority, created_at FROM tasks WHERE project_id = ? AND LOWER(status) = LOWER(?)"
                     )
                     .bind(project_id.to_string())
-                    .bind(status)
+                    .bind(canonical_status)
                     .fetch_all(pool)
                     .await
                 } else {

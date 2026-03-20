@@ -1,16 +1,138 @@
 # Backlog — Remaining Work
 
-**Last updated:** 2026-03-18 (post frontend polish sprint + sloperation317 integration)
-**Context:** Consolidated from all completed planning docs. Items prioritized by impact and dependency.
+**Last updated:** 2026-03-19 (Phase 0 ROI reprioritization from 5-year roadmap research sprint)
+**Context:** Consolidated from all completed planning docs + 27 research reports + 45-item research-derived backlog. **Prioritized by ROI = (revenue impact × probability) / effort**, not legacy ordering.
+**Phase 0 Sprint Plan:** See [`2026-03-19--analysis--phase0-sprint-candidates.md`](2026-03-19--analysis--phase0-sprint-candidates.md) for full scoring and sprint schedule.
 
 ---
 
-## P0 — Blockers / Critical
+## Phase 0 — ROI-Ordered Sprint Backlog (Q2 2026)
 
-### 1. Agent Flow Orchestration Engine (Phase 3H)
-**Source:** `archive/2026-03-12--plan--agent-task-mcp-wiring.md`
-**What:** Agent flows exist as data model only — no background worker to progress phases, enforce gates, or handle delegation. Largest remaining architecture gap.
-**Status:** NOT STARTED
+> These items are ordered by ROI score. See the analysis doc for scoring methodology.
+> **Dogfooding is the strategy**: every item below serves dual purpose — build the platform AND discover the product through daily real-work usage.
+
+### S0-01. CI Strictness Fix [ROI: 50.0] ✅ DONE (PR #51)
+**Source:** [`roadmap/research/04-infra--cicd-gaps.md`](roadmap/research/04-infra--cicd-gaps.md)
+**What:** Strict `-D warnings` clippy, all 23 pre-existing clippy errors fixed, `cargo fmt` clean, type generation passes, system deps added (`libgtk-3-dev`, `libwebkit2gtk-4.1-dev`).
+**Follow-up:** ESLint `--max-warnings` at 860 (was 110) due to `simple-import-sort` on untouched files. Run `eslint --fix` across codebase to reduce. TaskStatus enum constants (replace hardcoded strings with `TaskStatus::as_str()`) — see sprint plan for details.
+
+### S0-01b. Add E2E Tests to CI [ROI: 40.0]
+**Source:** PR #53 review findings
+**What:** Add Playwright E2E test step to CI workflow. Run on `main` only (not feature branches) to avoid wasteful CI runs. Use test seed DB, headless Chromium, and the existing `e2e/` suite. Merge to main first, then feature branches pick it up on rebase/merge.
+**Effort:** 0.5 days | **Sprint:** 0.1 | **Status:** NOT STARTED
+**Implementation:** Add job to `ci.yml` gated on `github.ref == 'refs/heads/main'`. Use `scripts/create-test-seed.sh` for DB, `npx playwright test --reporter=list`. Exclude `e2e/quarantine/` and `e2e/demos/`.
+
+### S0-01c. Reduce ESLint max-warnings [ROI: 30.0]
+**Source:** PR #51 CI fixes
+**What:** Run `eslint --fix` across entire frontend to auto-fix `simple-import-sort` warnings, then reduce `--max-warnings` from 860 back to ~120. Do on main to avoid polluting feature branch diffs.
+**Effort:** 0.25 days | **Sprint:** 0.1 | **Status:** NOT STARTED
+
+### S0-01d. Fix 467 Pre-existing Clippy Warnings [ROI: 25.0]
+**Source:** PR #51 CI fixes
+**What:** 13 clippy lint categories currently allowed in CI (`-A` flags). Run `cargo clippy --fix` per-crate to resolve 467 warnings (326 `uninlined_format_args`, 68 `collapsible_if`, etc.), then remove `-A` flags. Do on main.
+**Effort:** 1 day | **Sprint:** 0.1 | **Status:** NOT STARTED
+
+### S0-02. Bridge Dual Cost System [ROI: 18.0]
+**Source:** [`roadmap/architecture-gaps-analysis.md` §GAP-S0-03](roadmap/architecture-gaps-analysis.md)
+**What:** `ai-usage.tsx` reads `TokenUsage.cost_cents` (never populated) instead of `VibeTransaction` (has real cost data). Bridge the gap so the dashboard shows actual costs.
+**Effort:** 1 day | **Sprint:** 0.1 | **Status:** NOT STARTED
+
+### S0-03. Structured Response Protocol [ROI: 13.5]
+**Source:** [`roadmap/research/10-ai--agent-orchestration.md`](roadmap/research/10-ai--agent-orchestration.md), research-derived-backlog #1
+**What:** Standard JSON response envelope for agent-to-orchestrator communication: `{ status, message, artifacts, clarification_needed }`. Interface contract for Agent Flow Engine.
+**Effort:** 1.5 days | **Sprint:** 0.1 | **Status:** NOT STARTED
+
+### S0-04. Clarification as First-Class Status [ROI: 12.0]
+**Source:** [`roadmap/research/10-ai--agent-orchestration.md`](roadmap/research/10-ai--agent-orchestration.md), research-derived-backlog #4
+**What:** Explicit `NeedsClarification` response type. Agents clarify, never guess. Prevents cascading errors from incorrect assumptions.
+**Effort:** 1 day | **Sprint:** 0.1 | **Depends on:** S0-03 | **Status:** NOT STARTED
+
+### S0-05. Cooldown Race Condition Fix [ROI: 10.0]
+**Source:** BACKLOG P2 "Webhook Cooldown Race Condition", [`roadmap/architecture-gaps-analysis.md` §GAP-S0-01](roadmap/architecture-gaps-analysis.md)
+**What:** Atomic `UPDATE ... WHERE last_triggered_at < ? RETURNING *` to prevent concurrent webhooks double-firing.
+**Effort:** 0.5 days | **Sprint:** 0.1 | **Status:** NOT STARTED
+
+### S0-06. Agent Flow Orchestration Engine [ROI: 9.0]
+**Source:** `archive/2026-03-12--plan--agent-task-mcp-wiring.md`, [`roadmap/5-year-product-roadmap.md` §Priority 1](roadmap/5-year-product-roadmap.md)
+**What:** Background worker to progress agent flows through phases, enforce gates, handle delegation and retry. #1 architectural gap. Data model complete (agent_flow.rs 406 lines, agent_flow_event.rs 350 lines). Proven pattern: `spawn_workflow_schedule_loop()`.
+**Effort:** 5 days | **Sprint:** 0.1 | **Depends on:** S0-03, S0-04 | **Status:** NOT STARTED
+
+### S0-07. CAPO Per-Task Tracking [ROI: 8.0]
+**Source:** [`roadmap/research/20-ai--unit-economics-agent-metrics.md`](roadmap/research/20-ai--unit-economics-agent-metrics.md), research-derived-backlog #40
+**What:** Instrument agent invocations: tokens, model, wall-clock time. Calculate CAPO per task type. Stage 0 exit criterion.
+**Effort:** 2 days | **Sprint:** 0.3 | **Depends on:** S0-02 | **Status:** NOT STARTED
+
+### S0-08. Cost-Tiered Model Routing [ROI: 7.5]
+**Source:** [`roadmap/research/10-ai--agent-orchestration.md`](roadmap/research/10-ai--agent-orchestration.md), research-derived-backlog #2
+**What:** Route agent tasks to cheapest capable model. Haiku for routing, Sonnet for analysis, Opus for complex work. `pcg_router.rs` (622 lines) exists as foundation.
+**Effort:** 3 days | **Sprint:** 0.3 | **Depends on:** S0-06 | **Status:** NOT STARTED
+
+### S0-09. Append-Only Event Logging [ROI: 6.0]
+**Source:** [`roadmap/research/10-ai--agent-orchestration.md`](roadmap/research/10-ai--agent-orchestration.md), research-derived-backlog #6
+**What:** JSONL event log for agent orchestration events. Enables debugging, replay, audit trails.
+**Effort:** 1.5 days | **Sprint:** 0.2 | **Depends on:** S0-06 | **Status:** NOT STARTED
+
+### S0-10. Prompt Caching Strategy [ROI: 6.0]
+**Source:** [`roadmap/research/20-ai--unit-economics-agent-metrics.md`](roadmap/research/20-ai--unit-economics-agent-metrics.md), research-derived-backlog #42
+**What:** Anthropic prompt caching for agent system prompts + project context. 90% savings on cache reads.
+**Effort:** 2 days | **Sprint:** 0.3 | **Depends on:** S0-08 | **Status:** NOT STARTED
+
+### S0-11. Vision/Mission Anchor Document [ROI: 5.0]
+**Source:** [`roadmap/research/12-ai--sudolang-aidd-framework.md`](roadmap/research/12-ai--sudolang-aidd-framework.md), research-derived-backlog #14
+**What:** Formal project vision document for agent alignment. Prevents drift toward speculative features.
+**Effort:** 1 day | **Sprint:** 0.1 | **Status:** NOT STARTED
+
+### S0-12. Graceful Shutdown + Worker Registry [ROI: 4.5]
+**Source:** [`roadmap/architecture-gaps-analysis.md`](roadmap/architecture-gaps-analysis.md)
+**What:** Replace bare `axum::serve()` with `with_graceful_shutdown()`. Add ShutdownRegistry + BackgroundWorker trait. Drain period for in-flight executions. Combined with worker abstraction (sprint item #5).
+**Effort:** 1.5 days | **Sprint:** 0.1 | **Status:** NOT STARTED
+
+### S0-13. Input Validation Framework [ROI: 4.0]
+**Source:** [`roadmap/research/08-legal--compliance-security.md`](roadmap/research/08-legal--compliance-security.md)
+**What:** `validator` crate with `#[derive(Validate)]` on high-risk endpoints. OWASP baseline.
+**Effort:** 1.5 days | **Sprint:** 0.2 | **Status:** NOT STARTED
+
+### S0-14. Webhook Retry Worker [ROI: 3.5]
+**Source:** BACKLOG P2 "Webhook Retry Logic is Dead Code"
+**What:** `max_retries`/`next_retry_at` fields exist but are never read. Add retry check to schedule loop.
+**Effort:** 1 day | **Sprint:** 0.2 | **Status:** NOT STARTED
+
+### S0-19. Dogfood Friction Logging [ROI: 3.0]
+**Source:** [`roadmap/5-year-product-roadmap.md` §Stage 0](roadmap/5-year-product-roadmap.md) — client discovery through dogfooding
+**What:** Structured friction capture: `{workflow_step, friction_type, severity, workaround, feature_request}`. Extends existing FeedbackDialog with dogfood-specific metadata. Primary client discovery instrument.
+**Effort:** 1.5 days | **Sprint:** 0.4 | **Status:** NOT STARTED
+
+### S0-20. Editron + Social Media Workflow Templates [ROI: 2.8]
+**Source:** [`roadmap/5-year-product-roadmap.md` §Priority 4](roadmap/5-year-product-roadmap.md)
+**What:** Pre-built workflow templates for Editron post-production and social media content pipeline. Foundation for Stage 1 pilot onboarding.
+**Effort:** 3 days | **Sprint:** 0.4 | **Depends on:** S0-06 | **Status:** NOT STARTED
+
+### S0-15. Editron Workflow Migration [ROI: 3.3]
+**Source:** [`roadmap/5-year-product-roadmap.md` §Priority 2](roadmap/5-year-product-roadmap.md)
+**What:** Map Editron post-production jobs into ORCHA workflows. Test with 3 real client deliverables. Stage 0 exit criterion.
+**Effort:** 5 days | **Sprint:** 0.4 | **Depends on:** S0-06, S0-20 | **Status:** NOT STARTED
+
+### S0-16. Social Media Pipeline Migration [ROI: 2.7]
+**Source:** [`roadmap/5-year-product-roadmap.md` §Priority 4](roadmap/5-year-product-roadmap.md)
+**What:** Content pipeline (compose → review → schedule → publish) through ORCHA. Stage 0 exit criterion.
+**Effort:** 5 days | **Sprint:** 0.5 | **Depends on:** S0-06, S0-20 | **Status:** NOT STARTED
+
+### S0-17. Rate Limiting (tower_governor) [ROI: 2.5]
+**Source:** [`roadmap/research/25-team--scaling-api-design.md`](roadmap/research/25-team--scaling-api-design.md)
+**What:** Global and per-tenant rate limiting. Currently only Nora has limits.
+**Effort:** 2 days | **Sprint:** 0.3 | **Status:** NOT STARTED
+
+### S0-18. Dogfood Metrics Dashboard [ROI: 2.4]
+**Source:** [`roadmap/5-year-product-roadmap.md` §Priority 7](roadmap/5-year-product-roadmap.md)
+**What:** CAPO per task type, agent success rate, workflow completion rate, time savings vs. manual.
+**Effort:** 3 days | **Sprint:** 0.5 | **Depends on:** S0-02, S0-07 | **Status:** NOT STARTED
+
+---
+
+## Previously P0 — Now Integrated Above
+
+### ~~1. Agent Flow Orchestration Engine~~ → Renumbered S0-06
+See Phase 0 sprint backlog above.
 
 ### ~~2. ACP Agents Get No MCP Servers~~ → RESOLVED
 **Source:** `archive/2026-03-12--review--ui-backend-capability-gaps.md` (F5)
@@ -34,6 +156,12 @@
 **Source:** PR #51 CI fixes
 **What:** 13 clippy lint categories suppressed via `-A` flags in CI (326 `uninlined_format_args`, 68 `collapsible_if`, etc.). Run `cargo clippy --fix` per-crate, then remove `-A` flags.
 **Effort:** 1 day | **Status:** NOT STARTED
+
+---
+
+## Post-Phase 0 — Stage 1 Preparation (Q3 2026)
+
+> Items below are deprioritized from Phase 0 sprints. They become relevant when Stage 0 exit criteria are met and pilot onboarding begins.
 
 ---
 
@@ -637,3 +765,94 @@ Dealflow pipeline v2, company profiles, brand guides, Dockerfile fixes, VIBE tok
 **What:** `/companies/:id` page loads with correct URL but doesn't display the company name or data in the main content area. Sidebar renders correctly. May be a missing data fetch or component rendering issue.
 **Recommendation:** Investigate CompanyProfilePage data loading — check if it queries by TEXT or BLOB ID.
 **Status:** DEFERRED — documented via test.fixme() in quarantine tests
+
+---
+
+## Modularity — Backend (from Phase 0 Sprint research, 2026-03-19)
+
+### Env Var Helpers
+**What:** 96+ scattered `std::env::var()` calls across 37 route files → shared `get_env_required()`/`get_env_optional()` in `crates/utils/src/config.rs`. `quickbooks.rs` already has good local pattern to follow.
+**Effort:** 45-60 min + migration across files
+**Status:** NOT STARTED
+
+### Model Error Macro
+**What:** 30+ files with identical `#[derive(Debug, Error)]` boilerplate → `define_model_error!` macro in `crates/db/src/lib.rs`.
+**Effort:** 30 min + migration
+**Status:** NOT STARTED
+
+### Inline FromRow Cleanup
+**What:** 83+ inline `#[derive(sqlx::FromRow)]` structs in route files → shared types in `crates/db/src/query_results.rs` (`UuidRow`, `CountRow`, `OptionalIdRow`).
+**Effort:** 2 hours
+**Status:** NOT STARTED
+
+### DB Error Wrapping Trait
+**What:** 1,060+ `ApiError::InternalError(format!("..."))` conversions → `DbErrorExt` trait with consistent logging.
+**Effort:** 50 min + migration
+**Status:** NOT STARTED
+
+### Large Backend File Splits
+**What:** Files beyond `crm_deals.rs` that exceed 1,000 lines:
+- `sovereign_storage.rs` (2,699L) — extract conflict resolution
+- `brand.rs` (1,863L) → settings, guidelines, voice
+- `tasks.rs` (1,572L) → crud, bulk ops, dependencies
+- `intelligence.rs` (1,443L) → artifact index, entity resolution, topology
+- `workflow_staging.rs` (1,401L) → validation, commit handlers
+- `meet.rs` (1,372L) → sessions, participants
+**Effort:** 2-4 hours per file
+**Status:** NOT STARTED
+
+---
+
+## Modularity — Frontend (from Phase 0 Sprint research, 2026-03-19)
+
+### useAsyncModalAction Hook
+**What:** 72 NiceModal dialogs share identical loading/error state pattern (~20 lines each). Extract to shared hook.
+**Effort:** 1.5 hours
+**Status:** NOT STARTED
+
+### LoadingButton Component
+**What:** 20+ dialog submit buttons duplicate disabled+spinner logic. Create `<LoadingButton>` in `components/ui/`.
+**Effort:** 45 min
+**Status:** NOT STARTED
+
+### EmptyState Component
+**What:** Inconsistent empty state rendering across components. Create standardized `<EmptyState>` component.
+**Effort:** 30 min
+**Status:** NOT STARTED
+
+### localStorage Typed Wrapper
+**What:** 63 raw `localStorage` calls with magic string keys → typed `appStorage` object in `lib/storage.ts`.
+**Effort:** 1.5 hours
+**Status:** NOT STARTED
+
+### Validation Utilities
+**What:** 20+ inline `required` field checks with `toast.error()` → shared `validators` module in `lib/validation.ts`.
+**Effort:** 1 hour
+**Status:** NOT STARTED
+
+### Spinner Standardization
+**What:** Mixed `Loader`/`Loader2`/`RefreshCw`/custom CSS spinners → standardize on existing `components/ui/loader.tsx`.
+**Effort:** 1 hour
+**Status:** NOT STARTED
+
+### Stream Hook Backoff Utility
+**What:** 4 hooks (`useJsonPatchStream`, `useJsonPatchWsStream`, `useLogStream`, `useDiffStream`) duplicate exponential backoff retry logic.
+**Effort:** 1-2 hours
+**Status:** NOT STARTED
+
+### Query/Mutation Hook Factory
+**What:** Simple CRUD hooks repeat identical `useQuery`/`useMutationWithToast` boilerplate → factory functions.
+**Effort:** 2 hours
+**Status:** NOT STARTED
+
+### Large Frontend Component Splits
+**What:** Components exceeding 800 lines:
+- `NoraAssistant.tsx` (1,027L) → conversation, tool execution, controls
+- `StagingReviewPanel.tsx` (933L) → diff viewer, commit panel
+- `topsi.tsx` (937L) → meeting mode, controls, chat
+- `AgentSettings.tsx` (918L) → model config, capabilities, test panel
+- `crm.tsx` (898L) → pipeline view, filters, deal management
+- `TaskDetailsPanel.tsx` (837L) → artifacts tab, execution tab, collaboration
+- `WelcomeWizard.tsx` (783L) → individual step components
+**Effort:** 2-4 hours per component
+**Status:** NOT STARTED

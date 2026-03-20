@@ -450,7 +450,7 @@ impl VoiceEventHandler for SpeakingHandler {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
         if let EventContext::SpeakingStateUpdate(speaking) = ctx {
             if let Some(user_id) = speaking.user_id {
-                let discord_user_id = UserId::new(user_id.0.into());
+                let discord_user_id = UserId::new(user_id.0);
                 self.ssrc_map
                     .write()
                     .await

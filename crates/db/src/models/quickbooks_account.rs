@@ -40,7 +40,7 @@ impl std::str::FromStr for QBEnvironment {
         match s.to_lowercase().as_str() {
             "sandbox" => Ok(QBEnvironment::Sandbox),
             "production" => Ok(QBEnvironment::Production),
-            _ => Err(format!("Unknown QB environment: {}", s)),
+            _ => Err(format!("Unknown QB environment: {s}")),
         }
     }
 }
@@ -272,7 +272,7 @@ impl QuickBooksAccount {
         id: Uuid,
         data: UpdateQuickBooksAccount,
     ) -> Result<Self, QuickBooksAccountError> {
-        let status = data.status.map(|s| format!("{:?}", s).to_lowercase());
+        let status = data.status.map(|s| format!("{s:?}").to_lowercase());
         let metadata = data.metadata.map(|v| v.to_string());
         let sync_enabled = data.sync_enabled.map(|b| if b { 1 } else { 0 });
         let sync_invoices = data.sync_invoices.map(|b| if b { 1 } else { 0 });

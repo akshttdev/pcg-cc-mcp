@@ -1,11 +1,17 @@
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Skeleton } from '@/components/ui/skeleton';
+import type {
+  AgentFlowEvent,
+  ExecutionArtifact,
+  TaskWithAttemptStatus,
+} from 'shared/types';
+
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import type { TaskWithAttemptStatus, ExecutionArtifact, AgentFlowEvent } from 'shared/types';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Skeleton } from '@/components/ui/skeleton';
+
+import { AgentWatcherPanel } from '../../../AgentWatcherPanel';
 import { ArtifactGallery } from '../../ArtifactGallery';
 import { CollaborationTimeline } from '../../CollaborationTimeline';
-import { AgentWatcherPanel } from '../../../AgentWatcherPanel';
 import { EnhancedWorkflowView } from '../../EnhancedWorkflowView';
 
 interface OverviewTabProps {
@@ -16,12 +22,19 @@ interface OverviewTabProps {
   workflowEvents: AgentFlowEvent[];
   workflowLoading: boolean;
   workflowError: string | null;
-  chatMessages: { id: string; role: string; content: string; createdAt: string }[];
+  chatMessages: {
+    id: string;
+    role: string;
+    content: string;
+    createdAt: string;
+  }[];
   executingAgentId: string | null;
   initialPrompt: string | undefined;
   onArtifactDownload: (artifact: ExecutionArtifact) => void;
   onSendMessage: (message: string, agentName?: string) => Promise<string>;
-  onSwitchTab: (tab: 'overview' | 'artifacts' | 'workflow' | 'activity' | 'vibe') => void;
+  onSwitchTab: (
+    tab: 'overview' | 'artifacts' | 'workflow' | 'activity' | 'vibe'
+  ) => void;
 }
 
 export function OverviewTab({
@@ -180,7 +193,7 @@ export function OverviewTab({
           ) : (
             <CollaborationTimeline
               events={workflowEvents.slice(0, 5)}
-              collaborators={task.collaborators}
+              collaborators={task.parsed_collaborators}
               chatMessages={chatMessages.slice(0, 10)}
               className="h-48 border rounded-lg overflow-hidden"
             />

@@ -320,6 +320,8 @@ impl AgentFlowEvent {
     }
 
     /// Emit a subagent progress event
+    // TODO: refactor into struct
+    #[allow(clippy::too_many_arguments)]
     pub async fn emit_subagent_progress(
         pool: &SqlitePool,
         flow_id: Uuid,

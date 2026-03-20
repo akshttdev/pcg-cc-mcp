@@ -1343,14 +1343,22 @@ pub async fn fire_triggers_for_data_source(
     );
 
     for trigger in triggers {
-        // Skip triggers in cooldown
-        if !trigger.is_past_cooldown() {
-            tracing::info!(
-                "[TRIGGER] Skipping trigger '{}' — still in cooldown ({}s)",
-                trigger.id,
-                trigger.cooldown_seconds
-            );
-            continue;
+        // Atomically claim the trigger (prevents race conditions with concurrent webhooks)
+        let claimed = WorkflowTrigger::try_claim_trigger(&pool, trigger.id.as_str()).await;
+        match claimed {
+            Ok(None) => {
+                tracing::info!(
+                    "[TRIGGER] Skipping trigger '{}' — still in cooldown ({}s)",
+                    trigger.id,
+                    trigger.cooldown_seconds
+                );
+                continue;
+            }
+            Err(e) => {
+                tracing::error!("[TRIGGER] Failed to claim trigger '{}': {}", trigger.id, e);
+                continue;
+            }
+            Ok(Some(_)) => {} // Claimed successfully, proceed
         }
 
         let pool = pool.clone();
@@ -1391,13 +1399,7 @@ pub async fn fire_triggers_for_data_source(
                 ds_id
             );
 
-            // Increment trigger count
-            if let Err(e) = WorkflowTrigger::increment_trigger_count(&pool, &trigger_id).await {
-                tracing::warn!(
-                    "[TRIGGER] Failed to increment trigger count for '{}': {e}",
-                    trigger_id
-                );
-            }
+            // Note: trigger count already incremented by try_claim_trigger()
 
             // Load the workflow definition
             let workflow = match load_workflow(&pool, &workflow_id).await {
@@ -1607,11 +1609,20 @@ pub fn spawn_workflow_schedule_loop(
                     let _enter = span.enter();
                     let start = std::time::Instant::now();
 
-                    // Mark trigger as fired
-                    if let Err(e) =
-                        WorkflowTrigger::increment_trigger_count(&pool, &trigger_id).await
-                    {
-                        tracing::warn!("[SCHEDULE] Failed to update trigger count: {e}");
+                    // Atomically claim trigger (prevents double-fire if schedule overlaps)
+                    match WorkflowTrigger::try_claim_trigger(&pool, &trigger_id).await {
+                        Ok(None) => {
+                            tracing::debug!(
+                                "[SCHEDULE] Trigger {} still in cooldown, skipping",
+                                trigger_id
+                            );
+                            return;
+                        }
+                        Err(e) => {
+                            tracing::warn!("[SCHEDULE] Failed to claim trigger: {e}");
+                            return;
+                        }
+                        Ok(Some(_)) => {} // Claimed successfully, continue
                     }
 
                     // Load workflow

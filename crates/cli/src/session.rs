@@ -123,7 +123,7 @@ impl ConversationLog {
 
         let mut summaries: Vec<SessionSummary> = read_dir
             .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().map_or(false, |x| x == "jsonl"))
+            .filter(|e| e.path().extension().is_some_and(|x| x == "jsonl"))
             .filter_map(|e| {
                 let path = e.path();
                 let content = std::fs::read_to_string(&path).ok()?;
