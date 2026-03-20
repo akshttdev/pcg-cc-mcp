@@ -28,6 +28,10 @@ fn generate_types_content() -> String {
         db::models::agent_wallet::AgentWallet::decl(),
         db::models::agent_wallet::AgentWalletTransaction::decl(),
         db::models::agent_wallet::UpsertAgentWallet::decl(),
+        // VIBE cost aggregation types
+        db::models::vibe_transaction::OrgCostSummary::decl(),
+        db::models::vibe_transaction::ModelCostRow::decl(),
+        db::models::vibe_transaction::ProjectCostRow::decl(),
         db::models::agent_wallet::CreateWalletTransaction::decl(),
         db::models::project::SearchResult::decl(),
         db::models::project::SearchMatchType::decl(),

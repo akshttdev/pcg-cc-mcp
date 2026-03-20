@@ -96,6 +96,12 @@ export type AgentWalletTransaction = { id: string, wallet_id: string, direction:
 
 export type UpsertAgentWallet = { profile_key: string, display_name?: string, budget_limit: number, };
 
+export type OrgCostSummary = { total_vibe: bigint, total_cost_cents: bigint, transaction_count: bigint, total_input_tokens: bigint, total_output_tokens: bigint, };
+
+export type ModelCostRow = { model: string, provider: string, total_vibe: bigint, total_cost_cents: bigint, transaction_count: bigint, input_tokens: bigint, output_tokens: bigint, };
+
+export type ProjectCostRow = { project_id: string | null, project_name: string, total_vibe: bigint, total_cost_cents: bigint, transaction_count: bigint, };
+
 export type CreateWalletTransaction = { wallet_id: string, direction: string, amount: number, description?: string, metadata?: string, task_id?: string, process_id?: string, };
 
 export type SearchResult = { path: string, is_file: boolean, match_type: SearchMatchType, };
@@ -132,6 +138,10 @@ export type ApprovalStatus = "pending" | "approved" | "rejected" | "changesreque
 
 export type Task = { id: string, project_id: string, pod_id: string | null, board_id: string | null, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, priority: Priority, assignee_id: string | null, assignee_type: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: string | null, created_by: string, requires_approval: boolean, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: string | null, due_date: string | null, custom_properties?: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null, 
 /**
+ * JSON-encoded collaborators/watchers array
+ */
+collaborators: string | null, 
+/**
  * Base64 encoded screenshot image for bug reports
  */
 screenshot?: string | null, 
@@ -161,6 +171,10 @@ vibe_cost: bigint | null,
  * Model used for the most recent vibe transaction on this task
  */
 vibe_model: string | null, id: string, project_id: string, pod_id: string | null, board_id: string | null, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, priority: Priority, assignee_id: string | null, assignee_type: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: string | null, created_by: string, requires_approval: boolean, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: string | null, due_date: string | null, custom_properties?: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null, 
+/**
+ * JSON-encoded collaborators/watchers array
+ */
+collaborators: string | null, 
 /**
  * Base64 encoded screenshot image for bug reports
  */
@@ -230,7 +244,11 @@ export type AuthorType = "human" | "agent" | "mcp" | "system";
 
 export type CommentType = "comment" | "statusupdate" | "review" | "approval" | "system" | "handoff" | "mcpnotification";
 
-export type ActivityLog = { id: string, task_id: string, actor_id: string, actor_type: ActorType, action: string, previous_state: string | null, new_state: string | null, metadata: string | null, timestamp: string, actor_name: string | null, };
+export type ActivityLog = { id: string, task_id: string, actor_id: string, actor_type: ActorType, action: string, previous_state: string | null, new_state: string | null, metadata: string | null, timestamp: string, 
+/**
+ * Display name of the actor (populated via JOIN, not stored in table)
+ */
+actor_name: string | null, };
 
 export type CreateActivityLog = { task_id: string, actor_id: string, actor_type: ActorType, action: string, previous_state: JsonValue | null, new_state: JsonValue | null, metadata: JsonValue | null, };
 
@@ -271,6 +289,10 @@ export type AddAgentWatcherRequest = { agent_id: string, };
 export type CreateGitHubPrRequest = { title: string, body: string | null, base_branch: string | null, };
 
 export type LinkPrRequest = { pr_number: bigint, pr_url: string, target_branch: string | null, };
+
+export type CreateTaskAttemptRecordBody = { task_id: string, executor: BaseCodingAgent, base_branch: string, };
+
+export type CreateRecordResponse = { id: string, task_id: string, base_branch: string, executor: string, };
 
 export type UpdateCollaboratorRequest = { actor_id: string, actor_type: string, action: string, };
 
@@ -864,7 +886,7 @@ export type ConvertEntityResponse = { new_id: string, new_type: string, };
 
 export type SubmitFeedbackRequest = { 
 /**
- * Type of feedback: bug, feature, improvement, question, other
+ * Type of feedback: bug, feature, improvement, question, friction, other
  */
 feedback_type: string, 
 /**
@@ -886,7 +908,31 @@ severity: string | null,
 /**
  * Base64 encoded screenshot image (optional)
  */
-screenshot: string | null, };
+screenshot: string | null, 
+/**
+ * Page/route where friction occurred (e.g. "/crm/deals")
+ */
+page_url?: string, 
+/**
+ * What the user was trying to do
+ */
+user_intent?: string, 
+/**
+ * What went wrong or felt slow/confusing
+ */
+friction_point?: string, 
+/**
+ * Expected behavior vs actual
+ */
+expected_behavior?: string, 
+/**
+ * Time spent blocked (seconds, self-reported)
+ */
+time_lost_seconds?: number, 
+/**
+ * Frustration level: 1 (minor) to 5 (show-stopper)
+ */
+frustration_level?: number, };
 
 export type SubmitFeedbackResponse = { task_id: string, message: string, };
 
