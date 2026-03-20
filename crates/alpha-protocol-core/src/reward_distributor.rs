@@ -131,7 +131,7 @@ impl RewardDistributor {
 
             grouped
                 .entry(peer_node.wallet_address.clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(reward.id);
 
             *total_per_peer
