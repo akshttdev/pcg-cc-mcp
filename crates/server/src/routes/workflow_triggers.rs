@@ -382,10 +382,11 @@ async fn execute_webhook_trigger(
         ..Default::default()
     };
 
+    let start = std::time::Instant::now();
     let result =
         super::workflow_engine::execute_workflow_nodes(pool, &workflow, content, &opts).await;
 
-    let duration_ms = std::time::Instant::now().elapsed().as_millis() as i64;
+    let duration_ms = start.elapsed().as_millis() as i64;
     super::workflow_engine::finalize_workflow_run(
         pool,
         workflow_run_id,

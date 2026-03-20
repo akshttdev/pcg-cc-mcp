@@ -95,6 +95,7 @@ pub struct UpdateCrmDeal {
     pub proposal_status: Option<String>,
     pub deck_url: Option<String>,
     pub invoice_id: Option<String>,
+    pub expedited: Option<i32>,
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
@@ -369,6 +370,7 @@ impl CrmDeal {
                 proposal_status = COALESCE(?19, proposal_status),
                 deck_url = COALESCE(?20, deck_url),
                 invoice_id = COALESCE(?21, invoice_id),
+                expedited = COALESCE(?22, expedited),
                 last_activity_at = datetime('now', 'subsec'),
                 updated_at = datetime('now', 'subsec')
             WHERE id = ?1
@@ -396,6 +398,7 @@ impl CrmDeal {
         .bind(&data.proposal_status)
         .bind(&data.deck_url)
         .bind(&data.invoice_id)
+        .bind(data.expedited)
         .fetch_optional(pool)
         .await?
         .ok_or(CrmDealError::NotFound)
@@ -429,20 +432,20 @@ impl CrmDeal {
         .await?;
 
         // If moving between stages, compact the old stage
-        if old_stage_id.as_ref() != Some(stage_id) {
-            if let Some(ref old_sid) = old_stage_id {
-                sqlx::query(
-                    r#"
+        if old_stage_id.as_ref() != Some(stage_id)
+            && let Some(ref old_sid) = old_stage_id
+        {
+            sqlx::query(
+                r#"
                     UPDATE crm_deals SET
                         position = position - 1
                     WHERE crm_stage_id = ?1 AND position > ?2
                     "#,
-                )
-                .bind(old_sid)
-                .bind(deal.position.unwrap_or(0))
-                .execute(pool)
-                .await?;
-            }
+            )
+            .bind(old_sid)
+            .bind(deal.position.unwrap_or(0))
+            .execute(pool)
+            .await?;
         }
 
         // Update the deal with new stage and position
@@ -473,11 +476,10 @@ impl CrmDeal {
                 probability = ?5,
                 last_activity_at = datetime('now', 'subsec'),
                 updated_at = datetime('now', 'subsec')
-                {}
+                {close_date_update}
             WHERE id = ?1
             RETURNING *
-            "#,
-            close_date_update
+            "#
         );
 
         let updated_deal = sqlx::query_as::<_, CrmDeal>(&query)
@@ -524,11 +526,8 @@ impl CrmDeal {
             .bind(&updated_deal.crm_contact_id)
             .bind(&updated_deal.id)
             .bind(activity_type)
-            .bind(format!("Moved to {}", stage_name))
-            .bind(format!(
-                "Deal moved from {} to {}",
-                old_stage_name, stage_name
-            ))
+            .bind(format!("Moved to {stage_name}"))
+            .bind(format!("Deal moved from {old_stage_name} to {stage_name}"))
             .execute(pool)
             .await?;
         }
@@ -998,10 +997,9 @@ impl CrmDeal {
                 } else if let Some(ref deal_stage_id) = deal.crm_stage_id {
                     // Check if this deal's stage has the same name as our reference stage
                     if let Ok(deal_stage) = CrmPipelineStage::find_by_id(pool, deal_stage_id).await
+                        && deal_stage.name == stage.name
                     {
-                        if deal_stage.name == stage.name {
-                            stage_deals.push(deal.clone());
-                        }
+                        stage_deals.push(deal.clone());
                     }
                 }
             }

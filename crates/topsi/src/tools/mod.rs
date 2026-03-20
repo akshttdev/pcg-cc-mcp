@@ -284,7 +284,7 @@ pub fn get_tool_schemas() -> Vec<Value> {
                         },
                         "status": {
                             "type": "string",
-                            "description": "Initial status: 'todo', 'in_progress', or 'done'. Defaults to 'todo'."
+                            "description": "Initial status: 'todo', 'inprogress', or 'done'. Defaults to 'todo'."
                         }
                     },
                     "required": ["title", "description"]
@@ -367,7 +367,7 @@ pub fn get_tool_schemas() -> Vec<Value> {
                         },
                         "status": {
                             "type": "string",
-                            "description": "New status: 'todo', 'in_progress', 'done', 'cancelled'"
+                            "description": "New status: 'todo', 'inprogress', 'done', 'cancelled'"
                         },
                         "title": {
                             "type": "string",
@@ -404,7 +404,7 @@ pub fn get_tool_schemas() -> Vec<Value> {
                         },
                         "status": {
                             "type": "string",
-                            "description": "Filter: 'todo', 'in_progress', 'done', 'in_review'"
+                            "description": "Filter: 'todo', 'inprogress', 'done', 'inreview'"
                         },
                         "assigned_agent": {
                             "type": "string",
@@ -451,7 +451,7 @@ pub fn get_tool_schemas() -> Vec<Value> {
                         },
                         "status": {
                             "type": "string",
-                            "description": "New status for all tasks: 'todo', 'in_progress', 'done', 'cancelled'"
+                            "description": "New status for all tasks: 'todo', 'inprogress', 'done', 'cancelled'"
                         },
                         "priority": {
                             "type": "string",

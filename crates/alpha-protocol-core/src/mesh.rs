@@ -122,21 +122,21 @@ impl MeshNode {
             .heartbeat_interval(Duration::from_secs(10))
             .validation_mode(gossipsub::ValidationMode::Strict)
             .build()
-            .map_err(|msg| anyhow::anyhow!("Gossipsub config error: {}", msg))?;
+            .map_err(|msg| anyhow::anyhow!("Gossipsub config error: {msg}"))?;
 
         // Build Gossipsub behaviour
         let gossipsub = gossipsub::Behaviour::new(
             gossipsub::MessageAuthenticity::Signed(local_key.clone()),
             gossipsub_config,
         )
-        .map_err(|msg| anyhow::anyhow!("Gossipsub creation error: {}", msg))?;
+        .map_err(|msg| anyhow::anyhow!("Gossipsub creation error: {msg}"))?;
 
         // Create mDNS behaviour for local discovery
         #[allow(deprecated)]
         let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), local_peer_id)?;
 
         // Create Kademlia DHT
-        let mut kad_config = kad::Config::default();
+        let mut kad_config = kad::Config::new(libp2p::kad::PROTOCOL_NAME);
         kad_config.set_query_timeout(Duration::from_secs(60));
         let store = kad::store::MemoryStore::new(local_peer_id);
         let kademlia = kad::Behaviour::with_config(local_peer_id, store, kad_config);
@@ -184,7 +184,7 @@ impl MeshNode {
 
     /// Start listening on a port
     pub async fn listen(&mut self, port: u16) -> Result<Multiaddr> {
-        let addr: Multiaddr = format!("/ip4/0.0.0.0/tcp/{}", port)
+        let addr: Multiaddr = format!("/ip4/0.0.0.0/tcp/{port}")
             .parse()
             .context("Failed to parse listen address")?;
 
@@ -208,7 +208,7 @@ impl MeshNode {
             .behaviour_mut()
             .gossipsub
             .subscribe(&topic)
-            .map_err(|e| anyhow::anyhow!("Subscribe error: {:?}", e))?;
+            .map_err(|e| anyhow::anyhow!("Subscribe error: {e:?}"))?;
 
         tracing::debug!("Subscribed to topic: {}", topic);
         Ok(())
@@ -234,7 +234,7 @@ impl MeshNode {
             .behaviour_mut()
             .gossipsub
             .publish(topic.clone(), payload)
-            .map_err(|e| anyhow::anyhow!("Publish error: {:?}", e))?;
+            .map_err(|e| anyhow::anyhow!("Publish error: {e:?}"))?;
 
         tracing::debug!("Published to topic: {}", topic);
         Ok(())

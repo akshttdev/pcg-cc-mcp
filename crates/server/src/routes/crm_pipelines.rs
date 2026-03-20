@@ -251,9 +251,7 @@ async fn list_org_pipelines(
     Query(query): Query<ListOrgPipelinesQuery>,
 ) -> Result<Json<ApiResponse<Vec<CrmPipeline>>>, ApiError> {
     let pool = &deployment.db().pool;
-    access_context
-        .require_org_membership(pool, &org_id)
-        .await?;
+    access_context.require_org_membership(pool, &org_id).await?;
     let org_id = DbUuid::from(org_id);
 
     // Ensure default pipelines exist for the organization
@@ -280,9 +278,7 @@ async fn get_org_pipeline(
     Path((org_id, pipeline_id)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<CrmPipelineWithStages>>, ApiError> {
     let pool = &deployment.db().pool;
-    access_context
-        .require_org_membership(pool, &org_id)
-        .await?;
+    access_context.require_org_membership(pool, &org_id).await?;
     let pipeline_id = DbUuid::from(pipeline_id);
     let pipeline = CrmPipeline::find_with_stages(pool, &pipeline_id).await?;
     Ok(Json(ApiResponse::success(pipeline)))
@@ -295,9 +291,7 @@ async fn get_org_kanban(
     Path((org_id, pipeline_id)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<db::models::crm_deal::KanbanBoardData>>, ApiError> {
     let pool = &deployment.db().pool;
-    access_context
-        .require_org_membership(pool, &org_id)
-        .await?;
+    access_context.require_org_membership(pool, &org_id).await?;
     let org_id = DbUuid::from(org_id);
     let pipeline_id = DbUuid::from(pipeline_id);
     let kanban_data =

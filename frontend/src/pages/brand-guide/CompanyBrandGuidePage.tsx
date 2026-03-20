@@ -3,57 +3,76 @@
  * but fetches from /api/companies/:id/brand-profile.
  * Reuses all section components via BrandPageProps.
  */
-import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { ArrowLeft, Loader2, Palette, Pencil, Printer } from 'lucide-react';
+import { useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+
+import { Button } from '@/components/ui/button';
 import { companiesApi, type OrgBrandProfile, resolveApiUrl } from '@/lib/api';
 import { entityKeys } from '@/lib/query-keys';
-import { Loader2, ArrowLeft, Printer, Palette, Pencil } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 
-import type { BrandPageProps } from './types';
+import type { BrandApiOverride } from './BrandSetupWizard';
 import { BrandSetupWizard } from './BrandSetupWizard';
-import { PageBreak } from './sections/PagePrimitives';
-import { CoverPage } from './sections/CoverPage';
-import { FoundationPage } from './sections/FoundationPage';
-import { VisualIdentityPage } from './sections/VisualIdentityPage';
-import { LogoSystemPage } from './sections/LogoSystemPage';
-import { VoicePersonalityPage } from './sections/VoicePersonalityPage';
-import { AudienceMarketPage } from './sections/AudienceMarketPage';
 import { ApplicationsPage } from './sections/ApplicationsPage';
-import { DigitalPresencePage } from './sections/DigitalPresencePage';
+import { AudienceMarketPage } from './sections/AudienceMarketPage';
 import { BackCover } from './sections/BackCover';
+import { CoverPage } from './sections/CoverPage';
+import { DigitalPresencePage } from './sections/DigitalPresencePage';
+import { FoundationPage } from './sections/FoundationPage';
+import { LogoSystemPage } from './sections/LogoSystemPage';
+import { PageBreak } from './sections/PagePrimitives';
+import { VisualIdentityPage } from './sections/VisualIdentityPage';
+import { VoicePersonalityPage } from './sections/VoicePersonalityPage';
+import type { BrandPageProps } from './types';
 
 export function CompanyBrandGuidePage() {
   const { companyId } = useParams<{ companyId: string }>();
   const navigate = useNavigate();
   const [wizardOpen, setWizardOpen] = useState(false);
 
-  const { data: company, isLoading: companyLoading, isError: companyError } = useQuery({
+  const companyBrandApi: BrandApiOverride = {
+    upsertBrandProfile: companiesApi.upsertBrandProfile,
+    invalidateKey: entityKeys.companyBrandProfile(companyId!),
+  };
+
+  const {
+    data: company,
+    isLoading: companyLoading,
+    isError: companyError,
+  } = useQuery({
     queryKey: entityKeys.company(companyId!),
     queryFn: () => companiesApi.get(companyId!),
     enabled: !!companyId,
     retry: 1,
   });
 
-  const { data: profile, isLoading: profileLoading } = useQuery<OrgBrandProfile | null>({
-    queryKey: entityKeys.companyBrandProfile(companyId!),
-    queryFn: () => companiesApi.getBrandProfile(companyId!),
-    enabled: !!companyId && !!company,
-    retry: 1,
-  });
+  const { data: profile, isLoading: profileLoading } =
+    useQuery<OrgBrandProfile | null>({
+      queryKey: entityKeys.companyBrandProfile(companyId!),
+      queryFn: () => companiesApi.getBrandProfile(companyId!),
+      enabled: !!companyId && !!company,
+      retry: 1,
+    });
 
   if (companyError) {
     return (
       <div className="min-h-screen flex flex-col items-center bg-black text-gray-400 gap-6 pt-[20vh]">
         <div className="text-center space-y-3">
           <Palette className="h-12 w-12 mx-auto text-gray-600" />
-          <h2 className="text-xl font-semibold text-gray-300">Company not found</h2>
+          <h2 className="text-xl font-semibold text-gray-300">
+            Company not found
+          </h2>
           <p className="text-sm text-gray-500 max-w-md">
-            The company you&apos;re looking for doesn&apos;t exist or you don&apos;t have access.
+            The company you&apos;re looking for doesn&apos;t exist or you
+            don&apos;t have access.
           </p>
         </div>
-        <Button variant="outline" onClick={() => navigate(-1)} className="gap-2">
+        <Button
+          variant="outline"
+          onClick={() => navigate(-1)}
+          className="gap-2"
+        >
           <ArrowLeft className="h-4 w-4" /> Go Back
         </Button>
       </div>
@@ -74,10 +93,13 @@ export function CompanyBrandGuidePage() {
         <div className="text-center space-y-3">
           <Palette className="h-12 w-12 mx-auto text-gray-600" />
           <h2 className="text-xl font-semibold text-gray-300">
-            {company ? `No brand guide for ${company.name}` : 'Brand guide not found'}
+            {company
+              ? `No brand guide for ${company.name}`
+              : 'Brand guide not found'}
           </h2>
           <p className="text-sm text-gray-500 max-w-md">
-            Set up a brand profile to generate a comprehensive brand guide with colors, typography, voice, and positioning.
+            Set up a brand profile to generate a comprehensive brand guide with
+            colors, typography, voice, and positioning.
           </p>
         </div>
         {company && companyId && (
@@ -95,8 +117,7 @@ export function CompanyBrandGuidePage() {
               orgName={company.name}
               open={wizardOpen}
               onOpenChange={setWizardOpen}
-              // TODO: apiOverride needs BrandSetupWizard prop support (post-PR #49)
-
+              apiOverride={companyBrandApi}
             />
           </>
         )}
@@ -114,8 +135,10 @@ export function CompanyBrandGuidePage() {
   const primary = profile.primaryColor || '#000000';
   const secondary = profile.secondaryColor || '#FFFFFF';
   const accent = profile.accentColor || '#AF9041';
-  const headingFont = profile.typographyHeading || 'serif';
-  const bodyFont = profile.typographyBody || 'sans-serif';
+  // Sanitize font names to prevent CSS injection via stored profile data
+  const sanitizeFont = (f: string) => f.replace(/['"\\;{}()<>]/g, '');
+  const headingFont = sanitizeFont(profile.typographyHeading || 'serif');
+  const bodyFont = sanitizeFont(profile.typographyBody || 'sans-serif');
   const logoUrl = profile.logoUrl ? resolveApiUrl(profile.logoUrl) : null;
   const clearbitLogo = profile.clearbitLogoUrl;
   const effectiveLogo = logoUrl || clearbitLogo || company.logo_url || null;
@@ -162,7 +185,9 @@ export function CompanyBrandGuidePage() {
             Back to {company.name}
           </button>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] uppercase tracking-widest text-yellow-600 font-semibold">Brand Guide</span>
+            <span className="text-[10px] uppercase tracking-widest text-yellow-600 font-semibold">
+              Brand Guide
+            </span>
             <Button
               size="sm"
               variant="outline"
@@ -198,7 +223,11 @@ export function CompanyBrandGuidePage() {
         <PageBreak />
         <ApplicationsPage {...pageProps} />
         <PageBreak />
-        <DigitalPresencePage {...pageProps} socials={[]} knowledge={undefined} />
+        <DigitalPresencePage
+          {...pageProps}
+          socials={[]}
+          knowledge={undefined}
+        />
         <PageBreak />
         <BackCover {...pageProps} />
       </div>
@@ -208,7 +237,7 @@ export function CompanyBrandGuidePage() {
         orgName={company.name}
         open={wizardOpen}
         onOpenChange={setWizardOpen}
-        // TODO: apiOverride needs BrandSetupWizard prop support (post-PR #49)
+        apiOverride={companyBrandApi}
       />
     </>
   );

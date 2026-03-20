@@ -1,21 +1,21 @@
-import { Dispatch, SetStateAction, useCallback } from 'react';
-import { Button } from '@/components/ui/button.tsx';
 import { X } from 'lucide-react';
-import type { GitBranch, Task } from 'shared/types';
+import { Dispatch, SetStateAction, useCallback } from 'react';
+import type { GitBranch, Task, TaskWithAttemptStatus } from 'shared/types';
 import type { ExecutorConfig } from 'shared/types';
 import type { ExecutorProfileId } from 'shared/types';
 import type { TaskAttempt } from 'shared/types';
-import { useAttemptCreation } from '@/hooks/useAttemptCreation';
-import { useAttemptExecution } from '@/hooks/useAttemptExecution';
-import BranchSelector from '@/components/tasks/BranchSelector.tsx';
-import { ExecutorProfileSelector } from '@/components/settings';
 
-import { showModal } from '@/lib/modals';
+import { ExecutorProfileSelector } from '@/components/settings';
+import BranchSelector from '@/components/tasks/BranchSelector.tsx';
+import { Button } from '@/components/ui/button.tsx';
 import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { useAttemptCreation } from '@/hooks/useAttemptCreation';
+import { useAttemptExecution } from '@/hooks/useAttemptExecution';
+import { showModal } from '@/lib/modals';
 
 type Props = {
-  task: Task;
+  task: Task | TaskWithAttemptStatus;
   branches: GitBranch[];
   taskAttempts: TaskAttempt[];
   createAttemptBranch: string | null;

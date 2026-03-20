@@ -18,7 +18,7 @@ impl std::fmt::Display for ClientType {
             Self::ManagedGrowth => "managed_growth",
             Self::Custom => "custom",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 

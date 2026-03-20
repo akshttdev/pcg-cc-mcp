@@ -305,10 +305,10 @@ impl ExecutionSummary {
         feedback: UpdateExecutionSummaryFeedback,
     ) -> Result<(), ExecutionSummaryError> {
         // Validate rating if provided
-        if let Some(rating) = feedback.human_rating {
-            if !(1..=5).contains(&rating) {
-                return Err(ExecutionSummaryError::InvalidRating);
-            }
+        if let Some(rating) = feedback.human_rating
+            && !(1..=5).contains(&rating)
+        {
+            return Err(ExecutionSummaryError::InvalidRating);
         }
 
         let now = Utc::now();

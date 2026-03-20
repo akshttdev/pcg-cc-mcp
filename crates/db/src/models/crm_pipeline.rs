@@ -38,7 +38,7 @@ impl std::fmt::Display for PipelineType {
             PipelineType::Delivery => "delivery",
             PipelineType::Custom => "custom",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -52,7 +52,7 @@ impl std::str::FromStr for PipelineType {
             "sales" => Ok(PipelineType::Sales),
             "delivery" => Ok(PipelineType::Delivery),
             "custom" => Ok(PipelineType::Custom),
-            _ => Err(format!("Unknown pipeline type: {}", s)),
+            _ => Err(format!("Unknown pipeline type: {s}")),
         }
     }
 }

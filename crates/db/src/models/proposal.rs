@@ -210,9 +210,8 @@ impl Proposal {
 
         if let Some(col) = ts_col {
             let sql = format!(
-                "UPDATE proposals SET status = ?, {} = datetime('now','subsec'), \
-                 updated_at = datetime('now','subsec') WHERE id = ?",
-                col
+                "UPDATE proposals SET status = ?, {col} = datetime('now','subsec'), \
+                 updated_at = datetime('now','subsec') WHERE id = ?"
             );
             sqlx::query(&sql)
                 .bind(new_status)

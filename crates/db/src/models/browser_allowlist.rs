@@ -23,7 +23,9 @@ pub enum BrowserAllowlistError {
 #[derive(Debug, Clone, Type, Serialize, Deserialize, PartialEq, TS)]
 #[sqlx(type_name = "pattern_type", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum PatternType {
+    #[default]
     Glob,
     Regex,
     Exact,
@@ -36,12 +38,6 @@ impl std::fmt::Display for PatternType {
             PatternType::Regex => write!(f, "regex"),
             PatternType::Exact => write!(f, "exact"),
         }
-    }
-}
-
-impl Default for PatternType {
-    fn default() -> Self {
-        PatternType::Glob
     }
 }
 
@@ -206,8 +202,8 @@ impl BrowserAllowlist {
         let host_port = match Url::parse(url) {
             Ok(parsed) => {
                 let host = parsed.host_str().unwrap_or("");
-                let port = parsed.port().map(|p| format!(":{}", p)).unwrap_or_default();
-                format!("{}{}", host, port)
+                let port = parsed.port().map(|p| format!(":{p}")).unwrap_or_default();
+                format!("{host}{port}")
             }
             Err(_) => url.to_string(),
         };

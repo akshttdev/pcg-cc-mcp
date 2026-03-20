@@ -322,7 +322,7 @@ async fn resolve_or_create_task(
            (id, project_id, title, description, status,
             assigned_agent, tags, custom_properties,
             created_by, created_at, updated_at)
-           VALUES (?1, ?2, ?3, ?4, 'in_progress', 'editron', ?5, ?6,
+           VALUES (?1, ?2, ?3, ?4, 'inprogress', 'editron', ?5, ?6,
                    'editron-runner', ?7, ?7)"#,
     )
     .bind(task_uuid.to_string())

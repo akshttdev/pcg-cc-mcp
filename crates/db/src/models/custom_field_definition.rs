@@ -24,7 +24,7 @@ pub enum CustomFieldType {
 }
 
 impl CustomFieldType {
-    pub fn from_str(value: &str) -> Option<Self> {
+    pub fn parse_type(value: &str) -> Option<Self> {
         match value {
             "text" => Some(Self::Text),
             "number" => Some(Self::Number),

@@ -4,6 +4,7 @@ pub mod agent_conversation;
 pub mod agent_execution_config;
 pub mod agent_flow;
 pub mod agent_flow_event;
+pub mod agent_response;
 pub mod agent_task_plan;
 pub mod agent_wallet;
 pub mod airtable_base;

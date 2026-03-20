@@ -185,11 +185,11 @@ impl TransactionHelper {
         };
 
         // Check if within budget
-        if let Some(budget_limit) = limit {
-            if spent + amount > budget_limit {
-                tx.rollback().await?;
-                return Ok(false); // Over budget
-            }
+        if let Some(budget_limit) = limit
+            && spent + amount > budget_limit
+        {
+            tx.rollback().await?;
+            return Ok(false); // Over budget
         }
 
         // Update spent amount

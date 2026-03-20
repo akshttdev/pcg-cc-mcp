@@ -15,12 +15,16 @@ use deployment::Deployment;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param, middleware::access_control::AccessContext};
-
-use super::crm_deals::{require_deal_org_access, MoveDealRequest};
-use super::crm_deal_automations::{
-    trigger_who_is_research, trigger_deep_research_pass2, generate_deck_background,
-    generate_phase1_business_report,
+use super::{
+    crm_deal_automations::{
+        generate_deck_background, generate_phase1_business_report, trigger_deep_research_pass2,
+        trigger_who_is_research,
+    },
+    crm_deals::{MoveDealRequest, require_deal_org_access},
+};
+use crate::{
+    DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param,
+    middleware::access_control::AccessContext,
 };
 
 /// PATCH /crm/deals/:id/stage - Move deal to new stage (drag-drop)
@@ -665,16 +669,20 @@ pub async fn manage_stage_review_tasks(
                 .await
                 .ok()
                 .flatten()
-                .map(|hex| {
+                .and_then(|hex| {
+                    // hex(id) returns 32 chars for a 16-byte UUID BLOB
+                    if hex.len() != 32 {
+                        return None;
+                    }
                     let h = hex.to_lowercase();
-                    format!(
+                    Some(format!(
                         "{}-{}-{}-{}-{}",
                         &h[..8],
                         &h[8..12],
                         &h[12..16],
                         &h[16..20],
                         &h[20..]
-                    )
+                    ))
                 });
 
         let _ = sqlx::query(
@@ -748,4 +756,3 @@ pub async fn manage_stage_review_tasks(
         }
     }
 }
-

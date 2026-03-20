@@ -86,7 +86,7 @@ fn task_to_with_attempt_status(task: Task) -> TaskWithAttemptStatus {
         last_attempt_failed: false,
         executor: String::new(),
         last_execution_summary: None,
-        collaborators: None,
+        parsed_collaborators: None,
         vibe_cost: None,
         vibe_model: None,
     }
@@ -541,7 +541,7 @@ pub async fn create_task_and_start(
         last_attempt_failed: false,
         executor: task_attempt.executor,
         last_execution_summary: None,
-        collaborators: None,
+        parsed_collaborators: None,
         vibe_cost: None,
         vibe_model: None,
     };

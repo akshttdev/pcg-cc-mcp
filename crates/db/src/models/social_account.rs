@@ -43,7 +43,7 @@ impl std::fmt::Display for SocialPlatform {
             SocialPlatform::Bluesky => "bluesky",
             SocialPlatform::Pinterest => "pinterest",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -61,7 +61,7 @@ impl std::str::FromStr for SocialPlatform {
             "threads" => Ok(SocialPlatform::Threads),
             "bluesky" => Ok(SocialPlatform::Bluesky),
             "pinterest" => Ok(SocialPlatform::Pinterest),
-            _ => Err(format!("Unknown platform: {}", s)),
+            _ => Err(format!("Unknown platform: {s}")),
         }
     }
 }
@@ -156,7 +156,7 @@ impl SocialAccount {
         let platform = data.platform.to_string();
         let account_type = data
             .account_type
-            .map(|t| format!("{:?}", t).to_lowercase())
+            .map(|t| format!("{t:?}").to_lowercase())
             .unwrap_or_else(|| "personal".to_string());
         let metadata = data.metadata.map(|v| v.to_string());
 
@@ -244,7 +244,7 @@ impl SocialAccount {
         id: Uuid,
         data: UpdateSocialAccount,
     ) -> Result<Self, SocialAccountError> {
-        let status = data.status.map(|s| format!("{:?}", s).to_lowercase());
+        let status = data.status.map(|s| format!("{s:?}").to_lowercase());
         let metadata = data.metadata.map(|v| v.to_string());
 
         sqlx::query_as::<_, SocialAccount>(

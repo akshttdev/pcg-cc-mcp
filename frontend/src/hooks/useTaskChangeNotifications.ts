@@ -6,9 +6,10 @@
  * and fires toasts when meaningful agent-driven changes are detected.
  */
 import { useEffect, useRef } from 'react';
-import { toast } from 'sonner';
-import type { TaskWithArchive } from '@/lib/api';
 import type { TaskCollaborator } from 'shared/types';
+import { toast } from 'sonner';
+
+import type { TaskWithArchive } from '@/lib/api';
 
 /** Status labels for display */
 const STATUS_LABELS: Record<string, string> = {
@@ -20,11 +21,12 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 /** Watcher action labels */
-const WATCHER_VERDICT_LABELS: Record<string, { label: string; icon: string }> = {
-  qa_pass: { label: 'PASS', icon: '✅' },
-  qa_needs_changes: { label: 'NEEDS CHANGES', icon: '⚠️' },
-  qa_fail: { label: 'FAIL', icon: '❌' },
-};
+const WATCHER_VERDICT_LABELS: Record<string, { label: string; icon: string }> =
+  {
+    qa_pass: { label: 'PASS', icon: '✅' },
+    qa_needs_changes: { label: 'NEEDS CHANGES', icon: '⚠️' },
+    qa_fail: { label: 'FAIL', icon: '❌' },
+  };
 
 /**
  * Detect and notify on agent-driven task changes.
@@ -47,9 +49,8 @@ export function useTaskChangeNotifications(
       if (prev.status !== task.status) {
         const isAgentDriven = !!task.agent_id;
         const statusLabel = STATUS_LABELS[task.status] ?? task.status;
-        const titleSnippet = task.title.length > 40
-          ? task.title.slice(0, 40) + '…'
-          : task.title;
+        const titleSnippet =
+          task.title.length > 40 ? task.title.slice(0, 40) + '…' : task.title;
 
         if (isAgentDriven) {
           if (task.status === 'inprogress') {
@@ -71,8 +72,8 @@ export function useTaskChangeNotifications(
       }
 
       // 2. Watcher state change detection
-      const prevCollabs = buildCollabMap(prev.collaborators);
-      const currCollabs = buildCollabMap(task.collaborators);
+      const prevCollabs = buildCollabMap(prev.parsed_collaborators);
+      const currCollabs = buildCollabMap(task.parsed_collaborators);
 
       for (const [actorId, curr] of currCollabs.entries()) {
         if (curr.actor_type !== 'agent_watcher') continue;
@@ -80,9 +81,8 @@ export function useTaskChangeNotifications(
         const prevAction = prevCollabs.get(actorId)?.last_action;
         if (prevAction === curr.last_action) continue; // No change
 
-        const titleSnippet = task.title.length > 40
-          ? task.title.slice(0, 40) + '…'
-          : task.title;
+        const titleSnippet =
+          task.title.length > 40 ? task.title.slice(0, 40) + '…' : task.title;
 
         // Watcher just triggered
         if (curr.last_action === 'triggered' && prevAction === 'watching') {
@@ -94,9 +94,12 @@ export function useTaskChangeNotifications(
         // Watcher verdict received
         const verdict = WATCHER_VERDICT_LABELS[curr.last_action];
         if (verdict && prevAction !== curr.last_action) {
-          const toastFn = curr.last_action === 'qa_pass' ? toast.success
-            : curr.last_action === 'qa_fail' ? toast.error
-            : toast.warning;
+          const toastFn =
+            curr.last_action === 'qa_pass'
+              ? toast.success
+              : curr.last_action === 'qa_fail'
+                ? toast.error
+                : toast.warning;
 
           toastFn(`${verdict.icon} QA verdict: ${verdict.label}`, {
             description: `"${titleSnippet}"`,

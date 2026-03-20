@@ -233,7 +233,7 @@ impl CloudFile {
                 .replace('\\', "\\\\")
                 .replace('%', "\\%")
                 .replace('_', "\\_");
-            binds.push(format!("%{}%", escaped));
+            binds.push(format!("%{escaped}%"));
         }
         if let Some(ref mime) = params.mime_type {
             sql.push_str(" AND mime_type LIKE ? ESCAPE '\\'");
@@ -241,7 +241,7 @@ impl CloudFile {
                 .replace('\\', "\\\\")
                 .replace('%', "\\%")
                 .replace('_', "\\_");
-            binds.push(format!("{}%", escaped));
+            binds.push(format!("{escaped}%"));
         }
 
         // Scope to visible projects if provided (for non-admin members)
@@ -433,7 +433,7 @@ impl OrgCloudSettings {
 
         // Build dynamic SET clause
         if let Some(quota) = input.storage_quota_bytes {
-            sets.push(format!("storage_quota_bytes = {}", quota));
+            sets.push(format!("storage_quota_bytes = {quota}"));
         }
         if let Some(v) = input.viewer_can_download {
             sets.push(format!("viewer_can_download = {}", if v { 1 } else { 0 }));

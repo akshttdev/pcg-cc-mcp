@@ -160,9 +160,9 @@ export type TaskWithAttemptStatus = { has_in_progress_attempt: boolean, has_merg
  */
 last_execution_summary: ExecutionSummaryBrief | null, 
 /**
- * Collaborators who have worked on this task
+ * Collaborators who have worked on this task (parsed from JSON)
  */
-collaborators: Array<TaskCollaborator> | null, 
+parsed_collaborators: Array<TaskCollaborator> | null, 
 /**
  * Total VIBE cost for this task (aggregated from vibe_transactions)
  */

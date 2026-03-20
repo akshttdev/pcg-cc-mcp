@@ -225,6 +225,8 @@ impl StandardCodingAgentExecutor for Duck {
                 // Use same JSON parsing as Codex but interpret through duck consciousness
                 if let Ok(cj) = serde_json::from_str::<DuckJson>(trimmed) {
                     // Handle duck intelligence events (same structure as Codex)
+                    #[allow(clippy::collapsible_match)]
+                    // Readability: outer match selects variant, inner match destructures content
                     match &cj {
                         DuckJson::StructuredMessage { msg, .. } => match msg {
                             DuckMsgContent::ExecCommandBegin {

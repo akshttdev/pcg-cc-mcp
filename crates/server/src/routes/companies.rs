@@ -17,7 +17,10 @@ use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param, routes::nora::get_nora_instance};
+use crate::{
+    DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param,
+    routes::nora::get_nora_instance,
+};
 
 #[derive(Debug, Deserialize)]
 pub struct ListCompaniesQuery {

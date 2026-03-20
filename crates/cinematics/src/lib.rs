@@ -361,7 +361,7 @@ impl CinematicsService {
             source.push_str(" ");
             source.push_str(&brief.script);
         }
-        for sentence in source.split(|c| c == '.' || c == '\n') {
+        for sentence in source.split(['.', '\n']) {
             let trimmed = sentence.trim();
             if trimmed.len() > 8 {
                 topics.push(trimmed.to_string());

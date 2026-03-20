@@ -1609,11 +1609,20 @@ pub fn spawn_workflow_schedule_loop(
                     let _enter = span.enter();
                     let start = std::time::Instant::now();
 
-                    // Mark trigger as fired
-                    if let Err(e) =
-                        WorkflowTrigger::increment_trigger_count(&pool, &trigger_id).await
-                    {
-                        tracing::warn!("[SCHEDULE] Failed to update trigger count: {e}");
+                    // Atomically claim trigger (prevents double-fire if schedule overlaps)
+                    match WorkflowTrigger::try_claim_trigger(&pool, &trigger_id).await {
+                        Ok(None) => {
+                            tracing::debug!(
+                                "[SCHEDULE] Trigger {} still in cooldown, skipping",
+                                trigger_id
+                            );
+                            return;
+                        }
+                        Err(e) => {
+                            tracing::warn!("[SCHEDULE] Failed to claim trigger: {e}");
+                            return;
+                        }
+                        Ok(Some(_)) => {} // Claimed successfully, continue
                     }
 
                     // Load workflow
