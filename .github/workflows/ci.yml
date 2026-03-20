@@ -42,7 +42,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake pkg-config libopus-dev libglib2.0-dev libgtk-3-dev libssl-dev libsodium-dev
+          sudo apt-get install -y cmake pkg-config libopus-dev libglib2.0-dev libgtk-3-dev libjavascriptcoregtk-4.0-dev libssl-dev libsodium-dev
       - name: Clippy
         run: cargo clippy --all --all-targets -- -D warnings
 
@@ -58,7 +58,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake pkg-config libopus-dev libglib2.0-dev libgtk-3-dev libssl-dev libsodium-dev
+          sudo apt-get install -y cmake pkg-config libopus-dev libglib2.0-dev libgtk-3-dev libjavascriptcoregtk-4.0-dev libssl-dev libsodium-dev
       - name: Tests
         run: cargo test --workspace
 
@@ -98,7 +98,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake pkg-config libopus-dev libglib2.0-dev libgtk-3-dev libssl-dev libsodium-dev
+          sudo apt-get install -y cmake pkg-config libopus-dev libglib2.0-dev libgtk-3-dev libjavascriptcoregtk-4.0-dev libssl-dev libsodium-dev
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Check types are up to date

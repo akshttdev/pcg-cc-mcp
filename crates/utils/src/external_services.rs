@@ -113,20 +113,25 @@ impl Default for ExternalServicesConfig {
 fn detect_project_root() -> Option<String> {
     // Try from current exe location (target/release/server -> project root)
     if let Ok(exe) = std::env::current_exe()
-        && let Some(parent) = exe.parent() {
-            // exe is in target/release/
-            let root = parent.parent().and_then(|p| p.parent());
-            if let Some(root) = root
-                && root.join("Cargo.toml").exists() && root.join("apn_bridge_server.py").exists() {
-                    return Some(root.to_string_lossy().to_string());
-                }
+        && let Some(parent) = exe.parent()
+    {
+        // exe is in target/release/
+        let root = parent.parent().and_then(|p| p.parent());
+        if let Some(root) = root
+            && root.join("Cargo.toml").exists()
+            && root.join("apn_bridge_server.py").exists()
+        {
+            return Some(root.to_string_lossy().to_string());
         }
+    }
 
     // Try from cwd
     if let Ok(cwd) = std::env::current_dir()
-        && cwd.join("Cargo.toml").exists() && cwd.join("apn_bridge_server.py").exists() {
-            return Some(cwd.to_string_lossy().to_string());
-        }
+        && cwd.join("Cargo.toml").exists()
+        && cwd.join("apn_bridge_server.py").exists()
+    {
+        return Some(cwd.to_string_lossy().to_string());
+    }
 
     // Try common known paths
     let home = std::env::var("HOME").ok()?;
@@ -444,13 +449,9 @@ fn find_python() -> Option<String> {
         format!("{}/.local/share/comfyui/venv/bin/python", home),
     ];
 
-    for path in venv_paths {
-        if std::path::Path::new(&path).exists() {
-            return Some(path);
-        }
-    }
-
-    None
+    venv_paths
+        .into_iter()
+        .find(|path| std::path::Path::new(path).exists())
 }
 
 // ============= APN Node & Bridge =============
@@ -484,23 +485,25 @@ pub fn kill_existing_apn_nodes() {
         // 2. Kill any other orphaned apn_node processes (not us)
         let our_pid = std::process::id();
         if let Ok(output) = Command::new("pgrep").arg("-f").arg("apn_node").output()
-            && let Ok(pids) = String::from_utf8(output.stdout) {
-                let mut killed = 0u32;
-                for line in pids.lines() {
-                    if let Ok(pid) = line.trim().parse::<u32>()
-                        && pid != our_pid {
-                            unsafe {
-                                libc::kill(pid as i32, libc::SIGTERM);
-                            }
-                            killed += 1;
-                        }
-                }
-                if killed > 0 {
-                    info!("[APN] Cleaned up {} orphaned apn_node process(es)", killed);
-                    // Give them a moment to exit
-                    std::thread::sleep(std::time::Duration::from_millis(500));
+            && let Ok(pids) = String::from_utf8(output.stdout)
+        {
+            let mut killed = 0u32;
+            for line in pids.lines() {
+                if let Ok(pid) = line.trim().parse::<u32>()
+                    && pid != our_pid
+                {
+                    unsafe {
+                        libc::kill(pid as i32, libc::SIGTERM);
+                    }
+                    killed += 1;
                 }
             }
+            if killed > 0 {
+                info!("[APN] Cleaned up {} orphaned apn_node process(es)", killed);
+                // Give them a moment to exit
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+        }
     }
     #[cfg(not(unix))]
     {
