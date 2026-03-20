@@ -734,15 +734,27 @@ export type AirtableConnectionWithBase = { connection: AirtableBase, base_info: 
 
 export type FlowType = "content_creation" | "research" | "engagement" | "scheduling" | "campaign" | "analysis" | "monitoring" | "custom";
 
-export type FlowStatus = "planning" | "executing" | "verifying" | "completed" | "failed" | "paused" | "awaiting_approval";
+export type FlowStatus = "planning" | "executing" | "verifying" | "completed" | "failed" | "paused" | "awaiting_approval" | "needs_clarification";
 
 export type AgentPhase = "planning" | "execution" | "verification";
 
-export type AgentFlow = { id: string, task_id: string, flow_type: FlowType, status: FlowStatus, planner_agent_id: string | null, executor_agent_id: string | null, verifier_agent_id: string | null, current_phase: AgentPhase, planning_started_at: string | null, planning_completed_at: string | null, execution_started_at: string | null, execution_completed_at: string | null, verification_started_at: string | null, verification_completed_at: string | null, flow_config: string | null, handoff_instructions: string | null, verification_score: number | null, human_approval_required: boolean, approved_by: string | null, approved_at: string | null, created_at: string, updated_at: string, };
+export type AgentFlow = { id: string, task_id: string, flow_type: FlowType, status: FlowStatus, planner_agent_id: string | null, executor_agent_id: string | null, verifier_agent_id: string | null, current_phase: AgentPhase, planning_started_at: string | null, planning_completed_at: string | null, execution_started_at: string | null, execution_completed_at: string | null, verification_started_at: string | null, verification_completed_at: string | null, flow_config: string | null, handoff_instructions: string | null, verification_score: number | null, human_approval_required: boolean, approved_by: string | null, approved_at: string | null, 
+/**
+ * JSON-serialized ClarificationRequest when status = NeedsClarification
+ */
+clarification_request: string | null, created_at: string, updated_at: string, };
 
 export type CreateAgentFlow = { task_id: string, flow_type: FlowType, planner_agent_id: string | null, executor_agent_id: string | null, verifier_agent_id: string | null, flow_config: JsonValue | null, human_approval_required: boolean | null, };
 
 export type UpdateAgentFlow = { status: FlowStatus | null, current_phase: AgentPhase | null, planner_agent_id: string | null, executor_agent_id: string | null, verifier_agent_id: string | null, handoff_instructions: string | null, verification_score: number | null, approved_by: string | null, };
+
+export type RespondClarificationPayload = { response: string, resume_status?: FlowStatus, };
+
+export type OrgCostSummary = { total_vibe: number, total_cost_cents: number, transaction_count: number, total_input_tokens: number, total_output_tokens: number, };
+
+export type ModelCostRow = { model: string, total_vibe: number, total_cost_cents: number, transaction_count: number, };
+
+export type ProjectCostRow = { project_id: string | null, project_name: string | null, total_vibe: number, total_cost_cents: number, transaction_count: number, };
 
 export type FlowEventType = "phase_started" | "phase_completed" | "artifact_created" | "artifact_updated" | "approval_requested" | "approval_decision" | "wide_research_started" | "subagent_progress" | "wide_research_completed" | "agent_handoff" | "flow_paused" | "flow_resumed" | "flow_failed" | "flow_completed";
 

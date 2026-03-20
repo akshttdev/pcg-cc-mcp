@@ -2145,7 +2145,7 @@ impl LocalContainerService {
             Ok(flow) => {
                 // Transition to Execution phase (classic pipeline skips Planning)
                 if let Err(e) =
-                    AgentFlow::transition_to_phase(&self.db.pool, flow.id, AgentPhase::Execution)
+                    AgentFlow::transition_to_phase(&self.db.pool, flow.id, AgentPhase::Execution, None)
                         .await
                 {
                     tracing::warn!("Failed to transition flow to execution phase: {}", e);
