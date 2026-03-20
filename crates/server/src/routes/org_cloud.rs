@@ -231,7 +231,7 @@ async fn download_file(
             header::CONTENT_DISPOSITION,
             format!(
                 "attachment; filename=\"{}\"",
-                file.file_name.replace('"', "_").replace('\\', "_")
+                file.file_name.replace(['"', '\\'], "_")
             ),
         )
         .body(Body::from_stream(stream))

@@ -68,7 +68,7 @@ mod tests {
 
     #[test]
     fn test_priority_enum() {
-        let priorities = vec![
+        let priorities = [
             Priority::Critical,
             Priority::High,
             Priority::Medium,

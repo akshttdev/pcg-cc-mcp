@@ -158,7 +158,7 @@ async fn fetch_peers_from_log_fallback() -> (Vec<PeerInfo>, bool) {
 
         let relay_regex = Regex::new(r"Relay connected").unwrap();
 
-        let lines: Vec<String> = reader.lines().filter_map(|l| l.ok()).collect();
+        let lines: Vec<String> = reader.lines().map_while(Result::ok).collect();
 
         for line in lines.iter().rev().take(1000) {
             if relay_regex.is_match(line) {

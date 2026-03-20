@@ -1,4 +1,8 @@
+#![allow(dead_code)]
+// MCP task server — fields/methods used via Serialize or reserved for future use
+#[allow(dead_code)]
 mod deps;
+#[allow(dead_code)]
 mod helpers;
 mod knowledge;
 mod policy;

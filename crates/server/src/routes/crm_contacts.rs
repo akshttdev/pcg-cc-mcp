@@ -73,7 +73,6 @@ async fn require_contact_org_access(
 }
 
 /// GET /crm/contacts - List contacts by organization
-
 async fn list_contacts(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,

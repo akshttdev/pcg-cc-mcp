@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use db::models::{
     project::Project,
     task::{CreateTask, Priority, Task, TaskWithAttemptStatus},

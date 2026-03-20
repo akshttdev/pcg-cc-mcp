@@ -49,7 +49,6 @@ async fn require_pipeline_org_access(
 }
 
 /// GET /crm/pipelines - List pipelines for an organization
-
 async fn list_pipelines(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
