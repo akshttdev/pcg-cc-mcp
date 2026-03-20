@@ -3,7 +3,7 @@
 //! Discovers and manages projects from a structured topos directory.
 //! The topos directory follows a standard structure:
 //!
-//! ```
+//! ```text
 //! /path/to/topos/
 //! ├── ProjectName/
 //! │   ├── GitHub/
