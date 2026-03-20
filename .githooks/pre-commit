@@ -18,6 +18,16 @@ if [ -n "$STAGED_RS" ]; then
   echo "$STAGED_RS" | xargs git add
 fi
 
+# ── Rust: remind about type generation if TS-exported structs changed ──
+if [ -n "$STAGED_RS" ] && echo "$STAGED_RS" | xargs grep -l 'derive.*TS\|ts(export)' 2>/dev/null | head -1 > /dev/null 2>&1; then
+  if echo "$STAGED_RS" | xargs grep -l 'derive.*TS\|ts(export)' 2>/dev/null | head -1 | grep -q .; then
+    echo ""
+    echo "[pre-commit] ⚠ Staged files contain #[derive(TS)] changes."
+    echo "             Run 'npm run generate-types' and commit shared/types.ts"
+    echo ""
+  fi
+fi
+
 # ── Frontend: eslint --fix + prettier via lint-staged ──
 STAGED_FE=$(git diff --cached --name-only --diff-filter=ACM -- 'frontend/*.ts' 'frontend/*.tsx' 'frontend/*.js' 'frontend/*.json' 'frontend/*.css' 'shared/*.ts')
 if [ -n "$STAGED_FE" ]; then
