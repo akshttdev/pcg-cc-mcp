@@ -18,6 +18,25 @@
 
 ---
 
+## P0.5 — CI Quality (do on main, feature branches pick up on merge)
+
+### CI-1. Add E2E Tests to CI
+**Source:** PR #53 review
+**What:** Add Playwright E2E test job to `ci.yml`, gated on `github.ref == 'refs/heads/main'` to avoid wasteful runs on feature branches. Use test seed DB, headless Chromium, existing `e2e/` suite. Exclude `quarantine/` and `demos/`.
+**Effort:** 0.5 days | **Status:** NOT STARTED
+
+### CI-2. Reduce ESLint max-warnings (860 → ~120)
+**Source:** PR #51 CI fixes
+**What:** `simple-import-sort` added but not auto-fixed on existing files, so `--max-warnings` was bumped from 110 to 860. Run `eslint --fix` across entire frontend, then lower threshold back.
+**Effort:** 0.25 days | **Status:** NOT STARTED
+
+### CI-3. Fix 467 Pre-existing Clippy Warnings
+**Source:** PR #51 CI fixes
+**What:** 13 clippy lint categories suppressed via `-A` flags in CI (326 `uninlined_format_args`, 68 `collapsible_if`, etc.). Run `cargo clippy --fix` per-crate, then remove `-A` flags.
+**Effort:** 1 day | **Status:** NOT STARTED
+
+---
+
 ## P1 — Major / High Impact
 
 ### 3. Unify MCP Config Systems
