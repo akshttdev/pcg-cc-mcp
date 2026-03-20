@@ -210,8 +210,10 @@ Redirect dashboard from dead `token_usage` table to `vibe_transactions` (source 
 - Create `frontend/src/lib/api/costs.ts` — dedicated cost API module (don't extend vibeApi in workflows.ts)
 - Extract `ai-usage.tsx` (518 lines) tab components into separate files during refactor
 - Update extracted tab components + `TokenUsageWidget.tsx` to call new cost API
-- **DONE**: `cargo sqlx prepare --workspace` + `npm run generate-types` (types added to generate_types.rs)
-- **Deferred**: date range filtering on cost endpoints (no `since`/`until` params yet), full `vibe_transactions` BLOB→TEXT migration
+- **DONE**: `cargo sqlx prepare --workspace` + `npm run generate-types` (types added to generate_types.rs, shared/types.ts updated)
+- **FIXED**: ShutdownRegistry scope error after merge (registry creation moved before executor block)
+- **Regression analysis**: no stale references, no dead code, no import gaps, all access control complete, router wiring correct
+- **Deferred**: date range filtering on cost endpoints, full `vibe_transactions` BLOB→TEXT migration, hex conversion SQL deduplication
 
 ### 7. Structured Response Protocol (S0-03 + Arch D) [FOUNDATION — merged with #9]
 **Effort**: Combined with #9 | **PR**: #55
