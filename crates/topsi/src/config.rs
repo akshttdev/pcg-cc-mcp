@@ -25,7 +25,7 @@ impl Default for AutonomyLevel {
 
 impl AutonomyLevel {
     /// Parse from a snake_case string, defaulting to Supervised
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse_level(s: &str) -> Self {
         match s {
             "full" => Self::Full,
             "supervised" => Self::Supervised,

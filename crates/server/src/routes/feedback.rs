@@ -2,7 +2,7 @@
 //!
 //! Creates tasks in the Bug Reports project for user feedback.
 
-use axum::{Router, extract::State, response::Json as ResponseJson, routing::post};
+use axum::{Extension, Router, extract::State, response::Json as ResponseJson, routing::post};
 use db::{
     constants::{BUGREPORTS_BOARD_ID, BUGREPORTS_PROJECT_ID},
     db_uuid::DbUuid,
