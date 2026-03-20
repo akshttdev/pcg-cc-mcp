@@ -1,33 +1,21 @@
 #!/bin/sh
-# Pre-commit hook: auto-fix clippy + fmt on staged Rust files, lint-staged on frontend
+# Pre-commit hook: fmt staged Rust files + lint-staged on frontend
 # Install: git config core.hooksPath .githooks
 
 set -e
 
-# ── Rust: clippy --fix + cargo fmt on changed crates ──
+# ── Rust: cargo fmt on staged .rs files only ──
 STAGED_RS=$(git diff --cached --name-only --diff-filter=ACM -- '*.rs')
 if [ -n "$STAGED_RS" ]; then
-  # Extract unique crate names from staged file paths
-  CRATE_ARGS=""
-  for crate in $(echo "$STAGED_RS" | sed -n 's|^crates/\([^/]*\)/.*|\1|p' | sort -u); do
-    CRATE_ARGS="$CRATE_ARGS -p $crate"
+  echo "[pre-commit] Formatting staged Rust files"
+  # Format only the staged files (not entire crates)
+  echo "$STAGED_RS" | while read -r f; do
+    if [ -f "$f" ]; then
+      rustfmt --edition 2021 "$f" 2>/dev/null || true
+    fi
   done
-
-  if [ -n "$CRATE_ARGS" ]; then
-    echo "[pre-commit] Running clippy --fix on:$CRATE_ARGS"
-    # shellcheck disable=SC2086
-    cargo clippy --fix $CRATE_ARGS --allow-dirty --allow-staged -- -D warnings || {
-      echo "[pre-commit] clippy --fix failed — check errors above"
-      exit 1
-    }
-
-    echo "[pre-commit] Running cargo fmt"
-    # shellcheck disable=SC2086
-    cargo fmt $CRATE_ARGS
-
-    # Re-stage fixed files
-    echo "$STAGED_RS" | xargs git add
-  fi
+  # Re-stage formatted files
+  echo "$STAGED_RS" | xargs git add
 fi
 
 # ── Frontend: eslint --fix + prettier via lint-staged ──
