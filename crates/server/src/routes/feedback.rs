@@ -82,7 +82,9 @@ pub async fn submit_feedback(
     // Validate frustration_level range
     if let Some(level) = req.frustration_level {
         if !(1..=5).contains(&level) {
-            return Err(ApiError::BadRequest("frustration_level must be between 1 and 5".to_string()));
+            return Err(ApiError::BadRequest(
+                "frustration_level must be between 1 and 5".to_string(),
+            ));
         }
     }
 

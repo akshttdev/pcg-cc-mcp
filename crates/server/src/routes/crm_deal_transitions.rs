@@ -671,11 +671,17 @@ pub async fn manage_stage_review_tasks(
                 .flatten()
                 .and_then(|hex| {
                     // hex(id) returns 32 chars for a 16-byte UUID BLOB
-                    if hex.len() != 32 { return None; }
+                    if hex.len() != 32 {
+                        return None;
+                    }
                     let h = hex.to_lowercase();
                     Some(format!(
                         "{}-{}-{}-{}-{}",
-                        &h[..8], &h[8..12], &h[12..16], &h[16..20], &h[20..]
+                        &h[..8],
+                        &h[8..12],
+                        &h[12..16],
+                        &h[16..20],
+                        &h[20..]
                     ))
                 });
 

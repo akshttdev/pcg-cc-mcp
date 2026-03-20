@@ -55,8 +55,7 @@ const TEMPLATE_COLS: &str = "id, project_id, title, description, template_name, 
 impl TaskTemplate {
     pub async fn find_all(pool: &SqlitePool) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, TaskTemplate>(&format!(
-            "SELECT {} FROM task_templates ORDER BY project_id IS NULL DESC, template_name ASC",
-            TEMPLATE_COLS
+            "SELECT {TEMPLATE_COLS} FROM task_templates ORDER BY project_id IS NULL DESC, template_name ASC"
         ))
         .fetch_all(pool)
         .await
@@ -68,16 +67,14 @@ impl TaskTemplate {
     ) -> Result<Vec<Self>, sqlx::Error> {
         if let Some(pid) = project_id {
             sqlx::query_as::<_, TaskTemplate>(&format!(
-                "SELECT {} FROM task_templates WHERE project_id = ?1 ORDER BY template_name ASC",
-                TEMPLATE_COLS
+                "SELECT {TEMPLATE_COLS} FROM task_templates WHERE project_id = ?1 ORDER BY template_name ASC"
             ))
             .bind(pid)
             .fetch_all(pool)
             .await
         } else {
             sqlx::query_as::<_, TaskTemplate>(&format!(
-                "SELECT {} FROM task_templates WHERE project_id IS NULL ORDER BY template_name ASC",
-                TEMPLATE_COLS
+                "SELECT {TEMPLATE_COLS} FROM task_templates WHERE project_id IS NULL ORDER BY template_name ASC"
             ))
             .fetch_all(pool)
             .await
@@ -86,8 +83,7 @@ impl TaskTemplate {
 
     pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as::<_, TaskTemplate>(&format!(
-            "SELECT {} FROM task_templates WHERE id = ?1",
-            TEMPLATE_COLS
+            "SELECT {TEMPLATE_COLS} FROM task_templates WHERE id = ?1"
         ))
         .bind(id)
         .fetch_optional(pool)
@@ -100,8 +96,7 @@ impl TaskTemplate {
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, TaskTemplate>(
             &format!(
-                "SELECT {} FROM task_templates WHERE organization_id = ?1 OR (project_id IS NULL AND organization_id IS NULL) ORDER BY template_name ASC",
-                TEMPLATE_COLS
+                "SELECT {TEMPLATE_COLS} FROM task_templates WHERE organization_id = ?1 OR (project_id IS NULL AND organization_id IS NULL) ORDER BY template_name ASC"
             )
         )
         .bind(organization_id)
@@ -120,7 +115,7 @@ impl TaskTemplate {
             &format!(
                 "INSERT INTO task_templates (id, project_id, title, description, template_name, priority, completion_criteria, output_format, assigned_agent, tags, organization_id) \
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11) \
-                 RETURNING {}", TEMPLATE_COLS
+                 RETURNING {TEMPLATE_COLS}"
             )
         )
         .bind(id)
@@ -176,8 +171,7 @@ impl TaskTemplate {
             "UPDATE task_templates SET title = ?2, description = ?3, template_name = ?4, \
                  priority = ?5, completion_criteria = ?6, output_format = ?7, assigned_agent = ?8, \
                  tags = ?9, updated_at = datetime('now', 'subsec') \
-                 WHERE id = ?1 RETURNING {}",
-            TEMPLATE_COLS
+                 WHERE id = ?1 RETURNING {TEMPLATE_COLS}"
         ))
         .bind(id)
         .bind(title)

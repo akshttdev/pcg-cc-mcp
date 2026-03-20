@@ -93,7 +93,7 @@ impl ModelPricing {
             LIMIT 1
             "#,
         )
-        .bind(format!("{}%", normalized))
+        .bind(format!("{normalized}%"))
         .bind(&normalized)
         .bind(provider)
         .fetch_optional(pool)
@@ -153,13 +153,13 @@ pub fn infer_provider(model: &str) -> &'static str {
 
     if lower.contains("claude") {
         "anthropic"
+    } else if lower.contains("gpt-oss") {
+        "ollama"
     } else if lower.contains("gpt") || lower.contains("codex") {
         "openai"
     } else if lower.contains("gemini") {
         "google"
     } else if lower.contains("llama") || lower.contains("mistral") || lower.contains("qwen") {
-        "ollama"
-    } else if lower.contains("gpt-oss") {
         "ollama"
     } else {
         "openai" // Default fallback

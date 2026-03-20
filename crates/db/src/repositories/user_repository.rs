@@ -124,23 +124,23 @@ impl UserRepository {
         let mut bind_count = 1;
 
         if email.is_some() {
-            query.push_str(&format!(", email = ${}", bind_count));
+            query.push_str(&format!(", email = ${bind_count}"));
             bind_count += 1;
         }
         if full_name.is_some() {
-            query.push_str(&format!(", full_name = ${}", bind_count));
+            query.push_str(&format!(", full_name = ${bind_count}"));
             bind_count += 1;
         }
         if is_active.is_some() {
-            query.push_str(&format!(", is_active = ${}", bind_count));
+            query.push_str(&format!(", is_active = ${bind_count}"));
             bind_count += 1;
         }
         if is_admin.is_some() {
-            query.push_str(&format!(", is_admin = ${}", bind_count));
+            query.push_str(&format!(", is_admin = ${bind_count}"));
             bind_count += 1;
         }
 
-        query.push_str(&format!(" WHERE id = ${} RETURNING *", bind_count));
+        query.push_str(&format!(" WHERE id = ${bind_count} RETURNING *"));
 
         let mut q = sqlx::query_as::<_, User>(&query);
 

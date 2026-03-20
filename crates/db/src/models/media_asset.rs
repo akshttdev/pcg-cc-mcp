@@ -113,6 +113,8 @@ impl MediaAsset {
         .await
     }
 
+    // TODO: refactor into struct
+    #[allow(clippy::too_many_arguments)]
     pub async fn update_ai_metadata(
         pool: &SqlitePool,
         id: Uuid,

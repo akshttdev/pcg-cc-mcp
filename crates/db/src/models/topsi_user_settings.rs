@@ -18,6 +18,14 @@ pub enum ConfirmationMode {
 }
 
 impl ConfirmationMode {
+    pub fn parse_mode(s: &str) -> Self {
+        match s {
+            "always_confirm" => Self::AlwaysConfirm,
+            "autonomous" => Self::Autonomous,
+            _ => Self::ConfirmDestructive,
+        }
+    }
+
     /// Restrictiveness ordering (higher = more restrictive)
     pub fn restrictiveness(&self) -> u8 {
         match self {
@@ -36,7 +44,7 @@ impl ConfirmationMode {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse_level(s: &str) -> Self {
         match s {
             "always_confirm" => Self::AlwaysConfirm,
             "autonomous" => Self::Autonomous,
@@ -160,16 +168,15 @@ impl TopsiUserSettings {
     /// Get the effective confirmation mode for a specific tool
     pub fn confirmation_mode_for_tool(&self, tool_name: &str) -> ConfirmationMode {
         // Check per-tool override first
-        if let Some(ref overrides_json) = self.per_tool_overrides {
-            if let Ok(overrides) = serde_json::from_str::<HashMap<String, String>>(overrides_json) {
-                if let Some(mode_str) = overrides.get(tool_name) {
-                    return ConfirmationMode::from_str(mode_str);
-                }
-            }
+        if let Some(ref overrides_json) = self.per_tool_overrides
+            && let Ok(overrides) = serde_json::from_str::<HashMap<String, String>>(overrides_json)
+            && let Some(mode_str) = overrides.get(tool_name)
+        {
+            return ConfirmationMode::parse_mode(mode_str);
         }
 
         // Fall back to default mode
-        let default_mode = ConfirmationMode::from_str(&self.default_confirmation_mode);
+        let default_mode = ConfirmationMode::parse_mode(&self.default_confirmation_mode);
         let risk = classify_tool_risk(tool_name);
 
         match (&default_mode, &risk) {

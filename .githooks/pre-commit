@@ -1,5 +1,21 @@
 #!/bin/sh
-# Pre-commit hook: run lint-staged on frontend files
+# Pre-commit hook: auto-fix clippy + fmt on staged Rust files, lint-staged on frontend
 # Install: git config core.hooksPath .githooks
 
+# ── Rust: clippy --fix + fmt on changed crates ──
+STAGED_RS=$(git diff --cached --name-only --diff-filter=ACM -- '*.rs')
+if [ -n "$STAGED_RS" ]; then
+  # Find which crates have staged changes
+  CRATES=$(echo "$STAGED_RS" | grep -oP 'crates/[^/]+' | sort -u | sed 's|crates/|-p |' | tr '\n' ' ')
+  if [ -n "$CRATES" ]; then
+    # Auto-fix clippy errors on changed crates
+    eval cargo clippy --fix $CRATES --allow-dirty --allow-staged -- -D warnings 2>/dev/null
+    # Format changed files
+    echo "$STAGED_RS" | xargs rustfmt 2>/dev/null
+    # Re-stage fixed files
+    echo "$STAGED_RS" | xargs git add
+  fi
+fi
+
+# ── Frontend: eslint --fix + prettier via lint-staged ──
 cd frontend && npx lint-staged

@@ -6,6 +6,12 @@ use uuid::Uuid;
 /// Simple auth service for internal use
 pub struct AuthService;
 
+impl Default for AuthService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AuthService {
     pub fn new() -> Self {
         Self
@@ -63,7 +69,7 @@ mod tests {
     fn test_generate_admin_hash() {
         let password = "admin123";
         let hash = AuthService::hash_password(password).unwrap();
-        println!("Hash for admin123: {}", hash);
+        println!("Hash for admin123: {hash}");
         assert!(AuthService::verify_password(password, &hash).unwrap());
     }
 

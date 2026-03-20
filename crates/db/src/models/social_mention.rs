@@ -128,10 +128,10 @@ impl SocialMention {
     ) -> Result<Self, SocialMentionError> {
         let id = Uuid::new_v4();
         let mention_type = format!("{:?}", data.mention_type).to_lowercase();
-        let sentiment = data.sentiment.map(|s| format!("{:?}", s).to_lowercase());
+        let sentiment = data.sentiment.map(|s| format!("{s:?}").to_lowercase());
         let priority = data
             .priority
-            .map(|p| format!("{:?}", p).to_lowercase())
+            .map(|p| format!("{p:?}").to_lowercase())
             .unwrap_or_else(|| "normal".to_string());
         let media_urls = data.media_urls.map(|v| serde_json::to_string(&v).unwrap());
         let author_is_verified = data.author_is_verified.unwrap_or(false);
@@ -266,9 +266,9 @@ impl SocialMention {
         id: Uuid,
         data: UpdateSocialMention,
     ) -> Result<Self, SocialMentionError> {
-        let status = data.status.map(|s| format!("{:?}", s).to_lowercase());
-        let sentiment = data.sentiment.map(|s| format!("{:?}", s).to_lowercase());
-        let priority = data.priority.map(|p| format!("{:?}", p).to_lowercase());
+        let status = data.status.map(|s| format!("{s:?}").to_lowercase());
+        let sentiment = data.sentiment.map(|s| format!("{s:?}").to_lowercase());
+        let priority = data.priority.map(|p| format!("{p:?}").to_lowercase());
 
         let replied_at = data.reply_content.as_ref().map(|_| Utc::now());
 

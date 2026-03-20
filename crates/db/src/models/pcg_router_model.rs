@@ -76,10 +76,10 @@ impl PcgRouterModel {
     /// Resolve the API key: prefer stored value, then fall back to env var lookup.
     pub fn resolve_api_key(&self) -> Option<String> {
         // 1. Check for a directly stored API key value
-        if let Some(ref key) = self.api_key_value {
-            if !key.is_empty() {
-                return Some(key.clone());
-            }
+        if let Some(ref key) = self.api_key_value
+            && !key.is_empty()
+        {
+            return Some(key.clone());
         }
         // 2. Fall back to environment variable lookup
         self.api_key_env_var

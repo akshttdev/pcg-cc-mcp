@@ -78,6 +78,8 @@ impl GatewayRequest {
         Ok(())
     }
 
+    // TODO: refactor into struct
+    #[allow(clippy::too_many_arguments)]
     pub async fn mark_fulfilled(
         pool: &SqlitePool,
         id: Uuid,
