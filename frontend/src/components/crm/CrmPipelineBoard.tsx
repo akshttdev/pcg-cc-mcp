@@ -451,6 +451,10 @@ export function CrmPipelineBoard({
         projectId={projectId || pipeline?.project_id}
         stageName={selectedDealStage}
         allStages={stages}
+        onMoveTo={(deal, stageId) => {
+          const targetSD = kanbanData.stages.find((s) => s.stage.id === stageId);
+          moveDeal.mutate({ dealId: deal.id, data: { stage_id: stageId, position: targetSD?.deals.length ?? 0 } });
+        }}
       />
     </div>
   );

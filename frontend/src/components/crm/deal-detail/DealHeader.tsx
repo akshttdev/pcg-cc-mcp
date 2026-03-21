@@ -161,13 +161,14 @@ const FALLBACK_STAGES = [
 interface PipelineStepperProps {
   currentStage: string;
   allStages?: CrmPipelineStage[];
+  onStageClick?: (stageName: string, stageId: string) => void;
 }
 
-export function PipelineStepper({ currentStage, allStages }: PipelineStepperProps) {
+export function PipelineStepper({ currentStage, allStages, onStageClick }: PipelineStepperProps) {
   const stages =
     allStages && allStages.length > 0
-      ? allStages.map((s) => ({ name: s.name, color: s.color }))
-      : FALLBACK_STAGES;
+      ? allStages.map((s) => ({ id: s.id, name: s.name, color: s.color }))
+      : FALLBACK_STAGES.map((s) => ({ id: '', ...s }));
 
   const activeStages = stages.filter((s) => s.name.toLowerCase() !== 'closed lost');
   const isClosedLost = currentStage.toLowerCase() === 'closed lost';
@@ -184,12 +185,18 @@ export function PipelineStepper({ currentStage, allStages }: PipelineStepperProp
           const isCompleted = i < currentIndex;
           const isCurrent = i === currentIndex;
 
+          const isClickable = onStageClick && !isCurrent && stage.id;
           return (
             <div key={stage.name} className="flex items-center flex-1 min-w-0">
-              <div className="flex flex-col items-center flex-1 min-w-0">
+              <div
+                className={cn("flex flex-col items-center flex-1 min-w-0", isClickable && "cursor-pointer group/stage")}
+                onClick={isClickable ? () => onStageClick(stage.name, stage.id) : undefined}
+                title={isClickable ? `Move to ${stage.name}` : undefined}
+              >
                 <div
                   className={cn(
                     'w-full h-1 rounded-sm transition-all',
+                    isClickable && 'group-hover/stage:h-2 group-hover/stage:opacity-80',
                     !isCurrent &&
                       (isClosedLost
                         ? 'bg-muted'
