@@ -292,8 +292,17 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
 
   if (!org || !orgId) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-muted-foreground">Organisation not found.</div>
+      <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
+        <Building2 className="w-12 h-12 text-muted-foreground/50" />
+        <div>
+          <h2 className="text-lg font-semibold">Organization not found</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            This organization doesn't exist or you don't have access to it.
+          </p>
+        </div>
+        <Link to="/projects" className="text-sm text-primary hover:underline">
+          ← Back to your projects
+        </Link>
       </div>
     );
   }

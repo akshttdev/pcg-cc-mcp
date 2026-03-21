@@ -181,6 +181,7 @@ export function WorkflowCardGrid({
                     <button
                       className="p-1 rounded hover:bg-primary/10 hover:text-primary transition-colors"
                       title="Run workflow"
+                      aria-label={`Run ${wf.name}`}
                       onClick={(e) => { e.stopPropagation(); onRun(wf); }}
                     >
                       <Play className="h-3.5 w-3.5" />
@@ -190,6 +191,7 @@ export function WorkflowCardGrid({
                     <button
                       className="p-1 rounded hover:bg-blue-500/10 hover:text-blue-600 transition-colors"
                       title="Edit in visual builder"
+                      aria-label={`Edit ${wf.name}`}
                       onClick={(e) => { e.stopPropagation(); onEdit(wf); }}
                     >
                       <Pencil className="h-3.5 w-3.5" />
@@ -198,6 +200,7 @@ export function WorkflowCardGrid({
                   {onDelete && !wf.is_system && (
                     <button
                       className="p-1 rounded hover:bg-destructive/10 hover:text-destructive transition-colors"
+                      aria-label={`Delete ${wf.name}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         if (confirm(`Delete "${wf.name}"?`)) onDelete(wf);
@@ -211,6 +214,7 @@ export function WorkflowCardGrid({
                       <DropdownMenuTrigger asChild>
                         <button
                           className="p-1 rounded hover:bg-muted transition-colors"
+                          aria-label={`More actions for ${wf.name}`}
                           onClick={(e) => e.stopPropagation()}
                         >
                           <MoreHorizontal className="h-3.5 w-3.5" />

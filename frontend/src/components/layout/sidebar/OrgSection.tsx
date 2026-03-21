@@ -58,8 +58,9 @@ export function OrgSection({
   const location = useLocation();
 
   // Part A fix: use Zustand-backed store instead of useState for collapse persistence
-  const [internalExpanded, setInternalExpanded] = useExpandable(`sidebar:org:${org.id}:internal`, true);
-  const [clientsExpanded, setClientsExpanded] = useExpandable(`sidebar:org:${org.id}:clients`, true);
+  // Default collapsed when section is empty to reduce visual noise
+  const [internalExpanded, setInternalExpanded] = useExpandable(`sidebar:org:${org.id}:internal`, org.internal_projects.length > 0);
+  const [clientsExpanded, setClientsExpanded] = useExpandable(`sidebar:org:${org.id}:clients`, org.clients.length > 0);
   const [orgContentExpanded, setOrgContentExpanded] = useExpandable(`sidebar:org:${org.id}`, true);
 
   // Part A fix: removed isWorkspacePage auto-collapse useEffect

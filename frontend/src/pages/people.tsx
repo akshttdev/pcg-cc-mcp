@@ -195,7 +195,7 @@ export function PeoplePage() {
             <DropdownMenuContent align="start">
               <DropdownMenuItem onClick={() => setSelectedOrgId(undefined)}>
                 <Globe className="h-4 w-4 mr-2" />
-                All Organisations
+                All Organizations
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               {userOrgs.map(org => (
