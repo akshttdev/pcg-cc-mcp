@@ -142,12 +142,25 @@ See Phase 0 sprint backlog above.
 
 ## P0.5 — Sprint Gap Fixes (from 2026-03-21 gap audit)
 
-### GAP-1. Cost bridge frontend integration [P0]
+### GAP-1. Cost bridge frontend integration [P0] ✅ DONE
 **Source:** `planning/2026-03-21--analysis--sprint-gap-audit.md`
-**What:** `ai-usage.tsx` still calls dead `tokenUsageApi`. Backend cost endpoints exist but frontend never wired. Dashboard shows $0.
-**Scope:** 3 steps — (1) backend: add `?days` param + 3 missing endpoints (daily, by-provider, by-agent), (2) fix bigint→number types, (3) frontend: replace all `tokenUsageApi` calls with `costsApi`, map field names.
-**Effort:** 3h | **Status:** NOT STARTED
-**Rationale:** Core sprint deliverable left incomplete — the entire cost bridge exists but is invisible to users.
+**What:** `ai-usage.tsx` now calls `costsApi` (6 endpoints with `?days` filter). All `tokenUsageApi` references removed. Types use `number` not `bigint`.
+**Status:** DONE (branch `feature/2026-03-21--gap-analysis`)
+
+### GAP-1a. TokenUsageWidget migration [P1]
+**Source:** Gap analysis modularization scan
+**What:** `components/mission-control/TokenUsageWidget.tsx` (204 lines) also calls dead `tokenUsageApi.getToday()` and `getByProject()`. Mission control dashboard shows $0.
+**Effort:** 0.5h | **Status:** NOT STARTED
+
+### GAP-1b. Cost formatting helpers [P2]
+**Source:** Gap analysis modularization scan
+**What:** `formatCost()` and `formatTokens()` are defined inline in `ai-usage.tsx`. Extract to `frontend/src/lib/format.ts` for reuse by TokenUsageWidget and future cost components.
+**Effort:** 0.5h | **Status:** NOT STARTED
+
+### GAP-1c. Cost page component extraction [P2]
+**Source:** Gap analysis modularization scan
+**What:** `ai-usage.tsx` is 539 lines (over 500-line limit). Extract `CostSummaryCards`, `CostTrendChart`, and `CostBreakdownTable` components. The 4 breakdown tabs (models, providers, projects, agents) share the same Table structure.
+**Effort:** 1.5h | **Status:** NOT STARTED
 
 ### GAP-2. Agent flow engine LLM dispatch [P0]
 **Source:** `planning/2026-03-21--analysis--sprint-gap-audit.md`

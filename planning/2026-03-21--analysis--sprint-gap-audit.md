@@ -206,6 +206,10 @@ There was no point where someone asked "are we on track?" At ~50% through the sp
 | **P3** | #6 /costs/daily endpoint | No daily trends | 0.5h | Nice to have |
 | **P3** | #7 ResponseMetrics + type generation | Metrics tracking | 1h | Deferred |
 | **P3** | #10 Structured friction schema | Better analytics | 1.5h | Nice to have |
+| **P1** | #6 TokenUsageWidget migration | Mission control widget also shows $0 | 0.5h | Same dead API as dashboard |
+| **P2** | #6 Extract shared formatCost/formatTokens | Duplicated in ai-usage, widget | 0.5h | DRY |
+| **P2** | #6 Extract CostBreakdownTable component | 4 tabs share same table structure | 1h | ai-usage.tsx is 539 lines (>500 limit) |
+| **P2** | #6 Extract CostSummaryCards component | Summary cards at top of overview | 0.5h | Part of page split |
 
 ---
 
