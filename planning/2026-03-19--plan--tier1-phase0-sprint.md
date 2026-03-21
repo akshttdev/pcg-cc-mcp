@@ -654,6 +654,18 @@ Inline stage-trigger agents (Scout, Astra, Cash, Lux) coexist with engine in Pha
 12. **Gap analysis**: Background operation count corrected to ~14 (no PR Monitor Service exists)
 13. **Item #3**: Stash verified — `stash@{0}` contains expected 3 files + 654 auto-reformatted to discard. Added `pnpm install` step.
 
+---
+
+## Functionality Audit (2026-03-21)
+
+**Overall**: SHIP WITH CAVEATS
+**Report**: `planning/2026-03-21--review--functionality-audit.md`
+**Features**: 4 WORKING, 6 PARTIAL, 2 STUB, 0 NOT WIRED
+**Action Items**: 2 Must Fix, 5 Should Fix, 4 Nice to Have
+**Key Finding**: F10 (cost bridge) marked DONE but frontend never calls `costsApi` — `ai-usage.tsx` still uses `tokenUsageApi`
+
+---
+
 ### Decisions Resolved (post-expansion)
 1. ~~uuid::Uuid check~~ → Verified: all 6 still present, fix proceeds as planned
 2. ~~PR dependency~~ → Accepted: renumbered PRs so #54 (cost bridge) merges after #51
