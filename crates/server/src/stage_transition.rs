@@ -10,7 +10,7 @@ use db::models::crm_pipeline::{CrmPipeline, CrmPipelineStage, PipelineType};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use ts_rs::TS;
-use uuid::Uuid;
+use db::db_uuid::DbUuid;
 
 use crate::routes::crm_deal_automations::{
     generate_deck_background, generate_phase1_business_report, trigger_deep_research_pass2,
@@ -385,7 +385,7 @@ async fn handle_won_transition(pool: &SqlitePool, deal: &CrmDeal) -> Option<Stri
         .unwrap_or_default();
     let first_stage = delivery_stages.first()?;
 
-    let _ = CrmDeal::create(
+    match CrmDeal::create(
         pool,
         CreateCrmDeal {
             organization_id: deal_org_id.clone(),
@@ -403,7 +403,13 @@ async fn handle_won_transition(pool: &SqlitePool, deal: &CrmDeal) -> Option<Stri
         },
     )
     .await
-    .ok()?;
+    {
+        Ok(_) => {}
+        Err(e) => {
+            tracing::error!("[StageTransition] Failed to create delivery deal for {}: {}", deal.id, e);
+            return None;
+        }
+    }
 
     Some("Created delivery pipeline deal".to_string())
 }
@@ -419,12 +425,12 @@ async fn schedule_agent_flow(
     flow_type: &str,
     cancel_window_secs: u32,
 ) -> anyhow::Result<(String, DateTime<Utc>)> {
-    let flow_id = Uuid::new_v4();
+    let flow_id = DbUuid::new();
     let deadline = Utc::now() + chrono::Duration::seconds(cancel_window_secs as i64);
 
     // We need a task_id for the agent_flows table. Use the deal's linked task if any,
     // otherwise create a placeholder UUID.
-    let task_id = Uuid::new_v4();
+    let task_id = DbUuid::new();
 
     let flow_config = serde_json::json!({
         "agent_name": agent_name,
