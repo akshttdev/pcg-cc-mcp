@@ -168,8 +168,12 @@ async fn webhook_trigger_handler(
         return Err(ApiError::BadRequest("Trigger is disabled".to_string()));
     }
 
-    // Check cooldown
-    if !trigger.is_past_cooldown() {
+    // Atomic cooldown check — prevents race condition where concurrent webhook
+    // requests both pass the cooldown check and double-fire
+    let claimed = WorkflowTrigger::try_claim_trigger(&pool, &trigger_id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Cooldown check failed: {}", e)))?;
+    if claimed.is_none() {
         return Err(ApiError::TooManyRequests(
             "Trigger is in cooldown period".to_string(),
         ));
