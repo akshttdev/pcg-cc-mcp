@@ -100,7 +100,7 @@ impl SubmitFeedbackRequest {
             (&self.friction_point, "Friction point"),
             (&self.expected_behavior, "Expected behavior"),
         ] {
-            if let Some(ref v) = field {
+            if let Some(v) = field {
                 if v.len() > MAX_FIELD_LEN {
                     return Err(format!("{} must be {} characters or fewer", name, MAX_FIELD_LEN));
                 }
