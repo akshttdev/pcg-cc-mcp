@@ -61,15 +61,14 @@ export function OrgSection({
   // Default collapsed when section is empty to reduce visual noise
   const [internalExpanded, setInternalExpanded] = useExpandable(`sidebar:org:${org.id}:internal`, org.internal_projects.length > 0);
   const [clientsExpanded, setClientsExpanded] = useExpandable(`sidebar:org:${org.id}:clients`, org.clients.length > 0);
-  const [orgContentExpanded, setOrgContentExpanded] = useExpandable(`sidebar:org:${org.id}`, true);
-
-  // Part A fix: removed isWorkspacePage auto-collapse useEffect
-
   const hasActiveProject = projectId ? (
     isProjectInTree(org.internal_projects, projectId) ||
     org.clients.some((c) => isProjectInTree(c.projects, projectId))
   ) : false;
   const isActiveOrg = activeOrgId === org.id || hasActiveProject;
+
+  // Default: only expand the active org to reduce cognitive load
+  const [orgContentExpanded, setOrgContentExpanded] = useExpandable(`sidebar:org:${org.id}`, isActiveOrg);
 
   return (
     <div className="space-y-0.5">

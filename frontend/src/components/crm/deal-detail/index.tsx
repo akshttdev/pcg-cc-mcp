@@ -23,6 +23,7 @@ interface CrmDealDetailPanelProps {
   onClose: () => void;
   onEdit: (deal: CrmDealWithContact) => void;
   onDelete: (deal: CrmDealWithContact) => void;
+  onMoveTo?: (deal: CrmDealWithContact, stageId: string) => void;
   orgId?: string;
   projectId?: string;
   stageName?: string;
@@ -37,6 +38,7 @@ export function CrmDealDetailPanel({
   onClose,
   onEdit,
   onDelete,
+  onMoveTo,
   orgId,
   projectId,
   stageName,
@@ -72,7 +74,11 @@ export function CrmDealDetailPanel({
           <DealHeader deal={deal} stageColor={stageColor} onEdit={onEdit} onDelete={onDelete} />
 
           {/* Pipeline Stage Stepper */}
-          <PipelineStepper currentStage={effectiveStageName} allStages={allStages} />
+          <PipelineStepper
+            currentStage={effectiveStageName}
+            allStages={allStages}
+            onStageClick={deal && onMoveTo ? (_name, stageId) => onMoveTo(deal, stageId) : undefined}
+          />
 
           {/* Tabs */}
           <TabPanel

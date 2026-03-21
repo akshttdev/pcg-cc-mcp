@@ -10,15 +10,44 @@ use tokio_util::sync::CancellationToken;
 
 use crate::workers::BackgroundWorker;
 
+/// Runtime configuration for the agent flow executor.
+pub struct AgentFlowExecutorConfig {
+    /// Polling interval in seconds (default: 15)
+    pub poll_interval_secs: u64,
+    /// Maximum concurrent flows to process per tick (default: 5)
+    pub max_concurrent: usize,
+}
+
+impl AgentFlowExecutorConfig {
+    /// Load configuration from environment variables.
+    /// Falls back to sensible defaults if vars are not set.
+    pub fn from_env() -> Self {
+        Self {
+            poll_interval_secs: std::env::var("AGENT_FLOW_POLL_INTERVAL")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(15),
+            max_concurrent: std::env::var("AGENT_FLOW_MAX_CONCURRENT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(5),
+        }
+    }
+}
+
 /// Agent flow orchestration engine.
 /// Polls for flows in actionable states and drives them forward.
 pub struct AgentFlowExecutor {
     pool: sqlx::SqlitePool,
+    config: AgentFlowExecutorConfig,
 }
 
 impl AgentFlowExecutor {
     pub fn new(pool: sqlx::SqlitePool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            config: AgentFlowExecutorConfig::from_env(),
+        }
     }
 
     /// Process one tick: find actionable flows and dispatch them.
@@ -181,10 +210,15 @@ impl BackgroundWorker for AgentFlowExecutor {
 
         use tokio::time::interval;
 
-        let mut ticker = interval(Duration::from_secs(15));
+        let poll_secs = self.config.poll_interval_secs;
+        let mut ticker = interval(Duration::from_secs(poll_secs));
         ticker.tick().await; // discard immediate first tick
 
-        tracing::info!("[AgentFlowEngine] Started (polling every 15s)");
+        tracing::info!(
+            "[AgentFlowEngine] Started (polling every {}s, max {} concurrent)",
+            poll_secs,
+            self.config.max_concurrent
+        );
 
         loop {
             tokio::select! {
