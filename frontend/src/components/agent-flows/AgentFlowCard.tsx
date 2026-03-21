@@ -1,7 +1,11 @@
+import { useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
   Brain,
   Cog,
@@ -12,9 +16,131 @@ import {
   ChevronRight,
   User,
   Bot,
+  MessageCircleQuestion,
+  Send,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAgentFlowMutations } from '@/hooks/useAgentFlows';
 import type { AgentFlow, AgentPhase, FlowStatus } from 'shared/types';
+
+/** Shape of the JSON stored in `AgentFlow.clarification_request`. */
+interface ClarificationRequest {
+  question: string;
+  context: string | null;
+  options: string[] | null;
+  blocking: boolean;
+}
+
+function parseClarificationRequest(
+  raw: string | null
+): ClarificationRequest | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as ClarificationRequest;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ClarificationResponseForm
+// ---------------------------------------------------------------------------
+
+interface ClarificationFormProps {
+  flowId: string;
+  request: ClarificationRequest;
+}
+
+function ClarificationResponseForm({ flowId, request }: ClarificationFormProps) {
+  const [response, setResponse] = useState('');
+  const [selectedOption, setSelectedOption] = useState<string | undefined>(
+    undefined
+  );
+  const { respondClarification } = useAgentFlowMutations();
+
+  const hasOptions = request.options && request.options.length > 0;
+  const effectiveResponse = hasOptions && selectedOption ? selectedOption : response;
+  const canSubmit = effectiveResponse.trim().length > 0 && !respondClarification.isPending;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!canSubmit) return;
+    respondClarification.mutate({ flowId, response: effectiveResponse });
+  };
+
+  return (
+    <form
+      className="mt-3 space-y-3 border-t pt-3"
+      onSubmit={handleSubmit}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {/* Question */}
+      <div className="flex items-start gap-2">
+        <MessageCircleQuestion className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+        <p className="text-sm font-medium">{request.question}</p>
+      </div>
+
+      {/* Context (if provided) */}
+      {request.context && (
+        <p className="text-xs text-muted-foreground pl-6">{request.context}</p>
+      )}
+
+      {/* Options (radio buttons) */}
+      {hasOptions && (
+        <RadioGroup
+          value={selectedOption}
+          onValueChange={(val) => {
+            setSelectedOption(val);
+            // Clear free-text when an option is selected
+            setResponse('');
+          }}
+          className="pl-6 space-y-1"
+        >
+          {request.options!.map((option) => (
+            <div key={option} className="flex items-center gap-2">
+              <RadioGroupItem value={option} id={`opt-${option}`} />
+              <Label htmlFor={`opt-${option}`} className="text-sm font-normal cursor-pointer">
+                {option}
+              </Label>
+            </div>
+          ))}
+        </RadioGroup>
+      )}
+
+      {/* Free-text input */}
+      <div className="pl-6">
+        <Input
+          placeholder={hasOptions ? 'Or type a custom response...' : 'Type your response...'}
+          value={response}
+          onChange={(e) => {
+            setResponse(e.target.value);
+            // Clear selected option when typing custom response
+            if (selectedOption) setSelectedOption(undefined);
+          }}
+          className="text-sm"
+        />
+      </div>
+
+      {/* Submit */}
+      <div className="pl-6">
+        <Button
+          type="submit"
+          size="sm"
+          disabled={!canSubmit}
+          className="w-full"
+        >
+          <Send className="h-3 w-3 mr-1" />
+          {respondClarification.isPending ? 'Sending...' : 'Respond'}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AgentFlowCard
+// ---------------------------------------------------------------------------
 
 interface AgentFlowCardProps {
   flow: AgentFlow;
@@ -72,11 +198,17 @@ export function AgentFlowCard({
     }
   };
 
+  const clarificationRequest =
+    flow.status === 'needs_clarification'
+      ? parseClarificationRequest(flow.clarification_request)
+      : null;
+
   return (
     <Card
       className={cn(
         'cursor-pointer transition-all hover:shadow-md',
         flow.status === 'awaiting_approval' && 'ring-2 ring-orange-400',
+        flow.status === 'needs_clarification' && 'ring-2 ring-amber-400',
         className
       )}
       onClick={onClick}
@@ -160,6 +292,14 @@ export function AgentFlowCard({
             )}
           </div>
         </div>
+
+        {/* Clarification Response Form */}
+        {clarificationRequest && (
+          <ClarificationResponseForm
+            flowId={flow.id}
+            request={clarificationRequest}
+          />
+        )}
 
         {/* Approval Actions */}
         {flow.status === 'awaiting_approval' && (
