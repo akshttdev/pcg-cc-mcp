@@ -811,6 +811,10 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             post(crm_deal_transitions::approve_deal_agent),
         )
         .route(
+            "/crm/deals/{id}/agent-flows",
+            get(crm_deal_transitions::get_deal_agent_flows),
+        )
+        .route(
             "/crm/deals/{id}/generate-proposal",
             post(crm_deal_automations::generate_proposal),
         )

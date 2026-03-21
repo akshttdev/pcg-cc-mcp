@@ -522,3 +522,55 @@ pub async fn approve_deal_agent(
         ))
     }
 }
+
+/// GET /crm/deals/:id/agent-flows - List agent flows for a deal with events
+pub async fn get_deal_agent_flows(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let id = parse_db_uuid_param(&id, "deal ID")?;
+    let _deal = require_deal_org_access(&access_context, pool, &id).await?;
+
+    let flows = db::models::agent_flow::AgentFlow::find_by_deal(pool, id.as_str())
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to fetch agent flows: {}", e)))?;
+
+    let mut result = Vec::new();
+    for flow in flows {
+        let events = db::models::agent_flow_event::AgentFlowEvent::find_by_flow(pool, flow.id)
+            .await
+            .unwrap_or_default();
+
+        let event_values: Vec<serde_json::Value> = events
+            .iter()
+            .map(|e| {
+                serde_json::json!({
+                    "id": e.id.to_string(),
+                    "event_type": e.event_type.to_string(),
+                    "event_data": e.event_data,
+                    "created_at": e.created_at.to_rfc3339(),
+                })
+            })
+            .collect();
+
+        result.push(serde_json::json!({
+            "id": flow.id.to_string(),
+            "status": flow.status.to_string(),
+            "flow_type": flow.flow_type.to_string(),
+            "flow_config": flow.flow_config,
+            "current_phase": flow.current_phase.to_string(),
+            "retry_count": flow.retry_count,
+            "last_error": flow.last_error,
+            "cancel_deadline": flow.cancel_deadline.map(|d| d.to_rfc3339()),
+            "execution_started_at": flow.execution_started_at.map(|d| d.to_rfc3339()),
+            "execution_completed_at": flow.execution_completed_at.map(|d| d.to_rfc3339()),
+            "created_at": flow.created_at.to_rfc3339(),
+            "updated_at": flow.updated_at.to_rfc3339(),
+            "events": event_values,
+        }));
+    }
+
+    Ok(Json(ApiResponse::success(result)))
+}

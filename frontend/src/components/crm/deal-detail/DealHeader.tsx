@@ -14,6 +14,8 @@ import {
   TrendingUp,
   CheckSquare,
   ChevronRight,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { CrmDealWithContact, CrmPipelineStage } from '@/types/crm';
@@ -48,9 +50,11 @@ interface DealHeaderProps {
   stageColor: string;
   onEdit: (deal: CrmDealWithContact) => void;
   onDelete: (deal: CrmDealWithContact) => void;
+  isExpanded?: boolean;
+  onToggleExpand?: () => void;
 }
 
-export function DealHeader({ deal, stageColor, onEdit, onDelete }: DealHeaderProps) {
+export function DealHeader({ deal, stageColor, onEdit, onDelete, isExpanded, onToggleExpand }: DealHeaderProps) {
   const initials = getInitials(deal);
   const formattedAmount = formatAmount(deal.amount, deal.currency);
   const taskTotal = deal.task_total ?? 0;
@@ -91,6 +95,11 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete }: DealHeaderPro
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
+          {onToggleExpand && (
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onToggleExpand} title={isExpanded ? 'Minimize' : 'Expand'}>
+              {isExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+            </Button>
+          )}
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit(deal)}>
             <Edit className="h-3.5 w-3.5" />
           </Button>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { TabPanel, TabsContent } from '@/components/ui/tabs';
 import type { TabDefinition } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -12,6 +13,7 @@ import { ActivityTab } from './tabs/ActivityTab';
 import { ProposalTab } from './tabs/ProposalTab';
 import { DeckTab } from './tabs/DeckTab';
 import { TranscriptsTab } from './tabs/TranscriptsTab';
+import { AgentHistoryTab } from './tabs/AgentHistoryTab';
 import { DealConvertDialog } from '../DealConvertDialog';
 import type { CrmDealWithContact, CrmPipelineStage } from '@/types/crm';
 
@@ -46,6 +48,7 @@ export function CrmDealDetailPanel({
 }: CrmDealDetailPanelProps) {
   const [activeTab, setActiveTab] = useState('overview');
   const [convertOpen, setConvertOpen] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   if (!deal) return null;
 
@@ -63,15 +66,20 @@ export function CrmDealDetailPanel({
   const proposalDot = deal.won_at ? undefined : deal.proposal_status === 'approved' ? 'green' : deal.proposal_text ? 'amber' : undefined;
   const deckDot = deal.won_at ? 'green' : deal.deck_url ? 'amber' : undefined;
 
-  return (
-    <>
-      <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-        <SheetContent className="w-full sm:max-w-xl overflow-hidden flex flex-col p-0">
-          {/* Stage color top bar */}
-          <div className="h-1 w-full shrink-0" style={{ backgroundColor: stageColor }} />
+  const panelContent = (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Stage color top bar */}
+      <div className="h-1 w-full shrink-0" style={{ backgroundColor: stageColor }} />
 
-          {/* Header */}
-          <DealHeader deal={deal} stageColor={stageColor} onEdit={onEdit} onDelete={onDelete} />
+      {/* Header */}
+      <DealHeader
+        deal={deal}
+        stageColor={stageColor}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        isExpanded={isExpanded}
+        onToggleExpand={() => setIsExpanded(!isExpanded)}
+      />
 
           {/* Pipeline Stage Stepper */}
           <PipelineStepper
@@ -91,6 +99,7 @@ export function CrmDealDetailPanel({
               { value: 'deck', label: 'Deck & Close', indicator: deckDot as TabDefinition['indicator'] },
               { value: 'projects', label: 'Projects' },
               { value: 'activity', label: 'Activity' },
+              { value: 'agents', label: 'Agent History', indicator: deal.active_agent_flow_status === 'executing' ? 'amber' : null },
             ] satisfies TabDefinition[]}
             value={activeTab}
             onValueChange={setActiveTab}
@@ -153,10 +162,32 @@ export function CrmDealDetailPanel({
                   <ActivityTab deal={deal} projectId={projectId} />
                 </ScrollArea>
               </TabsContent>
+
+              <TabsContent value="agents" className="h-full m-0">
+                <ScrollArea className="h-full">
+                  <AgentHistoryTab dealId={deal.id} />
+                </ScrollArea>
+              </TabsContent>
             </div>
           </TabPanel>
-        </SheetContent>
-      </Sheet>
+    </div>
+  );
+
+  return (
+    <>
+      {isExpanded ? (
+        <Dialog open={isOpen} onOpenChange={(open) => { if (!open) { setIsExpanded(false); onClose(); } }}>
+          <DialogContent className="max-w-6xl h-[90vh] p-0 overflow-hidden flex flex-col">
+            {panelContent}
+          </DialogContent>
+        </Dialog>
+      ) : (
+        <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
+          <SheetContent className="w-full sm:max-w-xl overflow-hidden flex flex-col p-0">
+            {panelContent}
+          </SheetContent>
+        </Sheet>
+      )}
 
       <DealConvertDialog deal={deal} open={convertOpen} onOpenChange={setConvertOpen} orgId={orgId} />
     </>
