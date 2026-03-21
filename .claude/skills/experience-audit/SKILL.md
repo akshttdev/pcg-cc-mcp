@@ -38,22 +38,92 @@ Every recommendation gets an effort/value classification:
 
 ---
 
-## Phase 0: Define Scope & Journeys
+## Phase 0: Define Scope & Generate Interaction Scripts
 
 ### If a planning file is provided:
-Use Sequential Thinking (3-5 thoughts) to extract user-facing features and translate them into **user journeys** — not "endpoint X returns data" but "user opens the dashboard and sees their cost breakdown."
+Use Sequential Thinking (scale with feature count: `min(features, 10)` thoughts) to:
 
-### If no argument provided, audit these 5 core journeys:
-1. **First login → orient → find work**: Login → understand the layout → find a project → find a task
-2. **Create and manage a task**: Create task → assign → track status → view result
-3. **Navigate CRM**: Find a pipeline → view deals → move a deal between stages
-4. **Configure settings**: Find settings → change a preference → verify it took effect
-5. **Report a problem**: Find the feedback mechanism → submit a friction report → see confirmation
+1. Read the planning file and extract every **user-facing feature** — skip backend-only/infrastructure items
+2. **Classify each feature's actor** — who performs this action?
+   - **User action**: The user clicks, fills, submits via the UI → generate a full interaction script
+   - **Agent action**: An AI agent or background worker performs this → generate an **observation script** instead (the user doesn't DO the action, but should be able to SEE the result)
+   - **Hybrid**: Both user and agent can trigger it (e.g., stage transitions) → generate scripts for both paths
+3. For each feature, translate it into the appropriate script type
+
+### Actor classification matters
+
+Many planning files describe features that are executed by agents, not users. Examples:
+- "Agent flow executor advances from Planning → Executing" — agent action
+- "User submits friction report" — user action
+- "Deal stage transition via dashboard (permissive) or agent (strict FSM)" — hybrid
+
+**For agent actions, don't generate DO steps — generate OBSERVE steps:**
+- Can the user SEE that the agent did something? (status badge changed, card moved, toast appeared)
+- Is the agent's action reflected in the UI without a page refresh?
+- Does the UI explain what the agent did and why?
+
+### Interaction script format
+
+**An interaction script is NOT "navigate to the page and check it renders." It IS:**
+- The specific clicks, form fills, submissions, and verifications a user would perform
+- Derived directly from the feature's claimed behavior in the planning file
+- Including the **verification step** — how do you confirm the action worked?
+
+Each script has 5 action types:
+- **FIND**: Locate the entry point — measures discoverability
+- **DO**: Perform an interaction (user actions only) — measures execution quality
+- **OBSERVE**: Check that an agent/system action is visible to the user — measures state communication
+- **VERIFY**: Check the outcome of a DO or OBSERVE — measures feedback quality
+- **BREAK**: Try to break it — measures error handling and edge cases
+
+**Example — user action (friction report):**
+```
+Journey: Report friction [USER ACTION]
+1. FIND: Click sidebar More → Feedback & Support
+2. DO: Select "Friction Report" from Feedback Type dropdown
+3. VERIFY: Friction-specific fields appear (frustration level, what went wrong)
+4. DO: Fill fields, click Submit
+5. VERIFY: Toast confirms, dialog closes
+6. BREAK: Submit with empty required fields — does validation fire?
+```
+
+**Example — agent action (agent flow execution):**
+```
+Journey: Monitor agent flow progression [AGENT ACTION — observe only]
+1. FIND: Navigate to Agent Flows page
+2. OBSERVE: Is there a flow in "Executing" status? Does the status badge show correctly?
+3. OBSERVE: If flow moved from Planning → Executing, is there a timestamp or activity log showing when?
+4. OBSERVE: If flow is in NeedsClarification, does the UI explain what the agent is asking?
+5. VERIFY: No way to test the transition itself (agent-driven), but verify the USER can see the result
+6. NOTE: "User cannot trigger this action — it's agent-driven. Test observability only."
+```
+
+**Example — hybrid action (deal stage transition):**
+```
+Journey: Move deal between stages [HYBRID — user + agent paths]
+User path:
+1. FIND: Navigate to CRM Pipeline
+2. DO: Drag deal card from Lead to Business Analysis
+3. VERIFY: Deal moves, toast confirms, column counts update
+4. BREAK: Try dragging to a non-adjacent stage — does FSM block it?
+Agent path (observe only):
+5. OBSERVE: If an agent moved a deal, does the kanban reflect it without refresh?
+6. OBSERVE: Is there an activity log showing who/what moved the deal and when?
+```
+
+### If no argument provided, generate scripts for these 5 core journeys:
+1. **First login → orient → find work**: Login → understand the layout → find a project → open a task
+2. **Create and manage a task**: Create task → fill fields → submit → verify it appears → change status
+3. **Navigate CRM**: Find a pipeline → view stages → add a deal → move it between stages
+4. **Configure settings**: Find settings → change theme → verify it takes effect → change back
+5. **Report a problem**: Find feedback → select friction type → fill fields → submit → verify confirmation
 
 ### For all audits, also check:
 - **Navigation coherence**: Can a new user build a mental model of where things live?
 - **State communication**: Does the UI always tell the user what's happening?
 - **Error recovery**: When things go wrong, can the user get back on track?
+
+Output the full list of interaction scripts before proceeding to Phase 1.
 
 ## Phase 1: Environment Check
 
@@ -103,47 +173,69 @@ Evaluate the app the way a new user would encounter it. Use Sequential Thinking 
 - Flag: settings that are hard to find, unclear labels, scope confusion (when should a user look in "Admin" vs "Org"?)
 - Check: does changing a setting give feedback (toast, save indicator)?
 
-## Phase 3: Task Flow Walkthroughs
+## Phase 3: Execute Interaction Scripts
 
-For each journey identified in Phase 0, walk through it step by step using Playwright.
+**Do not just navigate and screenshot. Execute every step in the interaction scripts from Phase 0.**
 
-### Per journey, evaluate:
+For each journey, run through its script step by step using Playwright. The script has FIND, DO, VERIFY, and BREAK actions — execute ALL of them.
 
-#### 3a. Discoverability
-- Can the user find where to START the task?
-- Is the entry point visible without scrolling or expanding menus?
+### Execution rules
+
+1. **FIND steps**: Navigate from the dashboard. Record the exact click path and click count. Take a snapshot at the destination. If the feature can't be found within 5 clicks, flag as PAIN POINT.
+
+2. **DO steps**: Actually perform the interaction — click buttons, fill forms with realistic test data, submit, select options, drag items. If a form needs data, use descriptive test values (e.g., title: "Test deal from UX audit", not "asdf"). Use `browser_fill_form` for form fields, `browser_click` for buttons, `browser_select_option` for dropdowns.
+
+3. **OBSERVE steps** (for agent/system actions): The user didn't trigger this — an agent or background process did. Check:
+   - Is the result visible in the UI? (status badge, card position, list entry)
+   - Is there an activity log or timeline showing what happened and when?
+   - Does the UI explain WHO performed the action (agent name, system, user)?
+   - Would the user know the action happened without being told? Or would they need to refresh?
+   - If no test data exists to observe (e.g., no agent has run), note it: "Cannot test — no agent-driven data in seed. Verified via code trace that [component] renders [status] for this state."
+
+4. **VERIFY steps**: After each action, check:
+   - Did a toast/notification confirm success? (snapshot for toast, or check if toast region updated)
+   - Did the UI update? (take snapshot, compare to before)
+   - If something was created, can you find it? (navigate to the list/page where it should appear)
+   - Check `browser_console_messages level: error` after every submit — new console errors during a user action are a finding
+
+4. **BREAK steps**: Try to trigger error states:
+   - Submit forms with empty required fields — does validation appear inline?
+   - Enter invalid data (wrong format, too long) — is the error message helpful?
+   - Navigate away mid-form — is work lost? Is there a confirmation dialog?
+   - Double-click submit — does it create duplicates?
+
+### Per journey, also evaluate:
+
+#### Discoverability
 - Click count from dashboard to starting the action
+- Would a new user find this without being told where it is?
+- Is the entry point visible without scrolling or expanding menus?
 
-#### 3b. Execution
-- Walk through each step. At each step, take a snapshot and ask:
-  - Is it obvious what to do next?
-  - Are required fields clearly marked?
-  - Are labels/placeholders helpful or generic?
-  - Is the form asking for too much at once?
-- Flag: steps where the user must guess, unlabeled icons, buttons with no hover text
+#### Execution quality
+- At each step: is it obvious what to do next?
+- Are required fields clearly marked?
+- Are labels/placeholders helpful or generic?
+- Is the form asking for too much at once?
 
-#### 3c. Feedback
-- After completing an action:
-  - Does a toast/notification confirm success?
-  - Does the UI update immediately (optimistic) or after a delay?
-  - If the action created something, can the user find it?
-- Try submitting an incomplete/invalid form:
-  - Does validation feedback appear inline or only on submit?
-  - Are error messages actionable ("Title is required") or generic ("Invalid input")?
+#### Feedback quality
+- Does the UI tell the user what happened after each action?
+- Optimistic update (instant) or delayed (spinner then update)?
+- Are error messages actionable ("Title is required") or generic ("Invalid input")?
 
-#### 3d. Recovery
-- Navigate away mid-task — is work preserved or lost?
-- If an error occurs, is there a way back? Or is the user stuck?
+#### Recovery
+- If the user makes a mistake, can they undo/fix it?
+- If an API call fails, does the UI show an error or silently fail?
 
-#### 3e. Consistency
-- Does this flow use the same patterns (button styles, form layout, confirmation style) as other flows?
+#### Consistency
+- Does this flow use the same patterns as other flows? (button styles, form layout, toast style)
 - Same action in different contexts — does it work the same way?
 
-### Check console errors after each navigation:
-```
-browser_console_messages level: error
-```
-Console errors during a user journey indicate broken state even if the UI looks fine.
+### If a script step can't be executed
+
+Some steps may be impossible due to missing seed data, feature not wired, or backend not supporting it. When this happens:
+- **Don't skip silently.** Record it as a finding: "Step N could not be executed because [reason]"
+- If the feature has no seed data, try to create test data via the UI as part of the script (e.g., create a deal before trying to move it between stages)
+- If creation isn't possible (no create button, API error), flag the entire journey and note what blocked it
 
 ## Phase 4: State Quality Audit
 
@@ -217,7 +309,7 @@ This is not a full WCAG audit — it's a practical check of the most impactful i
 
 ## Phase 6: Generate Report
 
-Create `planning/YYYY-MM-DD--review--experience-audit.md`:
+Create `planning/reviews/YYYY-MM-DD--review--experience-audit.md`:
 
 ```markdown
 # Experience Audit Report
@@ -255,9 +347,9 @@ Create `planning/YYYY-MM-DD--review--experience-audit.md`:
 
 ## Journey Scorecard
 
-| Journey | Steps | Completion | Blockers | Pain | Friction | Grade |
-|---------|-------|------------|----------|------|----------|-------|
-<!-- One row per journey tested. Grade: A (smooth) / B (minor issues) / C (confusing) / D (broken) / F (impossible) -->
+| Journey | Actor | Steps | Completion | Blockers | Pain | Friction | Grade |
+|---------|-------|-------|------------|----------|------|----------|-------|
+<!-- Actor: USER / AGENT (observe) / HYBRID. Grade: A (smooth) / B (minor issues) / C (confusing) / D (broken) / F (impossible) -->
 
 ## Quick Wins (do first)
 
@@ -306,7 +398,7 @@ If a planning file was provided as argument, append:
 ```markdown
 ## Experience Audit (YYYY-MM-DD)
 
-**Report**: `planning/YYYY-MM-DD--review--experience-audit.md`
+**Report**: `planning/reviews/YYYY-MM-DD--review--experience-audit.md`
 **Blockers**: N | **Pain Points**: N | **Friction**: N | **Polish**: N
 **Quick Wins**: N identified | **Investments**: N identified
 **Journey Grades**: [summary of grades]
@@ -316,9 +408,11 @@ If a planning file was provided as argument, append:
 
 ## Important Rules
 
+- **DO, don't just look.** The biggest failure mode of this skill is navigating to pages, taking screenshots, and calling it an audit. That's a rendering check, not a UX audit. You must actually click buttons, fill forms, submit data, and verify results. If you finish Phase 3 without having filled a single form or clicked a single submit button, you did it wrong.
 - **Be the user, not the developer.** Don't excuse bad UX because you can read the code. If a user would be confused, it's a finding.
 - **Screenshots are evidence.** Take a screenshot for every BLOCKER and PAIN POINT. Snapshots (accessibility tree) are better for analysis, screenshots are better for communicating findings to the team.
 - **Recommendations must be specific.** Not "improve the empty state" but "add a CTA button labeled 'Create your first pipeline' with a link to /organizations/{orgId}/crm/pipelines/new."
+- **Create test data when needed.** If a feature has no data to test (empty pipeline, no agent flows), create it via the UI as part of the journey. "No test data" is not an excuse to skip interaction testing — the creation flow IS part of the experience.
 - **Don't boil the ocean.** Audit the journeys in scope, not every page in the app. Depth over breadth.
 - **Quick wins are gold.** A 30-minute fix that removes daily friction is worth more than a week-long redesign. Prioritize accordingly.
 - **Consistency findings compound.** One inconsistent button isn't worth reporting. A pattern of inconsistency (some dialogs confirm with "Save", others with "Submit", others with "Done") is a FRICTION finding.

@@ -659,10 +659,29 @@ Inline stage-trigger agents (Scout, Astra, Cash, Lux) coexist with engine in Pha
 ## Functionality Audit (2026-03-21)
 
 **Overall**: SHIP WITH CAVEATS
-**Report**: `planning/2026-03-21--review--functionality-audit.md`
+**Report**: `planning/reviews/2026-03-21--review--functionality-audit.md`
 **Features**: 4 WORKING, 6 PARTIAL, 2 STUB, 0 NOT WIRED
 **Action Items**: 2 Must Fix, 5 Should Fix, 4 Nice to Have
 **Key Finding**: F10 (cost bridge) marked DONE but frontend never calls `costsApi` — `ai-usage.tsx` still uses `tokenUsageApi`
+
+---
+
+## Experience Audit v1 (2026-03-21)
+
+**Report**: `planning/reviews/2026-03-21--review--experience-audit.md`
+**Blockers**: 0 | **Pain Points**: 4 | **Friction**: 8 | **Polish**: 4
+**Quick Wins**: 9 identified | **Investments**: 3 identified
+**Journey Grades**: J1 AI Usage: D, J2 Friction Report: B, J3 Agent Flows: B, J4 CRM Pipeline: A, General IA: C
+**Top Issue**: Sidebar cognitive overload (50+ items, 8 groups) — structural redesign recommended
+
+## Experience Audit v2 (2026-03-21) — Interactive Testing with Actor Classification
+
+**Report**: `planning/reviews/2026-03-21--review--experience-audit-v2.md`
+**Blockers**: 1 | **Pain Points**: 4 | **Friction**: 6 | **Polish**: 3
+**Quick Wins**: 7 identified | **Investments**: 3 identified
+**Journey Grades**: J1 AI Usage: D, J2 Friction Report: A, J3 Clarification: N/A, J4 Agent Flows: B, J5 Deal Stages: F, J6 Access Control: D
+**#1 BLOCKER**: Deal stage transitions — drag/click/context menu all non-functional. DnD fires but handler not wired to backend.
+**Key method improvement**: Actor classification (USER/AGENT/HYBRID) + FIND/DO/OBSERVE/VERIFY/BREAK scripts caught the stage transition blocker that page-only testing missed.
 
 ---
 

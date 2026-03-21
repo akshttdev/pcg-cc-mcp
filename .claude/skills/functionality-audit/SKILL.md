@@ -225,7 +225,7 @@ Use Sequential Thinking (scale with feature count: `max(8, min(features, 15))` t
 
 ## Phase 5: Generate Report
 
-Create `planning/YYYY-MM-DD--review--functionality-audit.md` with:
+Create `planning/reviews/YYYY-MM-DD--review--functionality-audit.md` with:
 
 ```markdown
 # Functionality Audit Report
@@ -304,7 +304,7 @@ Add a summary section to the original planning file:
 ## Functionality Audit (YYYY-MM-DD)
 
 **Overall**: SHIP / SHIP WITH CAVEATS / HOLD
-**Report**: `planning/YYYY-MM-DD--review--functionality-audit.md`
+**Report**: `planning/reviews/YYYY-MM-DD--review--functionality-audit.md`
 **Features**: N WORKING, N PARTIAL, N STUB, N NOT WIRED
 **Plan Accuracy**: N/N features matched plan status (N false DONE claims)
 **Action Items**: N Must Fix, N Should Fix, N Nice to Have

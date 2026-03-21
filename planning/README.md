@@ -23,9 +23,11 @@
 
 | Directory | Purpose | When to move files here |
 |-----------|---------|------------------------|
+| `reviews/` | Skill-generated audit output — functionality audits, experience audits, QA reviews, regression tests | Created automatically by `/functionality-audit`, `/experience-audit`, `/qa-review`, `/regression-test` skills. Screenshots go in `reviews/screenshots/`. |
 | `archive/` | Completed work — all findings resolved or investigation finished | After verifying all items are done in the codebase. No open action items remain. |
 | `deferred/` | Considered but not actively developed — may revisit later | When a plan is shelved intentionally, not abandoned. Development hasn't started or is paused. |
 | `notes/` | Standalone reference docs not tied to sprints or timelines | Persistent documentation (e.g., APN architecture notes) that doesn't follow the date-based naming convention. |
+| `roadmap/` | Long-term product roadmap, architecture assessments, research | Multi-sprint planning and strategic documents. |
 
 **Archive rules:**
 - Verify completion in the codebase before archiving — don't archive based on assumptions
@@ -42,10 +44,12 @@
 Files sort chronologically by default. To find active work:
 ```bash
 ls planning/*--plan--* planning/*--tracker--*    # Active plans & trackers
-ls planning/*--review--*                         # QA findings
+ls planning/reviews/                             # Skill-generated audits & reviews
+ls planning/reviews/screenshots/                 # Audit evidence screenshots
 ls planning/archive/                             # Completed work
 ls planning/deferred/                            # Shelved plans
 ls planning/notes/                               # Reference docs
+ls planning/roadmap/                             # Long-term strategy
 ```
 
 ## Status Markers in Active Docs

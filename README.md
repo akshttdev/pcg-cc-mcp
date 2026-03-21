@@ -371,15 +371,27 @@ npm run generate-types
 6. Push to branch: `git push origin feature/amazing-feature`
 7. Open a Pull Request
 
+## Planning & Documentation
+
+```
+planning/                    # Sprint plans, analyses, backlog
+├── reviews/                 # Skill-generated audits & QA reports
+│   └── screenshots/         # Playwright evidence screenshots
+├── archive/                 # Completed sprints (read-only)
+├── deferred/                # Shelved plans
+├── notes/                   # Reference docs
+└── roadmap/                 # Long-term strategy & research
+```
+
+See `planning/README.md` for the full file naming convention and browsing commands.
+
 ## Architecture
 
-The application follows a modular architecture:
-
-- **REST API**: All endpoints under `/api/*`
-- **Authentication**: GitHub OAuth (device flow)
-- **Database Layer**: All queries in `crates/db/src/models/`
-- **Frontend Proxy**: Vite dev server proxies to backend
-- **Component Patterns**: Consistent patterns in `frontend/src/components/`
+See `CLAUDE.md` for detailed architecture documentation including:
+- Project structure (`crates/`, `frontend/`, `shared/`)
+- Key patterns (SSE streaming, executor pattern, MCP integration)
+- API patterns and authentication
+- Testing strategy
 
 ## License
 

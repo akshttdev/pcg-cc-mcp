@@ -91,7 +91,7 @@ These files/areas have **zero overlap** with PR #49's 231 changed files:
 | Area | Files | Why Safe |
 |------|-------|----------|
 | **Our planning doc** | `planning/2026-03-18--plan--sloperation317-integration.md` | PR #49 has its own planning doc |
-| **UX observations** | `planning/2026-03-18--review--ux-observations.md` | New file |
+| **UX observations** | `planning/reviews/2026-03-18--review--ux-observations.md` | New file |
 | **Test seed script** | `scripts/create-test-seed.sh` | New file (PR #49 moves existing scripts, doesn't create new ones here) |
 
 ### Conflict Zones (wait for PR #49 merge)
@@ -258,7 +258,7 @@ Apply PR #48 standards to all new code:
 
 **Process**:
 1. Use Playwright MCP to navigate each section, taking screenshots at every step
-2. Document all observations in `planning/2026-03-18--review--ux-observations.md` with timestamps and screenshots
+2. Document all observations in `planning/reviews/2026-03-18--review--ux-observations.md` with timestamps and screenshots
 3. Categorize each finding:
    - **In-sprint fix**: Anything that blocks a user flow, regardless of time estimate
    - **Next sprint**: Heavy lifts, design improvements, new feature ideas → `planning/BACKLOG--remaining-work.md`
@@ -295,7 +295,7 @@ Apply PR #48 standards to all new code:
 - Back button behavior from new pages
 
 **Deliverables**:
-- `planning/2026-03-18--review--ux-observations.md` — thorough observations with screenshots, organized by section
+- `planning/reviews/2026-03-18--review--ux-observations.md` — thorough observations with screenshots, organized by section
 - Updates to `planning/BACKLOG--remaining-work.md` — new UX items with priority and sprint assignment
 
 ### F. Verification & QA (Day 4)
