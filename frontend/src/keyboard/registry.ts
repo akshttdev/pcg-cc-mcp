@@ -21,6 +21,7 @@ export enum Action {
   DELETE_TASK = 'delete_task',
   TOGGLE_SIDEBAR = 'toggle_sidebar',
   TOGGLE_VIEW_AS = 'toggle_view_as',
+  REPORT_FRICTION = 'report_friction',
 }
 
 export interface KeyBinding {
@@ -130,6 +131,13 @@ export const keyBindings: KeyBinding[] = [
     keys: 'shift+slash',
     scopes: [Scope.GLOBAL],
     description: 'Show keyboard shortcuts help',
+    group: 'Global',
+  },
+  {
+    action: Action.REPORT_FRICTION,
+    keys: 'shift+f',
+    scopes: [Scope.GLOBAL],
+    description: 'Report friction',
     group: 'Global',
   },
 

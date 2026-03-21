@@ -27,6 +27,7 @@ import { CommandPalette } from '@/components/command/CommandPalette';
 import { KeyboardShortcutsOverlay } from '@/components/keyboard-shortcuts/KeyboardShortcutsOverlay';
 import { ErrorDisplay } from '@/components/ErrorDisplay';
 import { ViewAsBanner } from '@/components/layout/ViewAsBanner';
+import { useKeyReportFriction, Scope } from '@/keyboard';
 
 // Shared suspense fallback
 export const PageLoader = () => (
@@ -46,6 +47,12 @@ export function AppShell() {
     setSidebarCollapsed,
     contentFullscreen,
   } = useViewStore();
+
+  // Shift+F → open friction report dialog
+  useKeyReportFriction(
+    () => NiceModal.show('feedback', { defaultType: 'friction' }),
+    { scope: Scope.GLOBAL }
+  );
 
   // On mobile, toggle sidebar means show/hide the overlay sidebar
   // We reuse sidebarCollapsed: collapsed=true means hidden on mobile

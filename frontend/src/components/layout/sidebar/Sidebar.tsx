@@ -190,13 +190,16 @@ export function Sidebar({ className }: SidebarProps) {
               </Button>
             </Link>
           </TooltipTrigger>
-          <TooltipContent side="right">{item.label}</TooltipContent>
+          <TooltipContent side="right">
+            {item.label}
+            {item.tooltip && <span className="block text-xs text-muted-foreground">{item.tooltip}</span>}
+          </TooltipContent>
         </Tooltip>
       );
     }
 
     return (
-      <Link key={item.id} to={item.to}>
+      <Link key={item.id} to={item.to} title={item.tooltip}>
         <div
           className={cn(
             "sidebar-nav-item",

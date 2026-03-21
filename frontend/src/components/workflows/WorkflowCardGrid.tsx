@@ -243,7 +243,7 @@ export function WorkflowCardGrid({
               {lastRunByWorkflow && (() => {
                 const lastRun = lastRunByWorkflow.get(wf.id);
                 if (!lastRun) {
-                  return <p className="text-[10px] text-muted-foreground/50 mt-1.5">Never run</p>;
+                  return <p className="text-[10px] text-muted-foreground/50 mt-1.5">Never run — click ▶ to execute</p>;
                 }
                 return (
                   <div className="text-[10px] text-muted-foreground mt-1.5 flex items-center gap-1">

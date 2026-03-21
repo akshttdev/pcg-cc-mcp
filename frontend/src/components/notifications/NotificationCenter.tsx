@@ -54,6 +54,8 @@ export function NotificationCenter() {
     },
     refetchInterval: 30000,
     staleTime: 10000,
+    retry: 1,
+    retryDelay: 5000,
   });
 
   const isLoading = activityLoading || inboxLoading;

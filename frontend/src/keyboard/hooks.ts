@@ -108,3 +108,11 @@ export const useKeyToggleSidebar = createSemanticHook(Action.TOGGLE_SIDEBAR);
  * useKeyToggleViewAs(() => togglePopover(), { scope: Scope.GLOBAL });
  */
 export const useKeyToggleViewAs = createSemanticHook(Action.TOGGLE_VIEW_AS);
+
+/**
+ * Report friction - Shift+F
+ *
+ * @example
+ * useKeyReportFriction(() => openFrictionDialog(), { scope: Scope.GLOBAL });
+ */
+export const useKeyReportFriction = createSemanticHook(Action.REPORT_FRICTION);

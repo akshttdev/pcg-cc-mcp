@@ -37,6 +37,7 @@ export interface NavItem {
   id: string;
   adminOnly?: boolean;
   memberOnly?: boolean;
+  tooltip?: string;
 }
 
 // Admin tools — separated visually at top
@@ -58,8 +59,8 @@ export const PRIMARY_NAV_ITEMS: NavItem[] = [
   { label: 'My Tasks', icon: ListTodo, to: '/my-tasks', id: 'my-tasks', memberOnly: true },
   { label: 'My Workflows', icon: Workflow, to: '/workflows', id: 'workflows' },
   { label: 'Calendar', icon: Calendar, to: '/calendar', id: 'calendar' },
-  { label: 'VIBELAND', icon: Box, to: '/virtual-environment', id: 'virtual-environment' },
-  { label: 'VIBE', icon: Coins, to: '/vibe', id: 'vibe' },
+  { label: 'VIBELAND', icon: Box, to: '/virtual-environment', id: 'virtual-environment', tooltip: '3D virtual environment' },
+  { label: 'VIBE', icon: Coins, to: '/vibe', id: 'vibe', tooltip: 'Token treasury & transactions' },
 ];
 
 // Management nav — admin-only, collapsible

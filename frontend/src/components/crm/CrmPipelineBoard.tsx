@@ -67,8 +67,12 @@ function getStageOwner(stageName: string): StageOwner | null {
 
 function StageOwnerBadge({ owner }: { owner: StageOwner }) {
   const Icon = owner.type === 'agent' ? Bot : owner.type === 'team' ? Users : User;
+  const typeLabel = owner.type === 'agent' ? 'AI agent' : owner.type === 'team' ? 'Team' : 'Human';
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground font-normal">
+    <span
+      className="inline-flex items-center gap-1 text-[10px] text-muted-foreground font-normal cursor-default"
+      title={`${owner.label} — ${typeLabel}`}
+    >
       <Icon className="h-2.5 w-2.5" />
       {owner.label}
     </span>
