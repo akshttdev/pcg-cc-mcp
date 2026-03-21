@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { MoreHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -645,22 +645,23 @@ export function Sidebar({ className }: SidebarProps) {
                     );
                   }
                   return (
-                    <Button
-                      key={item.label}
-                      variant="ghost"
-                      className="w-full justify-start px-3 py-2 h-auto text-sm"
-                      data-testid={item.action ? `${item.action}-button` : undefined}
-                      onClick={() => {
-                        if (item.action === 'friction') {
-                          NiceModal.show('feedback', { defaultType: 'friction' });
-                        } else if (item.action) {
-                          NiceModal.show(item.action);
-                        }
-                      }}
-                    >
-                      <Icon className="h-4 w-4 mr-2" />
-                      {item.label}
-                    </Button>
+                    <PopoverClose key={item.label} asChild>
+                      <Button
+                        variant="ghost"
+                        className="w-full justify-start px-3 py-2 h-auto text-sm"
+                        data-testid={item.action ? `${item.action}-button` : undefined}
+                        onClick={() => {
+                          if (item.action === 'friction') {
+                            NiceModal.show('feedback', { defaultType: 'friction' });
+                          } else if (item.action) {
+                            NiceModal.show(item.action);
+                          }
+                        }}
+                      >
+                        <Icon className="h-4 w-4 mr-2" />
+                        {item.label}
+                      </Button>
+                    </PopoverClose>
                   );
                 })}
               </PopoverContent>
