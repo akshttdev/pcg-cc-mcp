@@ -628,7 +628,13 @@ export function Sidebar({ className }: SidebarProps) {
                       variant="ghost"
                       className="w-full justify-start px-3 py-2 h-auto text-sm"
                       data-testid={item.action ? `${item.action}-button` : undefined}
-                      onClick={() => { if (item.action) NiceModal.show(item.action); }}
+                      onClick={() => {
+                        if (item.action === 'friction') {
+                          NiceModal.show('feedback', { defaultType: 'friction' });
+                        } else if (item.action) {
+                          NiceModal.show(item.action);
+                        }
+                      }}
                     >
                       <Icon className="h-4 w-4 mr-2" />
                       {item.label}

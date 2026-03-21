@@ -79,9 +79,9 @@ const FEEDBACK_TYPES = [
   },
 ];
 
-export const FeedbackDialog = NiceModal.create(() => {
+export const FeedbackDialog = NiceModal.create(({ defaultType }: { defaultType?: FeedbackType }) => {
   const modal = useModal();
-  const [type, setType] = useState<FeedbackType>('bug');
+  const [type, setType] = useState<FeedbackType>(defaultType ?? 'bug');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [email, setEmail] = useState('');

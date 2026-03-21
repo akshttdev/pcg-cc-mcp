@@ -3,6 +3,7 @@ import {
   Settings,
   BookOpen,
   MessageCircleQuestion,
+  AlertTriangle,
   ListTodo,
   Network,
   Users,
@@ -97,6 +98,12 @@ export const EXTERNAL_LINKS = [
     label: 'Feedback & Support',
     icon: MessageCircleQuestion,
     action: 'feedback',
+    external: false,
+  },
+  {
+    label: 'Report Friction',
+    icon: AlertTriangle,
+    action: 'friction',
     external: false,
   },
 ] as const;
