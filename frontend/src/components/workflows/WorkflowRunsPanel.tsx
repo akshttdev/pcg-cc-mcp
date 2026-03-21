@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { formatTokens } from '@/lib/format';
 import { useQuery } from '@tanstack/react-query';
 import {
   Dialog,
@@ -46,12 +47,6 @@ function formatCost(micros: number | undefined): string {
   return `$${(micros / 1_000_000).toFixed(4)}`;
 }
 
-function formatTokens(count: number | undefined): string {
-  if (!count) return '0';
-  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
-  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}K`;
-  return String(count);
-}
 
 function formatRelativeDate(dateStr: string): string {
   const d = new Date(dateStr + 'Z');

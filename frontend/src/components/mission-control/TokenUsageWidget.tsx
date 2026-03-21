@@ -7,18 +7,13 @@ import { Progress } from '@/components/ui/progress';
 import { useOrganization } from '@/contexts/organization-context';
 import { costsApi } from '@/lib/api';
 import { costKeys } from '@/lib/query-keys';
+import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 interface TokenUsageWidgetProps {
   className?: string;
   dailyLimit?: number;
   compact?: boolean;
-}
-
-function formatNumber(num: number): string {
-  if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
-  if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
-  return num.toString();
 }
 
 function getResetTime(): string {

@@ -36,22 +36,9 @@ import { costKeys } from '@/lib/query-keys';
 import { useOrganization } from '@/contexts/organization-context';
 import { cn } from '@/lib/utils';
 
+import { formatCost, formatTokens } from '@/lib/format';
+
 type Tab = 'overview' | 'providers' | 'models' | 'projects' | 'agents';
-
-function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000) {
-    return `${(tokens / 1_000_000).toFixed(2)}M`;
-  }
-  if (tokens >= 1_000) {
-    return `${(tokens / 1_000).toFixed(1)}K`;
-  }
-  return tokens.toLocaleString();
-}
-
-function formatCost(cents: number | null): string {
-  if (cents === null || cents === 0) return '$0.00';
-  return `$${(cents / 100).toFixed(2)}`;
-}
 
 export function AIUsagePage() {
   const { effectiveOrgId } = useOrganization();
