@@ -772,7 +772,23 @@ export type AgentFlow = { id: string, task_id: string, flow_type: FlowType, stat
 /**
  * JSON-serialized ClarificationRequest when status = NeedsClarification
  */
-clarification_request: string | null, created_at: string, updated_at: string, };
+clarification_request: string | null, 
+/**
+ * Link to CRM deal (for pipeline-triggered agent flows)
+ */
+crm_deal_id: string | null, 
+/**
+ * Agent auto-start can be cancelled before this deadline
+ */
+cancel_deadline: string | null, 
+/**
+ * Number of retry attempts for this flow
+ */
+retry_count: number, 
+/**
+ * Last error message from a failed execution attempt
+ */
+last_error: string | null, created_at: string, updated_at: string, };
 
 export type CreateAgentFlow = { task_id: string, flow_type: FlowType, planner_agent_id: string | null, executor_agent_id: string | null, verifier_agent_id: string | null, flow_config: JsonValue | null, human_approval_required: boolean | null, };
 
@@ -918,11 +934,11 @@ export type SubmitFeedbackRequest = {
  */
 feedback_type: string, 
 /**
- * Brief title/summary
+ * Brief title/summary (max 200 chars)
  */
 title: string, 
 /**
- * Detailed description
+ * Detailed description (max 5000 chars)
  */
 description: string, 
 /**
@@ -942,15 +958,15 @@ screenshot: string | null,
  */
 page_url?: string, 
 /**
- * What the user was trying to do
+ * What the user was trying to do (max 1000 chars)
  */
 user_intent?: string, 
 /**
- * What went wrong or felt slow/confusing
+ * What went wrong or felt slow/confusing (max 1000 chars)
  */
 friction_point?: string, 
 /**
- * Expected behavior vs actual
+ * Expected behavior vs actual (max 1000 chars)
  */
 expected_behavior?: string, 
 /**

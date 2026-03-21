@@ -162,6 +162,11 @@ pub struct CrmDealWithContact {
     pub company_intelligence_status: Option<String>,
     pub company_intelligence_summary: Option<String>,
     pub company_id: Option<DbUuid>,
+    // Active agent flow (for pipeline indicator)
+    pub active_agent_flow_id: Option<String>,
+    pub active_agent_flow_status: Option<String>,
+    pub active_agent_name: Option<String>,
+    pub active_agent_cancel_deadline: Option<String>,
 }
 
 /// Kanban board data structure - deals grouped by stage
@@ -815,6 +820,35 @@ impl CrmDeal {
         }
     }
 
+    /// Fetch active agent flow status for a deal (most recent non-terminal flow)
+    async fn fetch_active_agent_flow(
+        pool: &SqlitePool,
+        deal_id: &DbUuid,
+    ) -> (Option<String>, Option<String>, Option<String>, Option<String>) {
+        #[derive(sqlx::FromRow)]
+        struct AgentFlowRow {
+            id: String,
+            status: String,
+            cancel_deadline: Option<String>,
+            flow_config: Option<String>,
+        }
+        if let Ok(Some(row)) = sqlx::query_as::<_, AgentFlowRow>(
+            "SELECT CAST(id AS TEXT) as id, status, cancel_deadline, flow_config FROM agent_flows WHERE crm_deal_id = ?1 AND status NOT IN ('completed', 'failed') ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(deal_id.to_string())
+        .fetch_optional(pool)
+        .await
+        {
+            let agent_name = row.flow_config
+                .as_deref()
+                .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
+                .and_then(|v| v.get("agent_name").and_then(|n| n.as_str()).map(|s| s.to_string()));
+            (Some(row.id), Some(row.status), agent_name, row.cancel_deadline)
+        } else {
+            (None, None, None, None)
+        }
+    }
+
     pub async fn get_kanban_data(
         pool: &SqlitePool,
         pipeline_id: &DbUuid,
@@ -894,6 +928,10 @@ impl CrmDeal {
                             .and_then(|c| c.company_name.as_deref()),
                     )
                     .await;
+
+                let (active_agent_flow_id, active_agent_flow_status, active_agent_name, active_agent_cancel_deadline) =
+                    Self::fetch_active_agent_flow(pool, &deal.id).await;
+
                 deals_with_contacts.push(CrmDealWithContact {
                     contact_name: contact_info.as_ref().and_then(|c| c.full_name.clone()),
                     contact_email: contact_info.as_ref().and_then(|c| c.email.clone()),
@@ -917,6 +955,10 @@ impl CrmDeal {
                     company_intelligence_status: company_intel_status,
                     company_intelligence_summary: company_intel_summary,
                     company_id: company_id_val,
+                    active_agent_flow_id,
+                    active_agent_flow_status,
+                    active_agent_name,
+                    active_agent_cancel_deadline,
                     deal,
                 });
             }
@@ -1064,6 +1106,10 @@ impl CrmDeal {
                             .and_then(|c| c.company_name.as_deref()),
                     )
                     .await;
+
+                let (active_agent_flow_id, active_agent_flow_status, active_agent_name, active_agent_cancel_deadline) =
+                    Self::fetch_active_agent_flow(pool, &deal.id).await;
+
                 deals_with_contacts.push(CrmDealWithContact {
                     contact_name: contact_info.as_ref().and_then(|c| c.full_name.clone()),
                     contact_email: contact_info.as_ref().and_then(|c| c.email.clone()),
@@ -1087,6 +1133,10 @@ impl CrmDeal {
                     company_intelligence_status: company_intel_status,
                     company_intelligence_summary: company_intel_summary,
                     company_id: company_id_val,
+                    active_agent_flow_id,
+                    active_agent_flow_status,
+                    active_agent_name,
+                    active_agent_cancel_deadline,
                     deal,
                 });
             }

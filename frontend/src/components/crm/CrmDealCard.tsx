@@ -32,6 +32,7 @@ import {
   Presentation,
   Receipt,
   Trophy,
+  Bot,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
@@ -112,6 +113,11 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
   const lastActivity = deal.last_activity_at
     ? formatDistanceToNow(new Date(deal.last_activity_at), { addSuffix: true })
     : null;
+
+  // Agent flow status
+  const agentRunning = deal.active_agent_flow_status === 'executing';
+  const agentPending = deal.active_agent_flow_status === 'planning';
+  const agentName = deal.active_agent_name;
 
   const intelStatus = deal.intelligence_status;
   const intelDone = intelStatus === 'done';
@@ -237,9 +243,11 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
         </div>
 
         {/* Row 2: Stage-aware status chips */}
-        {(researchNeeded || researchReady || intelRunning || hasActiveReviewTask || reviewTaskDone ||
+        {(agentRunning || agentPending || researchNeeded || researchReady || intelRunning || hasActiveReviewTask || reviewTaskDone ||
           deal.report_review_status === 'rejected' || hasProposal || hasDeck || hasInvoice || isWon) && (
           <div className="flex flex-wrap gap-1">
+            {agentRunning && <StatusChip icon={Bot} label={`${agentName ?? 'Agent'} running…`} variant="blue" pulse />}
+            {agentPending && <StatusChip icon={Clock} label={`${agentName ?? 'Agent'} pending`} variant="amber" pulse />}
             {researchNeeded && <StatusChip icon={Search} label="Research needed" variant="amber" />}
             {intelRunning && <StatusChip icon={Loader2} label="Researching…" variant="blue" pulse />}
             {researchReady && !hasActiveReviewTask && <StatusChip icon={ShieldCheck} label="Ready for review" variant="green" />}

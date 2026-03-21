@@ -252,6 +252,10 @@ async fn list_enriched_deals(
             company_intelligence_status,
             company_intelligence_summary,
             company_id,
+            active_agent_flow_id: None,
+            active_agent_flow_status: None,
+            active_agent_name: None,
+            active_agent_cancel_deadline: None,
             deal,
         });
     }
@@ -420,6 +424,10 @@ async fn get_deal_rich(
         company_intelligence_status: deal_company_intel_status,
         company_intelligence_summary: None,
         company_id: None,
+        active_agent_flow_id: None,
+        active_agent_flow_status: None,
+        active_agent_name: None,
+        active_agent_cancel_deadline: None,
         deal,
     };
 

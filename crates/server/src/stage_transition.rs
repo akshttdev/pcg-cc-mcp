@@ -430,6 +430,7 @@ async fn schedule_agent_flow(
     cancel_window_secs: u32,
 ) -> anyhow::Result<(String, DateTime<Utc>)> {
     let flow_id = DbUuid::new();
+    let flow_id_str = flow_id.to_string();
     let deadline = Utc::now() + chrono::Duration::seconds(cancel_window_secs as i64);
 
     // We need a task_id for the agent_flows table. Use the deal's linked task if any,
@@ -463,7 +464,7 @@ async fn schedule_agent_flow(
     .execute(pool)
     .await?;
 
-    Ok((flow_id.to_string(), deadline))
+    Ok((flow_id_str, deadline))
 }
 
 // ── Helper Functions ─────────────────────────────────────────────────────────

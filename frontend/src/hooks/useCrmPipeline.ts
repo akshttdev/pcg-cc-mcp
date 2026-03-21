@@ -247,6 +247,43 @@ export function useMoveDeal() {
         }
       }
     },
+    onSuccess: (result) => {
+      // Show validation warnings (soft enforcement)
+      if (result.warnings?.length > 0) {
+        for (const warning of result.warnings) {
+          toast.warning(warning.message, { description: `Field: ${warning.field}` });
+        }
+      }
+
+      // Show agent cancel/approve toast if an agent was scheduled
+      if (result.agent_flow_id && result.cancel_deadline) {
+        const dealId = result.deal.id;
+        toast('Agent starting soon...', {
+          description: `${result.actions_taken.find(a => a.includes('agent')) ?? 'Agent scheduled'}`,
+          duration: 30000,
+          action: {
+            label: 'Run Now',
+            onClick: () => {
+              crmDealsApi.approveDealAgent(dealId).then(() => {
+                toast.success('Agent started');
+              }).catch(() => {
+                toast.error('Failed to start agent');
+              });
+            },
+          },
+          cancel: {
+            label: 'Cancel',
+            onClick: () => {
+              crmDealsApi.cancelDealAgent(dealId).then(() => {
+                toast.success('Agent cancelled');
+              }).catch(() => {
+                toast.error('Failed to cancel agent');
+              });
+            },
+          },
+        });
+      }
+    },
     onError: (err, _vars, context) => {
       // Rollback on error
       if (context?.previousData) {

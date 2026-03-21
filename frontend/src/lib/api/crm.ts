@@ -483,17 +483,27 @@ export const crmDealsApi = {
     return handleApiResponse<CrmDealRecord>(response);
   },
 
-  moveDeal: async (dealId: string, data: MoveDealRequest): Promise<CrmDealRecord> => {
+  moveDeal: async (dealId: string, data: MoveDealRequest): Promise<import('@/types/crm').TransitionResult> => {
     const response = await makeRequest(`/api/crm/deals/${dealId}/stage`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     });
-    return handleApiResponse<CrmDealRecord>(response);
+    return handleApiResponse<import('@/types/crm').TransitionResult>(response);
   },
 
   advanceDeal: async (dealId: string): Promise<CrmDealRecord> => {
     const response = await makeRequest(`/api/crm/deals/${dealId}/advance`, { method: 'POST' });
     return handleApiResponse<CrmDealRecord>(response);
+  },
+
+  cancelDealAgent: async (dealId: string): Promise<{ cancelled: boolean; message: string }> => {
+    const response = await makeRequest(`/api/crm/deals/${dealId}/cancel-agent`, { method: 'POST' });
+    return handleApiResponse<{ cancelled: boolean; message: string }>(response);
+  },
+
+  approveDealAgent: async (dealId: string): Promise<{ approved: boolean; message: string }> => {
+    const response = await makeRequest(`/api/crm/deals/${dealId}/approve-agent`, { method: 'POST' });
+    return handleApiResponse<{ approved: boolean; message: string }>(response);
   },
 
   getDealRich: async (dealId: string): Promise<CrmDealRich> => {
