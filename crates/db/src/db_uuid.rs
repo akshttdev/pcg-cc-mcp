@@ -56,6 +56,11 @@ impl DbUuid {
         Self(uuid::Uuid::new_v4().hyphenated().to_string())
     }
 
+    /// Return the nil UUID (all zeros).
+    pub fn nil() -> Self {
+        Self("00000000-0000-0000-0000-000000000000".to_string())
+    }
+
     /// Wrap an existing UUID string without validation.
     /// Prefer [`DbUuid::parse`] when the input is untrusted.
     pub fn from_string(s: impl Into<String>) -> Self {

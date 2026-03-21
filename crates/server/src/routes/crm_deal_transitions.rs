@@ -13,7 +13,6 @@ use db::{
 };
 use deployment::Deployment;
 use utils::response::ApiResponse;
-use uuid::Uuid;
 
 use super::{
     crm_deal_automations::{
@@ -101,7 +100,7 @@ pub async fn move_deal_stage(
                                         organization_id: deal
                                             .organization_id
                                             .clone()
-                                            .unwrap_or_else(|| DbUuid::from(Uuid::nil())),
+                                            .unwrap_or_else(DbUuid::nil),
                                         client_id: deal.client_id.clone(),
                                         crm_contact_id: deal.crm_contact_id.clone(),
                                         crm_pipeline_id: Some(delivery_pipeline.id.clone()),
