@@ -4,9 +4,14 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
+  ArrowRight,
   Calendar,
   DollarSign,
   MoreHorizontal,
@@ -40,12 +45,19 @@ interface BoardProgressInfo {
   percentage: number;
 }
 
+interface StageOption {
+  id: string;
+  name: string;
+}
+
 interface CrmDealCardProps {
   deal: CrmDealWithContact;
   stageName?: string;
   stageColor?: string;
   onEdit?: (deal: CrmDealWithContact) => void;
   onDelete?: (deal: CrmDealWithContact) => void;
+  onMoveTo?: (deal: CrmDealWithContact, stageId: string) => void;
+  stages?: StageOption[];
   boardProgress?: BoardProgressInfo;
 }
 
@@ -79,7 +91,7 @@ function StatusChip({
   );
 }
 
-export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, boardProgress }: CrmDealCardProps) {
+export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onMoveTo, stages, boardProgress }: CrmDealCardProps) {
   const currentStage = (stageName || '').toLowerCase();
 
   const initials = deal.contact_name
@@ -187,7 +199,29 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, boa
                   <MoreHorizontal className="h-3.5 w-3.5" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-36" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenuContent align="end" className="w-44" onClick={(e) => e.stopPropagation()}>
+                {onMoveTo && stages && stages.length > 0 && (
+                  <>
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        <ArrowRight className="h-3 w-3 mr-2" />Move to...
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent>
+                        {stages
+                          .filter((s) => s.id !== deal.crm_stage_id)
+                          .map((stage) => (
+                            <DropdownMenuItem
+                              key={stage.id}
+                              onClick={() => onMoveTo(deal, stage.id)}
+                            >
+                              {stage.name}
+                            </DropdownMenuItem>
+                          ))}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
                 <DropdownMenuItem onClick={() => onEdit?.(deal)}>
                   <Edit className="h-3 w-3 mr-2" />Edit
                 </DropdownMenuItem>

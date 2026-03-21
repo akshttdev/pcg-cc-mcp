@@ -375,6 +375,11 @@ export function CrmPipelineBoard({
                           stageColor={stage.color}
                           onEdit={handleEditDeal}
                           onDelete={handleDeleteDeal}
+                          onMoveTo={(d, stageId) => {
+                            const targetSD = kanbanData.stages.find((s) => s.stage.id === stageId);
+                            moveDeal.mutate({ dealId: d.id, data: { stage_id: stageId, position: targetSD?.deals.length ?? 0 } });
+                          }}
+                          stages={stages.map((s) => ({ id: s.id, name: s.name }))}
                           boardProgress={boardProgressInfo}
                         />
                       </KanbanCard>
