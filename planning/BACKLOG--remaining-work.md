@@ -147,20 +147,14 @@ See Phase 0 sprint backlog above.
 **What:** `ai-usage.tsx` now calls `costsApi` (6 endpoints with `?days` filter). All `tokenUsageApi` references removed. Types use `number` not `bigint`.
 **Status:** DONE (branch `feature/2026-03-21--gap-analysis`)
 
-### GAP-1a. TokenUsageWidget migration [P1]
-**Source:** Gap analysis modularization scan
-**What:** `components/mission-control/TokenUsageWidget.tsx` (204 lines) also calls dead `tokenUsageApi.getToday()` and `getByProject()`. Mission control dashboard shows $0.
-**Effort:** 0.5h | **Status:** NOT STARTED
+### GAP-1a. TokenUsageWidget migration [P1] ✅ DONE
+**Status:** DONE — migrated to costsApi.orgSummary/orgByProject with org context
 
-### GAP-1b. Cost formatting helpers [P2]
-**Source:** Gap analysis modularization scan
-**What:** `formatCost()` and `formatTokens()` are defined inline in `ai-usage.tsx`. Extract to `frontend/src/lib/format.ts` for reuse by TokenUsageWidget and future cost components.
-**Effort:** 0.5h | **Status:** NOT STARTED
+### GAP-1b. Cost formatting helpers [P2] ✅ DONE
+**Status:** DONE — extracted to `frontend/src/lib/format.ts`
 
-### GAP-1c. Cost page component extraction [P2]
-**Source:** Gap analysis modularization scan
-**What:** `ai-usage.tsx` is 539 lines (over 500-line limit). Extract `CostSummaryCards`, `CostTrendChart`, and `CostBreakdownTable` components. The 4 breakdown tabs (models, providers, projects, agents) share the same Table structure.
-**Effort:** 1.5h | **Status:** NOT STARTED
+### GAP-1c. Cost page component extraction [P2] ✅ DONE
+**Status:** DONE — split into `ai-usage/` directory (AIUsagePage 450 lines + CostSummaryCards + CostTrendChart)
 
 ### GAP-2. Agent flow engine LLM dispatch [P0]
 **Source:** `planning/2026-03-21--analysis--sprint-gap-audit.md`
@@ -169,19 +163,12 @@ See Phase 0 sprint backlog above.
 **Effort:** 3 days | **Status:** NOT STARTED
 **Rationale:** Without dispatch, agent flows are inert — the entire orchestration system is non-functional.
 
-### GAP-3. Frontend clarification form [P1]
-**Source:** `planning/2026-03-21--analysis--sprint-gap-audit.md`
-**What:** Backend `respond-clarification` endpoint exists, `FlowStatus::NeedsClarification` works, but no UI for users to respond.
-**Scope:** Parse `flow.clarification_request` JSON in `AgentFlowCard`, render question + input + submit button, add `respondClarification` API function.
-**Effort:** 2h | **Status:** NOT STARTED
-**Rationale:** NeedsClarification status is useless without a way for users to respond.
+### GAP-3. Frontend clarification form [P1] ✅ DONE
+**Status:** DONE — ClarificationResponseForm in AgentFlowCard with API function + mutation hook
 
-### GAP-4. Sidebar "Report Friction" button [P1]
-**Source:** `planning/2026-03-21--analysis--sprint-gap-audit.md`
-**What:** Friction form exists in `FeedbackDialog` but no discoverable entry point.
-**Scope:** Add item to sidebar "More" popover, open dialog with `type='friction'` pre-set.
-**Effort:** 0.5h | **Status:** NOT STARTED
-**Rationale:** Dogfooding friction logging is invisible without a sidebar entry point.
+### GAP-4. Sidebar "Report Friction" button [P1] ✅ DONE
+**Status:** DONE — Added to sidebar More popover, opens FeedbackDialog with defaultType='friction'
+
 
 ### GAP-5. Granular cost scoping — project + task level [P2]
 **Source:** `planning/2026-03-21--analysis--sprint-gap-audit.md` (multi-scope cost section)
