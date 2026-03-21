@@ -835,6 +835,10 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             post(crm_deal_automations::mark_deal_won),
         )
         .route(
+            "/crm/deals/{id}/generate-invite",
+            post(crm_deal_automations::generate_deal_invite),
+        )
+        .route(
             "/crm/deals/{id}/transcripts",
             get(crm_deal_automations::list_deal_transcripts),
         )

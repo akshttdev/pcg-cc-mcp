@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
-import { Loader2, Presentation, Wand2, Receipt, Trophy, Share2, CheckCircle2 } from 'lucide-react';
+import { Loader2, Presentation, Wand2, Receipt, Trophy, Share2, CheckCircle2, Link2, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { crmDealsApi } from '@/lib/api/crm';
 import { crmKeys } from '@/lib/query-keys';
@@ -231,6 +231,105 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
           </div>
         )}
       </div>
+
+      {/* Invite Link — appears after deal is won */}
+      {deal.won_at && deal.crm_contact_id && (
+        <>
+          <div className="border-t" />
+          <InviteLinkSection deal={deal} />
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── InviteLinkSection ────────────────────────────────────────────────────────
+
+function InviteLinkSection({ deal }: { deal: CrmDealWithContact }) {
+  const qc = useQueryClient();
+  const [inviteCopied, setInviteCopied] = useState(false);
+
+  const existingToken = (() => {
+    try {
+      const cf = typeof deal.custom_fields === 'string' ? JSON.parse(deal.custom_fields) : deal.custom_fields;
+      return cf?.invite_token as string | undefined;
+    } catch { return undefined; }
+  })();
+
+  const generateInvite = useMutation({
+    mutationFn: () => crmDealsApi.generateInvite(deal.id),
+    onSuccess: (res) => {
+      const fullUrl = `${window.location.origin}${res.invite_url}`;
+      navigator.clipboard.writeText(fullUrl);
+      setInviteCopied(true);
+      toast.success('Invite link copied to clipboard', {
+        description: res.contact_email ? `For ${res.contact_email}` : undefined,
+      });
+      qc.invalidateQueries({ queryKey: crmKeys.kanbanAll() });
+      qc.invalidateQueries({ queryKey: crmKeys.orgKanbanAll() });
+      setTimeout(() => setInviteCopied(false), 3000);
+    },
+    onError: (e: Error) => toast.error(e.message ?? 'Failed to generate invite link'),
+  });
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Link2 className="h-4 w-4 text-emerald-400" />
+        <h3 className="font-semibold text-sm">Client Invitation</h3>
+      </div>
+
+      {existingToken ? (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-xs text-emerald-500">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            Invite link generated
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs border-emerald-500/40 text-emerald-400 hover:bg-emerald-950/30"
+              onClick={() => {
+                const url = `${window.location.origin}/invite/${existingToken}`;
+                navigator.clipboard.writeText(url);
+                setInviteCopied(true);
+                toast.success('Invite link copied');
+                setTimeout(() => setInviteCopied(false), 3000);
+              }}
+            >
+              {inviteCopied ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              {inviteCopied ? 'Copied!' : 'Copy Link'}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-xs"
+              onClick={() => generateInvite.mutate()}
+              disabled={generateInvite.isPending}
+            >
+              {generateInvite.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Link2 className="h-3 w-3" />}
+              Regenerate
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">
+            Generate an invite link for the client to access their project dashboard.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 text-xs border-emerald-500/40 text-emerald-400 hover:bg-emerald-950/30"
+            onClick={() => generateInvite.mutate()}
+            disabled={generateInvite.isPending}
+          >
+            {generateInvite.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
+            {generateInvite.isPending ? 'Generating...' : 'Generate Invite Link'}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

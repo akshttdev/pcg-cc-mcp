@@ -506,6 +506,11 @@ export const crmDealsApi = {
     return handleApiResponse<{ approved: boolean; message: string }>(response);
   },
 
+  generateInvite: async (dealId: string): Promise<{ invite_url: string; token: string; contact_email?: string; status: string }> => {
+    const response = await makeRequest(`/api/crm/deals/${dealId}/generate-invite`, { method: 'POST' });
+    return handleApiResponse<{ invite_url: string; token: string; contact_email?: string; status: string }>(response);
+  },
+
   getDealRich: async (dealId: string): Promise<CrmDealRich> => {
     const response = await makeRequest(`/api/crm/deals/${dealId}/rich`);
     return handleApiResponse<CrmDealRich>(response);
