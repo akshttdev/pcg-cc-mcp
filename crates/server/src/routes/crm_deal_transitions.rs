@@ -9,215 +9,59 @@ use axum::{
 };
 use db::{
     db_uuid::DbUuid,
-    models::crm_deal::{CreateCrmDeal, CrmDeal},
+    models::crm_deal::CrmDeal,
 };
 use deployment::Deployment;
 use utils::response::ApiResponse;
-use uuid::Uuid;
 
-use super::{
-    crm_deal_automations::{
-        generate_deck_background, generate_phase1_business_report, trigger_deep_research_pass2,
-        trigger_who_is_research,
-    },
-    crm_deals::{MoveDealRequest, require_deal_org_access},
-};
+use super::crm_deals::{MoveDealRequest, require_deal_org_access};
 use crate::{
     DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param,
     middleware::access_control::AccessContext,
 };
 
-/// PATCH /crm/deals/:id/stage - Move deal to new stage (drag-drop)
-/// When a Sales pipeline deal moves to a Won stage, auto-create a Delivery pipeline deal
+/// PATCH /crm/deals/:id/stage - Move deal to new stage (drag-drop or context menu)
+///
+/// Unified transition: moves the deal, then runs the StageTransitionProcessor
+/// which handles automations, gates, review tasks, and agent scheduling.
 pub async fn move_deal_stage(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
     Json(data): Json<MoveDealRequest>,
-) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
+) -> Result<Json<ApiResponse<crate::stage_transition::TransitionResult>>, ApiError> {
     let pool = &deployment.db().pool;
     let id = parse_db_uuid_param(&id, "deal ID")?;
-    require_deal_org_access(&access_context, pool, &id).await?;
+    let deal = require_deal_org_access(&access_context, pool, &id).await?;
     let stage_id = DbUuid::from(data.stage_id);
 
-    // Check if the target stage is a "won" stage
-    let target_stage = db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, &stage_id)
-        .await
-        .ok();
-    let is_won = target_stage
+    // Load source and target stages
+    let from_stage = deal
+        .crm_stage_id
         .as_ref()
-        .map(|s| s.is_won.unwrap_or(0) == 1)
-        .unwrap_or(false);
+        .and_then(|sid| {
+            futures::executor::block_on(
+                db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, sid),
+            )
+            .ok()
+        });
+    let to_stage = db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, &stage_id)
+        .await
+        .map_err(|_| ApiError::NotFound("Target stage not found".to_string()))?;
 
-    // Move the deal
+    // Move the deal in the database
     let deal = CrmDeal::move_to_stage(pool, &id, &stage_id, data.position).await?;
 
-    // If won, check if this is a sales pipeline deal and auto-create delivery deal
-    if is_won {
-        if let Some(ref pipeline_id) = deal.crm_pipeline_id {
-            if let Ok(pipeline) =
-                db::models::crm_pipeline::CrmPipeline::find_by_id(pool, pipeline_id).await
-            {
-                if pipeline.pipeline_type == "sales" {
-                    // Find the delivery pipeline for this organization
-                    if let Some(ref deal_org_id) = deal.organization_id {
-                        if let Ok(Some(delivery_pipeline)) =
-                            db::models::crm_pipeline::CrmPipeline::find_by_type_for_org(
-                                pool,
-                                deal_org_id,
-                                db::models::crm_pipeline::PipelineType::Delivery,
-                            )
-                            .await
-                        {
-                            // Check if a delivery deal already exists for this contact
-                            let has_delivery_deal =
-                                if let Some(ref contact_id) = deal.crm_contact_id {
-                                    let contact_deals = CrmDeal::find_by_contact(pool, contact_id)
-                                        .await
-                                        .unwrap_or_default();
-                                    contact_deals.iter().any(|d| {
-                                        d.crm_pipeline_id.as_ref() == Some(&delivery_pipeline.id)
-                                    })
-                                } else {
-                                    false
-                                };
+    // Run unified transition processor (automations, gates, agent scheduling)
+    let result = crate::stage_transition::process_transition(
+        pool,
+        &deal,
+        from_stage.as_ref(),
+        &to_stage,
+    )
+    .await;
 
-                            if !has_delivery_deal {
-                                // Get the first stage (Onboarding) of the delivery pipeline
-                                let delivery_stages =
-                                    db::models::crm_pipeline::CrmPipelineStage::find_by_pipeline(
-                                        pool,
-                                        &delivery_pipeline.id,
-                                    )
-                                    .await
-                                    .unwrap_or_default();
-
-                                let onboarding_stage = delivery_stages.first();
-
-                                // Create delivery deal
-                                let _ = CrmDeal::create(
-                                    pool,
-                                    CreateCrmDeal {
-                                        organization_id: deal
-                                            .organization_id
-                                            .clone()
-                                            .unwrap_or_else(|| DbUuid::from(Uuid::nil())),
-                                        client_id: deal.client_id.clone(),
-                                        crm_contact_id: deal.crm_contact_id.clone(),
-                                        crm_pipeline_id: Some(delivery_pipeline.id.clone()),
-                                        crm_stage_id: onboarding_stage.map(|s| s.id.clone()),
-                                        name: format!("{} - Delivery", deal.name),
-                                        description: Some(format!(
-                                            "Auto-created from won sales deal: {}",
-                                            deal.name
-                                        )),
-                                        amount: deal.amount,
-                                        currency: Some(deal.currency.clone()),
-                                        expected_close_date: None,
-                                        tags: None,
-                                        custom_fields: None,
-                                    },
-                                )
-                                .await;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Stage-aware auto-triggers (9-stage Dealflow pipeline)
-    let stage_name_lower = target_stage
-        .as_ref()
-        .map(|s| s.name.to_lowercase())
-        .unwrap_or_default();
-    let stage_type_lower = target_stage
-        .as_ref()
-        .and_then(|s| s.stage_type.as_deref())
-        .unwrap_or("")
-        .to_lowercase();
-
-    // "Intel" stage → Scout: auto-trigger Phase I Who-Is research
-    if stage_name_lower == "intel" || stage_type_lower == "intel" {
-        let pool_bg = pool.clone();
-        let deal_id = deal.id.clone();
-        let contact_id = deal.crm_contact_id.clone();
-        tokio::spawn(async move {
-            trigger_who_is_research(&pool_bg, deal_id, contact_id).await;
-        });
-    }
-
-    // "Proposal" stage → Astra Pass 2 + Cash chain: deep research then auto-generate proposal
-    if stage_name_lower == "proposal" || stage_type_lower == "proposal" {
-        if deal.proposal_text.is_none() || deal.proposal_text.as_deref() == Some("") {
-            let pool_bg = pool.clone();
-            let deal_id = deal.id.clone();
-            tokio::spawn(async move {
-                trigger_deep_research_pass2(&pool_bg, deal_id).await;
-            });
-            tracing::info!(
-                "Astra Pass 2 + Cash chain auto-triggered for deal {} entering Proposal stage",
-                deal.id
-            );
-        }
-    }
-
-    // "Polish" stage → Lux: auto-generate deck if proposal exists and no deck yet
-    if stage_name_lower == "polish" || stage_type_lower == "polish" {
-        if deal.deck_url.is_none() && deal.proposal_text.is_some() {
-            let pool_bg = pool.clone();
-            let deal_id = deal.id.clone();
-            tokio::spawn(async move {
-                generate_deck_background(&pool_bg, deal_id).await;
-            });
-            tracing::info!(
-                "Lux auto-triggered for deal {} entering Polish stage",
-                deal.id
-            );
-        }
-    }
-
-    // Stages that need a human review task before advancing
-    let review_stages = [
-        (
-            "intel",
-            "Review Phase I intelligence (Scout): person profile & company overview",
-        ),
-        (
-            "business analysis",
-            "Review business report (Astra): pain points, opportunities, recommended services",
-        ),
-        (
-            "discovery",
-            "Review discovery transcript and confirm proposal readiness",
-        ),
-        (
-            "proposal",
-            "Review and approve proposal (Cash) before moving to Polish",
-        ),
-        (
-            "polish",
-            "Review and approve deck (Lux) before presenting to client",
-        ),
-        (
-            "present",
-            "Confirm invoice sent and await payment confirmation",
-        ),
-        (
-            "follow up",
-            "Update follow-up status — won, lost, or still in discussion",
-        ),
-    ];
-
-    for (stage_key, task_desc) in &review_stages {
-        if stage_name_lower == *stage_key || stage_type_lower == *stage_key {
-            manage_stage_review_tasks(pool, &deal, task_desc, stage_key).await;
-            break;
-        }
-    }
-
-    Ok(Json(ApiResponse::success(deal)))
+    Ok(Json(ApiResponse::success(result)))
 }
 
 /// GET /crm/deals/:id/advance-requirements - Pre-flight check for advancing a deal
@@ -472,161 +316,21 @@ pub async fn advance_deal(
     // Move deal to next stage — position 0 (will be sorted by position within stage)
     let deal = CrmDeal::move_to_stage(pool, &id, &next_stage.id, 0).await?;
 
-    // Fire stage-entry hooks for the new stage
-    let new_stage = db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, &next_stage.id)
+    // Load the target stage for the processor
+    let to_stage = db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, &next_stage.id)
         .await
-        .ok();
-    let new_stage_name = new_stage
-        .as_ref()
-        .map(|s| s.name.to_lowercase())
-        .unwrap_or_default();
-    let is_won = new_stage
-        .as_ref()
-        .map(|s| s.is_won.unwrap_or(0) == 1)
-        .unwrap_or(false);
+        .map_err(|_| ApiError::NotFound("Next stage not found".to_string()))?;
 
-    // Auto-create delivery deal on Closed Won (with dedup check)
-    if is_won {
-        if let Some(ref pipeline_id) = deal.crm_pipeline_id {
-            if let Ok(pipeline) =
-                db::models::crm_pipeline::CrmPipeline::find_by_id(pool, pipeline_id).await
-            {
-                if pipeline.pipeline_type == "clients" || pipeline.pipeline_type == "sales" {
-                    if let Some(ref deal_org_id) = deal.organization_id {
-                        if let Ok(Some(delivery_pipeline)) =
-                            db::models::crm_pipeline::CrmPipeline::find_by_type_for_org(
-                                pool,
-                                deal_org_id,
-                                db::models::crm_pipeline::PipelineType::Delivery,
-                            )
-                            .await
-                        {
-                            // Dedup: check if a delivery deal with the same name pattern already exists
-                            let delivery_deal_name = format!("{} - Delivery", deal.name);
-                            let existing_count: i64 = sqlx::query_scalar(
-                                "SELECT COUNT(*) FROM crm_deals WHERE crm_pipeline_id = ? AND name = ?",
-                            )
-                            .bind(&delivery_pipeline.id)
-                            .bind(&delivery_deal_name)
-                            .fetch_one(pool)
-                            .await
-                            .unwrap_or(0);
+    // Run unified transition processor (automations, gates, agent scheduling)
+    let result = crate::stage_transition::process_transition(
+        pool,
+        &deal,
+        Some(&current_stage),
+        &to_stage,
+    )
+    .await;
 
-                            if existing_count > 0 {
-                                tracing::warn!(
-                                    "Skipping delivery deal creation: deal '{}' already exists in pipeline {}",
-                                    delivery_deal_name,
-                                    delivery_pipeline.id
-                                );
-                            } else {
-                                let delivery_stages =
-                                    db::models::crm_pipeline::CrmPipelineStage::find_by_pipeline(
-                                        pool,
-                                        &delivery_pipeline.id,
-                                    )
-                                    .await
-                                    .unwrap_or_default();
-                                if let Some(first_stage) = delivery_stages.first() {
-                                    let _ = CrmDeal::create(
-                                        pool,
-                                        CreateCrmDeal {
-                                            organization_id: deal_org_id.clone(),
-                                            client_id: deal.client_id.clone(),
-                                            crm_contact_id: deal.crm_contact_id.clone(),
-                                            crm_pipeline_id: Some(delivery_pipeline.id.clone()),
-                                            crm_stage_id: Some(first_stage.id.clone()),
-                                            name: delivery_deal_name,
-                                            description: Some(format!(
-                                                "Auto-created from won deal: {}",
-                                                deal.name
-                                            )),
-                                            amount: deal.amount,
-                                            currency: Some(deal.currency.clone()),
-                                            expected_close_date: None,
-                                            tags: None,
-                                            custom_fields: None,
-                                        },
-                                    )
-                                    .await;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Stage-entry hooks for 9-stage Dealflow pipeline
-    let new_stage_type =
-        db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, &next_stage.id)
-            .await
-            .ok()
-            .and_then(|s| s.stage_type)
-            .unwrap_or_default()
-            .to_lowercase();
-
-    // Create review task for stages that gate on human approval
-    let review_stages = [
-        (
-            "intel",
-            "Review Phase I intelligence (Scout): person profile & company overview",
-        ),
-        (
-            "business analysis",
-            "Review business report (Astra): pain points, opportunities, recommended services",
-        ),
-        (
-            "discovery",
-            "Review discovery transcript and confirm proposal readiness",
-        ),
-        (
-            "proposal",
-            "Review and approve proposal (Cash) before moving to Polish",
-        ),
-        (
-            "polish",
-            "Review and approve deck (Lux) before presenting to client",
-        ),
-        (
-            "present",
-            "Confirm invoice sent and await payment confirmation",
-        ),
-        (
-            "follow up",
-            "Update follow-up status — won, lost, or still in discussion",
-        ),
-    ];
-    for (stage_key, task_desc) in &review_stages {
-        if new_stage_name == *stage_key || new_stage_type == *stage_key {
-            manage_stage_review_tasks(pool, &deal, task_desc, stage_key).await;
-            break;
-        }
-    }
-
-    // Intel → Scout: Phase I Who-Is research
-    if new_stage_name == "intel" || new_stage_type == "intel" {
-        let pool_bg = pool.clone();
-        let deal_id = deal.id.clone();
-        let contact_id = deal.crm_contact_id.clone();
-        tokio::spawn(async move {
-            trigger_who_is_research(&pool_bg, deal_id, contact_id).await;
-        });
-    }
-
-    // Business Analysis → Astra: Phase II business report
-    if new_stage_name == "business analysis" || new_stage_type == "business_analysis" {
-        let pool_bg = pool.clone();
-        let deal_id_bg = deal.id.clone();
-        let contact_id_bg = deal.crm_contact_id.clone();
-        let project_id_bg = deal.project_id.clone();
-        tokio::spawn(async move {
-            generate_phase1_business_report(&pool_bg, deal_id_bg, contact_id_bg, project_id_bg)
-                .await;
-        });
-    }
-
-    Ok(Json(ApiResponse::success(deal)))
+    Ok(Json(ApiResponse::success(result.deal)))
 }
 
 /// Create a review task for a deal stage if none exists for this specific stage.
@@ -752,5 +456,69 @@ pub async fn manage_stage_review_tasks(
                 }
             }
         }
+    }
+}
+
+/// POST /crm/deals/:id/cancel-agent - Cancel a pending agent flow within the cancel window
+pub async fn cancel_deal_agent(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let id = parse_db_uuid_param(&id, "deal ID")?;
+    require_deal_org_access(&access_context, pool, &id).await?;
+
+    let cancelled = crate::stage_transition::cancel_agent_flow(pool, id.as_str())
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to cancel agent: {}", e)))?;
+
+    if cancelled {
+        Ok(Json(ApiResponse::success(serde_json::json!({
+            "cancelled": true,
+            "message": "Agent flow cancelled"
+        }))))
+    } else {
+        Err(ApiError::BadRequest(
+            "No cancellable agent flow found (may have already started or expired)".to_string(),
+        ))
+    }
+}
+
+/// POST /crm/deals/:id/approve-agent - Skip the cancel window and start the agent immediately
+pub async fn approve_deal_agent(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let id = parse_db_uuid_param(&id, "deal ID")?;
+    require_deal_org_access(&access_context, pool, &id).await?;
+
+    // Clear the cancel_deadline so the worker picks it up immediately
+    let result = sqlx::query(
+        r#"
+        UPDATE agent_flows SET
+            cancel_deadline = NULL,
+            updated_at = datetime('now', 'subsec')
+        WHERE crm_deal_id = ?1
+          AND status = 'planning'
+          AND cancel_deadline > datetime('now', 'subsec')
+        "#,
+    )
+    .bind(id.as_str())
+    .execute(pool)
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to approve agent: {}", e)))?;
+
+    if result.rows_affected() > 0 {
+        Ok(Json(ApiResponse::success(serde_json::json!({
+            "approved": true,
+            "message": "Agent will start on next poll cycle"
+        }))))
+    } else {
+        Err(ApiError::BadRequest(
+            "No pending agent flow found to approve".to_string(),
+        ))
     }
 }
