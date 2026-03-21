@@ -346,7 +346,7 @@ Extend `crates/server/src/routes/feedback.rs`:
 |-----------|-----------|--------|--------|
 | **#53** | Items #1-5, #10 (CI, access control, stability, friction) | `pr/51-ci-regressions-access-control` | ✅ MERGED 2026-03-20 |
 | **#54** | Item #6 (cost bridge) | `pr/54-cost-bridge` | ✅ MERGED 2026-03-20 |
-| **#55** | Items #7-9 (agent engine) | `pr/55-agent-engine` | 🔄 IN REVIEW — clippy cleanup in progress |
+| **#55** | Items #7-9 (agent engine) | `pr/55-agent-engine` | ✅ CI GREEN 6/6 — ready to merge |
 
 ---
 
