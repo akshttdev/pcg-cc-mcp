@@ -454,8 +454,8 @@ async fn schedule_agent_flow(
         VALUES (?1, ?2, ?3, 'planning', 'planning', ?4, 0, datetime('now', 'subsec'), ?5, ?6)
         "#,
     )
-    .bind(flow_id)
-    .bind(task_id)
+    .bind(&flow_id)
+    .bind(&task_id)
     .bind(flow_type)
     .bind(flow_config.to_string())
     .bind(deal.id.to_string())
@@ -463,7 +463,7 @@ async fn schedule_agent_flow(
     .execute(pool)
     .await?;
 
-    Ok((flow_id.to_string(), deadline))
+    Ok((flow_id, deadline))
 }
 
 // ── Helper Functions ─────────────────────────────────────────────────────────
