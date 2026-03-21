@@ -37,14 +37,30 @@
   - Types: TransitionResult, ValidationWarning, StageConfig, StageAction, StageValidation, StageOwner
   - CrmDealWithContact: active_agent_flow_id/status/name/cancel_deadline from kanban JOIN
 
-### In Progress
-- **W3**: DnD verification (context menu already shipped `c5f66c9cb`)
-- **W4**: Call scheduling input UI
+- **W3: DnD Verification** — DONE (context menu shipped `c5f66c9cb`, verification pending browser test)
 
-### Pending
-- W5: Deal detail panel + agent history
-- W6: Person invitation
-- W7: Pipeline settings + seed configs
+- **W4: Call Scheduling Input UI** — DONE
+  - CallSchedulingSection component in OverviewTab (replaces display-only)
+  - Date picker, method selector (Phone/Video/In-Person), status toggle
+  - Saves to custom_fields via updateDeal mutation
+  - Click-to-edit pattern
+
+- **W5: Deal Detail Panel + Agent History** — DONE
+  - Expand mode: Sheet↔Dialog toggle with Maximize2/Minimize2
+  - Agent History tab with flow timeline (FlowCard, EventRow)
+  - GET /crm/deals/:id/agent-flows endpoint (moved to crm_deal_transitions.rs)
+  - Backend reorg: get_deal_agent_flows handler moved from crm_deals.rs
+
+- **W6: Person Invitation** — DONE
+  - POST /crm/deals/:id/generate-invite — token-based invite URL
+  - InviteLinkSection in DeckTab (appears on Won deals)
+  - Copy link to clipboard + toast
+
+- **W7: Pipeline Settings + Seed Configs** — DONE
+  - StageConfigEditor.tsx (new component): agent dropdown, auto-trigger, cancel window, required fields, approval gate
+  - Integrated into CrmPipelineSettings StageDialog
+  - getStageOwner() checks stage_config.stage_owner first, falls back to hardcoded
+  - Seed migration 20260414000001: stage_config for all 9 Dealflow + Delivery stages
 
 ---
 
