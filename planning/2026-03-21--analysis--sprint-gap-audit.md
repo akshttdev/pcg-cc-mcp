@@ -196,7 +196,7 @@ There was no point where someone asked "are we on track?" At ~50% through the sp
 
 | Priority | Item | Gap | Effort | Why it matters |
 |----------|------|-----|--------|----------------|
-| **P0** | #6 Wire ai-usage.tsx to new cost API | Dashboard shows $0 | 2h | Core sprint goal unmet |
+| **P0** | #6 Wire ai-usage.tsx to new cost API | Dashboard shows $0 | 3h | Core sprint goal unmet |
 | **P0** | #9 Implement LLM dispatch in executor | Engine does nothing | 3 days | Keystone item — without this, agent flows are inert |
 | **P1** | #8 Frontend clarification form | Users can't respond | 2h | NeedsClarification status useless without UI |
 | **P1** | #10 Sidebar "Report Friction" button | No entry point for dogfooding | 0.5h | Dogfooding friction logging is invisible |
@@ -206,3 +206,139 @@ There was no point where someone asked "are we on track?" At ~50% through the sp
 | **P3** | #6 /costs/daily endpoint | No daily trends | 0.5h | Nice to have |
 | **P3** | #7 ResponseMetrics + type generation | Metrics tracking | 1h | Deferred |
 | **P3** | #10 Structured friction schema | Better analytics | 1.5h | Nice to have |
+
+---
+
+## Solution Paths
+
+### P0: Wire ai-usage.tsx to new cost API (Item #6)
+
+**Problem**: `ai-usage.tsx` calls 6 endpoints on `tokenUsageApi` (which reads from the dead `token_usage` table). The new `costsApi` reads from `vibe_transactions` (real data) but only has 3 endpoints with different response shapes.
+
+**Current state**:
+
+| Old API (`tokenUsageApi`) | Endpoint | Response shape |
+|--------------------------|----------|----------------|
+| `getToday()` | `/api/token-usage/today` | `TokenUsageSummary { total_input_tokens, total_output_tokens, total_tokens, total_cost_cents, request_count }` |
+| `getDaily(days)` | `/api/token-usage/daily?days=N` | `DailyTokenUsage[] { usage_date, project_id, model, provider, total_input_tokens, total_output_tokens, total_tokens, total_cost_cents, request_count }` |
+| `getByProvider(days)` | `/api/token-usage/by-provider?days=N` | `TokenUsageByProvider[] { provider, total_input_tokens, total_output_tokens, total_tokens, total_cost_cents, request_count }` |
+| `getByModel(days)` | `/api/token-usage/by-model?days=N` | `TokenUsageByModel[] { model, provider, total_input_tokens, total_output_tokens, total_tokens, total_cost_cents, request_count }` |
+| `getByProject(days)` | `/api/token-usage/by-project?days=N` | `TokenUsageByProject[] { project_id, project_name, total_tokens, request_count }` |
+| `getByAgent(days)` | `/api/token-usage/by-agent?days=N` | `TokenUsageByAgent[] { agent_id, agent_name, total_tokens, request_count }` |
+
+| New API (`costsApi`) | Endpoint | Response shape |
+|---------------------|----------|----------------|
+| `orgSummary(orgId)` | `/api/organizations/:orgId/costs/summary` | `OrgCostSummary { total_vibe, total_cost_cents, transaction_count, total_input_tokens, total_output_tokens }` |
+| `orgByModel(orgId)` | `/api/organizations/:orgId/costs/by-model` | `ModelCostRow[] { model, provider, total_vibe, total_cost_cents, transaction_count, input_tokens, output_tokens }` |
+| `orgByProject(orgId)` | `/api/organizations/:orgId/costs/by-project` | `ProjectCostRow[] { project_id, project_name, total_vibe, total_cost_cents, transaction_count }` |
+
+**Key differences**:
+- New API is org-scoped (requires `orgId`), old was global
+- New API has no `days` parameter (returns all-time) — needs backend change for date filtering
+- New API has `total_vibe` field (VIBE token cost), old only had `total_cost_cents`
+- New API uses `bigint` in TS types (from `i64` via ts-rs) but JSON delivers `number` — needs `#[ts(type = "number")]` on Rust structs
+- Missing new endpoints: `daily` (time series), `by-provider`, `by-agent`
+- Field naming differs: `request_count` vs `transaction_count`, `total_tokens` vs separate `input_tokens`/`output_tokens`
+
+**Recommended solution** (3 steps):
+
+**Step 1: Backend — add `days` query param + missing endpoints (~1.5h)**
+File: `crates/server/src/routes/vibe_treasury.rs` + `crates/db/src/models/vibe_transaction.rs`
+
+```rust
+// Add Query param to all 3 existing endpoints:
+#[derive(Deserialize)]
+struct CostQuery { days: Option<i64> }
+
+// Add WHERE clause: AND vt.created_at >= datetime('now', '-' || ?days || ' days')
+// when days is Some
+
+// Add 3 new endpoints:
+// GET /organizations/:org_id/costs/daily       → Vec<DailyCostRow>
+// GET /organizations/:org_id/costs/by-provider → Vec<ProviderCostRow>
+// GET /organizations/:org_id/costs/by-agent    → Vec<AgentCostRow>
+```
+
+New Rust structs needed: `DailyCostRow`, `ProviderCostRow`, `AgentCostRow` (all with `#[derive(TS)]`).
+
+**Step 2: Fix bigint types (~10min)**
+File: `crates/db/src/models/vibe_transaction.rs`
+
+Add `#[ts(type = "number")]` to all `i64` fields on `OrgCostSummary`, `ModelCostRow`, `ProjectCostRow`, and the new structs. Then `npm run generate-types`.
+
+**Step 3: Frontend — replace tokenUsageApi calls (~1.5h)**
+File: `frontend/src/pages/ai-usage.tsx`
+
+1. Import `useOrganization` from `@/contexts/organization-context` for `effectiveOrgId`
+2. Import `costsApi` and `costKeys`
+3. Replace each `useQuery` call:
+   - `tokenUsageApi.getToday()` → `costsApi.orgSummary(effectiveOrgId!)`
+   - `tokenUsageApi.getDaily(days)` → `costsApi.orgDaily(effectiveOrgId!, days)` (new endpoint)
+   - `tokenUsageApi.getByProvider(days)` → `costsApi.orgByProvider(effectiveOrgId!, days)` (new endpoint)
+   - `tokenUsageApi.getByModel(days)` → `costsApi.orgByModel(effectiveOrgId!, days)` (update to pass days)
+   - `tokenUsageApi.getByProject(days)` → `costsApi.orgByProject(effectiveOrgId!, days)` (update to pass days)
+   - `tokenUsageApi.getByAgent(days)` → `costsApi.orgByAgent(effectiveOrgId!, days)` (new endpoint)
+4. Update `costKeys` in `query-keys.ts` to include `orgDaily`, `orgByProvider`, `orgByAgent`
+5. Update `costs.ts` API module with the 3 new functions
+6. Map response field names in rendering code:
+   - `m.request_count` → `m.transaction_count`
+   - `m.total_tokens` → `Number(m.input_tokens) + Number(m.output_tokens)`
+   - Add VIBE column to tables where relevant
+
+**Verification**: Navigate to `/ai-usage`, confirm:
+- Overview tab shows non-zero totals (if vibe_transactions has data for the org)
+- Models tab shows model breakdown
+- Projects tab shows project breakdown
+- Daily tab shows time series
+- All tabs respond to days filter dropdown
+
+**Build steps**: `cargo sqlx prepare --workspace`, `npm run generate-types`, verify tsc passes
+
+### P0: Implement LLM dispatch in agent flow executor (Item #9)
+
+**Problem**: `agent_flow_executor.rs` polls flows and auto-transitions between phases without doing any actual work. No LLM is called, no agent is dispatched.
+
+**Current state**:
+- `handle_planning_flow`: immediately transitions Planning → Executing (no planning work)
+- `handle_executing_flow`: checks if `execution_completed_at` is set, transitions to Verifying (nothing sets this timestamp)
+- `handle_verifying_flow`: checks `verification_completed_at`, raw SQL transition (nothing sets this timestamp)
+
+**Recommended solution**: This is a 3-day item. Scope to Phase 1 minimum:
+
+1. **API dispatch via PCG Router** (~1 day): In `handle_executing_flow`, when a flow is in `Executing` without `execution_completed_at`:
+   - Load `flow_config` JSON for model/prompt configuration
+   - Call `pcg_router::route_completion()` with the task description as input
+   - Parse response into `AgentResponseEnvelope`
+   - If `NeedsClarification` → transition flow
+   - If `Success` → set `execution_completed_at` and store response as artifact
+   - If `Error` → transition to Failed
+
+2. **Event emission** (~0.5 day): After each transition, call `AgentFlowEvent::emit_phase_started/completed` (methods already exist)
+
+3. **Config** (~0.5 day): Add `AgentFlowExecutorConfig` with `poll_interval_secs`, `max_concurrent` from env vars
+
+4. **Basic test** (~0.5 day): Mock the LLM response, verify the executor transitions correctly
+
+**Key files**: `crates/server/src/agent_flow_executor.rs`, `crates/server/src/routes/pcg_router.rs` (existing LLM routing), `crates/db/src/models/agent_response.rs`
+
+### P1: Frontend clarification form (Item #8)
+
+**Problem**: When a flow enters `NeedsClarification`, the backend has the endpoint (`POST /agent-flows/:id/respond-clarification`) but the frontend has no UI to submit a response.
+
+**Recommended solution** (~2h):
+1. In `AgentFlowCard.tsx`, when `flow.status === 'needs_clarification'`:
+   - Parse `flow.clarification_request` JSON into `ClarificationRequest` type
+   - Show the question text and any options
+   - Render a text input + submit button
+   - On submit, call `POST /agent-flows/:id/respond-clarification` with `{ response, resume_status }`
+2. Add `respondClarification` to `frontend/src/lib/api/agent-flows.ts`
+3. Add mutation with toast in the card component
+
+### P1: Sidebar "Report Friction" button (Item #10)
+
+**Problem**: The friction form exists in FeedbackDialog but there's no discoverable way to access it.
+
+**Recommended solution** (~30min):
+1. In sidebar "More" popover, add a "Report Friction" item next to existing "Send Feedback"
+2. On click, open `FeedbackDialog` with `type` pre-set to `'friction'`
+3. The dialog already has all the friction fields — just needs the entry point
