@@ -334,6 +334,150 @@ File: `frontend/src/pages/ai-usage.tsx`
 2. Add `respondClarification` to `frontend/src/lib/api/agent-flows.ts`
 3. Add mutation with toast in the card component
 
+### Future: Multi-scope cost aggregation (project / task / agent / flow)
+
+**Current data model already supports granular scoping.** The `vibe_transactions` table has:
+
+```
+source_type   TEXT   ('agent' | 'project')  — who paid
+source_id     BLOB   — project_id or agent_wallet_id
+task_id       BLOB   — which task triggered the cost
+task_attempt_id BLOB — which execution attempt
+process_id    BLOB   — which process (for streaming)
+model         TEXT   — LLM model used
+provider      TEXT   — provider (inferred from model)
+```
+
+The data links are: `transaction → task → project → organization` and `transaction → agent_wallet → agent`. All the scope dimensions exist in the schema — they just need query endpoints.
+
+**What exists today**: org-level aggregation only (3 endpoints: summary, by-model, by-project).
+
+**What's needed for granular scoping**:
+
+#### Phase 1: Org-level completion (needed for P0 cost bridge fix)
+
+This is the minimum to get the dashboard working:
+- Add `?days=N` query param to existing 3 org endpoints
+- Add 3 missing org endpoints (daily, by-provider, by-agent)
+- Fix bigint types
+- Wire frontend
+
+**Already scoped in the P0 cost bridge solution path above.**
+
+#### Phase 2: Project + task scope (needed for project detail page + task cost display)
+
+Enables: project budget tracking, task cost visibility in task detail panel.
+
+#### Phase 3: Agent + flow scope (needed for agent profiles + flow cost tracking)
+
+Enables: agent wallet management, flow orchestration cost visibility.
+
+#### Phase 4: Performance + extensibility (when query latency matters)
+
+Backfill TEXT columns, add indexes, support new scope dimensions.
+
+---
+
+**Phase 2 detail:**
+
+#### Step 1: Query layer (~2h)
+
+Add these query methods to `vibe_transaction.rs`:
+
+```rust
+// Project scope — filter by project_id directly (both source_type='project' + task→project)
+pub async fn project_cost_summary(pool, project_id) -> Result<OrgCostSummary>
+pub async fn project_cost_by_model(pool, project_id) -> Result<Vec<ModelCostRow>>
+
+// Task scope — filter by task_id
+pub async fn task_cost_summary(pool, task_id) -> Result<OrgCostSummary>
+pub async fn task_cost_by_model(pool, task_id) -> Result<Vec<ModelCostRow>>
+
+// Agent scope — filter by source_type='agent' AND source_id=agent_wallet_id
+// Agent wallet → agent_id mapping exists in agent_wallets table
+pub async fn agent_cost_summary(pool, agent_id) -> Result<OrgCostSummary>
+pub async fn agent_cost_by_model(pool, agent_id) -> Result<Vec<ModelCostRow>>
+
+// Flow scope — filter by task_id IN (tasks linked to this flow via agent_flows.task_id)
+pub async fn flow_cost_summary(pool, flow_id) -> Result<OrgCostSummary>
+```
+
+These reuse `OrgCostSummary` and `ModelCostRow` — same response shape, different WHERE clause. No new types needed.
+
+The SQL for project-scoped is simpler than org-scoped because you don't need the org JOIN:
+```sql
+SELECT SUM(amount_vibe) as total_vibe, ...
+FROM vibe_transactions vt
+WHERE (vt.source_type = 'project' AND hex_to_text(vt.source_id) = ?1)
+   OR (vt.task_id IS NOT NULL AND hex_to_text(vt.task_id) IN
+       (SELECT id FROM tasks WHERE project_id = ?1))
+```
+
+#### Step 2: Route endpoints (~1h)
+
+```
+GET /api/projects/:project_id/costs/summary
+GET /api/projects/:project_id/costs/by-model
+GET /api/tasks/:task_id/costs/summary
+GET /api/agents/:agent_id/costs/summary
+GET /api/agents/:agent_id/costs/by-model
+GET /api/agent-flows/:flow_id/costs/summary
+```
+
+Access control: project costs require project membership, agent costs require org membership, flow costs require task ownership. All follow existing patterns.
+
+#### Step 3: Optional date filtering (~30min)
+
+Add `?days=N` query param to all cost endpoints (including existing org ones):
+```rust
+#[derive(Deserialize)]
+struct CostQuery { days: Option<i64> }
+
+// In SQL: AND (?2 IS NULL OR vt.created_at >= datetime('now', '-' || ?2 || ' days'))
+```
+
+This is the same change needed for the P0 cost bridge fix.
+
+#### Step 4: Frontend consumers (~varies)
+
+Each scope gets used in different places:
+- **Project costs**: project detail page, project settings, budget warnings
+- **Task costs**: task detail panel (show how much this task cost to execute)
+- **Agent costs**: agent profile page, agent wallet management
+- **Flow costs**: agent flow detail view (cost of the entire orchestration)
+
+These are independent frontend features — each one can ship as its own vertical slice.
+
+#### Step 5: Backfill consideration
+
+No backfill needed — `vibe_transactions` already records `task_id`, `task_attempt_id`, `process_id`, and `source_id` on every transaction. The data is already granular. The only gap is transactions where `task_id` is NULL (the initial 0-amount "pending" record created before execution). These are by design and have zero cost, so they don't affect aggregation.
+
+The BLOB→TEXT hex conversion in JOINs (`lower(substr(hex(vt.source_id),...))`) is the main performance concern. For frequently-queried scopes, consider adding a TEXT `project_id_text` column and backfilling:
+
+```sql
+ALTER TABLE vibe_transactions ADD COLUMN project_id_text TEXT;
+-- Backfill from source_id (when source_type='project') and task→project JOIN
+UPDATE vibe_transactions SET project_id_text = (
+  CASE WHEN source_type = 'project' THEN hex_to_text(source_id)
+       WHEN task_id IS NOT NULL THEN (SELECT project_id FROM tasks WHERE id = hex_to_text(task_id))
+  END
+);
+CREATE INDEX idx_vibe_tx_project_text ON vibe_transactions(project_id_text);
+```
+
+This eliminates the hex conversion in queries and makes project-scoped aggregation fast.
+
+#### Extensibility for future scopes
+
+The pattern is: **"add a WHERE clause to the same aggregation query."** Any new dimension that can be derived from the existing columns (or a simple JOIN) works:
+
+- **Client scope**: `transaction → task → project → client_id` (one more JOIN)
+- **Workflow scope**: `transaction → task → workflow_run_id` (via metadata or future column)
+- **Time scope**: already supported via `created_at` date filtering
+- **Model family scope**: `GROUP BY substr(model, 1, instr(model, '-'))` for grouping gpt-4o-mini with gpt-4o
+
+If a new scope dimension isn't derivable from existing data, add it as an optional column to `vibe_transactions` + update `record_llm_usage` to accept it. The schema is designed for this — `metadata` JSON field can hold arbitrary context until a dedicated column is justified.
+
 ### P1: Sidebar "Report Friction" button (Item #10)
 
 **Problem**: The friction form exists in FeedbackDialog but there's no discoverable way to access it.
