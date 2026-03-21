@@ -121,7 +121,7 @@ impl DiarizationEngine {
 
         tokio::fs::write(&temp_file, audio_data)
             .await
-            .map_err(|e| VoiceError::IoError(e))?;
+            .map_err(VoiceError::IoError)?;
 
         let result = self.run_whisperx(&temp_file).await;
 
@@ -158,7 +158,7 @@ impl DiarizationEngine {
         let output_dir = std::env::temp_dir().join("whisperx_output");
         tokio::fs::create_dir_all(&output_dir)
             .await
-            .map_err(|e| VoiceError::IoError(e))?;
+            .map_err(VoiceError::IoError)?;
 
         let mut cmd_args = vec![
             "-m".to_string(),

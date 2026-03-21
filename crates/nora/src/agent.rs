@@ -1290,7 +1290,7 @@ impl NoraAgent {
                     // Consume (url) if present
                     if chars.peek() == Some(&'(') {
                         chars.next();
-                        while let Some(ch) = chars.next() {
+                        for ch in chars.by_ref() {
                             if ch == ')' {
                                 break;
                             }
@@ -1901,10 +1901,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
         if status.success() {
             Ok(())
         } else {
-            Err(io::Error::new(
-                io::ErrorKind::Other,
-                "git init exited with an error",
-            ))
+            Err(io::Error::other("git init exited with an error"))
         }
     }
 

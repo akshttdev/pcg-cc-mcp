@@ -570,7 +570,7 @@ async fn commit_contact(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Re
                 )
                 .await;
 
-                return Ok(Uuid::parse_str(&existing.id).map_err(|e| e.to_string())?);
+                return Uuid::parse_str(&existing.id).map_err(|e| e.to_string());
             }
         }
     }
@@ -937,7 +937,7 @@ async fn commit_task(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
     let task = Task::create(pool, &create, &task_id.to_string())
         .await
         .map_err(|e| e.to_string())?;
-    Ok(Uuid::parse_str(&task.id).map_err(|e| e.to_string())?)
+    Uuid::parse_str(&task.id).map_err(|e| e.to_string())
 }
 
 // ── Auto-execute for agent-assigned tasks ────────────────────────────────
@@ -1179,7 +1179,6 @@ pub async fn store_company_id_in_custom_fields(
 /// Build custom_fields JSON with source traceability info, merging with any existing custom_fields.
 /// Also persists extended schema fields (deal_type, next_steps, estimated_value) that don't
 /// have dedicated DB columns.
-
 fn build_source_custom_fields(record: &WorkflowStagingRecord, data: &Value) -> Option<Value> {
     let mut fields = if let Some(existing) = data["custom_fields"].as_object() {
         existing.clone()

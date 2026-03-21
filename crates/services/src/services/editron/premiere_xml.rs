@@ -120,7 +120,7 @@ impl PremiereXmlExporter {
         }
 
         // Generate clip entries
-        for (_, path) in &media_files {
+        for path in media_files.values() {
             xml.push_str(&self.generate_master_clip(path, edit));
         }
 

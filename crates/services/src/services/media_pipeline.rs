@@ -348,7 +348,7 @@ impl MediaPipelineService {
                             .map(|f| f.to_string_lossy().to_string())
                             .unwrap_or_else(|| "source.bin".to_string()),
                         relative_path: dest_file
-                            .strip_prefix(&dest_dir.parent().unwrap_or(&self.inner.root))
+                            .strip_prefix(dest_dir.parent().unwrap_or(&self.inner.root))
                             .unwrap_or(&dest_file)
                             .to_string_lossy()
                             .to_string(),
@@ -1213,7 +1213,7 @@ pub enum MediaStorageTier {
 }
 
 impl MediaStorageTier {
-    pub fn from_str(value: &str) -> Result<Self, MediaPipelineError> {
+    pub fn parse_tier(value: &str) -> Result<Self, MediaPipelineError> {
         match value.to_lowercase().as_str() {
             "hot" => Ok(MediaStorageTier::Hot),
             "warm" => Ok(MediaStorageTier::Warm),

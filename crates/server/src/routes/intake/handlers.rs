@@ -338,7 +338,7 @@ pub async fn approve_business_report(
     // Advance CRM deal to "Proposal" stage if linked
     let mut deal_json: Option<serde_json::Value> = None;
     if let Some(deal_id) = report.crm_deal_id {
-        let deal_db_id = DbUuid::from(deal_id);
+        let deal_db_id = deal_id;
         if let Ok(deal) = CrmDeal::find_by_id(pool, &deal_db_id).await {
             if let Some(ref pipeline_id) = deal.crm_pipeline_id {
                 // Find the "Proposal" stage in this pipeline
@@ -498,7 +498,7 @@ pub async fn request_revision(
 
     // Move CRM deal back to "Research" stage if linked
     if let Some(deal_id) = report.crm_deal_id {
-        let deal_db_id = DbUuid::from(deal_id);
+        let deal_db_id = deal_id;
         if let Ok(deal) = CrmDeal::find_by_id(pool, &deal_db_id).await {
             if let Some(ref pipeline_id) = deal.crm_pipeline_id {
                 let research_stage: Option<(String,)> = sqlx::query_as(

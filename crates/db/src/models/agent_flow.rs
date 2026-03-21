@@ -103,10 +103,7 @@ impl FlowStatus {
                 FlowStatus::Executing,
                 FlowStatus::Failed,
             ],
-            FlowStatus::Paused => &[
-                FlowStatus::Executing,
-                FlowStatus::Failed,
-            ],
+            FlowStatus::Paused => &[FlowStatus::Executing, FlowStatus::Failed],
             FlowStatus::AwaitingApproval => &[
                 FlowStatus::Executing,
                 FlowStatus::Completed,
@@ -322,11 +319,13 @@ impl AgentFlow {
         Ok(flows)
     }
 
-    /// Transition to next phase
+    /// Transition to next phase. `expected_status` guards against TOCTOU races —
+    /// the UPDATE only succeeds if the flow is still in the expected status.
     pub async fn transition_to_phase(
         pool: &SqlitePool,
         id: Uuid,
         phase: AgentPhase,
+        expected_status: Option<&str>,
     ) -> Result<Self, AgentFlowError> {
         let phase_str = phase.to_string();
         let status_str = match phase {
@@ -343,7 +342,7 @@ impl AgentFlow {
                 SET current_phase = ?2, status = ?3,
                     planning_started_at = datetime('now', 'subsec'),
                     updated_at = datetime('now', 'subsec')
-                WHERE id = ?1
+                WHERE id = ?1 AND (?4 IS NULL OR status = ?4)
                 RETURNING *
                 "#
             }
@@ -354,7 +353,7 @@ impl AgentFlow {
                     planning_completed_at = datetime('now', 'subsec'),
                     execution_started_at = datetime('now', 'subsec'),
                     updated_at = datetime('now', 'subsec')
-                WHERE id = ?1
+                WHERE id = ?1 AND (?4 IS NULL OR status = ?4)
                 RETURNING *
                 "#
             }
@@ -365,7 +364,7 @@ impl AgentFlow {
                     execution_completed_at = datetime('now', 'subsec'),
                     verification_started_at = datetime('now', 'subsec'),
                     updated_at = datetime('now', 'subsec')
-                WHERE id = ?1
+                WHERE id = ?1 AND (?4 IS NULL OR status = ?4)
                 RETURNING *
                 "#
             }
@@ -375,8 +374,10 @@ impl AgentFlow {
             .bind(id)
             .bind(phase_str)
             .bind(status_str)
-            .fetch_one(pool)
-            .await?;
+            .bind(expected_status)
+            .fetch_optional(pool)
+            .await?
+            .ok_or(AgentFlowError::NotFound)?;
 
         Ok(flow)
     }

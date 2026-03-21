@@ -216,6 +216,8 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(nora_classifier::router(&deployment))
         .merge(org_cloud::router(&deployment))
         .merge(feedback::router(&deployment))
+        .merge(agent_flows::router(&deployment))
+        .merge(agent_flow_events::router(&deployment))
         .layer(middleware::from_fn_with_state(
             deployment.clone(),
             app_middleware::require_auth,
@@ -247,8 +249,6 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(bowser::router(&deployment))
         .merge(collaboration::router(&deployment))
         .merge(autonomy::router(&deployment))
-        .merge(agent_flows::router(&deployment))
-        .merge(agent_flow_events::router(&deployment))
         .merge(automations::router(&deployment))
         .merge(wide_research::router(&deployment))
         .merge(artifact_reviews::router(&deployment))

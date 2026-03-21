@@ -84,9 +84,9 @@ impl ExecutiveTools {
                         // Simplified board types: only Default and Custom
                         board_type
                             .as_ref()
-                            .and_then(|bt| match bt.to_lowercase().as_str() {
-                                "default" | "main" => Some(ProjectBoardType::Default),
-                                "custom" | _ => Some(ProjectBoardType::Custom),
+                            .map(|bt| match bt.to_lowercase().as_str() {
+                                "default" | "main" => ProjectBoardType::Default,
+                                _ => ProjectBoardType::Custom,
                             });
 
                     match executor
@@ -709,7 +709,7 @@ impl ExecutiveTools {
                 if let Some(pipeline) = &self.media_pipeline {
                     tracing::info!("[TOOL] Ingesting media batch from: {}", source_url);
 
-                    let tier = match MediaStorageTier::from_str(&storage_tier) {
+                    let tier = match MediaStorageTier::parse_tier(&storage_tier) {
                         Ok(t) => t,
                         Err(e) => {
                             return Ok(serde_json::json!({
@@ -3809,7 +3809,7 @@ impl ExecutiveTools {
             }));
         };
 
-        let storage_tier = match MediaStorageTier::from_str(storage_tier) {
+        let storage_tier = match MediaStorageTier::parse_tier(storage_tier) {
             Ok(tier) => tier,
             Err(err) => {
                 return Ok(serde_json::json!({

@@ -698,10 +698,7 @@ pub fn extract_contacts_from_text(text: &str) -> Vec<ExtractedContact> {
         for segment in s.split_whitespace().collect::<Vec<_>>().windows(3) {
             let combined = segment.join(" ");
             let digits: String = combined.chars().filter(|c| c.is_ascii_digit()).collect();
-            if digits.len() >= 10
-                && digits.len() <= 11
-                && combined.contains(|c: char| c == '(' || c == '-')
-            {
+            if digits.len() >= 10 && digits.len() <= 11 && combined.contains(['(', '-']) {
                 return Some(combined);
             }
         }
@@ -839,17 +836,14 @@ pub fn extract_contacts_from_text(text: &str) -> Vec<ExtractedContact> {
 
                 // Pattern: "Name (email)" or "Name <email>"
                 let before_email = if let Some(pos) = trimmed.find(email.as_str()) {
-                    trimmed[..pos]
-                        .trim()
-                        .trim_end_matches(|c: char| c == '(' || c == '<' || c == ',' || c == ' ')
+                    trimmed[..pos].trim().trim_end_matches(['(', '<', ',', ' '])
                 } else {
                     ""
                 };
 
                 if !before_email.is_empty() {
                     // Walk backwards through the before_email to extract the name
-                    let clean =
-                        before_email.trim_start_matches(|c: char| c == '-' || c == '*' || c == ' ');
+                    let clean = before_email.trim_start_matches(['-', '*', ' ']);
                     // Check if there's a comma-separated role+company before name
                     if let Some(comma_pos) = clean.rfind(',') {
                         let name_part = clean[..comma_pos].trim();
@@ -901,7 +895,7 @@ pub fn extract_contacts_from_text(text: &str) -> Vec<ExtractedContact> {
                 // e.g. sarah.kim@novabridge.ai -> Sarah Kim
                 let local = email.split('@').next().unwrap_or("");
                 let parts: Vec<String> = local
-                    .split(|c: char| c == '.' || c == '_' || c == '-')
+                    .split(['.', '_', '-'])
                     .filter(|p| !p.is_empty() && p.len() > 1)
                     .map(|p| {
                         let mut chars = p.chars();
@@ -1242,7 +1236,7 @@ pub fn generate_mock_step_result(
                                     // Walk backwards up to 5 lines to find a descriptive name
                                     let start = li.saturating_sub(5);
                                     for check_line in &lines[start..li] {
-                                        let trimmed = check_line.trim().trim_start_matches(|c: char| c == '-' || c == '*' || c == '#');
+                                        let trimmed = check_line.trim().trim_start_matches(['-', '*', '#']);
                                         let trimmed = trimmed.trim();
                                         // Look for a line that seems like a deal/project header
                                         if !trimmed.is_empty() && trimmed.len() > 5 && trimmed.len() < 100
@@ -3086,7 +3080,7 @@ pub async fn execute_node_with_llm(
         .get("model")
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
-        .or_else(|| if model.is_empty() { None } else { Some(model) });
+        .or(if model.is_empty() { None } else { Some(model) });
 
     match WorkflowLLMService::completion(pool, messages.clone(), node_model, Some(2048), None).await
     {

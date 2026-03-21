@@ -8,10 +8,10 @@ mod tests {
     fn test_llm_config_default() {
         let config = LLMConfig::default();
 
-        assert_eq!(config.model, "gpt-4o");
+        assert_eq!(config.model, "deepseek-r1");
         assert_eq!(config.temperature, 0.2);
         assert_eq!(config.max_tokens, 600);
-        assert!(matches!(config.provider, LLMProvider::OpenAI));
+        assert!(matches!(config.provider, LLMProvider::Ollama));
         assert!(config.system_prompt.contains("Nora"));
     }
 
@@ -58,11 +58,19 @@ mod tests {
         // Clear any existing OPENAI_API_KEY for this test
         std::env::remove_var("OPENAI_API_KEY");
 
+        // Default provider is Ollama (always ready — local server, no key needed)
         let config = LLMConfig::default();
         let client = LLMClient::new(config);
+        assert!(client.is_ready());
 
-        // Without API key and without custom endpoint, should not be ready
-        assert!(!client.is_ready());
+        // OpenAI without key should NOT be ready
+        let openai_config = LLMConfig {
+            provider: LLMProvider::OpenAI,
+            model: "gpt-4o".to_string(),
+            ..LLMConfig::default()
+        };
+        let openai_client = LLMClient::new(openai_config);
+        assert!(!openai_client.is_ready());
     }
 
     #[tokio::test]

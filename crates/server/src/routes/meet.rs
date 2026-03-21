@@ -355,7 +355,8 @@ pub async fn receive_audio(
     // Store participant segment + broadcast
     let participant_idx = {
         let mut sessions = ACTIVE_MEETS.lock().await;
-        let idx = if let Some(sess) = sessions.get_mut(&session_id) {
+
+        if let Some(sess) = sessions.get_mut(&session_id) {
             sess.segment_count += 1;
             let _ = sess.tx.send(TranscriptEvent {
                 speaker: "participant".to_string(),
@@ -374,8 +375,7 @@ pub async fn receive_audio(
             .await
             .unwrap_or(0) as i32;
             count + 1
-        };
-        idx
+        }
     };
     let _ = MeetingSegment::create(
         &pool,
@@ -448,7 +448,8 @@ pub async fn receive_audio(
     // Store Nora segment + broadcast
     let nora_idx = {
         let mut sessions = ACTIVE_MEETS.lock().await;
-        let idx = if let Some(sess) = sessions.get_mut(&session_id) {
+
+        if let Some(sess) = sessions.get_mut(&session_id) {
             sess.segment_count += 1;
             let _ = sess.tx.send(TranscriptEvent {
                 speaker: "Nora".to_string(),
@@ -466,8 +467,7 @@ pub async fn receive_audio(
             .await
             .unwrap_or(0) as i32;
             count + 1
-        };
-        idx
+        }
     };
     let _ = MeetingSegment::create(
         &pool,
@@ -1143,7 +1143,7 @@ async fn get_zoho_token(pool: &sqlx::SqlitePool) -> Option<String> {
     // Return cached token if < 50 minutes old
     {
         let cache = ZOHO_TOKEN_CACHE.lock().await;
-        if cache.0.is_empty() == false && cache.1.elapsed() < Duration::from_secs(50 * 60) {
+        if !cache.0.is_empty() && cache.1.elapsed() < Duration::from_secs(50 * 60) {
             return Some(cache.0.clone());
         }
     }

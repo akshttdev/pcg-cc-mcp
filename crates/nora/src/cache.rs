@@ -80,13 +80,6 @@ impl LlmCache {
         }
     }
 
-    /// Create a default cache with reasonable settings
-    /// - 1000 entries max
-    /// - 1 hour TTL
-    pub fn default() -> Self {
-        Self::new(1000, 3600)
-    }
-
     /// Get a cached response if available
     pub async fn get(&self, key: &CacheKey) -> Option<Arc<CachedResponse>> {
         let result = self.cache.get(key).await;
@@ -139,6 +132,15 @@ impl LlmCache {
     /// Remove a specific cache entry
     pub async fn invalidate(&self, key: &CacheKey) {
         self.cache.invalidate(key).await;
+    }
+}
+
+impl Default for LlmCache {
+    /// Create a default cache with reasonable settings
+    /// - 1000 entries max
+    /// - 1 hour TTL
+    fn default() -> Self {
+        Self::new(1000, 3600)
     }
 }
 

@@ -298,8 +298,7 @@ pub async fn get_advance_requirements(
         .await
         .ok()
         .flatten()
-        .map(|r| r.intelligence_status)
-        .flatten();
+        .and_then(|r| r.intelligence_status);
 
         if status.is_some() {
             status
@@ -313,8 +312,7 @@ pub async fn get_advance_requirements(
             .await
             .ok()
             .flatten()
-            .map(|r| r.intelligence_status)
-            .flatten()
+            .and_then(|r| r.intelligence_status)
         }
     } else {
         None
@@ -396,10 +394,10 @@ pub async fn advance_deal(
         // Check person intelligence_status via crm_contact_id (use CAST for BLOB/TEXT compat)
         let person_intel_status: Option<String> = if let Some(ref cid) = deal.crm_contact_id {
             #[derive(sqlx::FromRow)]
-            struct PIS {
+            struct PersonIntelStatus {
                 intelligence_status: Option<String>,
             }
-            sqlx::query_as::<_, PIS>(
+            sqlx::query_as::<_, PersonIntelStatus>(
                 "SELECT intelligence_status FROM persons WHERE crm_contact_id = ? OR CAST(crm_contact_id AS TEXT) = ? LIMIT 1"
             )
             .bind(cid)
@@ -426,10 +424,10 @@ pub async fn advance_deal(
         // Check company intelligence_status via person.company_name (CAST for BLOB/TEXT compat)
         let company_intel_status: Option<String> = if let Some(ref cid) = deal.crm_contact_id {
             #[derive(sqlx::FromRow)]
-            struct CIS {
+            struct CompanyIntelStatus {
                 intelligence_status: Option<String>,
             }
-            sqlx::query_as::<_, CIS>(
+            sqlx::query_as::<_, CompanyIntelStatus>(
                 "SELECT co.intelligence_status FROM companies co JOIN persons p ON lower(p.company_name) = lower(co.name) WHERE p.crm_contact_id = ? OR CAST(p.crm_contact_id AS TEXT) = ? LIMIT 1"
             )
             .bind(cid)

@@ -7,7 +7,6 @@ mod tests {
     use crate::{
         agent::{NoraAgent, NoraRequest, NoraRequestType, RequestPriority},
         memory::ConversationMemory,
-        personality::PersonalityConfig,
         NoraConfig,
     };
 
@@ -20,8 +19,8 @@ mod tests {
         assert!(agent.is_ok(), "Agent should initialize successfully");
         let agent = agent.unwrap();
 
-        assert_eq!(agent.config.executive_mode, true);
-        assert_eq!(agent.config.proactive_notifications, true);
+        assert!(agent.config.executive_mode);
+        assert!(agent.config.proactive_notifications);
         assert!(agent.is_active.read().await.clone());
     }
 
@@ -36,7 +35,7 @@ mod tests {
         assert!(agent.is_ok());
         let agent = agent.unwrap();
 
-        assert_eq!(agent.config.executive_mode, false);
+        assert!(!agent.config.executive_mode);
         assert_eq!(agent.config.personality.accent_strength, 0.5);
     }
 

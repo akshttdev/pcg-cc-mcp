@@ -206,7 +206,7 @@ impl Scheduler {
         time_str: &str,
     ) -> Result<DateTime<Utc>, Box<dyn std::error::Error + Send + Sync>> {
         let parts: Vec<&str> = time_str.split(':').collect();
-        let hour: u32 = parts.get(0).and_then(|s| s.parse().ok()).unwrap_or(12);
+        let hour: u32 = parts.first().and_then(|s| s.parse().ok()).unwrap_or(12);
         let minute: u32 = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
 
         let naive_date = date.date_naive();

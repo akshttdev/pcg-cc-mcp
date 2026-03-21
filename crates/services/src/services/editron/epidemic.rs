@@ -729,13 +729,13 @@ impl EpidemicTrack {
         let genre = self
             .genres
             .first()
-            .and_then(|g| MusicGenre::from_epidemic_term(g))
+            .and_then(|s| MusicGenre::from_epidemic_term(s))
             .unwrap_or(MusicGenre::Pop);
 
         let moods: Vec<MusicMood> = self
             .moods
             .iter()
-            .filter_map(|m| MusicMood::from_epidemic_term(m))
+            .filter_map(|s| MusicMood::from_epidemic_term(s))
             .collect();
 
         let artist_name = self

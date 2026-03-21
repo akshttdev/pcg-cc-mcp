@@ -168,7 +168,7 @@ impl TwilioSmsSender {
             .ok_or("Contact has no phone number")?;
 
         // Check rate limit
-        if !self.check_rate_limit(&contact.id.to_string()).await {
+        if !self.check_rate_limit(contact.id.as_ref()).await {
             warn!(
                 "Rate limit exceeded for contact {} — skipping SMS",
                 contact.id
@@ -274,7 +274,7 @@ impl TwilioSmsSender {
             .or(contact.mobile.as_deref())
             .ok_or("Contact has no phone number")?;
 
-        if !self.check_rate_limit(&contact.id.to_string()).await {
+        if !self.check_rate_limit(contact.id.as_ref()).await {
             return Ok(());
         }
 

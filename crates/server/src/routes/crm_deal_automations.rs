@@ -89,7 +89,7 @@ pub async fn trigger_who_is_research(
     let intel_company = intel.as_ref().and_then(|i| i.company_name.clone());
 
     if let Some(ref status) = intel_status {
-        if status == "idle" || status == "" {
+        if status == "idle" || status.is_empty() {
             // Trigger person research via the same logic as POST /api/persons/:id/research
             tracing::info!(
                 "Auto-triggering Who Is research for person {} (deal {})",
@@ -214,7 +214,7 @@ async fn trigger_company_research_if_idle(pool: &sqlx::SqlitePool, company_name:
 
     if let Some(company) = company {
         let status = company.intelligence_status.as_deref().unwrap_or("idle");
-        if status == "idle" || status == "" {
+        if status == "idle" || status.is_empty() {
             tracing::info!(
                 "Auto-triggering company research for '{}' ({})",
                 company_name,

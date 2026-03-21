@@ -3,4 +3,4 @@
 /**
  * Types of onboarding segments
  */
-export type SegmentType = "research" | "brand" | "website" | "email" | "legal" | "social" | "custom";
+export type SegmentType = "research" | "brand" | "website" | "crm" | "email" | "legal" | "intelligence" | "integrations" | "social" | "custom";

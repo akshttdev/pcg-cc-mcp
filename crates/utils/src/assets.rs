@@ -9,7 +9,7 @@ const TOPOS_DIR_ENV: &str = "TOPOS_DIR";
 
 /// Standard project filing structure within topos
 /// Each project folder should have this structure:
-/// ```
+/// ```text
 /// ProjectName/
 /// ├── GitHub/
 /// │   └── repo-name/           # Git repository

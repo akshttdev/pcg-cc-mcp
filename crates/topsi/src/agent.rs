@@ -1376,7 +1376,7 @@ impl TopsiAgent {
         let mut issues = Vec::new();
 
         // Check for tasks stuck in progress
-        if issue_types.as_ref().map_or(true, |t| t.contains(&"stale")) {
+        if issue_types.as_ref().is_none_or(|t| t.contains(&"stale")) {
             let stale_tasks: i64 = sqlx::query_scalar(
                 "SELECT COUNT(*) FROM tasks WHERE status = 'inprogress' AND updated_at < datetime('now', '-7 days')"
             )
@@ -1397,7 +1397,7 @@ impl TopsiAgent {
         // Check for unassigned high-priority tasks
         if issue_types
             .as_ref()
-            .map_or(true, |t| t.contains(&"bottleneck"))
+            .is_none_or(|t| t.contains(&"bottleneck"))
         {
             let unassigned_high: i64 = sqlx::query_scalar(
                 "SELECT COUNT(*) FROM tasks WHERE (priority = 'critical' OR priority = 'high') AND assigned_agent IS NULL AND status = 'todo'"

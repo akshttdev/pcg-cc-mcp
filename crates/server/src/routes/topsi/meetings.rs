@@ -283,7 +283,7 @@ pub async fn list_meetings(
 
     let meetings: Vec<MeetingSessionSummary> = sessions
         .into_iter()
-        .filter(|s| status_filter.map_or(true, |f| s.status == f))
+        .filter(|s| status_filter.is_none_or(|f| s.status == f))
         .map(|s| {
             let notes_value = s
                 .notes

@@ -216,7 +216,7 @@ async fn transition_phase(
         .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
         .to_uuid();
     let flow =
-        AgentFlow::transition_to_phase(&deployment.db().pool, flow_id, payload.phase).await?;
+        AgentFlow::transition_to_phase(&deployment.db().pool, flow_id, payload.phase, None).await?;
     Ok(Json(ApiResponse::success(flow)))
 }
 
@@ -256,7 +256,8 @@ async fn approve_flow(
     Ok(Json(ApiResponse::success(flow)))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ts_rs::TS)]
+#[ts(export)]
 pub struct RespondClarificationPayload {
     pub response: String,
     /// Resume to this status after clarification (default: previous status before NeedsClarification)
@@ -286,9 +287,7 @@ async fn respond_clarification(
         )));
     }
 
-    let resume_to = payload
-        .resume_status
-        .unwrap_or(FlowStatus::Executing);
+    let resume_to = payload.resume_status.unwrap_or(FlowStatus::Executing);
 
     if !FlowStatus::NeedsClarification.can_transition_to(&resume_to) {
         return Err(ApiError::BadRequest(format!(

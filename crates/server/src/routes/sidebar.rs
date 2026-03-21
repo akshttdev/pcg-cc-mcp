@@ -165,7 +165,7 @@ fn rollup_health(
             kc_count += 1;
         }
         if let Some(ref act) = p.last_activity_at {
-            if latest_activity.as_ref().map_or(true, |la| act > la) {
+            if latest_activity.as_ref().is_none_or(|la| act > la) {
                 latest_activity = Some(act.clone());
             }
         }

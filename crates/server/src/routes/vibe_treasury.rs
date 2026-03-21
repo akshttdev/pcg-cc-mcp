@@ -1,5 +1,5 @@
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, Query, State},
     http::HeaderMap,
     routing::{get, post},
@@ -19,7 +19,6 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
-use axum::Extension;
 
 #[derive(Debug, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -456,9 +455,7 @@ async fn get_org_cost_summary(
     Path(org_id): Path<String>,
 ) -> Result<Json<ApiResponse<OrgCostSummary>>, ApiError> {
     let pool = &deployment.db().pool;
-    access_context
-        .require_org_membership(pool, &org_id)
-        .await?;
+    access_context.require_org_membership(pool, &org_id).await?;
     let summary = VibeTransaction::org_cost_summary(pool, &org_id).await?;
     Ok(Json(ApiResponse::success(summary)))
 }
@@ -470,9 +467,7 @@ async fn get_org_cost_by_model(
     Path(org_id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<ModelCostRow>>>, ApiError> {
     let pool = &deployment.db().pool;
-    access_context
-        .require_org_membership(pool, &org_id)
-        .await?;
+    access_context.require_org_membership(pool, &org_id).await?;
     let rows = VibeTransaction::org_cost_by_model(pool, &org_id).await?;
     Ok(Json(ApiResponse::success(rows)))
 }
@@ -484,9 +479,7 @@ async fn get_org_cost_by_project(
     Path(org_id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<ProjectCostRow>>>, ApiError> {
     let pool = &deployment.db().pool;
-    access_context
-        .require_org_membership(pool, &org_id)
-        .await?;
+    access_context.require_org_membership(pool, &org_id).await?;
     let rows = VibeTransaction::org_cost_by_project(pool, &org_id).await?;
     Ok(Json(ApiResponse::success(rows)))
 }

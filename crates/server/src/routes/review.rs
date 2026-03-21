@@ -119,7 +119,7 @@ fn artifact_video_url_from_dir(artifact: &ExecutionArtifact) -> Option<String> {
             }
             let mtime = entry.metadata().ok()?.modified().ok()?;
             let fname = path.file_name()?.to_string_lossy().to_string();
-            if best.as_ref().map_or(true, |(t, _)| mtime > *t) {
+            if best.as_ref().is_none_or(|(t, _)| mtime > *t) {
                 best = Some((mtime, fname));
             }
         }

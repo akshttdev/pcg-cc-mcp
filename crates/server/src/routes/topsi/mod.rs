@@ -570,7 +570,7 @@ pub async fn get_topsi_instance() -> Result<Arc<RwLock<Option<TopsiAgent>>>, Api
     TOPSI_INSTANCE
         .get()
         .ok_or_else(|| ApiError::NotFound("Topsi not initialized".to_string()))
-        .map(|instance| instance.clone())
+        .cloned()
 }
 
 /// Get user context from state (simplified - would extract from auth in production)

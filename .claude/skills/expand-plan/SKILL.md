@@ -17,6 +17,14 @@ Use these when available to enhance research quality:
 - **Context7** (via Agent tool): If the plan references external libraries or frameworks, agents can use Context7 MCP to fetch up-to-date documentation.
 - **GitHub** (via Agent tool): If the plan references PRs, issues, or CI workflows, agents can use GitHub MCP to verify PR status, check CI results, or read issue context.
 
+## Phase 0: Readiness Check
+
+Before expanding feature work, assess baseline health:
+
+1. **CI status**: Check last 3 CI runs on the target branch. If red, add a fix-CI item before feature work.
+2. **Merge distance**: How far is the branch from main? Large gaps = merge conflicts. Factor time accordingly.
+3. **Unplanned work buffer**: Add 15-25% buffer for regression analysis, PR reviews, merge conflicts, and CI churn. Plans that fill 100% of available time always slip.
+
 ## Phase 1: Parse the Plan
 
 1. Read the planning file completely
@@ -67,7 +75,16 @@ Launch agents to find low-effort extraction opportunities in files touched by th
 - **Frontend**: Duplicate hooks, components, constants, shared patterns
 - **Cross-cutting**: Repeated access control, error handling, config loading patterns
 
-## Phase 6: Update the Plan
+## Phase 6: Acceptance Criteria Audit
+
+For each sprint item, verify the plan includes:
+
+1. **Definition of done** — not "code exists" but "user can do X and see Y". If the plan only describes backend changes without a user-facing verification, flag it.
+2. **Stub vs working** — if an item ships scaffolding without real behavior (e.g., a background worker that logs but doesn't dispatch), call it out explicitly so the sprint tracker reflects reality.
+3. **Dependency hints** — if items seem coupled (shared types, shared routes), note likely merge order. Don't over-specify — just flag where parallel work may conflict.
+4. **Build step suggestions** — if items touch types, schemas, or dependencies, suggest likely build steps (e.g., `cargo sqlx prepare`, `npm run generate-types`, `pnpm install`). Be specific when the steps are known.
+
+## Phase 7: Update the Plan
 
 Apply findings to the planning file:
 

@@ -44,6 +44,7 @@ export function AgentFlowBoard({
       executing: [],
       verifying: [],
       awaiting_approval: [],
+      needs_clarification: [],
       completed: [],
       failed: [],
       paused: [],
@@ -73,10 +74,11 @@ export function AgentFlowBoard({
 
       // Prevent invalid transitions
       const validTransitions: Record<FlowStatus, FlowStatus[]> = {
-        planning: ['executing', 'failed', 'paused'],
-        executing: ['verifying', 'failed', 'paused'],
-        verifying: ['awaiting_approval', 'completed', 'failed'],
+        planning: ['executing', 'failed', 'paused', 'needs_clarification'],
+        executing: ['verifying', 'failed', 'paused', 'needs_clarification'],
+        verifying: ['awaiting_approval', 'completed', 'failed', 'needs_clarification'],
         awaiting_approval: ['completed', 'failed'],
+        needs_clarification: ['planning', 'executing', 'failed'],
         completed: [],
         failed: ['planning'],
         paused: ['planning', 'executing'],

@@ -25,6 +25,7 @@ pub struct LinkedInConnector {
 }
 
 impl LinkedInConnector {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             client: Client::new(),

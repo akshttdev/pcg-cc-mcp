@@ -96,6 +96,12 @@ export type AgentWalletTransaction = { id: string, wallet_id: string, direction:
 
 export type UpsertAgentWallet = { profile_key: string, display_name?: string, budget_limit: number, };
 
+export type OrgCostSummary = { total_vibe: bigint, total_cost_cents: bigint, transaction_count: bigint, total_input_tokens: bigint, total_output_tokens: bigint, };
+
+export type ModelCostRow = { model: string, provider: string, total_vibe: bigint, total_cost_cents: bigint, transaction_count: bigint, input_tokens: bigint, output_tokens: bigint, };
+
+export type ProjectCostRow = { project_id: string | null, project_name: string, total_vibe: bigint, total_cost_cents: bigint, transaction_count: bigint, };
+
 export type CreateWalletTransaction = { wallet_id: string, direction: string, amount: number, description?: string, metadata?: string, task_id?: string, process_id?: string, };
 
 export type SearchResult = { path: string, is_file: boolean, match_type: SearchMatchType, };
@@ -734,11 +740,15 @@ export type AirtableConnectionWithBase = { connection: AirtableBase, base_info: 
 
 export type FlowType = "content_creation" | "research" | "engagement" | "scheduling" | "campaign" | "analysis" | "monitoring" | "custom";
 
-export type FlowStatus = "planning" | "executing" | "verifying" | "completed" | "failed" | "paused" | "awaiting_approval";
+export type FlowStatus = "planning" | "executing" | "verifying" | "completed" | "failed" | "paused" | "awaiting_approval" | "needs_clarification";
 
 export type AgentPhase = "planning" | "execution" | "verification";
 
-export type AgentFlow = { id: string, task_id: string, flow_type: FlowType, status: FlowStatus, planner_agent_id: string | null, executor_agent_id: string | null, verifier_agent_id: string | null, current_phase: AgentPhase, planning_started_at: string | null, planning_completed_at: string | null, execution_started_at: string | null, execution_completed_at: string | null, verification_started_at: string | null, verification_completed_at: string | null, flow_config: string | null, handoff_instructions: string | null, verification_score: number | null, human_approval_required: boolean, approved_by: string | null, approved_at: string | null, created_at: string, updated_at: string, };
+export type AgentFlow = { id: string, task_id: string, flow_type: FlowType, status: FlowStatus, planner_agent_id: string | null, executor_agent_id: string | null, verifier_agent_id: string | null, current_phase: AgentPhase, planning_started_at: string | null, planning_completed_at: string | null, execution_started_at: string | null, execution_completed_at: string | null, verification_started_at: string | null, verification_completed_at: string | null, flow_config: string | null, handoff_instructions: string | null, verification_score: number | null, human_approval_required: boolean, approved_by: string | null, approved_at: string | null, 
+/**
+ * JSON-serialized ClarificationRequest when status = NeedsClarification
+ */
+clarification_request: string | null, created_at: string, updated_at: string, };
 
 export type CreateAgentFlow = { task_id: string, flow_type: FlowType, planner_agent_id: string | null, executor_agent_id: string | null, verifier_agent_id: string | null, flow_config: JsonValue | null, human_approval_required: boolean | null, };
 
