@@ -554,8 +554,11 @@ export const commandCenterKeys = {
 
 export const costKeys = {
   orgSummary: (orgId: string, days?: number) => ['costs', 'summary', orgId, days] as const,
+  orgDaily: (orgId: string, days?: number) => ['costs', 'daily', orgId, days] as const,
   orgByModel: (orgId: string, days?: number) => ['costs', 'by-model', orgId, days] as const,
   orgByProject: (orgId: string, days?: number) => ['costs', 'by-project', orgId, days] as const,
+  orgByProvider: (orgId: string, days?: number) => ['costs', 'by-provider', orgId, days] as const,
+  orgByAgent: (orgId: string, days?: number) => ['costs', 'by-agent', orgId, days] as const,
 };
 
 // ── Unified export ─────────────────────────────────────────────────────────
