@@ -1,40 +1,82 @@
-# UX Quick Wins Mini Sprint
+# UX Quick Wins — 5 Mini Sprints
 
 **Date**: 2026-03-21
 **Branch**: `feature/2026-03-19--tier1-phase0`
 **Worktree**: `/Users/mediamonsters/topos/pcg-cc-mcp` (root)
 **Base**: `main` (after PR #56 merge)
-**Goal**: Fix 7 low-effort UX issues identified across 5 audit reports
-**Estimated effort**: ~5-6h total
+**Status**: COMPLETE — 31 items shipped across 5 sprints + regression fixes
+**Source**: 5 audit reports (functionality audit, experience audit v1/v2, pipeline stages audit, gap fixes audit)
 
 ---
 
-## Items
+## Sprint 1 — UX Polish (7 items) ✅
 
-| # | What | Source | Est | Status |
-|---|------|--------|-----|--------|
-| 1 | AI Usage: auto-select org from ViewContext | gap-fixes audit P1 | 1h | ✅ DONE — falls back to first org, org selector for multi-org users |
-| 2 | FeedbackDialog: consume `defaultType` prop | gap-fixes audit F1 | 1h | ✅ DONE — useEffect syncs type on re-open |
-| 3 | Org-not-found: error state with icon + CTA | v2 audit P4 | 1-2h | ✅ DONE — Building2 icon + helpful message + back link |
-| 4 | "Organisation" → "Organization" spelling | v2 audit F4 | 15min | ✅ DONE — 3 files fixed |
-| 5 | Agent Flows empty state guidance | v2 audit F3 | 30min | ✅ DONE — explains how flows are created |
-| 6 | Collapse empty sidebar sections | v1 audit F6 | 30min | ✅ DONE — default collapsed when no items |
-| 7 | Aria-labels on workflow card buttons | v1 audit F8 | 30min | ✅ DONE — 4 buttons labeled |
+| # | What | Source | Commit |
+|---|------|--------|--------|
+| 1 | AI Usage: auto-select org + org selector for multi-org | gap audit P1 | `47ead8a` |
+| 2 | FeedbackDialog: useEffect syncs defaultType on re-open | gap audit F1 | `47ead8a` |
+| 3 | Org-not-found: Building2 icon + helpful message + back link | v2 audit P4 | `47ead8a` |
+| 4 | "Organisation" → "Organization" spelling (3 files) | v2 audit F4 | `47ead8a` |
+| 5 | Agent Flows empty state: explains how flows are created | v2 audit F3 | `47ead8a` |
+| 6 | Sidebar: collapse empty Internal Projects/Clients by default | v1 audit F6 | `47ead8a` |
+| 7 | Workflow card aria-labels on all icon-only buttons | v1 audit F8 | `47ead8a` |
 
-## Files to Modify
+## Sprint 2 — Navigation & Accessibility (7 items) ✅
 
-| File | Items | Action |
-|------|-------|--------|
-| `frontend/src/pages/ai-usage/AIUsagePage.tsx` | #1 | Use org from ViewContext/OrganizationProvider as default |
-| `frontend/src/components/dialogs/feedback/FeedbackDialog.tsx` | #2 | Read `defaultType` from NiceModal props, set initial combobox value |
-| `frontend/src/pages/ai-usage/` or org layout | #3, #4 | Add error state component for org-not-found, fix spelling |
-| `frontend/src/pages/workflows/index.tsx` or AgentFlowBoard | #5 | Update empty state message with guidance |
-| `frontend/src/components/layout/sidebar/Sidebar.tsx` | #6 | Collapse sections when they have no children |
-| `frontend/src/pages/workflows/index.tsx` or WorkflowCard | #7 | Add aria-label to icon-only buttons |
+| # | What | Source | Commit |
+|---|------|--------|--------|
+| 8 | Notifications: retry:1 + retryDelay to stop 500 spam | v1 audit P4 | `b7f6f87` |
+| 9 | Agent Flows promoted to visible workflow tab | v1 audit F1 | `b7f6f87` |
+| 10 | Shift+F keyboard shortcut for friction report | v1 audit F2 | `b7f6f87` |
+| 11 | Mobile: "Create Project" stacks below subtitle | v1 audit F5 | `b7f6f87` |
+| 12 | VIBELAND/VIBE sidebar tooltips | v1 audit PO1 | `b7f6f87` |
+| 13 | Workflow "Never run" → "click ▶ to execute" | v1 audit PO2 | `b7f6f87` |
+| 14 | Stage agent badges show type on hover | pipeline F2 | `b7f6f87` |
 
-## Verification
+## Sprint 3 — CRM Pipeline UX (3 items) ✅
 
-After implementation, run:
-1. `/playwright-smoke /,/ai-usage,/workflows`
-2. `/experience-audit` on friction button + AI Usage journeys
-3. `npm run check` for lint/type safety
+| # | What | Source | Commit |
+|---|------|--------|--------|
+| 15 | CRM org tab bar overflow-x-auto for responsive scroll | v1 audit F7 | `c364cdc` |
+| 16 | Feedback dialog inline validation hint below disabled submit | v2 audit F6 | `0e9e77a` |
+| 17 | CRM deal "Move to..." stage submenu in context menu | pipeline P2 | `c5f66c9` |
+
+## Sprint 4 — Backend Hardening + CRM UX (6 items) ✅
+
+| # | What | Source | Commit |
+|---|------|--------|--------|
+| 18 | Webhook cooldown: atomic try_claim_trigger() | func audit F7 | `33a8a20` |
+| 19 | DbUuid::nil() + remove uuid::Uuid from transitions | func audit F1 | `f009bd6` |
+| 20 | Auto-install git hooks via npm prepare script | func audit F6 | `15f1c9b` |
+| 21 | AgentFlowExecutorConfig from env (poll interval + max concurrent) | func audit F13 | `6deb59f` |
+| 22 | Clickable stage progress bar in deal detail dialog | pipeline P1 | `9dcbc3d` |
+| 23 | Sidebar: only expand active org by default | v1 audit P1 | `dfc77db` |
+
+## Sprint 5 — Code Quality & Architecture (4 items + cleanup) ✅
+
+| # | What | Source | Commit |
+|---|------|--------|--------|
+| 24 | Remove dead tokenUsageApi (80 lines) | gap audit | `243d1b9` |
+| 25 | SubmitFeedbackRequest validation (lengths, enums, ranges) | func audit F9 | `3aceca0` |
+| 26 | Sidebar restructure: 3 labeled groups (Global Views / Business / Platform) | v1 audit P2 | `66ec594` |
+| 27 | Migrate 4 background tasks to BackgroundWorker trait | func audit F8 | `c27b51a` |
+| 28 | Remove old bare tokio::spawn loops from main.rs (-226 lines) | cleanup | `664253a` |
+
+## Regression Fixes ✅
+
+| # | What | Source | Commit |
+|---|------|--------|--------|
+| 29 | uuid::Uuid → DbUuid in stage_transition.rs | regression | `36f6b78` |
+| 30 | Delivery deal error logging (was silently dropped) | regression | `36f6b78` |
+| 31 | Warning logs on 4 swallowed .ok() DB queries | regression | `b4acafb` |
+
+---
+
+## Remaining (INVESTMENT-level — not mini sprint candidates)
+
+| Item | Effort | Owner |
+|------|--------|-------|
+| Dashboard/home page with activity feed | 3-5 days | Future sprint |
+| DnD visual feedback (column highlights, ghost cards) | 2-3h | Pipeline-ops W3 |
+| Agent flow LLM dispatch | 3 days | Pipeline-ops W2 |
+| Deal detail expand mode + agent history tab | 1.5 days | Pipeline-ops W5 |
