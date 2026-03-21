@@ -1,6 +1,5 @@
 pub mod agent_flow_executor;
 pub mod apn_data_service;
-pub mod stage_transition;
 pub mod error;
 pub mod helpers;
 pub mod mcp;
@@ -13,6 +12,7 @@ pub mod pulse_publisher;
 pub mod routes;
 pub mod sovereign_stack;
 pub mod sovereign_storage;
+pub mod stage_transition;
 pub mod task_scheduler;
 pub mod twilio_sms;
 pub mod workers;

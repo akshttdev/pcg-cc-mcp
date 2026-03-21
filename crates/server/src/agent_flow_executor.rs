@@ -5,12 +5,14 @@
 //!
 //! Disabled by default. Enable with `ENABLE_AGENT_FLOW_ENGINE=1`.
 
-use db::models::agent_flow::{AgentFlow, AgentPhase, FlowStatus};
-use db::models::agent_flow_event::{AgentFlowEvent, CreateFlowEvent, FlowEventPayload, FlowEventType};
+use db::models::{
+    agent_flow::{AgentFlow, AgentPhase, FlowStatus},
+    agent_flow_event::{AgentFlowEvent, CreateFlowEvent, FlowEventPayload, FlowEventType},
+};
+use serde_json::{Value, json};
 use services::services::workflow_llm::{
     LLMResponse, ToolCallRequest, ToolDefinition, WorkflowLLMService,
 };
-use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -59,7 +61,12 @@ impl AgentFlowExecutor {
     /// Process one tick: find actionable flows and dispatch them.
     async fn tick(&self) {
         // Use find_pending_flows which respects cancel_deadline
-        let flows = match AgentFlow::find_pending_flows(&self.pool, self.config.max_concurrent as i32).await {
+        let flows = match AgentFlow::find_pending_flows(
+            &self.pool,
+            self.config.max_concurrent as i32,
+        )
+        .await
+        {
             Ok(f) => f,
             Err(e) => {
                 tracing::error!("[AgentFlowEngine] Failed to query pending flows: {}", e);
@@ -68,10 +75,7 @@ impl AgentFlowExecutor {
         };
 
         if !flows.is_empty() {
-            tracing::info!(
-                "[AgentFlowEngine] Tick: {} actionable flow(s)",
-                flows.len(),
-            );
+            tracing::info!("[AgentFlowEngine] Tick: {} actionable flow(s)", flows.len(),);
         }
 
         for flow in flows {
@@ -156,7 +160,10 @@ impl AgentFlowExecutor {
             WorkflowLLMService::system_message(&system_prompt),
             WorkflowLLMService::user_message(&format!(
                 "Execute your role for the deal: {}.\n\nDeal context:\n{}",
-                flow_config.get("deal_name").and_then(|v| v.as_str()).unwrap_or("Unknown"),
+                flow_config
+                    .get("deal_name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown"),
                 deal_context
             )),
         ];
@@ -198,11 +205,7 @@ impl AgentFlowExecutor {
             }
             Err(e) => {
                 self.fail_flow(flow, &e.to_string()).await;
-                tracing::error!(
-                    "[AgentFlowEngine] Flow {} failed: {}",
-                    flow.id,
-                    e
-                );
+                tracing::error!("[AgentFlowEngine] Flow {} failed: {}", flow.id, e);
             }
         }
     }
@@ -229,7 +232,10 @@ impl AgentFlowExecutor {
             .execute(&self.pool)
             .await;
 
-            match self.call_llm_once(messages.clone(), tools, model_hint).await {
+            match self
+                .call_llm_once(messages.clone(), tools, model_hint)
+                .await
+            {
                 Ok(output) => return Ok(output),
                 Err(e) => {
                     tracing::warn!(
@@ -300,10 +306,7 @@ impl AgentFlowExecutor {
                     // Execute each tool call and add results
                     for call in &calls {
                         let result = self.execute_tool_call(call).await;
-                        messages.push(WorkflowLLMService::tool_result_message(
-                            &call.id,
-                            &result,
-                        ));
+                        messages.push(WorkflowLLMService::tool_result_message(&call.id, &result));
                     }
                     // Continue loop for next LLM turn
                 }
@@ -323,19 +326,47 @@ impl AgentFlowExecutor {
 
         match call.name.as_str() {
             "get_deal_context" => {
-                let deal_id = call.arguments.get("deal_id").and_then(|v| v.as_str()).unwrap_or("");
+                let deal_id = call
+                    .arguments
+                    .get("deal_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 self.load_deal_context(deal_id).await
             }
             "update_deal_field" => {
-                let deal_id = call.arguments.get("deal_id").and_then(|v| v.as_str()).unwrap_or("");
-                let field = call.arguments.get("field").and_then(|v| v.as_str()).unwrap_or("");
-                let value = call.arguments.get("value").and_then(|v| v.as_str()).unwrap_or("");
+                let deal_id = call
+                    .arguments
+                    .get("deal_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let field = call
+                    .arguments
+                    .get("field")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let value = call
+                    .arguments
+                    .get("value")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 self.update_deal_field(deal_id, field, value).await
             }
             "save_artifact" => {
-                let title = call.arguments.get("title").and_then(|v| v.as_str()).unwrap_or("Output");
-                let content = call.arguments.get("content").and_then(|v| v.as_str()).unwrap_or("");
-                let flow_id = call.arguments.get("flow_id").and_then(|v| v.as_str()).unwrap_or("");
+                let title = call
+                    .arguments
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Output");
+                let content = call
+                    .arguments
+                    .get("content")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let flow_id = call
+                    .arguments
+                    .get("flow_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 self.save_artifact(flow_id, title, content).await
             }
             _ => {
@@ -366,17 +397,15 @@ impl AgentFlowExecutor {
         .flatten();
 
         match deal {
-            Some(d) => {
-                json!({
-                    "name": d.name,
-                    "description": d.description,
-                    "stage": d.stage,
-                    "amount": d.amount,
-                    "currency": d.currency,
-                    "has_proposal": d.proposal_text.is_some(),
-                })
-                .to_string()
-            }
+            Some(d) => json!({
+                "name": d.name,
+                "description": d.description,
+                "stage": d.stage,
+                "amount": d.amount,
+                "currency": d.currency,
+                "has_proposal": d.proposal_text.is_some(),
+            })
+            .to_string(),
             None => json!({"error": "Deal not found"}).to_string(),
         }
     }
@@ -570,7 +599,9 @@ fn build_agent_tools() -> Vec<ToolDefinition> {
     vec![
         ToolDefinition {
             name: "get_deal_context".to_string(),
-            description: "Get full context about the current deal including contact and company info".to_string(),
+            description:
+                "Get full context about the current deal including contact and company info"
+                    .to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {
@@ -584,7 +615,9 @@ fn build_agent_tools() -> Vec<ToolDefinition> {
         },
         ToolDefinition {
             name: "update_deal_field".to_string(),
-            description: "Update a field on the deal (description, proposal_text, deck_url, custom_fields)".to_string(),
+            description:
+                "Update a field on the deal (description, proposal_text, deck_url, custom_fields)"
+                    .to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {
@@ -640,6 +673,7 @@ impl BackgroundWorker for AgentFlowExecutor {
 
     async fn run(&self, shutdown: CancellationToken) {
         use std::time::Duration;
+
         use tokio::time::interval;
 
         let poll_secs = self.config.poll_interval_secs;

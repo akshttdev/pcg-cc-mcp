@@ -28,7 +28,14 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
 const MAX_TITLE_LEN: usize = 200;
 const MAX_DESCRIPTION_LEN: usize = 5000;
 const MAX_FIELD_LEN: usize = 1000;
-const VALID_TYPES: &[&str] = &["bug", "feature", "improvement", "question", "friction", "other"];
+const VALID_TYPES: &[&str] = &[
+    "bug",
+    "feature",
+    "improvement",
+    "question",
+    "friction",
+    "other",
+];
 const VALID_SEVERITIES: &[&str] = &["low", "medium", "high", "critical"];
 
 #[derive(Debug, Clone, Deserialize, TS)]
@@ -73,13 +80,19 @@ impl SubmitFeedbackRequest {
             return Err("Title is required".into());
         }
         if self.title.len() > MAX_TITLE_LEN {
-            return Err(format!("Title must be {} characters or fewer", MAX_TITLE_LEN));
+            return Err(format!(
+                "Title must be {} characters or fewer",
+                MAX_TITLE_LEN
+            ));
         }
         if self.description.trim().is_empty() {
             return Err("Description is required".into());
         }
         if self.description.len() > MAX_DESCRIPTION_LEN {
-            return Err(format!("Description must be {} characters or fewer", MAX_DESCRIPTION_LEN));
+            return Err(format!(
+                "Description must be {} characters or fewer",
+                MAX_DESCRIPTION_LEN
+            ));
         }
         if !VALID_TYPES.contains(&self.feedback_type.as_str()) {
             return Err(format!("Invalid feedback type: {}", self.feedback_type));
@@ -102,7 +115,10 @@ impl SubmitFeedbackRequest {
         ] {
             if let Some(v) = field {
                 if v.len() > MAX_FIELD_LEN {
-                    return Err(format!("{} must be {} characters or fewer", name, MAX_FIELD_LEN));
+                    return Err(format!(
+                        "{} must be {} characters or fewer",
+                        name, MAX_FIELD_LEN
+                    ));
                 }
             }
         }

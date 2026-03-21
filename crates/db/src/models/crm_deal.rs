@@ -824,7 +824,12 @@ impl CrmDeal {
     async fn fetch_active_agent_flow(
         pool: &SqlitePool,
         deal_id: &DbUuid,
-    ) -> (Option<String>, Option<String>, Option<String>, Option<String>) {
+    ) -> (
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    ) {
         #[derive(sqlx::FromRow)]
         struct AgentFlowRow {
             id: String,
@@ -929,8 +934,12 @@ impl CrmDeal {
                     )
                     .await;
 
-                let (active_agent_flow_id, active_agent_flow_status, active_agent_name, active_agent_cancel_deadline) =
-                    Self::fetch_active_agent_flow(pool, &deal.id).await;
+                let (
+                    active_agent_flow_id,
+                    active_agent_flow_status,
+                    active_agent_name,
+                    active_agent_cancel_deadline,
+                ) = Self::fetch_active_agent_flow(pool, &deal.id).await;
 
                 deals_with_contacts.push(CrmDealWithContact {
                     contact_name: contact_info.as_ref().and_then(|c| c.full_name.clone()),
@@ -1107,8 +1116,12 @@ impl CrmDeal {
                     )
                     .await;
 
-                let (active_agent_flow_id, active_agent_flow_status, active_agent_name, active_agent_cancel_deadline) =
-                    Self::fetch_active_agent_flow(pool, &deal.id).await;
+                let (
+                    active_agent_flow_id,
+                    active_agent_flow_status,
+                    active_agent_name,
+                    active_agent_cancel_deadline,
+                ) = Self::fetch_active_agent_flow(pool, &deal.id).await;
 
                 deals_with_contacts.push(CrmDealWithContact {
                     contact_name: contact_info.as_ref().and_then(|c| c.full_name.clone()),

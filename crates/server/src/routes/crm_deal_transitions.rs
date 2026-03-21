@@ -7,10 +7,7 @@ use axum::{
     Extension, Json,
     extract::{Path, State},
 };
-use db::{
-    db_uuid::DbUuid,
-    models::crm_deal::CrmDeal,
-};
+use db::{db_uuid::DbUuid, models::crm_deal::CrmDeal};
 use deployment::Deployment;
 use utils::response::ApiResponse;
 
@@ -36,15 +33,12 @@ pub async fn move_deal_stage(
     let stage_id = DbUuid::from(data.stage_id);
 
     // Load source and target stages
-    let from_stage = deal
-        .crm_stage_id
-        .as_ref()
-        .and_then(|sid| {
-            futures::executor::block_on(
-                db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, sid),
-            )
-            .ok()
-        });
+    let from_stage = deal.crm_stage_id.as_ref().and_then(|sid| {
+        futures::executor::block_on(db::models::crm_pipeline::CrmPipelineStage::find_by_id(
+            pool, sid,
+        ))
+        .ok()
+    });
     let to_stage = db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, &stage_id)
         .await
         .map_err(|_| ApiError::NotFound("Target stage not found".to_string()))?;
@@ -53,13 +47,9 @@ pub async fn move_deal_stage(
     let deal = CrmDeal::move_to_stage(pool, &id, &stage_id, data.position).await?;
 
     // Run unified transition processor (automations, gates, agent scheduling)
-    let result = crate::stage_transition::process_transition(
-        pool,
-        &deal,
-        from_stage.as_ref(),
-        &to_stage,
-    )
-    .await;
+    let result =
+        crate::stage_transition::process_transition(pool, &deal, from_stage.as_ref(), &to_stage)
+            .await;
 
     Ok(Json(ApiResponse::success(result)))
 }
@@ -322,13 +312,9 @@ pub async fn advance_deal(
         .map_err(|_| ApiError::NotFound("Next stage not found".to_string()))?;
 
     // Run unified transition processor (automations, gates, agent scheduling)
-    let result = crate::stage_transition::process_transition(
-        pool,
-        &deal,
-        Some(&current_stage),
-        &to_stage,
-    )
-    .await;
+    let result =
+        crate::stage_transition::process_transition(pool, &deal, Some(&current_stage), &to_stage)
+            .await;
 
     Ok(Json(ApiResponse::success(result.deal)))
 }
