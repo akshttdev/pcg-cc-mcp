@@ -236,7 +236,16 @@ Full QA + regression analysis after fixing GAP-1/1a/1b/1c/3/4.
 | Clarification form + respondClarification API | Clean |
 | Sidebar friction → FeedbackDialog(defaultType) | Clean |
 | shared/types.ts number not bigint | Clean |
-| ClarificationRequest type source | **Medium** — local interface, not from shared types |
+| ClarificationRequest type source | ✅ Fixed — now imported from shared/types |
+
+### Final QA (post-fix)
+
+| Check | Status |
+|-------|--------|
+| `days` param validation | ✅ Fixed — clamped to 1..365 via `CostQuery::clamped_days()` |
+| `formatCost` negative values | ✅ Fixed — renders `-$0.05` not `$-0.05` |
+| Agent cost query org-scoping | **Low** — agent txns with `task_id=NULL` excluded (safe but undercounts). Tracked. |
+| Dead `tokenUsageApi` exports in misc.ts | **Low** — dead code, no consumers. Clean up post-merge. |
 
 **Remaining table updated:**
 

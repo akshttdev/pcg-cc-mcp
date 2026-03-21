@@ -9,7 +9,8 @@ export function formatTokens(tokens: number | undefined): string {
 /** Format cost in cents to dollar string */
 export function formatCost(cents: number | null | undefined): string {
   if (cents === null || cents === undefined || cents === 0) return '$0.00';
-  return `$${(cents / 100).toFixed(2)}`;
+  const abs = Math.abs(cents / 100);
+  return cents < 0 ? `-$${abs.toFixed(2)}` : `$${abs.toFixed(2)}`;
 }
 
 /** Format a number with K/M suffixes (generic) */

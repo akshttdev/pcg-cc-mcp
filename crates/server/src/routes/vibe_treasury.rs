@@ -467,6 +467,13 @@ struct CostQuery {
     days: Option<i64>,
 }
 
+impl CostQuery {
+    /// Clamp days to 1..365, or None for all-time
+    fn clamped_days(&self) -> Option<i64> {
+        self.days.map(|d| d.clamp(1, 365))
+    }
+}
+
 /// GET /organizations/:org_id/costs/summary?days=N
 async fn get_org_cost_summary(
     Extension(access_context): Extension<AccessContext>,
@@ -476,7 +483,7 @@ async fn get_org_cost_summary(
 ) -> Result<Json<ApiResponse<OrgCostSummary>>, ApiError> {
     let pool = &deployment.db().pool;
     access_context.require_org_membership(pool, &org_id).await?;
-    let summary = VibeTransaction::org_cost_summary(pool, &org_id, params.days).await?;
+    let summary = VibeTransaction::org_cost_summary(pool, &org_id, params.clamped_days()).await?;
     Ok(Json(ApiResponse::success(summary)))
 }
 
@@ -489,7 +496,7 @@ async fn get_org_cost_daily(
 ) -> Result<Json<ApiResponse<Vec<DailyCostRow>>>, ApiError> {
     let pool = &deployment.db().pool;
     access_context.require_org_membership(pool, &org_id).await?;
-    let rows = VibeTransaction::org_cost_daily(pool, &org_id, params.days).await?;
+    let rows = VibeTransaction::org_cost_daily(pool, &org_id, params.clamped_days()).await?;
     Ok(Json(ApiResponse::success(rows)))
 }
 
@@ -502,7 +509,7 @@ async fn get_org_cost_by_model(
 ) -> Result<Json<ApiResponse<Vec<ModelCostRow>>>, ApiError> {
     let pool = &deployment.db().pool;
     access_context.require_org_membership(pool, &org_id).await?;
-    let rows = VibeTransaction::org_cost_by_model(pool, &org_id, params.days).await?;
+    let rows = VibeTransaction::org_cost_by_model(pool, &org_id, params.clamped_days()).await?;
     Ok(Json(ApiResponse::success(rows)))
 }
 
@@ -515,7 +522,7 @@ async fn get_org_cost_by_project(
 ) -> Result<Json<ApiResponse<Vec<ProjectCostRow>>>, ApiError> {
     let pool = &deployment.db().pool;
     access_context.require_org_membership(pool, &org_id).await?;
-    let rows = VibeTransaction::org_cost_by_project(pool, &org_id, params.days).await?;
+    let rows = VibeTransaction::org_cost_by_project(pool, &org_id, params.clamped_days()).await?;
     Ok(Json(ApiResponse::success(rows)))
 }
 
@@ -528,7 +535,7 @@ async fn get_org_cost_by_provider(
 ) -> Result<Json<ApiResponse<Vec<ProviderCostRow>>>, ApiError> {
     let pool = &deployment.db().pool;
     access_context.require_org_membership(pool, &org_id).await?;
-    let rows = VibeTransaction::org_cost_by_provider(pool, &org_id, params.days).await?;
+    let rows = VibeTransaction::org_cost_by_provider(pool, &org_id, params.clamped_days()).await?;
     Ok(Json(ApiResponse::success(rows)))
 }
 
@@ -541,6 +548,6 @@ async fn get_org_cost_by_agent(
 ) -> Result<Json<ApiResponse<Vec<AgentCostRow>>>, ApiError> {
     let pool = &deployment.db().pool;
     access_context.require_org_membership(pool, &org_id).await?;
-    let rows = VibeTransaction::org_cost_by_agent(pool, &org_id, params.days).await?;
+    let rows = VibeTransaction::org_cost_by_agent(pool, &org_id, params.clamped_days()).await?;
     Ok(Json(ApiResponse::success(rows)))
 }
