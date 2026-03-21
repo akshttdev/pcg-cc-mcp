@@ -84,7 +84,10 @@ export const FeedbackDialog = NiceModal.create(({ defaultType }: { defaultType?:
   const [type, setType] = useState<FeedbackType>(defaultType ?? 'bug');
   const [title, setTitle] = useState('');
 
-  // Sync type when dialog is re-opened with a different defaultType
+  // Sync type when dialog is re-opened with a different defaultType.
+  // NiceModal reuses component instances, so useState initializer only runs on first mount.
+  // This effect ensures "Report Friction" button (which passes defaultType='friction')
+  // correctly switches the type even if the dialog was previously opened as Bug Report.
   useEffect(() => {
     if (defaultType) {
       setType(defaultType);

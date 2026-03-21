@@ -346,7 +346,10 @@ async fn run_hardcoded_entry_actions(
 /// Returns an action description if a delivery deal was created.
 async fn handle_won_transition(pool: &SqlitePool, deal: &CrmDeal) -> Option<String> {
     let pipeline_id = deal.crm_pipeline_id.as_ref()?;
-    let pipeline = CrmPipeline::find_by_id(pool, pipeline_id).await.ok()?;
+    let pipeline = CrmPipeline::find_by_id(pool, pipeline_id)
+        .await
+        .map_err(|e| tracing::warn!("[StageTransition] Pipeline lookup failed: {e}"))
+        .ok()?;
 
     // Only for sales/clients pipelines
     if pipeline.pipeline_type != "sales" && pipeline.pipeline_type != "clients" {
@@ -357,6 +360,7 @@ async fn handle_won_transition(pool: &SqlitePool, deal: &CrmDeal) -> Option<Stri
     let delivery_pipeline =
         CrmPipeline::find_by_type_for_org(pool, deal_org_id, PipelineType::Delivery)
             .await
+            .map_err(|e| tracing::warn!("[StageTransition] Delivery pipeline lookup failed: {e}"))
             .ok()
             .flatten()?;
 
@@ -488,6 +492,7 @@ async fn check_intel_status(
             .bind(contact_id.to_string())
             .fetch_optional(pool)
             .await
+            .map_err(|e| tracing::warn!("[StageTransition] Person intel query failed: {e}"))
             .ok()
             .flatten()
             .and_then(|r| r.intelligence_status);
@@ -506,6 +511,7 @@ async fn check_intel_status(
             .bind(contact_id.to_string())
             .fetch_optional(pool)
             .await
+            .map_err(|e| tracing::warn!("[StageTransition] Company intel query failed: {e}"))
             .ok()
             .flatten()
             .and_then(|r| r.intelligence_status);
