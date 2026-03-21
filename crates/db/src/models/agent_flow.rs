@@ -176,6 +176,22 @@ pub struct AgentFlow {
     #[sqlx(default)]
     pub clarification_request: Option<String>,
 
+    /// Link to CRM deal (for pipeline-triggered agent flows)
+    #[sqlx(default)]
+    pub crm_deal_id: Option<String>,
+
+    /// Agent auto-start can be cancelled before this deadline
+    #[sqlx(default)]
+    pub cancel_deadline: Option<DateTime<Utc>>,
+
+    /// Number of retry attempts for this flow
+    #[sqlx(default)]
+    pub retry_count: i32,
+
+    /// Last error message from a failed execution attempt
+    #[sqlx(default)]
+    pub last_error: Option<String>,
+
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -297,6 +313,46 @@ impl AgentFlow {
             ORDER BY created_at ASC
             "#,
         )
+        .fetch_all(pool)
+        .await?;
+
+        Ok(flows)
+    }
+
+    /// Find flows linked to a CRM deal
+    pub async fn find_by_deal(
+        pool: &SqlitePool,
+        deal_id: &str,
+    ) -> Result<Vec<Self>, AgentFlowError> {
+        let flows = sqlx::query_as::<_, AgentFlow>(
+            r#"
+            SELECT * FROM agent_flows
+            WHERE crm_deal_id = ?1
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(deal_id)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(flows)
+    }
+
+    /// Find flows ready for execution (past cancel window, in actionable state)
+    pub async fn find_pending_flows(
+        pool: &SqlitePool,
+        limit: i32,
+    ) -> Result<Vec<Self>, AgentFlowError> {
+        let flows = sqlx::query_as::<_, AgentFlow>(
+            r#"
+            SELECT * FROM agent_flows
+            WHERE status IN ('planning', 'executing')
+              AND (cancel_deadline IS NULL OR cancel_deadline < datetime('now', 'subsec'))
+            ORDER BY created_at ASC
+            LIMIT ?1
+            "#,
+        )
+        .bind(limit)
         .fetch_all(pool)
         .await?;
 
