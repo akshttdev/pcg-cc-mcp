@@ -71,6 +71,167 @@ function MetricCard({
   );
 }
 
+// ── CallSchedulingSection ────────────────────────────────────────────────────
+
+const CALL_METHODS = ['Phone', 'Video', 'In-Person'] as const;
+const CALL_STATUSES = ['scheduled', 'completed', 'cancelled'] as const;
+
+function CallSchedulingSection({
+  deal,
+  customFields,
+  invalidateKanban,
+}: {
+  deal: CrmDealWithContact;
+  customFields: Record<string, unknown>;
+  invalidateKanban: () => void;
+}) {
+  const [editing, setEditing] = useState<'discovery' | 'presentation' | null>(null);
+
+  const saveMutation = useMutation({
+    mutationFn: (fields: Record<string, unknown>) => {
+      const merged = { ...customFields, ...fields };
+      return crmDealsApi.updateDeal(deal.id, {
+        custom_fields: merged,
+      });
+    },
+    onSuccess: () => {
+      toast.success('Call schedule updated');
+      setEditing(null);
+      invalidateKanban();
+    },
+    onError: () => toast.error('Failed to save call schedule'),
+  });
+
+  const renderCallRow = (
+    type: 'discovery' | 'presentation',
+    label: string,
+    icon: React.ElementType,
+  ) => {
+    const Icon = icon;
+    const dateKey = `${type}_call_date`;
+    const methodKey = `${type}_call_method`;
+    const statusKey = `${type}_call_status`;
+    const date = customFields[dateKey] as string | undefined;
+    const method = (customFields[methodKey] as string) || 'Video';
+    const status = (customFields[statusKey] as string) || 'scheduled';
+    const isEditing = editing === type;
+
+    if (isEditing) {
+      return (
+        <Card className="bg-muted/30 border-primary/30">
+          <CardContent className="p-3 space-y-2">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[10px] text-muted-foreground uppercase">Date</label>
+                <input
+                  type="date"
+                  defaultValue={date || ''}
+                  className="w-full h-8 px-2 text-sm border rounded bg-background"
+                  id={`${type}-date`}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground uppercase">Method</label>
+                <select
+                  defaultValue={method}
+                  className="w-full h-8 px-2 text-sm border rounded bg-background"
+                  id={`${type}-method`}
+                >
+                  {CALL_METHODS.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="text-[10px] text-muted-foreground uppercase">Status</label>
+              <select
+                defaultValue={status}
+                className="w-full h-8 px-2 text-sm border rounded bg-background"
+                id={`${type}-status`}
+              >
+                {CALL_STATUSES.map((s) => (
+                  <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-1.5">
+              <Button
+                size="sm"
+                className="h-7 text-xs"
+                disabled={saveMutation.isPending}
+                onClick={() => {
+                  const dateEl = document.getElementById(`${type}-date`) as HTMLInputElement;
+                  const methodEl = document.getElementById(`${type}-method`) as HTMLSelectElement;
+                  const statusEl = document.getElementById(`${type}-status`) as HTMLSelectElement;
+                  saveMutation.mutate({
+                    [dateKey]: dateEl?.value || null,
+                    [methodKey]: methodEl?.value || 'Video',
+                    [statusKey]: statusEl?.value || 'scheduled',
+                  });
+                }}
+              >
+                Save
+              </Button>
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditing(null)}>
+                Cancel
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return (
+      <div
+        className="flex items-center justify-between text-sm cursor-pointer hover:bg-muted/50 rounded px-2 py-1.5 -mx-2 transition-colors"
+        onClick={() => setEditing(type)}
+      >
+        <div className="flex items-center gap-2">
+          <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+          <span>{label}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {method && date && (
+            <span className="text-[10px] text-muted-foreground">{method}</span>
+          )}
+          <Badge
+            variant="outline"
+            className={cn(
+              'text-[10px]',
+              status === 'completed'
+                ? 'text-green-500 border-green-500/30'
+                : status === 'cancelled'
+                  ? 'text-red-500 border-red-500/30'
+                  : 'text-muted-foreground'
+            )}
+          >
+            {date || 'Not scheduled'}
+          </Badge>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5">
+        <Phone className="h-3 w-3" /> Call Scheduling
+      </h4>
+      <Card className="bg-muted/30 border-border/60">
+        <CardContent className="p-3 space-y-1">
+          {renderCallRow('discovery', 'Discovery Call', Phone)}
+          {renderCallRow('presentation', 'Presentation Call', Video)}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ── OverviewTab ──────────────────────────────────────────────────────────────
 
 interface OverviewTabProps {
@@ -253,53 +414,11 @@ export function OverviewTab({
         />
       </div>
 
-      {/* Call Scheduling (Discovery stage) */}
+      {/* Call Scheduling (Discovery / Proposal / Present stages) */}
       {(currentStage === 'discovery' ||
         currentStage === 'proposal' ||
         currentStage === 'present') && (
-        <div>
-          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5">
-            <Phone className="h-3 w-3" /> Scheduled Calls
-          </h4>
-          <Card className="bg-muted/30 border-border/60">
-            <CardContent className="p-3 space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <div className="flex items-center gap-2">
-                  <Phone className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span>Discovery Call</span>
-                </div>
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    'text-[10px]',
-                    customFields.discovery_call_status === 'done'
-                      ? 'text-green-500 border-green-500/30'
-                      : 'text-muted-foreground'
-                  )}
-                >
-                  {customFields.discovery_call_date || 'Not scheduled'}
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <div className="flex items-center gap-2">
-                  <Video className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span>Presentation Call</span>
-                </div>
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    'text-[10px]',
-                    customFields.presentation_call_status === 'done'
-                      ? 'text-green-500 border-green-500/30'
-                      : 'text-muted-foreground'
-                  )}
-                >
-                  {customFields.presentation_call_date || 'Not scheduled'}
-                </Badge>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <CallSchedulingSection deal={deal} customFields={customFields} invalidateKanban={invalidateKanban} />
       )}
 
       {/* Key metrics grid */}
