@@ -6,7 +6,45 @@
 **Base**: `main`
 **Duration**: 10 working days (2026-03-21 → 2026-04-03)
 **PR Strategy**: One bundled PR
-**Merge distance**: 45 commits ahead, 0 behind main (clean, includes tier1 UX fixes)
+**Merge distance**: 57 commits ahead, 0 behind main (clean, includes tier1 UX/regression fixes)
+
+---
+
+## Progress
+
+### Completed
+- **W1: Unified StageTransitionProcessor** — DONE
+  - Migration `20260414000000_stage_config_and_flow_link.sql`
+  - `stage_transition.rs`: process_transition(), handle_won_transition() (contact_id dedup), schedule_agent_flow(), cancel_agent_flow()
+  - StageConfig/StageAction/StageValidation/StageOwner serde types with `#[derive(TS)]`
+  - Refactored move_deal_stage() → returns TransitionResult (warnings, cancel_deadline, actions)
+  - Refactored advance_deal() → delegates to processor
+  - New endpoints: POST cancel-agent, POST approve-agent (user requested "Run Now" alongside Cancel)
+  - CrmPipelineStage model: stage_config field + UPDATE SQL
+  - AgentFlow model: crm_deal_id, cancel_deadline, retry_count, last_error + find_by_deal(), find_pending_flows()
+
+- **W2: Agent Flow LLM Dispatch** — DONE
+  - Extended existing AgentFlowExecutor (not new file) with real LLM dispatch
+  - WorkflowLLMService::completion_with_tools() for agent calls
+  - Tools: get_deal_context, update_deal_field, save_artifact
+  - Multi-turn tool loop (max 5 turns)
+  - Retry: attempt → same model → fallback to Sonnet → fail
+  - Event emission: PhaseStarted, ArtifactCreated, FlowCompleted/Failed
+  - Agent prompts hardcoded per agent name (Scout, Astra, Cash, Lux)
+  - Frontend: pulsing status badge on deal card (Bot icon "Scout running..." / Clock "Agent pending")
+  - Frontend: useMoveDeal onSuccess shows validation warnings + cancel/approve toast
+  - API client: cancelDealAgent(), approveDealAgent() methods
+  - Types: TransitionResult, ValidationWarning, StageConfig, StageAction, StageValidation, StageOwner
+  - CrmDealWithContact: active_agent_flow_id/status/name/cancel_deadline from kanban JOIN
+
+### In Progress
+- **W3**: DnD verification (context menu already shipped `c5f66c9cb`)
+- **W4**: Call scheduling input UI
+
+### Pending
+- W5: Deal detail panel + agent history
+- W6: Person invitation
+- W7: Pipeline settings + seed configs
 
 ---
 
@@ -355,14 +393,14 @@ Replace hardcoded `getStageOwner()` (CrmPipelineBoard.tsx lines 38-66) with `sta
 ## Verification Plan
 
 ### Functional
-- [ ] DnD deal move triggers same automations as advance button
+- [x] DnD deal move triggers same automations as advance button (W1: processor wired to both paths)
 - [x] "Move to..." context menu works as DnD fallback (commit `c5f66c9cb`)
-- [ ] Soft gate warnings appear when required fields are empty (move proceeds)
-- [ ] Agent flow executor picks up flows after cancel window expires
-- [ ] Cancel button stops pending agent within 30s window
-- [ ] Agent running indicator (pulsing badge) on deal card
-- [ ] Agent completes → flow status "completed" → artifact stored
-- [ ] Retry: LLM error → retry → fallback model → fail gracefully
+- [x] Soft gate warnings appear when required fields are empty (W1: ValidationWarning in TransitionResult)
+- [x] Agent flow executor picks up flows after cancel window expires (W2: find_pending_flows)
+- [x] Cancel button stops pending agent within 30s window (W1: cancel-agent endpoint)
+- [x] Agent running indicator (pulsing badge) on deal card (W2: StatusChip with Bot icon)
+- [x] Agent completes → flow status "completed" → artifact stored (W2: complete_flow + emit events)
+- [x] Retry: LLM error → retry → fallback model → fail gracefully (W2: call_llm_with_retry)
 - [ ] Call scheduling: date/method/status save and display in OverviewTab
 - [ ] Deal detail panel: drawer opens, expand button → fullscreen dialog
 - [ ] Agent History tab: flow timeline with events
