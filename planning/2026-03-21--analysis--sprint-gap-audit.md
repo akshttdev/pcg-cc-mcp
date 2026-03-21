@@ -213,6 +213,51 @@ There was no point where someone asked "are we on track?" At ~50% through the sp
 
 ---
 
+## Gap Fix QA Results (2026-03-21)
+
+Full QA + regression analysis after fixing GAP-1/1a/1b/1c/3/4.
+
+**Static checks**: All pass (fmt 0 diffs, tsc clean, eslint clean, clippy 0 errors, typegen up to date)
+
+**Integration completeness** (the #1 failure pattern from the sprint): **ALL CLEAR**
+- 7 backend endpoints → 7 frontend API functions → all consumed by components
+- No unwired endpoints, no stale API calls
+
+| Check | Status |
+|-------|--------|
+| Cost endpoint auth (require_org_membership) | Clean |
+| SQL injection (bind params) | Clean |
+| Days param binding (Option<i64>) | Clean |
+| Types #[ts(type = "number")] | Clean |
+| Backend → frontend API coverage (7/7) | Clean |
+| API function → component usage (7/7) | Clean |
+| AIUsagePage calls all 6 cost APIs | Clean |
+| TokenUsageWidget migrated to costsApi | Clean |
+| Clarification form + respondClarification API | Clean |
+| Sidebar friction → FeedbackDialog(defaultType) | Clean |
+| shared/types.ts number not bigint | Clean |
+| ClarificationRequest type source | **Medium** — local interface, not from shared types |
+
+**Remaining table updated:**
+
+| Priority | Item | Status |
+|----------|------|--------|
+| ~~P0~~ | ~~#6 Wire ai-usage.tsx~~ | ✅ Done |
+| **P0** | #9 Agent engine LLM dispatch | NOT STARTED (3 days) |
+| ~~P1~~ | ~~#6 TokenUsageWidget~~ | ✅ Done |
+| ~~P1~~ | ~~#8 Clarification form~~ | ✅ Done |
+| ~~P1~~ | ~~#10 Friction button~~ | ✅ Done |
+| ~~P2~~ | ~~#6 Format helpers~~ | ✅ Done |
+| ~~P2~~ | ~~#6 Page component extraction~~ | ✅ Done |
+| **P2** | #9 Event emission | NOT STARTED |
+| **P2** | #5 Project+task cost scoping | NOT STARTED |
+| **P3** | #6 /costs/daily endpoint | ✅ Done (added with other endpoints) |
+| **P3** | #7 ResponseMetrics | NOT STARTED |
+| **P3** | #6 Agent+flow cost scoping | NOT STARTED |
+| **P3** | #10 Structured friction schema | NOT STARTED |
+
+---
+
 ## Solution Paths
 
 ### P0: Wire ai-usage.tsx to new cost API (Item #6)
