@@ -469,8 +469,8 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
       <div className="flex-1 overflow-auto">
         <div className="max-w-[1600px] mx-auto px-6 py-5">
           <Tabs value={tabFromUrl} onValueChange={setTab}>
-            <div className="flex items-center justify-between mb-6">
-            <TabsList>
+            <div className="flex items-center justify-between mb-6 gap-2">
+            <TabsList className="overflow-x-auto max-w-full">
               <TabsTrigger value="overview">
                 <LayoutGrid className="h-4 w-4 mr-2" />
                 Overview
