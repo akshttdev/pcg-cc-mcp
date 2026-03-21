@@ -140,6 +140,59 @@ See Phase 0 sprint backlog above.
 
 ---
 
+## P0.5 — Sprint Gap Fixes (from 2026-03-21 gap audit)
+
+### GAP-1. Cost bridge frontend integration [P0] ✅ DONE
+**Source:** `planning/2026-03-21--analysis--sprint-gap-audit.md`
+**What:** `ai-usage.tsx` now calls `costsApi` (6 endpoints with `?days` filter). All `tokenUsageApi` references removed. Types use `number` not `bigint`.
+**Status:** DONE (branch `feature/2026-03-21--gap-analysis`)
+
+### GAP-1a. TokenUsageWidget migration [P1] ✅ DONE
+**Status:** DONE — migrated to costsApi.orgSummary/orgByProject with org context
+
+### GAP-1b. Cost formatting helpers [P2] ✅ DONE
+**Status:** DONE — extracted to `frontend/src/lib/format.ts`
+
+### GAP-1c. Cost page component extraction [P2] ✅ DONE
+**Status:** DONE — split into `ai-usage/` directory (AIUsagePage 450 lines + CostSummaryCards + CostTrendChart)
+
+### GAP-2. Agent flow engine LLM dispatch [P0]
+**Source:** `planning/2026-03-21--analysis--sprint-gap-audit.md`
+**What:** `agent_flow_executor.rs` polls and auto-transitions without doing work. No LLM is called. 5-day keystone item shipped as stub.
+**Scope:** (1) API dispatch via PCG Router in `handle_executing_flow`, (2) parse response into `AgentResponseEnvelope`, (3) event emission on transitions, (4) `AgentFlowExecutorConfig` env vars, (5) basic test harness.
+**Effort:** 3 days | **Status:** NOT STARTED
+**Rationale:** Without dispatch, agent flows are inert — the entire orchestration system is non-functional.
+
+### GAP-3. Frontend clarification form [P1] ✅ DONE
+**Status:** DONE — ClarificationResponseForm in AgentFlowCard with API function + mutation hook
+
+### GAP-4. Sidebar "Report Friction" button [P1] ✅ DONE
+**Status:** DONE — Added to sidebar More popover, opens FeedbackDialog with defaultType='friction'
+
+
+### GAP-5. Granular cost scoping — project + task level [P2]
+**Source:** `planning/2026-03-21--analysis--sprint-gap-audit.md` (multi-scope cost section)
+**What:** Cost aggregation currently org-level only. Data already has project_id, task_id, agent references — just needs query endpoints.
+**Scope:** Phase 2 of cost scoping — add `project_cost_summary`, `task_cost_summary` queries + endpoints. Enables project budget tracking and task cost display.
+**Effort:** 3h | **Status:** NOT STARTED
+**Rationale:** Project owners need to see per-project costs for budget management. Task-level cost in the detail panel gives visibility into expensive operations.
+
+### GAP-6. Granular cost scoping — agent + flow level [P3]
+**Source:** `planning/2026-03-21--analysis--sprint-gap-audit.md` (multi-scope cost section)
+**What:** Add agent-scoped and flow-scoped cost aggregation.
+**Scope:** Phase 3 — add `agent_cost_summary`, `flow_cost_summary` queries + endpoints. JOIN through agent_wallets table for agent scope, through agent_flows.task_id for flow scope.
+**Effort:** 2h | **Status:** NOT STARTED
+**Depends on:** GAP-2 (flows need to be functional for flow costs to be meaningful)
+**Rationale:** Agent profiles need cost visibility for wallet management. Flow costs track orchestration expenses.
+
+### GAP-7. Cost query performance — TEXT column backfill [P3]
+**Source:** `planning/2026-03-21--analysis--sprint-gap-audit.md` (multi-scope cost section)
+**What:** Current cost JOINs use `lower(substr(hex(BLOB)))` for UUID matching — slow for large datasets. Backfill a TEXT `project_id_text` column and index.
+**Effort:** 1h | **Status:** NOT STARTED
+**Rationale:** Only needed when query latency becomes noticeable. Not a concern at current scale.
+
+---
+
 ## P0.5 — CI Quality (do on main, feature branches pick up on merge)
 
 ### CI-1. Add E2E Tests to CI

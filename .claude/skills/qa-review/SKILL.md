@@ -76,7 +76,19 @@ Default pages: `/login`, `/`, `/settings`, `/workflows`
 
 **Overall**: READY / NEEDS FIXES
 
-## 6. Fix What You Find (Broken Windows)
+## 6. End-to-End Integration Check
+
+For each new backend endpoint in the PR:
+- Does a frontend consumer actually CALL it? (grep for the endpoint path in `frontend/src/`)
+- If no consumer exists, flag it — an unwired endpoint is incomplete work
+
+For each new frontend feature:
+- Does it call the correct backend API? (not a stale/old API)
+- Are the response types correct? (match `shared/types.ts`)
+
+This catches the #1 sprint failure pattern: backend ships but frontend never wires up.
+
+## 7. Fix What You Find (Broken Windows)
 
 Don't just report — fix issues as you go:
 - **Critical/High**: fix immediately, verify the fix compiles

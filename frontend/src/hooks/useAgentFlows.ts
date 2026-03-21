@@ -124,10 +124,30 @@ export function useAgentFlowMutations() {
     invalidateKeys,
   });
 
+  const respondClarificationMutation = useMutationWithToast({
+    mutationFn: ({
+      flowId,
+      response,
+      resumeStatus,
+    }: {
+      flowId: string;
+      response: string;
+      resumeStatus?: string;
+    }) =>
+      agentFlowsApi.respondClarification(flowId, {
+        response,
+        resume_status: resumeStatus,
+      }),
+    successMessage: 'Clarification response sent',
+    errorMessage: 'Failed to send clarification response',
+    invalidateKeys,
+  });
+
   return {
     approve: approveMutation,
     transitionPhase: transitionPhaseMutation,
     complete: completeMutation,
     requestApproval: requestApprovalMutation,
+    respondClarification: respondClarificationMutation,
   };
 }

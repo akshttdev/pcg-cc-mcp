@@ -107,6 +107,18 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/organizations/{org_id}/costs/by-project",
             get(get_org_cost_by_project),
         )
+        .route(
+            "/organizations/{org_id}/costs/daily",
+            get(get_org_cost_daily),
+        )
+        .route(
+            "/organizations/{org_id}/costs/by-provider",
+            get(get_org_cost_by_provider),
+        )
+        .route(
+            "/organizations/{org_id}/costs/by-agent",
+            get(get_org_cost_by_agent),
+        )
         .with_state(deployment.clone())
 }
 
@@ -446,40 +458,96 @@ async fn admin_faucet(
 
 // ── Org-scoped cost aggregation endpoints ─────────────────────────────────
 
-use db::models::vibe_transaction::{ModelCostRow, OrgCostSummary, ProjectCostRow};
+use db::models::vibe_transaction::{
+    AgentCostRow, DailyCostRow, ModelCostRow, OrgCostSummary, ProjectCostRow, ProviderCostRow,
+};
 
-/// GET /organizations/:org_id/costs/summary — total VIBE + USD cost for an org
+#[derive(Debug, serde::Deserialize)]
+struct CostQuery {
+    days: Option<i64>,
+}
+
+impl CostQuery {
+    /// Clamp days to 1..365, or None for all-time
+    fn clamped_days(&self) -> Option<i64> {
+        self.days.map(|d| d.clamp(1, 365))
+    }
+}
+
+/// GET /organizations/:org_id/costs/summary?days=N
 async fn get_org_cost_summary(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(org_id): Path<String>,
+    Query(params): Query<CostQuery>,
 ) -> Result<Json<ApiResponse<OrgCostSummary>>, ApiError> {
     let pool = &deployment.db().pool;
     access_context.require_org_membership(pool, &org_id).await?;
-    let summary = VibeTransaction::org_cost_summary(pool, &org_id).await?;
+    let summary = VibeTransaction::org_cost_summary(pool, &org_id, params.clamped_days()).await?;
     Ok(Json(ApiResponse::success(summary)))
 }
 
-/// GET /organizations/:org_id/costs/by-model — cost breakdown by LLM model
+/// GET /organizations/:org_id/costs/daily?days=N
+async fn get_org_cost_daily(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(org_id): Path<String>,
+    Query(params): Query<CostQuery>,
+) -> Result<Json<ApiResponse<Vec<DailyCostRow>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    access_context.require_org_membership(pool, &org_id).await?;
+    let rows = VibeTransaction::org_cost_daily(pool, &org_id, params.clamped_days()).await?;
+    Ok(Json(ApiResponse::success(rows)))
+}
+
+/// GET /organizations/:org_id/costs/by-model?days=N
 async fn get_org_cost_by_model(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(org_id): Path<String>,
+    Query(params): Query<CostQuery>,
 ) -> Result<Json<ApiResponse<Vec<ModelCostRow>>>, ApiError> {
     let pool = &deployment.db().pool;
     access_context.require_org_membership(pool, &org_id).await?;
-    let rows = VibeTransaction::org_cost_by_model(pool, &org_id).await?;
+    let rows = VibeTransaction::org_cost_by_model(pool, &org_id, params.clamped_days()).await?;
     Ok(Json(ApiResponse::success(rows)))
 }
 
-/// GET /organizations/:org_id/costs/by-project — cost breakdown by project
+/// GET /organizations/:org_id/costs/by-project?days=N
 async fn get_org_cost_by_project(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(org_id): Path<String>,
+    Query(params): Query<CostQuery>,
 ) -> Result<Json<ApiResponse<Vec<ProjectCostRow>>>, ApiError> {
     let pool = &deployment.db().pool;
     access_context.require_org_membership(pool, &org_id).await?;
-    let rows = VibeTransaction::org_cost_by_project(pool, &org_id).await?;
+    let rows = VibeTransaction::org_cost_by_project(pool, &org_id, params.clamped_days()).await?;
+    Ok(Json(ApiResponse::success(rows)))
+}
+
+/// GET /organizations/:org_id/costs/by-provider?days=N
+async fn get_org_cost_by_provider(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(org_id): Path<String>,
+    Query(params): Query<CostQuery>,
+) -> Result<Json<ApiResponse<Vec<ProviderCostRow>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    access_context.require_org_membership(pool, &org_id).await?;
+    let rows = VibeTransaction::org_cost_by_provider(pool, &org_id, params.clamped_days()).await?;
+    Ok(Json(ApiResponse::success(rows)))
+}
+
+/// GET /organizations/:org_id/costs/by-agent?days=N
+async fn get_org_cost_by_agent(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(org_id): Path<String>,
+    Query(params): Query<CostQuery>,
+) -> Result<Json<ApiResponse<Vec<AgentCostRow>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    access_context.require_org_membership(pool, &org_id).await?;
+    let rows = VibeTransaction::org_cost_by_agent(pool, &org_id, params.clamped_days()).await?;
     Ok(Json(ApiResponse::success(rows)))
 }
