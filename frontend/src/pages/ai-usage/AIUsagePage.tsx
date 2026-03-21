@@ -22,9 +22,6 @@ import {
 import {
   Cpu,
   RefreshCw,
-  Coins,
-  ArrowUpRight,
-  ArrowDownRight,
   Activity,
   Server,
   Layers,
@@ -35,8 +32,10 @@ import { costsApi } from '@/lib/api';
 import { costKeys } from '@/lib/query-keys';
 import { useOrganization } from '@/contexts/organization-context';
 import { cn } from '@/lib/utils';
-
 import { formatCost, formatTokens } from '@/lib/format';
+import { CostSummaryCards } from './CostSummaryCards';
+import { CostTrendChart } from './CostTrendChart';
+import type { DailyTrendEntry } from './CostTrendChart';
 
 type Tab = 'overview' | 'providers' | 'models' | 'projects' | 'agents';
 
@@ -91,9 +90,9 @@ export function AIUsagePage() {
   };
 
   // Aggregate daily usage by date for trend chart
-  const dailyTrend = useMemo(() => {
+  const dailyTrend = useMemo((): DailyTrendEntry[] => {
     if (!dailyUsage) return [];
-    const byDate: Record<string, { date: string; tokens: number; cost: number; requests: number }> = {};
+    const byDate: Record<string, DailyTrendEntry> = {};
     for (const entry of dailyUsage) {
       if (!byDate[entry.date]) {
         byDate[entry.date] = { date: entry.date, tokens: 0, cost: 0, requests: 0 };
@@ -180,53 +179,7 @@ export function AIUsagePage() {
       </div>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
-              <Activity className="w-4 h-4" />
-              Total Tokens
-            </div>
-            <div className="text-2xl font-bold">{formatTokens(periodTotals.tokens)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
-              <ArrowUpRight className="w-4 h-4 text-blue-500" />
-              Input Tokens
-            </div>
-            <div className="text-2xl font-bold">{formatTokens(periodTotals.input)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
-              <ArrowDownRight className="w-4 h-4 text-green-500" />
-              Output Tokens
-            </div>
-            <div className="text-2xl font-bold">{formatTokens(periodTotals.output)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
-              <Coins className="w-4 h-4 text-yellow-500" />
-              Total Cost
-            </div>
-            <div className="text-2xl font-bold">{formatCost(periodTotals.cost)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
-              <Cpu className="w-4 h-4 text-purple-500" />
-              Requests
-            </div>
-            <div className="text-2xl font-bold">{periodTotals.requests.toLocaleString()}</div>
-          </CardContent>
-        </Card>
-      </div>
+      <CostSummaryCards periodTotals={periodTotals} isLoading={summaryLoading} />
 
       {/* Tabs */}
       <div className="flex gap-1 border-b">
@@ -251,40 +204,11 @@ export function AIUsagePage() {
       {activeTab === 'overview' && (
         <div className="space-y-6">
           {/* Daily Trend Chart */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Daily Usage Trend</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {dailyLoading ? (
-                <div className="flex justify-center py-8">
-                  <Loader message="Loading trend data..." />
-                </div>
-              ) : dailyTrend.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  No usage data for this period
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {dailyTrend.map((day) => (
-                    <div key={day.date} className="flex items-center gap-3">
-                      <span className="text-xs text-muted-foreground w-20 shrink-0">
-                        {new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                      </span>
-                      <div className="flex-1 h-6 bg-muted rounded-sm overflow-hidden">
-                        <div
-                          className="h-full bg-primary/80 rounded-sm transition-all"
-                          style={{ width: `${(day.tokens / maxDailyTokens) * 100}%` }}
-                        />
-                      </div>
-                      <span className="text-xs font-medium w-16 text-right">{formatTokens(day.tokens)}</span>
-                      <span className="text-xs text-muted-foreground w-16 text-right">{formatCost(day.cost)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <CostTrendChart
+            dailyTrend={dailyTrend}
+            maxDailyTokens={maxDailyTokens}
+            isLoading={dailyLoading}
+          />
 
           {/* Top Providers & Models Side by Side */}
           <div className="grid md:grid-cols-2 gap-6">
