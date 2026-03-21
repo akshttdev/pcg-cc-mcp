@@ -245,24 +245,35 @@ export const FeedbackDialog = NiceModal.create(({ defaultType }: { defaultType?:
                 >
                   Cancel
                 </Button>
-                <Button
-                  type="submit"
-                  disabled={
-                    isSubmitting || !title.trim() || !description.trim()
-                  }
-                >
-                  {isSubmitting ? (
-                    <>
-                      <span className="animate-spin mr-2">&#9203;</span>
-                      Submitting...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="h-4 w-4 mr-2" />
-                      Submit Feedback
-                    </>
+                <div className="flex flex-col items-end gap-1">
+                  <Button
+                    type="submit"
+                    disabled={
+                      isSubmitting || !title.trim() || !description.trim()
+                    }
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <span className="animate-spin mr-2">&#9203;</span>
+                        Submitting...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4 mr-2" />
+                        Submit Feedback
+                      </>
+                    )}
+                  </Button>
+                  {!isSubmitting && (!title.trim() || !description.trim()) && (
+                    <p className="text-[11px] text-muted-foreground">
+                      {!title.trim() && !description.trim()
+                        ? 'Title and description required'
+                        : !title.trim()
+                          ? 'Title required'
+                          : 'Description required'}
+                    </p>
                   )}
-                </Button>
+                </div>
               </>
             }
           >
