@@ -4,6 +4,8 @@
 //! graceful shutdown of all background tasks (schedule loops, automation loops,
 //! sovereign stack, VIBE watchers, etc.).
 
+pub mod background_tasks;
+
 use std::sync::Arc;
 
 use tokio::sync::Mutex;

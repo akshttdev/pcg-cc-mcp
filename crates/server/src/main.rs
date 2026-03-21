@@ -365,8 +365,41 @@ async fn main() -> Result<(), VibeKanbanError> {
     // Spawn OSS Library Listener (polls GitHub releases hourly)
     routes::oss_listener_bg::spawn_oss_listener(deployment.db().pool.clone());
 
-    // Spawn VIBE deposit watcher (polls platform revenue wallet every 30s)
-    {
+    // Spawn VIBE deposit watcher (BackgroundWorker — graceful shutdown)
+    registry
+        .spawn_worker(server::workers::background_tasks::VibeDepositWatcher::new(
+            deployment.db().pool.clone(),
+        ))
+        .await;
+
+    // Spawn VIBE withdrawal executor (BackgroundWorker — graceful shutdown)
+    registry
+        .spawn_worker(
+            server::workers::background_tasks::VibeWithdrawalExecutor::new(
+                deployment.db().pool.clone(),
+            ),
+        )
+        .await;
+
+    // Spawn APN peer cleanup (BackgroundWorker — graceful shutdown)
+    registry
+        .spawn_worker(server::workers::background_tasks::ApnPeerCleanup::new(
+            deployment.db().pool.clone(),
+        ))
+        .await;
+
+    // Spawn meeting stale-session cleanup (BackgroundWorker — graceful shutdown)
+    registry
+        .spawn_worker(
+            server::workers::background_tasks::MeetingSessionCleanup::new(
+                deployment.db().pool.clone(),
+            ),
+        )
+        .await;
+
+    // LEGACY: Spawn VIBE deposit watcher (polls platform revenue wallet every 30s)
+    // REMOVED — migrated to BackgroundWorker above
+    if false {
         let pool_for_watcher = deployment.db().pool.clone();
         tokio::spawn(async move {
             let revenue_addr = match std::env::var("PLATFORM_REVENUE_ADDRESS") {
