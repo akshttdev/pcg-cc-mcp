@@ -1,10 +1,10 @@
 # Tier 1 Phase 0 Sprint — Foundation & Dogfood Readiness
 
 **Date**: 2026-03-19
-**Branch**: `pr/55-agent-engine` (consolidated from `feature/2026-03-19--tier1-phase0`)
-**Worktree**: `/Users/mediamonsters/topos/pcg-cc-mcp/.claude/worktrees/main-worktree`
+**Branch**: `feature/2026-03-19--tier1-phase0` (working branch)
+**Worktree**: `/Users/mediamonsters/topos/pcg-cc-mcp` (root)
 **Base**: `main`
-**Status**: PR #53 MERGED ✅, PR #54 MERGED ✅, PR #55 in CI (clippy cleanup in progress)
+**Status**: COMPLETE — PR #53 ✅, PR #54 ✅, PR #55 ✅ — all merged to main
 **Goal**: Fix regressions, harden CI, build Agent Flow Engine foundation, enable internal dev workflow dogfooding
 **Team**: 2-3 devs + Claude Code
 **Duration**: Flexible (ship when done)
