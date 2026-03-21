@@ -1,12 +1,18 @@
-//! Agent Flow Orchestration Engine — Phase 1
+//! Agent Flow Orchestration Engine
 //!
-//! Background worker that polls for actionable agent flows every 15 seconds
-//! and dispatches them through the planning → executing → verifying lifecycle.
+//! Background worker that polls for actionable agent flows and dispatches them
+//! through the LLM pipeline. Single-phase execute-only for v1 (skip planning/verification).
 //!
 //! Disabled by default. Enable with `ENABLE_AGENT_FLOW_ENGINE=1`.
 
 use db::models::agent_flow::{AgentFlow, AgentPhase, FlowStatus};
+use db::models::agent_flow_event::{AgentFlowEvent, CreateFlowEvent, FlowEventPayload, FlowEventType};
+use services::services::workflow_llm::{
+    LLMResponse, ToolCallRequest, ToolDefinition, WorkflowLLMService,
+};
+use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
 
 use crate::workers::BackgroundWorker;
 
@@ -20,7 +26,6 @@ pub struct AgentFlowExecutorConfig {
 
 impl AgentFlowExecutorConfig {
     /// Load configuration from environment variables.
-    /// Falls back to sensible defaults if vars are not set.
     pub fn from_env() -> Self {
         Self {
             poll_interval_secs: std::env::var("AGENT_FLOW_POLL_INTERVAL")
@@ -36,7 +41,6 @@ impl AgentFlowExecutorConfig {
 }
 
 /// Agent flow orchestration engine.
-/// Polls for flows in actionable states and drives them forward.
 pub struct AgentFlowExecutor {
     pool: sqlx::SqlitePool,
     config: AgentFlowExecutorConfig,
@@ -52,68 +56,39 @@ impl AgentFlowExecutor {
 
     /// Process one tick: find actionable flows and dispatch them.
     async fn tick(&self) {
-        // Find flows in Planning status (need to start execution)
-        let planning_flows = match AgentFlow::find_by_status(&self.pool, FlowStatus::Planning).await
-        {
-            Ok(flows) => flows,
+        // Use find_pending_flows which respects cancel_deadline
+        let flows = match AgentFlow::find_pending_flows(&self.pool, self.config.max_concurrent as i32).await {
+            Ok(f) => f,
             Err(e) => {
-                tracing::error!("[AgentFlowEngine] Failed to query planning flows: {}", e);
+                tracing::error!("[AgentFlowEngine] Failed to query pending flows: {}", e);
                 return;
             }
         };
 
-        // Find flows in Executing status (check for completion)
-        let executing_flows =
-            match AgentFlow::find_by_status(&self.pool, FlowStatus::Executing).await {
-                Ok(flows) => flows,
-                Err(e) => {
-                    tracing::error!("[AgentFlowEngine] Failed to query executing flows: {}", e);
-                    return;
-                }
-            };
-
-        // Find flows in Verifying status (check verification results)
-        let verifying_flows =
-            match AgentFlow::find_by_status(&self.pool, FlowStatus::Verifying).await {
-                Ok(flows) => flows,
-                Err(e) => {
-                    tracing::error!("[AgentFlowEngine] Failed to query verifying flows: {}", e);
-                    return;
-                }
-            };
-
-        let total = planning_flows.len() + executing_flows.len() + verifying_flows.len();
-        if total > 0 {
+        if !flows.is_empty() {
             tracing::info!(
-                "[AgentFlowEngine] Tick: {} planning, {} executing, {} verifying",
-                planning_flows.len(),
-                executing_flows.len(),
-                verifying_flows.len(),
+                "[AgentFlowEngine] Tick: {} actionable flow(s)",
+                flows.len(),
             );
         }
 
-        for flow in planning_flows {
-            self.handle_planning_flow(&flow).await;
-        }
-
-        for flow in executing_flows {
-            self.handle_executing_flow(&flow).await;
-        }
-
-        for flow in verifying_flows {
-            self.handle_verifying_flow(&flow).await;
+        for flow in flows {
+            match flow.status {
+                FlowStatus::Planning => self.handle_planning_flow(&flow).await,
+                FlowStatus::Executing => self.handle_executing_flow(&flow).await,
+                _ => {}
+            }
         }
     }
 
-    /// Planning → Executing: validate plan, then dispatch to executor agent
+    /// Planning → Executing: transition and dispatch LLM call
     async fn handle_planning_flow(&self, flow: &AgentFlow) {
         tracing::info!(
-            "[AgentFlowEngine] Processing planning flow {} (task {})",
+            "[AgentFlowEngine] Starting execution for flow {} (deal: {:?})",
             flow.id,
-            flow.task_id
+            flow.crm_deal_id
         );
 
-        // Validate transition
         if !flow.status.can_transition_to(&FlowStatus::Executing) {
             tracing::warn!(
                 "[AgentFlowEngine] Flow {} cannot transition from {} to executing",
@@ -123,7 +98,7 @@ impl AgentFlowExecutor {
             return;
         }
 
-        // Phase 1: just log and transition. Phase 2 will add real agent dispatch.
+        // Transition to Executing
         if let Err(e) = AgentFlow::transition_to_phase(
             &self.pool,
             flow.id,
@@ -137,27 +112,92 @@ impl AgentFlowExecutor {
                 flow.id,
                 e
             );
+            return;
         }
+
+        // Emit phase started event
+        let _ = AgentFlowEvent::emit_phase_started(
+            &self.pool,
+            flow.id,
+            "execution",
+            flow.executor_agent_id,
+        )
+        .await;
+
+        // Dispatch LLM execution
+        self.execute_flow(flow).await;
     }
 
-    /// Executing: check if the execution is complete
-    async fn handle_executing_flow(&self, flow: &AgentFlow) {
-        // Phase 1: check if execution_completed_at is set
-        if flow.execution_completed_at.is_some() {
-            tracing::info!(
-                "[AgentFlowEngine] Flow {} execution complete, moving to verification",
-                flow.id
-            );
-            if let Err(e) = AgentFlow::transition_to_phase(
-                &self.pool,
-                flow.id,
-                AgentPhase::Verification,
-                Some("executing"),
-            )
-            .await
-            {
+    /// Execute the flow: build prompt, call LLM, process response
+    async fn execute_flow(&self, flow: &AgentFlow) {
+        let flow_config = self.parse_flow_config(flow);
+        let agent_name = flow_config
+            .get("agent_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("assistant");
+        let deal_id = flow_config
+            .get("deal_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        // Build context from deal data
+        let deal_context = self.load_deal_context(deal_id).await;
+
+        // Build system prompt based on agent name
+        let system_prompt = build_agent_prompt(agent_name, &deal_context);
+
+        // Build tool definitions
+        let tools = build_agent_tools();
+
+        // Build messages
+        let messages = vec![
+            WorkflowLLMService::system_message(&system_prompt),
+            WorkflowLLMService::user_message(&format!(
+                "Execute your role for the deal: {}.\n\nDeal context:\n{}",
+                flow_config.get("deal_name").and_then(|v| v.as_str()).unwrap_or("Unknown"),
+                deal_context
+            )),
+        ];
+
+        // Call LLM with retry logic
+        let result = self.call_llm_with_retry(flow, messages, &tools).await;
+
+        match result {
+            Ok(output) => {
+                // Save artifact with the output
+                let artifact_id = Uuid::new_v4();
+                let _ = AgentFlowEvent::emit_artifact_created(
+                    &self.pool,
+                    flow.id,
+                    artifact_id,
+                    "agent_output",
+                    &format!("{} output", agent_name),
+                    "execution",
+                )
+                .await;
+
+                // Store the output in flow_config for retrieval
+                let _ = sqlx::query(
+                    "UPDATE agent_flows SET flow_config = json_set(COALESCE(flow_config, '{}'), '$.output', ?1), updated_at = datetime('now', 'subsec') WHERE id = ?2",
+                )
+                .bind(&output)
+                .bind(flow.id)
+                .execute(&self.pool)
+                .await;
+
+                // Complete the flow (single-phase: skip verification)
+                self.complete_flow(flow).await;
+
+                tracing::info!(
+                    "[AgentFlowEngine] Flow {} completed successfully (agent: {})",
+                    flow.id,
+                    agent_name
+                );
+            }
+            Err(e) => {
+                self.fail_flow(flow, &e.to_string()).await;
                 tracing::error!(
-                    "[AgentFlowEngine] Failed to transition flow {} to verifying: {}",
+                    "[AgentFlowEngine] Flow {} failed: {}",
                     flow.id,
                     e
                 );
@@ -165,39 +205,430 @@ impl AgentFlowExecutor {
         }
     }
 
-    /// Verifying: check if verification is done, then complete
-    async fn handle_verifying_flow(&self, flow: &AgentFlow) {
-        if flow.verification_completed_at.is_some() {
-            let target_status = if flow.human_approval_required {
-                "awaiting_approval"
-            } else {
-                "completed"
-            };
+    /// Call LLM with retry: attempt → same model → fallback model → fail
+    async fn call_llm_with_retry(
+        &self,
+        flow: &AgentFlow,
+        messages: Vec<Value>,
+        tools: &[ToolDefinition],
+    ) -> anyhow::Result<String> {
+        let max_retries = 3;
+        let models = [None, None, Some("claude-sonnet-4-6-20250514")]; // last attempt uses cheaper model
 
-            tracing::info!(
-                "[AgentFlowEngine] Flow {} verification done → {}",
-                flow.id,
-                target_status
-            );
+        for attempt in 0..max_retries {
+            let model_hint = models.get(attempt).copied().flatten();
 
-            let res = sqlx::query(
-                "UPDATE agent_flows SET status = ?, updated_at = datetime('now', 'subsec') WHERE id = ?",
+            // Update retry count
+            let _ = sqlx::query(
+                "UPDATE agent_flows SET retry_count = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2",
             )
-            .bind(target_status)
+            .bind(attempt as i32)
             .bind(flow.id)
             .execute(&self.pool)
             .await;
 
-            if let Err(e) = res {
-                tracing::error!(
-                    "[AgentFlowEngine] Failed to complete flow {}: {}",
-                    flow.id,
-                    e
-                );
+            match self.call_llm_once(messages.clone(), tools, model_hint).await {
+                Ok(output) => return Ok(output),
+                Err(e) => {
+                    tracing::warn!(
+                        "[AgentFlowEngine] Flow {} attempt {}/{} failed: {}",
+                        flow.id,
+                        attempt + 1,
+                        max_retries,
+                        e
+                    );
+
+                    // Store error for observability
+                    let _ = sqlx::query(
+                        "UPDATE agent_flows SET last_error = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2",
+                    )
+                    .bind(e.to_string())
+                    .bind(flow.id)
+                    .execute(&self.pool)
+                    .await;
+
+                    if attempt == max_retries - 1 {
+                        return Err(e);
+                    }
+
+                    // Brief delay before retry
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                }
+            }
+        }
+
+        anyhow::bail!("All retry attempts exhausted")
+    }
+
+    /// Single LLM call with optional tool-call loop (max 5 turns)
+    async fn call_llm_once(
+        &self,
+        mut messages: Vec<Value>,
+        tools: &[ToolDefinition],
+        model_hint: Option<&str>,
+    ) -> anyhow::Result<String> {
+        let max_turns = 5;
+
+        for turn in 0..max_turns {
+            let (response, meta) = WorkflowLLMService::completion_with_tools(
+                &self.pool,
+                messages.clone(),
+                tools,
+                model_hint,
+                Some(4096),
+                Some(0.7),
+            )
+            .await?;
+
+            tracing::info!(
+                "[AgentFlowEngine] LLM response via {} (turn {}/{})",
+                meta.model_used,
+                turn + 1,
+                max_turns
+            );
+
+            match response {
+                LLMResponse::Text { content, .. } => {
+                    return Ok(content);
+                }
+                LLMResponse::ToolCalls { calls, .. } => {
+                    // Add assistant tool-call message to conversation
+                    messages.push(WorkflowLLMService::assistant_tool_calls_message(&calls));
+
+                    // Execute each tool call and add results
+                    for call in &calls {
+                        let result = self.execute_tool_call(call).await;
+                        messages.push(WorkflowLLMService::tool_result_message(
+                            &call.id,
+                            &result,
+                        ));
+                    }
+                    // Continue loop for next LLM turn
+                }
+            }
+        }
+
+        anyhow::bail!("Max tool-call turns ({}) exceeded", max_turns)
+    }
+
+    /// Execute a tool call from the LLM and return the result as a string
+    async fn execute_tool_call(&self, call: &ToolCallRequest) -> String {
+        tracing::info!(
+            "[AgentFlowEngine] Executing tool: {} with args: {}",
+            call.name,
+            call.arguments
+        );
+
+        match call.name.as_str() {
+            "get_deal_context" => {
+                let deal_id = call.arguments.get("deal_id").and_then(|v| v.as_str()).unwrap_or("");
+                self.load_deal_context(deal_id).await
+            }
+            "update_deal_field" => {
+                let deal_id = call.arguments.get("deal_id").and_then(|v| v.as_str()).unwrap_or("");
+                let field = call.arguments.get("field").and_then(|v| v.as_str()).unwrap_or("");
+                let value = call.arguments.get("value").and_then(|v| v.as_str()).unwrap_or("");
+                self.update_deal_field(deal_id, field, value).await
+            }
+            "save_artifact" => {
+                let title = call.arguments.get("title").and_then(|v| v.as_str()).unwrap_or("Output");
+                let content = call.arguments.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                let flow_id = call.arguments.get("flow_id").and_then(|v| v.as_str()).unwrap_or("");
+                self.save_artifact(flow_id, title, content).await
+            }
+            _ => {
+                format!("Unknown tool: {}", call.name)
             }
         }
     }
+
+    // ── Tool Implementations ────────────────────────────────────────────
+
+    async fn load_deal_context(&self, deal_id: &str) -> String {
+        #[derive(sqlx::FromRow)]
+        struct DealRow {
+            name: String,
+            description: Option<String>,
+            stage: Option<String>,
+            amount: Option<f64>,
+            currency: String,
+            proposal_text: Option<String>,
+        }
+        let deal = sqlx::query_as::<_, DealRow>(
+            "SELECT name, description, stage, amount, currency, proposal_text FROM crm_deals WHERE id = ?1",
+        )
+        .bind(deal_id)
+        .fetch_optional(&self.pool)
+        .await
+        .ok()
+        .flatten();
+
+        match deal {
+            Some(d) => {
+                json!({
+                    "name": d.name,
+                    "description": d.description,
+                    "stage": d.stage,
+                    "amount": d.amount,
+                    "currency": d.currency,
+                    "has_proposal": d.proposal_text.is_some(),
+                })
+                .to_string()
+            }
+            None => json!({"error": "Deal not found"}).to_string(),
+        }
+    }
+
+    async fn update_deal_field(&self, deal_id: &str, field: &str, value: &str) -> String {
+        // Only allow safe fields
+        let allowed_fields = ["description", "proposal_text", "deck_url", "custom_fields"];
+        if !allowed_fields.contains(&field) {
+            return json!({"error": format!("Field '{}' is not updatable", field)}).to_string();
+        }
+
+        let query = format!(
+            "UPDATE crm_deals SET {} = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2",
+            field
+        );
+        match sqlx::query(&query)
+            .bind(value)
+            .bind(deal_id)
+            .execute(&self.pool)
+            .await
+        {
+            Ok(_) => json!({"success": true, "field": field}).to_string(),
+            Err(e) => json!({"error": e.to_string()}).to_string(),
+        }
+    }
+
+    async fn save_artifact(&self, flow_id_str: &str, title: &str, content: &str) -> String {
+        let flow_id = match Uuid::parse_str(flow_id_str) {
+            Ok(id) => id,
+            Err(_) => return json!({"error": "Invalid flow_id"}).to_string(),
+        };
+
+        let artifact_id = Uuid::new_v4();
+        match AgentFlowEvent::create(
+            &self.pool,
+            CreateFlowEvent {
+                agent_flow_id: flow_id,
+                event_type: FlowEventType::ArtifactCreated,
+                event_data: FlowEventPayload::ArtifactCreated {
+                    artifact_id,
+                    artifact_type: "text".to_string(),
+                    title: title.to_string(),
+                    phase: "execution".to_string(),
+                },
+            },
+        )
+        .await
+        {
+            Ok(_) => {
+                // Also store content in a separate event for retrieval
+                let _ = AgentFlowEvent::create(
+                    &self.pool,
+                    CreateFlowEvent {
+                        agent_flow_id: flow_id,
+                        event_type: FlowEventType::ArtifactUpdated,
+                        event_data: FlowEventPayload::ArtifactUpdated {
+                            artifact_id,
+                            changes: json!({"content": content}),
+                        },
+                    },
+                )
+                .await;
+                json!({"success": true, "artifact_id": artifact_id.to_string()}).to_string()
+            }
+            Err(e) => json!({"error": e.to_string()}).to_string(),
+        }
+    }
+
+    // ── Flow Lifecycle ──────────────────────────────────────────────────
+
+    async fn complete_flow(&self, flow: &AgentFlow) {
+        // Emit completion event
+        let _ = AgentFlowEvent::create(
+            &self.pool,
+            CreateFlowEvent {
+                agent_flow_id: flow.id,
+                event_type: FlowEventType::FlowCompleted,
+                event_data: FlowEventPayload::FlowCompleted {
+                    verification_score: None,
+                    total_artifacts: 1,
+                },
+            },
+        )
+        .await;
+
+        // Mark as completed
+        let _ = sqlx::query(
+            "UPDATE agent_flows SET status = 'completed', execution_completed_at = datetime('now', 'subsec'), updated_at = datetime('now', 'subsec') WHERE id = ?1",
+        )
+        .bind(flow.id)
+        .execute(&self.pool)
+        .await;
+    }
+
+    async fn fail_flow(&self, flow: &AgentFlow, error: &str) {
+        // Emit failure event
+        let _ = AgentFlowEvent::create(
+            &self.pool,
+            CreateFlowEvent {
+                agent_flow_id: flow.id,
+                event_type: FlowEventType::FlowFailed,
+                event_data: FlowEventPayload::FlowFailed {
+                    error: error.to_string(),
+                    phase: "execution".to_string(),
+                },
+            },
+        )
+        .await;
+
+        // Mark as failed
+        let _ = sqlx::query(
+            "UPDATE agent_flows SET status = 'failed', last_error = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2",
+        )
+        .bind(error)
+        .bind(flow.id)
+        .execute(&self.pool)
+        .await;
+    }
+
+    /// Executing flows: check if already completed (legacy path)
+    async fn handle_executing_flow(&self, flow: &AgentFlow) {
+        if flow.execution_completed_at.is_some() {
+            tracing::info!(
+                "[AgentFlowEngine] Flow {} execution already completed, finalizing",
+                flow.id
+            );
+            self.complete_flow(flow).await;
+        }
+    }
+
+    fn parse_flow_config(&self, flow: &AgentFlow) -> Value {
+        flow.flow_config
+            .as_deref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_else(|| json!({}))
+    }
 }
+
+// ── Agent Prompts (hardcoded for v1) ─────────────────────────────────────────
+
+fn build_agent_prompt(agent_name: &str, deal_context: &str) -> String {
+    match agent_name {
+        "scout" => format!(
+            "You are Scout, a research agent. Your job is to gather intelligence about a person and their company.\n\
+             Research the contact associated with this deal and provide:\n\
+             1. A professional profile summary\n\
+             2. Company overview and market position\n\
+             3. Key talking points for a business meeting\n\
+             4. Potential pain points and opportunities\n\n\
+             Deal context: {deal_context}"
+        ),
+        "astra" => format!(
+            "You are Astra, a business analysis agent. Your job is to analyze business opportunities.\n\
+             Based on the deal and research data, provide:\n\
+             1. Business pain point analysis\n\
+             2. Recommended services and solutions\n\
+             3. Estimated project scope and timeline\n\
+             4. Risk assessment\n\n\
+             Deal context: {deal_context}"
+        ),
+        "cash" => format!(
+            "You are Cash, a proposal generation agent. Your job is to create compelling proposals.\n\
+             Based on the business analysis, generate a professional proposal including:\n\
+             1. Executive summary\n\
+             2. Scope of work with deliverables\n\
+             3. Pricing breakdown with estimated value\n\
+             4. Timeline and milestones\n\n\
+             Deal context: {deal_context}"
+        ),
+        "lux" => format!(
+            "You are Lux, a presentation deck generation agent. Your job is to create polished pitch decks.\n\
+             Based on the proposal, create a presentation outline with:\n\
+             1. Title slide with key value proposition\n\
+             2. Problem/opportunity slides\n\
+             3. Solution and approach\n\
+             4. Deliverables and timeline\n\
+             5. Investment and ROI\n\n\
+             Deal context: {deal_context}"
+        ),
+        _ => format!(
+            "You are an AI assistant helping with a CRM deal.\n\
+             Analyze the deal context and provide helpful insights.\n\n\
+             Deal context: {deal_context}"
+        ),
+    }
+}
+
+// ── Tool Definitions ─────────────────────────────────────────────────────────
+
+fn build_agent_tools() -> Vec<ToolDefinition> {
+    vec![
+        ToolDefinition {
+            name: "get_deal_context".to_string(),
+            description: "Get full context about the current deal including contact and company info".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "deal_id": {
+                        "type": "string",
+                        "description": "The deal ID to retrieve context for"
+                    }
+                },
+                "required": ["deal_id"]
+            }),
+        },
+        ToolDefinition {
+            name: "update_deal_field".to_string(),
+            description: "Update a field on the deal (description, proposal_text, deck_url, custom_fields)".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "deal_id": {
+                        "type": "string",
+                        "description": "The deal ID to update"
+                    },
+                    "field": {
+                        "type": "string",
+                        "enum": ["description", "proposal_text", "deck_url", "custom_fields"],
+                        "description": "The field to update"
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "The new value for the field"
+                    }
+                },
+                "required": ["deal_id", "field", "value"]
+            }),
+        },
+        ToolDefinition {
+            name: "save_artifact".to_string(),
+            description: "Save a research artifact or output document".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "flow_id": {
+                        "type": "string",
+                        "description": "The agent flow ID"
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Title for the artifact"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "The artifact content"
+                    }
+                },
+                "required": ["flow_id", "title", "content"]
+            }),
+        },
+    ]
+}
+
+// ── Background Worker ────────────────────────────────────────────────────────
 
 #[async_trait::async_trait]
 impl BackgroundWorker for AgentFlowExecutor {
@@ -207,7 +638,6 @@ impl BackgroundWorker for AgentFlowExecutor {
 
     async fn run(&self, shutdown: CancellationToken) {
         use std::time::Duration;
-
         use tokio::time::interval;
 
         let poll_secs = self.config.poll_interval_secs;
