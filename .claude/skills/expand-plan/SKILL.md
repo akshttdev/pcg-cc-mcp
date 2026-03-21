@@ -75,17 +75,14 @@ Launch agents to find low-effort extraction opportunities in files touched by th
 - **Frontend**: Duplicate hooks, components, constants, shared patterns
 - **Cross-cutting**: Repeated access control, error handling, config loading patterns
 
-## Phase 6: Acceptance Criteria & Scope Audit
+## Phase 6: Acceptance Criteria Audit
 
 For each sprint item, verify the plan includes:
 
-1. **User-facing definition of done** — not "add endpoint X" but "user can see cost data in the dashboard." If a backend endpoint has no frontend consumer, flag it — unwired endpoints are waste.
-2. **Vertical slices** — each item should ship backend + frontend + verification as a unit. Flag items that build horizontal layers (e.g., "all backends first, then all frontends") — this pattern hides integration gaps until too late.
-3. **Stub vs working distinction** — if an item ships scaffolding without real behavior, the plan must say so explicitly (e.g., "Phase 1: scaffold with stub transitions. Phase 2: actual dispatch"). Don't count stubs as done.
-4. **Sub-item time estimates** — large items (>2 days) must break down into sub-items with individual estimates. A "5-day item" with 13 unestimated sub-items will underdeliver. Flag items where total sub-item effort exceeds the item estimate.
-5. **Priority tiers with cut lines** — items should be ordered by user impact, with an explicit "cut below this line if time runs short." Infrastructure items should not crowd out feature delivery.
-6. **Dependency hints** — if items seem coupled (shared types, shared routes), note likely merge order.
-7. **Build step suggestions** — if items touch types, schemas, or dependencies, suggest likely build steps (e.g., `cargo sqlx prepare`, `npm run generate-types`, `pnpm install`). Be specific when the steps are known.
+1. **Definition of done** — not "code exists" but "user can do X and see Y". If the plan only describes backend changes without a user-facing verification, flag it.
+2. **Stub vs working** — if an item ships scaffolding without real behavior (e.g., a background worker that logs but doesn't dispatch), call it out explicitly so the sprint tracker reflects reality.
+3. **Dependency hints** — if items seem coupled (shared types, shared routes), note likely merge order. Don't over-specify — just flag where parallel work may conflict.
+4. **Build step suggestions** — if items touch types, schemas, or dependencies, suggest likely build steps (e.g., `cargo sqlx prepare`, `npm run generate-types`, `pnpm install`). Be specific when the steps are known.
 
 ## Phase 7: Update the Plan
 

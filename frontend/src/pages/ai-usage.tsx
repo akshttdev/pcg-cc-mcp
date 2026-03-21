@@ -31,9 +31,8 @@ import {
   FolderKanban,
   Bot,
 } from 'lucide-react';
-import { tokenUsageApi, costsApi } from '@/lib/api';
-import { tokenUsageKeys, costKeys } from '@/lib/query-keys';
-import { useOrganization } from '@/contexts/organization-context';
+import { tokenUsageApi } from '@/lib/api';
+import { tokenUsageKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
 
 type Tab = 'overview' | 'providers' | 'models' | 'projects' | 'agents';
@@ -56,28 +55,7 @@ function formatCost(cents: number | null): string {
 export function AIUsagePage() {
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [days, setDays] = useState<number>(7);
-  const { effectiveOrgId } = useOrganization();
 
-  // New cost API (reads from vibe_transactions — actual cost data)
-  const { data: costSummary, isLoading: costSummaryLoading, refetch: refetchCostSummary } = useQuery({
-    queryKey: costKeys.orgSummary(effectiveOrgId ?? ''),
-    queryFn: () => costsApi.orgSummary(effectiveOrgId!),
-    enabled: !!effectiveOrgId,
-  });
-
-  const { refetch: refetchCostByModel } = useQuery({
-    queryKey: costKeys.orgByModel(effectiveOrgId ?? ''),
-    queryFn: () => costsApi.orgByModel(effectiveOrgId!),
-    enabled: !!effectiveOrgId,
-  });
-
-  const { refetch: refetchCostByProject } = useQuery({
-    queryKey: costKeys.orgByProject(effectiveOrgId ?? ''),
-    queryFn: () => costsApi.orgByProject(effectiveOrgId!),
-    enabled: !!effectiveOrgId,
-  });
-
-  // Legacy token_usage API (kept for daily/provider/agent views until those endpoints are migrated)
   const { isLoading: todayLoading, refetch: refetchToday } = useQuery({
     queryKey: tokenUsageKeys.today(),
     queryFn: () => tokenUsageApi.getToday(),
@@ -109,9 +87,6 @@ export function AIUsagePage() {
   });
 
   const handleRefresh = () => {
-    refetchCostSummary();
-    refetchCostByModel();
-    refetchCostByProject();
     refetchToday();
     refetchDaily();
     refetchProvider();
@@ -267,42 +242,6 @@ export function AIUsagePage() {
       {/* Tab Content */}
       {activeTab === 'overview' && (
         <div className="space-y-6">
-          {/* Cost Summary from vibe_transactions (real data) */}
-          {effectiveOrgId && (
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              <Card>
-                <CardContent className="pt-4">
-                  <p className="text-xs text-muted-foreground">Total Cost</p>
-                  <p className="text-2xl font-bold">{costSummaryLoading ? '...' : formatCost(Number(costSummary?.total_cost_cents ?? 0))}</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-4">
-                  <p className="text-xs text-muted-foreground">VIBE Spent</p>
-                  <p className="text-2xl font-bold">{costSummaryLoading ? '...' : Number(costSummary?.total_vibe ?? 0).toLocaleString()}</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-4">
-                  <p className="text-xs text-muted-foreground">Transactions</p>
-                  <p className="text-2xl font-bold">{costSummaryLoading ? '...' : Number(costSummary?.transaction_count ?? 0).toLocaleString()}</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-4">
-                  <p className="text-xs text-muted-foreground">Input Tokens</p>
-                  <p className="text-2xl font-bold">{costSummaryLoading ? '...' : formatTokens(Number(costSummary?.total_input_tokens ?? 0))}</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-4">
-                  <p className="text-xs text-muted-foreground">Output Tokens</p>
-                  <p className="text-2xl font-bold">{costSummaryLoading ? '...' : formatTokens(Number(costSummary?.total_output_tokens ?? 0))}</p>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
           {/* Daily Trend Chart */}
           <Card>
             <CardHeader>
