@@ -403,12 +403,8 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 **Recommendation:** Either (a) implement a retry worker in `spawn_workflow_schedule_loop` that checks for triggers past `next_retry_at` with `retry_count < max_retries`, or (b) remove the fields if retry isn't needed yet.
 **Status:** NOT STARTED
 
-### Webhook Cooldown Race Condition
-**Source:** PR #49 backend review (2026-03-18)
-**File:** `crates/db/src/models/workflow_trigger.rs` — `is_past_cooldown()`
-**What:** Cooldown check reads `last_triggered_at`, then the caller updates it — but under concurrent requests, two webhooks could both pass the cooldown check before either updates the timestamp.
-**Recommendation:** Use a database-level atomic check-and-update (e.g., `UPDATE ... WHERE last_triggered_at < ? RETURNING *`) or add a per-trigger mutex/advisory lock.
-**Status:** NOT STARTED
+### ~~Webhook Cooldown Race Condition~~
+**Status:** ✅ RESOLVED (2026-03-21) — Both `data_source_workflows.rs` and `workflow_triggers.rs` now use atomic `try_claim_trigger()` with `UPDATE...WHERE...RETURNING`. Committed in sprints 4 (tier1-phase0) and the original PR #53.
 
 ### `webhook_url` Stored as Relative Path
 **Source:** PR #49 backend review (2026-03-18)

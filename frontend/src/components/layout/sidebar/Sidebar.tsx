@@ -40,7 +40,8 @@ import { SetupProgress } from '@/components/onboarding';
 import {
   ADMIN_NAV_ITEMS,
   PRIMARY_NAV_ITEMS,
-  MANAGEMENT_NAV_ITEMS,
+  BUSINESS_NAV_ITEMS,
+  PLATFORM_NAV_ITEMS,
   GLOBAL_VIEW_ITEMS,
   UTILITY_NAV_ITEMS,
   EXTERNAL_LINKS,
@@ -369,7 +370,7 @@ export function Sidebar({ className }: SidebarProps) {
                       <LayoutDashboard className="h-4 w-4" />
                       <span>Views & Management</span>
                       {!managementExpanded && (
-                        <span className="text-[10px] text-muted-foreground/70 font-medium">{MANAGEMENT_NAV_ITEMS.length + GLOBAL_VIEW_ITEMS.length}</span>
+                        <span className="text-[10px] text-muted-foreground/70 font-medium">{BUSINESS_NAV_ITEMS.length + PLATFORM_NAV_ITEMS.length + GLOBAL_VIEW_ITEMS.length}</span>
                       )}
                     </div>
                     {managementExpanded ? (
@@ -381,12 +382,13 @@ export function Sidebar({ className }: SidebarProps) {
                 </CollapsibleTrigger>
                 <CollapsibleContent className="px-3 pb-1">
                   <div className="space-y-0.5 pl-4 border-l border-border/40 ml-2">
-                    {/* Global Views first (fewer, higher-level) */}
+                    {/* Global Views */}
+                    <p className="text-[9px] uppercase tracking-wider text-muted-foreground/50 font-semibold pt-1 pb-0.5">Global Views</p>
                     {GLOBAL_VIEW_ITEMS.map((item) => {
                       const Icon = item.icon;
                       const active = location.pathname === item.to;
                       return (
-                        <Link key={item.id} to={item.to}>
+                        <Link key={item.id} to={item.to} title={item.tooltip}>
                           <div className={cn(
                             "sidebar-nav-item text-xs py-1",
                             active && "sidebar-nav-item-active"
@@ -397,13 +399,30 @@ export function Sidebar({ className }: SidebarProps) {
                         </Link>
                       );
                     })}
-                    {/* Subtle divider between global views and management */}
-                    <div className="border-t border-border/30 my-1" />
-                    {MANAGEMENT_NAV_ITEMS.map((item) => {
+                    {/* Business */}
+                    <p className="text-[9px] uppercase tracking-wider text-muted-foreground/50 font-semibold pt-2 pb-0.5">Business</p>
+                    {BUSINESS_NAV_ITEMS.map((item) => {
                       const Icon = item.icon;
                       const active = location.pathname === item.to;
                       return (
-                        <Link key={item.id} to={item.to}>
+                        <Link key={item.id} to={item.to} title={item.tooltip}>
+                          <div className={cn(
+                            "sidebar-nav-item text-xs py-1",
+                            active && "sidebar-nav-item-active"
+                          )}>
+                            <Icon className="h-3.5 w-3.5" />
+                            {item.label}
+                          </div>
+                        </Link>
+                      );
+                    })}
+                    {/* Platform Tools */}
+                    <p className="text-[9px] uppercase tracking-wider text-muted-foreground/50 font-semibold pt-2 pb-0.5">Platform</p>
+                    {PLATFORM_NAV_ITEMS.map((item) => {
+                      const Icon = item.icon;
+                      const active = location.pathname === item.to;
+                      return (
+                        <Link key={item.id} to={item.to} title={item.tooltip}>
                           <div className={cn(
                             "sidebar-nav-item text-xs py-1",
                             active && "sidebar-nav-item-active"

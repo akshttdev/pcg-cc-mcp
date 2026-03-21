@@ -24,14 +24,21 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new().route("/feedback", post(submit_feedback))
 }
 
+// Validation limits
+const MAX_TITLE_LEN: usize = 200;
+const MAX_DESCRIPTION_LEN: usize = 5000;
+const MAX_FIELD_LEN: usize = 1000;
+const VALID_TYPES: &[&str] = &["bug", "feature", "improvement", "question", "friction", "other"];
+const VALID_SEVERITIES: &[&str] = &["low", "medium", "high", "critical"];
+
 #[derive(Debug, Clone, Deserialize, TS)]
 #[ts(export)]
 pub struct SubmitFeedbackRequest {
     /// Type of feedback: bug, feature, improvement, question, friction, other
     pub feedback_type: String,
-    /// Brief title/summary
+    /// Brief title/summary (max 200 chars)
     pub title: String,
-    /// Detailed description
+    /// Detailed description (max 5000 chars)
     pub description: String,
     /// Reporter's email (optional)
     pub email: Option<String>,
@@ -43,13 +50,13 @@ pub struct SubmitFeedbackRequest {
     /// Page/route where friction occurred (e.g. "/crm/deals")
     #[ts(optional)]
     pub page_url: Option<String>,
-    /// What the user was trying to do
+    /// What the user was trying to do (max 1000 chars)
     #[ts(optional)]
     pub user_intent: Option<String>,
-    /// What went wrong or felt slow/confusing
+    /// What went wrong or felt slow/confusing (max 1000 chars)
     #[ts(optional)]
     pub friction_point: Option<String>,
-    /// Expected behavior vs actual
+    /// Expected behavior vs actual (max 1000 chars)
     #[ts(optional)]
     pub expected_behavior: Option<String>,
     /// Time spent blocked (seconds, self-reported)
@@ -58,6 +65,49 @@ pub struct SubmitFeedbackRequest {
     /// Frustration level: 1 (minor) to 5 (show-stopper)
     #[ts(optional)]
     pub frustration_level: Option<i32>,
+}
+
+impl SubmitFeedbackRequest {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.title.trim().is_empty() {
+            return Err("Title is required".into());
+        }
+        if self.title.len() > MAX_TITLE_LEN {
+            return Err(format!("Title must be {} characters or fewer", MAX_TITLE_LEN));
+        }
+        if self.description.trim().is_empty() {
+            return Err("Description is required".into());
+        }
+        if self.description.len() > MAX_DESCRIPTION_LEN {
+            return Err(format!("Description must be {} characters or fewer", MAX_DESCRIPTION_LEN));
+        }
+        if !VALID_TYPES.contains(&self.feedback_type.as_str()) {
+            return Err(format!("Invalid feedback type: {}", self.feedback_type));
+        }
+        if let Some(ref sev) = self.severity {
+            if !VALID_SEVERITIES.contains(&sev.as_str()) {
+                return Err(format!("Invalid severity: {}", sev));
+            }
+        }
+        if let Some(ref fl) = self.frustration_level {
+            if !(1..=5).contains(fl) {
+                return Err("Frustration level must be between 1 and 5".into());
+            }
+        }
+        // Length limits on optional text fields
+        for (field, name) in [
+            (&self.user_intent, "User intent"),
+            (&self.friction_point, "Friction point"),
+            (&self.expected_behavior, "Expected behavior"),
+        ] {
+            if let Some(ref v) = field {
+                if v.len() > MAX_FIELD_LEN {
+                    return Err(format!("{} must be {} characters or fewer", name, MAX_FIELD_LEN));
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -79,14 +129,8 @@ pub async fn submit_feedback(
     let _user_id = &access_context.user_id;
     let pool = &deployment.db().pool;
 
-    // Validate frustration_level range
-    if let Some(level) = req.frustration_level
-        && !(1..=5).contains(&level)
-    {
-        return Err(ApiError::BadRequest(
-            "frustration_level must be between 1 and 5".to_string(),
-        ));
-    }
+    // Validate all fields
+    req.validate().map_err(ApiError::BadRequest)?;
 
     // Map severity to priority
     let priority = match req.severity.as_deref() {

@@ -683,6 +683,24 @@ Inline stage-trigger agents (Scout, Astra, Cash, Lux) coexist with engine in Pha
 **#1 BLOCKER**: Deal stage transitions — drag/click/context menu all non-functional. DnD fires but handler not wired to backend.
 **Key method improvement**: Actor classification (USER/AGENT/HYBRID) + FIND/DO/OBSERVE/VERIFY/BREAK scripts caught the stage transition blocker that page-only testing missed.
 
+## UX Quick Wins (2026-03-21) — 31 items across 5 mini sprints
+
+**Plan**: `planning/2026-03-21--plan--ux-quick-wins-sprint.md`
+**Status**: COMPLETE — all low-to-medium audit findings resolved
+**Items**: 28 fixes + 3 regression fixes = 31 total
+**Highlights**:
+- CRM deal stage transitions: 3 working methods (context menu, clickable stage bar, drag-and-drop)
+- Sidebar: non-active orgs collapsed, "Views & Management" split into 3 labeled groups
+- Backend: BackgroundWorker migration (4 tasks), webhook cooldown race fixed, input validation
+- Accessibility: aria-labels, keyboard shortcut (Shift+F), mobile responsive layout
+- Code quality: 300+ lines dead code removed, warning logs on swallowed errors
+
+## Regression Test (2026-03-21)
+
+**Report**: `planning/reviews/2026-03-21--review--regression-test.md`
+**Result**: MERGE recommended — 0 critical, 2 high (fixed), 1 medium (fixed), 2 low (fixed)
+**All findings resolved.**
+
 ---
 
 ### Decisions Resolved (post-expansion)

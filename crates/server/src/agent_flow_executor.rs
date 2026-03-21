@@ -20,7 +20,9 @@ use crate::workers::BackgroundWorker;
 pub struct AgentFlowExecutorConfig {
     /// Polling interval in seconds (default: 15)
     pub poll_interval_secs: u64,
-    /// Maximum concurrent flows to process per tick (default: 5)
+    /// Maximum concurrent flows to process per tick (default: 5).
+    /// NOTE: Not yet enforced — tick() currently processes all actionable flows.
+    /// Will be used when LLM dispatch is added (pipeline-ops sprint W2).
     pub max_concurrent: usize,
 }
 

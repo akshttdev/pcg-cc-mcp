@@ -63,25 +63,32 @@ export const PRIMARY_NAV_ITEMS: NavItem[] = [
   { label: 'VIBE', icon: Coins, to: '/vibe', id: 'vibe', tooltip: 'Token treasury & transactions' },
 ];
 
-// Management nav — admin-only, collapsible
-export const MANAGEMENT_NAV_ITEMS: NavItem[] = [
+// Business tools — CRM-adjacent admin views
+export const BUSINESS_NAV_ITEMS: NavItem[] = [
   { label: 'All People', icon: Users, to: '/people', id: 'people', adminOnly: true },
   { label: 'All Companies', icon: Building2, to: '/companies', id: 'companies', adminOnly: true },
   { label: 'Proposals', icon: FileText, to: '/proposals', id: 'proposals', adminOnly: true },
   { label: 'Invoices', icon: Receipt, to: '/invoices', id: 'invoices', adminOnly: true },
-  { label: 'Call Intake', icon: PhoneIncoming, to: '/call-intake', id: 'call-intake', adminOnly: true },
   { label: 'Reports', icon: ClipboardList, to: '/business-reports', id: 'business-reports', adminOnly: true },
-  { label: 'Command Center', icon: LayoutDashboard, to: '/command-center', id: 'command-center', adminOnly: true },
-  { label: 'Discord Voice', icon: Headphones, to: '/discord', id: 'discord', adminOnly: true },
-  { label: 'AI Usage', icon: Cpu, to: '/ai-usage', id: 'ai-usage', adminOnly: true },
 ];
 
-// Global views - admin only, collapsible
+// Platform tools — operational dashboards and utilities
+export const PLATFORM_NAV_ITEMS: NavItem[] = [
+  { label: 'Command Center', icon: LayoutDashboard, to: '/command-center', id: 'command-center', adminOnly: true },
+  { label: 'AI Usage', icon: Cpu, to: '/ai-usage', id: 'ai-usage', adminOnly: true, tooltip: 'AI cost tracking by model & project' },
+  { label: 'Call Intake', icon: PhoneIncoming, to: '/call-intake', id: 'call-intake', adminOnly: true },
+  { label: 'Discord Voice', icon: Headphones, to: '/discord', id: 'discord', adminOnly: true },
+];
+
+// Global views — cross-org admin views
 export const GLOBAL_VIEW_ITEMS: NavItem[] = [
   { label: 'All Tasks', icon: ListTodo, to: '/global-tasks', id: 'global-tasks', adminOnly: true },
   { label: 'CRM Admin', icon: Users, to: '/crm', id: 'crm', adminOnly: true },
   { label: 'All Social', icon: Megaphone, to: '/social-command', id: 'social-command', adminOnly: true },
 ];
+
+// Backward compat: combined for components that still reference the old array
+export const MANAGEMENT_NAV_ITEMS: NavItem[] = [...BUSINESS_NAV_ITEMS, ...PLATFORM_NAV_ITEMS];
 
 // Utility nav — pinned to bottom above external links
 export const UTILITY_NAV_ITEMS: NavItem[] = [
