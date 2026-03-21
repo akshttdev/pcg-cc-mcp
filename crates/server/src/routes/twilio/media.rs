@@ -120,9 +120,7 @@ pub(super) async fn fetch_and_describe_media(media: Vec<(String, Option<String>)
     };
 
     // Describe images with Claude Vision if we have any
-    let image_description = if image_blocks.is_empty() || api_key.is_none() {
-        None
-    } else {
+    let image_description = if let (false, Some(api_key)) = (image_blocks.is_empty(), api_key) {
         let mut content = image_blocks;
         content.push(serde_json::json!({
             "type": "text",
@@ -130,8 +128,6 @@ pub(super) async fn fetch_and_describe_media(media: Vec<(String, Option<String>)
                      any visible text or numbers, colours, composition, and any context useful \
                      for someone who hasn't seen the image. Be thorough but concise."
         }));
-
-        let api_key = api_key.unwrap();
         let body = serde_json::json!({
             "model": "claude-sonnet-4-6",
             "max_tokens": 1024,
@@ -155,6 +151,8 @@ pub(super) async fn fetch_and_describe_media(media: Vec<(String, Option<String>)
             }
             None => None,
         }
+    } else {
+        None
     };
 
     MediaResult {

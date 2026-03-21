@@ -62,7 +62,7 @@ async fn list_agents(
         }
         Some(axum::Extension(ctx)) => {
             // Regular user sees system-tier + own agents
-            Agent::find_visible_for_user(pool, &ctx.user_id.to_string()).await
+            Agent::find_visible_for_user(pool, ctx.user_id.as_ref()).await
         }
         None => {
             // No auth context (shouldn't happen behind protected routes, but fallback)
@@ -111,7 +111,7 @@ async fn search_agents(
                 || agent
                     .description
                     .as_ref()
-                    .map_or(false, |d| d.to_lowercase().contains(&search_lower))
+                    .is_some_and(|d| d.to_lowercase().contains(&search_lower))
         });
     }
 
@@ -124,9 +124,10 @@ async fn search_agents(
     if let Some(ref capability) = query.capability {
         let cap_lower = capability.to_lowercase();
         parsed.retain(|agent| {
-            agent.capabilities.as_ref().map_or(false, |caps| {
-                caps.iter().any(|c| c.to_lowercase().contains(&cap_lower))
-            })
+            agent
+                .capabilities
+                .as_ref()
+                .is_some_and(|caps| caps.iter().any(|c| c.to_lowercase().contains(&cap_lower)))
         });
     }
 

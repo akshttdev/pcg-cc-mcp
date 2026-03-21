@@ -174,10 +174,4 @@ async fn connect_to_topsi(db_path: &Path) -> Result<SqlitePool, ApiError> {
     Ok(pool)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // Integration tests would go here
-    // For now, testing is done via the ORCHA router tests
-}
+// TODO: add integration tests (currently tested via ORCHA router tests)

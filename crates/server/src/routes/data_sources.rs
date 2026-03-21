@@ -516,7 +516,7 @@ async fn download_data_source(
                 HeaderValue::from_str(&format!("attachment; filename=\"{}\"", file_name))
                     .unwrap_or_else(|_| HeaderValue::from_static("attachment")),
             );
-            return Ok(Response::builder()
+            return Response::builder()
                 .status(200)
                 .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
                 .header(
@@ -524,7 +524,7 @@ async fn download_data_source(
                     format!("attachment; filename=\"{}\"", file_name),
                 )
                 .body(Body::from(bytes))
-                .map_err(|e| ApiError::InternalError(format!("{e}")))?);
+                .map_err(|e| ApiError::InternalError(format!("{e}")));
         }
     }
 
@@ -591,7 +591,7 @@ async fn download_data_source(
         .or_else(|| meta.get("file_mime").and_then(|v| v.as_str()))
         .unwrap_or("application/octet-stream");
 
-    Ok(Response::builder()
+    Response::builder()
         .status(200)
         .header(header::CONTENT_TYPE, mime)
         .header(
@@ -600,7 +600,7 @@ async fn download_data_source(
         )
         .header(header::CONTENT_LENGTH, bytes.len())
         .body(Body::from(bytes))
-        .map_err(|e| ApiError::InternalError(format!("{e}")))?)
+        .map_err(|e| ApiError::InternalError(format!("{e}")))
 }
 
 /// GET /api/data-sources/metadata-template/:data_type?source_type=...

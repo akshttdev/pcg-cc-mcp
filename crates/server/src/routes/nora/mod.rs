@@ -753,7 +753,7 @@ pub async fn get_nora_instance() -> Result<Arc<RwLock<Option<NoraAgent>>>, ApiEr
     NORA_INSTANCE
         .get()
         .ok_or_else(|| ApiError::NotFound("Nora not initialized".to_string()))
-        .map(|instance| instance.clone())
+        .cloned()
 }
 
 pub(crate) fn map_projects_to_context(projects: Vec<Project>) -> Vec<ProjectContext> {

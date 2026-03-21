@@ -654,29 +654,27 @@ async fn run_brand_research(
 
         let results = futures::future::join_all(search_futures).await;
 
-        for resp_opt in results {
-            if let Some(resp) = resp_opt {
-                if let Ok(data) = resp.json::<serde_json::Value>().await {
-                    if let Some(items) = data["results"].as_array() {
-                        for r in items {
-                            let title = r["title"].as_str().unwrap_or("");
-                            let url = r["url"].as_str().unwrap_or("");
-                            let snippet = r["text"]
-                                .as_str()
-                                .or_else(|| {
-                                    r["highlights"]
-                                        .as_array()
-                                        .and_then(|h| h.first())
-                                        .and_then(|h| h.as_str())
-                                })
-                                .unwrap_or("");
-                            exa_context.push_str(&format!(
-                                "\n---\nTitle: {}\nURL: {}\nContent: {}\n",
-                                title,
-                                url,
-                                &snippet[..snippet.len().min(600)]
-                            ));
-                        }
+        for resp in results.into_iter().flatten() {
+            if let Ok(data) = resp.json::<serde_json::Value>().await {
+                if let Some(items) = data["results"].as_array() {
+                    for r in items {
+                        let title = r["title"].as_str().unwrap_or("");
+                        let url = r["url"].as_str().unwrap_or("");
+                        let snippet = r["text"]
+                            .as_str()
+                            .or_else(|| {
+                                r["highlights"]
+                                    .as_array()
+                                    .and_then(|h| h.first())
+                                    .and_then(|h| h.as_str())
+                            })
+                            .unwrap_or("");
+                        exa_context.push_str(&format!(
+                            "\n---\nTitle: {}\nURL: {}\nContent: {}\n",
+                            title,
+                            url,
+                            &snippet[..snippet.len().min(600)]
+                        ));
                     }
                 }
             }
@@ -890,7 +888,7 @@ async fn run_brand_research(
 
     if !website.is_empty() {
         let base = website.trim_end_matches('/');
-        let sub_pages = vec![
+        let sub_pages = [
             website.to_string(),
             format!("{}/about", base),
             format!("{}/services", base),
@@ -1280,21 +1278,19 @@ KNOWN HANDLES (current DB):
             let gap_results = futures::future::join_all(gap_futures).await;
 
             let mut gap_context = String::new();
-            for resp_opt in gap_results {
-                if let Some(resp) = resp_opt {
-                    if let Ok(data) = resp.json::<serde_json::Value>().await {
-                        if let Some(items) = data["results"].as_array() {
-                            for r in items {
-                                let title = r["title"].as_str().unwrap_or("");
-                                let url = r["url"].as_str().unwrap_or("");
-                                let content = r["text"].as_str().unwrap_or("");
-                                gap_context.push_str(&format!(
-                                    "\n---\nTitle: {}\nURL: {}\nContent: {}\n",
-                                    title,
-                                    url,
-                                    &content[..content.len().min(500)]
-                                ));
-                            }
+            for resp in gap_results.into_iter().flatten() {
+                if let Ok(data) = resp.json::<serde_json::Value>().await {
+                    if let Some(items) = data["results"].as_array() {
+                        for r in items {
+                            let title = r["title"].as_str().unwrap_or("");
+                            let url = r["url"].as_str().unwrap_or("");
+                            let content = r["text"].as_str().unwrap_or("");
+                            gap_context.push_str(&format!(
+                                "\n---\nTitle: {}\nURL: {}\nContent: {}\n",
+                                title,
+                                url,
+                                &content[..content.len().min(500)]
+                            ));
                         }
                     }
                 }
@@ -1502,7 +1498,7 @@ Using the new research, extend and correct the existing data. Return a JSON obje
             }
         }
     }
-    updates.extend(social_updates.into_iter().map(|(col, val)| (col, val)));
+    updates.extend(social_updates.into_iter());
 
     if !updates.is_empty() {
         let social_cols = [

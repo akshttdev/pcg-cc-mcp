@@ -377,7 +377,7 @@ pub(crate) fn strip_markdown_for_tts(text: &str) -> String {
                 // Consume (url) if present
                 if chars.peek() == Some(&'(') {
                     chars.next();
-                    while let Some(ch) = chars.next() {
+                    for ch in chars.by_ref() {
                         if ch == ')' {
                             break;
                         }

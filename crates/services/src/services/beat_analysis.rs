@@ -128,6 +128,7 @@ pub struct BeatAnalysisEngine {
 }
 
 impl BeatAnalysisEngine {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             ffmpeg_path: PathBuf::from("ffmpeg"),
@@ -425,8 +426,8 @@ impl BeatAnalysisEngine {
         let mut boundary_indices = vec![0usize];
         let mut in_plateau = smoothed[0].abs() < 0.15;
 
-        for i in 1..smoothed.len() {
-            let is_plateau = smoothed[i].abs() < 0.15;
+        for (i, val) in smoothed.iter().enumerate().skip(1) {
+            let is_plateau = val.abs() < 0.15;
             if is_plateau != in_plateau {
                 boundary_indices.push(i);
                 in_plateau = is_plateau;
@@ -470,7 +471,7 @@ impl BeatAnalysisEngine {
 
         // Step 3b: Merge sections shorter than min duration with nearest-energy neighbor.
         // Scale threshold with track duration: short tracks need shorter minimum.
-        let min_section_duration = (duration * 0.05).max(1.5).min(3.0);
+        let min_section_duration = (duration * 0.05).clamp(1.5, 3.0);
         loop {
             let short_idx = raw_sections
                 .iter()

@@ -108,7 +108,7 @@ impl TranscriptProcessor {
 
         let audio_bytes = tokio::fs::read(wav_path)
             .await
-            .map_err(|e| NoraError::IoError(e))?;
+            .map_err(NoraError::IoError)?;
 
         let form = reqwest::multipart::Form::new()
             .part(

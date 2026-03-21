@@ -1,5 +1,4 @@
 use alpha_protocol_core::{mesh::MeshMessage, wire::NodeResources};
-use async_nats;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

@@ -324,6 +324,7 @@ impl WorkflowLLMService {
 
 // ── Provider dispatch ───────────────────────────────────────────────────────
 
+#[allow(clippy::type_complexity)] // TODO: extract type alias for pinned boxed future
 fn forward_to_provider<'a>(
     http: &'a reqwest::Client,
     model: &'a PcgRouterModel,

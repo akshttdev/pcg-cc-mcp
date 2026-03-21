@@ -101,7 +101,7 @@ impl WhisperSTT {
             .multipart(form)
             .send()
             .await
-            .map_err(|e| VoiceError::NetworkError(e))?;
+            .map_err(VoiceError::NetworkError)?;
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
@@ -111,16 +111,15 @@ impl WhisperSTT {
             )));
         }
 
-        let whisper_response: serde_json::Value = response
-            .json()
-            .await
-            .map_err(|e| VoiceError::NetworkError(e))?;
+        let whisper_response: serde_json::Value =
+            response.json().await.map_err(VoiceError::NetworkError)?;
 
         let text = whisper_response["text"].as_str().unwrap_or("").to_string();
 
+        let empty = vec![];
         let word_timestamps = whisper_response["words"]
             .as_array()
-            .unwrap_or(&vec![])
+            .unwrap_or(&empty)
             .iter()
             .map(|word| WordTimestamp {
                 word: word["word"].as_str().unwrap_or("").to_string(),
@@ -339,7 +338,7 @@ impl SpeechToText for AzureSTT {
             .body(audio_bytes)
             .send()
             .await
-            .map_err(|e| VoiceError::NetworkError(e))?;
+            .map_err(VoiceError::NetworkError)?;
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
@@ -349,10 +348,8 @@ impl SpeechToText for AzureSTT {
             )));
         }
 
-        let azure_response: serde_json::Value = response
-            .json()
-            .await
-            .map_err(|e| VoiceError::NetworkError(e))?;
+        let azure_response: serde_json::Value =
+            response.json().await.map_err(VoiceError::NetworkError)?;
 
         let text = azure_response["DisplayText"]
             .as_str()

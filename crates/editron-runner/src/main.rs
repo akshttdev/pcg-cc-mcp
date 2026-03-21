@@ -388,11 +388,7 @@ async fn main() -> Result<()> {
     // ─── Stage 6: Export ─────────────────────────────────────────────────────
     info!("[6/6] EXPORT — Generating Premiere Pro XML and render script...");
 
-    let safe_name = cli
-        .name
-        .replace(' ', "_")
-        .replace('/', "-")
-        .replace('\\', "-");
+    let safe_name = cli.name.replace(' ', "_").replace(['/', '\\'], "-");
     let xml_path = cli.output.join(format!("{safe_name}.xml"));
     let script_path = cli.output.join(format!("{safe_name}_render.sh"));
     let mp4_path = cli.output.join(format!("{safe_name}.mp4"));

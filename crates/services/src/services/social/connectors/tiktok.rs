@@ -24,6 +24,7 @@ pub struct TikTokConnector {
 }
 
 impl TikTokConnector {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             client: Client::new(),

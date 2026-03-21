@@ -74,7 +74,10 @@ pub async fn create_client(
     require_org_admin(&deployment.db().pool, &access_context, &org_id).await?;
 
     // Check slug uniqueness within org
-    if let Some(_) = Client::find_by_slug(&deployment.db().pool, &org_id, &data.slug).await? {
+    if Client::find_by_slug(&deployment.db().pool, &org_id, &data.slug)
+        .await?
+        .is_some()
+    {
         return Err(ApiError::Conflict(
             "Client with this slug already exists in the organization".into(),
         ));
@@ -143,12 +146,7 @@ pub async fn delete_client(
     )
     .await?;
 
-    Client::soft_delete(
-        &deployment.db().pool,
-        &id,
-        &access_context.user_id.to_string(),
-    )
-    .await?;
+    Client::soft_delete(&deployment.db().pool, &id, access_context.user_id.as_ref()).await?;
     Ok(Json(ApiResponse::success(())))
 }
 

@@ -4,7 +4,7 @@
 mod tests {
     use db::models::task::Priority;
 
-    use crate::executor::{TaskDefinition, TaskExecutor};
+    use crate::executor::TaskDefinition;
 
     #[tokio::test]
     async fn test_executor_initialization() {
@@ -68,7 +68,7 @@ mod tests {
 
     #[test]
     fn test_priority_enum() {
-        let priorities = vec![
+        let priorities = [
             Priority::Critical,
             Priority::High,
             Priority::Medium,

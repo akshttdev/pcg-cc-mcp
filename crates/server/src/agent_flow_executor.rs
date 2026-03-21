@@ -95,8 +95,13 @@ impl AgentFlowExecutor {
         }
 
         // Phase 1: just log and transition. Phase 2 will add real agent dispatch.
-        if let Err(e) =
-            AgentFlow::transition_to_phase(&self.pool, flow.id, AgentPhase::Execution).await
+        if let Err(e) = AgentFlow::transition_to_phase(
+            &self.pool,
+            flow.id,
+            AgentPhase::Execution,
+            Some("planning"),
+        )
+        .await
         {
             tracing::error!(
                 "[AgentFlowEngine] Failed to transition flow {} to executing: {}",
@@ -114,8 +119,13 @@ impl AgentFlowExecutor {
                 "[AgentFlowEngine] Flow {} execution complete, moving to verification",
                 flow.id
             );
-            if let Err(e) =
-                AgentFlow::transition_to_phase(&self.pool, flow.id, AgentPhase::Verification).await
+            if let Err(e) = AgentFlow::transition_to_phase(
+                &self.pool,
+                flow.id,
+                AgentPhase::Verification,
+                Some("executing"),
+            )
+            .await
             {
                 tracing::error!(
                     "[AgentFlowEngine] Failed to transition flow {} to verifying: {}",

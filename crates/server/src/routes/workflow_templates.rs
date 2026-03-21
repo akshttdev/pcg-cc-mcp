@@ -229,7 +229,7 @@ async fn convert_deal(
                     TaskDependency::create(
                         pool,
                         &CreateTaskDependency {
-                            project_id: project_id,
+                            project_id,
                             source_task_id: source_id,
                             target_task_id: target_id,
                             dependency_type: DependencyType::Blocks,
@@ -253,7 +253,7 @@ async fn convert_deal(
                     TaskDependency::create(
                         pool,
                         &CreateTaskDependency {
-                            project_id: project_id,
+                            project_id,
                             source_task_id: prev_review_id,
                             target_task_id: first_task_id,
                             dependency_type: DependencyType::Blocks,

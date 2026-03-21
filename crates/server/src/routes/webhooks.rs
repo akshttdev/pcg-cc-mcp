@@ -125,7 +125,7 @@ pub async fn dropbox_webhook_handler(
     if !payload.editron_batches.is_empty() {
         for hint in &payload.editron_batches {
             let tier_value = hint.storage_tier.as_deref().unwrap_or("hot");
-            let storage_tier = match MediaStorageTier::from_str(tier_value) {
+            let storage_tier = match MediaStorageTier::parse_tier(tier_value) {
                 Ok(tier) => tier,
                 Err(err) => {
                     warn!(
@@ -197,7 +197,7 @@ pub async fn dropbox_webhook_handler(
                         continue;
                     };
 
-                    let storage_tier = match MediaStorageTier::from_str(&source.storage_tier) {
+                    let storage_tier = match MediaStorageTier::parse_tier(&source.storage_tier) {
                         Ok(tier) => tier,
                         Err(err) => {
                             errors.push(format!(

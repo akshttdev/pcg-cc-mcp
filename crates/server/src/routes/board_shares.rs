@@ -92,14 +92,8 @@ pub async fn create_board_share(
     }
 
     let id = Uuid::new_v4().to_string();
-    let share = BoardShare::create(
-        pool,
-        &id,
-        &data,
-        &org_id,
-        &access_context.user_id.to_string(),
-    )
-    .await?;
+    let share =
+        BoardShare::create(pool, &id, &data, &org_id, access_context.user_id.as_ref()).await?;
     Ok(Json(ApiResponse::success(share)))
 }
 

@@ -69,7 +69,7 @@ impl TaskExecutor {
         // 1. Find the agent by name
         let agent = Agent::find_by_short_name(&self.pool, agent_name)
             .await
-            .map_err(|e| NoraError::DatabaseError(e))?
+            .map_err(NoraError::DatabaseError)?
             .ok_or_else(|| {
                 NoraError::ToolExecutionError(format!("Agent '{}' not found", agent_name))
             })?;
@@ -83,7 +83,7 @@ impl TaskExecutor {
         .bind(&task_id)
         .execute(&self.pool)
         .await
-        .map_err(|e| NoraError::DatabaseError(e))?;
+        .map_err(NoraError::DatabaseError)?;
 
         tracing::info!(
             "[NORA_DELEGATE] Task {} assigned to agent {} ({})",
@@ -95,7 +95,7 @@ impl TaskExecutor {
         // 3. Get the task to find its project
         let _task = Task::find_by_id(&self.pool, &task_id)
             .await
-            .map_err(|e| NoraError::DatabaseError(e))?
+            .map_err(NoraError::DatabaseError)?
             .ok_or_else(|| NoraError::ToolExecutionError(format!("Task {} not found", task_id)))?;
 
         // 4. Trigger execution via HTTP API
@@ -236,7 +236,7 @@ impl TaskExecutor {
         .bind(&pattern)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| NoraError::DatabaseError(e))?;
+        .map_err(NoraError::DatabaseError)?;
 
         match projects.first() {
             Some((id, _name)) => {
@@ -256,7 +256,7 @@ impl TaskExecutor {
             sqlx::query_as("SELECT id, name FROM projects ORDER BY name")
                 .fetch_all(&self.pool)
                 .await
-                .map_err(|e| NoraError::DatabaseError(e))?;
+                .map_err(NoraError::DatabaseError)?;
 
         Ok(projects)
     }
@@ -343,7 +343,7 @@ impl TaskExecutor {
                 .bind(project_id)
                 .fetch_one(&self.pool)
                 .await
-                .map_err(|e| NoraError::DatabaseError(e))?;
+                .map_err(NoraError::DatabaseError)?;
 
         // Get tasks for this project
         let tasks: Vec<TaskInfo> = sqlx::query_as(
@@ -353,7 +353,7 @@ impl TaskExecutor {
         .bind(project_id)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| NoraError::DatabaseError(e))?;
+        .map_err(NoraError::DatabaseError)?;
 
         // Get boards for this project
         let boards: Vec<BoardInfo> = sqlx::query_as(
@@ -394,7 +394,7 @@ impl TaskExecutor {
         .bind(&project_id)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| NoraError::DatabaseError(e))?;
+        .map_err(NoraError::DatabaseError)?;
 
         Ok(tasks)
     }
@@ -413,7 +413,7 @@ impl TaskExecutor {
         .bind(status)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| NoraError::DatabaseError(e))?;
+        .map_err(NoraError::DatabaseError)?;
 
         Ok(tasks)
     }
@@ -432,7 +432,7 @@ impl TaskExecutor {
         .bind(&pattern)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| NoraError::DatabaseError(e))?;
+        .map_err(NoraError::DatabaseError)?;
 
         Ok(tasks)
     }
@@ -445,7 +445,7 @@ impl TaskExecutor {
         )
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| NoraError::DatabaseError(e))?;
+        .map_err(NoraError::DatabaseError)?;
 
         Ok(tasks)
     }
@@ -486,7 +486,7 @@ impl TaskExecutor {
 
         let project = Project::create(&self.pool, &create_project, &project_id)
             .await
-            .map_err(|e| NoraError::DatabaseError(e))?;
+            .map_err(NoraError::DatabaseError)?;
 
         // Create default boards
         if let Err(e) = ProjectBoard::ensure_default_boards(&self.pool, &project.id).await {
@@ -529,7 +529,7 @@ impl TaskExecutor {
 
         let onboarding = ProjectOnboarding::create_with_segments(&self.pool, &create)
             .await
-            .map_err(|e| NoraError::DatabaseError(e))?;
+            .map_err(NoraError::DatabaseError)?;
 
         tracing::info!(
             "Onboarding workflow started: {} for project {}",
@@ -561,7 +561,7 @@ impl TaskExecutor {
 
         let board = ProjectBoard::create(&self.pool, &create_board)
             .await
-            .map_err(|e| NoraError::DatabaseError(e))?;
+            .map_err(NoraError::DatabaseError)?;
 
         tracing::info!("Board created successfully: {} ({})", board.name, board.id);
 
@@ -577,7 +577,7 @@ impl TaskExecutor {
             .bind(task_id)
             .execute(&self.pool)
             .await
-            .map_err(|e| NoraError::DatabaseError(e))?;
+            .map_err(NoraError::DatabaseError)?;
 
         tracing::info!("Task {} added to board {} successfully", task_id, board_id);
         Ok(())
@@ -632,7 +632,7 @@ impl TaskExecutor {
 
         let task = Task::create(&self.pool, &create_task, &task_id)
             .await
-            .map_err(|e| NoraError::DatabaseError(e))?;
+            .map_err(NoraError::DatabaseError)?;
 
         tracing::info!(
             "Task created on board successfully: {} ({})",
@@ -670,12 +670,9 @@ impl TaskExecutor {
                 .bind(&project_id_str)
                 .fetch_optional(&self.pool)
                 .await
-                .map_err(|e| NoraError::DatabaseError(e))?;
+                .map_err(NoraError::DatabaseError)?;
 
-        let board_id = match board_result {
-            Some((id,)) => Some(id),
-            None => None,
-        };
+        let board_id = board_result.map(|(id,)| id);
 
         tracing::info!("[TOOL_FLOW] Board ID: {:?}", board_id);
 
@@ -711,7 +708,7 @@ impl TaskExecutor {
 
         let task = Task::create(&self.pool, &create_task, &task_id)
             .await
-            .map_err(|e| NoraError::DatabaseError(e))?;
+            .map_err(NoraError::DatabaseError)?;
 
         tracing::info!(
             "[TOOL_FLOW] Task created successfully: '{}' (ID: {}) in project '{}'",
@@ -730,7 +727,7 @@ impl TaskExecutor {
                 .bind(project_id)
                 .fetch_one(&self.pool)
                 .await
-                .map_err(|e| NoraError::DatabaseError(e))?;
+                .map_err(NoraError::DatabaseError)?;
 
         let completed_tasks: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = 'completed'",

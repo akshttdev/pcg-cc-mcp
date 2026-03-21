@@ -454,7 +454,7 @@ impl FFmpegClient {
         ];
 
         let status = Command::new(&self.ffmpeg_path)
-            .args(&args)
+            .args(args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .status()
@@ -493,7 +493,7 @@ impl FFmpegClient {
         ];
 
         let status = Command::new(&self.ffmpeg_path)
-            .args(&args)
+            .args(args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .status()

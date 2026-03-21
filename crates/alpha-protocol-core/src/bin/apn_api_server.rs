@@ -54,7 +54,7 @@ fn fetch_network_info() -> (Vec<PeerInfo>, bool, String) {
 
     if let Ok(file) = File::open(log_path) {
         let reader = BufReader::new(file);
-        let lines: Vec<String> = reader.lines().filter_map(|l| l.ok()).collect();
+        let lines: Vec<String> = reader.lines().map_while(Result::ok).collect();
 
         // Get master node ID
         if let Some(line) = lines.iter().find(|l| l.contains("Node ID:")) {

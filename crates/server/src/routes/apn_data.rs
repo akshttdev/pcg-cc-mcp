@@ -81,7 +81,7 @@ pub async fn trigger_sync(
                 &client,
                 &config.provider_id,
                 &config.device_id,
-                &access_context.user_id.to_string(),
+                access_context.user_id.as_ref(),
                 &username,
             )
             .await

@@ -336,7 +336,7 @@ impl TextToSpeech for ElevenLabsTTS {
             .json(&payload)
             .send()
             .await
-            .map_err(|e| VoiceError::NetworkError(e))?;
+            .map_err(VoiceError::NetworkError)?;
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
@@ -346,10 +346,7 @@ impl TextToSpeech for ElevenLabsTTS {
             )));
         }
 
-        let audio_bytes = response
-            .bytes()
-            .await
-            .map_err(|e| VoiceError::NetworkError(e))?;
+        let audio_bytes = response.bytes().await.map_err(VoiceError::NetworkError)?;
 
         let audio_data = base64::engine::general_purpose::STANDARD.encode(&audio_bytes);
         let processing_time = start_time.elapsed().as_millis() as u64;
@@ -375,20 +372,18 @@ impl TextToSpeech for ElevenLabsTTS {
             .header("xi-api-key", api_key)
             .send()
             .await
-            .map_err(|e| VoiceError::NetworkError(e))?;
+            .map_err(VoiceError::NetworkError)?;
 
         if !response.status().is_success() {
             return Err(VoiceError::TTSError("Failed to fetch voices".to_string()));
         }
 
-        let voices: serde_json::Value = response
-            .json()
-            .await
-            .map_err(|e| VoiceError::NetworkError(e))?;
+        let voices: serde_json::Value = response.json().await.map_err(VoiceError::NetworkError)?;
 
+        let empty = vec![];
         let voice_names = voices["voices"]
             .as_array()
-            .unwrap_or(&vec![])
+            .unwrap_or(&empty)
             .iter()
             .filter_map(|v| v["name"].as_str().map(|s| s.to_string()))
             .collect();
@@ -495,7 +490,7 @@ impl TextToSpeech for AzureTTS {
             .body(ssml)
             .send()
             .await
-            .map_err(|e| VoiceError::NetworkError(e))?;
+            .map_err(VoiceError::NetworkError)?;
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
@@ -505,10 +500,7 @@ impl TextToSpeech for AzureTTS {
             )));
         }
 
-        let audio_bytes = response
-            .bytes()
-            .await
-            .map_err(|e| VoiceError::NetworkError(e))?;
+        let audio_bytes = response.bytes().await.map_err(VoiceError::NetworkError)?;
 
         let audio_data = base64::engine::general_purpose::STANDARD.encode(&audio_bytes);
         let processing_time = start_time.elapsed().as_millis() as u64;
@@ -616,7 +608,7 @@ impl TextToSpeech for OpenAITTS {
             .json(&payload)
             .send()
             .await
-            .map_err(|e| VoiceError::NetworkError(e))?;
+            .map_err(VoiceError::NetworkError)?;
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
@@ -626,10 +618,7 @@ impl TextToSpeech for OpenAITTS {
             )));
         }
 
-        let audio_bytes = response
-            .bytes()
-            .await
-            .map_err(|e| VoiceError::NetworkError(e))?;
+        let audio_bytes = response.bytes().await.map_err(VoiceError::NetworkError)?;
 
         let audio_data = base64::engine::general_purpose::STANDARD.encode(&audio_bytes);
         let processing_time = start_time.elapsed().as_millis() as u64;
@@ -670,7 +659,7 @@ impl OpenAITTS {
 /// System TTS implementation (uses Chatterbox as backend)
 #[derive(Debug)]
 pub struct SystemTTS {
-    config: TTSConfig,
+    _config: TTSConfig,
     client: reqwest::Client,
     endpoint: String,
 }
@@ -687,7 +676,7 @@ impl SystemTTS {
         );
 
         Ok(Self {
-            config: config.clone(),
+            _config: config.clone(),
             client: reqwest::Client::new(),
             endpoint,
         })
@@ -725,7 +714,7 @@ impl TextToSpeech for SystemTTS {
             .json(&payload)
             .send()
             .await
-            .map_err(|e| VoiceError::NetworkError(e))?;
+            .map_err(VoiceError::NetworkError)?;
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
@@ -749,10 +738,7 @@ impl TextToSpeech for SystemTTS {
             AudioFormat::Wav
         };
 
-        let audio_bytes = response
-            .bytes()
-            .await
-            .map_err(|e| VoiceError::NetworkError(e))?;
+        let audio_bytes = response.bytes().await.map_err(VoiceError::NetworkError)?;
 
         let audio_data = base64::engine::general_purpose::STANDARD.encode(&audio_bytes);
         let processing_time = start_time.elapsed().as_millis() as u64;
@@ -813,7 +799,7 @@ impl SystemTTS {
 /// Response: audio/wav or audio/mpeg binary data
 #[derive(Debug)]
 pub struct ChatterboxTTS {
-    config: TTSConfig,
+    _config: TTSConfig,
     client: reqwest::Client,
     endpoint: String,
 }
@@ -827,7 +813,7 @@ impl ChatterboxTTS {
         info!("Initializing Chatterbox TTS with endpoint: {}", endpoint);
 
         Ok(Self {
-            config: config.clone(),
+            _config: config.clone(),
             client: reqwest::Client::new(),
             endpoint,
         })
@@ -868,7 +854,7 @@ impl TextToSpeech for ChatterboxTTS {
             .json(&payload)
             .send()
             .await
-            .map_err(|e| VoiceError::NetworkError(e))?;
+            .map_err(VoiceError::NetworkError)?;
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
@@ -892,10 +878,7 @@ impl TextToSpeech for ChatterboxTTS {
             AudioFormat::Wav
         };
 
-        let audio_bytes = response
-            .bytes()
-            .await
-            .map_err(|e| VoiceError::NetworkError(e))?;
+        let audio_bytes = response.bytes().await.map_err(VoiceError::NetworkError)?;
 
         let audio_data = base64::engine::general_purpose::STANDARD.encode(&audio_bytes);
         let processing_time = start_time.elapsed().as_millis() as u64;

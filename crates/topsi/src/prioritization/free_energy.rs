@@ -212,6 +212,7 @@ impl EFECalculator {
 
 /// Convert a task-like struct to a PotentialAction
 pub trait IntoPotentialAction {
+    #[allow(clippy::wrong_self_convention)] // trait uses &self for flexibility — implementors may need to retain ownership
     fn into_action(&self) -> PotentialAction;
 }
 

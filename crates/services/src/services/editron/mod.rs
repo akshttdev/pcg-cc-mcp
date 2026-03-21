@@ -963,9 +963,7 @@ impl EditronService {
         output_path: &Path,
     ) -> EditronResult<PathBuf> {
         let exporter = PremiereXmlExporter::new(edit.frame_rate);
-        exporter
-            .export(edit, output_path)
-            .map_err(|e| EditronError::Io(e))
+        exporter.export(edit, output_path).map_err(EditronError::Io)
     }
 
     /// Create footage clips from video files with metadata

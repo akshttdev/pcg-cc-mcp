@@ -1,61 +1,86 @@
 ---
 name: qa-review
-description: Comprehensive QA review — static checks, regression analysis, and browser smoke tests
+description: Pre-merge QA — static checks, conflict scan, barrel exports, and optional browser smoke tests
 user-invocable: true
 allowed-tools: Bash, Read, Grep, Glob, Agent, mcp__playwright__browser_navigate, mcp__playwright__browser_snapshot, mcp__playwright__browser_console_messages, mcp__playwright__browser_take_screenshot
 ---
 
 # QA Review
 
-Run a comprehensive quality assurance pass before merging. Execute in this order:
+Quick quality gate before merging. For deep security/correctness analysis, use `/regression-test` instead.
 
-## 1. Static Checks (run /check first)
+## 1. Static Checks
 
-Run the `/check` skill to verify tsc, lint, clippy, and format all pass.
-
-## 2. Regression Analysis
-
-Enumerate all changed files:
+Run all CI checks locally:
 ```bash
-git diff main --stat
+flox activate -- cargo fmt --all -- --check
+flox activate -- cargo clippy --all --all-targets -- -D warnings [with current -A flags from ci.yml]
+cd frontend && npx tsc --noEmit
+cd frontend && npx eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings [threshold from package.json]
 ```
 
-For each changed file, check for:
-- **Broken imports**: grep for old import paths that reference moved/renamed files
-- **Stale references**: hardcoded paths in Makefile, Dockerfile, package.json, CLAUDE.md that should have been updated
-- **Missing barrel exports**: after file splits, verify `index.tsx` exports all public components
-- **Conflict markers**: `grep -r "<<<<<<" frontend/src/` to catch unresolved merges
+Report: PASS/FAIL for each.
 
-Report findings as:
-| Category | File | Issue |
-|----------|------|-------|
+## 2. Structural Integrity
 
-## 3. Playwright MCP Smoke Tests
-
-Start dev servers if not already running:
 ```bash
-pnpm run dev
+# Conflict markers
+grep -rn "<<<<<<" crates/ frontend/src/ shared/ planning/ --include="*.rs" --include="*.ts" --include="*.tsx" --include="*.md"
+
+# Dead imports (files importing from deleted/renamed modules)
+git diff main --name-only --diff-filter=D | while read f; do grep -rn "$f" crates/ frontend/src/ 2>/dev/null; done
+
+# Barrel export gaps (new .ts/.tsx files not in index.ts)
+git diff main --name-only --diff-filter=A -- 'frontend/src/lib/api/*.ts' | while read f; do
+  base=$(basename "$f" .ts)
+  grep -q "$base" frontend/src/lib/api/index.ts || echo "MISSING EXPORT: $f"
+done
 ```
 
-Then use Playwright MCP to navigate to each affected page and verify:
-- Page loads without blank screen
-- No console errors (check via browser_console_messages)
-- Key interactive elements are present (take snapshot to verify)
+## 3. Type Consistency
 
-Default pages to test (if no specific pages affected):
-1. `/login` — login page loads
-2. `/` — dashboard loads after login
-3. `/settings` — settings page loads
-4. `/workflows` — workflows page loads
+- `FlowStatus`, `TaskStatus` — do all frontend `Record<Status, ...>` maps include every variant?
+- `shared/types.ts` — run `npm run generate-types:check` to verify types are current
+- Query keys — any inline `['string', id]` instead of factory functions?
 
-For each page, report:
-| Page | Status | Console Errors | Notes |
-|------|--------|---------------|-------|
+## 4. E2E Tests (if servers are running)
 
-## 4. Summary
+Run the main test suite against the affected areas:
+```bash
+# Main suite (excludes quarantine + demos)
+FRONTEND_PORT=<port> npx playwright test --reporter=list
 
-Produce a final pass/fail summary:
-- Static checks: PASS/FAIL
-- Regression analysis: N issues found
-- Smoke tests: N/N pages passed
-- **Overall**: READY TO MERGE / NEEDS FIXES
+# Or target specific test files for faster feedback
+FRONTEND_PORT=<port> npx playwright test e2e/<affected-area>.spec.ts --reporter=list
+```
+
+If E2E tests aren't practical (no servers, no seed data), fall back to Playwright MCP smoke tests:
+- Navigate to affected pages, verify no blank screen or console errors
+- Take snapshots of key UI states
+
+Default pages: `/login`, `/`, `/settings`, `/workflows`
+
+## 5. Summary
+
+| Check | Status |
+|-------|--------|
+| cargo fmt | PASS/FAIL |
+| cargo clippy | PASS/FAIL |
+| tsc | PASS/FAIL |
+| eslint | PASS/FAIL |
+| Conflict markers | N found |
+| Dead imports | N found |
+| Export gaps | N found |
+| Type consistency | PASS/FAIL |
+| Smoke tests | N/A or N/N passed |
+
+**Overall**: READY / NEEDS FIXES
+
+## 6. Fix What You Find (Broken Windows)
+
+Don't just report — fix issues as you go:
+- **Critical/High**: fix immediately, verify the fix compiles
+- **Low-effort** (missing aria-labels, unused imports, wrong types): fix in the same pass
+- **Architectural** (needs refactoring): document in planning doc, don't fix
+
+After fixing, re-run the checks that were affected to confirm green.

@@ -103,7 +103,7 @@ impl PlatformDataService {
         let projects = match scope {
             AccessScope::Admin => Project::find_all(&self.pool)
                 .await
-                .map_err(|e| TopsiError::DatabaseError(e))?,
+                .map_err(TopsiError::DatabaseError)?,
             AccessScope::Projects(ids) => {
                 let mut projects = Vec::new();
                 for id in ids {
@@ -785,7 +785,7 @@ impl PlatformDataService {
             .bind(task_id_str)
             .fetch_optional(&self.pool)
             .await
-            .map_err(|e| TopsiError::DatabaseError(e))?;
+            .map_err(TopsiError::DatabaseError)?;
 
         let task =
             task.ok_or_else(|| TopsiError::ToolError(format!("Task {} not found", task_id)))?;
@@ -876,7 +876,7 @@ impl PlatformDataService {
             .bind(task_id_str)
             .fetch_optional(&self.pool)
             .await
-            .map_err(|e| TopsiError::DatabaseError(e))?;
+            .map_err(TopsiError::DatabaseError)?;
 
         let task =
             task.ok_or_else(|| TopsiError::ToolError(format!("Task {} not found", task_id_str)))?;
@@ -971,7 +971,7 @@ impl PlatformDataService {
             .bind(task_id_str)
             .fetch_optional(&self.pool)
             .await
-            .map_err(|e| TopsiError::DatabaseError(e))?;
+            .map_err(TopsiError::DatabaseError)?;
 
         let task =
             task.ok_or_else(|| TopsiError::ToolError(format!("Task {} not found", task_id_str)))?;
@@ -1619,15 +1619,15 @@ impl PlatformDataService {
                 crm_contact_id: args
                     .get("contact_id")
                     .and_then(|v| v.as_str())
-                    .map(|s| DbUuid::from_string(s)),
+                    .map(DbUuid::from_string),
                 crm_pipeline_id: args
                     .get("pipeline_id")
                     .and_then(|v| v.as_str())
-                    .map(|s| DbUuid::from_string(s)),
+                    .map(DbUuid::from_string),
                 crm_stage_id: args
                     .get("stage_id")
                     .and_then(|v| v.as_str())
-                    .map(|s| DbUuid::from_string(s)),
+                    .map(DbUuid::from_string),
                 name,
                 description: args
                     .get("description")
@@ -1696,7 +1696,7 @@ impl PlatformDataService {
             crm_stage_id: args
                 .get("stage_id")
                 .and_then(|v| v.as_str())
-                .map(|s| DbUuid::from_string(s)),
+                .map(DbUuid::from_string),
             description: args
                 .get("description")
                 .and_then(|v| v.as_str())

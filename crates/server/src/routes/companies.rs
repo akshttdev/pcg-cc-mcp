@@ -243,7 +243,7 @@ async fn run_company_research(
     );
 
     // Try Nora first
-    let nora_result = (|| async {
+    let nora_result = async {
         let nora_instance = get_nora_instance().await.ok()?;
         let nora_guard = nora_instance.read().await;
         let nora = nora_guard.as_ref()?;
@@ -264,7 +264,7 @@ async fn run_company_research(
         .await
         .ok()?
         .ok()
-    })()
+    }
     .await;
 
     let raw = if let Some(resp) = nora_result {

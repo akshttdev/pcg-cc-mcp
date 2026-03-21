@@ -310,8 +310,8 @@ mod tests {
         assert!(params.get("project_id").is_some());
     }
 
-    #[test]
-    fn test_enforce_project_scope() {
+    #[tokio::test]
+    async fn test_enforce_project_scope() {
         let project_id = Uuid::new_v4();
         let pool = SqlitePool::connect_lazy("sqlite::memory:").unwrap();
         let ctx = ProjectScopedContext::new(project_id, pool);

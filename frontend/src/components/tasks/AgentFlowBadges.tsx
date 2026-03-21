@@ -25,7 +25,7 @@ interface AgentFlowBadgesProps {
   className?: string;
 }
 
-type FlowStatus = 'planning' | 'executing' | 'verifying' | 'awaiting_approval' | 'completed' | 'failed' | 'paused';
+type FlowStatus = 'planning' | 'executing' | 'verifying' | 'awaiting_approval' | 'needs_clarification' | 'completed' | 'failed' | 'paused';
 type AgentPhase = 'planning' | 'execution' | 'verification';
 
 const statusConfig: Record<FlowStatus, {
@@ -57,6 +57,12 @@ const statusConfig: Record<FlowStatus, {
     icon: <AlertTriangle className="h-3 w-3" />,
     color: 'text-orange-700',
     bgColor: 'bg-orange-100',
+  },
+  needs_clarification: {
+    label: 'Needs Clarification',
+    icon: <AlertTriangle className="h-3 w-3" />,
+    color: 'text-amber-700',
+    bgColor: 'bg-amber-100',
   },
   completed: {
     label: 'Completed',

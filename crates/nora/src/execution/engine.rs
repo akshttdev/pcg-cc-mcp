@@ -79,7 +79,7 @@ struct ExecutionInstance {
     agent: AgentProfile,
     workflow: AgentWorkflow,
     project_id: Option<Uuid>,
-    inputs: HashMap<String, serde_json::Value>,
+    _inputs: HashMap<String, serde_json::Value>,
     status: ExecutionStatus,
     current_stage: usize,
     tasks_created: Vec<Uuid>,
@@ -309,6 +309,7 @@ impl ExecutionEngine {
     }
 
     /// Update AgentFlow status in the database
+    #[allow(dead_code)]
     async fn update_flow_status(&self, agent_flow_id: Uuid, status: &str, phase: &str) {
         let db = self.db.read().await;
         let pool = match db.as_ref() {
@@ -433,7 +434,7 @@ impl ExecutionEngine {
             agent: agent.clone(),
             workflow: workflow.clone(),
             project_id: request.project_id,
-            inputs: request.inputs.clone(),
+            _inputs: request.inputs.clone(),
             status: ExecutionStatus::Planning,
             current_stage: 0,
             tasks_created: Vec::new(),

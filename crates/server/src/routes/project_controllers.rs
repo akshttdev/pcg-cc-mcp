@@ -139,7 +139,7 @@ async fn get_conversation(
             .ok_or_else(|| ApiError::NotFound("Conversation not found".into()))?;
 
     // Verify access
-    if conversation.project_id != project.id.to_string() {
+    if conversation.project_id != project.id {
         return Err(ApiError::BadRequest(
             "Conversation does not belong to this project".into(),
         ));
@@ -177,7 +177,7 @@ async fn delete_conversation(
             .ok_or_else(|| ApiError::NotFound("Conversation not found".into()))?;
 
     // Verify access
-    if conversation.project_id != project.id.to_string() {
+    if conversation.project_id != project.id {
         return Err(ApiError::BadRequest(
             "Conversation does not belong to this project".into(),
         ));

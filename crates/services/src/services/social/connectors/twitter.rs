@@ -26,6 +26,7 @@ pub struct TwitterConnector {
 }
 
 impl TwitterConnector {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             client: Client::new(),

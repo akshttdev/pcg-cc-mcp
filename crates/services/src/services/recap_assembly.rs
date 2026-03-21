@@ -197,6 +197,7 @@ impl RecapAssemblyEngine {
     /// - Having variety in energy levels (dynamic range)
     /// - Starting and ending on section boundaries
     /// - Peak prominence (distinct climax)
+    ///
     /// Penalizes flat-energy windows.
     fn score_music_window(beat_grid: &BeatGridResult, start: f64, end: f64) -> f64 {
         let mut score = 0.0;
@@ -1202,8 +1203,8 @@ impl RecapAssemblyEngine {
         let mut current_section: Vec<usize> = vec![0];
         let mut section_transitions: Vec<&EditTransition> = Vec::new();
 
-        for i in 1..n {
-            match &placements[i].transition_in {
+        for (i, placement) in placements.iter().enumerate().skip(1) {
+            match &placement.transition_in {
                 EditTransition::HardCut => {
                     current_section.push(i);
                 }

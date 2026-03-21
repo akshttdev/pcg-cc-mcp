@@ -63,7 +63,6 @@ pub struct IntelligenceStatusResponse {
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
 /// POST /api/persons/:id/research
-
 pub async fn trigger_research(
     State(d): State<DeploymentImpl>,
     Path(person_id): Path<String>,
@@ -261,7 +260,7 @@ async fn run_research_via_nora(
 
     write_intelligence_results(
         pool,
-        &person_id.to_string(),
+        person_id.as_ref(),
         &summary,
         confidence,
         &response.content,
@@ -405,7 +404,7 @@ async fn run_research_direct(
 
     write_intelligence_results(
         pool,
-        &person.id.to_string(),
+        person.id.as_ref(),
         &summary,
         confidence,
         &response_text,
@@ -727,6 +726,7 @@ pub async fn get_company_intelligence_status(
     )))
 }
 
+#[allow(dead_code)]
 async fn run_company_research(
     pool: &sqlx::SqlitePool,
     company_id: Uuid,
