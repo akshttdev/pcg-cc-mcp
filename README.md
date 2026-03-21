@@ -1,4 +1,4 @@
-# PCG Dashboard MCP
+# ORCHA — AI-Powered CRM & Task Platform
 
 A comprehensive project management dashboard with built-in Model Context Protocol (MCP) server for AI agent integration.
 
@@ -36,7 +36,7 @@ brew install flox
 ```bash
 # 1. Clone the repository
 git clone <repository-url>
-cd pcg-dashboard-mcp
+cd pcg-cc-mcp
 
 # 2. Activate the flox environment (installs all tooling automatically)
 flox activate
@@ -44,21 +44,24 @@ flox activate
 # 3. Install frontend dependencies
 pnpm install
 
-# 4. Start development servers (frontend + backend with hot reload)
-npm run dev
+# 4. Activate pre-commit hooks
+git config core.hooksPath .githooks
+
+# 5. Start development servers (frontend + backend with hot reload)
+pnpm run dev
 ```
 
 On first `flox activate`, the Rust nightly toolchain is installed automatically via rustup (this may take a minute). Subsequent activations are instant.
 
-### What Happens on `npm run dev`
+### What Happens on `pnpm run dev`
 
 - Copies the seed database from `dev_assets_seed/` to `dev_assets/` (first run only)
-- Starts the Vite frontend dev server (default port 3000)
-- Starts the Rust backend server via `cargo-watch` (auto-assigned port)
+- Starts the Vite frontend dev server (port from `FRONTEND_PORT` in `.env`, default 3000)
+- Starts the Rust backend server via `cargo-watch` (port from `BACKEND_PORT` in `.env`, default 3002)
 - Enables hot reload for both frontend and backend
 - Frontend proxies API requests to the backend automatically
 
-The app will be available at **http://localhost:3000**
+The app will be available at `http://localhost:$FRONTEND_PORT`
 
 Default login: `admin` / `admin123`
 
@@ -78,30 +81,148 @@ If you prefer not to use flox, install these manually:
 2. **Rust nightly** (version pinned in `rust-toolchain.toml`)
 3. **cargo-watch** (`cargo install cargo-watch`)
 4. **sqlx-cli** (`cargo install sqlx-cli --no-default-features --features sqlite`)
-5. **sccache** and **lld** (optional, for faster builds)
+5. **cmake**, **pkg-config**, **libopus** (system packages)
+6. **sccache** and **lld** (optional, for faster builds)
+
+You must also set these environment variables (flox sets them automatically):
+
+```bash
+export SQLX_OFFLINE=true
+export CMAKE_POLICY_VERSION_MINIMUM=3.5   # required — audiopus_sys build fails without this
+export RUSTC_WRAPPER=sccache              # optional — faster rebuilds
+```
+
+Add them to your shell profile or `.env` file.
 
 ### Docker Deployment (Production)
 
 ```bash
-# 1. Copy environment file and configure
-cp .env.example .env
-
-# 2. Deploy
-./scripts/deploy.sh
-# or manually: docker-compose build && docker-compose up -d
+docker compose up                                   # full stack
+docker compose -f docker-compose.local.yml up       # local variant
 ```
-
-See **[docs/deployment/docker/DOCKER_DEPLOYMENT.md](docs/deployment/docker/DOCKER_DEPLOYMENT.md)** for the complete deployment guide.
 
 ### Building for Production
 
 ```bash
-# Build the NPX CLI package
-npm run build:npx
+# Full production build
+./scripts/build-npm-package.sh
 
-# Test the built package
-npm run test:npm
+# Or manually:
+cargo build --release --bin server
+cd frontend && npx vite build
 ```
+
+---
+
+## Environment Configuration
+
+This project has two layers of environment configuration. Understanding when to use each is important.
+
+### `.env` — per-machine, per-worktree settings
+
+Each developer (and each git worktree) has its own `.env` file. This file is **gitignored** and holds secrets + local overrides.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FRONTEND_PORT` | `3000` | Vite dev server port |
+| `BACKEND_PORT` | `3002` | Axum backend port |
+| `DATABASE_URL` | `sqlite://dev_assets/db.sqlite` | SQLite path |
+| `HOST` | `0.0.0.0` | Backend bind address |
+| `RUST_LOG` | `info` | Log level (`debug` for development) |
+| `CMAKE_POLICY_VERSION_MINIMUM` | — | Set to `3.5` (flox sets this; add to `.env` if not using flox) |
+| `SQLX_OFFLINE` | — | Set to `true` (flox sets this; add to `.env` if not using flox) |
+
+**Secrets** (add to `.env`, never commit):
+
+| Variable | Description |
+|----------|-------------|
+| `ANTHROPIC_API_KEY` | Claude AI integration |
+| `OPENAI_API_KEY` | NORA AI assistant (required for NORA) |
+| `GITHUB_TOKEN` | GitHub OAuth / E2E tests |
+| `CLOUDFLARE_TUNNEL_TOKEN` | Production tunnel |
+
+### `.flox/env/manifest.toml` — reproducible toolchain
+
+Flox provides deterministic versions of all build tools and sets env vars like `SQLX_OFFLINE`, `CMAKE_POLICY_VERSION_MINIMUM`, and `RUSTC_WRAPPER` automatically.
+
+**When to edit `manifest.toml`:**
+- Adding a new system dependency (C library, CLI tool)
+- Changing the Rust toolchain version
+- Adding env vars that should be consistent across all machines
+
+**When to edit `.env`:**
+- Secrets (API keys, tokens)
+- Per-machine overrides (ports, paths, log level)
+- Per-worktree isolation (different ports per worktree)
+
+**Rule of thumb:** If flox is active, it provides the build toolchain vars. `.env` provides secrets and port overrides. If you're not using flox, `.env` must provide both.
+
+### Worktree port isolation
+
+When using git worktrees for parallel development, each worktree needs unique ports in its own `.env`:
+
+```bash
+# Root worktree (.env)
+FRONTEND_PORT=3000
+BACKEND_PORT=3002
+
+# Agent worktree (.env)
+FRONTEND_PORT=3010
+BACKEND_PORT=3012
+```
+
+Before starting servers, check for port conflicts:
+```bash
+source .env
+lsof -i :$FRONTEND_PORT -P | grep LISTEN
+lsof -i :$BACKEND_PORT -P | grep LISTEN
+```
+
+---
+
+## Troubleshooting
+
+### Flox cache errors (`sed: can't read .../del.env`)
+
+The flox activation cache is stale. Fix:
+
+```bash
+ls ~/.cache/flox/run/
+rm -rf ~/.cache/flox/run/<project-hash>/
+flox activate   # creates fresh activation
+```
+
+This only removes cached runtime state — your environment definition (`.flox/env/manifest.toml`) is untouched.
+
+### Database migration error on startup
+
+If the backend crashes with `SqliteError: no such column: ...` or `UNIQUE constraint failed: _sqlx_migrations.version`, the seed database is out of sync with the current branch's migrations.
+
+**Quick fix** — reseed from `dev_assets_seed/`:
+```bash
+rm -f dev_assets/db.sqlite
+cp dev_assets_seed/db.sqlite dev_assets/db.sqlite
+# Then restart the backend
+```
+
+**If the seed itself is outdated** (migration still fails after reseeding), regenerate it:
+```bash
+./scripts/create-test-seed.sh
+# Or manually: delete dev_assets/db.sqlite, let the server create a fresh one,
+# then copy it back to dev_assets_seed/ for future use
+```
+
+**Prevention**: After adding new migrations, always update `dev_assets_seed/db.sqlite` so other developers (and future checkouts) start with a compatible seed. The seed should be committed when migrations change.
+
+### CMake error: "Compatibility with CMake < 3.5 has been removed"
+
+The `audiopus_sys` crate requires `cmake_minimum_required(VERSION 2.x)` which CMake 4.x rejects. Set:
+
+```bash
+export CMAKE_POLICY_VERSION_MINIMUM=3.5
+```
+
+Flox sets this automatically. If not using flox, add it to `.env` or your shell profile. The `backend:dev:watch` npm script also sets it inline.
 
 ## Development Commands
 
@@ -213,21 +334,32 @@ sqlx database create    # Create database
 
 ## Environment Variables
 
-The following variables are set automatically by the flox environment (`.flox/env/manifest.toml`):
-- `SQLX_OFFLINE=true` — use cached query metadata instead of a live database connection
-- `RUSTC_WRAPPER=sccache` — enable compilation caching
+See [Environment Configuration](#environment-configuration) above for the full guide on `.env` vs `.flox/env/manifest.toml`.
 
-### Build-time
-- `GITHUB_CLIENT_ID`: GitHub OAuth app ID (optional, defaults to Bloop AI's app)
-- `POSTHOG_API_KEY`: Analytics key (optional)
+### Pre-commit hooks
 
-### Runtime
-- `BACKEND_PORT`: Backend server port (default: auto-assign)
-- `FRONTEND_PORT`: Frontend dev port (default: 3000)
-- `HOST`: Backend host (default: 127.0.0.1)
-- `DATABASE_URL`: SQLite database path (default: `sqlite://dev_assets/db.sqlite`)
-- `RUST_LOG`: Log level (default: `debug` in dev)
-- `DISABLE_WORKTREE_ORPHAN_CLEANUP`: Debug flag for worktrees
+Activate once after cloning:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+This enables:
+- Rust formatting on staged `.rs` files
+- Frontend lint-staged (ESLint + Prettier) on staged `.ts`/`.tsx` files
+- Type generation reminders when `#[derive(TS)]` changes
+
+### After modifying Rust types or queries
+
+```bash
+# If you changed SQL queries:
+DATABASE_URL="sqlite:dev_assets/db.sqlite" cargo sqlx prepare --workspace
+
+# If you added/changed #[derive(TS)] structs:
+npm run generate-types
+
+# Commit the updated .sqlx/ directory and shared/types.ts
+```
 
 ## Contributing
 

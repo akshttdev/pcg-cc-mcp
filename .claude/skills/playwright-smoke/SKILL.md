@@ -39,8 +39,8 @@ The app should be accessible at `http://localhost:3000`.
 ## Login handling
 
 If redirected to `/login`, authenticate first:
-1. Fill username field with `admin`
-2. Fill password field with `admin123`
+1. Read credentials from `.env` (`E2E_USERNAME`, `E2E_PASSWORD`) or fall back to defaults from the test seed
+2. Fill username and password fields
 3. Click the login/submit button
 4. Wait for redirect to dashboard
 
