@@ -59,7 +59,20 @@ Analyze `git diff main...HEAD -- crates/db/migrations/ .github/ .claude/ *.toml 
 4. **Pre-commit hooks** — do they work on macOS and Linux?
 5. **Config changes** — breaking changes to .env, Cargo.toml, package.json
 
-## Phase 3: Cross-cutting Analysis
+## Phase 3: Integration Completeness
+
+For each new backend route added in the diff:
+1. Is there a frontend API function that calls it?
+2. Is there a page/component that uses that API function?
+3. If the answer to either is "no" — flag as **incomplete vertical slice**
+
+For each new frontend API function:
+1. Does it call the correct endpoint? (not the old/stale one it replaced)
+2. Are the types correct? (`shared/types.ts` matches Rust structs)
+
+This catches the pattern where backend ships but the feature doesn't work because nobody wired the frontend.
+
+## Phase 4: Cross-cutting Analysis
 
 After agents complete, check:
 1. **Conflict markers** — `grep -r "<<<<<<" crates/ frontend/ shared/ planning/`
