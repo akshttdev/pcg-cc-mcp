@@ -379,6 +379,7 @@ impl VibeTransaction {
     pub async fn org_cost_summary(
         pool: &SqlitePool,
         org_id: &str,
+        days: Option<i64>,
     ) -> Result<OrgCostSummary, VibeTransactionError> {
         let row = sqlx::query_as::<_, OrgCostSummary>(
             r#"SELECT
@@ -394,9 +395,11 @@ impl VibeTransaction {
                 ON vt.source_type = 'agent' AND vt.task_id IS NOT NULL AND lower(substr(hex(vt.task_id),1,8)||'-'||substr(hex(vt.task_id),9,4)||'-'||substr(hex(vt.task_id),13,4)||'-'||substr(hex(vt.task_id),17,4)||'-'||substr(hex(vt.task_id),21,12)) = t.id
             LEFT JOIN projects p_task
                 ON t.project_id = p_task.id
-            WHERE COALESCE(p_direct.organization_id, p_task.organization_id) = ?1"#,
+            WHERE COALESCE(p_direct.organization_id, p_task.organization_id) = ?1
+                AND (?2 IS NULL OR vt.created_at >= datetime('now', '-' || ?2 || ' days'))"#,
         )
         .bind(org_id)
+        .bind(days)
         .fetch_one(pool)
         .await?;
         Ok(row)
@@ -406,6 +409,7 @@ impl VibeTransaction {
     pub async fn org_cost_by_model(
         pool: &SqlitePool,
         org_id: &str,
+        days: Option<i64>,
     ) -> Result<Vec<ModelCostRow>, VibeTransactionError> {
         let rows = sqlx::query_as::<_, ModelCostRow>(
             r#"SELECT
@@ -424,10 +428,12 @@ impl VibeTransaction {
             LEFT JOIN projects p_task
                 ON t.project_id = p_task.id
             WHERE COALESCE(p_direct.organization_id, p_task.organization_id) = ?1
+                AND (?2 IS NULL OR vt.created_at >= datetime('now', '-' || ?2 || ' days'))
             GROUP BY vt.model, vt.provider
             ORDER BY total_vibe DESC"#,
         )
         .bind(org_id)
+        .bind(days)
         .fetch_all(pool)
         .await?;
         Ok(rows)
@@ -437,6 +443,7 @@ impl VibeTransaction {
     pub async fn org_cost_by_project(
         pool: &SqlitePool,
         org_id: &str,
+        days: Option<i64>,
     ) -> Result<Vec<ProjectCostRow>, VibeTransactionError> {
         let rows = sqlx::query_as::<_, ProjectCostRow>(
             r#"SELECT
@@ -453,10 +460,111 @@ impl VibeTransaction {
             LEFT JOIN projects p_task
                 ON t.project_id = p_task.id
             WHERE COALESCE(p_direct.organization_id, p_task.organization_id) = ?1
+                AND (?2 IS NULL OR vt.created_at >= datetime('now', '-' || ?2 || ' days'))
             GROUP BY COALESCE(p_direct.id, p_task.id), COALESCE(p_direct.name, p_task.name)
             ORDER BY total_vibe DESC"#,
         )
         .bind(org_id)
+        .bind(days)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Get daily cost time series for an organization
+    pub async fn org_cost_daily(
+        pool: &SqlitePool,
+        org_id: &str,
+        days: Option<i64>,
+    ) -> Result<Vec<DailyCostRow>, VibeTransactionError> {
+        let rows = sqlx::query_as::<_, DailyCostRow>(
+            r#"SELECT
+                date(vt.created_at) as date,
+                COALESCE(SUM(vt.amount_vibe), 0) as total_vibe,
+                COALESCE(SUM(vt.calculated_cost_cents), 0) as total_cost_cents,
+                COUNT(*) as transaction_count,
+                COALESCE(SUM(vt.input_tokens), 0) as input_tokens,
+                COALESCE(SUM(vt.output_tokens), 0) as output_tokens
+            FROM vibe_transactions vt
+            LEFT JOIN projects p_direct
+                ON vt.source_type = 'project' AND lower(substr(hex(vt.source_id),1,8)||'-'||substr(hex(vt.source_id),9,4)||'-'||substr(hex(vt.source_id),13,4)||'-'||substr(hex(vt.source_id),17,4)||'-'||substr(hex(vt.source_id),21,12)) = p_direct.id
+            LEFT JOIN tasks t
+                ON vt.source_type = 'agent' AND vt.task_id IS NOT NULL AND lower(substr(hex(vt.task_id),1,8)||'-'||substr(hex(vt.task_id),9,4)||'-'||substr(hex(vt.task_id),13,4)||'-'||substr(hex(vt.task_id),17,4)||'-'||substr(hex(vt.task_id),21,12)) = t.id
+            LEFT JOIN projects p_task
+                ON t.project_id = p_task.id
+            WHERE COALESCE(p_direct.organization_id, p_task.organization_id) = ?1
+                AND (?2 IS NULL OR vt.created_at >= datetime('now', '-' || ?2 || ' days'))
+            GROUP BY date(vt.created_at)
+            ORDER BY date ASC"#,
+        )
+        .bind(org_id)
+        .bind(days)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Get cost breakdown by provider for an organization
+    pub async fn org_cost_by_provider(
+        pool: &SqlitePool,
+        org_id: &str,
+        days: Option<i64>,
+    ) -> Result<Vec<ProviderCostRow>, VibeTransactionError> {
+        let rows = sqlx::query_as::<_, ProviderCostRow>(
+            r#"SELECT
+                COALESCE(vt.provider, 'unknown') as provider,
+                COALESCE(SUM(vt.amount_vibe), 0) as total_vibe,
+                COALESCE(SUM(vt.calculated_cost_cents), 0) as total_cost_cents,
+                COUNT(*) as transaction_count,
+                COALESCE(SUM(vt.input_tokens), 0) as input_tokens,
+                COALESCE(SUM(vt.output_tokens), 0) as output_tokens
+            FROM vibe_transactions vt
+            LEFT JOIN projects p_direct
+                ON vt.source_type = 'project' AND lower(substr(hex(vt.source_id),1,8)||'-'||substr(hex(vt.source_id),9,4)||'-'||substr(hex(vt.source_id),13,4)||'-'||substr(hex(vt.source_id),17,4)||'-'||substr(hex(vt.source_id),21,12)) = p_direct.id
+            LEFT JOIN tasks t
+                ON vt.source_type = 'agent' AND vt.task_id IS NOT NULL AND lower(substr(hex(vt.task_id),1,8)||'-'||substr(hex(vt.task_id),9,4)||'-'||substr(hex(vt.task_id),13,4)||'-'||substr(hex(vt.task_id),17,4)||'-'||substr(hex(vt.task_id),21,12)) = t.id
+            LEFT JOIN projects p_task
+                ON t.project_id = p_task.id
+            WHERE COALESCE(p_direct.organization_id, p_task.organization_id) = ?1
+                AND (?2 IS NULL OR vt.created_at >= datetime('now', '-' || ?2 || ' days'))
+            GROUP BY vt.provider
+            ORDER BY total_vibe DESC"#,
+        )
+        .bind(org_id)
+        .bind(days)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Get cost breakdown by agent for an organization
+    pub async fn org_cost_by_agent(
+        pool: &SqlitePool,
+        org_id: &str,
+        days: Option<i64>,
+    ) -> Result<Vec<AgentCostRow>, VibeTransactionError> {
+        let rows = sqlx::query_as::<_, AgentCostRow>(
+            r#"SELECT
+                COALESCE(lower(substr(hex(vt.source_id),1,8)||'-'||substr(hex(vt.source_id),9,4)||'-'||substr(hex(vt.source_id),13,4)||'-'||substr(hex(vt.source_id),17,4)||'-'||substr(hex(vt.source_id),21,12)), 'unknown') as agent_id,
+                COALESCE(aw.display_name, aw.profile_key, 'Unknown Agent') as agent_name,
+                COALESCE(SUM(vt.amount_vibe), 0) as total_vibe,
+                COALESCE(SUM(vt.calculated_cost_cents), 0) as total_cost_cents,
+                COUNT(*) as transaction_count
+            FROM vibe_transactions vt
+            LEFT JOIN agent_wallets aw
+                ON vt.source_type = 'agent' AND lower(substr(hex(vt.source_id),1,8)||'-'||substr(hex(vt.source_id),9,4)||'-'||substr(hex(vt.source_id),13,4)||'-'||substr(hex(vt.source_id),17,4)||'-'||substr(hex(vt.source_id),21,12)) = aw.id
+            LEFT JOIN tasks t
+                ON vt.task_id IS NOT NULL AND lower(substr(hex(vt.task_id),1,8)||'-'||substr(hex(vt.task_id),9,4)||'-'||substr(hex(vt.task_id),13,4)||'-'||substr(hex(vt.task_id),17,4)||'-'||substr(hex(vt.task_id),21,12)) = t.id
+            LEFT JOIN projects p
+                ON t.project_id = p.id
+            WHERE vt.source_type = 'agent'
+                AND COALESCE(p.organization_id, (SELECT organization_id FROM projects WHERE id = t.project_id)) = ?1
+                AND (?2 IS NULL OR vt.created_at >= datetime('now', '-' || ?2 || ' days'))
+            GROUP BY agent_id, agent_name
+            ORDER BY total_vibe DESC"#,
+        )
+        .bind(org_id)
+        .bind(days)
         .fetch_all(pool)
         .await?;
         Ok(rows)
@@ -495,10 +603,15 @@ impl VibeTransaction {
 #[derive(Debug, FromRow, Serialize, TS)]
 #[ts(export)]
 pub struct OrgCostSummary {
+    #[ts(type = "number")]
     pub total_vibe: i64,
+    #[ts(type = "number")]
     pub total_cost_cents: i64,
+    #[ts(type = "number")]
     pub transaction_count: i64,
+    #[ts(type = "number")]
     pub total_input_tokens: i64,
+    #[ts(type = "number")]
     pub total_output_tokens: i64,
 }
 
@@ -507,10 +620,15 @@ pub struct OrgCostSummary {
 pub struct ModelCostRow {
     pub model: String,
     pub provider: String,
+    #[ts(type = "number")]
     pub total_vibe: i64,
+    #[ts(type = "number")]
     pub total_cost_cents: i64,
+    #[ts(type = "number")]
     pub transaction_count: i64,
+    #[ts(type = "number")]
     pub input_tokens: i64,
+    #[ts(type = "number")]
     pub output_tokens: i64,
 }
 
@@ -519,7 +637,55 @@ pub struct ModelCostRow {
 pub struct ProjectCostRow {
     pub project_id: Option<String>,
     pub project_name: String,
+    #[ts(type = "number")]
     pub total_vibe: i64,
+    #[ts(type = "number")]
     pub total_cost_cents: i64,
+    #[ts(type = "number")]
+    pub transaction_count: i64,
+}
+
+#[derive(Debug, FromRow, Serialize, TS)]
+#[ts(export)]
+pub struct DailyCostRow {
+    pub date: String,
+    #[ts(type = "number")]
+    pub total_vibe: i64,
+    #[ts(type = "number")]
+    pub total_cost_cents: i64,
+    #[ts(type = "number")]
+    pub transaction_count: i64,
+    #[ts(type = "number")]
+    pub input_tokens: i64,
+    #[ts(type = "number")]
+    pub output_tokens: i64,
+}
+
+#[derive(Debug, FromRow, Serialize, TS)]
+#[ts(export)]
+pub struct ProviderCostRow {
+    pub provider: String,
+    #[ts(type = "number")]
+    pub total_vibe: i64,
+    #[ts(type = "number")]
+    pub total_cost_cents: i64,
+    #[ts(type = "number")]
+    pub transaction_count: i64,
+    #[ts(type = "number")]
+    pub input_tokens: i64,
+    #[ts(type = "number")]
+    pub output_tokens: i64,
+}
+
+#[derive(Debug, FromRow, Serialize, TS)]
+#[ts(export)]
+pub struct AgentCostRow {
+    pub agent_id: Option<String>,
+    pub agent_name: String,
+    #[ts(type = "number")]
+    pub total_vibe: i64,
+    #[ts(type = "number")]
+    pub total_cost_cents: i64,
+    #[ts(type = "number")]
     pub transaction_count: i64,
 }
