@@ -108,6 +108,24 @@ export type ProviderCostRow = { provider: string, total_vibe: number, total_cost
 
 export type AgentCostRow = { agent_id: string | null, agent_name: string, total_vibe: number, total_cost_cents: number, transaction_count: number, };
 
+export type ClarificationRequest = { 
+/**
+ * What the agent needs to know
+ */
+question: string, 
+/**
+ * Why this information is needed
+ */
+context: string | null, 
+/**
+ * Suggested options (if applicable)
+ */
+options: Array<string> | null, 
+/**
+ * Whether this blocks all progress or just this step
+ */
+blocking: boolean, };
+
 export type CreateWalletTransaction = { wallet_id: string, direction: string, amount: number, description?: string, metadata?: string, task_id?: string, process_id?: string, };
 
 export type SearchResult = { path: string, is_file: boolean, match_type: SearchMatchType, };

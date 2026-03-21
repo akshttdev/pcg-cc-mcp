@@ -35,6 +35,8 @@ fn generate_types_content() -> String {
         db::models::vibe_transaction::DailyCostRow::decl(),
         db::models::vibe_transaction::ProviderCostRow::decl(),
         db::models::vibe_transaction::AgentCostRow::decl(),
+        // Agent response types
+        db::models::agent_response::ClarificationRequest::decl(),
         db::models::agent_wallet::CreateWalletTransaction::decl(),
         db::models::project::SearchResult::decl(),
         db::models::project::SearchMatchType::decl(),

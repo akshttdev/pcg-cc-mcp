@@ -21,15 +21,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAgentFlowMutations } from '@/hooks/useAgentFlows';
-import type { AgentFlow, AgentPhase, FlowStatus } from 'shared/types';
-
-/** Shape of the JSON stored in `AgentFlow.clarification_request`. */
-interface ClarificationRequest {
-  question: string;
-  context: string | null;
-  options: string[] | null;
-  blocking: boolean;
-}
+import type { AgentFlow, AgentPhase, ClarificationRequest, FlowStatus } from 'shared/types';
 
 function parseClarificationRequest(
   raw: string | null
