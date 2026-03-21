@@ -1,33 +1,47 @@
 import type {
+  AgentCostRow,
+  DailyCostRow,
   ModelCostRow,
   OrgCostSummary,
   ProjectCostRow,
+  ProviderCostRow,
 } from 'shared/types';
 
 import { handleApiResponse, makeRequest } from './client';
 
+function costUrl(orgId: string, path: string, days?: number): string {
+  const base = `/api/organizations/${orgId}/costs/${path}`;
+  return days ? `${base}?days=${days}` : base;
+}
+
 export const costsApi = {
-  /** Get total VIBE + USD cost summary for an organization */
-  orgSummary: async (orgId: string): Promise<OrgCostSummary> => {
-    const response = await makeRequest(
-      `/api/organizations/${orgId}/costs/summary`
-    );
+  orgSummary: async (orgId: string, days?: number): Promise<OrgCostSummary> => {
+    const response = await makeRequest(costUrl(orgId, 'summary', days));
     return handleApiResponse<OrgCostSummary>(response);
   },
 
-  /** Get cost breakdown by LLM model for an organization */
-  orgByModel: async (orgId: string): Promise<ModelCostRow[]> => {
-    const response = await makeRequest(
-      `/api/organizations/${orgId}/costs/by-model`
-    );
+  orgDaily: async (orgId: string, days?: number): Promise<DailyCostRow[]> => {
+    const response = await makeRequest(costUrl(orgId, 'daily', days));
+    return handleApiResponse<DailyCostRow[]>(response);
+  },
+
+  orgByModel: async (orgId: string, days?: number): Promise<ModelCostRow[]> => {
+    const response = await makeRequest(costUrl(orgId, 'by-model', days));
     return handleApiResponse<ModelCostRow[]>(response);
   },
 
-  /** Get cost breakdown by project for an organization */
-  orgByProject: async (orgId: string): Promise<ProjectCostRow[]> => {
-    const response = await makeRequest(
-      `/api/organizations/${orgId}/costs/by-project`
-    );
+  orgByProject: async (orgId: string, days?: number): Promise<ProjectCostRow[]> => {
+    const response = await makeRequest(costUrl(orgId, 'by-project', days));
     return handleApiResponse<ProjectCostRow[]>(response);
+  },
+
+  orgByProvider: async (orgId: string, days?: number): Promise<ProviderCostRow[]> => {
+    const response = await makeRequest(costUrl(orgId, 'by-provider', days));
+    return handleApiResponse<ProviderCostRow[]>(response);
+  },
+
+  orgByAgent: async (orgId: string, days?: number): Promise<AgentCostRow[]> => {
+    const response = await makeRequest(costUrl(orgId, 'by-agent', days));
+    return handleApiResponse<AgentCostRow[]>(response);
   },
 };

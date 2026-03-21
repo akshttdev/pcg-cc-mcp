@@ -22,72 +22,66 @@ import {
 import {
   Cpu,
   RefreshCw,
-  Coins,
-  ArrowUpRight,
-  ArrowDownRight,
   Activity,
   Server,
   Layers,
   FolderKanban,
   Bot,
 } from 'lucide-react';
-import { tokenUsageApi } from '@/lib/api';
-import { tokenUsageKeys } from '@/lib/query-keys';
+import { costsApi } from '@/lib/api';
+import { costKeys } from '@/lib/query-keys';
+import { useOrganization } from '@/contexts/organization-context';
 import { cn } from '@/lib/utils';
+import { formatCost, formatTokens } from '@/lib/format';
+import { CostSummaryCards } from './CostSummaryCards';
+import { CostTrendChart } from './CostTrendChart';
+import type { DailyTrendEntry } from './CostTrendChart';
 
 type Tab = 'overview' | 'providers' | 'models' | 'projects' | 'agents';
 
-function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000) {
-    return `${(tokens / 1_000_000).toFixed(2)}M`;
-  }
-  if (tokens >= 1_000) {
-    return `${(tokens / 1_000).toFixed(1)}K`;
-  }
-  return tokens.toLocaleString();
-}
-
-function formatCost(cents: number | null): string {
-  if (cents === null || cents === 0) return '$0.00';
-  return `$${(cents / 100).toFixed(2)}`;
-}
-
 export function AIUsagePage() {
+  const { effectiveOrgId } = useOrganization();
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [days, setDays] = useState<number>(7);
 
-  const { isLoading: todayLoading, refetch: refetchToday } = useQuery({
-    queryKey: tokenUsageKeys.today(),
-    queryFn: () => tokenUsageApi.getToday(),
+  const { data: costSummary, isLoading: summaryLoading, refetch: refetchSummary } = useQuery({
+    queryKey: costKeys.orgSummary(effectiveOrgId ?? '', days),
+    queryFn: () => costsApi.orgSummary(effectiveOrgId!, days),
+    enabled: !!effectiveOrgId,
   });
 
   const { data: dailyUsage, isLoading: dailyLoading, refetch: refetchDaily } = useQuery({
-    queryKey: tokenUsageKeys.daily(days),
-    queryFn: () => tokenUsageApi.getDaily(days),
+    queryKey: costKeys.orgDaily(effectiveOrgId ?? '', days),
+    queryFn: () => costsApi.orgDaily(effectiveOrgId!, days),
+    enabled: !!effectiveOrgId,
   });
 
   const { data: providerUsage, isLoading: providerLoading, refetch: refetchProvider } = useQuery({
-    queryKey: tokenUsageKeys.byProvider(days),
-    queryFn: () => tokenUsageApi.getByProvider(days),
+    queryKey: costKeys.orgByProvider(effectiveOrgId ?? '', days),
+    queryFn: () => costsApi.orgByProvider(effectiveOrgId!, days),
+    enabled: !!effectiveOrgId,
   });
 
   const { data: modelUsage, isLoading: modelLoading, refetch: refetchModel } = useQuery({
-    queryKey: tokenUsageKeys.byModel(days),
-    queryFn: () => tokenUsageApi.getByModel(days),
+    queryKey: costKeys.orgByModel(effectiveOrgId ?? '', days),
+    queryFn: () => costsApi.orgByModel(effectiveOrgId!, days),
+    enabled: !!effectiveOrgId,
   });
 
   const { data: projectUsage, isLoading: projectLoading, refetch: refetchProject } = useQuery({
-    queryKey: tokenUsageKeys.byProject(days),
-    queryFn: () => tokenUsageApi.getByProject(days),
+    queryKey: costKeys.orgByProject(effectiveOrgId ?? '', days),
+    queryFn: () => costsApi.orgByProject(effectiveOrgId!, days),
+    enabled: !!effectiveOrgId,
   });
 
   const { data: agentUsage, isLoading: agentLoading, refetch: refetchAgent } = useQuery({
-    queryKey: tokenUsageKeys.byAgent(days),
-    queryFn: () => tokenUsageApi.getByAgent(days),
+    queryKey: costKeys.orgByAgent(effectiveOrgId ?? '', days),
+    queryFn: () => costsApi.orgByAgent(effectiveOrgId!, days),
+    enabled: !!effectiveOrgId,
   });
 
   const handleRefresh = () => {
-    refetchToday();
+    refetchSummary();
     refetchDaily();
     refetchProvider();
     refetchModel();
@@ -96,34 +90,31 @@ export function AIUsagePage() {
   };
 
   // Aggregate daily usage by date for trend chart
-  const dailyTrend = useMemo(() => {
+  const dailyTrend = useMemo((): DailyTrendEntry[] => {
     if (!dailyUsage) return [];
-    const byDate: Record<string, { date: string; tokens: number; cost: number; requests: number }> = {};
+    const byDate: Record<string, DailyTrendEntry> = {};
     for (const entry of dailyUsage) {
-      if (!byDate[entry.usage_date]) {
-        byDate[entry.usage_date] = { date: entry.usage_date, tokens: 0, cost: 0, requests: 0 };
+      if (!byDate[entry.date]) {
+        byDate[entry.date] = { date: entry.date, tokens: 0, cost: 0, requests: 0 };
       }
-      byDate[entry.usage_date].tokens += entry.total_tokens;
-      byDate[entry.usage_date].cost += entry.total_cost_cents || 0;
-      byDate[entry.usage_date].requests += entry.request_count;
+      byDate[entry.date].tokens += entry.input_tokens + entry.output_tokens;
+      byDate[entry.date].cost += entry.total_cost_cents || 0;
+      byDate[entry.date].requests += entry.transaction_count;
     }
     return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
   }, [dailyUsage]);
 
-  // Calculate period totals
+  // Calculate period totals from summary
   const periodTotals = useMemo(() => {
-    if (!dailyUsage) return { tokens: 0, input: 0, output: 0, cost: 0, requests: 0 };
-    return dailyUsage.reduce(
-      (acc, entry) => ({
-        tokens: acc.tokens + entry.total_tokens,
-        input: acc.input + entry.total_input_tokens,
-        output: acc.output + entry.total_output_tokens,
-        cost: acc.cost + (entry.total_cost_cents || 0),
-        requests: acc.requests + entry.request_count,
-      }),
-      { tokens: 0, input: 0, output: 0, cost: 0, requests: 0 }
-    );
-  }, [dailyUsage]);
+    if (!costSummary) return { tokens: 0, input: 0, output: 0, cost: 0, requests: 0 };
+    return {
+      tokens: costSummary.total_input_tokens + costSummary.total_output_tokens,
+      input: costSummary.total_input_tokens,
+      output: costSummary.total_output_tokens,
+      cost: costSummary.total_cost_cents,
+      requests: costSummary.transaction_count,
+    };
+  }, [costSummary]);
 
   const maxDailyTokens = useMemo(() => {
     return Math.max(...dailyTrend.map((d) => d.tokens), 1);
@@ -137,7 +128,23 @@ export function AIUsagePage() {
     { id: 'agents', label: 'Agents', icon: <Bot className="w-4 h-4" /> },
   ];
 
-  const isLoading = todayLoading || dailyLoading || providerLoading || modelLoading || projectLoading || agentLoading;
+  const isLoading = summaryLoading || dailyLoading || providerLoading || modelLoading || projectLoading || agentLoading;
+
+  if (!effectiveOrgId) {
+    return (
+      <div className="container mx-auto p-6 max-w-6xl">
+        <div className="flex items-center gap-2 mb-4">
+          <Cpu className="w-6 h-6 text-primary" />
+          <h1 className="text-2xl font-bold">AI Usage Dashboard</h1>
+        </div>
+        <Card>
+          <CardContent className="p-8 text-center">
+            <p className="text-muted-foreground">Select an organization to view costs.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto p-6 max-w-6xl space-y-6">
@@ -172,53 +179,7 @@ export function AIUsagePage() {
       </div>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
-              <Activity className="w-4 h-4" />
-              Total Tokens
-            </div>
-            <div className="text-2xl font-bold">{formatTokens(periodTotals.tokens)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
-              <ArrowUpRight className="w-4 h-4 text-blue-500" />
-              Input Tokens
-            </div>
-            <div className="text-2xl font-bold">{formatTokens(periodTotals.input)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
-              <ArrowDownRight className="w-4 h-4 text-green-500" />
-              Output Tokens
-            </div>
-            <div className="text-2xl font-bold">{formatTokens(periodTotals.output)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
-              <Coins className="w-4 h-4 text-yellow-500" />
-              Total Cost
-            </div>
-            <div className="text-2xl font-bold">{formatCost(periodTotals.cost)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
-              <Cpu className="w-4 h-4 text-purple-500" />
-              Requests
-            </div>
-            <div className="text-2xl font-bold">{periodTotals.requests.toLocaleString()}</div>
-          </CardContent>
-        </Card>
-      </div>
+      <CostSummaryCards periodTotals={periodTotals} isLoading={summaryLoading} />
 
       {/* Tabs */}
       <div className="flex gap-1 border-b">
@@ -243,40 +204,11 @@ export function AIUsagePage() {
       {activeTab === 'overview' && (
         <div className="space-y-6">
           {/* Daily Trend Chart */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Daily Usage Trend</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {dailyLoading ? (
-                <div className="flex justify-center py-8">
-                  <Loader message="Loading trend data..." />
-                </div>
-              ) : dailyTrend.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  No usage data for this period
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {dailyTrend.map((day) => (
-                    <div key={day.date} className="flex items-center gap-3">
-                      <span className="text-xs text-muted-foreground w-20 shrink-0">
-                        {new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                      </span>
-                      <div className="flex-1 h-6 bg-muted rounded-sm overflow-hidden">
-                        <div
-                          className="h-full bg-primary/80 rounded-sm transition-all"
-                          style={{ width: `${(day.tokens / maxDailyTokens) * 100}%` }}
-                        />
-                      </div>
-                      <span className="text-xs font-medium w-16 text-right">{formatTokens(day.tokens)}</span>
-                      <span className="text-xs text-muted-foreground w-16 text-right">{formatCost(day.cost)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <CostTrendChart
+            dailyTrend={dailyTrend}
+            maxDailyTokens={maxDailyTokens}
+            isLoading={dailyLoading}
+          />
 
           {/* Top Providers & Models Side by Side */}
           <div className="grid md:grid-cols-2 gap-6">
@@ -298,7 +230,7 @@ export function AIUsagePage() {
                           <span className="font-medium capitalize">{p.provider}</span>
                         </div>
                         <div className="text-right">
-                          <div className="font-medium">{formatTokens(p.total_tokens)}</div>
+                          <div className="font-medium">{formatTokens(p.input_tokens + p.output_tokens)}</div>
                           <div className="text-xs text-muted-foreground">{formatCost(p.total_cost_cents)}</div>
                         </div>
                       </div>
@@ -326,7 +258,7 @@ export function AIUsagePage() {
                           <div className="text-xs text-muted-foreground capitalize">{m.provider}</div>
                         </div>
                         <div className="text-right">
-                          <div className="font-medium">{formatTokens(m.total_tokens)}</div>
+                          <div className="font-medium">{formatTokens(m.input_tokens + m.output_tokens)}</div>
                           <div className="text-xs text-muted-foreground">{formatCost(m.total_cost_cents)}</div>
                         </div>
                       </div>
@@ -372,11 +304,11 @@ export function AIUsagePage() {
                           <span className="font-medium capitalize">{p.provider}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-right">{formatTokens(p.total_input_tokens)}</TableCell>
-                      <TableCell className="text-right">{formatTokens(p.total_output_tokens)}</TableCell>
-                      <TableCell className="text-right font-medium">{formatTokens(p.total_tokens)}</TableCell>
+                      <TableCell className="text-right">{formatTokens(p.input_tokens)}</TableCell>
+                      <TableCell className="text-right">{formatTokens(p.output_tokens)}</TableCell>
+                      <TableCell className="text-right font-medium">{formatTokens(p.input_tokens + p.output_tokens)}</TableCell>
                       <TableCell className="text-right">{formatCost(p.total_cost_cents)}</TableCell>
-                      <TableCell className="text-right">{p.request_count.toLocaleString()}</TableCell>
+                      <TableCell className="text-right">{p.transaction_count.toLocaleString()}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -418,11 +350,11 @@ export function AIUsagePage() {
                       <TableCell>
                         <Badge variant="outline" className="capitalize">{m.provider}</Badge>
                       </TableCell>
-                      <TableCell className="text-right">{formatTokens(m.total_input_tokens)}</TableCell>
-                      <TableCell className="text-right">{formatTokens(m.total_output_tokens)}</TableCell>
-                      <TableCell className="text-right font-medium">{formatTokens(m.total_tokens)}</TableCell>
+                      <TableCell className="text-right">{formatTokens(m.input_tokens)}</TableCell>
+                      <TableCell className="text-right">{formatTokens(m.output_tokens)}</TableCell>
+                      <TableCell className="text-right font-medium">{formatTokens(m.input_tokens + m.output_tokens)}</TableCell>
                       <TableCell className="text-right">{formatCost(m.total_cost_cents)}</TableCell>
-                      <TableCell className="text-right">{m.request_count.toLocaleString()}</TableCell>
+                      <TableCell className="text-right">{m.transaction_count.toLocaleString()}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -449,7 +381,7 @@ export function AIUsagePage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Project</TableHead>
-                    <TableHead className="text-right">Total Tokens</TableHead>
+                    <TableHead className="text-right">Cost</TableHead>
                     <TableHead className="text-right">Requests</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -462,8 +394,8 @@ export function AIUsagePage() {
                           <span className="font-medium">{p.project_name || 'Unknown Project'}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-right font-medium">{formatTokens(p.total_tokens)}</TableCell>
-                      <TableCell className="text-right">{p.request_count.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-medium">{formatCost(p.total_cost_cents)}</TableCell>
+                      <TableCell className="text-right">{p.transaction_count.toLocaleString()}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -490,7 +422,7 @@ export function AIUsagePage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Agent</TableHead>
-                    <TableHead className="text-right">Total Tokens</TableHead>
+                    <TableHead className="text-right">Cost</TableHead>
                     <TableHead className="text-right">Requests</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -503,8 +435,8 @@ export function AIUsagePage() {
                           <span className="font-medium">{a.agent_name || 'Unknown Agent'}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-right font-medium">{formatTokens(a.total_tokens)}</TableCell>
-                      <TableCell className="text-right">{a.request_count.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-medium">{formatCost(a.total_cost_cents)}</TableCell>
+                      <TableCell className="text-right">{a.transaction_count.toLocaleString()}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

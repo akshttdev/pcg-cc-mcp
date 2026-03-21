@@ -50,6 +50,11 @@ export interface UpdateAgentFlow {
   approved_by?: string;
 }
 
+export interface RespondClarification {
+  response: string;
+  resume_status?: string;
+}
+
 export const agentFlowsApi = {
   list: async (params?: {
     task_id?: string;
@@ -128,6 +133,20 @@ export const agentFlowsApi = {
       method: 'POST',
       body: JSON.stringify({ approved_by: approvedBy }),
     });
+    return handleApiResponse<AgentFlow>(response);
+  },
+
+  respondClarification: async (
+    flowId: string,
+    data: RespondClarification
+  ): Promise<AgentFlow> => {
+    const response = await makeRequest(
+      `/api/agent-flows/${flowId}/respond-clarification`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    );
     return handleApiResponse<AgentFlow>(response);
   },
 

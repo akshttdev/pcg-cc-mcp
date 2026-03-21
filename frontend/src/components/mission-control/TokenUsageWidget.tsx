@@ -1,45 +1,19 @@
+import { useQuery } from '@tanstack/react-query';
+import { AlertTriangle, Clock, Coins, TrendingUp } from 'lucide-react';
+
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Badge } from '@/components/ui/badge';
-import { Coins, TrendingUp, Clock, AlertTriangle } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useOrganization } from '@/contexts/organization-context';
+import { costsApi } from '@/lib/api';
+import { costKeys } from '@/lib/query-keys';
+import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { tokenUsageApi } from '@/lib/api/misc';
-import { tokenUsageKeys } from '@/lib/query-keys';
-
-interface TokenUsageSummary {
-  total_input_tokens: number;
-  total_output_tokens: number;
-  total_tokens: number;
-  total_cost_cents: number | null;
-  request_count: number;
-}
-
-interface TokenUsageByProject {
-  project_id: string;
-  project_name: string | null;
-  total_tokens: number;
-  request_count: number;
-}
 
 interface TokenUsageWidgetProps {
   className?: string;
   dailyLimit?: number;
   compact?: boolean;
-}
-
-async function fetchTodayUsage(): Promise<TokenUsageSummary> {
-  return tokenUsageApi.getToday();
-}
-
-async function fetchUsageByProject(): Promise<TokenUsageByProject[]> {
-  return tokenUsageApi.getByProject(1);
-}
-
-function formatNumber(num: number): string {
-  if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
-  if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
-  return num.toString();
 }
 
 function getResetTime(): string {
@@ -60,25 +34,23 @@ export function TokenUsageWidget({
   dailyLimit = 200000,
   compact,
 }: TokenUsageWidgetProps) {
-  const {
-    data: todayUsage,
-    isLoading: loadingToday,
-  } = useQuery({
-    queryKey: tokenUsageKeys.todaySummary(),
-    queryFn: fetchTodayUsage,
-    refetchInterval: 30000, // Refresh every 30 seconds
-  });
+  const { effectiveOrgId } = useOrganization();
 
-  const {
-    data: projectUsage,
-    isLoading: loadingProjects,
-  } = useQuery({
-    queryKey: tokenUsageKeys.byProjectSummary(),
-    queryFn: fetchUsageByProject,
+  const { data: costSummary, isLoading: loadingSummary } = useQuery({
+    queryKey: costKeys.orgSummary(effectiveOrgId ?? '', 1),
+    queryFn: () => costsApi.orgSummary(effectiveOrgId!, 1),
+    enabled: !!effectiveOrgId,
     refetchInterval: 30000,
   });
 
-  const isLoading = loadingToday || loadingProjects;
+  const { data: projectCosts, isLoading: loadingProjects } = useQuery({
+    queryKey: costKeys.orgByProject(effectiveOrgId ?? '', 1),
+    queryFn: () => costsApi.orgByProject(effectiveOrgId!, 1),
+    enabled: !!effectiveOrgId,
+    refetchInterval: 30000,
+  });
+
+  const isLoading = loadingSummary || loadingProjects;
 
   if (isLoading) {
     return (
@@ -97,7 +69,9 @@ export function TokenUsageWidget({
     );
   }
 
-  const totalTokens = todayUsage?.total_tokens ?? 0;
+  const totalTokens =
+    (costSummary?.total_input_tokens ?? 0) +
+    (costSummary?.total_output_tokens ?? 0);
   const usagePercent = Math.min((totalTokens / dailyLimit) * 100, 100);
   const isNearLimit = usagePercent > 80;
 
@@ -105,10 +79,12 @@ export function TokenUsageWidget({
     return (
       <div className={cn('flex items-center gap-2', className)}>
         <Coins className="h-4 w-4 text-muted-foreground" />
-        <span className={cn(
-          'text-sm font-medium',
-          isNearLimit && 'text-orange-500'
-        )}>
+        <span
+          className={cn(
+            'text-sm font-medium',
+            isNearLimit && 'text-orange-500'
+          )}
+        >
           {formatNumber(totalTokens)} / {formatNumber(dailyLimit)}
         </span>
         <Progress
@@ -128,7 +104,10 @@ export function TokenUsageWidget({
             <Coins className="h-4 w-4" />
             Token Usage
           </CardTitle>
-          <Badge variant="outline" className="text-xs flex items-center gap-1">
+          <Badge
+            variant="outline"
+            className="text-xs flex items-center gap-1"
+          >
             <Clock className="h-3 w-3" />
             Resets: {getResetTime()}
           </Badge>
@@ -139,10 +118,12 @@ export function TokenUsageWidget({
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Today</span>
-            <span className={cn(
-              'text-sm font-medium',
-              isNearLimit && 'text-orange-500'
-            )}>
+            <span
+              className={cn(
+                'text-sm font-medium',
+                isNearLimit && 'text-orange-500'
+              )}
+            >
               {formatNumber(totalTokens)} / {formatNumber(dailyLimit)}
             </span>
           </div>
@@ -166,33 +147,42 @@ export function TokenUsageWidget({
         </div>
 
         {/* Breakdown */}
-        {todayUsage && (
+        {costSummary && (
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div className="p-2 bg-muted rounded">
               <div className="text-muted-foreground">Input</div>
-              <div className="font-medium">{formatNumber(todayUsage.total_input_tokens)}</div>
+              <div className="font-medium">
+                {formatNumber(costSummary.total_input_tokens)}
+              </div>
             </div>
             <div className="p-2 bg-muted rounded">
               <div className="text-muted-foreground">Output</div>
-              <div className="font-medium">{formatNumber(todayUsage.total_output_tokens)}</div>
+              <div className="font-medium">
+                {formatNumber(costSummary.total_output_tokens)}
+              </div>
             </div>
           </div>
         )}
 
         {/* By Project */}
-        {projectUsage && projectUsage.length > 0 && (
+        {projectCosts && projectCosts.length > 0 && (
           <div className="pt-2 border-t">
             <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
               <TrendingUp className="h-3 w-3" />
               By Project
             </div>
             <div className="space-y-1">
-              {projectUsage.slice(0, 3).map((p) => (
-                <div key={p.project_id} className="flex items-center justify-between text-xs">
+              {projectCosts.slice(0, 3).map((p) => (
+                <div
+                  key={p.project_id ?? 'unlinked'}
+                  className="flex items-center justify-between text-xs"
+                >
                   <span className="truncate max-w-[120px]">
                     {p.project_name || 'Unknown'}
                   </span>
-                  <span className="font-medium">{formatNumber(p.total_tokens)}</span>
+                  <span className="font-medium">
+                    {formatNumber(p.total_vibe)} VIBE
+                  </span>
                 </div>
               ))}
             </div>

@@ -96,11 +96,35 @@ export type AgentWalletTransaction = { id: string, wallet_id: string, direction:
 
 export type UpsertAgentWallet = { profile_key: string, display_name?: string, budget_limit: number, };
 
-export type OrgCostSummary = { total_vibe: bigint, total_cost_cents: bigint, transaction_count: bigint, total_input_tokens: bigint, total_output_tokens: bigint, };
+export type OrgCostSummary = { total_vibe: number, total_cost_cents: number, transaction_count: number, total_input_tokens: number, total_output_tokens: number, };
 
-export type ModelCostRow = { model: string, provider: string, total_vibe: bigint, total_cost_cents: bigint, transaction_count: bigint, input_tokens: bigint, output_tokens: bigint, };
+export type ModelCostRow = { model: string, provider: string, total_vibe: number, total_cost_cents: number, transaction_count: number, input_tokens: number, output_tokens: number, };
 
-export type ProjectCostRow = { project_id: string | null, project_name: string, total_vibe: bigint, total_cost_cents: bigint, transaction_count: bigint, };
+export type ProjectCostRow = { project_id: string | null, project_name: string, total_vibe: number, total_cost_cents: number, transaction_count: number, };
+
+export type DailyCostRow = { date: string, total_vibe: number, total_cost_cents: number, transaction_count: number, input_tokens: number, output_tokens: number, };
+
+export type ProviderCostRow = { provider: string, total_vibe: number, total_cost_cents: number, transaction_count: number, input_tokens: number, output_tokens: number, };
+
+export type AgentCostRow = { agent_id: string | null, agent_name: string, total_vibe: number, total_cost_cents: number, transaction_count: number, };
+
+export type ClarificationRequest = { 
+/**
+ * What the agent needs to know
+ */
+question: string, 
+/**
+ * Why this information is needed
+ */
+context: string | null, 
+/**
+ * Suggested options (if applicable)
+ */
+options: Array<string> | null, 
+/**
+ * Whether this blocks all progress or just this step
+ */
+blocking: boolean, };
 
 export type CreateWalletTransaction = { wallet_id: string, direction: string, amount: number, description?: string, metadata?: string, task_id?: string, process_id?: string, };
 
