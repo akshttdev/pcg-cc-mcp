@@ -84,6 +84,7 @@ export interface UpdateCrmPipelineStage {
   probability?: number;
   is_closed?: boolean;
   is_won?: boolean;
+  stage_config?: string; // JSON-serialized StageConfig
 }
 
 // Deal with contact info for Kanban display (matches backend CrmDealWithContact)
