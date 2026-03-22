@@ -48,16 +48,29 @@ For EVERY step in the demo, execute it exactly as the test code does:
 
 - **NEVER skip steps.** Execute every single step the test code does.
 - **NEVER assume a step works** — verify the snapshot after every action.
+- **Verify OBJECTIVES, not just visibility.** For each step, understand:
+  - What is the test CHECKING? (e.g., "task moved to Done column" not just "Done is visible")
+  - What state change should have occurred? (e.g., kanban column counts changed)
+  - What user-facing result confirms success? (e.g., toast message, card in correct column, drawer content)
+- **Verify state transitions.** When data changes (status, column, count, badge), navigate to the relevant view and confirm the change is reflected in the UI — not just that the page loaded.
 - **Check console errors** after each page navigation and after form submissions.
 - **If an error occurs**, investigate immediately:
   - Read the error message
   - Check the backend logs if it's a 500 error
   - Check the frontend code if it's a rendering error
-  - Fix the issue before continuing
-- **If a step requires a helper function** (e.g., `createDemoProject`, `apiLogin`), execute the equivalent actions:
+  - Fix the issue before continuing — nothing is out of scope
+- **If a step requires a helper function** (e.g., `createDemoProject`, `apiLogin`), execute the equivalent:
   - For API helpers: use `curl` via Bash to call the API directly
-  - For UI helpers: execute the same clicks/fills the helper does
-- **Log each step result**: PASS (with brief proof) or FAIL (with error details)
+  - For UI helpers: execute the same clicks/fills the helper does via Playwright MCP
+  - For GitHub helpers: use the GitHub API via curl with GITHUB_TOKEN
+- **UI interactions must go through Playwright MCP** — never substitute API calls for steps the test does via UI (creating tasks, clicking buttons, filling forms, changing status via combobox)
+- **Log each step result**: PASS (with what was verified) or FAIL (with error details)
+
+### Before starting
+
+1. Reset the DB from clean seed: `cp dev_assets_seed/test-seed.sqlite dev_assets/db.sqlite`
+2. Restart the server to pick up the clean DB
+3. This ensures each walkthrough starts from a known state
 
 ### Phase 4: Report
 
@@ -109,11 +122,34 @@ Env vars are in the ROOT worktree `.env` (not the current worktree):
 
 ### GitHub Demo Helpers (e2e/helpers/demo/)
 
-- `simulateDevAgentWork(request, taskId)` — creates branch, commit, PR, links to task, changes status
-- `simulateQaVerdict(request, taskId, agentId, verdict)` — posts QA verdict via API
-- `postDevAgentSummaryComment(request, prNumber, taskId, title)` — posts dev summary on PR
-- `postQaReviewComment(request, prNumber, taskId, verdict, details)` — posts QA review on PR
-- `fetchPrComments(request, prNumber)` — fetches PR comments from GitHub API
-- `getPrUrl(prNumber)` — returns GitHub PR URL for the sandbox repo
-- `cleanupDemoBranches(request, branches)` — deletes demo branches
-- `cleanupDemoPr(request, prNumber)` — closes demo PR
+These helpers use the GitHub API. You MUST replicate them via curl — never skip.
+Sandbox repo: `KingBodhi/e2e-demo-sandbox` (configurable via E2E_DEMO_REPO_* env vars)
+
+**`simulateDevAgentWork(request, taskId)`** — Execute these 5 steps:
+1. Get SHA of `main` branch: `GET /repos/KingBodhi/e2e-demo-sandbox/git/refs/heads/main`
+2. Create branch `e2e-demo/{taskId8}-{timestamp}`: `POST /repos/.../git/refs` with `{ref, sha}`
+3. Create a file on the branch: `PUT /repos/.../contents/src/agent-work-{ts}.ts` with `{message, content(base64), branch}`
+4. Create PR: `POST /repos/.../pulls` with `{title, body, head: branch, base: main}`
+5. Create task attempt: `POST /api/task-attempts/create-record` with `{task_id, executor, base_branch}`
+6. Link PR to attempt: `POST /api/task-attempts/{attemptId}/link-pr` with `{pr_number, pr_url, target_branch}`
+7. Update task status to inreview: `PUT /api/tasks/{taskId}` with `{status: "inreview"}`
+
+**`postDevAgentSummaryComment(request, prNumber, taskId, title)`** — Post a markdown comment:
+- `POST /repos/.../issues/{prNumber}/comments` with formatted dev summary body
+
+**`simulateQaVerdict(request, taskId, agentId, verdict)`** — Set QA result:
+- `PATCH /api/tasks/{taskId}/collaborators` with `{actor_id, actor_type: "agent_watcher", action: verdict}`
+
+**`postQaReviewComment(request, prNumber, taskId, verdict, opts)`** — Post QA review:
+- `POST /repos/.../issues/{prNumber}/comments` with structured review markdown
+
+**`fetchPrComments(request, prNumber)`** — Read comments:
+- `GET /repos/.../issues/{prNumber}/comments`
+
+**`getPrUrl(prNumber)`** — `https://github.com/KingBodhi/e2e-demo-sandbox/pull/{prNumber}`
+
+**`cleanupDemoBranches(request, branches)`** — Delete each branch:
+- `DELETE /repos/.../git/refs/heads/{branch}`
+
+**`cleanupDemoPr(request, prNumber)`** — Close PR:
+- `PATCH /repos/.../pulls/{prNumber}` with `{state: "closed"}`
