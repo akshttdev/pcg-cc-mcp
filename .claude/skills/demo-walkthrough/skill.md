@@ -82,12 +82,38 @@ After completing all steps, produce a summary:
 - <list of any console errors seen, with page context>
 ```
 
-### Notes
+### Environment Variables
+
+Env vars are in the ROOT worktree `.env` (not the current worktree):
+- `GITHUB_TOKEN` — at `/Users/mediamonsters/topos/pcg-cc-mcp/.env`
+- `ANTHROPIC_API_KEY` — at `/Users/mediamonsters/topos/pcg-cc-mcp/.env`
+- Playwright config auto-loads from root `.env` via `dotenv`
+- For API calls during walkthrough, source the root `.env`:
+  `source /Users/mediamonsters/topos/pcg-cc-mcp/.env`
+- NEVER skip steps that require GITHUB_TOKEN or ANTHROPIC_API_KEY — these keys ARE available
+- For Bash API calls, export the token: `export GITHUB_TOKEN=$(grep GITHUB_TOKEN /Users/mediamonsters/topos/pcg-cc-mcp/.env | cut -d= -f2)`
+
+### Helper Functions
 
 - The login helper uses credentials from `e2e/helpers/auth.ts` (typically admin/admin123)
 - The `openFeedbackDialog` helper clicks "More" → "Feedback & Support" in the sidebar
 - The `createDemoProject` helper creates a project via POST /api/projects under Powerclub Global org
 - The `navigateToProjectTasks` helper navigates to `/projects/{id}/tasks` and waits for "Create new task"
 - The `createTaskViaUI` helper clicks "Create new task", fills title, clicks "Create Task", waits for "Agent Reviewers"
+- The `ensureAgentsSeeded` helper calls POST /api/agents/seed — returns array directly (not wrapped)
+- The `addQaWatcher` helper clicks "Add" button then "ORCHA QA" button, waits for "Watching"
+- The `changeTaskStatus` helper clicks the status combobox, selects new status, waits for toast
+- The `findTaskCard` helper finds a button matching the task title regex
 - Demo pause values: short=500ms, medium=1000ms, long=2000ms — you can skip these
 - Tests use `t()` timeout scaler — default 1x, can be set via TIMEOUT_SCALE env var
+
+### GitHub Demo Helpers (e2e/helpers/demo/)
+
+- `simulateDevAgentWork(request, taskId)` — creates branch, commit, PR, links to task, changes status
+- `simulateQaVerdict(request, taskId, agentId, verdict)` — posts QA verdict via API
+- `postDevAgentSummaryComment(request, prNumber, taskId, title)` — posts dev summary on PR
+- `postQaReviewComment(request, prNumber, taskId, verdict, details)` — posts QA review on PR
+- `fetchPrComments(request, prNumber)` — fetches PR comments from GitHub API
+- `getPrUrl(prNumber)` — returns GitHub PR URL for the sandbox repo
+- `cleanupDemoBranches(request, branches)` — deletes demo branches
+- `cleanupDemoPr(request, prNumber)` — closes demo PR
