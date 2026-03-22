@@ -82,11 +82,11 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
   test("Part 2: Create deal via Add Deal dialog", async ({ page }) => {
     test.setTimeout(60_000);
 
-    // Click "Add Deal" button on the pipeline board
+    // Click "Add Deal" button on the pipeline board (first match — header button)
     const addDealBtn = page.getByRole("button", {
       name: "Add Deal",
       exact: true,
-    });
+    }).first();
     await expect(addDealBtn).toBeVisible({ timeout: t(10_000) });
     await addDealBtn.click();
 
@@ -474,7 +474,7 @@ test.describe("Demo: Dealflow Pipeline — Operator Walkthrough", () => {
     // Navigate to companies page (shared page maintains session)
     await page.goto(`/organizations/${ORG_ID}/crm/companies`);
     await expect(
-      page.getByRole("heading", { name: "Companies" }),
+      page.getByRole("heading", { name: "Companies", exact: true }),
     ).toBeVisible({ timeout: t(10_000) });
 
     const bodyText = await page.textContent("body");
