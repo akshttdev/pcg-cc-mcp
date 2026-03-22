@@ -5,7 +5,7 @@ use axum::{
     http::{StatusCode, header},
     response::{IntoResponse, Response},
 };
-use db::{DbUuid, bind_uuid_blob};
+use db::DbUuid;
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
@@ -125,13 +125,12 @@ pub async fn login(
         return Err(ApiError::BadRequest("Invalid credentials".to_string()));
     }
 
-    // users.id and related FK columns (sessions.user_id, organization_members.user_id) are BLOB
-    let user_id_blob = bind_uuid_blob(&user.id)
-        .map_err(|e| ApiError::InternalError(format!("Invalid user UUID: {}", e)))?;
+    // Bind user ID as TEXT — DbUuid decodes both BLOB and TEXT transparently
+    let user_id_str = user.id.as_str();
 
     // Update last login time
     sqlx::query("UPDATE users SET last_login_at = datetime('now') WHERE id = ?")
-        .bind(&user_id_blob)
+        .bind(user_id_str)
         .execute(pool)
         .await
         .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -140,7 +139,7 @@ pub async fn login(
     // Check if user has a home_project_id
     let has_home: bool =
         sqlx::query_scalar::<_, Option<String>>("SELECT home_project_id FROM users WHERE id = ?")
-            .bind(&user_id_blob)
+            .bind(user_id_str)
             .fetch_optional(pool)
             .await
             .ok()
@@ -175,14 +174,14 @@ pub async fn login(
          VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))",
     )
     .bind(Uuid::new_v4().to_string())
-    .bind(&user_id_blob)
+    .bind(user_id_str)
     .bind(&session_token_hash)
     .bind(expires_at.to_rfc3339())
     .execute(pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to create session: {}", e)))?;
 
-    // Get user organizations (o.id is TEXT, om.user_id is BLOB — bind as bytes)
+    // Get user organizations
     #[derive(FromRow)]
     struct OrgRow {
         id: String,
@@ -197,7 +196,7 @@ pub async fn login(
          JOIN organization_members om ON o.id = om.organization_id
          WHERE om.user_id = ? AND o.is_active = 1",
     )
-    .bind(&user_id_blob)
+    .bind(user_id_str)
     .fetch_all(pool)
     .await
     .unwrap_or_default();
@@ -276,7 +275,7 @@ pub async fn get_current_user(
     let session_token_hash = db::services::AuthService::hash_session_token(session_id);
 
     // Find session and check if it's valid
-    // sessions.user_id is BLOB (FK to users.id)
+    // sessions.user_id — DbUuid decodes both BLOB and TEXT
     #[derive(FromRow)]
     struct Session {
         user_id: DbUuid,
@@ -304,9 +303,7 @@ pub async fn get_current_user(
         return Err(ApiError::BadRequest("Session expired".to_string()));
     }
 
-    // users.id and related FK columns are BLOB
-    let user_id_blob = bind_uuid_blob(&session.user_id)
-        .map_err(|e| ApiError::InternalError(format!("Invalid user UUID: {}", e)))?;
+    let user_id_str = session.user_id.as_str();
 
     // Get user
     let user = sqlx::query_as::<_, User>(
@@ -314,13 +311,13 @@ pub async fn get_current_user(
                 home_organization_id
          FROM users WHERE id = ?",
     )
-    .bind(&user_id_blob)
+    .bind(user_id_str)
     .fetch_optional(pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?
     .ok_or_else(|| ApiError::BadRequest("User not found".to_string()))?;
 
-    // Get organizations (o.id is TEXT, om.user_id is BLOB)
+    // Get organizations
     #[derive(FromRow)]
     struct OrgRow2 {
         id: String,
@@ -335,7 +332,7 @@ pub async fn get_current_user(
          JOIN organization_members om ON o.id = om.organization_id
          WHERE om.user_id = ? AND o.is_active = 1",
     )
-    .bind(&user_id_blob)
+    .bind(user_id_str)
     .fetch_all(pool)
     .await
     .unwrap_or_default();

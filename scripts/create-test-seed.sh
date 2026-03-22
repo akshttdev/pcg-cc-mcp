@@ -58,13 +58,24 @@ for table in tasks crm_deals crm_contacts crm_activities crm_pipeline_stages \
 done
 sqlite3 "$TEMP_DB" "VACUUM;"
 
+# 1b. Patch schema gaps — columns that exist in code but may be missing
+#     from older seed DBs that didn't get the full BLOB→TEXT rebuild.
+echo "  Patching schema gaps..."
+sqlite3 "$TEMP_DB" "ALTER TABLE projects ADD COLUMN slug TEXT;" 2>/dev/null || true
+sqlite3 "$TEMP_DB" "ALTER TABLE sessions ADD COLUMN token_hash TEXT;" 2>/dev/null || true
+sqlite3 "$TEMP_DB" "ALTER TABLE sessions ADD COLUMN last_used_at TEXT;" 2>/dev/null || true
+sqlite3 "$TEMP_DB" "CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash);" 2>/dev/null || true
+
 # 2. Insert minimal test fixtures
 echo "  Inserting test fixtures..."
 sqlite3 "$TEMP_DB" <<'SQL'
--- Admin user (password: admin123, bcrypt cost 12)
+-- All TEXT UUIDs. Auth code now uses TEXT binds (no more bind_uuid_blob).
+-- DbUuid decodes both BLOB and TEXT transparently.
+
+-- Admin user
 INSERT INTO users (id, username, email, password_hash, full_name, is_admin, is_active, created_at, updated_at)
 VALUES (
-  X'07192211AE5CF20B42BD546422D71A23',
+  '07192211-ae5c-f20b-42bd-546422d71a23',
   'admin',
   'admin@test.local',
   '$2b$12$MU1G/VfH8R8pFa/aPuGM/uduO3HrHafI.m9srBUlJR9AKd8EGBrIa',
@@ -73,7 +84,7 @@ VALUES (
   datetime('now'), datetime('now')
 );
 
--- Default organization (owner_id is TEXT, so use UUID string format)
+-- Sirak Studios organization
 INSERT INTO organizations (id, name, slug, owner_id, is_active, created_at, updated_at)
 VALUES (
   '02020202-0202-0202-0202-020202020202',
@@ -93,11 +104,11 @@ INSERT OR IGNORE INTO organization_members (id, organization_id, user_id, role)
 VALUES (
   'mem-admin-sirak-001',
   '02020202-0202-0202-0202-020202020202',
-  X'07192211AE5CF20B42BD546422D71A23',
+  '07192211-ae5c-f20b-42bd-546422d71a23',
   'admin'
 );
 
--- Powerclub Global organization (owner_id is TEXT)
+-- Powerclub Global organization
 INSERT INTO organizations (id, name, slug, owner_id, is_active, created_at, updated_at)
 VALUES (
   '01010101-0101-0101-0101-010101010101',
@@ -113,7 +124,7 @@ INSERT OR IGNORE INTO organization_members (id, organization_id, user_id, role)
 VALUES (
   'mem-admin-pcg-001',
   '01010101-0101-0101-0101-010101010101',
-  X'07192211AE5CF20B42BD546422D71A23',
+  '07192211-ae5c-f20b-42bd-546422d71a23',
   'admin'
 );
 
