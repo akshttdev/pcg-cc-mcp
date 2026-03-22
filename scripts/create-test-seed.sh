@@ -139,6 +139,17 @@ VALUES (
   'admin'
 );
 
+-- Bug Reports project (hardcoded ID used by bug-report-lifecycle demo)
+INSERT INTO projects (id, name, git_repo_path, slug, organization_id, created_at, updated_at)
+VALUES (
+  '00000000-0000-0000-0000-000000000001',
+  'Bug Reports',
+  '/tmp/e2e-bugreports',
+  'bug-reports',
+  '01010101-0101-0101-0101-010101010101',
+  datetime('now'), datetime('now')
+);
+
 -- Default CRM pipeline (dealflow v2 stages)
 INSERT INTO crm_pipelines (id, organization_id, name, pipeline_type, is_active, is_default, created_at, updated_at)
 VALUES (
