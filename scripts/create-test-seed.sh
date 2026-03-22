@@ -73,13 +73,13 @@ VALUES (
   datetime('now'), datetime('now')
 );
 
--- Default organization
+-- Default organization (owner_id is TEXT, so use UUID string format)
 INSERT INTO organizations (id, name, slug, owner_id, is_active, created_at, updated_at)
 VALUES (
   '02020202-0202-0202-0202-020202020202',
   'Sirak Studios',
   'sirak-studios',
-  X'07192211AE5CF20B42BD546422D71A23',
+  '07192211-ae5c-f20b-42bd-546422d71a23',
   1,
   datetime('now'), datetime('now')
 );
@@ -88,11 +88,31 @@ VALUES (
 UPDATE users SET home_organization_id = '02020202-0202-0202-0202-020202020202'
 WHERE username = 'admin';
 
--- Organization membership
+-- Organization membership (Sirak Studios)
 INSERT OR IGNORE INTO organization_members (id, organization_id, user_id, role)
 VALUES (
   'mem-admin-sirak-001',
   '02020202-0202-0202-0202-020202020202',
+  X'07192211AE5CF20B42BD546422D71A23',
+  'admin'
+);
+
+-- Powerclub Global organization (owner_id is TEXT)
+INSERT INTO organizations (id, name, slug, owner_id, is_active, created_at, updated_at)
+VALUES (
+  '01010101-0101-0101-0101-010101010101',
+  'Powerclub Global',
+  'powerclub-global',
+  '07192211-ae5c-f20b-42bd-546422d71a23',
+  1,
+  datetime('now'), datetime('now')
+);
+
+-- Organization membership (Powerclub Global)
+INSERT OR IGNORE INTO organization_members (id, organization_id, user_id, role)
+VALUES (
+  'mem-admin-pcg-001',
+  '01010101-0101-0101-0101-010101010101',
   X'07192211AE5CF20B42BD546422D71A23',
   'admin'
 );
