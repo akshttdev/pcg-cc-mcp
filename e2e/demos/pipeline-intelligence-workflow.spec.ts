@@ -129,8 +129,13 @@ test.describe("Pipeline Intelligence Workflow — 8-Stage Demo", () => {
     dealId = (deal.data || deal).id;
     console.log(`[Part 1] Created deal: ${dealId} in Lead stage`);
 
-    // Navigate to pipeline board — verify deal appears in Lead column
+    // Navigate to pipeline board — switch to Lifecycle tab to see Clients pipeline
     await page.goto(`/organizations/${ORG_ID}/crm/pipeline`);
+    await expect(page.getByText("Acquisition").first()).toBeVisible({ timeout: t(10_000) });
+    // Click "Lifecycle" tab to switch to the Clients pipeline view
+    const lifecycleTab = page.getByRole("button", { name: "Lifecycle" });
+    await expect(lifecycleTab).toBeVisible({ timeout: t(5_000) });
+    await lifecycleTab.click();
     await expect(page.getByText("Lead").first()).toBeVisible({ timeout: t(10_000) });
     await page.waitForTimeout(demoPause.medium);
 
