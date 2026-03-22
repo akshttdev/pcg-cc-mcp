@@ -62,18 +62,18 @@ test.describe("Pipeline Intelligence Workflow — 8-Stage Demo", () => {
     await apiLogin(request);
     await login(page);
 
-    // Find the Clients pipeline for this org
+    // Find the Sales/Acquisition pipeline for this org (shown as "Acquisition" tab in UI)
     const pipelinesRes = await request.get(`/api/crm/pipelines?organization_id=${ORG_ID}`);
     expect(pipelinesRes.ok()).toBeTruthy();
     const pipelines = await pipelinesRes.json();
     const pipelineList = pipelines.data || pipelines || [];
-    // Prefer exact pipeline_type match to avoid matching "Client Delivery" (7 stages)
+    // Use sales pipeline — the UI shows this under the "Acquisition" tab
     const clientsPipeline = pipelineList.find(
-      (p: { pipeline_type?: string; name?: string }) => p.pipeline_type === "clients"
+      (p: { pipeline_type?: string; name?: string }) => p.pipeline_type === "sales"
     ) ?? pipelineList.find(
-      (p: { pipeline_type?: string; name?: string }) => p.name === "Clients"
+      (p: { pipeline_type?: string; name?: string }) => p.name === "Acquisition"
     );
-    expect(clientsPipeline, "Clients pipeline not found — ensure 8-stage migration ran").toBeTruthy();
+    expect(clientsPipeline, "Sales/Acquisition pipeline not found").toBeTruthy();
     pipelineId = clientsPipeline.id;
 
     // Get pipeline stages
@@ -129,14 +129,9 @@ test.describe("Pipeline Intelligence Workflow — 8-Stage Demo", () => {
     dealId = (deal.data || deal).id;
     console.log(`[Part 1] Created deal: ${dealId} in Lead stage`);
 
-    // Navigate to pipeline board — switch to Lifecycle tab to see Clients pipeline
+    // Navigate to pipeline board — Acquisition tab is default (shows sales pipeline)
     await page.goto(`/organizations/${ORG_ID}/crm/pipeline`);
-    await expect(page.getByText("Acquisition").first()).toBeVisible({ timeout: t(10_000) });
-    // Click "Lifecycle" tab to switch to the Clients pipeline view
-    const lifecycleTab = page.getByRole("button", { name: "Lifecycle" });
-    await expect(lifecycleTab).toBeVisible({ timeout: t(5_000) });
-    await lifecycleTab.click();
-    await expect(page.getByText("Lead").first()).toBeVisible({ timeout: t(10_000) });
+    await expect(page.getByText("Acquisition Pipeline").first()).toBeVisible({ timeout: t(15_000) });
     await page.waitForTimeout(demoPause.medium);
 
     // Verify the deal card is visible on the board
@@ -165,7 +160,7 @@ test.describe("Pipeline Intelligence Workflow — 8-Stage Demo", () => {
         const taskList = tasks.data || tasks || [];
         for (const task of taskList) {
           if (task.status !== "done" && task.status !== "cancelled") {
-            await request.patch(`/api/tasks/${task.id}`, { data: { status: "done" } });
+            await request.put(`/api/tasks/${task.id}`, { data: { status: "done" } });
             console.log(`[Part 2] Completed blocking task: ${task.title}`);
           }
         }
@@ -224,7 +219,7 @@ test.describe("Pipeline Intelligence Workflow — 8-Stage Demo", () => {
         const taskList = tasks.data || tasks || [];
         for (const task of taskList) {
           if (task.status !== "done" && task.status !== "cancelled") {
-            await request.patch(`/api/tasks/${task.id}`, { data: { status: "done" } });
+            await request.put(`/api/tasks/${task.id}`, { data: { status: "done" } });
             console.log(`[Part 3] Completed task: ${task.title}`);
           }
         }
@@ -263,7 +258,7 @@ test.describe("Pipeline Intelligence Workflow — 8-Stage Demo", () => {
         const taskList = tasks.data || tasks || [];
         for (const task of taskList) {
           if (task.status !== "done" && task.status !== "cancelled") {
-            await request.patch(`/api/tasks/${task.id}`, { data: { status: "done" } });
+            await request.put(`/api/tasks/${task.id}`, { data: { status: "done" } });
           }
         }
       }

@@ -468,6 +468,148 @@ ORDER BY t.created_at DESC"#,
         Ok(tasks)
     }
 
+    pub async fn find_by_deal_id_with_attempt_status(
+        pool: &SqlitePool,
+        deal_id: &str,
+    ) -> Result<Vec<TaskWithAttemptStatus>, sqlx::Error> {
+        let records = sqlx::query_as::<_, TaskWithStatusRow>(
+            r#"SELECT
+  t.id,
+  t.project_id,
+  t.pod_id,
+  t.board_id,
+  t.title,
+  t.description,
+  t.status,
+  t.parent_task_attempt,
+  t.created_at,
+  t.updated_at,
+  t.priority,
+  t.assignee_id,
+  t.assignee_type,
+  t.assigned_agent,
+  t.agent_id,
+  t.assigned_mcps,
+  t.created_by,
+  t.requires_approval,
+  t.approval_status,
+  t.parent_task_id,
+  t.tags,
+  t.due_date,
+  NULLIF(t.custom_properties, '') AS custom_properties,
+  t.scheduled_start,
+  t.scheduled_end,
+
+  CASE WHEN EXISTS (
+    SELECT 1
+      FROM task_attempts ta
+      JOIN execution_processes ep
+        ON ep.task_attempt_id = ta.id
+     WHERE ta.task_id       = t.id
+       AND ep.status        = 'running'
+       AND ep.run_reason IN ('setupscript','cleanupscript','codingagent')
+     LIMIT 1
+  ) THEN 1 ELSE 0 END            AS has_in_progress_attempt,
+
+  CASE WHEN (
+    SELECT ep.status
+      FROM task_attempts ta
+      JOIN execution_processes ep
+        ON ep.task_attempt_id = ta.id
+     WHERE ta.task_id       = t.id
+     AND ep.run_reason IN ('setupscript','cleanupscript','codingagent')
+     ORDER BY ep.created_at DESC
+     LIMIT 1
+  ) IN ('failed','killed') THEN 1 ELSE 0 END
+                                 AS last_attempt_failed,
+
+  COALESCE(( SELECT ta.executor
+      FROM task_attempts ta
+      WHERE ta.task_id = t.id
+     ORDER BY ta.created_at DESC
+      LIMIT 1
+    ), '')                         AS executor,
+
+  t.collaborators,
+  t.screenshot,
+  t.completion_criteria,
+  t.output_format,
+
+  COALESCE(( SELECT SUM(vt.amount_vibe)
+      FROM vibe_transactions vt
+     WHERE vt.task_id = t.id
+  ), 0)                             AS vibe_cost,
+
+  ( SELECT vt.model
+      FROM vibe_transactions vt
+     WHERE vt.task_id = t.id
+     ORDER BY vt.created_at DESC
+     LIMIT 1
+  )                                 AS vibe_model
+
+FROM tasks t
+WHERE t.crm_deal_id = $1 AND t.deleted_at IS NULL
+ORDER BY t.created_at DESC"#,
+        )
+        .bind(deal_id)
+        .fetch_all(pool)
+        .await?;
+
+        let tasks = records
+            .into_iter()
+            .map(|rec| TaskWithAttemptStatus {
+                task: Task {
+                    id: rec.id,
+                    project_id: rec.project_id,
+                    pod_id: rec.pod_id,
+                    title: rec.title,
+                    description: rec.description,
+                    status: rec.status,
+                    parent_task_attempt: rec.parent_task_attempt,
+                    created_at: rec.created_at,
+                    updated_at: rec.updated_at,
+                    priority: rec.priority,
+                    assignee_id: rec.assignee_id,
+                    assignee_type: rec.assignee_type,
+                    assigned_agent: rec.assigned_agent,
+                    agent_id: rec.agent_id,
+                    assigned_mcps: rec.assigned_mcps,
+                    created_by: rec.created_by,
+                    requires_approval: rec.requires_approval,
+                    approval_status: rec.approval_status,
+                    parent_task_id: rec.parent_task_id,
+                    tags: rec.tags,
+                    due_date: rec.due_date,
+                    board_id: rec.board_id,
+                    custom_properties: rec.custom_properties,
+                    scheduled_start: rec.scheduled_start,
+                    scheduled_end: rec.scheduled_end,
+                    collaborators: rec.collaborators.clone(),
+                    screenshot: rec.screenshot,
+                    completion_criteria: rec.completion_criteria,
+                    output_format: rec.output_format,
+                },
+                has_in_progress_attempt: rec.has_in_progress_attempt != 0,
+                has_merged_attempt: false,
+                last_attempt_failed: rec.last_attempt_failed != 0,
+                executor: rec.executor,
+                last_execution_summary: None,
+                parsed_collaborators: rec
+                    .collaborators
+                    .as_deref()
+                    .and_then(|json| serde_json::from_str(json).ok()),
+                vibe_cost: if rec.vibe_cost > 0 {
+                    Some(rec.vibe_cost)
+                } else {
+                    None
+                },
+                vibe_model: rec.vibe_model,
+            })
+            .collect();
+
+        Ok(tasks)
+    }
+
     pub async fn find_by_id(pool: &SqlitePool, id: &str) -> Result<Option<Self>, sqlx::Error> {
         let sql =
             format!("SELECT {TASK_SELECT_SQL} FROM tasks WHERE id = $1 AND deleted_at IS NULL");
@@ -609,7 +751,7 @@ ORDER BY t.created_at DESC"#,
                    completion_criteria = $22,
                    output_format = $23,
                    updated_at = datetime('now', 'subsec')
-               WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL
+               WHERE id = $1 AND (project_id = $2 OR project_id IS NULL OR project_id = '') AND deleted_at IS NULL
                RETURNING {TASK_SELECT_SQL}"#
         );
 

@@ -94,7 +94,8 @@ fn task_to_with_attempt_status(task: Task) -> TaskWithAttemptStatus {
 
 #[derive(Debug, Deserialize)]
 pub struct TaskQuery {
-    pub project_id: Uuid,
+    pub project_id: Option<Uuid>,
+    pub crm_deal_id: Option<String>,
 }
 
 pub async fn get_tasks(
@@ -102,22 +103,37 @@ pub async fn get_tasks(
     State(deployment): State<DeploymentImpl>,
     Query(query): Query<TaskQuery>,
 ) -> Result<ResponseJson<ApiResponse<Vec<TaskWithAttemptStatus>>>, ApiError> {
-    // Verify user has at least viewer access to this project
-    access_context
-        .check_project_access(
+    if let Some(ref project_id) = query.project_id {
+        // Verify user has at least viewer access to this project
+        access_context
+            .check_project_access(
+                &deployment.db().pool,
+                &project_id.to_string(),
+                crate::middleware::access_control::ProjectRole::Viewer,
+            )
+            .await?;
+
+        let tasks = Task::find_by_project_id_with_attempt_status(
             &deployment.db().pool,
-            &query.project_id.to_string(),
-            crate::middleware::access_control::ProjectRole::Viewer,
+            &project_id.to_string(),
         )
         .await?;
 
-    let tasks = Task::find_by_project_id_with_attempt_status(
-        &deployment.db().pool,
-        &query.project_id.to_string(),
-    )
-    .await?;
+        Ok(ResponseJson(ApiResponse::success(tasks)))
+    } else if let Some(ref deal_id) = query.crm_deal_id {
+        // Return tasks linked to this CRM deal
+        let tasks = Task::find_by_deal_id_with_attempt_status(
+            &deployment.db().pool,
+            deal_id,
+        )
+        .await?;
 
-    Ok(ResponseJson(ApiResponse::success(tasks)))
+        Ok(ResponseJson(ApiResponse::success(tasks)))
+    } else {
+        Err(ApiError::BadRequest(
+            "Either project_id or crm_deal_id query parameter is required".to_string(),
+        ))
+    }
 }
 
 pub async fn stream_tasks_ws(
@@ -126,7 +142,7 @@ pub async fn stream_tasks_ws(
     Query(query): Query<TaskQuery>,
 ) -> impl IntoResponse {
     ws.on_upgrade(move |socket| async move {
-        if let Err(e) = handle_tasks_ws(socket, deployment, query.project_id).await {
+        if let Err(e) = handle_tasks_ws(socket, deployment, query.project_id.unwrap_or_default()).await {
             tracing::warn!("tasks WS closed: {}", e);
         }
     })
@@ -563,9 +579,15 @@ pub async fn update_task(
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<UpdateTask>,
 ) -> Result<ResponseJson<ApiResponse<Task>>, ApiError> {
-    access_context
-        .require_editor(&deployment.db().pool, &existing_task.project_id)
-        .await?;
+    // Tasks may have empty project_id (e.g., CRM deal review tasks).
+    // For those, require admin access instead of project-level editor.
+    if existing_task.project_id.is_empty() {
+        access_context.require_admin()?;
+    } else {
+        access_context
+            .require_editor(&deployment.db().pool, &existing_task.project_id)
+            .await?;
+    }
 
     // Capture old state for activity logging before fields get moved
     let old_status = existing_task.status.clone();
