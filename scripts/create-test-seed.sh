@@ -61,10 +61,21 @@ sqlite3 "$TEMP_DB" "VACUUM;"
 # 1b. Patch schema gaps — columns that exist in code but may be missing
 #     from older seed DBs that didn't get the full BLOB→TEXT rebuild.
 echo "  Patching schema gaps..."
-sqlite3 "$TEMP_DB" "ALTER TABLE projects ADD COLUMN slug TEXT;" 2>/dev/null || true
-sqlite3 "$TEMP_DB" "ALTER TABLE sessions ADD COLUMN token_hash TEXT;" 2>/dev/null || true
-sqlite3 "$TEMP_DB" "ALTER TABLE sessions ADD COLUMN last_used_at TEXT;" 2>/dev/null || true
-sqlite3 "$TEMP_DB" "CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash);" 2>/dev/null || true
+# Patch columns that may be missing from older seed base DBs.
+# These exist in the original auth migration (20251004) but may not
+# survive the BLOB→TEXT rebuild (20260328) which uses simplified DDLs.
+# Use || true so duplicates don't fail.
+for col_sql in \
+  "ALTER TABLE projects ADD COLUMN slug TEXT" \
+  "ALTER TABLE sessions ADD COLUMN token_hash TEXT" \
+  "ALTER TABLE sessions ADD COLUMN last_used_at TEXT" \
+  "ALTER TABLE sessions ADD COLUMN ip_address TEXT" \
+  "ALTER TABLE sessions ADD COLUMN user_agent TEXT" \
+  "ALTER TABLE organization_members ADD COLUMN joined_at TEXT DEFAULT (datetime('now'))" \
+  "CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash)" \
+; do
+  sqlite3 "$TEMP_DB" "$col_sql" 2>/dev/null || true
+done
 
 # 2. Insert minimal test fixtures
 echo "  Inserting test fixtures..."
