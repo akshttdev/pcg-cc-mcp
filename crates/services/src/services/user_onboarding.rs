@@ -54,7 +54,7 @@ impl UserOnboardingService {
             // Add user as owner in project_members
             let member_id = Uuid::new_v4();
             sqlx::query(
-                r#"INSERT INTO project_members (id, project_id, user_id, role, created_at)
+                r#"INSERT INTO project_members (id, project_id, user_id, role, granted_at)
                    VALUES (?, ?, ?, 'owner', datetime('now', 'subsec'))"#,
             )
             .bind(member_id.to_string())
