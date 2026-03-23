@@ -719,7 +719,7 @@ export function OverviewTab({
               </span>
             </div>
           )}
-          {deal.actual_close_date && (
+          {deal.actual_close_date && (deal.won_at || deal.lost_reason || ['closed won', 'closed lost', 'closed_won', 'closed_lost'].includes(currentStage)) && (
             <div className="flex items-center gap-2 text-muted-foreground">
               <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-500" />
               <span className="text-muted-foreground/70">Closed</span>

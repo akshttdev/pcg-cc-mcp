@@ -198,7 +198,7 @@ export function PipelineStepper({ currentStage, allStages, onStageClick }: Pipel
               <div
                 className={cn("flex flex-col items-center flex-1 min-w-0", isClickable && "cursor-pointer group/stage")}
                 onClick={isClickable ? () => onStageClick(stage.name, stage.id) : undefined}
-                title={isClickable ? `Move to ${stage.name}` : undefined}
+                title={isClickable ? `Move to ${stage.name}` : stage.name}
               >
                 <div
                   className={cn(

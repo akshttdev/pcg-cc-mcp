@@ -149,20 +149,31 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
         ) : (
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground">
-              Send the invoice after presenting the deck to the client. Amount: {deal.amount ? `$${deal.amount.toFixed(0)}` : 'not set'}.
+              Send the invoice after presenting the deck to the client. Amount: {deal.amount ? new Intl.NumberFormat('en-US', { style: 'currency', currency: deal.currency || 'USD', minimumFractionDigits: 0 }).format(deal.amount) : 'not set'}.
             </p>
-            {!invoiceSending ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 text-xs border-blue-500/40 text-blue-400 hover:bg-blue-950/30"
-                onClick={() => setInvoiceSending(true)}
-                disabled={!deal.amount}
-              >
-                <Receipt className="h-3.5 w-3.5" />
-                Send Invoice
-              </Button>
-            ) : (
+            {!invoiceSending ? (() => {
+                const earlyStages = ['lead', 'intel', 'business_analysis', 'discovery', 'build_proposal'];
+                const dealStage = (deal.stage ?? '').toLowerCase().replace(/\s+/g, '_');
+                const isTooEarly = earlyStages.some((s) => s === dealStage);
+                return (
+                  <div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 text-xs border-blue-500/40 text-blue-400 hover:bg-blue-950/30"
+                      onClick={() => setInvoiceSending(true)}
+                      disabled={!deal.amount || isTooEarly}
+                      title={isTooEarly ? 'Available after presenting to client' : undefined}
+                    >
+                      <Receipt className="h-3.5 w-3.5" />
+                      Send Invoice
+                    </Button>
+                    {isTooEarly && (
+                      <p className="text-[10px] text-muted-foreground mt-1">Available after presenting to client</p>
+                    )}
+                  </div>
+                );
+              })() : (
               <div className="flex items-center gap-2">
                 <Button
                   size="sm"

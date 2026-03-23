@@ -104,7 +104,7 @@ export function CrmDealDetailPanel({
             value={activeTab}
             onValueChange={setActiveTab}
             className="flex-1 flex flex-col min-h-0"
-            listClassName="mx-5 mt-3 mb-0 h-9 bg-transparent p-0 border-b rounded-none justify-start gap-0 w-auto shrink-0"
+            listClassName="mx-5 mt-3 mb-0 h-9 bg-transparent p-0 border-b rounded-none justify-start gap-0 w-auto shrink-0 overflow-x-auto"
             triggerClassName="h-9 rounded-none px-3 text-xs font-medium border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-foreground data-[state=active]:shadow-none bg-transparent"
             testId="deal-detail-tabs"
           >

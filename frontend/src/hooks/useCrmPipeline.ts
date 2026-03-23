@@ -177,10 +177,11 @@ export function useMoveDeal() {
     mutationFn: ({ dealId, data }: { dealId: string; data: MoveDealRequest }) =>
       crmDealsApi.moveDeal(dealId, data),
     onMutate: async ({ dealId, data }) => {
-      // Get the pipeline ID from the current kanban cache
-      const cacheEntries = queryClient.getQueriesData({
-        queryKey: crmKeys.kanbanAll(),
-      });
+      // Search both project-scoped and org-scoped kanban caches
+      const cacheEntries = [
+        ...queryClient.getQueriesData({ queryKey: crmKeys.kanbanAll() }),
+        ...queryClient.getQueriesData({ queryKey: crmKeys.orgKanbanAll() }),
+      ];
 
       // Find which pipeline this deal belongs to and optimistically update
       for (const [queryKey, kanbanData] of cacheEntries) {
@@ -248,6 +249,10 @@ export function useMoveDeal() {
       }
     },
     onSuccess: (result) => {
+      // Confirm the move with a toast
+      const stageName = result.deal.stage || 'next stage';
+      toast.success(`Moved to ${stageName}`);
+
       // Show validation warnings (soft enforcement)
       if (result.warnings?.length > 0) {
         for (const warning of result.warnings) {
@@ -293,10 +298,12 @@ export function useMoveDeal() {
       console.error('Move deal error:', err);
     },
     onSettled: (_data, _err, _vars, context) => {
-      // Always refetch after mutation settles
+      // Always refetch both kanban caches after mutation settles
       if (context?.queryKey) {
         queryClient.invalidateQueries({ queryKey: context.queryKey });
       }
+      queryClient.invalidateQueries({ queryKey: crmKeys.kanbanAll() });
+      queryClient.invalidateQueries({ queryKey: crmKeys.orgKanbanAll() });
     },
   });
 }
