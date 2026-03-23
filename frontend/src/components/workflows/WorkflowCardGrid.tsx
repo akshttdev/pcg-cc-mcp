@@ -3,33 +3,33 @@
 // Shared workflow card grid used in both My Workflows (BuilderTab)
 // and Intelligence (WorkflowsView).
 
-import { cn } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { EmptyState } from '@/components/ui/empty-state';
-import { CardGrid } from '@/components/ui/card-grid';
+import { formatDistanceToNow } from 'date-fns';
 import {
-  Play,
-  Pencil,
-  Trash2,
-  Hammer,
-  CheckCircle2,
-  AlertCircle,
-  Loader2 as Loader2Icon,
-  User,
-  Building2,
   Bot,
+  Building2,
+  Hammer,
   MoreHorizontal,
+  Pencil,
+  Play,
+  Trash2,
+  User,
 } from 'lucide-react';
+
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardDescription,CardHeader, CardTitle } from '@/components/ui/card';
+import { CardGrid } from '@/components/ui/card-grid';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import type { WorkflowDefinition, WorkflowRun } from '@/lib/api';
+import { EmptyState } from '@/components/ui/empty-state';
+import { StatusBadge } from '@/components/ui/status-badge';
 import { getNodeTypeDef } from '@/components/workflows/WorkflowEditor';
-import { formatDistanceToNow } from 'date-fns';
+import type { WorkflowDefinition, WorkflowRun } from '@/lib/api';
+import { getStatusInfo } from '@/lib/status-utils';
+import { cn } from '@/lib/utils';
 
 // ── Ownership Badge ────────────────────────────────────────────────────────
 
@@ -246,12 +246,17 @@ export function WorkflowCardGrid({
                 if (!lastRun) {
                   return <p className="text-[10px] text-muted-foreground/50 mt-1.5">Never run — click ▶ to execute</p>;
                 }
+                const runStatus = getStatusInfo(lastRun.status, 'workflow');
                 return (
                   <div className="text-[10px] text-muted-foreground mt-1.5 flex items-center gap-1">
                     Last run: {formatDistanceToNow(new Date(lastRun.created_at), { addSuffix: true })}
-                    {lastRun.status === 'completed' && <CheckCircle2 className="h-3 w-3 text-green-500" />}
-                    {lastRun.status === 'failed' && <AlertCircle className="h-3 w-3 text-red-500" />}
-                    {lastRun.status === 'running' && <Loader2Icon className="h-3 w-3 text-blue-500 animate-spin" />}
+                    <StatusBadge
+                      status={runStatus.variant}
+                      label={runStatus.label}
+                      icon={runStatus.icon}
+                      pulse={lastRun.status === 'running'}
+                      size="sm"
+                    />
                   </div>
                 );
               })()}

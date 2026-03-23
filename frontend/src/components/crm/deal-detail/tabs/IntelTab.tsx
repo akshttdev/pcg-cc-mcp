@@ -1,25 +1,29 @@
+import {
+  AlertCircle,
+  Brain,
+  Building2,
+  CheckCircle2,
+  ClipboardCheck,
+  Clock,
+  ExternalLink,
+  FileText,
+  Loader2,
+  RotateCcw,
+  Search,
+  ThumbsUp,
+  User,
+} from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Brain,
-  Building2,
-  ExternalLink,
-  CheckCircle2,
-  AlertCircle,
-  Loader2,
-  RotateCcw,
-  ThumbsUp,
-  Clock,
-  Search,
-  User,
-  FileText,
-  ClipboardCheck,
-} from 'lucide-react';
-import { useDealActions } from '../hooks/useDealActions';
+import { StatusBadge } from '@/components/ui/status-badge';
+import { getStatusInfo } from '@/lib/status-utils';
 import type { CrmDealWithContact } from '@/types/crm';
+
+import { useDealActions } from '../hooks/useDealActions';
 
 // ── IntelTab ─────────────────────────────────────────────────────────────────
 
@@ -128,20 +132,17 @@ export function IntelTab({ deal }: IntelTabProps) {
       {/* Status header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          {isDone ? (
-            <CheckCircle2 className="h-4 w-4 text-green-500" />
-          ) : isResearching ? (
-            <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />
-          ) : (
-            <AlertCircle className="h-4 w-4 text-amber-400" />
-          )}
-          <span className="text-sm font-medium">
-            {isDone
-              ? 'Intelligence Complete'
-              : isResearching
-                ? 'Research Running'
-                : 'Partial Intelligence'}
-          </span>
+          {(() => {
+            const intelStatus = getStatusInfo(status ?? 'idle', 'intelligence');
+            return (
+              <StatusBadge
+                status={intelStatus.variant}
+                label={isDone ? 'Intelligence Complete' : isResearching ? 'Research Running' : 'Partial Intelligence'}
+                icon={intelStatus.icon}
+                pulse={isResearching}
+              />
+            );
+          })()}
         </div>
         <div className="flex items-center gap-2">
           {confidencePct != null && (

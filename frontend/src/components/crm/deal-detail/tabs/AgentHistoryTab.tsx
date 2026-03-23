@@ -1,22 +1,23 @@
 import { useQuery } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import {
+  AlertTriangle,
   Bot,
   CheckCircle2,
-  Clock,
-  AlertTriangle,
-  Loader2,
-  FileText,
   ChevronDown,
   ChevronRight,
+  Clock,
+  FileText,
+  Loader2,
 } from 'lucide-react';
-import React, { useState } from 'react';
+import { useState } from 'react';
 
+import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { StatusBadge } from '@/components/ui/status-badge';
-import { Card, CardContent } from '@/components/ui/card';
+import { handleApiResponse,makeRequest } from '@/lib/api/client';
 import { crmKeys } from '@/lib/query-keys';
-import { makeRequest, handleApiResponse } from '@/lib/api/client';
+import { getStatusInfo } from '@/lib/status-utils';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -109,7 +110,7 @@ function FlowCard({ flow }: { flow: AgentFlowSummary }) {
   })();
 
   const agentName = config.agent_name || flow.flow_type || 'Agent';
-  const statusColor = getStatusColor(flow.status);
+  const flowStatus = getStatusInfo(flow.status, 'flow');
   const duration = flow.execution_started_at && flow.execution_completed_at
     ? formatDuration(flow.execution_started_at, flow.execution_completed_at)
     : flow.execution_started_at
@@ -128,12 +129,12 @@ function FlowCard({ flow }: { flow: AgentFlowSummary }) {
           ) : (
             <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           )}
-          <Bot className="h-4 w-4 shrink-0" style={{ color: statusColor }} />
+          <Bot className="h-4 w-4 shrink-0" />
           <span className="text-sm font-medium capitalize">{agentName}</span>
           <StatusBadge
-            status={getStatusVariant(flow.status)}
-            label={flow.status}
-            icon={getStatusIconComponent(flow.status)}
+            status={flowStatus.variant}
+            label={flowStatus.label}
+            icon={flowStatus.icon}
             pulse={flow.status === 'executing' || flow.status === 'planning'}
             size="sm"
             className="ml-auto"
@@ -196,49 +197,6 @@ function EventRow({ event }: { event: AgentFlowEventSummary }) {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function getStatusVariant(status: string): 'success' | 'error' | 'info' | 'pending' | 'muted' {
-  switch (status) {
-    case 'completed':
-      return 'success';
-    case 'failed':
-      return 'error';
-    case 'executing':
-      return 'info';
-    case 'planning':
-      return 'pending';
-    default:
-      return 'muted';
-  }
-}
-
-function getStatusIconComponent(status: string): React.ElementType {
-  switch (status) {
-    case 'completed':
-      return CheckCircle2;
-    case 'failed':
-      return AlertTriangle;
-    case 'executing':
-    case 'planning':
-      return Loader2;
-    default:
-      return Clock;
-  }
-}
-
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'completed':
-      return '#22c55e';
-    case 'failed':
-      return '#ef4444';
-    case 'executing':
-    case 'planning':
-      return '#3b82f6';
-    default:
-      return '#6b7280';
-  }
-}
 
 function getEventIcon(eventType: string) {
   switch (eventType) {
