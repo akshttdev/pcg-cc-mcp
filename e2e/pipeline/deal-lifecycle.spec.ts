@@ -96,36 +96,37 @@ test.describe("DL-1: Create and track a deal through the pipeline", () => {
   });
 
   test("view details — And: can expand to full dialog mode", async ({ page }) => {
-    // Reopen deal if sheet closed from previous test
-    const sheet = page.getByTestId("deal-detail-sheet");
-    if (!(await sheet.isVisible().catch(() => false))) {
-      const dealText = DEAL_NAME.replace(`${TEST_DATA_PREFIX} `, "");
+    const dealText = DEAL_NAME.replace(`${TEST_DATA_PREFIX} `, "");
+
+    // Reopen deal if panel closed from previous test
+    const expandBtn = page.getByTestId("deal-detail-expand");
+    if (!(await expandBtn.isVisible().catch(() => false))) {
       await page.getByText(dealText).first().click();
-      await expect(sheet).toBeVisible({ timeout: t(10_000) });
+      await page.waitForTimeout(demoPause.medium);
     }
+
+    // The button should say "Expand" before clicking
+    await expect(page.getByRole("button", { name: "Expand" })).toBeVisible({ timeout: t(5_000) });
 
     // Click expand toggle (Sheet → Dialog)
-    await page.getByTestId("deal-detail-expand").click();
+    await expandBtn.click();
     await page.waitForTimeout(demoPause.medium);
 
-    // Dialog should be visible after expansion (using testid, not role)
-    const expandedPanel = page.getByTestId("deal-detail-dialog");
-    await expect(expandedPanel).toBeVisible({ timeout: t(5_000) });
+    // Then: button text changes to "Minimize" (confirms expansion happened)
+    await expect(page.getByRole("button", { name: "Minimize" })).toBeVisible({ timeout: t(5_000) });
 
-    // Deal name should still be visible in expanded view
-    const dealText = DEAL_NAME.replace(`${TEST_DATA_PREFIX} `, "");
-    await expect(expandedPanel.getByText(dealText).first()).toBeVisible({ timeout: t(3_000) });
+    // And: deal name still visible in expanded view
+    await expect(page.getByText(dealText).first()).toBeVisible({ timeout: t(3_000) });
 
     // Minimize back (Dialog → Sheet)
-    await page.getByTestId("deal-detail-expand").click();
+    await page.getByRole("button", { name: "Minimize" }).click();
     await page.waitForTimeout(demoPause.medium);
-    await expect(page.getByTestId("deal-detail-sheet")).toBeVisible({ timeout: t(5_000) });
 
-    // Close panel by clicking the X button
-    const closeBtn = page.getByRole("button", { name: "Close" }).first();
-    if (await closeBtn.isVisible().catch(() => false)) {
-      await closeBtn.click();
-    }
+    // Then: button text back to "Expand"
+    await expect(page.getByRole("button", { name: "Expand" })).toBeVisible({ timeout: t(5_000) });
+
+    // Close panel
+    await page.getByRole("button", { name: "Close" }).first().click();
     await page.waitForTimeout(demoPause.short);
   });
 });

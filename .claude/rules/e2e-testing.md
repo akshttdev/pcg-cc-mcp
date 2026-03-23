@@ -59,9 +59,25 @@
 - Use `import { test, expect } from "@playwright/test"` — not custom fixtures
 - The `chromium` project provides auth via `storageState`
 
+## Writing Tests: Inspect First, Then Write
+
+**Before writing ANY test**, use Playwright MCP to walk through the user flow interactively:
+1. Navigate to the page, take a snapshot
+2. Perform each action (click, fill, hover), snapshot after each
+3. Note the actual element names, roles, and structure from the snapshot
+4. Write the test to match what you observed — not what you assume
+
+**Never guess selectors.** The snapshot shows exact button names (`"Expand"` not `"expand"`), exact roles (`dialog` vs `generic`), exact text content. Use those.
+
+**Verify with the app, not with theories.** If a test fails, reproduce the steps via MCP before debugging code. Most "bugs" are wrong selectors or missing waits.
+
+**Button text changes are state assertions.** `"Expand"` → `"Minimize"` proves the transition happened. Checking for a container role does not.
+
+**Wait for transitions.** Sheet→Dialog, tab switches, modal opens need `demoPause` waits.
+
 ## When Tests Fail
 
-- **Selector failure**: Fix the component (add `data-testid`), not the test
+- **Selector failure**: First reproduce via Playwright MCP snapshot. Then fix the component (add `data-testid`) or fix the selector.
 - **Red (expected)**: Feature not implemented — `test.fixme(true, "reason")`
 - **Flaky**: Fix the test (missing waits, race conditions)
 - **Regression**: Fix the app
