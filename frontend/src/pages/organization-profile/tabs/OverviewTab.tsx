@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { EmptyState } from '@/components/ui/empty-state';
 import { MetricCard } from '@/components/ui/metric-card';
 import { Badge } from '@/components/ui/badge';
+import { CardGrid } from '@/components/ui/card-grid';
 import {
   Activity,
   Target,
@@ -184,7 +185,7 @@ export function OverviewTab({
       )}
 
       {/* Quick links */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      <CardGrid columns={{ sm: 2, lg: 3 }} gap={3}>
         {[
           { label: 'Pipelines', icon: Target, path: 'crm/pipeline', color: 'text-amber-500', summary: `${totalDeals} deals · ${formatCurrency(totalDealValue)}` },
           { label: 'Contacts', icon: Contact2, path: 'crm/contacts', color: 'text-blue-500', summary: `${contactCount} contacts` },
@@ -206,7 +207,7 @@ export function OverviewTab({
             <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
           </Link>
         ))}
-      </div>
+      </CardGrid>
 
       {/* Recent activity - workflow runs + CRM activities */}
       <Card className="bg-card/80 backdrop-blur-sm border-border/50">

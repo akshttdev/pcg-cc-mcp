@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { CardGrid } from '@/components/ui/card-grid';
 import { Share2, CheckCircle, Globe, ExternalLink, Trash2 } from 'lucide-react';
 import {
   organizationsApi,
@@ -75,7 +76,7 @@ export function SocialAccountsView({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <CardGrid columns={{ sm: 2, lg: 3 }} gap={3}>
               {brandHandles.map(({ platform, handle }) => {
                 const Icon = PLATFORM_ICONS[platform] || Globe;
                 const isConnected = allAccounts.some(a => a.platform === platform);
@@ -95,7 +96,7 @@ export function SocialAccountsView({
                   </div>
                 );
               })}
-            </div>
+            </CardGrid>
           </CardContent>
         </Card>
       )}

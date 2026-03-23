@@ -6,6 +6,7 @@ import type { SidebarProject, SidebarClient, ClientData } from '@/lib/api';
 import { useOrganizationById } from '@/hooks/queries';
 import { Building2, Users, FolderKanban, ArrowRight, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { CardGrid } from '@/components/ui/card-grid';
 import { Loader } from '@/components/ui/loader';
 import { Button } from '@/components/ui/button';
 import NiceModal from '@ebay/nice-modal-react';
@@ -156,7 +157,7 @@ export function OrganizationOverview() {
             <Users className="h-5 w-5" />
             Clients
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <CardGrid columns={{ md: 2 }} gap={3}>
             {clients.map((client: ClientData) => (
               <Card
                 key={client.id}
@@ -174,7 +175,7 @@ export function OrganizationOverview() {
                 </CardHeader>
               </Card>
             ))}
-          </div>
+          </CardGrid>
         </div>
       )}
 
@@ -184,7 +185,7 @@ export function OrganizationOverview() {
             <FolderKanban className="h-5 w-5" />
             Projects
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <CardGrid columns={{ md: 2 }} gap={3}>
             {allProjects.map((project) => (
               <Card
                 key={project.id}
@@ -204,7 +205,7 @@ export function OrganizationOverview() {
                 </CardHeader>
               </Card>
             ))}
-          </div>
+          </CardGrid>
         </div>
       )}
 

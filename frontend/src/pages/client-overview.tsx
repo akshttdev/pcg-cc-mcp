@@ -28,6 +28,7 @@ import {
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Loader } from '@/components/ui/loader';
+import { CardGrid } from '@/components/ui/card-grid';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import NiceModal from '@ebay/nice-modal-react';
@@ -221,7 +222,7 @@ function ClientContactsTab({ orgId, clientName }: { orgId: string; clientName: s
     </div>
   );
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+    <CardGrid columns={{ md: 2, lg: 3 }} gap={3}>
       {contacts.map((contact) => (
         <div key={contact.id} className="rounded-lg border bg-card p-4 space-y-2">
           <div className="flex items-start gap-3">
@@ -248,7 +249,7 @@ function ClientContactsTab({ orgId, clientName }: { orgId: string; clientName: s
           )}
         </div>
       ))}
-    </div>
+    </CardGrid>
   );
 }
 

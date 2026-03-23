@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { CardGrid } from '@/components/ui/card-grid';
 import { Users, CalendarDays, Inbox, CheckCircle, Share2, FileText, Globe } from 'lucide-react';
 import {
   organizationsApi,
@@ -256,7 +257,7 @@ export function SocialOverviewView({
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+            <CardGrid columns={{ md: 2, lg: 3 }} gap={2}>
               {agg.recentMentions.map(m => {
                 const Icon = PLATFORM_ICONS[m.platform] || Globe;
                 return (
@@ -276,7 +277,7 @@ export function SocialOverviewView({
                   </div>
                 );
               })}
-            </div>
+            </CardGrid>
           </CardContent>
         </Card>
       )}

@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
+import { CardGrid } from '@/components/ui/card-grid';
 import { Input } from '@/components/ui/input';
 import {
   Search, FileText, Table2, Music, Image, Film, Layers,
@@ -358,7 +359,7 @@ export default function IntelligencePage() {
               </tbody>
             </table>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 p-4">
+            <CardGrid columns={{ sm: 2, md: 4, lg: 5 }} gap={3} className="p-4">
               {filtered.map(source => (
                 <div
                   key={source.id}
@@ -373,7 +374,7 @@ export default function IntelligencePage() {
                   </p>
                 </div>
               ))}
-            </div>
+            </CardGrid>
           )}
         </div>
       </div>

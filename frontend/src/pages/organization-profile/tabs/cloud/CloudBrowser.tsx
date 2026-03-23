@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { CardGrid } from '@/components/ui/card-grid';
 import {
   Select,
   SelectContent,
@@ -180,11 +181,11 @@ export function CloudBrowser({ orgId }: CloudBrowserProps) {
 
       {/* File Grid */}
       {isLoading ? (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+        <CardGrid columns={{ sm: 2, md: 3, lg: 4, xl: 5 }} gap={3}>
           {Array.from({ length: 10 }).map((_, i) => (
             <Skeleton key={i} className="h-32 rounded-lg" />
           ))}
-        </div>
+        </CardGrid>
       ) : files.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
           <File className="h-10 w-10 mb-3 opacity-40" />
@@ -192,11 +193,11 @@ export function CloudBrowser({ orgId }: CloudBrowserProps) {
           <p className="text-xs mt-1">Try adjusting filters or index your data sources</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+        <CardGrid columns={{ sm: 2, md: 3, lg: 4, xl: 5 }} gap={3}>
           {files.map(file => (
             <FileCard key={file.id} file={file} orgId={orgId} onPreview={handleFileClick} />
           ))}
-        </div>
+        </CardGrid>
       )}
 
       {/* Pagination */}

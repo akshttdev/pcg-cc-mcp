@@ -8,6 +8,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { CardGrid } from '@/components/ui/card-grid';
 import {
   Select,
   SelectContent,
@@ -352,7 +353,7 @@ export function McpSettings() {
                       {t('settings.mcp.labels.serverHelper')}
                     </p>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                    <CardGrid columns={{ sm: 2, md: 3, lg: 4 }} gap={3}>
                           {Object.entries(servers).map(([key]) => {
                             const metaObj = getMetaFor(key) as {
                               name?: string;
@@ -406,7 +407,7 @@ export function McpSettings() {
                                 </button>
                             );
                           })}
-                    </div>
+                    </CardGrid>
                   </div>
                 )}
             </div>

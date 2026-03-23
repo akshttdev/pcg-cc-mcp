@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Loader } from '@/components/ui/loader';
+import { CardGrid } from '@/components/ui/card-grid';
 import { Upload, Search, Trash2, Image as ImageIcon } from 'lucide-react';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -284,7 +285,7 @@ export function MediaLibraryPage() {
               className="h-48"
             />
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+            <CardGrid columns={{ sm: 2, md: 3, lg: 4, xl: 5 }} gap={3}>
               {assets.map((asset) => (
                 <AssetCard
                   key={asset.id}
@@ -293,7 +294,7 @@ export function MediaLibraryPage() {
                   onDelete={() => deleteMutation.mutate(asset.id)}
                 />
               ))}
-            </div>
+            </CardGrid>
           )}
         </div>
 
