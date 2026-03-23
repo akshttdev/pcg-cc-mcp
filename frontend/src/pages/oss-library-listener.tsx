@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -358,7 +359,7 @@ function AddLibraryDialog() {
             <Input id="lib-notes" placeholder="e.g. Web framework" value={form.notes}
               onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
           </div>
-          <div className="flex justify-end gap-2 pt-1">
+          <DialogFooter className="pt-1">
             <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
             <Button
               onClick={() => create.mutate()}
@@ -366,7 +367,7 @@ function AddLibraryDialog() {
             >
               {create.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add'}
             </Button>
-          </div>
+          </DialogFooter>
         </div>
       </DialogContent>
     </Dialog>

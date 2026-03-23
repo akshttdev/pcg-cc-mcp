@@ -5,6 +5,7 @@ import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -581,7 +582,7 @@ export function WorkflowTriggersPanel({
                     </div>
                   </div>
 
-                  <div className="flex justify-end gap-2 pt-1">
+                  <DialogFooter className="pt-1">
                     <Button variant="ghost" size="sm" onClick={resetForm}>
                       Cancel
                     </Button>
@@ -595,7 +596,7 @@ export function WorkflowTriggersPanel({
                       )}
                       Create Trigger
                     </Button>
-                  </div>
+                  </DialogFooter>
                 </div>
               )}
             </div>

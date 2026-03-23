@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { X } from 'lucide-react';
 import { dataSourcesApi } from '@/lib/api';
@@ -56,12 +57,12 @@ export function AddTextModal({ orgId, projectId, onClose, onAdded }: {
             />
           </div>
         </div>
-        <div className="flex justify-end gap-2 p-4 border-t">
+        <DialogFooter className="p-4 border-t">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
           <Button size="sm" onClick={handleSave} disabled={loading || !title.trim()}>
             {loading ? 'Saving...' : 'Add Source'}
           </Button>
-        </div>
+        </DialogFooter>
       </div>
     </div>
   );
