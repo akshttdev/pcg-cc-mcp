@@ -1,14 +1,10 @@
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { SectionHeader } from '@/components/ui/section-header';
+import { CardGrid } from '@/components/ui/card-grid';
 import { cn } from '@/lib/utils';
 import {
   AlertCircle,
@@ -121,24 +117,18 @@ export function BoardsSection({
 
   return (
     <Card className="h-full">
-      <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <CardTitle className="flex items-center gap-2">
-            <LayoutGrid className="h-5 w-5" />
-            Workstreams &amp; Boards
-          </CardTitle>
-          <CardDescription>
-            Activate and monitor each delivery lane across the brand.
-          </CardDescription>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onCreateBoard}
-        >
-          <Plus className="mr-1 h-4 w-4" /> Create Board
-        </Button>
-      </CardHeader>
+      <div className="p-6 pb-0">
+        <SectionHeader
+          icon={LayoutGrid}
+          title="Workstreams & Boards"
+          subtitle="Activate and monitor each delivery lane across the brand."
+          actions={
+            <Button variant="outline" size="sm" onClick={onCreateBoard}>
+              <Plus className="mr-1 h-4 w-4" /> Create Board
+            </Button>
+          }
+        />
+      </div>
       <CardContent className="space-y-4">
         {boardsLoading ? (
           <div className="flex items-center gap-2 text-muted-foreground">
@@ -162,7 +152,7 @@ export function BoardsSection({
                 <AlertDescription>{tasksError}</AlertDescription>
               </Alert>
             )}
-            <div className="grid gap-4 lg:grid-cols-2">
+            <CardGrid columns={{ sm: 1, lg: 2 }} gap={4}>
               {boards.map((board) => {
                 const meta = boardTemplateMeta[board.board_type] || boardTemplateMeta.custom;
                 const Icon = meta.icon;
@@ -301,7 +291,7 @@ export function BoardsSection({
                   </div>
                 );
               })}
-            </div>
+            </CardGrid>
             {unassignedTasks.length > 0 && (
               <div
                 role="button"

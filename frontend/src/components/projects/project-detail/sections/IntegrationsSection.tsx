@@ -1,13 +1,9 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { SectionHeader } from '@/components/ui/section-header';
+import { CardGrid } from '@/components/ui/card-grid';
 import {
   Collapsible,
   CollapsibleContent,
@@ -146,31 +142,29 @@ export function IntegrationsSection({
 
   return (
     <Card>
-      <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-4">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5" />
-              Integrations Hub
-            </CardTitle>
-            <CardDescription>
-              Central view of the systems powering this project.
-            </CardDescription>
-          </div>
-          <ProgressRing connected={totalConnected} total={totalCount} />
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onRefresh}
-          disabled={integrationsRefreshing}
-        >
-          {integrationsRefreshing && (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          )}
-          Refresh status
-        </Button>
-      </CardHeader>
+      <div className="p-6 pb-0">
+        <SectionHeader
+          icon={Sparkles}
+          title="Integrations Hub"
+          subtitle="Central view of the systems powering this project."
+          actions={
+            <div className="flex items-center gap-4">
+              <ProgressRing connected={totalConnected} total={totalCount} />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onRefresh}
+                disabled={integrationsRefreshing}
+              >
+                {integrationsRefreshing && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                Refresh status
+              </Button>
+            </div>
+          }
+        />
+      </div>
       <CardContent className="space-y-4">
         {(emailIntegrationError || socialIntegrationError) && (
           <Alert variant="destructive">
@@ -188,11 +182,11 @@ export function IntegrationsSection({
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
               Recommended
             </p>
-            <div className="grid gap-4 lg:grid-cols-2">
+            <CardGrid columns={{ sm: 1, lg: 2 }} gap={4}>
               {recommended.map((category) => (
                 <IntegrationCategoryCard key={category.key} category={category} />
               ))}
-            </div>
+            </CardGrid>
           </div>
         )}
 
@@ -206,11 +200,11 @@ export function IntegrationsSection({
               </button>
             </CollapsibleTrigger>
             <CollapsibleContent>
-              <div className="grid gap-4 lg:grid-cols-2 mt-2">
+              <CardGrid columns={{ sm: 1, lg: 2 }} gap={4} className="mt-2">
                 {optional.map((category) => (
                   <IntegrationCategoryCard key={category.key} category={category} />
                 ))}
-              </div>
+              </CardGrid>
             </CollapsibleContent>
           </Collapsible>
         )}

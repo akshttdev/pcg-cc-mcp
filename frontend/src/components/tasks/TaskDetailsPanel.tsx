@@ -50,7 +50,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Download, X } from 'lucide-react';
+import { SectionHeader } from '@/components/ui/section-header';
+import { Download, Package, X } from 'lucide-react';
 import { agentFlowsApi, taskArtifactsApi, agentsApi, resolveApiUrl, artifactContentApi, editronApi } from '@/lib/api';
 import type {
   ExecutionArtifact as ApiExecutionArtifact,
@@ -532,9 +533,7 @@ export function TaskDetailsPanel({
 
                           {/* Agent artifacts */}
                           <div className="p-3 space-y-2">
-                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                              Agent Artifacts
-                            </p>
+                            <SectionHeader title="Agent Artifacts" icon={Package} />
                             {renderArtifactsBody()}
                           </div>
 
