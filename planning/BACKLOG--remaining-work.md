@@ -896,3 +896,180 @@ Dealflow pipeline v2, company profiles, brand guides, Dockerfile fixes, VIBE tok
 - `WelcomeWizard.tsx` (783L) → individual step components
 **Effort:** 2-4 hours per component
 **Status:** NOT STARTED
+
+---
+
+### Pipeline Stage Config Visual Builder (Option B) [ROI: HIGH]
+
+**Source:** 2026-03-23 pipeline settings audit — Playwright-verified gap
+**What:** Build a visual editor for `on_enter_actions` and `on_exit_validations` in the Stage Config dialog, replacing the current situation where these can only be set via SQL migrations.
+
+**Rationale:**
+
+The CRM pipeline's behavior is driven by two JSON arrays in `stage_config`:
+- `on_enter_actions`: what happens when a deal enters a stage (trigger agent, create review task, create delivery deal)
+- `on_exit_validations`: what must be true before a deal can leave (require field, require intel, require pending tasks = 0)
+
+Currently:
+- **UI** exposes 5 simple fields (`assigned_agent`, `auto_trigger`, `cancel_window_secs`, `required_fields`, `approval_gate`) — these are now wired to the backend via Option A (synthesizes effective actions/validations from simple fields when explicit arrays are empty).
+- **Migrations** set the full `on_enter_actions` / `on_exit_validations` arrays with rich logic (chained agents, intel requirements, etc.) that the simple UI fields can't express.
+- **Admins** can see existing automations read-only in the Stage Config editor but cannot add, remove, or reorder them via UI.
+
+This means:
+1. **New pipelines** can only get basic automations (single agent trigger, field requirements, approval gate) unless someone writes SQL.
+2. **Existing pipeline automations** can't be modified without DB access.
+3. **Complex chains** (e.g., "trigger Astra → on completion trigger Cash → create review task") can't be composed via UI.
+
+**Implementation (estimated 3-5 days):**
+
+1. **Action Builder component** — drag-and-drop or ordered list of actions:
+   - `TriggerAgent`: agent selector + flow_type selector + auto_trigger toggle
+   - `CreateReviewTask`: description text input
+   - `CreateDeliveryDeal`: no params (shown as a toggle)
+   - Add/remove/reorder via up/down buttons
+
+2. **Validation Builder component** — ordered list of exit gates:
+   - `RequireField`: field selector (from DEAL_FIELDS) + custom message input
+   - `RequireIntel`: entity selector (person/company) + status selector (done/complete)
+   - `RequirePendingTasks`: count input (default 0 = all tasks must be done)
+   - Add/remove/reorder
+
+3. **Stage Owner editor** — label + type (agent/human/team) inputs
+
+4. **Preview panel** — shows the effective JSON that will be saved, so admins can verify
+
+5. **Migration path** — Option A's synthesis logic (`build_effective_entry_actions` / `build_effective_exit_validations`) remains as fallback for stages with simple configs. Stages with explicit action arrays bypass synthesis.
+
+**Dependencies:** None — Option A is already shipped and provides the backend wiring. This is purely a frontend enhancement.
+**Effort:** 3-5 days | **Sprint:** Phase 1 | **Status:** NOT STARTED
+
+---
+
+### Pipeline ↔ Workflow Shared Services Extraction [ROI: HIGH]
+
+**Source:** 2026-03-23 pipeline settings audit — architectural analysis of CRM Pipeline vs Workflow Builder overlap
+**What:** Extract duplicated infrastructure from both systems into shared service modules, then add a `TriggerWorkflow` stage action to connect them.
+
+**Rationale:**
+
+The CRM Pipeline (`stage_transition.rs`, `crm_deal_automations.rs`) and Workflow Builder (`workflow/orchestrator.rs`, `workflow_engine.rs`, `workflow_triggers.rs`) solve different problems — linear deal funnel vs batch DAG extraction — but independently implement the same infrastructure:
+
+| Shared Concern | Pipeline Implementation | Workflow Implementation |
+|---|---|---|
+| Agent flow spawning | `schedule_agent_flow()` in `stage_transition.rs` | Executor spawns via `agent_flows` table |
+| LLM dispatch | `call_llm()` in `crm_deal_automations.rs` (OpenAI → Claude fallback) | LLM node in workflow executor (same fallback) |
+| Cancel windows | `cancel_deadline` on `agent_flows`, checked in `cancel_agent_flow()` | Same `cancel_deadline` column, separate cancel logic |
+| Review/approval gates | Creates tasks, blocks on `pending_tasks == 0` | Stages records, blocks on `status == 'approved'` |
+| Cost tracking | `agent_flows.usage_token_count` | `workflow_run.usage` (aggregated from node_results) |
+
+This duplication means bug fixes in one system don't propagate to the other, and the two systems can drift apart on behavior (e.g., different LLM fallback order, different cancel window clamping).
+
+**Why not merge the systems:**
+
+They have fundamentally different execution models:
+- Pipeline: single-item, synchronous, linear (position N → N+1), human-triggered
+- Workflow: batch-item, async, DAG (fan-out/fan-in), event-triggered (webhook/cron/data source)
+
+Merging would force either unnecessary DAG complexity on the pipeline or CRM-specific concepts (review tasks, deal artifacts) into the workflow builder. The right boundary is: **workflows produce CRM records, pipelines consume them**.
+
+**Implementation (estimated 5-7 days):**
+
+**Phase 1: Extract shared services (3-4 days)**
+
+Create `crates/services/src/` modules:
+
+1. **`agent_dispatch.rs`** — Unified agent flow spawning
+   - `schedule_agent_flow(pool, entity_id, agent, flow_type, cancel_window_secs) → (flow_id, deadline)`
+   - `cancel_agent_flow(pool, entity_id) → bool`
+   - Both systems call this instead of their own implementations
+   - Single place to enforce cancel window clamping, known-agent validation, dedup
+
+2. **`llm_client.rs`** — Unified LLM call with provider fallback
+   - `call_llm(config: LlmCallConfig) → Result<String>` with: system prompt, user message, model preference, max_tokens, timeout
+   - Fallback chain: preferred provider → OpenAI → Anthropic → Ollama (configurable)
+   - Single place to add retry logic, rate limiting, cost recording
+   - Replaces `call_llm()` in `crm_deal_automations.rs` and LLM node dispatch in workflow executor
+
+3. **`cost_tracker.rs`** — Unified token usage recording
+   - `record_usage(pool, context: UsageContext, tokens: TokenUsage)`
+   - Context: agent_flow_id OR workflow_run_id OR deal_id
+   - Single aggregation point for the AI Usage dashboard
+
+4. **`approval_gate.rs`** — Shared review/approval pattern
+   - `create_review_task(pool, entity_id, entity_type, description) → task_id`
+   - `check_pending_approvals(pool, entity_id, entity_type) → count`
+   - Abstracts over CRM review tasks and workflow staging approval
+
+**Phase 2: Pipeline → Workflow trigger (2-3 days)**
+
+1. Add new `StageAction` variant:
+   ```rust
+   StageAction::TriggerWorkflow {
+       workflow_id: String,
+       input_mapping: Option<HashMap<String, String>>, // deal fields → workflow input
+   }
+   ```
+
+2. In `process_transition()`, when this action fires:
+   - Look up the workflow definition
+   - Create a workflow run with deal data mapped to input nodes
+   - Fire asynchronously (don't block the stage transition)
+
+3. Use cases this enables:
+   - Deal enters "Intel" → trigger a research workflow (richer than a single agent flow)
+   - Deal reaches "Won" → trigger an onboarding workflow on the delivery pipeline
+   - Deal gets a new transcript → trigger an extraction workflow to pull contacts/companies
+
+4. Add `TriggerWorkflow` to the `StageConfigEditor` UI (new dropdown: select workflow from org's definitions)
+
+**Phase 3: Workflow → Pipeline feedback (future)**
+
+- Workflow completion fires a callback that can advance a deal or update deal fields
+- Enables: "Research workflow completes → auto-advance deal from Intel to BA"
+- Requires: event system or webhook callback from workflow orchestrator to pipeline
+
+**Dependencies:** Both systems must be stable (no active refactors). Shared services are pure extraction — no behavioral changes.
+**Effort:** 5-7 days | **Sprint:** Phase 1-2 | **Status:** NOT STARTED
+
+---
+
+### Pipeline Stage Flow Redesign [ROI: MEDIUM]
+
+**Source:** 2026-03-23 pipeline settings review — manual reordering is dangerous in trigger-based pipelines
+**What:** Replace manual up/down stage reordering with a flow-oriented design. Define explicit allowed transitions instead of implicit position+1 advancement.
+
+**Rationale:**
+
+The current pipeline uses `position` for stage ordering, and `advance_deal()` simply moves to `position + 1`. This has two problems:
+
+1. **Manual reordering breaks automations.** If an admin swaps Polish and Proposal via the up/down arrows, deals would skip proposal generation and go straight to deck design. The stage order IS the pipeline logic — it's not cosmetic.
+
+2. **No conditional transitions.** The 317 plan describes specific transitions (any stage → Lost, Won triggers delivery deal creation) that can't be expressed as simple position+1. Future pipelines may need branching (if proposal rejected → back to Discovery, if approved → Polish).
+
+**Implementation (estimated 3-5 days):**
+
+**Short term (1 day):**
+- Remove up/down reorder buttons from Pipeline Settings → Stages tab
+- Add position number badges to stages to show flow order
+- Add flow arrows (→) between stages in the list
+- Won/Lost shown as special terminal states (visually distinct)
+
+**Medium term (2-4 days):**
+- Add `allowed_transitions` field to `StageConfig`:
+  ```json
+  {
+    "allowed_transitions": ["next", "lost"],
+    "back_transitions": ["previous"]
+  }
+  ```
+- Backend enforces: `advance_deal()` checks `allowed_transitions` instead of blindly going to position+1
+- UI: "Move to..." context menu only shows allowed target stages
+- Special transitions: "Mark Lost" always available, "Back to [stage]" for revision flows
+
+**Long term (backlog):**
+- Visual pipeline designer: horizontal flow with connected nodes
+- Conditional transitions: if field X == Y → go to stage A, else stage B
+- Parallel stages: some stages could run concurrently (e.g., Polish and Invoice prep simultaneously)
+
+**Dependencies:** Pipeline Stage Config Visual Builder (Option B) for the long-term visual designer.
+**Effort:** 1 day (short) + 2-4 days (medium) | **Sprint:** Phase 1 | **Status:** NOT STARTED
