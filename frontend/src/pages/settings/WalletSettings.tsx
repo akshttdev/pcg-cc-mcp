@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { FormField } from '@/components/ui/form-field';
 import { Badge } from '@/components/ui/badge';
 // Table components currently unused but may be needed for expanded tx history
 // import {
@@ -385,8 +386,7 @@ export function WalletSettings() {
             </Alert>
           ) : (
             <>
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Account Address</Label>
+              <FormField label="Account Address">
                 <div className="flex gap-2">
                   <Input
                     value={wallet.account_address}
@@ -408,10 +408,9 @@ export function WalletSettings() {
                     </a>
                   </Button>
                 </div>
-              </div>
+              </FormField>
 
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Public Key</Label>
+              <FormField label="Public Key">
                 <div className="flex gap-2">
                   <Input
                     value={wallet.public_key}
@@ -424,10 +423,9 @@ export function WalletSettings() {
                     label="Copy public key"
                   />
                 </div>
-              </div>
+              </FormField>
 
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Private Key</Label>
+              <FormField label="Private Key">
                 {showPrivateKey ? (
                   <div className="space-y-2">
                     <div className="flex gap-2">
@@ -493,17 +491,15 @@ export function WalletSettings() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Recipient Address</Label>
+            <FormField label="Recipient Address">
               <Input
                 placeholder="0x..."
                 value={recipientAddress}
                 onChange={(e) => setRecipientAddress(e.target.value)}
                 className="font-mono"
               />
-            </div>
-            <div className="space-y-2">
-              <Label>Amount (VIBE)</Label>
+            </FormField>
+            <FormField label="Amount (VIBE)" description={`Available: ${formatVibe(balance?.balance_vibe ?? 0)}`}>
               <Input
                 type="number"
                 placeholder="0"
@@ -512,10 +508,7 @@ export function WalletSettings() {
                 step="1"
                 min="1"
               />
-              <p className="text-xs text-muted-foreground">
-                Available: {formatVibe(balance?.balance_vibe ?? 0)}
-              </p>
-            </div>
+            </FormField>
             <div className="rounded-lg bg-muted p-3 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Network Fee</span>
@@ -563,8 +556,7 @@ export function WalletSettings() {
                 <p className="text-xs text-muted-foreground mt-2">QR Code placeholder</p>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>Your Address</Label>
+            <FormField label="Your Address">
               <div className="flex gap-2">
                 <Input
                   value={wallet?.account_address ?? ''}
@@ -577,7 +569,7 @@ export function WalletSettings() {
                   label="Copy address"
                 />
               </div>
-            </div>
+            </FormField>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setReceiveModalOpen(false)}>
@@ -603,8 +595,7 @@ export function WalletSettings() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Password</Label>
+            <FormField label="Password" error={passwordError || undefined}>
               <Input
                 type="password"
                 placeholder="Enter your password"
@@ -619,10 +610,7 @@ export function WalletSettings() {
                   }
                 }}
               />
-              {passwordError && (
-                <p className="text-xs text-destructive">{passwordError}</p>
-              )}
-            </div>
+            </FormField>
             <Alert>
               <AlertDescription className="text-xs">
                 Your private key will be visible for 30 seconds before automatically locking again.
