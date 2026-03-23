@@ -109,6 +109,28 @@ for f in crates/db/bindings/*.ts; do
 done
 ```
 
+### 1e. Component mount check
+
+For each new frontend component created by the sprint, verify it has a mount point:
+
+```bash
+# For each new component file, check if anything imports it
+# A component that's only exported from an index.ts barrel but never imported elsewhere is dead code
+grep -r "ComponentName" frontend/src/ --include="*.tsx" --include="*.ts" -l | grep -v "index.ts" | grep -v "ComponentName.tsx"
+```
+
+If a component is only referenced in its own file and an index.ts barrel export, it's **NOT WIRED** — no user can reach it.
+
+### 1f. Server-crate type check
+
+Types with `#[derive(TS)]` in `crates/server/src/` do NOT auto-export to `shared/types.ts` (only `crates/db/` types do). Check if the sprint adds TS-exported types outside `crates/db/`:
+
+```bash
+grep -r '#\[ts(export)\]' crates/server/src/ crates/services/src/ --include="*.rs" -l
+```
+
+If found, verify corresponding manual type definitions exist in `frontend/src/types/`. Flag any gaps.
+
 ## Phase 2: Backend Wiring Audit
 
 Launch parallel agents (max 5) to audit each backend feature. **Group features by PR or subsystem** — features in the same PR often share routes, models, and access patterns, making them efficient to audit together. If the sprint has >10 features, group 2-3 per agent.
@@ -150,6 +172,11 @@ A handler is likely **NOT WIRED** if:
 - The route path exists but points to a different handler
 - The migration creates a table/column but no model query references it
 
+A frontend component is likely **NOT WIRED** if:
+- It is exported from a barrel `index.ts` but no page or parent component imports it
+- It has no route in the router config and no parent component renders it
+- The plan says "integrate into Settings" but no settings page section imports the component
+
 A type is likely a **STUB** if:
 - It has `#[derive(TS)]` and generates bindings in `crates/db/bindings/` but does NOT appear in `shared/types.ts`
 - It is defined but never consumed (no handler returns it, no executor parses it, no frontend imports it)
@@ -179,8 +206,10 @@ Navigate to where the feature should live. Features are often buried — check A
 - **Nested sub-tabs**: Some pages have secondary tab bars with a "More" dropdown hiding additional tabs
 - **Admin-only sections**: Some features only appear for admin users
 - **Direct URL**: Try navigating to the expected URL path directly — the page may exist but have no nav link
+- **Conditional rendering**: Features may only appear when certain data conditions are met (e.g., invite link only on Won deals, agent badge only when a flow is active). Check the component source for render conditions before concluding the feature is missing.
+- **Thorough page exploration**: Interact with the page fully — scroll, expand collapsed sections, click into tabs, open drawers and dialogs. A feature that exists in code but isn't immediately visible in a snapshot may just need more exploration to surface.
 
-Record the full click path (e.g., "Sidebar → More → [menu item] → [sub-option]"). If the path is 3+ clicks, flag as **(buried)** in the verdict.
+Record the full click path (e.g., "Sidebar → More → [menu item] → [sub-option]"). If the path is 3+ clicks, flag as **(buried)** in the verdict. If the feature exists but has no obvious visual affordance (e.g., no button, icon, or label pointing to it), note this as a discoverability issue — but keep it scoped to whether it blocks functionality. Deeper UX concerns (interaction design, affordance clarity, information hierarchy) belong in `/experience-audit`.
 
 #### Happy Path
 - Click/interact to trigger the feature
@@ -327,3 +356,5 @@ Add a summary section to the original planning file:
 - **Environment first** — always verify database + servers before launching agents or Playwright. A stale seed DB or crashed backend wastes all downstream work.
 - **Discovery requires depth** — features hide in More menus, scope tabs, and nested sub-tabs. Check all of these before concluding a feature is undiscoverable.
 - **Empty state ≠ broken** — if a page shows "No items" with no console errors, the feature likely works but lacks seed data. Note it and verify rendering logic via code trace.
+- **Never conclude "no code exists" from Playwright alone** — if a feature isn't visible in the UI, always cross-check the source code before declaring it missing. The feature may be conditionally rendered, below the fold, behind a data condition, or in a collapsed section. A Playwright-only "NOT IMPLEMENTED" verdict without a grep of the codebase is unreliable.
+- **Scope boundary with experience-audit** — this audit determines whether features *function* (can the user complete the action?). Questions about whether interaction points are *obvious*, well-labeled, or in the right place are UX concerns for `/experience-audit`. Flag discoverability only when it blocks functionality (e.g., component has no mount point at all), not when it's just hard to find.

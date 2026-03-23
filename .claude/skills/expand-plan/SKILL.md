@@ -56,6 +56,11 @@ For each sprint item, check for:
 4. **Access control gaps**: Are there route files touched by the sprint that lack access checks?
 5. **Test coverage**: Does the verification plan cover all items?
 6. **Dependency ordering**: Does the PR dependency chain match the execution schedule?
+7. **Wiring completeness** — For each new component or endpoint, verify the full chain is planned:
+   - **Backend→Frontend**: New endpoint exists → API client method planned → hook/component consumes it → page/route renders it → navigation path reaches it. If ANY link is missing, flag it.
+   - **Frontend→Route**: New component exists → imported by a page → page has a route → route reachable from sidebar/tabs/links. A component with no mount point is dead code.
+   - **Types→Consumer**: New Rust struct with `#[derive(TS)]` → type appears in `shared/types.ts` OR manually defined in `frontend/src/types/`. If the struct lives outside `crates/db/` (e.g., `crates/server/`), it won't auto-generate — flag the need for manual frontend type definition.
+8. **Type pipeline check** — If the plan adds `#[derive(TS)]` types in `crates/server/src/` (not `crates/db/`), flag that these will NOT auto-export to `shared/types.ts`. The `npm run generate-types` script only collects from `crates/db/bindings/`. Plan must include manual type definitions in `frontend/src/types/` for server-crate types.
 
 ## Phase 4: E2E Test & Frontend Verification Audit
 
@@ -79,7 +84,10 @@ Launch agents to find low-effort extraction opportunities in files touched by th
 
 For each sprint item, verify the plan includes:
 
-1. **User-facing definition of done** — not "add endpoint X" but "user can see cost data in the dashboard." If a backend endpoint has no frontend consumer, flag it — unwired endpoints are waste.
+1. **User-facing definition of done** — not "add endpoint X" but "user can see cost data in the dashboard." Flag both directions of unwired work:
+   - Backend endpoint with no frontend consumer → unwired endpoint is waste
+   - Frontend component with no route/page mount → dead code users can't reach
+   - For each "create component" item, the plan MUST specify where it gets mounted (which page, which route, which parent component imports it). "Export from index.ts" is not enough — something must import it.
 2. **Vertical slices** — each item should ship backend + frontend + verification as a unit. Flag items that build horizontal layers (e.g., "all backends first, then all frontends") — this pattern hides integration gaps until too late.
 3. **Stub vs working distinction** — if an item ships scaffolding without real behavior, the plan must say so explicitly (e.g., "Phase 1: scaffold with stub transitions. Phase 2: actual dispatch"). Don't count stubs as done.
 4. **Sub-item time estimates** — large items (>2 days) must break down into sub-items with individual estimates. A "5-day item" with 13 unestimated sub-items will underdeliver. Flag items where total sub-item effort exceeds the item estimate.
