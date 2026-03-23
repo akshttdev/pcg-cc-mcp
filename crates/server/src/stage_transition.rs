@@ -286,8 +286,12 @@ pub async fn process_transition(
 fn build_effective_entry_actions(config: &StageConfig) -> Vec<StageAction> {
     let mut actions = config.on_enter_actions.clone();
 
-    let has_trigger_agent = actions.iter().any(|a| matches!(a, StageAction::TriggerAgent { .. }));
-    let has_review_task = actions.iter().any(|a| matches!(a, StageAction::CreateReviewTask { .. }));
+    let has_trigger_agent = actions
+        .iter()
+        .any(|a| matches!(a, StageAction::TriggerAgent { .. }));
+    let has_review_task = actions
+        .iter()
+        .any(|a| matches!(a, StageAction::CreateReviewTask { .. }));
 
     // Derive TriggerAgent from assigned_agent + auto_trigger
     if !has_trigger_agent {
