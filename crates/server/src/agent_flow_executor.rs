@@ -291,6 +291,7 @@ impl AgentFlowExecutor {
         model_hint: Option<&str>,
     ) -> anyhow::Result<String> {
         let max_turns = 5;
+        let mut last_tool_sig: Option<String> = None;
 
         for turn in 0..max_turns {
             let (response, meta) = WorkflowLLMService::completion_with_tools(
@@ -315,6 +316,14 @@ impl AgentFlowExecutor {
                     return Ok(content);
                 }
                 LLMResponse::ToolCalls { calls, .. } => {
+                    // Dedup: break if LLM repeats the exact same tool call
+                    let sig = calls.iter().map(|c| format!("{}:{}", c.name, c.arguments)).collect::<Vec<_>>().join("|");
+                    if last_tool_sig.as_deref() == Some(&sig) {
+                        tracing::warn!("[AgentFlowEngine] LLM repeated same tool call on turn {} — breaking loop", turn + 1);
+                        anyhow::bail!("LLM stuck in tool-call loop (repeated same call)");
+                    }
+                    last_tool_sig = Some(sig);
+
                     // Add assistant tool-call message to conversation
                     messages.push(WorkflowLLMService::assistant_tool_calls_message(&calls));
 
