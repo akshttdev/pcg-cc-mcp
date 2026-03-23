@@ -5,6 +5,7 @@ import { taskKeys } from '@/lib/query-keys';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   CheckCircle2,
   Clock,
@@ -409,10 +410,11 @@ export function ActivityTab({ deal }: ActivityTabProps) {
           ))}
         </div>
       ) : events.length === 0 ? (
-        <div className="text-center py-8 text-sm text-muted-foreground">
-          <Clock className="h-8 w-8 mx-auto mb-2 opacity-30" />
-          <p>No activity yet on this project</p>
-        </div>
+        <EmptyState
+          icon={Clock}
+          title="No activity yet on this project"
+          className="py-8"
+        />
       ) : (
         <div className="space-y-6">
           {Array.from(grouped.entries()).map(([date, dayEvents]) => (

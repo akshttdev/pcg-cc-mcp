@@ -13,6 +13,7 @@ import {
 import { useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Card, CardContent } from '@/components/ui/card';
 import { crmKeys } from '@/lib/query-keys';
 import { makeRequest, handleApiResponse } from '@/lib/api/client';
@@ -74,13 +75,12 @@ export function AgentHistoryTab({ dealId }: AgentHistoryTabProps) {
 
   if (!flows || flows.length === 0) {
     return (
-      <div className="p-5 text-center">
-        <Bot className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
-        <p className="text-sm text-muted-foreground">No agent activity yet</p>
-        <p className="text-xs text-muted-foreground/60 mt-1">
-          Agent flows will appear here when triggered by stage transitions
-        </p>
-      </div>
+      <EmptyState
+        icon={Bot}
+        title="No agent activity yet"
+        description="Agent flows will appear here when triggered by stage transitions"
+        className="p-5"
+      />
     );
   }
 

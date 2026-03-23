@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -123,10 +124,11 @@ export function CrmActivityTimeline({
       </div>
 
       {activities.length === 0 ? (
-        <div className="text-center py-8 text-sm text-muted-foreground">
-          <Clock className="h-8 w-8 mx-auto mb-2 opacity-50" />
-          <p>No activity recorded yet</p>
-        </div>
+        <EmptyState
+          icon={Clock}
+          title="No activity recorded yet"
+          className="py-8"
+        />
       ) : (
         <div className="space-y-6">
           {Array.from(grouped.entries()).map(([date, dateActivities]) => (

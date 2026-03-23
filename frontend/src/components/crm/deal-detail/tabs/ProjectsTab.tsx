@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Building2, ExternalLink, FolderKanban } from 'lucide-react';
 import { useDealClient } from '@/hooks/useCrmPipeline';
@@ -37,21 +38,21 @@ export function ProjectsTab({ deal, orgId }: ProjectsTabProps) {
 
   if (!client) {
     return (
-      <div className="p-5 text-center py-12">
-        <FolderKanban className="h-8 w-8 mx-auto mb-2 text-muted-foreground/40" />
-        <p className="text-sm text-muted-foreground">
-          No client found for &quot;{deal.contact_company}&quot;.
-        </p>
-      </div>
+      <EmptyState
+        icon={FolderKanban}
+        title={`No client found for "${deal.contact_company}"`}
+        className="p-5"
+      />
     );
   }
 
   if (projects.length === 0) {
     return (
-      <div className="p-5 text-center py-12">
-        <FolderKanban className="h-8 w-8 mx-auto mb-2 text-muted-foreground/40" />
-        <p className="text-sm text-muted-foreground">No projects for {client.name} yet.</p>
-      </div>
+      <EmptyState
+        icon={FolderKanban}
+        title={`No projects for ${client.name} yet`}
+        className="p-5"
+      />
     );
   }
 
