@@ -5,6 +5,7 @@ use axum::{
     response::Json as ResponseJson,
     routing::{delete, get, patch, post},
 };
+use db::DbUuid;
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
