@@ -341,34 +341,27 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
           </div>
         )}
 
-        {/* Row 8: Footer — amount, close date, last activity */}
-        <div className="flex items-center justify-between pt-1.5 border-t border-border/40">
-          <div className="flex items-center gap-2">
-            {formattedAmount && (
-              <span className="inline-flex items-center text-xs font-semibold text-green-600">
-                {formattedAmount}
-              </span>
-            )}
-            {deal.expected_close_date && (
-              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                <Calendar className="h-2.5 w-2.5" />
-                {new Date(deal.expected_close_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-              </span>
-            )}
-            {deal.probability > 0 && (
-              <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground">
-                <TrendingUp className="h-2.5 w-2.5" />
-                {deal.probability}%
-              </span>
-            )}
-          </div>
-          {lastActivity && (
-            <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/60 min-w-0 truncate">
-              <Clock className="h-2.5 w-2.5 shrink-0" />
-              <span className="truncate">{lastActivity}</span>
+        {/* Row 8: Footer — amount, close date, probability */}
+        <div className="flex items-center gap-2 pt-1.5 border-t border-border/40">
+          {formattedAmount && (
+            <span className="inline-flex items-center text-xs font-semibold text-green-600">
+              {formattedAmount}
+            </span>
+          )}
+          {deal.probability > 0 && (
+            <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground">
+              <TrendingUp className="h-2.5 w-2.5" />
+              {deal.probability}%
             </span>
           )}
         </div>
+        {/* Row 9: Timestamp */}
+        {lastActivity && (
+          <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/60">
+            <Clock className="h-2.5 w-2.5 shrink-0" />
+            {lastActivity}
+          </span>
+        )}
 
         {/* Probability bar */}
         {deal.probability > 0 && (
