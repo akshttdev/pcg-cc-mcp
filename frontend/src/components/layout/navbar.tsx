@@ -25,6 +25,7 @@ import { NavbarUserButton } from '@/components/layout/NavbarUserButton';
 import { useViewStore } from '@/stores/useViewStore';
 import { DevBanner } from '@/components/DevBanner';
 import { useTheme } from '@/components/theme-provider';
+import { ThemeMode } from 'shared/types';
 
 const ADMIN_ROUTES = ['/site-directory', '/nora', '/mission-control', '/admin'];
 
@@ -67,13 +68,13 @@ interface NavbarProps {
 
 function ThemeToggle() {
   const { theme, setTheme } = useTheme();
-  const isDark = theme === 'dark';
+  const isDark = theme === ThemeMode.DARK;
   return (
     <Button
       variant="ghost"
       size="icon"
       className="h-8 w-8"
-      onClick={() => setTheme(isDark ? 'light' : 'dark')}
+      onClick={() => setTheme(isDark ? ThemeMode.LIGHT : ThemeMode.DARK)}
       title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
     >
       {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}

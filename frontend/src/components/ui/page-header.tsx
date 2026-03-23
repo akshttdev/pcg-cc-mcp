@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 interface PageHeaderProps {
   icon: LucideIcon;
   title: string;
+  subtitle?: string;
   description?: string;
   actions?: React.ReactNode;
   className?: string;
@@ -12,6 +13,7 @@ interface PageHeaderProps {
 export function PageHeader({
   icon: Icon,
   title,
+  subtitle,
   description,
   actions,
   className,
@@ -29,6 +31,9 @@ export function PageHeader({
         </div>
         <div>
           <h1 className="text-lg sm:text-xl font-semibold">{title}</h1>
+          {subtitle && (
+            <p className="text-sm text-muted-foreground">{subtitle}</p>
+          )}
           {description && (
             <p className="text-xs sm:text-sm text-muted-foreground">
               {description}
