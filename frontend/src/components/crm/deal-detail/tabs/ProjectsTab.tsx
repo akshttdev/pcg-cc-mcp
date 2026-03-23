@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ListItem } from '@/components/ui/list-item';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Building2, ExternalLink, FolderKanban } from 'lucide-react';
 import { useDealClient } from '@/hooks/useCrmPipeline';
@@ -69,20 +70,22 @@ export function ProjectsTab({ deal, orgId }: ProjectsTabProps) {
         {projects.map((project) => (
           <Card key={project.id} className="hover:shadow-sm transition-shadow border-border/60">
             <CardContent className="p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <FolderKanban className="h-4 w-4 text-primary shrink-0" />
-                  <p className="text-sm font-medium truncate">{project.name}</p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="shrink-0 h-7 text-xs gap-1"
-                  onClick={() => navigate(`/projects/${project.id}/tasks`)}
-                >
-                  Open <ExternalLink className="h-3 w-3" />
-                </Button>
-              </div>
+              <ListItem
+                icon={FolderKanban}
+                iconClassName="text-primary"
+                title={project.name}
+                size="sm"
+                actions={
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="shrink-0 h-7 text-xs gap-1"
+                    onClick={() => navigate(`/projects/${project.id}/tasks`)}
+                  >
+                    Open <ExternalLink className="h-3 w-3" />
+                  </Button>
+                }
+              />
             </CardContent>
           </Card>
         ))}
