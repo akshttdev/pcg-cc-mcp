@@ -333,7 +333,10 @@ export function OverviewTab({
   })();
 
   return (
-    <div className="p-5 space-y-5">
+    <div className="p-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Column 1: Context, Expedite, Metrics, Call Scheduling */}
+        <div className="space-y-5">
       {/* Operator Context — "Tell us about this lead" */}
       <div>
         <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5">
@@ -484,7 +487,10 @@ export function OverviewTab({
           />
         )}
       </div>
+        </div>
 
+        {/* Column 2: Contact, Organization, Timeline, Actions */}
+        <div className="space-y-5">
       {/* Linked Project */}
       {deal.project_name && (
         <div>
@@ -780,19 +786,19 @@ export function OverviewTab({
       )}
 
       {/* Actions */}
-      <div className="space-y-2 pt-2 border-t">
+      <div className="flex gap-2 pt-2 pb-4 border-t">
         {deal.project_id ? (
           <Button
             size="sm"
             variant="outline"
-            className="w-full gap-1.5"
+            className="flex-1 gap-1.5"
             onClick={() => navigate(`/projects/${deal.project_id}/tasks`)}
           >
             <FolderKanban className="h-3.5 w-3.5" />
-            View Project Board
+            View Project
           </Button>
         ) : (
-          <Button size="sm" className="w-full gap-1.5" onClick={onConvert}>
+          <Button size="sm" className="flex-1 gap-1.5" onClick={onConvert}>
             <Rocket className="h-3.5 w-3.5" />
             Convert to Project
           </Button>
@@ -801,8 +807,10 @@ export function OverviewTab({
           entityType="crm_deal"
           entityId={deal.id}
           entityName={deal.name}
-          className="w-full"
+          className="flex-1"
         />
+      </div>
+        </div>
       </div>
     </div>
   );
