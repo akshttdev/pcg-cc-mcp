@@ -1,313 +1,183 @@
-# Alpha Protocol Network - Enhanced Deployment Guide
+# ORCHA — Deployment Guide
 
-## 🚀 Quick Start
+> Last updated: 2026-03-23
 
-### For Pythia Master Node
+## Local Development
+
+### Prerequisites
+
+- [Flox](https://flox.dev/docs/install-flox/) (recommended) — manages Rust nightly, Node.js, pnpm, cmake, sqlx-cli, sccache
+- OR manually: Node.js 18+, pnpm 8+, Rust nightly-2025-05-18, cmake, pkg-config, libopus, sqlx-cli
+
+### First-Time Setup
 
 ```bash
-cd /path/to/pcg-cc-mcp
-git checkout new
-git pull origin new
-chmod +x setup-pythia-master-enhanced.sh
-./setup-pythia-master-enhanced.sh
+git clone <repo-url> && cd pcg-cc-mcp
+flox activate           # installs toolchain, seeds database, sets env vars
+pnpm install            # install frontend deps (also activates git hooks via prepare script)
+pnpm run dev            # starts frontend + backend with hot reload
 ```
 
-This will:
-- Build the enhanced apn_node binary
-- Start Pythia Master with resource reporting enabled
-- Create `PYTHIA-MASTER-INFO-ENHANCED.txt` with connection details
+The app will be available at `http://localhost:$FRONTEND_PORT` (default 3000).
 
-### For Peer Nodes
+### Environment Variables
+
+Two configuration layers:
+
+| Layer | File | When to use |
+|-------|------|-------------|
+| **Flox** | `.flox/env/manifest.toml` | Build toolchain vars (CMAKE, SQLX_OFFLINE, RUSTC_WRAPPER). Shared across machines. |
+| **.env** | `.env` (gitignored) | Secrets (API keys), ports, per-worktree overrides. |
+
+**Required in `.env`:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FRONTEND_PORT` | `3000` | Vite dev server port |
+| `BACKEND_PORT` | `3002` | Axum backend port |
+| `DATABASE_URL` | `sqlite://dev_assets/db.sqlite` | SQLite path |
+
+**Build toolchain (set by Flox, or add to `.env` if not using Flox):**
+
+| Variable | Value | Why |
+|----------|-------|-----|
+| `CMAKE_POLICY_VERSION_MINIMUM` | `3.5` | audiopus_sys build requires this |
+| `SQLX_OFFLINE` | `true` | Use cached query metadata at compile time |
+
+**Optional — Agent Flow Engine:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENABLE_AGENT_FLOW_ENGINE` | `0` | Set to `1` to enable AI agent auto-execution |
+| `AGENT_FLOW_POLL_INTERVAL` | `15` | Seconds between executor polls |
+| `AGENT_FLOW_MAX_CONCURRENT` | `5` | Max flows per tick |
+
+### Git Worktree Port Isolation
+
+When using git worktrees for parallel development, each worktree needs unique ports in its own `.env`:
 
 ```bash
-cd /path/to/pcg-cc-mcp
-git checkout new
-git pull origin new
-chmod +x setup-peer-node.sh
-./setup-peer-node.sh
+# Root worktree
+FRONTEND_PORT=3000
+BACKEND_PORT=3002
+
+# Agent worktree
+FRONTEND_PORT=3010
+BACKEND_PORT=3012
 ```
 
-The script will prompt for:
-- Bootstrap address (get from PYTHIA-MASTER-INFO-ENHANCED.txt)
-- Device name (e.g., "OKB-Terminal", "Device-3")
+### Pre-Commit Hooks
 
----
+Auto-installed via `pnpm install` (npm `prepare` script). Handles:
+- Rust formatting on staged `.rs` files
+- Frontend lint-staged (ESLint + Prettier) on staged `.ts`/`.tsx` files
+- Type generation reminders when `#[derive(TS)]` changes
 
-## 🎯 New Features
+### Database
 
-### Resource Reporting
-Every node now reports:
-- **CPU**: Core count and architecture
-- **RAM**: Total and available memory
-- **Storage**: Available disk space
-- **GPU**: Detection and model information
-
-### Heartbeat Mechanism
-- Broadcasts status every 30 seconds (configurable)
-- Includes fresh resource measurements
-- Helps detect offline/stale nodes
-
-### Network Visibility
-Use the capacity check script to see all nodes:
+The dev database is seeded from `dev_assets_seed/db.sqlite` on first `flox activate` or manually:
 
 ```bash
-./check-network-capacity.sh
+cp dev_assets_seed/db.sqlite dev_assets/db.sqlite
 ```
 
----
-
-## 📋 Manual Deployment
-
-If you prefer manual control:
-
-### 1. Build the Binary
-
+After adding new migrations:
 ```bash
-cargo build --release --bin apn_node
+DATABASE_URL="sqlite:dev_assets/db.sqlite" cargo sqlx prepare --workspace
 ```
 
-### 2. Start Pythia Master
-
+After modifying Rust types with `#[derive(TS)]`:
 ```bash
-./target/release/apn_node \
-  --port 4001 \
-  --relay nats://nonlocal.info:4222 \
-  --heartbeat-interval 30 \
-  > /tmp/apn_master.log 2>&1 &
-```
-
-### 3. Start Peer Node
-
-```bash
-./target/release/apn_node \
-  --port 4002 \
-  --relay nats://nonlocal.info:4222 \
-  --bootstrap /ip4/MASTER_IP/tcp/4001/p2p/MASTER_PEER_ID \
-  --heartbeat-interval 30 \
-  > /tmp/apn_peer.log 2>&1 &
-```
-
----
-
-## 🔧 Configuration Options
-
-### CLI Flags
-
-- `--port <PORT>` - P2P port (default: 4001)
-- `--relay <URL>` - NATS relay URL (default: nats://nonlocal.info:4222)
-- `--bootstrap <MULTIADDR>` - Bootstrap peer address (can use multiple times)
-- `--heartbeat-interval <SECS>` - Heartbeat interval in seconds (default: 30)
-- `--no-heartbeat` - Disable heartbeat broadcasts
-- `--import <PHRASE>` - Import existing identity from mnemonic
-- `--new` - Generate new identity (default)
-
-### Examples
-
-Start with custom heartbeat interval:
-```bash
-./target/release/apn_node --heartbeat-interval 60
-```
-
-Start without heartbeat (not recommended):
-```bash
-./target/release/apn_node --no-heartbeat
-```
-
-Start on custom port:
-```bash
-./target/release/apn_node --port 4003
+npm run generate-types
 ```
 
 ---
 
-## 🔍 Monitoring
-
-### View Live Logs
-
-Master node:
-```bash
-tail -f /tmp/apn_master.log
-```
-
-Peer node:
-```bash
-tail -f /tmp/apn_peer.log
-```
-
-### Check Network Capacity
+## Docker Deployment
 
 ```bash
-./check-network-capacity.sh
+docker compose up                                    # full stack
+docker compose -f docker-compose.local.yml up        # local variant
 ```
 
-Shows:
-- Local node resources and utilization
-- All discovered peer nodes
-- Network health summary
-- Capacity ratings
+See `docker-compose.yml` and `Dockerfile` for details.
 
-### Check Heartbeats
+---
+
+## Production Build
 
 ```bash
-grep "Heartbeat" /tmp/apn_master.log
-```
+# Full production build
+./scripts/build-npm-package.sh
 
-You should see heartbeat messages every 30 seconds.
+# Or manually:
+cargo build --release --bin server
+cd frontend && npx vite build
+```
 
 ---
 
-## 🛠 Troubleshooting
+## Database Migrations
 
-### Node Not Discovering Peers
+Migrations run automatically on server startup. Current migrations:
 
-**Symptom**: No peer announcements in logs
+| Migration | What it does |
+|-----------|-------------|
+| `20260414000000` | Adds `stage_config` to pipeline stages, `crm_deal_id`/`cancel_deadline`/`retry_count`/`last_error` to agent_flows |
+| `20260414000001` | Seeds default stage_config JSON for all pipeline stages |
 
-**Solutions**:
-1. Check NATS relay connection:
-   ```bash
-   grep "Relay connected" /tmp/apn_*.log
-   ```
+All migrations are **additive** (nullable columns, `IF NOT EXISTS` indexes). Safe to deploy without downtime.
 
-2. Verify bootstrap address is correct:
-   ```bash
-   cat PYTHIA-MASTER-INFO-ENHANCED.txt
-   ```
+### Rollback
 
-3. Check firewall settings:
-   ```bash
-   sudo ufw status
-   sudo ufw allow 4001/tcp  # If needed
-   ```
+All columns are nullable — old code ignores them. The agent flow engine is gated behind `ENABLE_AGENT_FLOW_ENGINE=1` (default off). To disable after deploy, unset the env var.
 
-### Resource Collection Fails
+---
 
-**Symptom**: Resources show as `None` or errors in logs
+## Troubleshooting
 
-**Solutions**:
-1. Check if sysinfo can access system info:
-   ```bash
-   cargo test --release --package alpha-protocol-core test_system_info
-   ```
-
-2. Verify GPU detection:
-   ```bash
-   nvidia-smi  # For NVIDIA GPUs
-   rocm-smi    # For AMD GPUs
-   ```
-
-### Heartbeat Not Working
-
-**Symptom**: No heartbeat messages after startup
-
-**Solutions**:
-1. Check if heartbeat is enabled:
-   ```bash
-   grep "Heartbeat enabled" /tmp/apn_*.log
-   ```
-
-2. Verify no errors in resource collection:
-   ```bash
-   grep "ERROR.*resource" /tmp/apn_*.log
-   ```
-
-### Build Errors
-
-If build fails with missing dependencies:
+### Flox cache errors (`sed: can't read .../del.env`)
 
 ```bash
-# Update Rust
-rustup update
+ls ~/.cache/flox/run/
+rm -rf ~/.cache/flox/run/<project-hash>/
+flox activate   # creates fresh activation
+```
 
-# Clean and rebuild
-cargo clean
-cargo build --release --bin apn_node
+### CMake error: "Compatibility with CMake < 3.5 has been removed"
+
+```bash
+export CMAKE_POLICY_VERSION_MINIMUM=3.5
+```
+
+Flox sets this automatically. If not using Flox, add to `.env`.
+
+### Database migration error on startup
+
+```bash
+rm -f dev_assets/db.sqlite
+cp dev_assets_seed/db.sqlite dev_assets/db.sqlite
+```
+
+If the seed itself is outdated, regenerate: `./scripts/create-test-seed.sh`
+
+### Vite module resolution error ("Failed to fetch dynamically imported module")
+
+```bash
+rm -rf frontend/node_modules/.vite
+# Restart dev servers
 ```
 
 ---
 
-## 📊 Network Architecture
+## Architecture Reference
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    PYTHIA MASTER NODE                        │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │ Resources: 24 cores, 32GB RAM, 3.1TB, RTX 3080 Ti      │ │
-│  │ Heartbeat: Every 30s                                   │ │
-│  │ NATS Relay: nats://nonlocal.info:4222                 │ │
-│  │ P2P Port: 4001                                         │ │
-│  └────────────────────────────────────────────────────────┘ │
-│                                                               │
-│  Announces resources via:                                    │
-│  - NATS relay (apn.discovery, apn.heartbeat)                │
-│  - libp2p gossipsub (apn.peers, apn.heartbeat)              │
-└───────────────────────────┬─────────────────────────────────┘
-                            │
-            ┌───────────────┼───────────────┐
-            │               │               │
-       ┌────▼────┐     ┌────▼────┐    ┌────▼────┐
-       │ PEER 1  │     │ PEER 2  │    │ PEER 3  │
-       │         │     │         │    │         │
-       │ Port:   │     │ Port:   │    │ Port:   │
-       │ 4002    │     │ 4003    │    │ 4004    │
-       └─────────┘     └─────────┘    └─────────┘
-```
+See `CLAUDE.md` for full architecture docs including:
+- Project structure (`crates/`, `frontend/`, `shared/`)
+- Key patterns (SSE streaming, executor pattern, MCP integration)
+- API patterns and authentication
+- Testing strategy
 
----
+## Archived Deployment Docs
 
-## 🎯 Next Steps for Peer Nodes
-
-Once the enhanced master node is running:
-
-1. **Get bootstrap address** from `PYTHIA-MASTER-INFO-ENHANCED.txt`
-
-2. **On each peer device**:
-   ```bash
-   cd /path/to/pcg-cc-mcp
-   git checkout new
-   git pull origin new
-   ./setup-peer-node.sh
-   ```
-
-3. **Verify connection**:
-   - Check peer logs for "Relay connected"
-   - Check master logs for peer announcements
-   - Run `./check-network-capacity.sh` on master
-
-4. **Monitor resources**:
-   - All nodes will report resources every 30s
-   - Use capacity check script to see network health
-   - Resources include CPU, RAM, GPU, storage
-
----
-
-## 📝 Notes
-
-- **Backward Compatibility**: Old nodes (without resource reporting) can still connect, but will show `resources: None`
-- **Network Overhead**: ~200 bytes per heartbeat per node. With 10 nodes @ 30s interval = ~4KB/minute (negligible)
-- **Resource Collection**: Takes 100-500ms, runs in background thread to avoid blocking
-- **GPU Detection**: Automatic for NVIDIA (nvidia-smi), AMD (rocm-smi), and macOS (system_profiler)
-
----
-
-## 🔐 Security
-
-- Each node has unique Ed25519 keypair
-- Mnemonic phrase for recovery (12 words)
-- All communication encrypted via libp2p Noise protocol
-- Resources are non-sensitive system information
-
-**Important**: Keep your mnemonic phrase safe! It's needed to recover node identity.
-
----
-
-## 📚 Additional Resources
-
-- Main README: `/home/pythia/pcg-cc-mcp/README.md`
-- Architecture docs: `/home/pythia/pcg-cc-mcp/docs/APN_INTEGRATION_ARCHITECTURE.md`
-- Master node info: `/home/pythia/pcg-cc-mcp/PYTHIA-MASTER-INFO-ENHANCED.txt`
-
----
-
-**Status**: ✅ Enhanced system deployed and tested
-**Master Node**: Running with full resource reporting
-**Ready For**: Peer node connections with same capabilities
+Previous deployment guides for APN/Pythia, Docker/Nginx, and storage provider setup are in `docs/deployment/archive/`.
