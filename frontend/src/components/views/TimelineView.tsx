@@ -110,7 +110,7 @@ export function TimelineView({ tasks, onTaskClick }: TimelineViewProps) {
           <Button variant="outline" size="sm" onClick={handleToday}>
             Today
           </Button>
-          <Button variant="ghost" size="icon" onClick={handlePreviousMonth}>
+          <Button variant="ghost" size="icon" onClick={handlePreviousMonth} title="Previous month">
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <div className="min-w-[140px] text-center">
@@ -118,7 +118,7 @@ export function TimelineView({ tasks, onTaskClick }: TimelineViewProps) {
               {format(currentMonth, 'MMMM yyyy')}
             </span>
           </div>
-          <Button variant="ghost" size="icon" onClick={handleNextMonth}>
+          <Button variant="ghost" size="icon" onClick={handleNextMonth} title="Next month">
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>

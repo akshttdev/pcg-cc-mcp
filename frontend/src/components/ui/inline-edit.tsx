@@ -113,6 +113,7 @@ export function InlineEdit({
             e.stopPropagation();
             handleSave();
           }}
+          title="Save"
         >
           <Check className="h-4 w-4 text-green-600" />
         </Button>
@@ -124,6 +125,7 @@ export function InlineEdit({
             e.stopPropagation();
             handleCancel();
           }}
+          title="Cancel"
         >
           <X className="h-4 w-4 text-red-600" />
         </Button>

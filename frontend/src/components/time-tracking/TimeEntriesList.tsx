@@ -86,6 +86,7 @@ export function TimeEntriesList({ taskId }: TimeEntriesListProps) {
                   size="icon"
                   className="h-7 w-7 shrink-0"
                   onClick={() => handleDelete(entry.id)}
+                  title="Delete time entry"
                 >
                   <Trash2 className="h-3 w-3" />
                 </Button>

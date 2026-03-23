@@ -142,6 +142,7 @@ function ArtifactCard({
                 size="icon"
                 onClick={onPin}
                 className={cn('h-7 w-7', isPinned && 'text-primary')}
+                title={isPinned ? 'Unpin' : 'Pin'}
               >
                 <Pin className="h-3.5 w-3.5" />
               </Button>

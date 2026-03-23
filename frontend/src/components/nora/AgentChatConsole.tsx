@@ -666,7 +666,7 @@ export function AgentChatConsole({
               name="command-net-input"
               className="bg-black/60 border-cyan-500/30 text-sm"
             />
-            <Button size="icon" onClick={handleButtonSend} disabled={isSending || !isInputActive}>
+            <Button size="icon" onClick={handleButtonSend} disabled={isSending || !isInputActive} title="Send">
               <SendIcon className="h-4 w-4" />
             </Button>
           </div>

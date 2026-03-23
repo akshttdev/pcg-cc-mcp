@@ -224,6 +224,7 @@ export function FilterConditionRow({
         size="icon"
         onClick={onRemove}
         className="shrink-0"
+        title="Remove condition"
       >
         <X className="h-4 w-4" />
       </Button>

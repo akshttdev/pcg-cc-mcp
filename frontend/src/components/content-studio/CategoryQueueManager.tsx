@@ -105,6 +105,7 @@ function QueueCard({
               variant="ghost"
               size="icon"
               onClick={() => setIsEditing(!isEditing)}
+              title="Queue settings"
             >
               <Settings2 className="h-4 w-4" />
             </Button>
@@ -114,6 +115,7 @@ function QueueCard({
                 size="icon"
                 className="text-destructive hover:text-destructive"
                 onClick={onDelete}
+                title="Delete queue"
               >
                 <Trash2 className="h-4 w-4" />
               </Button>

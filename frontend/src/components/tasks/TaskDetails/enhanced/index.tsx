@@ -184,6 +184,7 @@ export function EnhancedTaskDetailsPanel({
               size="icon"
               onClick={handleRefresh}
               className="h-8 w-8"
+              title="Refresh"
             >
               <RefreshCw
                 className={cn(

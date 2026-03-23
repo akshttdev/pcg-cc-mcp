@@ -593,6 +593,7 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
                   onClick={handleSend}
                   disabled={!canSend || isLoading}
                   size="icon"
+                  title="Send message"
                 >
                   <Send className="w-4 h-4" />
                 </Button>

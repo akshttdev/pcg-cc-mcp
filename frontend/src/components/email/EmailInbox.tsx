@@ -226,7 +226,7 @@ export function EmailInbox({ projectId, accountId }: EmailInboxProps) {
                   <SelectItem value="needs_response">Needs Response</SelectItem>
                 </SelectContent>
               </Select>
-              <Button variant="outline" size="icon" onClick={() => refetch()}>
+              <Button variant="outline" size="icon" onClick={() => refetch()} title="Refresh">
                 <RefreshCw className="h-4 w-4" />
               </Button>
             </div>
@@ -297,6 +297,7 @@ export function EmailInbox({ projectId, accountId }: EmailInboxProps) {
                       variant="ghost"
                       size="icon"
                       onClick={() => toggleStarMutation.mutate(selectedMessage.id)}
+                      title="Toggle star"
                     >
                       <Star
                         className={`h-4 w-4 ${
@@ -310,6 +311,7 @@ export function EmailInbox({ projectId, accountId }: EmailInboxProps) {
                       variant="ghost"
                       size="icon"
                       onClick={() => moveToTrashMutation.mutate(selectedMessage.id)}
+                      title="Move to trash"
                     >
                       <Trash2 className="h-4 w-4 text-red-500" />
                     </Button>
@@ -381,6 +383,7 @@ function EmailRow({
           e.stopPropagation();
           onStar();
         }}
+        title="Toggle star"
       >
         <Star
           className={`h-4 w-4 ${
@@ -439,6 +442,7 @@ function EmailRow({
             e.stopPropagation();
             onDelete();
           }}
+          title="Delete"
         >
           <Trash2 className="h-4 w-4 text-muted-foreground hover:text-red-500" />
         </Button>

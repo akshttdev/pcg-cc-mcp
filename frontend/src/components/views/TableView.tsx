@@ -145,6 +145,7 @@ export function TableView({ tasks, projectId, onEditTask, onDeleteTask, onDuplic
                 e.stopPropagation();
                 navigate(`/projects/${projectId}/tasks/${info.row.original.id}`);
               }}
+              title="Open task"
             >
               <ExternalLink className="h-3 w-3" />
             </Button>

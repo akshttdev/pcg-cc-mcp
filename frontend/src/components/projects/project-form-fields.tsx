@@ -356,6 +356,7 @@ export function ProjectFormFields({
                   type="button"
                   variant="ghost"
                   size="icon"
+                  title="Browse folders"
                   onClick={async () => {
                     const selectedPath = await showFolderPicker({
                       title: 'Select Parent Directory',

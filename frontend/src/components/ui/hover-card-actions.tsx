@@ -57,6 +57,7 @@ export function HoverCardActions({
               e.stopPropagation();
               action.onClick();
             }}
+            title={action.label}
           >
             <Icon className="h-3.5 w-3.5" />
           </Button>
@@ -72,6 +73,7 @@ export function HoverCardActions({
               size="icon"
               className={cn('h-7 w-7', triggerClassName)}
               onClick={(e) => e.stopPropagation()}
+              title="More options"
             >
               <MoreHorizontal className="h-3.5 w-3.5" />
             </Button>

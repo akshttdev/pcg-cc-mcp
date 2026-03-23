@@ -323,6 +323,7 @@ function MentionCard({
                 size="icon"
                 asChild
                 onClick={(e) => e.stopPropagation()}
+                title="View original post"
               >
                 <a href={mention.post_url} target="_blank" rel="noopener noreferrer">
                   <ExternalLink className="h-4 w-4" />
@@ -337,6 +338,7 @@ function MentionCard({
                   e.stopPropagation();
                   setIsExpanded(true);
                 }}
+                title="Reply"
               >
                 <MessageSquare className="h-4 w-4" />
               </Button>
@@ -348,6 +350,7 @@ function MentionCard({
                     variant="ghost"
                     size="icon"
                     onClick={(e) => e.stopPropagation()}
+                    title="More options"
                   >
                     <MoreHorizontal className="h-4 w-4" />
                   </Button>
@@ -384,6 +387,7 @@ function MentionCard({
                 variant="ghost"
                 size="icon"
                 onClick={(e) => e.stopPropagation()}
+                title="More options"
               >
                 <MoreHorizontal className="h-4 w-4" />
               </Button>

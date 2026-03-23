@@ -226,6 +226,7 @@ export function OnboardingCarousel({
             e.stopPropagation();
             handlePrev();
           }}
+          title="Previous"
         >
           <ChevronLeft className="h-4 w-4" />
         </Button>
@@ -237,6 +238,7 @@ export function OnboardingCarousel({
             e.stopPropagation();
             handleNext();
           }}
+          title="Next"
         >
           <ChevronRight className="h-4 w-4" />
         </Button>

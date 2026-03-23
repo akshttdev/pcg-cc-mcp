@@ -252,6 +252,7 @@ export function ImageUploadSection({
                   size="icon"
                   className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
                   onClick={() => handleRemoveImage(image.id)}
+                  title="Remove image"
                 >
                   <X className="h-3 w-3" />
                 </Button>

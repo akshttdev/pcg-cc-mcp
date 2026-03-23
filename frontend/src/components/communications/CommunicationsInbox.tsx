@@ -226,6 +226,7 @@ export function CommunicationsInbox({ projectId }: CommunicationsInboxProps) {
                 refetchCalls();
                 refetchSms();
               }}
+              title="Refresh"
             >
               <RefreshCw className="h-4 w-4" />
             </Button>
@@ -327,6 +328,7 @@ export function CommunicationsInbox({ projectId }: CommunicationsInboxProps) {
                           e.stopPropagation();
                           toggleSmsStarMutation.mutate(sms.id);
                         }}
+                        title="Toggle star"
                       >
                         <Star
                           className={`h-4 w-4 ${

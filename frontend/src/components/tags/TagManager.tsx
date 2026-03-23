@@ -216,6 +216,7 @@ export function TagManager({ projectId }: TagManagerProps) {
                         size="icon"
                         className="h-7 w-7"
                         onClick={() => startEditingTag(tag)}
+                        title="Edit tag"
                       >
                         <Edit2 className="h-3 w-3" />
                       </Button>
@@ -224,6 +225,7 @@ export function TagManager({ projectId }: TagManagerProps) {
                         size="icon"
                         className="h-7 w-7 text-destructive"
                         onClick={() => handleDeleteTag(tag.id, tag.name)}
+                        title="Delete tag"
                       >
                         <Trash2 className="h-3 w-3" />
                       </Button>

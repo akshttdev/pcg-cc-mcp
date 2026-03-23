@@ -247,6 +247,7 @@ export default function VibePage() {
                           navigator.clipboard.writeText(vibeConfig.revenue_address);
                         }
                       }}
+                      title="Copy address"
                     >
                       <Copy className="h-3.5 w-3.5" />
                     </Button>

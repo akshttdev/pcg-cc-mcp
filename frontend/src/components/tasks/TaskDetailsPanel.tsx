@@ -747,7 +747,7 @@ function ArtifactPreviewModal({
               <Button variant="ghost" size="icon" onClick={() => onDownload(artifact)} title="Download">
                 <Download className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="icon" onClick={onClose}>
+              <Button variant="ghost" size="icon" onClick={onClose} title="Close">
                 <X className="h-4 w-4" />
               </Button>
             </div>

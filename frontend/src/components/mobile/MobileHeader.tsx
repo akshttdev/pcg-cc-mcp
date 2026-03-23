@@ -31,7 +31,7 @@ export function MobileHeader({
         {/* Menu Button */}
         <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
           <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="touch-manipulation">
+            <Button variant="ghost" size="icon" className="touch-manipulation" title="Menu">
               <Menu className="h-5 w-5" />
             </Button>
           </SheetTrigger>
@@ -71,7 +71,7 @@ export function MobileHeader({
 
         {/* Right Actions */}
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="relative touch-manipulation">
+          <Button variant="ghost" size="icon" className="relative touch-manipulation" title="Notifications">
             <Bell className="h-5 w-5" />
             {notificationCount > 0 && (
               <span className="absolute -top-1 -right-1 h-4 w-4 bg-destructive text-destructive-foreground text-xs rounded-full flex items-center justify-center">
@@ -79,7 +79,7 @@ export function MobileHeader({
               </span>
             )}
           </Button>
-          <Button variant="ghost" size="icon" className="touch-manipulation">
+          <Button variant="ghost" size="icon" className="touch-manipulation" title="Profile">
             <User className="h-5 w-5" />
           </Button>
         </div>

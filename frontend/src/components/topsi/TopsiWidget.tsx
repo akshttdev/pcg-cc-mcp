@@ -385,6 +385,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
             size="icon"
             className="h-8 w-8 text-white hover:bg-cyan-700"
             onClick={collapseChat}
+            title="Close"
           >
             <X className="h-4 w-4" />
           </Button>
@@ -425,6 +426,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
               size="icon"
               className="h-12 w-12 rounded-full"
               onClick={voiceActions.toggleMute}
+              title={voiceState.isMuted ? 'Unmute' : 'Mute'}
             >
               {voiceState.isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
             </Button>
@@ -434,6 +436,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
               size="icon"
               className="h-14 w-14 rounded-full"
               onClick={handleEndCall}
+              title="End call"
             >
               <PhoneOff className="h-6 w-6" />
             </Button>
@@ -443,6 +446,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
               size="icon"
               className="h-12 w-12 rounded-full"
               onClick={voiceActions.toggleSpeaker}
+              title={voiceState.isSpeakerOn ? 'Mute speaker' : 'Unmute speaker'}
             >
               {voiceState.isSpeakerOn ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
             </Button>
@@ -571,6 +575,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
                 className="h-10 w-10 shrink-0 bg-cyan-600 hover:bg-cyan-700"
                 onClick={sendTextMessage}
                 disabled={isSending || !inputMessage.trim()}
+                title="Send message"
               >
                 {isSending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />

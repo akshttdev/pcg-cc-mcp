@@ -113,7 +113,7 @@ export function CalendarView({ tasks, onTaskClick, onCreateTask }: CalendarViewP
           <Button variant="outline" size="sm" onClick={handleToday}>
             Today
           </Button>
-          <Button variant="ghost" size="icon" onClick={handlePreviousMonth}>
+          <Button variant="ghost" size="icon" onClick={handlePreviousMonth} title="Previous month">
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <div className="min-w-[140px] text-center">
@@ -121,7 +121,7 @@ export function CalendarView({ tasks, onTaskClick, onCreateTask }: CalendarViewP
               {format(currentMonth, 'MMMM yyyy')}
             </span>
           </div>
-          <Button variant="ghost" size="icon" onClick={handleNextMonth}>
+          <Button variant="ghost" size="icon" onClick={handleNextMonth} title="Next month">
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
@@ -179,6 +179,7 @@ export function CalendarView({ tasks, onTaskClick, onCreateTask }: CalendarViewP
                         size="icon"
                         className="h-5 w-5 opacity-0 hover:opacity-100 transition-opacity"
                         onClick={() => onCreateTask(day)}
+                        title="Add task"
                       >
                         <Plus className="h-3 w-3" />
                       </Button>

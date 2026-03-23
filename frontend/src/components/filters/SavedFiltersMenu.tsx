@@ -62,6 +62,7 @@ export function SavedFiltersMenu({ projectId }: SavedFiltersMenuProps) {
                 e.stopPropagation();
                 handleDeletePreset(preset.id, preset.name);
               }}
+              title="Delete filter"
             >
               <Trash2 className="h-3 w-3 text-destructive" />
             </Button>

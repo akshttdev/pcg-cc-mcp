@@ -542,14 +542,14 @@ function ContactCard({
       {/* Social Links — hidden on mobile */}
       <div className="hidden md:flex items-center gap-1">
         {contact.linkedin_url && (
-          <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
+          <Button variant="ghost" size="icon" className="h-8 w-8" asChild title="LinkedIn profile">
             <a href={contact.linkedin_url} target="_blank" rel="noopener noreferrer">
               <Linkedin className="h-3.5 w-3.5" />
             </a>
           </Button>
         )}
         {contact.twitter_handle && (
-          <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
+          <Button variant="ghost" size="icon" className="h-8 w-8" asChild title="Twitter profile">
             <a
               href={`https://twitter.com/${contact.twitter_handle}`}
               target="_blank"
@@ -560,7 +560,7 @@ function ContactCard({
           </Button>
         )}
         {contact.website && (
-          <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
+          <Button variant="ghost" size="icon" className="h-8 w-8" asChild title="Website">
             <a href={contact.website} target="_blank" rel="noopener noreferrer">
               <Globe className="h-3.5 w-3.5" />
             </a>
@@ -571,7 +571,7 @@ function ContactCard({
       {/* Actions */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+          <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity" title="More options">
             <MoreVertical className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>

@@ -396,10 +396,11 @@ export function WalletSettings() {
                     variant="outline"
                     size="icon"
                     onClick={() => handleCopy('Address', wallet.account_address)}
+                    title="Copy address"
                   >
                     <Copy className="h-4 w-4" />
                   </Button>
-                  <Button variant="outline" size="icon" asChild>
+                  <Button variant="outline" size="icon" asChild title="View in explorer">
                     <a
                       href={getAccountExplorerUrl(wallet.account_address)}
                       target="_blank"
@@ -423,6 +424,7 @@ export function WalletSettings() {
                     variant="outline"
                     size="icon"
                     onClick={() => handleCopy('Public key', wallet.public_key)}
+                    title="Copy public key"
                   >
                     <Copy className="h-4 w-4" />
                   </Button>
@@ -444,6 +446,7 @@ export function WalletSettings() {
                         variant="ghost"
                         size="icon"
                         onClick={handleLockPrivateKey}
+                        title="Hide private key"
                       >
                         <EyeOff className="h-4 w-4" />
                       </Button>
@@ -451,6 +454,7 @@ export function WalletSettings() {
                         variant="outline"
                         size="icon"
                         onClick={() => handleCopy('Private key', wallet.private_key)}
+                        title="Copy private key"
                       >
                         <Copy className="h-4 w-4" />
                       </Button>
@@ -564,7 +568,7 @@ export function WalletSettings() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="flex justify-center p-6 bg-white rounded-lg">
+            <div className="flex justify-center p-6 bg-background rounded-lg">
               <div className="text-center">
                 <QrCode className="h-32 w-32 mx-auto text-muted-foreground" />
                 <p className="text-xs text-muted-foreground mt-2">QR Code placeholder</p>
@@ -582,6 +586,7 @@ export function WalletSettings() {
                   variant="outline"
                   size="icon"
                   onClick={() => handleCopy('Address', wallet?.account_address ?? '')}
+                  title="Copy address"
                 >
                   <Copy className="h-4 w-4" />
                 </Button>

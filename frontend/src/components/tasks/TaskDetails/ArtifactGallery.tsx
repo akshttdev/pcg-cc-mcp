@@ -184,6 +184,7 @@ function ArtifactListItem({
             variant="ghost"
             size="icon"
             className={cn('h-7 w-7', isPinned && 'text-primary')}
+            title={isPinned ? 'Unpin' : 'Pin'}
             onClick={(e) => {
               e.stopPropagation();
               onPin();

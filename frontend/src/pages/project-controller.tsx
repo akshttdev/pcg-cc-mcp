@@ -258,7 +258,7 @@ export function ProjectControllerPage() {
           >
             <History className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={() => setSettingsOpen(true)}>
+          <Button variant="ghost" size="icon" onClick={() => setSettingsOpen(true)} title="Settings">
             <Settings className="h-4 w-4" />
           </Button>
         </div>
@@ -307,6 +307,7 @@ export function ProjectControllerPage() {
                         e.stopPropagation();
                         deleteConversationMutation.mutate(conv.id);
                       }}
+                      title="Delete conversation"
                     >
                       <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
                     </Button>

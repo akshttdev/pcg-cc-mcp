@@ -460,7 +460,7 @@ export function ConferenceWorkflowDashboard() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>Conference Workflows</CardTitle>
-              <Button variant="ghost" size="icon" onClick={() => refetch()}>
+              <Button variant="ghost" size="icon" onClick={() => refetch()} title="Refresh">
                 <RefreshCw className="w-4 h-4" />
               </Button>
             </div>

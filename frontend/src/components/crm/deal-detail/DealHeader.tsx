@@ -98,7 +98,7 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete, isExpanded, onT
               {isExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
             </Button>
           )}
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit(deal)}>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit(deal)} title="Edit deal">
             <Edit className="h-3.5 w-3.5" />
           </Button>
           <Button
@@ -106,6 +106,7 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete, isExpanded, onT
             size="icon"
             className="h-7 w-7 text-destructive hover:text-destructive"
             onClick={() => onDelete(deal)}
+            title="Delete deal"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
