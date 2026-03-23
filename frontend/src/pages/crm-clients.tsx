@@ -1,5 +1,13 @@
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { CrmPipelineBoard } from '@/components/crm/CrmPipelineBoard';
+import { CrmPipelineSettings } from '@/components/crm/CrmPipelineSettings';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 export function CrmClientsPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -25,6 +33,7 @@ export function CrmClientsPage() {
 
 export function CrmAcquisitionPage() {
   const { orgId } = useParams<{ orgId: string }>();
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   if (!orgId) {
     return (
@@ -35,16 +44,28 @@ export function CrmAcquisitionPage() {
   }
 
   return (
-    <CrmPipelineBoard
-      orgId={orgId}
-      pipelineType="sales"
-      title="Acquisition Pipeline"
-    />
+    <>
+      <CrmPipelineBoard
+        orgId={orgId}
+        pipelineType="sales"
+        title="Acquisition Pipeline"
+        onSettingsClick={() => setSettingsOpen(true)}
+      />
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Pipeline Settings</DialogTitle>
+          </DialogHeader>
+          <CrmPipelineSettings organizationId={orgId} />
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
 export function CrmLifecyclePage() {
   const { orgId } = useParams<{ orgId: string }>();
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   if (!orgId) {
     return (
@@ -55,10 +76,21 @@ export function CrmLifecyclePage() {
   }
 
   return (
-    <CrmPipelineBoard
-      orgId={orgId}
-      pipelineType="delivery"
-      title="Client Lifecycle"
-    />
+    <>
+      <CrmPipelineBoard
+        orgId={orgId}
+        pipelineType="delivery"
+        title="Client Lifecycle"
+        onSettingsClick={() => setSettingsOpen(true)}
+      />
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Pipeline Settings</DialogTitle>
+          </DialogHeader>
+          <CrmPipelineSettings organizationId={orgId} />
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
