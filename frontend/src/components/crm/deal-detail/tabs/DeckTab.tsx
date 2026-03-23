@@ -32,7 +32,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
   const sendInvoice = useMutation({
     mutationFn: () => crmDealsApi.sendInvoice(deal.id, { due_days: 14 }),
     onSuccess: (res) => {
-      toast.success(`Invoice ${res.invoice_number} sent ($${res.amount_usd.toFixed(0)})`);
+      toast.success(`Invoice ${res.invoice_number} sent (${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(res.amount_usd)})`);
       qc.invalidateQueries({ queryKey: crmKeys.kanbanAll() });
       qc.invalidateQueries({ queryKey: crmKeys.orgKanbanAll() });
       qc.invalidateQueries({ queryKey: crmKeys.kanbanLegacy() });

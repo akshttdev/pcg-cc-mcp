@@ -13,7 +13,7 @@ import {
 import {
   ArrowRight,
   Calendar,
-  DollarSign,
+
   MoreHorizontal,
   Building2,
   Trash2,
@@ -345,8 +345,7 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
         <div className="flex items-center justify-between pt-1.5 border-t border-border/40">
           <div className="flex items-center gap-2">
             {formattedAmount && (
-              <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-green-600">
-                <DollarSign className="h-3 w-3" />
+              <span className="inline-flex items-center text-xs font-semibold text-green-600">
                 {formattedAmount}
               </span>
             )}
@@ -364,9 +363,9 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
             )}
           </div>
           {lastActivity && (
-            <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/60 shrink-0">
-              <Clock className="h-2.5 w-2.5" />
-              {lastActivity}
+            <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/60 min-w-0 truncate">
+              <Clock className="h-2.5 w-2.5 shrink-0" />
+              <span className="truncate">{lastActivity}</span>
             </span>
           )}
         </div>

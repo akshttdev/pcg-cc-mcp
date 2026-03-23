@@ -8,7 +8,7 @@ import {
   Building2,
   Edit,
   Trash2,
-  DollarSign,
+
   TrendingUp,
   CheckSquare,
   ChevronRight,
@@ -115,8 +115,7 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete, isExpanded, onT
       {/* Metric pills row */}
       <div className="flex items-center gap-2 mt-2 flex-wrap">
         {formattedAmount && (
-          <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-green-600">
-            <DollarSign className="h-3.5 w-3.5" />
+          <span className="inline-flex items-center text-xs font-semibold text-green-600">
             {formattedAmount}
           </span>
         )}
