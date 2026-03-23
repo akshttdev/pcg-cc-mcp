@@ -497,6 +497,50 @@ Replace hardcoded `getStageOwner()` (CrmPipelineBoard.tsx lines 38-66) with `sta
 - [x] Action buttons (Convert/Topsi) compact horizontal row
 **Remaining (deferred)**:
 - [ ] Command palette can't search CRM entities (INVESTMENT, 2-3 days)
+
+## Regression Test (2026-03-23)
+
+**Report**: `planning/reviews/2026-03-23--review--regression-test-pr57.md`
+**Result**: **MERGE** — 11/13 findings fixed, 2 tracked
+**Fixes applied**: SQL injection refactor, silent error logging (7 sites), task update access control, artifact size limits, agent name whitelist, stage_config parse logging, cancel window bounds, tool-call loop dedup
+**Tracked**: Non-atomic cancel-deadline race (#3), concurrent dispatch (#4), placeholder task_id FK (#10)
+
+## Deployment Instructions
+
+### Pre-merge checklist
+- [x] All CI checks pass (cargo fmt, clippy, tsc, eslint, vite build)
+- [x] E2E: 143/150 pass (2 LLM-credit-dependent, 5 skipped)
+- [x] Regression test: 11/13 fixed, MERGE recommended
+- [x] Functionality audit: 31/31 WORKING
+- [x] Experience audit: B+ grade
+
+### After merging to main
+
+1. **Database migration** — two new migrations will auto-run on server start:
+   ```
+   20260414000000_stage_config_and_flow_link.sql  — adds stage_config, crm_deal_id, cancel_deadline, retry_count, last_error columns
+   20260414000001_seed_stage_configs.sql           — seeds default stage configs for all pipeline stages
+   ```
+   Both are additive (nullable columns, idempotent). No manual intervention needed.
+
+2. **Environment variables** (optional — all have defaults):
+   ```bash
+   ENABLE_AGENT_FLOW_ENGINE=1          # Enable agent auto-execution (default: disabled)
+   AGENT_FLOW_POLL_INTERVAL=15         # Seconds between executor polls (default: 15)
+   AGENT_FLOW_MAX_CONCURRENT=5         # Max flows per tick (default: 5)
+   ```
+
+3. **Test seed update** — if using test seed, regenerate:
+   ```bash
+   ./scripts/create-test-seed.sh
+   ```
+   The script now patches schema gaps and uses TEXT UUIDs (not BLOB).
+
+4. **Git hooks** — auto-installed via `pnpm install` (prepare script). No manual setup needed.
+
+### Rollback plan
+
+All migrations are additive — NULL columns won't break existing code if reverted to pre-merge main. The agent flow engine is gated behind `ENABLE_AGENT_FLOW_ENGINE=1` (default off). To disable after deploy, unset the env var — no code revert needed.
 - [ ] Mobile-optimized kanban view (STRUCTURAL, 3-5 days)
 
 ---
