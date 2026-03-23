@@ -294,7 +294,7 @@ export function ActivityTab({ deal }: ActivityTabProps) {
 
   if (!projectId) {
     return (
-      <div className="p-5 space-y-4">
+      <div className="p-5 space-y-5">
         <div className="text-center py-8 text-sm text-muted-foreground">
           <FolderKanban className="h-8 w-8 mx-auto mb-2 opacity-30" />
           <p className="font-medium text-foreground">No project linked</p>
@@ -344,7 +344,7 @@ export function ActivityTab({ deal }: ActivityTabProps) {
   }
 
   return (
-    <div className="p-5 space-y-4">
+    <div className="p-5 space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">

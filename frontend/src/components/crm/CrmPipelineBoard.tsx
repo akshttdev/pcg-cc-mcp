@@ -268,7 +268,7 @@ export function CrmPipelineBoard({
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 border-b glass-strong shrink-0">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-5 border-b glass-strong shrink-0">
         <div className="flex items-center gap-3">
           <div className="section-header-icon !w-8 !h-8 !rounded-lg">
             <DollarSign className="h-4 w-4" />
