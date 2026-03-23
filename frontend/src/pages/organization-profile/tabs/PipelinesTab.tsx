@@ -1,12 +1,20 @@
 import { useState } from 'react';
 import { Target, TrendingUp } from 'lucide-react';
 import { CrmPipelineBoard } from '@/components/crm/CrmPipelineBoard';
+import { CrmPipelineSettings } from '@/components/crm/CrmPipelineSettings';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import type { PipelineType } from '@/types/crm';
 
 export function PipelinesTab({ orgId, defaultPipeline }: { orgId: string; defaultPipeline?: string }) {
   const [pipelineType, setPipelineType] = useState<'sales' | 'delivery'>(
     defaultPipeline === 'lifecycle' ? 'delivery' : 'sales'
   );
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
     <div className="space-y-4">
@@ -38,7 +46,16 @@ export function PipelinesTab({ orgId, defaultPipeline }: { orgId: string; defaul
         orgId={orgId}
         pipelineType={pipelineType as PipelineType}
         title={pipelineType === 'sales' ? 'Acquisition Pipeline' : 'Client Lifecycle'}
+        onSettingsClick={() => setSettingsOpen(true)}
       />
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Pipeline Settings</DialogTitle>
+          </DialogHeader>
+          <CrmPipelineSettings organizationId={orgId} />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
