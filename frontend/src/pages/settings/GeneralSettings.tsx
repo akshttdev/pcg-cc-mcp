@@ -44,6 +44,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { FormField } from '@/components/ui/form-field';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ChevronDown, Key, Loader2, Volume2 } from 'lucide-react';
@@ -235,10 +236,11 @@ export function GeneralSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="theme">
-              {t('settings.general.appearance.theme.label')}
-            </Label>
+          <FormField
+            label={t('settings.general.appearance.theme.label')}
+            htmlFor="theme"
+            description={t('settings.general.appearance.theme.helper')}
+          >
             <Select
               value={draft?.theme}
               onValueChange={(value: ThemeMode) =>
@@ -260,15 +262,13 @@ export function GeneralSettings() {
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-sm text-muted-foreground">
-              {t('settings.general.appearance.theme.helper')}
-            </p>
-          </div>
+          </FormField>
 
-          <div className="space-y-2">
-            <Label htmlFor="language">
-              {t('settings.general.appearance.language.label')}
-            </Label>
+          <FormField
+            label={t('settings.general.appearance.language.label')}
+            htmlFor="language"
+            description={t('settings.general.appearance.language.helper')}
+          >
             <Select
               value={draft?.language}
               onValueChange={(value: UiLanguage) =>
@@ -290,13 +290,13 @@ export function GeneralSettings() {
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-sm text-muted-foreground">
-              {t('settings.general.appearance.language.helper')}
-            </p>
-          </div>
+          </FormField>
 
-          <div className="space-y-2">
-            <Label htmlFor="text-size">Text Size</Label>
+          <FormField
+            label="Text Size"
+            htmlFor="text-size"
+            description="Adjust the base text size across the application. All UI elements scale proportionally."
+          >
             <Select
               value={textSize}
               onValueChange={(value: string) => setTextSize(value as TextSize)}
@@ -311,10 +311,7 @@ export function GeneralSettings() {
                 <SelectItem value="extra-large">Extra Large (20px)</SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-sm text-muted-foreground">
-              Adjust the base text size across the application. All UI elements scale proportionally.
-            </p>
-          </div>
+          </FormField>
         </CardContent>
       </Card>
 
@@ -326,10 +323,11 @@ export function GeneralSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="executor">
-              {t('settings.general.taskExecution.executor.label')}
-            </Label>
+          <FormField
+            label={t('settings.general.taskExecution.executor.label')}
+            htmlFor="executor"
+            description={t('settings.general.taskExecution.executor.helper')}
+          >
             <div className="grid grid-cols-2 gap-2">
               <Select
                 value={draft?.executor_profile?.executor ?? ''}
@@ -437,10 +435,7 @@ export function GeneralSettings() {
                 return null;
               })()}
             </div>
-            <p className="text-sm text-muted-foreground">
-              {t('settings.general.taskExecution.executor.helper')}
-            </p>
-          </div>
+          </FormField>
         </CardContent>
       </Card>
 
@@ -452,10 +447,11 @@ export function GeneralSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="editor-type">
-              {t('settings.general.editor.type.label')}
-            </Label>
+          <FormField
+            label={t('settings.general.editor.type.label')}
+            htmlFor="editor-type"
+            description={t('settings.general.editor.type.helper')}
+          >
             <Select
               value={draft?.editor.editor_type}
               onValueChange={(value: EditorType) =>
@@ -477,10 +473,7 @@ export function GeneralSettings() {
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-sm text-muted-foreground">
-              {t('settings.general.editor.type.helper')}
-            </p>
-          </div>
+          </FormField>
         </CardContent>
       </Card>
 
@@ -547,10 +540,11 @@ export function GeneralSettings() {
             <div className="flex-1 border-t border-border"></div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="github-token">
-              {t('settings.general.github.pat.label')}
-            </Label>
+          <FormField
+            label={t('settings.general.github.pat.label')}
+            htmlFor="github-token"
+            description={`${t('settings.general.github.pat.helper')}`}
+          >
             <Input
               id="github-token"
               type="password"
@@ -565,8 +559,7 @@ export function GeneralSettings() {
                 })
               }
             />
-            <p className="text-sm text-muted-foreground">
-              {t('settings.general.github.pat.helper')}{' '}
+            <p className="text-xs text-muted-foreground">
               <a
                 href="https://github.com/settings/tokens"
                 target="_blank"
@@ -576,7 +569,7 @@ export function GeneralSettings() {
                 {t('settings.general.github.pat.createTokenLink')}
               </a>
             </p>
-          </div>
+          </FormField>
       </CardContent>
     </Card>
 
@@ -611,10 +604,12 @@ export function GeneralSettings() {
             </div>
           </div>
           {draft?.notifications.sound_enabled && (
-            <div className="ml-6 space-y-2">
-              <Label htmlFor="sound-file">
-                {t('settings.general.notifications.sound.fileLabel')}
-              </Label>
+            <FormField
+              label={t('settings.general.notifications.sound.fileLabel')}
+              htmlFor="sound-file"
+              description={t('settings.general.notifications.sound.fileHelper')}
+              className="ml-6"
+            >
               <div className="flex gap-2">
                 <Select
                   value={draft.notifications.sound_file}
@@ -651,10 +646,7 @@ export function GeneralSettings() {
                   <Volume2 className="h-4 w-4" />
                 </Button>
               </div>
-              <p className="text-sm text-muted-foreground">
-                {t('settings.general.notifications.sound.fileHelper')}
-              </p>
-            </div>
+            </FormField>
           )}
           <div className="flex items-center space-x-2">
             <Checkbox

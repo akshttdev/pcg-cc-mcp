@@ -5,9 +5,10 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { StatusBadge } from '@/components/ui/status-badge';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Activity, Database, ClipboardCheck } from 'lucide-react';
 import { workflowsApi, dataSourcesApi } from '@/lib/api';
 import { workflowKeys } from '@/lib/query-keys';
@@ -62,11 +63,11 @@ export function RunsTab() {
       </div>
 
       {recentRuns.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <Activity className="h-10 w-10 mx-auto mb-3 opacity-30" />
-          <p className="text-sm font-medium">No workflow runs yet</p>
-          <p className="text-xs mt-1">Run a workflow from a data source to see execution history here.</p>
-        </div>
+        <EmptyState
+          icon={Activity}
+          title="No workflow runs yet"
+          description="Run a workflow from a data source to see execution history here."
+        />
       ) : (
         <div className="space-y-2">
           {recentRuns.map((run) => (
@@ -77,9 +78,11 @@ export function RunsTab() {
               <CardContent className="py-3 px-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <Badge variant={run.status === 'completed' ? 'default' : run.status === 'failed' ? 'destructive' : 'outline'} className="text-[10px] capitalize">
-                      {run.status}
-                    </Badge>
+                    <StatusBadge
+                      status={run.status === 'completed' ? 'success' : run.status === 'failed' ? 'error' : 'pending'}
+                      label={run.status}
+                      className="capitalize"
+                    />
                     <span className="text-sm font-medium">{run.workflow_name || run.workflow_id}</span>
                     {run.data_source_id && dsNames[run.data_source_id] && (
                       <span

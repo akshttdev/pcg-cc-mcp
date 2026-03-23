@@ -8,7 +8,6 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
@@ -16,8 +15,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { FormField } from '@/components/ui/form-field';
+import { StatusBadge } from '@/components/ui/status-badge';
+import { CardGrid } from '@/components/ui/card-grid';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Loader2, Plus, Wallet, Search, X, SortAsc, SortDesc, Mail, MessageSquare } from 'lucide-react';
 import { emailApi } from '@/lib/api';
 import {
@@ -112,14 +114,10 @@ function NoraCommunicationChannels() {
         </div>
         <div className="flex items-center gap-2">
           {emailStatus === 'connected' && (
-            <Badge variant="outline" className="bg-green-100 text-green-700 border-green-200 text-xs">
-              Connected
-            </Badge>
+            <StatusBadge status="success" label="Connected" />
           )}
           {emailStatus === 'error' && (
-            <Badge variant="outline" className="bg-red-100 text-red-700 border-red-200 text-xs">
-              Error
-            </Badge>
+            <StatusBadge status="error" label="Error" />
           )}
           <Button
             size="sm"
@@ -147,9 +145,7 @@ function NoraCommunicationChannels() {
             <p className="text-sm text-muted-foreground">Twilio SMS — Nora's phone identity</p>
           </div>
         </div>
-        <Badge variant="outline" className="bg-green-100 text-green-700 border-green-200 text-xs">
-          Active
-        </Badge>
+        <StatusBadge status="success" label="Active" />
       </div>
     </div>
   );
@@ -399,11 +395,11 @@ export function AgentSettings() {
     upsertWalletMutation,
   ]);
 
-  const agentStatusStyles: Record<string, string> = {
-    active: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-    inactive: 'bg-gray-100 text-gray-600 border-gray-200',
-    maintenance: 'bg-amber-100 text-amber-700 border-amber-200',
-    training: 'bg-blue-100 text-blue-700 border-blue-200',
+  const agentStatusToVariant: Record<string, 'success' | 'muted' | 'warning' | 'info'> = {
+    active: 'success',
+    inactive: 'muted',
+    maintenance: 'warning',
+    training: 'info',
   };
 
   if (profilesLoading) {
@@ -549,11 +545,13 @@ export function AgentSettings() {
               </AlertDescription>
             </Alert>
           ) : agentDirectory.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No registered agents yet. Seed the registry to expose Nora’s team.
-            </p>
+            <EmptyState
+              title="No registered agents"
+              description="Seed the registry to expose Nora’s team."
+              className="py-8"
+            />
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <CardGrid columns={{ sm: 2, lg: 3 }} gap={4}>
               {agentDirectory.map((agent) => {
                 const initials = agent.short_name
                   .split(' ')
@@ -561,9 +559,6 @@ export function AgentSettings() {
                   .join('')
                   .slice(0, 2)
                   .toUpperCase();
-                const statusClass =
-                  agentStatusStyles[agent.status] ||
-                  'bg-gray-100 text-gray-600 border-gray-200';
                 return (
                   <div
                     key={agent.id}
@@ -572,12 +567,11 @@ export function AgentSettings() {
                   >
                     {/* Status indicator */}
                     <div className="absolute top-3 right-3 z-10">
-                      <Badge
-                        variant="outline"
-                        className={`text-xs capitalize backdrop-blur-sm ${statusClass}`}
-                      >
-                        {agent.status}
-                      </Badge>
+                      <StatusBadge
+                        status={agentStatusToVariant[agent.status] || 'muted'}
+                        label={agent.status}
+                        className="capitalize backdrop-blur-sm"
+                      />
                     </div>
 
                     {/* Agent image */}
@@ -617,7 +611,7 @@ export function AgentSettings() {
                   </div>
                 );
               })}
-            </div>
+            </CardGrid>
           )}
         </CardContent>
       </Card>
@@ -668,9 +662,13 @@ export function AgentSettings() {
               <span>Loading agent wallets…</span>
             </div>
           ) : sortedWallets.length === 0 ? (
-            <div className="text-sm text-muted-foreground">
-              No agent budgets yet. Create one to cap spending for a profile.
-            </div>
+            <EmptyState
+              icon={Wallet}
+              title="No agent budgets"
+              description="Create one to cap spending for a profile."
+              action={availableProfiles.length ? { label: 'Add Budget', onClick: handleAddBudget } : undefined}
+              className="py-8"
+            />
           ) : (
             <div className="overflow-x-auto">
               <Table>
@@ -773,8 +771,7 @@ export function AgentSettings() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="budget-profile">Agent profile</Label>
+            <FormField label="Agent profile" htmlFor="budget-profile">
               <Select
                 value={budgetProfileKey}
                 onValueChange={setBudgetProfileKey}
@@ -801,10 +798,9 @@ export function AgentSettings() {
                   )}
                 </SelectContent>
               </Select>
-            </div>
+            </FormField>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="budget-display-name">Display name</Label>
+            <FormField label="Display name" htmlFor="budget-display-name">
               <Input
                 id="budget-display-name"
                 value={budgetDisplayName}
@@ -812,10 +808,9 @@ export function AgentSettings() {
                 disabled={walletBusy}
                 placeholder={currentProfileOption?.label || 'Agent display name'}
               />
-            </div>
+            </FormField>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="budget-limit">Monthly budget (credits)</Label>
+            <FormField label="Monthly budget (credits)" htmlFor="budget-limit">
               <Input
                 id="budget-limit"
                 type="number"
@@ -824,7 +819,7 @@ export function AgentSettings() {
                 onChange={(event) => setBudgetValue(event.target.value)}
                 disabled={walletBusy}
               />
-            </div>
+            </FormField>
 
             {currentWallet && (
               <div className="space-y-3">

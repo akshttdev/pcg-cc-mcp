@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
+import { CardGrid } from '@/components/ui/card-grid';
 import {
   Play,
   Pencil,
@@ -129,7 +130,7 @@ export function WorkflowCardGrid({
   }
 
   return (
-    <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+    <CardGrid columns={{ sm: 2, lg: 3 }} gap={3}>
       {workflows.map((wf) => {
         const nodeCount = wf.nodes?.length ?? 0;
         const isSelected = selectedId === wf.id;
@@ -258,6 +259,6 @@ export function WorkflowCardGrid({
           </Card>
         );
       })}
-    </div>
+    </CardGrid>
   );
 }
