@@ -142,6 +142,7 @@ function TabPanel({
             value={tab.value}
             disabled={tab.disabled}
             className={cn('relative', triggerClassName)}
+            data-testid={`${testId}-${tab.value}`}
           >
             {tab.icon && <span className="mr-1.5">{tab.icon}</span>}
             {tab.label}
