@@ -275,20 +275,48 @@ components/nora/NoraAssistant/
 | D: Typography | 634 arbitrary sizes → 0, 196 font-bold → 69 | 196 | 0 (balanced) |
 | E: File Extraction | 10 directories, ~50 sub-components | 58 | +708 (restructure) |
 | Bonus: any cleanup | 50 files, 0 warnings remaining | 54 | +127 |
+| Tier1 merge | CrmPipelineSettings re-extracted (895→396) + conventions applied | 6 | +98 |
+| Final cleanup | 5 text sizes in StageConfigEditor + gitignore + screenshots | 8 | +3 |
 
-### QA Results
+### QA Results (final pass — 2026-03-23)
 | Check | Status |
 |-------|--------|
 | cargo fmt | PASS |
 | cargo clippy | PASS |
 | tsc | PASS (0 errors) |
-| eslint | PASS (0 errors, 679 warnings — down from 807) |
+| eslint | PASS (0 errors, 684 warnings — down from 807) |
 | generate-types | PASS |
 | no-explicit-any | PASS (0 warnings, down from 31) |
 | Conflict markers | 0 |
 | Dead imports | 0 |
-| Regression test | MERGE recommended |
+| Arbitrary text sizes | 0 (was 634) |
+| font-bold | 69 intentional (was 196) |
+| size="icon" | 24 intentional (was 128) |
+| bg-white without dark | 21 intentional (all brand guide/toggle/mockup) |
+| Screenshot leaks | 0 (added *.png to .gitignore) |
+| Regression test | MERGE recommended — 3 passes, 0 issues |
 | Functionality audit | SHIP — all 13 deliverables WORKING |
+| Experience audit | A- — 0 regressions, 0 visual breaks |
+
+### Shared Component Adoption
+| Component | Adopters |
+|-----------|----------|
+| IconButton | 51 |
+| EmptyState | 40 |
+| CardGrid | 32 |
+| FormField | 20 |
+| StatusBadge | 9 |
+| SectionHeader | 6 |
+| getStatusInfo | 5 |
+| MetricCard | 2 |
+| ListItem | 2 |
 
 ### Reports
 - `planning/reviews/2026-03-23--review--functionality-audit-componentization.md`
+- `planning/reviews/2026-03-23--review--experience-audit-componentization.md`
+
+### Remaining (deferred to backlog)
+- 3 pages over 700 lines (organization-profile 766, workflows 661, project-tasks 660)
+- Form library adoption research (S0-12b)
+- any-type cleanup in non-sprint files (S0-13b — now 0 warnings)
+- ESLint max-warnings reduction (S0-13c — now 684, was 807)
