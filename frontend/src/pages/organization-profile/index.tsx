@@ -292,8 +292,17 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
 
   if (!org || !orgId) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-muted-foreground">Organisation not found.</div>
+      <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
+        <Building2 className="w-12 h-12 text-muted-foreground/50" />
+        <div>
+          <h2 className="text-lg font-semibold">Organization not found</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            This organization doesn't exist or you don't have access to it.
+          </p>
+        </div>
+        <Link to="/projects" className="text-sm text-primary hover:underline">
+          ← Back to your projects
+        </Link>
       </div>
     );
   }
@@ -310,7 +319,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
         )}
         <div className="bg-card/50 backdrop-blur-sm">
           <div className="max-w-[1600px] mx-auto px-6 py-4">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 flex-wrap">
               <Link to="/projects" className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
                 <ArrowLeft className="h-5 w-5" />
               </Link>
@@ -371,7 +380,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 )}
               </div>
 
-              <div className="ml-auto flex items-center gap-2 shrink-0">
+              <div className="ml-auto flex items-center gap-2 shrink-0 flex-wrap">
                 <Badge variant={org.is_active ? 'default' : 'secondary'} className="text-xs">
                   {org.is_active ? 'Active' : 'Inactive'}
                 </Badge>
@@ -460,8 +469,8 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
       <div className="flex-1 overflow-auto">
         <div className="max-w-[1600px] mx-auto px-6 py-5">
           <Tabs value={tabFromUrl} onValueChange={setTab}>
-            <div className="flex items-center justify-between mb-6">
-            <TabsList>
+            <div className="flex items-center justify-between mb-6 gap-2">
+            <TabsList className="overflow-x-auto max-w-full">
               <TabsTrigger value="overview">
                 <LayoutGrid className="h-4 w-4 mr-2" />
                 Overview

@@ -217,13 +217,13 @@ export function ProjectList() {
 
   return (
     <div className="space-y-6 p-8 pb-16 md:pb-8 h-full overflow-auto">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">{t('title')}</h1>
           <p className="text-muted-foreground">{t('subtitle')}</p>
         </div>
         {isAdmin && (
-          <Button onClick={handleCreateProject}>
+          <Button onClick={handleCreateProject} className="self-start sm:self-auto">
             <Plus className="mr-2 h-4 w-4" />
             {t('createProject')}
           </Button>

@@ -302,44 +302,8 @@ async fn main() -> Result<(), VibeKanbanError> {
         tracing::info!("APN auto-start disabled (set AUTO_START_APN=true to enable)");
     }
 
-    // Start APN peer cleanup service (deduplicates and marks stale peers inactive)
-    let deployment_for_cleanup = deployment.clone();
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60)); // Run every minute
-        loop {
-            interval.tick().await;
-
-            // Clean up duplicate peers
-            match db::models::peer_node::PeerNode::cleanup_duplicates(
-                &deployment_for_cleanup.db().pool,
-            )
-            .await
-            {
-                Ok(count) if count > 0 => {
-                    tracing::info!("APN: Marked {} duplicate peers as inactive", count);
-                }
-                Ok(_) => {}
-                Err(e) => {
-                    tracing::error!("APN: Failed to cleanup duplicates: {}", e);
-                }
-            }
-
-            // Mark stale peers as inactive
-            match db::models::peer_node::PeerNode::mark_stale_inactive(
-                &deployment_for_cleanup.db().pool,
-            )
-            .await
-            {
-                Ok(count) if count > 0 => {
-                    tracing::info!("APN: Marked {} stale peers as inactive", count);
-                }
-                Ok(_) => {}
-                Err(e) => {
-                    tracing::error!("APN: Failed to mark stale peers: {}", e);
-                }
-            }
-        }
-    });
+    // APN peer cleanup — migrated to BackgroundWorker (workers/background_tasks.rs)
+    // Spawned via registry.spawn_worker(ApnPeerCleanup) below.
 
     // Spawn CRM workflow automations (runs hourly)
     routes::automations::spawn_automation_loop(deployment.db().pool.clone());
@@ -365,194 +329,42 @@ async fn main() -> Result<(), VibeKanbanError> {
     // Spawn OSS Library Listener (polls GitHub releases hourly)
     routes::oss_listener_bg::spawn_oss_listener(deployment.db().pool.clone());
 
-    // Spawn VIBE deposit watcher (polls platform revenue wallet every 30s)
-    {
-        let pool_for_watcher = deployment.db().pool.clone();
-        tokio::spawn(async move {
-            let revenue_addr = match std::env::var("PLATFORM_REVENUE_ADDRESS") {
-                Ok(a) if !a.is_empty() => a,
-                _ => {
-                    tracing::warn!(
-                        "[VIBE] PLATFORM_REVENUE_ADDRESS not set; deposit watcher disabled"
-                    );
-                    return;
-                }
-            };
+    // Spawn VIBE deposit watcher (BackgroundWorker — graceful shutdown)
+    registry
+        .spawn_worker(server::workers::background_tasks::VibeDepositWatcher::new(
+            deployment.db().pool.clone(),
+        ))
+        .await;
 
-            let aptos = services::services::aptos::AptosService::testnet();
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
-            tracing::info!(
-                "[VIBE] Deposit watcher started for revenue address {}",
-                &revenue_addr[..10.min(revenue_addr.len())]
-            );
+    // Spawn VIBE withdrawal executor (BackgroundWorker — graceful shutdown)
+    registry
+        .spawn_worker(
+            server::workers::background_tasks::VibeWithdrawalExecutor::new(
+                deployment.db().pool.clone(),
+            ),
+        )
+        .await;
 
-            loop {
-                interval.tick().await;
-                match aptos.get_transactions(&revenue_addr, Some(25)).await {
-                    Ok(txns) => {
-                        for tx in txns.iter().filter(|t| t.success) {
-                            match db::models::vibe_deposit::VibeDeposit::find_by_tx_hash(
-                                &pool_for_watcher,
-                                &tx.hash,
-                            )
-                            .await
-                            {
-                                Ok(Some(_)) => {} // already recorded
-                                _ => {
-                                    tracing::info!(
-                                        "[VIBE] Detected transfer to revenue wallet: hash={}, sender={}",
-                                        tx.hash,
-                                        tx.sender
-                                    );
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => tracing::error!("[VIBE] Deposit watcher error: {e}"),
-                }
-            }
-        });
-    }
+    // Spawn APN peer cleanup (BackgroundWorker — graceful shutdown)
+    registry
+        .spawn_worker(server::workers::background_tasks::ApnPeerCleanup::new(
+            deployment.db().pool.clone(),
+        ))
+        .await;
 
-    // Spawn VIBE withdrawal executor (processes pending withdrawals every 60s)
-    {
-        let pool_for_withdrawals = deployment.db().pool.clone();
-        tokio::spawn(async move {
-            let private_key = match std::env::var("PLATFORM_REVENUE_PRIVATE_KEY") {
-                Ok(k) if !k.is_empty() => k,
-                _ => {
-                    tracing::warn!(
-                        "[VIBE] PLATFORM_REVENUE_PRIVATE_KEY not set; withdrawal executor disabled"
-                    );
-                    return;
-                }
-            };
-            let revenue_addr = match std::env::var("PLATFORM_REVENUE_ADDRESS") {
-                Ok(a) if !a.is_empty() => a,
-                _ => {
-                    tracing::warn!(
-                        "[VIBE] PLATFORM_REVENUE_ADDRESS not set; withdrawal executor disabled"
-                    );
-                    return;
-                }
-            };
+    // Spawn meeting stale-session cleanup (BackgroundWorker — graceful shutdown)
+    registry
+        .spawn_worker(
+            server::workers::background_tasks::MeetingSessionCleanup::new(
+                deployment.db().pool.clone(),
+            ),
+        )
+        .await;
 
-            let aptos = services::services::aptos::AptosService::testnet();
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
-            tracing::info!("[VIBE] Withdrawal executor started");
+    // VIBE deposit watcher — migrated to BackgroundWorker (workers/background_tasks.rs)
 
-            loop {
-                interval.tick().await;
-                let pending = match db::models::vibe_deposit::VibeWithdrawal::list_pending(
-                    &pool_for_withdrawals,
-                    5,
-                )
-                .await
-                {
-                    Ok(p) => p,
-                    Err(e) => {
-                        tracing::error!("[VIBE] Failed to list pending withdrawals: {e}");
-                        continue;
-                    }
-                };
-                for withdrawal in pending {
-                    let _ = db::models::vibe_deposit::VibeWithdrawal::mark_processing(
-                        &pool_for_withdrawals,
-                        withdrawal.id,
-                    )
-                    .await;
-                    match aptos
-                        .transfer_vibe(
-                            &private_key,
-                            &revenue_addr,
-                            &withdrawal.destination_address,
-                            withdrawal.amount_vibe as u64,
-                        )
-                        .await
-                    {
-                        Ok(resp) if resp.success => {
-                            let _ = db::models::vibe_deposit::VibeWithdrawal::mark_completed(
-                                &pool_for_withdrawals,
-                                withdrawal.id,
-                                &resp.tx_hash,
-                            )
-                            .await;
-                            tracing::info!(
-                                "[VIBE] Withdrawal {} completed: tx={}",
-                                withdrawal.id,
-                                resp.tx_hash
-                            );
-                        }
-                        Ok(resp) => {
-                            let _ = db::models::vibe_deposit::VibeWithdrawal::mark_failed(
-                                &pool_for_withdrawals,
-                                withdrawal.id,
-                                &resp.message,
-                            )
-                            .await;
-                        }
-                        Err(e) => {
-                            let _ = db::models::vibe_deposit::VibeWithdrawal::mark_failed(
-                                &pool_for_withdrawals,
-                                withdrawal.id,
-                                &e.to_string(),
-                            )
-                            .await;
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    // Spawn meeting stale-session cleanup (runs every 2 minutes)
-    // Any meeting with no heartbeat for 5+ minutes is auto-ended.
-    {
-        let pool_for_meetings = deployment.db().pool.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(120));
-            tracing::info!("[MEETING] Stale-session cleanup started (5-min timeout)");
-            loop {
-                interval.tick().await;
-                let stale = match db::models::meeting_session::MeetingSession::find_stale_active(
-                    &pool_for_meetings,
-                    300, // 5 minutes
-                )
-                .await
-                {
-                    Ok(s) => s,
-                    Err(e) => {
-                        tracing::error!("[MEETING] Failed to query stale sessions: {e}");
-                        continue;
-                    }
-                };
-                for session in stale {
-                    match sqlx::query(
-                        r#"UPDATE meeting_sessions
-                           SET status = 'ended',
-                               ended_at = datetime('now','subsec'),
-                               duration_seconds = CAST(unixepoch('now') - unixepoch(started_at) AS INTEGER),
-                               updated_at = datetime('now','subsec')
-                           WHERE id = ?"#,
-                    )
-                    .bind(&session.id)
-                    .execute(&pool_for_meetings)
-                    .await
-                    {
-                        Ok(_) => tracing::info!(
-                            "[MEETING] Auto-ended stale session {} (project={})",
-                            session.id,
-                            session.project_id
-                        ),
-                        Err(e) => tracing::error!(
-                            "[MEETING] Failed to auto-end session {}: {e}",
-                            session.id
-                        ),
-                    }
-                }
-            }
-        });
-    }
+    // VIBE withdrawal executor — migrated to BackgroundWorker (workers/background_tasks.rs)
+    // Meeting stale-session cleanup — migrated to BackgroundWorker (workers/background_tasks.rs)
 
     let app_router = routes::router(deployment);
 

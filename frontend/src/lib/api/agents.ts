@@ -23,10 +23,7 @@ export const agentsApi = {
   // List all agents
   list: async (): Promise<AgentWithParsedFields[]> => {
     const response = await makeRequest('/api/agents');
-    if (!response.ok) {
-      throw new ApiError('Failed to load agents', response.status, response);
-    }
-    return response.json();
+    return handleApiResponse<AgentWithParsedFields[]>(response);
   },
 
   // Search agents with filters
@@ -60,19 +57,13 @@ export const agentsApi = {
   // Get agent by ID
   getById: async (agentId: string): Promise<AgentWithParsedFields> => {
     const response = await makeRequest(`/api/agents/${agentId}`);
-    if (!response.ok) {
-      throw new ApiError('Failed to load agent', response.status, response);
-    }
-    return response.json();
+    return handleApiResponse<AgentWithParsedFields>(response);
   },
 
   // Get agent by name
   getByName: async (name: string): Promise<AgentWithParsedFields> => {
     const response = await makeRequest(`/api/agents/by-name/${encodeURIComponent(name)}`);
-    if (!response.ok) {
-      throw new ApiError('Failed to load agent', response.status, response);
-    }
-    return response.json();
+    return handleApiResponse<AgentWithParsedFields>(response);
   },
 
   // Create a new agent
@@ -81,10 +72,7 @@ export const agentsApi = {
       method: 'POST',
       body: JSON.stringify(agent),
     });
-    if (!response.ok) {
-      throw new ApiError('Failed to create agent', response.status, response);
-    }
-    return response.json();
+    return handleApiResponse<AgentWithParsedFields>(response);
   },
 
   // Update an agent
@@ -93,10 +81,7 @@ export const agentsApi = {
       method: 'PUT',
       body: JSON.stringify(agent),
     });
-    if (!response.ok) {
-      throw new ApiError('Failed to update agent', response.status, response);
-    }
-    return response.json();
+    return handleApiResponse<AgentWithParsedFields>(response);
   },
 
   // Delete an agent
@@ -104,9 +89,7 @@ export const agentsApi = {
     const response = await makeRequest(`/api/agents/${agentId}`, {
       method: 'DELETE',
     });
-    if (!response.ok) {
-      throw new ApiError('Failed to delete agent', response.status, response);
-    }
+    await handleApiResponse<void>(response);
   },
 
   // Seed core agents (Nora, Maci, Editron)
@@ -114,10 +97,7 @@ export const agentsApi = {
     const response = await makeRequest('/api/agents/seed', {
       method: 'POST',
     });
-    if (!response.ok) {
-      throw new ApiError('Failed to seed agents', response.status, response);
-    }
-    return response.json();
+    return handleApiResponse<AgentWithParsedFields[]>(response);
   },
 
   // Update agent status
@@ -126,10 +106,7 @@ export const agentsApi = {
       method: 'PUT',
       body: JSON.stringify({ status }),
     });
-    if (!response.ok) {
-      throw new ApiError('Failed to update agent status', response.status, response);
-    }
-    return response.json();
+    return handleApiResponse<AgentWithParsedFields>(response);
   },
 
   // Assign wallet to agent
@@ -138,10 +115,7 @@ export const agentsApi = {
       method: 'PUT',
       body: JSON.stringify({ wallet_address: walletAddress }),
     });
-    if (!response.ok) {
-      throw new ApiError('Failed to assign wallet', response.status, response);
-    }
-    return response.json();
+    return handleApiResponse<AgentWithParsedFields>(response);
   },
 
   // Chat with an agent
@@ -150,10 +124,7 @@ export const agentsApi = {
       method: 'POST',
       body: JSON.stringify(request),
     });
-    if (!response.ok) {
-      throw new ApiError('Failed to chat with agent', response.status, response);
-    }
-    return response.json();
+    return handleApiResponse<AgentChatResponse>(response);
   },
 
   // Chat with an agent (streaming)

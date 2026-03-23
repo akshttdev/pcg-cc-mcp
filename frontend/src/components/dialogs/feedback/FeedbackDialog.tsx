@@ -83,6 +83,7 @@ export const FeedbackDialog = NiceModal.create(({ defaultType }: { defaultType?:
   const modal = useModal();
   const [type, setType] = useState<FeedbackType>(defaultType ?? 'bug');
   const [title, setTitle] = useState('');
+
   const [description, setDescription] = useState('');
   const [email, setEmail] = useState('');
   const [severity, setSeverity] = useState<
@@ -98,10 +99,10 @@ export const FeedbackDialog = NiceModal.create(({ defaultType }: { defaultType?:
   const [expectedBehavior, setExpectedBehavior] = useState('');
   const [frustrationLevel, setFrustrationLevel] = useState<number>(3);
 
-  // Reset form state when modal opens
+  // Reset form state when modal opens — use defaultType if provided (e.g. "Report Friction" button)
   useEffect(() => {
     if (modal.visible) {
-      setType('bug');
+      setType(defaultType ?? 'bug');
       setTitle('');
       setDescription('');
       setEmail('');
@@ -114,7 +115,7 @@ export const FeedbackDialog = NiceModal.create(({ defaultType }: { defaultType?:
       setExpectedBehavior('');
       setFrustrationLevel(3);
     }
-  }, [modal.visible]);
+  }, [modal.visible, defaultType]);
 
   // Convert file to base64
   const handleFileSelect = useCallback(
@@ -238,24 +239,35 @@ export const FeedbackDialog = NiceModal.create(({ defaultType }: { defaultType?:
                 >
                   Cancel
                 </Button>
-                <Button
-                  type="submit"
-                  disabled={
-                    isSubmitting || !title.trim() || !description.trim()
-                  }
-                >
-                  {isSubmitting ? (
-                    <>
-                      <span className="animate-spin mr-2">&#9203;</span>
-                      Submitting...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="h-4 w-4 mr-2" />
-                      Submit Feedback
-                    </>
+                <div className="flex flex-col items-end gap-1">
+                  <Button
+                    type="submit"
+                    disabled={
+                      isSubmitting || !title.trim() || !description.trim()
+                    }
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <span className="animate-spin mr-2">&#9203;</span>
+                        Submitting...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4 mr-2" />
+                        Submit Feedback
+                      </>
+                    )}
+                  </Button>
+                  {!isSubmitting && (!title.trim() || !description.trim()) && (
+                    <p className="text-[11px] text-muted-foreground">
+                      {!title.trim() && !description.trim()
+                        ? 'Title and description required'
+                        : !title.trim()
+                          ? 'Title required'
+                          : 'Description required'}
+                    </p>
                   )}
-                </Button>
+                </div>
               </>
             }
           >

@@ -5,6 +5,7 @@ use axum::{
     response::Json as ResponseJson,
     routing::{delete, get, patch, post},
 };
+use db::DbUuid;
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
@@ -29,9 +30,7 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
 #[derive(Debug, Serialize, Deserialize, TS, FromRow)]
 #[ts(export)]
 pub struct UserListItem {
-    #[ts(type = "string")]
-    #[sqlx(try_from = "Vec<u8>")]
-    pub id: Uuid,
+    pub id: DbUuid,
     pub username: String,
     pub email: String,
     pub full_name: String,
@@ -45,9 +44,7 @@ pub struct UserListItem {
 #[derive(Debug, Serialize, Deserialize, TS, FromRow)]
 #[ts(export)]
 pub struct UserDetail {
-    #[ts(type = "string")]
-    #[sqlx(try_from = "Vec<u8>")]
-    pub id: Uuid,
+    pub id: DbUuid,
     pub username: String,
     pub email: String,
     pub full_name: String,

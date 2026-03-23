@@ -1,10 +1,10 @@
 # Tier 1 Phase 0 Sprint — Foundation & Dogfood Readiness
 
 **Date**: 2026-03-19
-**Branch**: `pr/55-agent-engine` (consolidated from `feature/2026-03-19--tier1-phase0`)
-**Worktree**: `/Users/mediamonsters/topos/pcg-cc-mcp/.claude/worktrees/main-worktree`
+**Branch**: `feature/2026-03-19--tier1-phase0` (working branch)
+**Worktree**: `/Users/mediamonsters/topos/pcg-cc-mcp` (root)
 **Base**: `main`
-**Status**: PR #53 MERGED ✅, PR #54 MERGED ✅, PR #55 in CI (clippy cleanup in progress)
+**Status**: COMPLETE — PR #53 ✅, PR #54 ✅, PR #55 ✅ — all merged to main
 **Goal**: Fix regressions, harden CI, build Agent Flow Engine foundation, enable internal dev workflow dogfooding
 **Team**: 2-3 devs + Claude Code
 **Duration**: Flexible (ship when done)
@@ -653,6 +653,55 @@ Inline stage-trigger agents (Scout, Astra, Cash, Lux) coexist with engine in Pha
 11. **Files table**: `rustfmt.toml` changed from "Create" to "Modify" (already exists with import settings)
 12. **Gap analysis**: Background operation count corrected to ~14 (no PR Monitor Service exists)
 13. **Item #3**: Stash verified — `stash@{0}` contains expected 3 files + 654 auto-reformatted to discard. Added `pnpm install` step.
+
+---
+
+## Functionality Audit (2026-03-21)
+
+**Overall**: SHIP WITH CAVEATS
+**Report**: `planning/reviews/2026-03-21--review--functionality-audit.md`
+**Features**: 4 WORKING, 6 PARTIAL, 2 STUB, 0 NOT WIRED
+**Action Items**: 2 Must Fix, 5 Should Fix, 4 Nice to Have
+**Key Finding**: F10 (cost bridge) marked DONE but frontend never calls `costsApi` — `ai-usage.tsx` still uses `tokenUsageApi`
+
+---
+
+## Experience Audit v1 (2026-03-21)
+
+**Report**: `planning/reviews/2026-03-21--review--experience-audit.md`
+**Blockers**: 0 | **Pain Points**: 4 | **Friction**: 8 | **Polish**: 4
+**Quick Wins**: 9 identified | **Investments**: 3 identified
+**Journey Grades**: J1 AI Usage: D, J2 Friction Report: B, J3 Agent Flows: B, J4 CRM Pipeline: A, General IA: C
+**Top Issue**: Sidebar cognitive overload (50+ items, 8 groups) — structural redesign recommended
+
+## Experience Audit v2 (2026-03-21) — Interactive Testing with Actor Classification
+
+**Report**: `planning/reviews/2026-03-21--review--experience-audit-v2.md`
+**Blockers**: 1 | **Pain Points**: 4 | **Friction**: 6 | **Polish**: 3
+**Quick Wins**: 7 identified | **Investments**: 3 identified
+**Journey Grades**: J1 AI Usage: D, J2 Friction Report: A, J3 Clarification: N/A, J4 Agent Flows: B, J5 Deal Stages: F, J6 Access Control: D
+**#1 BLOCKER**: Deal stage transitions — drag/click/context menu all non-functional. DnD fires but handler not wired to backend.
+**Key method improvement**: Actor classification (USER/AGENT/HYBRID) + FIND/DO/OBSERVE/VERIFY/BREAK scripts caught the stage transition blocker that page-only testing missed.
+
+## UX Quick Wins (2026-03-21) — 31 items across 5 mini sprints
+
+**Plan**: `planning/2026-03-21--plan--ux-quick-wins-sprint.md`
+**Status**: COMPLETE — all low-to-medium audit findings resolved
+**Items**: 28 fixes + 3 regression fixes = 31 total
+**Highlights**:
+- CRM deal stage transitions: 3 working methods (context menu, clickable stage bar, drag-and-drop)
+- Sidebar: non-active orgs collapsed, "Views & Management" split into 3 labeled groups
+- Backend: BackgroundWorker migration (4 tasks), webhook cooldown race fixed, input validation
+- Accessibility: aria-labels, keyboard shortcut (Shift+F), mobile responsive layout
+- Code quality: 300+ lines dead code removed, warning logs on swallowed errors
+
+## Regression Test (2026-03-21)
+
+**Report**: `planning/reviews/2026-03-21--review--regression-test.md`
+**Result**: MERGE recommended — 0 critical, 2 high (fixed), 1 medium (fixed), 2 low (fixed)
+**All findings resolved.**
+
+---
 
 ### Decisions Resolved (post-expansion)
 1. ~~uuid::Uuid check~~ → Verified: all 6 still present, fix proceeds as planned

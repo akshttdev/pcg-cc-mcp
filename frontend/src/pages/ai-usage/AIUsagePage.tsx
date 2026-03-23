@@ -40,9 +40,13 @@ import type { DailyTrendEntry } from './CostTrendChart';
 type Tab = 'overview' | 'providers' | 'models' | 'projects' | 'agents';
 
 export function AIUsagePage() {
-  const { effectiveOrgId } = useOrganization();
+  const { effectiveOrgId: contextOrgId, organizations, isLoading: orgLoading } = useOrganization();
+  const [selectedOrgId, setSelectedOrgId] = useState<string | undefined>(undefined);
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [days, setDays] = useState<number>(7);
+
+  // Use context org, or user-selected org, or first available org
+  const effectiveOrgId = contextOrgId ?? selectedOrgId ?? organizations[0]?.id;
 
   const { data: costSummary, isLoading: summaryLoading, refetch: refetchSummary } = useQuery({
     queryKey: costKeys.orgSummary(effectiveOrgId ?? '', days),
@@ -131,6 +135,13 @@ export function AIUsagePage() {
   const isLoading = summaryLoading || dailyLoading || providerLoading || modelLoading || projectLoading || agentLoading;
 
   if (!effectiveOrgId) {
+    if (orgLoading) {
+      return (
+        <div className="container mx-auto p-6 max-w-6xl flex items-center justify-center min-h-[200px]">
+          <Loader />
+        </div>
+      );
+    }
     return (
       <div className="container mx-auto p-6 max-w-6xl">
         <div className="flex items-center gap-2 mb-4">
@@ -139,7 +150,7 @@ export function AIUsagePage() {
         </div>
         <Card>
           <CardContent className="p-8 text-center">
-            <p className="text-muted-foreground">Select an organization to view costs.</p>
+            <p className="text-muted-foreground">No organizations found. Create an organization to start tracking AI costs.</p>
           </CardContent>
         </Card>
       </div>
@@ -160,6 +171,18 @@ export function AIUsagePage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {organizations.length > 1 && (
+            <Select value={effectiveOrgId} onValueChange={setSelectedOrgId}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="Organization" />
+              </SelectTrigger>
+              <SelectContent>
+                {organizations.map((org) => (
+                  <SelectItem key={org.id} value={org.id}>{org.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
             <SelectTrigger className="w-32">
               <SelectValue />

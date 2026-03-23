@@ -89,6 +89,9 @@ pub struct CrmPipelineStage {
     pub auto_move_after_days: Option<i32>,
     pub notify_on_enter: Option<i32>,
     pub stage_type: Option<String>,
+    /// JSON-serialized StageConfig for data-driven pipeline behavior
+    #[sqlx(default)]
+    pub stage_config: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -138,6 +141,7 @@ pub struct UpdateCrmPipelineStage {
     pub is_closed: Option<bool>,
     pub is_won: Option<bool>,
     pub probability: Option<i32>,
+    pub stage_config: Option<String>,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -654,6 +658,7 @@ impl CrmPipelineStage {
                 is_closed = COALESCE(?6, is_closed),
                 is_won = COALESCE(?7, is_won),
                 probability = COALESCE(?8, probability),
+                stage_config = COALESCE(?9, stage_config),
                 updated_at = datetime('now', 'subsec')
             WHERE id = ?1
             RETURNING *
@@ -667,6 +672,7 @@ impl CrmPipelineStage {
         .bind(is_closed)
         .bind(is_won)
         .bind(data.probability)
+        .bind(&data.stage_config)
         .fetch_optional(pool)
         .await?
         .ok_or(CrmPipelineError::StageNotFound)

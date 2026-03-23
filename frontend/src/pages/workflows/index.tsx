@@ -213,6 +213,13 @@ export function WorkflowsPage() {
                   <Zap className="h-3.5 w-3.5 mr-1" />
                   Automations
                 </TabsTrigger>
+                <TabsTrigger value="flows">
+                  <History className="h-3.5 w-3.5 mr-1" />
+                  Agent Flows
+                  {agentFlows.length > 0 && (
+                    <Badge variant="secondary" className="ml-1.5 text-[9px]">{agentFlows.length}</Badge>
+                  )}
+                </TabsTrigger>
               </TabsList>
 
               <DropdownMenu>
@@ -240,13 +247,6 @@ export function WorkflowsPage() {
                     Recent Executions
                     {completedExecutions.length > 0 && (
                       <Badge variant="secondary" className="ml-auto text-[9px]">{completedExecutions.length}</Badge>
-                    )}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setActiveTab('flows')}>
-                    <History className="h-3.5 w-3.5 mr-2" />
-                    Agent Flows
-                    {agentFlows.length > 0 && (
-                      <Badge variant="secondary" className="ml-auto text-[9px]">{agentFlows.length}</Badge>
                     )}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setActiveTab('research')}>
@@ -399,7 +399,9 @@ export function WorkflowsPage() {
               <div className="empty-state h-full">
                 <History className="empty-state-icon" />
                 <p className="empty-state-title">No Agent Flows</p>
-                <p className="empty-state-description">Historical agent execution flows appear here</p>
+                <p className="empty-state-description">
+                  Agent flows are created when AI agents work on tasks. Assign a task to an agent from any project board to get started.
+                </p>
               </div>
             ) : (
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 animate-stagger">

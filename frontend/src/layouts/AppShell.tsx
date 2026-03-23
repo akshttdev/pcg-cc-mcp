@@ -27,6 +27,7 @@ import { CommandPalette } from '@/components/command/CommandPalette';
 import { KeyboardShortcutsOverlay } from '@/components/keyboard-shortcuts/KeyboardShortcutsOverlay';
 import { ErrorDisplay } from '@/components/ErrorDisplay';
 import { ViewAsBanner } from '@/components/layout/ViewAsBanner';
+import { useKeyReportFriction, Scope } from '@/keyboard';
 
 // Shared suspense fallback
 export const PageLoader = () => (
@@ -46,6 +47,12 @@ export function AppShell() {
     setSidebarCollapsed,
     contentFullscreen,
   } = useViewStore();
+
+  // Shift+F → open friction report dialog
+  useKeyReportFriction(
+    () => NiceModal.show('feedback', { defaultType: 'friction' }),
+    { scope: Scope.GLOBAL }
+  );
 
   // On mobile, toggle sidebar means show/hide the overlay sidebar
   // We reuse sidebarCollapsed: collapsed=true means hidden on mobile
@@ -180,11 +187,11 @@ export function AppShell() {
                 {!showNavbar ? null : (
                   <div
                     className={`
-                    lg:relative lg:flex lg:shrink-0
+                    lg:relative lg:flex lg:shrink-0 transition-all duration-200 overflow-hidden
                     ${
                       sidebarCollapsed
-                        ? 'hidden lg:flex'
-                        : 'absolute top-0 left-0 bottom-0 z-50 lg:relative lg:z-auto flex'
+                        ? 'hidden lg:flex lg:w-14'
+                        : 'absolute top-0 left-0 bottom-0 z-50 lg:relative lg:z-auto flex lg:w-72'
                     }
                   `}
                   >
@@ -192,7 +199,7 @@ export function AppShell() {
                   </div>
                 )}
 
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1 overflow-y-auto pb-24 lg:pb-0">
                   <ViewAsBanner />
                   <PageErrorBoundary label="Page">
                     <Suspense fallback={<PageLoader />}>

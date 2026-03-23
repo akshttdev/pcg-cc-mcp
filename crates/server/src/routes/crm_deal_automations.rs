@@ -1417,3 +1417,80 @@ pub async fn link_deal_transcript(
 
     Ok(Json(ApiResponse::success(record)))
 }
+
+// ── POST /crm/deals/:id/generate-invite ──────────────────────────────────────
+/// Generate a token-based invite link for the deal's contact person.
+/// Returns the invite URL for clipboard copy.
+pub async fn generate_deal_invite(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let deal_id = parse_db_uuid_param(&id, "deal ID")?;
+    let deal = require_deal_org_access(&access_context, pool, &deal_id).await?;
+
+    // Verify deal is won
+    if deal.won_at.is_none() {
+        return Err(ApiError::BadRequest(
+            "Deal must be won before generating an invite link".to_string(),
+        ));
+    }
+
+    // Look up contact info
+    let contact_email: Option<String> = if let Some(ref cid) = deal.crm_contact_id {
+        #[derive(sqlx::FromRow)]
+        struct EmailRow {
+            email: Option<String>,
+        }
+        sqlx::query_as::<_, EmailRow>(
+            "SELECT p.email FROM persons p WHERE p.crm_contact_id = ? LIMIT 1",
+        )
+        .bind(cid)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|r| r.email)
+    } else {
+        None
+    };
+
+    // Generate invite token
+    let token = format!(
+        "{}{}",
+        uuid::Uuid::new_v4().to_string().replace('-', ""),
+        uuid::Uuid::new_v4().to_string().replace('-', "")
+    );
+
+    // Store in deal's custom_fields
+    let custom_fields = deal
+        .custom_fields
+        .as_deref()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    let mut updated = custom_fields;
+    updated["invite_token"] = serde_json::json!(token);
+    updated["invite_status"] = serde_json::json!("pending");
+    updated["invite_created_at"] = serde_json::json!(chrono::Utc::now().to_rfc3339());
+
+    sqlx::query(
+        "UPDATE crm_deals SET custom_fields = ?, updated_at = datetime('now','subsec') WHERE id = ?",
+    )
+    .bind(updated.to_string())
+    .bind(&deal_id)
+    .execute(pool)
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to save invite token: {}", e)))?;
+
+    // Build invite URL (uses the accept endpoint from invitations system pattern)
+    let invite_url = format!("/invite/{}", token);
+
+    Ok(Json(ApiResponse::success(serde_json::json!({
+        "invite_url": invite_url,
+        "token": token,
+        "contact_email": contact_email,
+        "status": "pending",
+    }))))
+}

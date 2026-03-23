@@ -1,6 +1,6 @@
 # Backlog — Remaining Work
 
-**Last updated:** 2026-03-19 (Phase 0 ROI reprioritization from 5-year roadmap research sprint)
+**Last updated:** 2026-03-23 (post pipeline-ops sprint — S0-03/04/05/06/12 completed)
 **Context:** Consolidated from all completed planning docs + 27 research reports + 45-item research-derived backlog. **Prioritized by ROI = (revenue impact × probability) / effort**, not legacy ordering.
 **Phase 0 Sprint Plan:** See [`2026-03-19--analysis--phase0-sprint-candidates.md`](2026-03-19--analysis--phase0-sprint-candidates.md) for full scoring and sprint schedule.
 
@@ -37,25 +37,17 @@
 **What:** `ai-usage.tsx` reads `TokenUsage.cost_cents` (never populated) instead of `VibeTransaction` (has real cost data). Bridge the gap so the dashboard shows actual costs.
 **Effort:** 1 day | **Sprint:** 0.1 | **Status:** NOT STARTED
 
-### S0-03. Structured Response Protocol [ROI: 13.5]
-**Source:** [`roadmap/research/10-ai--agent-orchestration.md`](roadmap/research/10-ai--agent-orchestration.md), research-derived-backlog #1
-**What:** Standard JSON response envelope for agent-to-orchestrator communication: `{ status, message, artifacts, clarification_needed }`. Interface contract for Agent Flow Engine.
-**Effort:** 1.5 days | **Sprint:** 0.1 | **Status:** NOT STARTED
+### S0-03. Structured Response Protocol [ROI: 13.5] ✅ DONE (pipeline-ops sprint)
+**What:** Standard JSON response envelope for agent-to-orchestrator communication. Implemented via AgentFlowExecutor tool-call loop with structured artifact storage.
 
-### S0-04. Clarification as First-Class Status [ROI: 12.0]
-**Source:** [`roadmap/research/10-ai--agent-orchestration.md`](roadmap/research/10-ai--agent-orchestration.md), research-derived-backlog #4
-**What:** Explicit `NeedsClarification` response type. Agents clarify, never guess. Prevents cascading errors from incorrect assumptions.
-**Effort:** 1 day | **Sprint:** 0.1 | **Depends on:** S0-03 | **Status:** NOT STARTED
+### S0-04. Clarification as First-Class Status [ROI: 12.0] ✅ DONE (pipeline-ops sprint)
+**What:** `NeedsClarification` flow status + `clarification_request` column on agent_flows. Migration `20260413000001_agent_flow_clarification.sql`.
 
-### S0-05. Cooldown Race Condition Fix [ROI: 10.0]
-**Source:** BACKLOG P2 "Webhook Cooldown Race Condition", [`roadmap/architecture-gaps-analysis.md` §GAP-S0-01](roadmap/architecture-gaps-analysis.md)
-**What:** Atomic `UPDATE ... WHERE last_triggered_at < ? RETURNING *` to prevent concurrent webhooks double-firing.
-**Effort:** 0.5 days | **Sprint:** 0.1 | **Status:** NOT STARTED
+### S0-05. Cooldown Race Condition Fix [ROI: 10.0] ✅ DONE (tier1-phase0 sprint, commit `33a8a2031`)
+**What:** Atomic `try_claim_trigger()` replaces racy `is_past_cooldown()`.
 
-### S0-06. Agent Flow Orchestration Engine [ROI: 9.0]
-**Source:** `archive/2026-03-12--plan--agent-task-mcp-wiring.md`, [`roadmap/5-year-product-roadmap.md` §Priority 1](roadmap/5-year-product-roadmap.md)
-**What:** Background worker to progress agent flows through phases, enforce gates, handle delegation and retry. #1 architectural gap. Data model complete (agent_flow.rs 406 lines, agent_flow_event.rs 350 lines). Proven pattern: `spawn_workflow_schedule_loop()`.
-**Effort:** 5 days | **Sprint:** 0.1 | **Depends on:** S0-03, S0-04 | **Status:** NOT STARTED
+### S0-06. Agent Flow Orchestration Engine [ROI: 9.0] ✅ DONE (pipeline-ops sprint)
+**What:** Real LLM dispatch via WorkflowLLMService, 3 tools (get_deal_context, update_deal_field, save_artifact), retry with model fallback, BackgroundWorker trait, cancel window support.
 
 ### S0-07. CAPO Per-Task Tracking [ROI: 8.0]
 **Source:** [`roadmap/research/20-ai--unit-economics-agent-metrics.md`](roadmap/research/20-ai--unit-economics-agent-metrics.md), research-derived-backlog #40
@@ -82,9 +74,8 @@
 **What:** Formal project vision document for agent alignment. Prevents drift toward speculative features.
 **Effort:** 1 day | **Sprint:** 0.1 | **Status:** NOT STARTED
 
-### S0-12. Graceful Shutdown + Worker Registry [ROI: 4.5]
-**Source:** [`roadmap/architecture-gaps-analysis.md`](roadmap/architecture-gaps-analysis.md)
-**What:** Replace bare `axum::serve()` with `with_graceful_shutdown()`. Add ShutdownRegistry + BackgroundWorker trait. Drain period for in-flight executions. Combined with worker abstraction (sprint item #5).
+### S0-12. Graceful Shutdown + Worker Registry [ROI: 4.5] ✅ DONE (tier1-phase0 sprint)
+**What:** ShutdownRegistry + BackgroundWorker trait. CancellationToken-based graceful shutdown. 4 background tasks migrated.
 **Effort:** 1.5 days | **Sprint:** 0.1 | **Status:** NOT STARTED
 
 ### S0-13. Input Validation Framework [ROI: 4.0]
@@ -403,12 +394,8 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 **Recommendation:** Either (a) implement a retry worker in `spawn_workflow_schedule_loop` that checks for triggers past `next_retry_at` with `retry_count < max_retries`, or (b) remove the fields if retry isn't needed yet.
 **Status:** NOT STARTED
 
-### Webhook Cooldown Race Condition
-**Source:** PR #49 backend review (2026-03-18)
-**File:** `crates/db/src/models/workflow_trigger.rs` — `is_past_cooldown()`
-**What:** Cooldown check reads `last_triggered_at`, then the caller updates it — but under concurrent requests, two webhooks could both pass the cooldown check before either updates the timestamp.
-**Recommendation:** Use a database-level atomic check-and-update (e.g., `UPDATE ... WHERE last_triggered_at < ? RETURNING *`) or add a per-trigger mutex/advisory lock.
-**Status:** NOT STARTED
+### ~~Webhook Cooldown Race Condition~~
+**Status:** ✅ RESOLVED (2026-03-21) — Both `data_source_workflows.rs` and `workflow_triggers.rs` now use atomic `try_claim_trigger()` with `UPDATE...WHERE...RETURNING`. Committed in sprints 4 (tier1-phase0) and the original PR #53.
 
 ### `webhook_url` Stored as Relative Path
 **Source:** PR #49 backend review (2026-03-18)

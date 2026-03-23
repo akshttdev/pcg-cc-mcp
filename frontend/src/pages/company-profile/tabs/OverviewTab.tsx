@@ -247,7 +247,7 @@ export function OverviewTab({
             {company.organization_id && (
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
-                <span className="text-green-700 font-medium">Platform Organisation</span>
+                <span className="text-green-700 font-medium">Platform Organization</span>
               </div>
             )}
           </CardContent>

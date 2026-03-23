@@ -4,11 +4,14 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  Calendar,
-  DollarSign,
+  ArrowRight,
   MoreHorizontal,
   Building2,
   Trash2,
@@ -27,6 +30,7 @@ import {
   Presentation,
   Receipt,
   Trophy,
+  Bot,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
@@ -40,12 +44,19 @@ interface BoardProgressInfo {
   percentage: number;
 }
 
+interface StageOption {
+  id: string;
+  name: string;
+}
+
 interface CrmDealCardProps {
   deal: CrmDealWithContact;
   stageName?: string;
   stageColor?: string;
   onEdit?: (deal: CrmDealWithContact) => void;
   onDelete?: (deal: CrmDealWithContact) => void;
+  onMoveTo?: (deal: CrmDealWithContact, stageId: string) => void;
+  stages?: StageOption[];
   boardProgress?: BoardProgressInfo;
 }
 
@@ -79,7 +90,7 @@ function StatusChip({
   );
 }
 
-export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, boardProgress }: CrmDealCardProps) {
+export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onMoveTo, stages, boardProgress }: CrmDealCardProps) {
   const currentStage = (stageName || '').toLowerCase();
 
   const initials = deal.contact_name
@@ -100,6 +111,11 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, boa
   const lastActivity = deal.last_activity_at
     ? formatDistanceToNow(new Date(deal.last_activity_at), { addSuffix: true })
     : null;
+
+  // Agent flow status
+  const agentRunning = deal.active_agent_flow_status === 'executing';
+  const agentPending = deal.active_agent_flow_status === 'planning';
+  const agentName = deal.active_agent_name;
 
   const intelStatus = deal.intelligence_status;
   const intelDone = intelStatus === 'done';
@@ -187,7 +203,29 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, boa
                   <MoreHorizontal className="h-3.5 w-3.5" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-36" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenuContent align="end" className="w-44" onClick={(e) => e.stopPropagation()}>
+                {onMoveTo && stages && stages.length > 0 && (
+                  <>
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        <ArrowRight className="h-3 w-3 mr-2" />Move to...
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent>
+                        {stages
+                          .filter((s) => s.id !== deal.crm_stage_id)
+                          .map((stage) => (
+                            <DropdownMenuItem
+                              key={stage.id}
+                              onClick={() => onMoveTo(deal, stage.id)}
+                            >
+                              {stage.name}
+                            </DropdownMenuItem>
+                          ))}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
                 <DropdownMenuItem onClick={() => onEdit?.(deal)}>
                   <Edit className="h-3 w-3 mr-2" />Edit
                 </DropdownMenuItem>
@@ -203,9 +241,11 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, boa
         </div>
 
         {/* Row 2: Stage-aware status chips */}
-        {(researchNeeded || researchReady || intelRunning || hasActiveReviewTask || reviewTaskDone ||
+        {(agentRunning || agentPending || researchNeeded || researchReady || intelRunning || hasActiveReviewTask || reviewTaskDone ||
           deal.report_review_status === 'rejected' || hasProposal || hasDeck || hasInvoice || isWon) && (
           <div className="flex flex-wrap gap-1">
+            {agentRunning && <StatusChip icon={Bot} label={`${agentName ?? 'Agent'} running…`} variant="blue" pulse />}
+            {agentPending && <StatusChip icon={Clock} label={`${agentName ?? 'Agent'} pending`} variant="amber" pulse />}
             {researchNeeded && <StatusChip icon={Search} label="Research needed" variant="amber" />}
             {intelRunning && <StatusChip icon={Loader2} label="Researching…" variant="blue" pulse />}
             {researchReady && !hasActiveReviewTask && <StatusChip icon={ShieldCheck} label="Ready for review" variant="green" />}
@@ -299,35 +339,27 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, boa
           </div>
         )}
 
-        {/* Row 8: Footer — amount, close date, last activity */}
-        <div className="flex items-center justify-between pt-1.5 border-t border-border/40">
-          <div className="flex items-center gap-2">
-            {formattedAmount && (
-              <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-green-600">
-                <DollarSign className="h-3 w-3" />
-                {formattedAmount}
-              </span>
-            )}
-            {deal.expected_close_date && (
-              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                <Calendar className="h-2.5 w-2.5" />
-                {new Date(deal.expected_close_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-              </span>
-            )}
-            {deal.probability > 0 && (
-              <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground">
-                <TrendingUp className="h-2.5 w-2.5" />
-                {deal.probability}%
-              </span>
-            )}
-          </div>
-          {lastActivity && (
-            <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/60 shrink-0">
-              <Clock className="h-2.5 w-2.5" />
-              {lastActivity}
+        {/* Row 8: Footer — amount, close date, probability */}
+        <div className="flex items-center gap-2 pt-1.5 border-t border-border/40">
+          {formattedAmount && (
+            <span className="inline-flex items-center text-xs font-semibold text-green-600">
+              {formattedAmount}
+            </span>
+          )}
+          {deal.probability > 0 && (
+            <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground">
+              <TrendingUp className="h-2.5 w-2.5" />
+              {deal.probability}%
             </span>
           )}
         </div>
+        {/* Row 9: Timestamp */}
+        {lastActivity && (
+          <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/60">
+            <Clock className="h-2.5 w-2.5 shrink-0" />
+            {lastActivity}
+          </span>
+        )}
 
         {/* Probability bar */}
         {deal.probability > 0 && (

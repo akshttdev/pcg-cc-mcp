@@ -121,7 +121,7 @@ export function OverviewTab({
   return (
     <div className="space-y-6">
       {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 animate-stagger">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 animate-stagger">
         <Card className="bg-card/80 backdrop-blur-sm border-border/50">
           <CardContent className="pt-4 pb-3">
             <div className="flex items-center gap-2 text-muted-foreground">
@@ -227,7 +227,7 @@ export function OverviewTab({
       )}
 
       {/* Quick links */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {[
           { label: 'Pipelines', icon: Target, path: 'crm/pipeline', color: 'text-amber-500', summary: `${totalDeals} deals · ${formatCurrency(totalDealValue)}` },
           { label: 'Contacts', icon: Contact2, path: 'crm/contacts', color: 'text-blue-500', summary: `${contactCount} contacts` },
