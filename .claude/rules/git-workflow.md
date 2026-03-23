@@ -8,6 +8,7 @@
 
 ## Commits
 
+- **Always commit from the project root** — not from `frontend/` or any subdirectory. `git add` paths are relative to cwd; committing from a subdirectory causes `pathspec did not match` errors on files outside it.
 - Use conventional commit prefixes: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, `test:`
 - Include PR number (`#N`) when working on a PR
 - Never amend published commits — create new commits instead
