@@ -33,6 +33,7 @@ import {
   Bot,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { StatusBadge } from '@/components/ui/status-badge';
 import { Link } from 'react-router-dom';
 import type { CrmDealWithContact } from '@/types/crm';
 import { formatDistanceToNow } from 'date-fns';
@@ -60,35 +61,6 @@ interface CrmDealCardProps {
   boardProgress?: BoardProgressInfo;
 }
 
-function StatusChip({
-  icon: Icon,
-  label,
-  variant,
-  pulse,
-}: {
-  icon: React.ElementType;
-  label: string;
-  variant: 'amber' | 'green' | 'blue' | 'red' | 'muted';
-  pulse?: boolean;
-}) {
-  const colors = {
-    amber: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800',
-    green: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-950/50 dark:text-green-400 dark:border-green-800',
-    blue:  'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-800',
-    red:   'bg-red-100 text-red-700 border-red-200 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800',
-    muted: 'bg-muted text-muted-foreground border-border',
-  };
-  return (
-    <span className={cn(
-      'inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] font-medium border',
-      colors[variant],
-      pulse && 'animate-pulse',
-    )}>
-      <Icon className="h-2.5 w-2.5" />
-      {label}
-    </span>
-  );
-}
 
 export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onMoveTo, stages, boardProgress }: CrmDealCardProps) {
   const currentStage = (stageName || '').toLowerCase();
@@ -244,19 +216,19 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
         {(agentRunning || agentPending || researchNeeded || researchReady || intelRunning || hasActiveReviewTask || reviewTaskDone ||
           deal.report_review_status === 'rejected' || hasProposal || hasDeck || hasInvoice || isWon) && (
           <div className="flex flex-wrap gap-1">
-            {agentRunning && <StatusChip icon={Bot} label={`${agentName ?? 'Agent'} running…`} variant="blue" pulse />}
-            {agentPending && <StatusChip icon={Clock} label={`${agentName ?? 'Agent'} pending`} variant="amber" pulse />}
-            {researchNeeded && <StatusChip icon={Search} label="Research needed" variant="amber" />}
-            {intelRunning && <StatusChip icon={Loader2} label="Researching…" variant="blue" pulse />}
-            {researchReady && !hasActiveReviewTask && <StatusChip icon={ShieldCheck} label="Ready for review" variant="green" />}
-            {hasActiveReviewTask && <StatusChip icon={CircleDot} label="Needs review" variant="blue" pulse />}
-            {reviewTaskDone && <StatusChip icon={CheckCircle2} label="Review done" variant="green" />}
-            {deal.report_review_status === 'rejected' && <StatusChip icon={RotateCcw} label="Revision needed" variant="red" />}
-            {hasProposal && !proposalApproved && <StatusChip icon={FileText} label="Proposal draft" variant="amber" />}
-            {proposalApproved && <StatusChip icon={FileText} label="Proposal ✓" variant="green" />}
-            {hasDeck && <StatusChip icon={Presentation} label="Deck ready" variant="green" />}
-            {hasInvoice && <StatusChip icon={Receipt} label="Invoice sent" variant="blue" />}
-            {isWon && <StatusChip icon={Trophy} label="Won!" variant="green" />}
+            {agentRunning && <StatusBadge status="info" icon={Bot} label={`${agentName ?? 'Agent'} running…`} pulse size="sm" />}
+            {agentPending && <StatusBadge status="warning" icon={Clock} label={`${agentName ?? 'Agent'} pending`} pulse size="sm" />}
+            {researchNeeded && <StatusBadge status="warning" icon={Search} label="Research needed" size="sm" />}
+            {intelRunning && <StatusBadge status="info" icon={Loader2} label="Researching…" pulse size="sm" />}
+            {researchReady && !hasActiveReviewTask && <StatusBadge status="success" icon={ShieldCheck} label="Ready for review" size="sm" />}
+            {hasActiveReviewTask && <StatusBadge status="info" icon={CircleDot} label="Needs review" pulse size="sm" />}
+            {reviewTaskDone && <StatusBadge status="success" icon={CheckCircle2} label="Review done" size="sm" />}
+            {deal.report_review_status === 'rejected' && <StatusBadge status="error" icon={RotateCcw} label="Revision needed" size="sm" />}
+            {hasProposal && !proposalApproved && <StatusBadge status="warning" icon={FileText} label="Proposal draft" size="sm" />}
+            {proposalApproved && <StatusBadge status="success" icon={FileText} label="Proposal ✓" size="sm" />}
+            {hasDeck && <StatusBadge status="success" icon={Presentation} label="Deck ready" size="sm" />}
+            {hasInvoice && <StatusBadge status="info" icon={Receipt} label="Invoice sent" size="sm" />}
+            {isWon && <StatusBadge status="success" icon={Trophy} label="Won!" size="sm" />}
           </div>
         )}
 

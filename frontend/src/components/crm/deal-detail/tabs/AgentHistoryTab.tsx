@@ -10,14 +10,13 @@ import {
   ChevronDown,
   ChevronRight,
 } from 'lucide-react';
-import { useState } from 'react';
+import React, { useState } from 'react';
 
-import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
+import { StatusBadge } from '@/components/ui/status-badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { crmKeys } from '@/lib/query-keys';
 import { makeRequest, handleApiResponse } from '@/lib/api/client';
-import { cn } from '@/lib/utils';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -110,7 +109,6 @@ function FlowCard({ flow }: { flow: AgentFlowSummary }) {
   })();
 
   const agentName = config.agent_name || flow.flow_type || 'Agent';
-  const statusIcon = getStatusIcon(flow.status);
   const statusColor = getStatusColor(flow.status);
   const duration = flow.execution_started_at && flow.execution_completed_at
     ? formatDuration(flow.execution_started_at, flow.execution_completed_at)
@@ -132,13 +130,14 @@ function FlowCard({ flow }: { flow: AgentFlowSummary }) {
           )}
           <Bot className="h-4 w-4 shrink-0" style={{ color: statusColor }} />
           <span className="text-sm font-medium capitalize">{agentName}</span>
-          <Badge
-            variant="outline"
-            className={cn('text-[10px] ml-auto', `text-[${statusColor}] border-[${statusColor}]/30`)}
-          >
-            {statusIcon}
-            <span className="ml-1">{flow.status}</span>
-          </Badge>
+          <StatusBadge
+            status={getStatusVariant(flow.status)}
+            label={flow.status}
+            icon={getStatusIconComponent(flow.status)}
+            pulse={flow.status === 'executing' || flow.status === 'planning'}
+            size="sm"
+            className="ml-auto"
+          />
           {duration && (
             <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
               <Clock className="h-2.5 w-2.5" />
@@ -198,17 +197,32 @@ function EventRow({ event }: { event: AgentFlowEventSummary }) {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function getStatusIcon(status: string) {
+function getStatusVariant(status: string): 'success' | 'error' | 'info' | 'pending' | 'muted' {
   switch (status) {
     case 'completed':
-      return <CheckCircle2 className="h-3 w-3 text-green-500" />;
+      return 'success';
     case 'failed':
-      return <AlertTriangle className="h-3 w-3 text-red-500" />;
+      return 'error';
+    case 'executing':
+      return 'info';
+    case 'planning':
+      return 'pending';
+    default:
+      return 'muted';
+  }
+}
+
+function getStatusIconComponent(status: string): React.ElementType {
+  switch (status) {
+    case 'completed':
+      return CheckCircle2;
+    case 'failed':
+      return AlertTriangle;
     case 'executing':
     case 'planning':
-      return <Loader2 className="h-3 w-3 text-blue-500 animate-spin" />;
+      return Loader2;
     default:
-      return <Clock className="h-3 w-3 text-muted-foreground" />;
+      return Clock;
   }
 }
 
