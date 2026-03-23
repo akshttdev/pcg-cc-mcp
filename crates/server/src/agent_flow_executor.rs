@@ -122,13 +122,16 @@ impl AgentFlowExecutor {
         }
 
         // Emit phase started event
-        let _ = AgentFlowEvent::emit_phase_started(
+        if let Err(e) = AgentFlowEvent::emit_phase_started(
             &self.pool,
             flow.id,
             "execution",
             flow.executor_agent_id,
         )
-        .await;
+        .await
+        {
+            tracing::warn!("[AgentFlowEngine] Failed to emit phase_started for flow {}: {}", flow.id, e);
+        }
 
         // Dispatch LLM execution
         self.execute_flow(flow).await;
@@ -175,7 +178,7 @@ impl AgentFlowExecutor {
             Ok(output) => {
                 // Save artifact with the output
                 let artifact_id = Uuid::new_v4();
-                let _ = AgentFlowEvent::emit_artifact_created(
+                if let Err(e) = AgentFlowEvent::emit_artifact_created(
                     &self.pool,
                     flow.id,
                     artifact_id,
@@ -183,16 +186,22 @@ impl AgentFlowExecutor {
                     &format!("{} output", agent_name),
                     "execution",
                 )
-                .await;
+                .await
+                {
+                    tracing::warn!("[AgentFlowEngine] Failed to emit artifact for flow {}: {}", flow.id, e);
+                }
 
                 // Store the output in flow_config for retrieval
-                let _ = sqlx::query(
+                if let Err(e) = sqlx::query(
                     "UPDATE agent_flows SET flow_config = json_set(COALESCE(flow_config, '{}'), '$.output', ?1), updated_at = datetime('now', 'subsec') WHERE id = ?2",
                 )
                 .bind(&output)
                 .bind(flow.id)
                 .execute(&self.pool)
-                .await;
+                .await
+                {
+                    tracing::warn!("[AgentFlowEngine] Failed to store output for flow {}: {}", flow.id, e);
+                }
 
                 // Complete the flow (single-phase: skip verification)
                 self.complete_flow(flow).await;
@@ -224,13 +233,16 @@ impl AgentFlowExecutor {
             let model_hint = models.get(attempt).copied().flatten();
 
             // Update retry count
-            let _ = sqlx::query(
+            if let Err(e) = sqlx::query(
                 "UPDATE agent_flows SET retry_count = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2",
             )
             .bind(attempt as i32)
             .bind(flow.id)
             .execute(&self.pool)
-            .await;
+            .await
+            {
+                tracing::warn!("[AgentFlowEngine] Failed to update retry count for flow {}: {}", flow.id, e);
+            }
 
             match self
                 .call_llm_once(messages.clone(), tools, model_hint)
@@ -247,13 +259,16 @@ impl AgentFlowExecutor {
                     );
 
                     // Store error for observability
-                    let _ = sqlx::query(
+                    if let Err(db_err) = sqlx::query(
                         "UPDATE agent_flows SET last_error = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2",
                     )
                     .bind(e.to_string())
                     .bind(flow.id)
                     .execute(&self.pool)
-                    .await;
+                    .await
+                    {
+                        tracing::warn!("[AgentFlowEngine] Failed to store error for flow {}: {}", flow.id, db_err);
+                    }
 
                     if attempt == max_retries - 1 {
                         return Err(e);
@@ -411,31 +426,51 @@ impl AgentFlowExecutor {
     }
 
     async fn update_deal_field(&self, deal_id: &str, field: &str, value: &str) -> String {
-        // Only allow safe fields
-        let allowed_fields = ["description", "proposal_text", "deck_url", "custom_fields"];
-        if !allowed_fields.contains(&field) {
-            return json!({"error": format!("Field '{}' is not updatable", field)}).to_string();
-        }
-
-        let query = format!(
-            "UPDATE crm_deals SET {} = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2",
-            field
-        );
-        match sqlx::query(&query)
-            .bind(value)
-            .bind(deal_id)
-            .execute(&self.pool)
-            .await
-        {
+        // Match-based queries — no string interpolation in SQL
+        let result = match field {
+            "description" => {
+                sqlx::query("UPDATE crm_deals SET description = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2")
+                    .bind(value).bind(deal_id).execute(&self.pool).await
+            }
+            "proposal_text" => {
+                sqlx::query("UPDATE crm_deals SET proposal_text = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2")
+                    .bind(value).bind(deal_id).execute(&self.pool).await
+            }
+            "deck_url" => {
+                sqlx::query("UPDATE crm_deals SET deck_url = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2")
+                    .bind(value).bind(deal_id).execute(&self.pool).await
+            }
+            "custom_fields" => {
+                sqlx::query("UPDATE crm_deals SET custom_fields = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2")
+                    .bind(value).bind(deal_id).execute(&self.pool).await
+            }
+            _ => {
+                return json!({"error": format!("Field '{}' is not updatable", field)}).to_string();
+            }
+        };
+        match result {
             Ok(_) => json!({"success": true, "field": field}).to_string(),
             Err(e) => json!({"error": e.to_string()}).to_string(),
         }
     }
 
     async fn save_artifact(&self, flow_id_str: &str, title: &str, content: &str) -> String {
+        // Input size limits
+        const MAX_TITLE_LEN: usize = 500;
+        const MAX_CONTENT_LEN: usize = 5 * 1024 * 1024; // 5MB
+        if title.len() > MAX_TITLE_LEN {
+            return json!({"error": format!("Title too long ({} > {} chars)", title.len(), MAX_TITLE_LEN)}).to_string();
+        }
+        if content.len() > MAX_CONTENT_LEN {
+            return json!({"error": format!("Content too large ({} > {} bytes)", content.len(), MAX_CONTENT_LEN)}).to_string();
+        }
+
         let flow_id = match Uuid::parse_str(flow_id_str) {
             Ok(id) => id,
-            Err(_) => return json!({"error": "Invalid flow_id"}).to_string(),
+            Err(_) => {
+                tracing::debug!("[AgentFlowEngine] Invalid flow_id in save_artifact: {}", &flow_id_str[..flow_id_str.len().min(50)]);
+                return json!({"error": "Invalid flow_id"}).to_string();
+            }
         };
 
         let artifact_id = Uuid::new_v4();
@@ -478,7 +513,7 @@ impl AgentFlowExecutor {
 
     async fn complete_flow(&self, flow: &AgentFlow) {
         // Emit completion event
-        let _ = AgentFlowEvent::create(
+        if let Err(e) = AgentFlowEvent::create(
             &self.pool,
             CreateFlowEvent {
                 agent_flow_id: flow.id,
@@ -489,20 +524,26 @@ impl AgentFlowExecutor {
                 },
             },
         )
-        .await;
+        .await
+        {
+            tracing::warn!("[AgentFlowEngine] Failed to emit FlowCompleted for flow {}: {}", flow.id, e);
+        }
 
         // Mark as completed
-        let _ = sqlx::query(
+        if let Err(e) = sqlx::query(
             "UPDATE agent_flows SET status = 'completed', execution_completed_at = datetime('now', 'subsec'), updated_at = datetime('now', 'subsec') WHERE id = ?1",
         )
         .bind(flow.id)
         .execute(&self.pool)
-        .await;
+        .await
+        {
+            tracing::error!("[AgentFlowEngine] Failed to mark flow {} as completed: {}", flow.id, e);
+        }
     }
 
     async fn fail_flow(&self, flow: &AgentFlow, error: &str) {
         // Emit failure event
-        let _ = AgentFlowEvent::create(
+        if let Err(e) = AgentFlowEvent::create(
             &self.pool,
             CreateFlowEvent {
                 agent_flow_id: flow.id,
@@ -513,16 +554,22 @@ impl AgentFlowExecutor {
                 },
             },
         )
-        .await;
+        .await
+        {
+            tracing::warn!("[AgentFlowEngine] Failed to emit FlowFailed for flow {}: {}", flow.id, e);
+        }
 
         // Mark as failed
-        let _ = sqlx::query(
+        if let Err(e) = sqlx::query(
             "UPDATE agent_flows SET status = 'failed', last_error = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2",
         )
         .bind(error)
         .bind(flow.id)
         .execute(&self.pool)
-        .await;
+        .await
+        {
+            tracing::error!("[AgentFlowEngine] Failed to mark flow {} as failed: {}", flow.id, e);
+        }
     }
 
     /// Executing flows: check if already completed (legacy path)

@@ -100,10 +100,16 @@ pub struct ValidationWarning {
 
 /// Load and parse stage_config JSON from a CrmPipelineStage.
 pub fn parse_stage_config(stage: &CrmPipelineStage) -> Option<StageConfig> {
-    stage
-        .stage_config
-        .as_deref()
-        .and_then(|json| serde_json::from_str(json).ok())
+    stage.stage_config.as_deref().and_then(|json| {
+        serde_json::from_str(json).map_err(|e| {
+            tracing::warn!(
+                "[StageTransition] Failed to parse stage_config for stage '{}' (id={}): {}",
+                stage.name,
+                stage.id,
+                e
+            );
+        }).ok()
+    })
 }
 
 /// Unified stage transition processor.
@@ -187,6 +193,11 @@ pub async fn process_transition(
         for action in &config.on_enter_actions {
             match action {
                 StageAction::TriggerAgent { agent, flow_type } => {
+                    const KNOWN_AGENTS: &[&str] = &["scout", "astra", "cash", "lux", "nora", "assistant"];
+                    if !KNOWN_AGENTS.contains(&agent.to_lowercase().as_str()) {
+                        tracing::warn!("[StageTransition] Unknown agent '{}' in stage config — skipping", agent);
+                        continue;
+                    }
                     if config.auto_trigger {
                         match schedule_agent_flow(
                             pool,
@@ -434,8 +445,10 @@ async fn schedule_agent_flow(
     flow_type: &str,
     cancel_window_secs: u32,
 ) -> anyhow::Result<(String, DateTime<Utc>)> {
+    // Clamp cancel window to reasonable bounds (0 = immediate, max 1 hour)
+    let clamped_window = cancel_window_secs.min(3600);
     let flow_id = DbUuid::new().to_string();
-    let deadline = Utc::now() + chrono::Duration::seconds(cancel_window_secs as i64);
+    let deadline = Utc::now() + chrono::Duration::seconds(clamped_window as i64);
 
     // We need a task_id for the agent_flows table. Use the deal's linked task if any,
     // otherwise create a placeholder UUID.
