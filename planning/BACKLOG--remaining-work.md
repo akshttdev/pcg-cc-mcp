@@ -83,6 +83,20 @@
 **What:** `validator` crate with `#[derive(Validate)]` on high-risk endpoints. OWASP baseline.
 **Effort:** 1.5 days | **Sprint:** 0.2 | **Status:** NOT STARTED
 
+### S0-13b. Fix `any` Type Warnings Across Frontend [ROI: 3.5]
+**Source:** Frontend componentization sprint (2026-03-23) — ESLint audit found 31 `@typescript-eslint/no-explicit-any` warnings
+**What:** Replace `any` with proper types in 20+ files. Most are in hooks (useLogStream, useJsonPatchStream, useWorkflowEventStream), library wrappers (rjsf templates, RichTextEditor), and complex components (MeshPanel, StagingReviewPanel, NoraAssistant, UserAvatar).
+**Approach:** Group by category:
+- SSE/WebSocket hooks (useLogStream, useJsonPatchWsStream, etc.) — define event payload types
+- rjsf templates — use `@rjsf/utils` types
+- UI components — replace `any` in event handlers with React event types
+**Effort:** 1-2 days | **Sprint:** 0.2 | **Status:** NOT STARTED
+
+### S0-13c. ESLint `--max-warnings` Reduction [ROI: 3.0]
+**Source:** Frontend componentization sprint — current: 851 warnings (mostly `simple-import-sort`)
+**What:** Run `eslint --fix` across remaining untouched files to auto-fix import sorting. Then reduce `--max-warnings` from 860 to ~100. This was already identified in S0-01c but scoped to the 860→120 reduction.
+**Effort:** 0.5 days | **Sprint:** 0.1 | **Status:** NOT STARTED (partially addressed — componentization sprint fixed 74 files)
+
 ### S0-14. Webhook Retry Worker [ROI: 3.5]
 **Source:** BACKLOG P2 "Webhook Retry Logic is Dead Code"
 **What:** `max_retries`/`next_retry_at` fields exist but are never read. Add retry check to schedule loop.
