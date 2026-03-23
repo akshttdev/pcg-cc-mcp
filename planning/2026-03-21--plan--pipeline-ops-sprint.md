@@ -469,12 +469,35 @@ Replace hardcoded `getStageOwner()` (CrmPipelineBoard.tsx lines 38-66) with `sta
 
 ## Functionality Audit (2026-03-23)
 
-**Overall**: SHIP WITH CAVEATS
+**Overall**: SHIP WITH CAVEATS → **SHIP** (after fixes)
 **Report**: `planning/reviews/2026-03-23--review--functionality-audit-pipeline-ops.md`
-**Features**: 29 WORKING, 1 NOT WIRED, 1 PARTIAL
-**Plan Accuracy**: 29/31 features matched plan status (2 false DONE claims — both low impact)
-**Action Items**: 0 Must Fix, 2 Should Fix, 1 Nice to Have
-**False DONEs**: CrmPipelineSettings not mounted in any route; type pipeline uses manual duplicates
+**Features**: 29 WORKING, 1 NOT WIRED, 1 PARTIAL → **31 WORKING** (after fixes)
+**Fixes applied**:
+- [x] CrmPipelineSettings wired to gear icon on org pipeline boards
+- [x] DealHeader console errors (8 per panel open) — Sheet/Dialog context fix
+- [ ] Type pipeline still uses manual duplicates (low priority, deferred)
+
+## Experience Audit (2026-03-23)
+
+**Overall**: B- → **B+** (after fixes)
+**Reports**: `planning/reviews/2026-03-23--review--experience-audit-pipeline-ops.md`, `planning/reviews/2026-03-23--review--experience-audit-v2-pipeline-ops.md`
+**Fixes applied**:
+- [x] BLOCKER: Kanban board refresh after stage move via detail panel
+- [x] BLOCKER: DealHeader console errors (DialogTitle context)
+- [x] Toast confirmation on stage move
+- [x] Invoice amount formatting ($150,000)
+- [x] Gate Send Invoice on early stages
+- [x] Hide Closed date on active deals
+- [x] Tooltip on truncated stage labels
+- [x] Tab header horizontal scroll in Sheet mode
+- [x] Mobile badge overlap on org header (flex-wrap)
+- [x] Mobile Topsi FAB padding increased
+- [x] Sidebar collapse reclaims kanban board space
+- [x] 2-column Overview layout in expanded dialog mode
+- [x] Action buttons (Convert/Topsi) compact horizontal row
+**Remaining (deferred)**:
+- [ ] Command palette can't search CRM entities (INVESTMENT, 2-3 days)
+- [ ] Mobile-optimized kanban view (STRUCTURAL, 3-5 days)
 
 ---
 
