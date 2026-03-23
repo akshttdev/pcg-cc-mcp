@@ -5,6 +5,9 @@ use sqlx::{FromRow, SqlitePool, Type};
 use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
+// DbUuid available if needed for BLOB/TEXT compat
+#[allow(unused_imports)]
+use crate::db_uuid::DbUuid;
 
 #[derive(Debug, Error)]
 pub enum AgentFlowError {
@@ -338,14 +341,28 @@ impl AgentFlow {
         Ok(flows)
     }
 
-    /// Find flows ready for execution (past cancel window, in actionable state)
+    /// Find flows ready for execution (past cancel window, in actionable state).
+    /// Uses CAST for BLOB/TEXT UUID compatibility — the id column may contain either format.
     pub async fn find_pending_flows(
         pool: &SqlitePool,
         limit: i32,
     ) -> Result<Vec<Self>, AgentFlowError> {
-        let flows = sqlx::query_as::<_, AgentFlow>(
+        // Use a raw query with CAST to handle both BLOB and TEXT UUIDs
+        let rows = sqlx::query(
             r#"
-            SELECT * FROM agent_flows
+            SELECT CAST(id AS BLOB) as id, CAST(task_id AS BLOB) as task_id,
+                   flow_type, status,
+                   CAST(planner_agent_id AS BLOB) as planner_agent_id,
+                   CAST(executor_agent_id AS BLOB) as executor_agent_id,
+                   CAST(verifier_agent_id AS BLOB) as verifier_agent_id,
+                   current_phase, flow_config, handoff_instructions,
+                   human_approval_required, verification_score, approved_by,
+                   planning_started_at, executing_started_at as execution_started_at,
+                   verifying_started_at as verification_started_at,
+                   completed_at, created_at, updated_at,
+                   crm_deal_id, cancel_deadline, clarification_request,
+                   retry_count, last_error
+            FROM agent_flows
             WHERE status IN ('planning', 'executing')
               AND (cancel_deadline IS NULL OR cancel_deadline < datetime('now', 'subsec'))
             ORDER BY created_at ASC
@@ -355,6 +372,69 @@ impl AgentFlow {
         .bind(limit)
         .fetch_all(pool)
         .await?;
+
+        // Manual deserialization to handle BLOB/TEXT id flexibility
+        let mut flows = Vec::new();
+        for row in rows {
+            use sqlx::Row;
+            // Try to get id as BLOB (16 bytes) first, then as TEXT string
+            let id_bytes: Vec<u8> = row.try_get("id").unwrap_or_default();
+            let id = if id_bytes.len() == 16 {
+                Uuid::from_slice(&id_bytes).unwrap_or_default()
+            } else {
+                // TEXT UUID stored as bytes
+                let text = String::from_utf8_lossy(&id_bytes);
+                Uuid::parse_str(&text).unwrap_or_default()
+            };
+
+            let task_bytes: Vec<u8> = row.try_get("task_id").unwrap_or_default();
+            let task_id = if task_bytes.len() == 16 {
+                Uuid::from_slice(&task_bytes).unwrap_or_default()
+            } else {
+                let text = String::from_utf8_lossy(&task_bytes);
+                Uuid::parse_str(&text).unwrap_or_default()
+            };
+
+            let flow = AgentFlow {
+                id,
+                task_id,
+                flow_type: row.try_get::<String, _>("flow_type")
+                    .ok()
+                    .and_then(|s| serde_json::from_value(serde_json::Value::String(s)).ok())
+                    .unwrap_or(FlowType::Custom),
+                status: row.try_get::<String, _>("status")
+                    .ok()
+                    .and_then(|s| serde_json::from_value(serde_json::Value::String(s)).ok())
+                    .unwrap_or(FlowStatus::Planning),
+                planner_agent_id: None,
+                executor_agent_id: None,
+                verifier_agent_id: None,
+                current_phase: row.try_get::<String, _>("current_phase")
+                    .ok()
+                    .and_then(|s| serde_json::from_value(serde_json::Value::String(s)).ok())
+                    .unwrap_or(AgentPhase::Planning),
+                flow_config: row.try_get("flow_config").ok(),
+                handoff_instructions: row.try_get("handoff_instructions").ok(),
+                human_approval_required: row.try_get("human_approval_required").unwrap_or(false),
+                verification_score: row.try_get("verification_score").ok(),
+                approved_by: row.try_get("approved_by").ok(),
+                planning_started_at: row.try_get("planning_started_at").ok(),
+                planning_completed_at: None,
+                execution_started_at: row.try_get("execution_started_at").ok(),
+                execution_completed_at: None,
+                verification_started_at: row.try_get("verification_started_at").ok(),
+                verification_completed_at: None,
+                approved_at: row.try_get("completed_at").ok(),
+                created_at: row.try_get("created_at").unwrap_or_default(),
+                updated_at: row.try_get("updated_at").unwrap_or_default(),
+                crm_deal_id: row.try_get("crm_deal_id").ok(),
+                cancel_deadline: row.try_get("cancel_deadline").ok(),
+                clarification_request: row.try_get("clarification_request").ok(),
+                retry_count: row.try_get("retry_count").unwrap_or(0),
+                last_error: row.try_get("last_error").ok(),
+            };
+            flows.push(flow);
+        }
 
         Ok(flows)
     }

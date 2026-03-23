@@ -566,9 +566,42 @@ async fn schedule_agent_flow(
     let flow_id = DbUuid::new().to_string();
     let deadline = Utc::now() + chrono::Duration::seconds(clamped_window as i64);
 
-    // We need a task_id for the agent_flows table. Use the deal's linked task if any,
-    // otherwise create a placeholder UUID.
-    let task_id = DbUuid::new().to_string();
+    // Map pipeline flow types to agent_flows CHECK constraint values.
+    // The original flow_type is preserved in flow_config for the executor.
+    let db_flow_type = match flow_type {
+        "research" => "research",
+        "business_analysis" | "analysis" => "analysis",
+        "proposal" | "deck" => "content_creation",
+        _ => "custom",
+    };
+
+    // We need a task_id for the agent_flows table (FK to tasks.id BLOB).
+    // Find an existing task linked to this deal, or create a minimal one.
+    // Then convert to BLOB format for the FK.
+    let task_id_text: String = match sqlx::query_scalar::<_, String>(
+        "SELECT id FROM tasks WHERE crm_deal_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(deal.id.to_string())
+    .fetch_optional(pool)
+    .await
+    {
+        Ok(Some(id)) => id,
+        _ => {
+            // Create a minimal agent task for the FK reference
+            let new_id = DbUuid::new().to_string();
+            sqlx::query(
+                "INSERT INTO tasks (id, title, status, project_id, crm_deal_id, created_by, created_at, updated_at) \
+                 VALUES (?1, ?2, 'inprogress', '', ?3, 'system', datetime('now','subsec'), datetime('now','subsec'))",
+            )
+            .bind(&new_id)
+            .bind(format!("{} agent task — {}", agent_name, &deal.name))
+            .bind(deal.id.to_string())
+            .execute(pool)
+            .await?;
+            new_id
+        }
+    };
+    let task_id = task_id_text;
 
     let flow_config = serde_json::json!({
         "agent_name": agent_name,
@@ -578,6 +611,9 @@ async fn schedule_agent_flow(
         "contact_id": deal.crm_contact_id,
     });
 
+    // Insert as TEXT UUIDs — DbUuid reads both BLOB and TEXT transparently.
+    // The agent_flows schema has BLOB columns but SQLite is type-flexible;
+    // TEXT UUIDs work and DbUuid handles the decode on read.
     sqlx::query(
         r#"
         INSERT INTO agent_flows (
@@ -590,7 +626,7 @@ async fn schedule_agent_flow(
     )
     .bind(&flow_id)
     .bind(&task_id)
-    .bind(flow_type)
+    .bind(db_flow_type)
     .bind(flow_config.to_string())
     .bind(deal.id.to_string())
     .bind(deadline.to_rfc3339())
