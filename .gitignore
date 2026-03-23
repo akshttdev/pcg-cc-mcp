@@ -177,3 +177,6 @@ pcg-transfer-20251119.tar.gz
 TopiClips_Day000_Genesis.webp
 app.db
 rustc-ice-2026-03-19T23_13_07-67791.txt
+
+# Playwright audit screenshots
+*.png

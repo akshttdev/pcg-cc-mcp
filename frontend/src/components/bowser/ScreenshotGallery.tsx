@@ -72,11 +72,11 @@ function ScreenshotCard({ screenshot, onClick }: ScreenshotCardProps) {
         <p className="text-xs font-medium truncate" title={screenshot.page_title || screenshot.url}>
           {screenshot.page_title || 'Untitled'}
         </p>
-        <p className="text-[10px] text-muted-foreground truncate" title={screenshot.url}>
+        <p className="text-xs text-muted-foreground truncate" title={screenshot.url}>
           {screenshot.url}
         </p>
         <div className="flex items-center justify-between">
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             {formatDistanceToNow(new Date(screenshot.created_at), { addSuffix: true })}
           </span>
           {hasDiff && getDiffBadge(screenshot.diff_percentage)}

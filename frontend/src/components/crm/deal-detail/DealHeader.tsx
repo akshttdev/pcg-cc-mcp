@@ -1,20 +1,21 @@
 // Use plain elements instead of Sheet primitives — DealHeader renders inside
 // both Sheet and Dialog contexts (expand mode), and Radix Sheet/Dialog
 // primitives require their specific parent context or throw errors.
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Button } from '@/components/ui/button';
 import {
-  Calendar,
   Building2,
-  Edit,
-  Trash2,
-
-  TrendingUp,
+  Calendar,
   CheckSquare,
   ChevronRight,
+  Edit,
   Maximize2,
   Minimize2,
+  Trash2,
+  TrendingUp,
 } from 'lucide-react';
+
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
 import type { CrmDealWithContact, CrmPipelineStage } from '@/types/crm';
 
@@ -98,17 +99,19 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete, isExpanded, onT
               {isExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
             </Button>
           )}
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit(deal)}>
-            <Edit className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-destructive hover:text-destructive"
+          <IconButton
+            variant="ghost" className="h-7 w-7" onClick={() => onEdit(deal)}
+            icon={Edit}
+            label="Edit deal"
+            iconClassName="h-3.5 w-3.5"
+          />
+          <IconButton
+            variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive"
             onClick={() => onDelete(deal)}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+            icon={Trash2}
+            label="Delete deal"
+            iconClassName="h-3.5 w-3.5"
+          />
         </div>
       </div>
 
@@ -120,7 +123,7 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete, isExpanded, onT
           </span>
         )}
         {deal.probability > 0 && (
-          <span className="inline-flex items-center gap-0.5 text-[11px] text-muted-foreground">
+          <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground">
             <TrendingUp className="h-3 w-3" />
             {deal.probability}% probability
           </span>
@@ -128,7 +131,7 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete, isExpanded, onT
         {taskTotal > 0 && (
           <span
             className={cn(
-              'inline-flex items-center gap-0.5 text-[11px]',
+              'inline-flex items-center gap-0.5 text-xs',
               taskDone === taskTotal ? 'text-green-600 font-medium' : 'text-muted-foreground'
             )}
           >
@@ -137,7 +140,7 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete, isExpanded, onT
           </span>
         )}
         {deal.expected_close_date && (
-          <span className="inline-flex items-center gap-0.5 text-[11px] text-muted-foreground">
+          <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground">
             <Calendar className="h-3 w-3" />
             {new Date(deal.expected_close_date).toLocaleDateString('en-US', {
               month: 'short',
@@ -229,7 +232,7 @@ export function PipelineStepper({ currentStage, allStages, onStageClick }: Pipel
         })}
       </div>
       {isClosedLost && (
-        <p className="text-[10px] text-muted-foreground text-center mt-1 font-medium">
+        <p className="text-xs text-muted-foreground text-center mt-1 font-medium">
           Closed Lost
         </p>
       )}

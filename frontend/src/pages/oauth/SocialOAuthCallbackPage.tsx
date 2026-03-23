@@ -28,13 +28,13 @@ const PLATFORM_INFO: Record<string, {
   twitter: {
     name: 'X (Twitter)',
     headline: 'Connect your X account for real-time social updates.',
-    accent: 'text-black',
+    accent: 'text-foreground',
     badgeClass: 'bg-black text-white',
   },
   tiktok: {
     name: 'TikTok',
     headline: 'Connect your TikTok account for short-form video distribution.',
-    accent: 'text-black',
+    accent: 'text-foreground',
     badgeClass: 'bg-black text-white',
   },
 };

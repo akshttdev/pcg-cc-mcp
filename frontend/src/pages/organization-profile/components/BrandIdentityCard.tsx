@@ -157,7 +157,7 @@ export function BrandIdentityCard({ orgId, orgName }: { orgId: string; orgName: 
             {/* Hero row */}
             <div className="flex items-start gap-4">
               <div
-                className="h-16 w-16 rounded-xl flex items-center justify-center text-white text-xl font-bold shrink-0 shadow"
+                className="h-16 w-16 rounded-xl flex items-center justify-center text-white text-xl font-semibold shrink-0 shadow"
                 style={{ background: `linear-gradient(135deg, ${profile.primaryColor}, ${profile.secondaryColor})` }}
               >
                 {initials}
@@ -166,9 +166,9 @@ export function BrandIdentityCard({ orgId, orgName }: { orgId: string; orgName: 
                 <p className="font-semibold text-lg leading-tight">{orgName}</p>
                 {profile.tagline && <p className="text-muted-foreground text-sm mt-0.5 italic">"{profile.tagline}"</p>}
                 <div className="flex items-center gap-2 flex-wrap mt-1.5">
-                  {profile.industry && <Badge variant="secondary" className="text-[10px]">{profile.industry}</Badge>}
-                  {profile.marketPosition && <Badge variant="outline" className="text-[10px] capitalize">{profile.marketPosition}</Badge>}
-                  {profile.brandArchetype && <Badge className="text-[10px] bg-[hsl(var(--brand))]/10 text-[hsl(var(--brand))] border-[hsl(var(--brand))]/20">{profile.brandArchetype}</Badge>}
+                  {profile.industry && <Badge variant="secondary" className="text-xs">{profile.industry}</Badge>}
+                  {profile.marketPosition && <Badge variant="outline" className="text-xs capitalize">{profile.marketPosition}</Badge>}
+                  {profile.brandArchetype && <Badge className="text-xs bg-[hsl(var(--brand))]/10 text-[hsl(var(--brand))] border-[hsl(var(--brand))]/20">{profile.brandArchetype}</Badge>}
                 </div>
               </div>
             </div>
@@ -182,14 +182,14 @@ export function BrandIdentityCard({ orgId, orgName }: { orgId: string; orgName: 
                 <div className="flex items-center gap-2">
                   <div className="h-8 w-8 rounded-md border shadow-sm shrink-0" style={{ backgroundColor: profile.primaryColor }} />
                   <div>
-                    <p className="text-[10px] text-muted-foreground">Primary</p>
+                    <p className="text-xs text-muted-foreground">Primary</p>
                     <p className="text-xs font-mono font-medium">{profile.primaryColor}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="h-8 w-8 rounded-md border shadow-sm shrink-0" style={{ backgroundColor: profile.secondaryColor }} />
                   <div>
-                    <p className="text-[10px] text-muted-foreground">Secondary</p>
+                    <p className="text-xs text-muted-foreground">Secondary</p>
                     <p className="text-xs font-mono font-medium">{profile.secondaryColor}</p>
                   </div>
                 </div>
@@ -197,7 +197,7 @@ export function BrandIdentityCard({ orgId, orgName }: { orgId: string; orgName: 
                   <div className="flex items-center gap-2">
                     <div className="h-8 w-8 rounded-md border shadow-sm shrink-0" style={{ backgroundColor: profile.accentColor }} />
                     <div>
-                      <p className="text-[10px] text-muted-foreground">Accent</p>
+                      <p className="text-xs text-muted-foreground">Accent</p>
                       <p className="text-xs font-mono font-medium">{profile.accentColor}</p>
                     </div>
                   </div>
@@ -206,7 +206,7 @@ export function BrandIdentityCard({ orgId, orgName }: { orgId: string; orgName: 
                   <div className="flex items-center gap-2 pt-1">
                     <Type className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                     <div>
-                      <p className="text-[10px] text-muted-foreground">Heading Font</p>
+                      <p className="text-xs text-muted-foreground">Heading Font</p>
                       <p className="text-xs font-medium">{profile.typographyHeading}</p>
                     </div>
                   </div>
@@ -215,7 +215,7 @@ export function BrandIdentityCard({ orgId, orgName }: { orgId: string; orgName: 
                   <div className="flex items-center gap-2">
                     <Type className="h-3.5 w-3.5 text-muted-foreground shrink-0 opacity-60" />
                     <div>
-                      <p className="text-[10px] text-muted-foreground">Body Font</p>
+                      <p className="text-xs text-muted-foreground">Body Font</p>
                       <p className="text-xs font-medium">{profile.typographyBody}</p>
                     </div>
                   </div>
@@ -229,27 +229,27 @@ export function BrandIdentityCard({ orgId, orgName }: { orgId: string; orgName: 
                 </p>
                 {profile.uniqueValueProposition && (
                   <div>
-                    <p className="text-[10px] text-muted-foreground mb-0.5">Unique Value Proposition</p>
+                    <p className="text-xs text-muted-foreground mb-0.5">Unique Value Proposition</p>
                     <p className="text-xs leading-relaxed">{profile.uniqueValueProposition}</p>
                   </div>
                 )}
                 {profile.missionStatement && (
                   <div>
-                    <p className="text-[10px] text-muted-foreground mb-0.5">Mission</p>
+                    <p className="text-xs text-muted-foreground mb-0.5">Mission</p>
                     <p className="text-xs leading-relaxed">{profile.missionStatement}</p>
                   </div>
                 )}
                 {profile.visionStatement && (
                   <div>
-                    <p className="text-[10px] text-muted-foreground mb-0.5">Vision</p>
+                    <p className="text-xs text-muted-foreground mb-0.5">Vision</p>
                     <p className="text-xs leading-relaxed">{profile.visionStatement}</p>
                   </div>
                 )}
                 {values.length > 0 && (
                   <div>
-                    <p className="text-[10px] text-muted-foreground mb-1">Brand Values</p>
+                    <p className="text-xs text-muted-foreground mb-1">Brand Values</p>
                     <div className="flex flex-wrap gap-1">
-                      {values.map(v => <Badge key={v} variant="outline" className="text-[10px]">{v}</Badge>)}
+                      {values.map(v => <Badge key={v} variant="outline" className="text-xs">{v}</Badge>)}
                     </div>
                   </div>
                 )}
@@ -257,7 +257,7 @@ export function BrandIdentityCard({ orgId, orgName }: { orgId: string; orgName: 
                   <div className="flex items-center gap-2">
                     <Mic className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                     <div>
-                      <p className="text-[10px] text-muted-foreground">Brand Voice</p>
+                      <p className="text-xs text-muted-foreground">Brand Voice</p>
                       <p className="text-xs font-medium capitalize">{profile.brandVoice}</p>
                     </div>
                   </div>
@@ -271,13 +271,13 @@ export function BrandIdentityCard({ orgId, orgName }: { orgId: string; orgName: 
                 </p>
                 {profile.targetAudience && (
                   <div>
-                    <p className="text-[10px] text-muted-foreground mb-0.5">Target Audience</p>
+                    <p className="text-xs text-muted-foreground mb-0.5">Target Audience</p>
                     <p className="text-xs leading-relaxed">{profile.targetAudience}</p>
                   </div>
                 )}
                 {profile.icpDescription && (
                   <div>
-                    <p className="text-[10px] text-muted-foreground mb-0.5">Ideal Customer Profile</p>
+                    <p className="text-xs text-muted-foreground mb-0.5">Ideal Customer Profile</p>
                     <p className="text-xs leading-relaxed">{profile.icpDescription}</p>
                   </div>
                 )}
@@ -285,7 +285,7 @@ export function BrandIdentityCard({ orgId, orgName }: { orgId: string; orgName: 
                   <div className="flex items-center gap-2">
                     <Tag className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                     <div>
-                      <p className="text-[10px] text-muted-foreground">Company Size</p>
+                      <p className="text-xs text-muted-foreground">Company Size</p>
                       <p className="text-xs font-medium capitalize">{profile.icpCompanySize}</p>
                     </div>
                   </div>
@@ -300,15 +300,15 @@ export function BrandIdentityCard({ orgId, orgName }: { orgId: string; orgName: 
                   </p>
                   {pillars.length > 0 && (
                     <div>
-                      <p className="text-[10px] text-muted-foreground mb-1">Content Pillars</p>
+                      <p className="text-xs text-muted-foreground mb-1">Content Pillars</p>
                       <div className="flex flex-wrap gap-1">
-                        {pillars.map(p => <Badge key={p} variant="secondary" className="text-[10px]">{p}</Badge>)}
+                        {pillars.map(p => <Badge key={p} variant="secondary" className="text-xs">{p}</Badge>)}
                       </div>
                     </div>
                   )}
                   {profile.contentTone && (
                     <div>
-                      <p className="text-[10px] text-muted-foreground mb-0.5">Tone Notes</p>
+                      <p className="text-xs text-muted-foreground mb-0.5">Tone Notes</p>
                       <p className="text-xs leading-relaxed">{profile.contentTone}</p>
                     </div>
                   )}
@@ -323,17 +323,17 @@ export function BrandIdentityCard({ orgId, orgName }: { orgId: string; orgName: 
                   </p>
                   {competitors.length > 0 && (
                     <div>
-                      <p className="text-[10px] text-muted-foreground mb-1">Competitors</p>
+                      <p className="text-xs text-muted-foreground mb-1">Competitors</p>
                       <div className="flex flex-wrap gap-1">
-                        {competitors.map(c => <Badge key={c} variant="outline" className="text-[10px] border-destructive/30 text-destructive">{c}</Badge>)}
+                        {competitors.map(c => <Badge key={c} variant="outline" className="text-xs border-destructive/30 text-destructive">{c}</Badge>)}
                       </div>
                     </div>
                   )}
                   {differentiators.length > 0 && (
                     <div>
-                      <p className="text-[10px] text-muted-foreground mb-1">Differentiators</p>
+                      <p className="text-xs text-muted-foreground mb-1">Differentiators</p>
                       <div className="flex flex-wrap gap-1">
-                        {differentiators.map(d => <Badge key={d} variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-600">{d}</Badge>)}
+                        {differentiators.map(d => <Badge key={d} variant="outline" className="text-xs border-emerald-500/30 text-emerald-600">{d}</Badge>)}
                       </div>
                     </div>
                   )}

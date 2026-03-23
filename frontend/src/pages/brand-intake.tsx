@@ -168,7 +168,7 @@ export function BrandIntakePage() {
             <div className="h-16 w-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-5">
               <CheckCircle2 className="h-8 w-8 text-green-500" />
             </div>
-            <h2 className="text-2xl font-bold mb-2">You're all set!</h2>
+            <h2 className="text-2xl font-semibold mb-2">You're all set!</h2>
             <p className="text-muted-foreground text-sm max-w-sm mx-auto">
               Your brand information has been received by the Powerclub Global team. We'll be in touch shortly.
             </p>
@@ -183,21 +183,21 @@ export function BrandIntakePage() {
       {/* Header */}
       <div className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-6 py-4 flex items-center gap-3">
-          <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-black to-amber-700 flex items-center justify-center text-white text-xs font-bold">
+          <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-black to-amber-700 flex items-center justify-center text-white text-xs font-semibold">
             PCG
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Brand Discovery — Powerclub Global</p>
-            <h1 className="text-sm font-semibold">{context.orgName}</h1>
+            <h1 className="text-sm font-bold">{context.orgName}</h1>
           </div>
-          <Badge variant="outline" className="ml-auto text-[10px]">Brand Intake</Badge>
+          <Badge variant="outline" className="ml-auto text-xs">Brand Intake</Badge>
         </div>
       </div>
 
       <div className="max-w-3xl mx-auto px-6 py-8 space-y-8">
         {/* Intro */}
         <div>
-          <h2 className="text-2xl font-bold mb-2">Brand Discovery Questionnaire</h2>
+          <h2 className="text-2xl font-semibold mb-2">Brand Discovery Questionnaire</h2>
           <p className="text-muted-foreground text-sm leading-relaxed">
             This questionnaire helps our team build a complete picture of your brand — identity, personality, audience, and online presence.
             Fill in what you know; leave anything blank if you're unsure. We'll fill the gaps together.

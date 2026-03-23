@@ -1,39 +1,42 @@
-import { useState, useMemo } from 'react';
-import { Button } from '@/components/ui/button';
+import {
+  Bot,
+  Clapperboard,
+  Download,
+  File,
+  FileText,
+  FolderOpen,
+  Grid3X3,
+  Image,
+  Link2,
+  List,
+  Pin,
+  Plus,
+  Search,
+  SortAsc,
+  SortDesc,
+  Upload,
+  User,
+  Video,
+} from 'lucide-react';
+import { useMemo,useState } from 'react';
+import type { ArtifactPhase,ArtifactType, ExecutionArtifact } from 'shared/types';
+
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  Grid3X3,
-  List,
-  Search,
-  Upload,
-  Link2,
-  SortAsc,
-  SortDesc,
-  FolderOpen,
-  Pin,
-  Bot,
-  User,
-  FileText,
-  Image,
-  Video,
-  File,
-  Plus,
-  Download,
-  Clapperboard,
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { ArtifactPreviewCard } from '../ArtifactPreviewCard';
-import type { ExecutionArtifact, ArtifactType, ArtifactPhase } from 'shared/types';
+import { IconButton } from '@/components/ui/icon-button';
+import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatDate } from '@/lib/formatters';
+import { cn } from '@/lib/utils';
+
+import { ArtifactPreviewCard } from '../ArtifactPreviewCard';
 
 
 const VIDEO_EDIT_TYPES: ArtifactType[] = ['video_edit_session', 'render_deliverable'];
@@ -120,16 +123,16 @@ function ArtifactListItem({
           {isPinned && <Pin className="h-3 w-3 text-primary" />}
         </div>
         <div className="flex items-center gap-2 mt-0.5">
-          <Badge variant="outline" className="text-[10px] h-4">
+          <Badge variant="outline" className="text-xs h-4">
             {artifact.artifact_type.replace(/_/g, ' ')}
           </Badge>
           {phase && (
-            <Badge variant="outline" className={cn('text-[10px] h-4', phaseColors[phase])}>
+            <Badge variant="outline" className={cn('text-xs h-4', phaseColors[phase])}>
               {phase}
             </Badge>
           )}
           {createdBy && (
-            <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+            <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
               {createdBy === 'agent' ? <Bot className="h-3 w-3" /> : <User className="h-3 w-3" />}
             </span>
           )}
@@ -159,38 +162,35 @@ function ArtifactListItem({
                 }
               } catch { /* ignore */ }
             }}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 transition-colors"
+            className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 transition-colors"
           >
             <Clapperboard className="h-3 w-3" />
             Review
           </button>
         )}
         {onDownload && (artifact.file_path || artifact.content) && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            title="Download"
+          <IconButton
+            variant="ghost" className="h-7 w-7"
             onClick={(e) => {
               e.stopPropagation();
               onDownload();
             }}
-          >
-            <Download className="h-3.5 w-3.5" />
-          </Button>
+            icon={Download}
+            label="Download"
+            iconClassName="h-3.5 w-3.5"
+          />
         )}
         {onPin && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn('h-7 w-7', isPinned && 'text-primary')}
+          <IconButton
+            variant="ghost" className={cn('h-7 w-7', isPinned && 'text-primary')}
             onClick={(e) => {
               e.stopPropagation();
               onPin();
             }}
-          >
-            <Pin className="h-3.5 w-3.5" />
-          </Button>
+            icon={Pin}
+            label={isPinned ? 'Unpin' : 'Pin'}
+            iconClassName="h-3.5 w-3.5"
+          />
         )}
       </div>
     </div>

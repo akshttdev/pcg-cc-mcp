@@ -21,7 +21,7 @@ export const FieldTemplate = (props: FieldTemplateProps) => {
       {/* Left column: Label and description */}
       <div className="space-y-2">
         {label && (
-          <div className="text-sm font-bold leading-relaxed">
+          <div className="text-sm font-semibold leading-relaxed">
             {label}
             {required && <span className="text-destructive ml-1">*</span>}
           </div>

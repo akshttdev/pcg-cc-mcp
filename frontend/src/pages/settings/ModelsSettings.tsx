@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { FormField } from '@/components/ui/form-field';
 import { Checkbox } from '@/components/ui/checkbox';
 import { JSONEditor } from '@/components/ui/json-editor';
 import { Loader2, DollarSign, Coins, RefreshCw } from 'lucide-react';
@@ -98,7 +99,8 @@ export function ModelsSettings() {
     useState<string>('CLAUDE_CODE');
   const [selectedConfiguration, setSelectedConfiguration] =
     useState<string>('DEFAULT');
-  const [localParsedProfiles, setLocalParsedProfiles] = useState<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [localParsedProfiles, setLocalParsedProfiles] = useState<Record<string, any> | null>(null);
   const [isDirty, setIsDirty] = useState(false);
 
   // Sync server state to local state when not dirty
@@ -123,7 +125,7 @@ export function ModelsSettings() {
 
   // Mark profiles as dirty
   const markDirty = (nextProfiles: unknown) => {
-    setLocalParsedProfiles(nextProfiles);
+    setLocalParsedProfiles(nextProfiles as Record<string, unknown> | null);
     syncRawProfiles(nextProfiles);
     setIsDirty(true);
   };
@@ -454,10 +456,7 @@ export function ModelsSettings() {
             // Form-based editor
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="executor-type">
-                    Executor Type
-                  </Label>
+                <FormField label="Executor Type" htmlFor="executor-type">
                   <Select
                     value={selectedExecutorType}
                     onValueChange={(value) => {
@@ -479,12 +478,9 @@ export function ModelsSettings() {
                       )}
                     </SelectContent>
                   </Select>
-                </div>
+                </FormField>
 
-                <div className="space-y-2">
-                  <Label htmlFor="configuration">
-                    Configuration Profile
-                  </Label>
+                <FormField label="Configuration Profile" htmlFor="configuration">
                   <div className="flex gap-2">
                     <Select
                       value={selectedConfiguration}
@@ -541,14 +537,14 @@ export function ModelsSettings() {
                       Delete
                     </Button>
                   </div>
-                </div>
+                </FormField>
               </div>
 
               {localParsedProfiles.executors[selectedExecutorType]?.[
                 selectedConfiguration
               ]?.[selectedExecutorType] && (
                 <ExecutorConfigForm
-                  executor={selectedExecutorType as any}
+                  executor={selectedExecutorType as 'AMP' | 'CLAUDE_CODE' | 'GEMINI' | 'CODEX' | 'CURSOR' | 'OPENCODE' | 'QWEN_CODE'}
                   value={
                     localParsedProfiles.executors[selectedExecutorType][
                       selectedConfiguration
@@ -571,10 +567,10 @@ export function ModelsSettings() {
           ) : (
             // Raw JSON editor
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="profiles-editor">
-                  {t('settings.agents.editor.jsonLabel')}
-                </Label>
+              <FormField
+                label={t('settings.agents.editor.jsonLabel')}
+                htmlFor="profiles-editor"
+              >
                 <JSONEditor
                   id="profiles-editor"
                   placeholder={t('settings.agents.editor.jsonPlaceholder')}
@@ -587,7 +583,7 @@ export function ModelsSettings() {
                   disabled={profilesLoading}
                   minHeight={300}
                 />
-              </div>
+              </FormField>
 
               {!profilesError && profilesPath && (
                 <div className="space-y-2">

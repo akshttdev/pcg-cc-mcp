@@ -87,7 +87,7 @@ export function ClientGroup({
           )}
           <CollapsibleTrigger asChild>
             <button className="shrink-0 p-0">
-              <span className="text-[10px] text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 {countProjects(client.projects)}
               </span>
             </button>
@@ -113,7 +113,7 @@ export function ClientGroup({
               <Link
                 to={`/people/${client.crm_person_id}`}
                 className={cn(
-                  'flex items-center gap-1.5 px-2 py-1 text-[10px] rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors text-muted-foreground',
+                  'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors text-muted-foreground',
                   location.pathname === `/people/${client.crm_person_id}` && 'bg-primary/10 text-foreground font-medium'
                 )}
               >
@@ -124,14 +124,14 @@ export function ClientGroup({
             <Link
               to={`/organizations/${organizationId}/crm/pipeline?client=${client.id}`}
               className={cn(
-                'flex items-center gap-1.5 px-2 py-1 text-[10px] rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors text-muted-foreground',
+                'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors text-muted-foreground',
               )}
             >
               <Package className="h-3 w-3 shrink-0" />
               <span>Pipeline</span>
             </Link>
             <button
-              className="flex items-center gap-1.5 px-2 py-1 text-[10px] rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors text-muted-foreground w-full text-left opacity-0 group-hover/client:opacity-100"
+              className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors text-muted-foreground w-full text-left opacity-0 group-hover/client:opacity-100"
               onClick={async (e) => {
                 e.stopPropagation();
                 try {

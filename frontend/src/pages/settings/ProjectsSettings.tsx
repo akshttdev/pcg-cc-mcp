@@ -1,36 +1,23 @@
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useMutationWithToast } from '@/hooks/useMutationWithToast';
-import { projectKeys, sidebarKeys, organizationKeys } from '@/lib/query-keys';
 import {
-  FolderKanban,
-  Users,
-  Search,
-  MoreVertical,
-  Calendar,
-  Shield,
-  Coins,
-  Loader2,
   Building2,
+  Calendar,
+  Coins,
+  FolderKanban,
+  Loader2,
+  MoreVertical,
+  Search,
+  Shield,
+  Users,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState } from 'react';
+import type { Project } from 'shared/types';
+import { toast } from 'sonner';
+
+import { ProjectMembersDialog } from '@/components/dialogs/project-members-dialog';
 import { Badge } from '@/components/ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -39,13 +26,28 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { toast } from 'sonner';
-import { ProjectMembersDialog } from '@/components/dialogs/project-members-dialog';
-import { projectsApi, organizationsApi, type ClientData, permissionsApi } from '@/lib/api';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import { type ClientData, organizationsApi, permissionsApi,projectsApi } from '@/lib/api';
 import { formatDate } from '@/lib/formatters';
-import type { Project } from 'shared/types';
+import { organizationKeys,projectKeys, sidebarKeys } from '@/lib/query-keys';
 
 // Project already includes organization_id and client_id
 type ProjectWithOrg = Project;
@@ -145,7 +147,7 @@ export function ProjectsSettings() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-3xl font-bold tracking-tight">Project Access Management</h2>
+        <h2 className="text-3xl font-semibold tracking-tight">Project Access Management</h2>
         <p className="text-muted-foreground mt-2">
           Manage user access and permissions for each project.
         </p>
@@ -159,7 +161,7 @@ export function ProjectsSettings() {
             <FolderKanban className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{projects.length}</div>
+            <div className="text-2xl font-semibold">{projects.length}</div>
           </CardContent>
         </Card>
         
@@ -169,7 +171,7 @@ export function ProjectsSettings() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">-</div>
+            <div className="text-2xl font-semibold">-</div>
             <p className="text-xs text-muted-foreground">
               Projects with access controls
             </p>
@@ -182,7 +184,7 @@ export function ProjectsSettings() {
             <Shield className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">All</div>
+            <div className="text-2xl font-semibold">All</div>
             <p className="text-xs text-muted-foreground">
               Admins have full access
             </p>
@@ -212,13 +214,11 @@ export function ProjectsSettings() {
           {isLoading ? (
             <div className="text-center py-12 text-muted-foreground">Loading projects...</div>
           ) : projects.length === 0 ? (
-            <div className="text-center py-12">
-              <FolderKanban className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No projects found</h3>
-              <p className="text-muted-foreground">
-                {searchQuery ? 'Try adjusting your search' : 'No projects available yet'}
-              </p>
-            </div>
+            <EmptyState
+              icon={FolderKanban}
+              title="No projects found"
+              description={searchQuery ? 'Try adjusting your search' : 'No projects available yet'}
+            />
           ) : (
             <Table>
               <TableHeader>

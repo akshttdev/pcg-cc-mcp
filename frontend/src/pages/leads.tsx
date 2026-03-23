@@ -1,15 +1,17 @@
+import { useQuery } from '@tanstack/react-query';
+import {
+Building2, ChevronRight, Clock,
+Layers,
+Loader2, Mail, Radio,   RefreshCw, Search, TrendingUp,   Users, } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { personsApi, type PersonRecord } from '@/lib/api';
-import { entityKeys } from '@/lib/query-keys';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+
 import { Badge } from '@/components/ui/badge';
-import {
-  Users, Search, Building2, Mail, TrendingUp, Layers,
-  RefreshCw, Loader2, ChevronRight, Radio, Clock,
-} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Input } from '@/components/ui/input';
+import { type PersonRecord,personsApi } from '@/lib/api';
+import { entityKeys } from '@/lib/query-keys';
 
 
 // Sirak Studios org ID (fixed seed)
@@ -46,7 +48,7 @@ function LeadCard({ person }: { person: PersonRecord }) {
       <div className="rounded-xl border border-slate-800 bg-slate-900/50 hover:border-indigo-700/50 hover:bg-slate-900 transition-all p-4">
         <div className="flex items-start gap-4">
           {/* Avatar */}
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-semibold shrink-0">
             {initials(person.full_name)}
           </div>
 
@@ -56,7 +58,7 @@ function LeadCard({ person }: { person: PersonRecord }) {
               <p className="font-semibold text-slate-200 group-hover:text-white transition-colors">
                 {person.full_name}
               </p>
-              <Badge variant="outline" className={`text-[10px] shrink-0 ${
+              <Badge variant="outline" className={`text-xs shrink-0 ${
                 person.person_type === 'lead'   ? 'border-amber-700 text-amber-400' :
                 person.person_type === 'client' ? 'border-emerald-700 text-emerald-400' :
                 'border-slate-700 text-slate-500'
@@ -64,7 +66,7 @@ function LeadCard({ person }: { person: PersonRecord }) {
                 {person.person_type}
               </Badge>
               {orgEntry && (
-                <Badge variant="outline" className={`text-[10px] shrink-0 ${orgEntry.color}`}>
+                <Badge variant="outline" className={`text-xs shrink-0 ${orgEntry.color}`}>
                   {orgEntry.label}
                 </Badge>
               )}
@@ -148,7 +150,7 @@ export function LeadsPage() {
             <TrendingUp className="w-5 h-5 text-amber-400" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-white">Leads</h1>
+            <h1 className="text-xl font-bold text-white">Leads</h1>
             <p className="text-xs text-slate-500">{persons.length} contact{persons.length !== 1 ? 's' : ''}</p>
           </div>
         </div>
@@ -216,16 +218,12 @@ export function LeadsPage() {
           <Loader2 className="w-6 h-6 animate-spin text-indigo-400" />
         </div>
       ) : persons.length === 0 ? (
-        <div className="text-center py-20 text-slate-500">
-          <div className="rounded-full bg-slate-800 p-4 mb-4 inline-flex">
-            <Users className="w-8 h-8 text-slate-500" />
-          </div>
-          <h3 className="text-base font-medium text-slate-300 mb-1">No leads found</h3>
-          <p className="text-sm">Process call transcripts via Call Intake to create leads.</p>
-          <Link to="/call-intake">
-            <Button variant="outline" size="sm" className="mt-4">Go to Call Intake</Button>
-          </Link>
-        </div>
+        <EmptyState
+          icon={Users}
+          title="No leads found"
+          description="Process call transcripts via Call Intake to create leads."
+          className="py-20"
+        />
       ) : showGrouped ? (
         <>
           {sirakLeads.length > 0 && (

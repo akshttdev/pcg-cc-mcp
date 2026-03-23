@@ -50,6 +50,8 @@ import {
   Activity,
   ChevronDown,
 } from 'lucide-react';
+import { EmptyState } from '@/components/ui/empty-state';
+import { CardGrid } from '@/components/ui/card-grid';
 import { agentFlowsApi, wideResearchApi, automationsApi, noraWorkflowsApi, cinematicBriefsApi } from '@/lib/api';
 import type { AgentFlow, WideResearchSession } from '@/lib/api';
 import { formatDate } from '@/lib/formatters';
@@ -293,15 +295,14 @@ export function WorkflowsPage() {
           {/* Active */}
           <TabsContent value="active" className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
             {activeExecutions.length === 0 ? (
-              <div className="empty-state h-full">
-                <GitBranch className="empty-state-icon" />
-                <p className="empty-state-title">No Active Workflows</p>
-                <p className="empty-state-description">
-                  Workflows appear here when agents execute tasks. Try asking Nora to run a workflow.
-                </p>
-              </div>
+              <EmptyState
+                icon={GitBranch}
+                title="No Active Workflows"
+                description="Workflows appear here when agents execute tasks. Try asking Nora to run a workflow."
+                className="h-full"
+              />
             ) : (
-              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 animate-stagger">
+              <CardGrid columns={{ sm: 2, lg: 3 }} gap={4} className="animate-stagger">
                 {activeExecutions.map((exec) => (
                   <Card
                     key={exec.executionId}
@@ -336,20 +337,21 @@ export function WorkflowsPage() {
                     </CardContent>
                   </Card>
                 ))}
-              </div>
+              </CardGrid>
             )}
           </TabsContent>
 
           {/* Recent */}
           <TabsContent value="recent" className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
             {completedExecutions.length === 0 ? (
-              <div className="empty-state h-full">
-                <Clock className="empty-state-icon" />
-                <p className="empty-state-title">No Recent Workflows</p>
-                <p className="empty-state-description">Completed workflows will appear here</p>
-              </div>
+              <EmptyState
+                icon={Clock}
+                title="No Recent Workflows"
+                description="Completed workflows will appear here"
+                className="h-full"
+              />
             ) : (
-              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 animate-stagger">
+              <CardGrid columns={{ sm: 2, lg: 3 }} gap={4} className="animate-stagger">
                 {completedExecutions.map((exec) => (
                   <Card
                     key={exec.executionId}
@@ -389,22 +391,21 @@ export function WorkflowsPage() {
                     </CardContent>
                   </Card>
                 ))}
-              </div>
+              </CardGrid>
             )}
           </TabsContent>
 
           {/* Agent Flows */}
           <TabsContent value="flows" className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
             {agentFlows.length === 0 ? (
-              <div className="empty-state h-full">
-                <History className="empty-state-icon" />
-                <p className="empty-state-title">No Agent Flows</p>
-                <p className="empty-state-description">
-                  Agent flows are created when AI agents work on tasks. Assign a task to an agent from any project board to get started.
-                </p>
-              </div>
+              <EmptyState
+                icon={History}
+                title="No Agent Flows"
+                description="Agent flows are created when AI agents work on tasks. Assign a task to an agent from any project board to get started."
+                className="h-full"
+              />
             ) : (
-              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 animate-stagger">
+              <CardGrid columns={{ sm: 2, lg: 3 }} gap={4} className="animate-stagger">
                 {agentFlows.map((flow) => (
                   <Card key={flow.id} className={`border-l-4 ${statusColor(flow.status)}`}>
                     <CardHeader className="pb-2">
@@ -430,22 +431,21 @@ export function WorkflowsPage() {
                     </CardContent>
                   </Card>
                 ))}
-              </div>
+              </CardGrid>
             )}
           </TabsContent>
 
           {/* Research */}
           <TabsContent value="research" className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
             {researchSessions.length === 0 ? (
-              <div className="empty-state h-full">
-                <Microscope className="empty-state-icon" />
-                <p className="empty-state-title">No Research Sessions</p>
-                <p className="empty-state-description">
-                  Wide research sessions (multi-agent parallel research) appear here
-                </p>
-              </div>
+              <EmptyState
+                icon={Microscope}
+                title="No Research Sessions"
+                description="Wide research sessions (multi-agent parallel research) appear here"
+                className="h-full"
+              />
             ) : (
-              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 animate-stagger">
+              <CardGrid columns={{ sm: 2, lg: 3 }} gap={4} className="animate-stagger">
                 {researchSessions.map((session) => (
                   <Card key={session.id} className={`border-l-4 ${statusColor(session.status)}`}>
                     <CardHeader className="pb-2">
@@ -476,22 +476,21 @@ export function WorkflowsPage() {
                     </CardContent>
                   </Card>
                 ))}
-              </div>
+              </CardGrid>
             )}
           </TabsContent>
 
           {/* Conference */}
           <TabsContent value="conference" className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
             {conferences.length === 0 ? (
-              <div className="empty-state h-full">
-                <Calendar className="empty-state-icon" />
-                <p className="empty-state-title">No Conference Workflows</p>
-                <p className="empty-state-description">
-                  Conference research, content, and social publishing pipelines appear here
-                </p>
-              </div>
+              <EmptyState
+                icon={Calendar}
+                title="No Conference Workflows"
+                description="Conference research, content, and social publishing pipelines appear here"
+                className="h-full"
+              />
             ) : (
-              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 animate-stagger">
+              <CardGrid columns={{ sm: 2, lg: 3 }} gap={4} className="animate-stagger">
                 {conferences.map((conf) => (
                   <Card key={conf.id} className={`border-l-4 ${statusColor(conf.status)}`}>
                     <CardHeader className="pb-2">
@@ -522,22 +521,21 @@ export function WorkflowsPage() {
                     </CardContent>
                   </Card>
                 ))}
-              </div>
+              </CardGrid>
             )}
           </TabsContent>
 
           {/* Editron */}
           <TabsContent value="editron" className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
             {cinematicBriefs.length === 0 ? (
-              <div className="empty-state h-full">
-                <Film className="empty-state-icon" />
-                <p className="empty-state-title">No Editron Briefs</p>
-                <p className="empty-state-description">
-                  Cinematic briefs and render pipelines from Editron Pro appear here
-                </p>
-              </div>
+              <EmptyState
+                icon={Film}
+                title="No Editron Briefs"
+                description="Cinematic briefs and render pipelines from Editron Pro appear here"
+                className="h-full"
+              />
             ) : (
-              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 animate-stagger">
+              <CardGrid columns={{ sm: 2, lg: 3 }} gap={4} className="animate-stagger">
                 {cinematicBriefs.map((brief) => (
                   <Card key={brief.id} className={`border-l-4 ${statusColor(brief.status)}`}>
                     <CardHeader className="pb-2">
@@ -553,20 +551,21 @@ export function WorkflowsPage() {
                     </CardContent>
                   </Card>
                 ))}
-              </div>
+              </CardGrid>
             )}
           </TabsContent>
 
           {/* Automations */}
           <TabsContent value="automations" className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
             {automations.length === 0 ? (
-              <div className="empty-state h-full">
-                <Zap className="empty-state-icon" />
-                <p className="empty-state-title">No Automations</p>
-                <p className="empty-state-description">CRM automations are loaded from the server</p>
-              </div>
+              <EmptyState
+                icon={Zap}
+                title="No Automations"
+                description="CRM automations are loaded from the server"
+                className="h-full"
+              />
             ) : (
-              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 animate-stagger">
+              <CardGrid columns={{ sm: 2, lg: 3 }} gap={4} className="animate-stagger">
                 {automations.map((automation) => (
                   <Card key={automation.id} className="border-l-4 border-l-blue-500">
                     <CardHeader className="pb-2">
@@ -593,7 +592,7 @@ export function WorkflowsPage() {
                     </CardContent>
                   </Card>
                 ))}
-              </div>
+              </CardGrid>
             )}
           </TabsContent>
         </Tabs>

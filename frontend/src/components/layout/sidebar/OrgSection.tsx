@@ -150,7 +150,7 @@ export function OrgSection({
         <Collapsible open={internalExpanded} onOpenChange={setInternalExpanded}>
           <div className="px-2 py-0.5 flex items-center justify-between">
             <CollapsibleTrigger asChild>
-              <button className="flex items-center gap-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground">
+              <button className="flex items-center gap-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground">
                 {internalExpanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
                 Internal Projects
               </button>
@@ -196,7 +196,7 @@ export function OrgSection({
         <Collapsible open={clientsExpanded} onOpenChange={setClientsExpanded}>
           <div className="px-2 py-0.5 flex items-center justify-between">
             <CollapsibleTrigger asChild>
-              <button className="flex items-center gap-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground">
+              <button className="flex items-center gap-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground">
                 {clientsExpanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
                 Clients
               </button>

@@ -28,6 +28,7 @@ import {
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Loader } from '@/components/ui/loader';
+import { CardGrid } from '@/components/ui/card-grid';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import NiceModal from '@ebay/nice-modal-react';
@@ -124,7 +125,7 @@ function OverviewTab({ client, projects, orgId }: { client: ClientOverviewData; 
             <FolderKanban className="h-4 w-4 text-primary" />
             <span className="text-xs text-muted-foreground font-medium">Projects</span>
           </div>
-          <p className="text-2xl font-bold">{projects.length}</p>
+          <p className="text-2xl font-semibold">{projects.length}</p>
           <p className="text-xs text-muted-foreground">{activeProjects.length} active</p>
         </Card>
         <Card className="p-4">
@@ -132,7 +133,7 @@ function OverviewTab({ client, projects, orgId }: { client: ClientOverviewData; 
             <CheckCircle className="h-4 w-4 text-green-500" />
             <span className="text-xs text-muted-foreground font-medium">Completed</span>
           </div>
-          <p className="text-2xl font-bold">{completedProjects.length}</p>
+          <p className="text-2xl font-semibold">{completedProjects.length}</p>
           <p className="text-xs text-muted-foreground">archived</p>
         </Card>
         {client.crm_confidence != null && (
@@ -141,7 +142,7 @@ function OverviewTab({ client, projects, orgId }: { client: ClientOverviewData; 
               <BarChart3 className="h-4 w-4 text-indigo-500" />
               <span className="text-xs text-muted-foreground font-medium">CRM Confidence</span>
             </div>
-            <p className="text-2xl font-bold">{Math.round((client.crm_confidence ?? 0) * 100)}%</p>
+            <p className="text-2xl font-semibold">{Math.round((client.crm_confidence ?? 0) * 100)}%</p>
           </Card>
         )}
         <Card className="p-4">
@@ -221,7 +222,7 @@ function ClientContactsTab({ orgId, clientName }: { orgId: string; clientName: s
     </div>
   );
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+    <CardGrid columns={{ md: 2, lg: 3 }} gap={3}>
       {contacts.map((contact) => (
         <div key={contact.id} className="rounded-lg border bg-card p-4 space-y-2">
           <div className="flex items-start gap-3">
@@ -244,11 +245,11 @@ function ClientContactsTab({ orgId, clientName }: { orgId: string; clientName: s
             </div>
           </div>
           {contact.lifecycle_stage && (
-            <Badge variant="secondary" className="text-[10px]">{contact.lifecycle_stage}</Badge>
+            <Badge variant="secondary" className="text-xs">{contact.lifecycle_stage}</Badge>
           )}
         </div>
       ))}
-    </div>
+    </CardGrid>
   );
 }
 
@@ -304,7 +305,7 @@ function ClientMembersTab({ clientId, orgId }: { clientId: string; orgId: string
               <p className="text-sm font-medium truncate">{name}</p>
               {email && <p className="text-xs text-muted-foreground truncate">{email}</p>}
             </div>
-            <Badge variant="outline" className="text-[10px] capitalize">{m.role ?? 'member'}</Badge>
+            <Badge variant="outline" className="text-xs capitalize">{m.role ?? 'member'}</Badge>
           </div>
         );
       })}
@@ -432,7 +433,7 @@ export function ClientOverview() {
         <div className="relative flex items-start justify-between gap-4">
           <div className="flex items-center gap-4">
             {/* Brand avatar */}
-            <div className="w-14 h-14 rounded-xl flex items-center justify-center text-xl font-bold text-white shrink-0 shadow-lg"
+            <div className="w-14 h-14 rounded-xl flex items-center justify-center text-xl font-semibold text-white shrink-0 shadow-lg"
               style={{ background: `linear-gradient(135deg, ${brandFrom}, ${brandTo})` }}
             >
               {client.name.charAt(0)}

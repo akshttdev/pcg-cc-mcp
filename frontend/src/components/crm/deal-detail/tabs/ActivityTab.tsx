@@ -5,6 +5,7 @@ import { taskKeys } from '@/lib/query-keys';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   CheckCircle2,
   Clock,
@@ -96,12 +97,12 @@ function TaskEventCard({ task }: { task: TaskWithArchive }) {
           <span className="text-sm font-medium leading-tight">{task.title}</span>
           <Badge
             variant="outline"
-            className={cn('text-[10px] px-1.5 py-0 shrink-0', statusColor)}
+            className={cn('text-xs px-1.5 py-0 shrink-0', statusColor)}
           >
             {statusLabel(task.status)}
           </Badge>
         </div>
-        <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
           {task.assigned_agent ? (
             <span className="flex items-center gap-1">
               <Bot className="h-3 w-3" />
@@ -120,7 +121,7 @@ function TaskEventCard({ task }: { task: TaskWithArchive }) {
         {task.description && (
           <div>
             <button
-              className="text-[11px] text-muted-foreground hover:text-foreground mt-1 flex items-center gap-0.5"
+              className="text-xs text-muted-foreground hover:text-foreground mt-1 flex items-center gap-0.5"
               onClick={() => setOpen((v) => !v)}
             >
               {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
@@ -154,13 +155,13 @@ function VibeEventCard({ event }: { event: UnifiedEvent }) {
             {event.vibeDesc ?? 'LLM Usage'}
           </span>
           {amount > 0 && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-violet-500 shrink-0">
+            <Badge variant="outline" className="text-xs px-1.5 py-0 text-violet-500 shrink-0">
               {amount.toLocaleString()} VIBE
               {usd && <span className="text-muted-foreground ml-1">(${usd})</span>}
             </Badge>
           )}
         </div>
-        <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
           {event.vibeModel && <span>{event.vibeModel}</span>}
           <span className="ml-auto">
             {formatDistanceToNow(event.timestamp, { addSuffix: true })}
@@ -186,14 +187,14 @@ function CrmEventCard({ event }: { event: UnifiedEvent }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">{event.crmSubject ?? label}</span>
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">
+          <Badge variant="outline" className="text-xs px-1.5 py-0 shrink-0">
             {label}
           </Badge>
         </div>
         {event.crmDesc && (
           <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{event.crmDesc}</p>
         )}
-        <div className="mt-0.5 text-[11px] text-muted-foreground text-right">
+        <div className="mt-0.5 text-xs text-muted-foreground text-right">
           {formatDistanceToNow(event.timestamp, { addSuffix: true })}
         </div>
       </div>
@@ -350,7 +351,7 @@ export function ActivityTab({ deal }: ActivityTabProps) {
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-medium">Workflow Activity</h3>
           {totalVibe > 0 && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-violet-500 gap-0.5">
+            <Badge variant="outline" className="text-xs px-1.5 py-0 text-violet-500 gap-0.5">
               <Zap className="h-2.5 w-2.5" />
               {totalVibe.toLocaleString()} VIBE spent
             </Badge>
@@ -377,19 +378,19 @@ export function ActivityTab({ deal }: ActivityTabProps) {
             <div className="grid grid-cols-3 gap-3 text-center">
               <div>
                 <p className="text-lg font-semibold">{tasks.length}</p>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Tasks</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Tasks</p>
               </div>
               <div>
                 <p className="text-lg font-semibold">
                   {tasks.filter((t) => t.status === 'done').length}
                 </p>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Done</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Done</p>
               </div>
               <div>
                 <p className="text-lg font-semibold text-violet-500">
                   {totalVibe > 0 ? `$${(totalVibe / 100).toFixed(2)}` : '—'}
                 </p>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">VIBE Cost</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">VIBE Cost</p>
               </div>
             </div>
           </CardContent>
@@ -409,15 +410,16 @@ export function ActivityTab({ deal }: ActivityTabProps) {
           ))}
         </div>
       ) : events.length === 0 ? (
-        <div className="text-center py-8 text-sm text-muted-foreground">
-          <Clock className="h-8 w-8 mx-auto mb-2 opacity-30" />
-          <p>No activity yet on this project</p>
-        </div>
+        <EmptyState
+          icon={Clock}
+          title="No activity yet on this project"
+          className="py-8"
+        />
       ) : (
         <div className="space-y-6">
           {Array.from(grouped.entries()).map(([date, dayEvents]) => (
             <div key={date}>
-              <div className="text-[11px] font-medium text-muted-foreground mb-3 uppercase tracking-wide">
+              <div className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wide">
                 {date}
               </div>
               <div className="space-y-4 border-l border-border/50 pl-3 ml-1.5">

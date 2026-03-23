@@ -1,16 +1,17 @@
+import { Activity, Bot, Crown, MapPin, MessageSquare, Navigation, Radio, Terminal } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { resolveApiUrl, topsiApi } from '@/lib/api';
+
+import { SlashCommand, SlashCommandMenu, useSlashCommands } from '@/components/slash-commands/SlashCommandMenu';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { SlashCommandMenu, SlashCommand, useSlashCommands } from '@/components/slash-commands/SlashCommandMenu';
-import { cn } from '@/lib/utils';
 import { useAgentDirectory } from '@/hooks/useAgentDirectory';
-import type { AgentCoordinationState, CoordinationEvent } from '@/types/nora';
-import { Activity, Bot, Crown, MapPin, MessageSquare, Navigation, Radio, Terminal } from 'lucide-react';
+import { resolveApiUrl, topsiApi } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import { useMultiplayerStore } from '@/stores/useMultiplayerStore';
+import type { AgentCoordinationState, CoordinationEvent } from '@/types/nora';
 
 interface AgentChatConsoleProps {
   className?: string;
@@ -622,7 +623,7 @@ export function AgentChatConsole({
               <Crown className="h-4 w-4 text-cyan-300" />
               Command Net
             </CardTitle>
-            <Badge variant={socketConnected ? 'default' : 'secondary'} className="flex items-center gap-1 text-[10px]">
+            <Badge variant={socketConnected ? 'default' : 'secondary'} className="flex items-center gap-1 text-xs">
               <Radio className="h-3 w-3" />
               {socketConnected ? 'LIVE LINK' : 'RECONNECTING'}
             </Badge>
@@ -639,7 +640,7 @@ export function AgentChatConsole({
         <ScrollArea className="h-56 rounded border border-cyan-500/10 bg-black/30">
           <div className="p-3 space-y-2" ref={listRef}>
             {messages.map((message) => (
-              <div key={message.id} className="flex gap-2 text-[13px] leading-relaxed">
+              <div key={message.id} className="flex gap-2 text-sm leading-relaxed">
                 <span className={cn('font-mono text-xs', channelColorMap[message.channel])}>
                   [{message.channel.toUpperCase()}]
                 </span>
@@ -666,11 +667,13 @@ export function AgentChatConsole({
               name="command-net-input"
               className="bg-black/60 border-cyan-500/30 text-sm"
             />
-            <Button size="icon" onClick={handleButtonSend} disabled={isSending || !isInputActive}>
-              <SendIcon className="h-4 w-4" />
-            </Button>
+            <IconButton
+              onClick={handleButtonSend} disabled={isSending || !isInputActive}
+              icon={SendIcon}
+              label="Send"
+            />
           </div>
-          <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-cyan-200/70">
+          <div className="mt-2 flex flex-wrap gap-2 text-xs text-cyan-200/70">
             <span>{isInputActive ? 'Enter sends · Esc exits typing' : 'Enter to open · Esc to cancel'}</span>
             <span>Slash tips: /nora, /global, /help, /&lt;agent&gt;</span>
           </div>
@@ -678,7 +681,7 @@ export function AgentChatConsole({
 
         {activeAgents.length > 0 && (
           <div className="space-y-1">
-            <p className="text-[11px] uppercase tracking-[0.3em] text-cyan-300">Nearby Agents</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-cyan-300">Nearby Agents</p>
             <div className="flex flex-wrap gap-2">
               {activeAgents.map((agent) => (
                 <button
@@ -696,12 +699,12 @@ export function AgentChatConsole({
 
         {selectedProject && (
           <div className="border-t border-cyan-500/10 pt-3">
-            <p className="text-[11px] uppercase tracking-[0.25em] text-cyan-200/80">Linked Project</p>
+            <p className="text-xs uppercase tracking-[0.25em] text-cyan-200/80">Linked Project</p>
             <div className="flex items-center justify-between text-xs text-cyan-100">
               <span className="font-semibold">{selectedProject.name}</span>
               <span className="font-mono text-cyan-300">{(selectedProject.energy * 100).toFixed(1)}%</span>
             </div>
-            <p className="text-[11px] text-cyan-200/70 mt-1">Synchronized with MCP timeline feed.</p>
+            <p className="text-xs text-cyan-200/70 mt-1">Synchronized with MCP timeline feed.</p>
           </div>
         )}
       </CardContent>

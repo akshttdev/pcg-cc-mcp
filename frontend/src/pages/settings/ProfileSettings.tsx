@@ -1,12 +1,14 @@
+import { Briefcase, Calendar, Mail, MapPin, Upload,User } from 'lucide-react';
 import { useState } from 'react';
+
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { FormField } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { User, Mail, Briefcase, MapPin, Calendar, Upload } from 'lucide-react';
 
 // Mock user data - replace with actual user context/API
 const mockUser = {
@@ -150,20 +152,16 @@ export function ProfileSettings() {
             </div>
           </div>
 
-          <div>
-            <Label htmlFor="bio">Bio</Label>
+          <FormField label="Bio" htmlFor="bio" description={`${bio.length}/500 characters`}>
             <Textarea
               id="bio"
               value={bio}
               onChange={(e) => setBio(e.target.value)}
               placeholder="Tell us about yourself"
-              className="mt-1.5 min-h-[100px]"
+              className="min-h-[100px]"
               maxLength={500}
             />
-            <p className="text-xs text-muted-foreground mt-1">
-              {bio.length}/500 characters
-            </p>
-          </div>
+          </FormField>
         </CardContent>
       </Card>
 

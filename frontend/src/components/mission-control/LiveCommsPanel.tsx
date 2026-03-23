@@ -43,7 +43,7 @@ function CommEventItem({ event }: { event: CommEvent }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium">{event.actor}</span>
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             {format(event.timestamp, 'HH:mm:ss')}
           </span>
         </div>

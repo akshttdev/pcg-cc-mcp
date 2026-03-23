@@ -23,7 +23,7 @@ export function AudienceMarketPage({ profile, primary, accent }: BrandPageProps)
         {/* ICP Card */}
         {profile.icpDescription && (
           <div>
-            <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-gray-400 mb-5">Ideal Customer Profile</p>
+            <p className="text-xs uppercase tracking-[0.25em] font-semibold text-gray-400 mb-5">Ideal Customer Profile</p>
             <div
               className="rounded-3xl overflow-hidden shadow-sm border"
               style={{ borderColor: `${accent}30` }}
@@ -32,7 +32,7 @@ export function AudienceMarketPage({ profile, primary, accent }: BrandPageProps)
                 <div className="h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: accent, color: textOn(accent) }}>{'\u2726'}</div>
                 <span className="text-xs font-semibold tracking-widest uppercase" style={{ color: accent }}>ICP</span>
                 {profile.icpCompanySize && (
-                  <span className="ml-auto text-[10px] capitalize rounded-full px-2 py-0.5" style={{ background: `${accent}30`, color: accent }}>
+                  <span className="ml-auto text-xs capitalize rounded-full px-2 py-0.5" style={{ background: `${accent}30`, color: accent }}>
                     {profile.icpCompanySize}
                   </span>
                 )}
@@ -42,7 +42,7 @@ export function AudienceMarketPage({ profile, primary, accent }: BrandPageProps)
                 {icpIndustries.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {icpIndustries.map((ind, i) => (
-                      <span key={i} className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-600">{ind}</span>
+                      <span key={i} className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">{ind}</span>
                     ))}
                   </div>
                 )}
@@ -54,7 +54,7 @@ export function AudienceMarketPage({ profile, primary, accent }: BrandPageProps)
         {/* Target audience */}
         {profile.targetAudience && (
           <div>
-            <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-gray-400 mb-5">Target Audience</p>
+            <p className="text-xs uppercase tracking-[0.25em] font-semibold text-gray-400 mb-5">Target Audience</p>
             <p className="text-base text-gray-700 leading-relaxed">{profile.targetAudience}</p>
           </div>
         )}
@@ -67,7 +67,7 @@ export function AudienceMarketPage({ profile, primary, accent }: BrandPageProps)
         <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
           {competitors.length > 0 && (
             <div>
-              <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-gray-400 mb-5">Competitive Set</p>
+              <p className="text-xs uppercase tracking-[0.25em] font-semibold text-gray-400 mb-5">Competitive Set</p>
               <div className="space-y-2">
                 {competitors.map((c, i) => (
                   <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-gray-50">
@@ -81,7 +81,7 @@ export function AudienceMarketPage({ profile, primary, accent }: BrandPageProps)
 
           {differentiators.length > 0 && (
             <div>
-              <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-gray-400 mb-5">Key Differentiators</p>
+              <p className="text-xs uppercase tracking-[0.25em] font-semibold text-gray-400 mb-5">Key Differentiators</p>
               <div className="space-y-3">
                 {differentiators.map((d, i) => (
                   <div key={i} className="flex items-start gap-3">

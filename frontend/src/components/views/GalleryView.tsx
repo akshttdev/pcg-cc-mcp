@@ -207,7 +207,7 @@ export function GalleryView({ tasks, projectId, onEditTask, onDeleteTask, onDupl
                   <Server className="h-3 w-3" />
                   <div className="flex flex-wrap gap-1">
                     {JSON.parse(task.assigned_mcps).map((mcp: string) => (
-                      <Badge key={mcp} variant="outline" className="text-[10px] bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                      <Badge key={mcp} variant="outline" className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
                         {mcp}
                       </Badge>
                     ))}
@@ -221,12 +221,12 @@ export function GalleryView({ tasks, projectId, onEditTask, onDeleteTask, onDupl
                   <Tag className="h-3 w-3" />
                   <div className="flex flex-wrap gap-1">
                     {JSON.parse(task.tags).slice(0, 3).map((tag: string) => (
-                      <Badge key={tag} variant="secondary" className="text-[10px]">
+                      <Badge key={tag} variant="secondary" className="text-xs">
                         {tag}
                       </Badge>
                     ))}
                     {JSON.parse(task.tags).length > 3 && (
-                      <Badge variant="secondary" className="text-[10px]">
+                      <Badge variant="secondary" className="text-xs">
                         +{JSON.parse(task.tags).length - 3}
                       </Badge>
                     )}

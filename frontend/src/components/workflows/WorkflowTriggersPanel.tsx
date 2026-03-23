@@ -1,17 +1,30 @@
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { workflowKeys } from '@/lib/query-keys';
-import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import {
+  Activity,
+  AlertTriangle,
+  Clock,
+  Copy,
+  Globe,
+  Loader2,
+  Plus,
+  Trash2,
+  Zap,
+  ZapOff,
+} from 'lucide-react';
+import { useState } from 'react';
+import { toast } from 'sonner';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
@@ -20,29 +33,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import type {
+  AvailableModel,
+  CreateWorkflowTrigger,
+} from '@/lib/api';
 import {
-  Plus,
-  Trash2,
-  Zap,
-  ZapOff,
-  Loader2,
-  Clock,
-  Activity,
-  Globe,
-  Copy,
-  AlertTriangle,
-} from 'lucide-react';
-import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
-import {
+  DATA_TYPE_OPTIONS,
   triggersApi,
   workflowsApi,
-  DATA_TYPE_OPTIONS,
 } from '@/lib/api';
-import type {
-  CreateWorkflowTrigger,
-  AvailableModel,
-} from '@/lib/api';
+import { workflowKeys } from '@/lib/query-keys';
+import { cn } from '@/lib/utils';
 
 const TRIGGER_TYPE_OPTIONS = [
   { value: 'data_source_created', label: 'Data Source Created' },
@@ -269,70 +272,69 @@ export function WorkflowTriggersPanel({
                         </span>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <Badge variant="outline" className="text-[10px]">
+                        <Badge variant="outline" className="text-xs">
                           {TRIGGER_TYPE_OPTIONS.find(
                             (o) => o.value === trigger.trigger_type
                           )?.label || trigger.trigger_type}
                         </Badge>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        <IconButton
+                          variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive"
                           onClick={() => {
                             if (confirm('Delete this trigger?')) {
-                              deleteMutation.mutate(trigger.id);
+                            deleteMutation.mutate(trigger.id);
                             }
                           }}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                          icon={Trash2}
+                          label="Delete trigger"
+                          iconClassName="h-3.5 w-3.5"
+                        />
                       </div>
                     </div>
 
                     {/* Filter summary */}
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {scheduleInterval && (
-                        <Badge variant="secondary" className="text-[10px]">
+                        <Badge variant="secondary" className="text-xs">
                           {SCHEDULE_INTERVAL_OPTIONS.find((o) => o.value === scheduleInterval)?.label || scheduleInterval}
                         </Badge>
                       )}
                       {dsTypes.length > 0 ? (
                         dsTypes.map((t) => (
-                          <Badge key={t} variant="secondary" className="text-[10px]">
+                          <Badge key={t} variant="secondary" className="text-xs">
                             {DATA_TYPE_OPTIONS.find((o) => o.value === t)?.label || t}
                           </Badge>
                         ))
                       ) : (
-                        <Badge variant="secondary" className="text-[10px] opacity-60">
+                        <Badge variant="secondary" className="text-xs opacity-60">
                           All data types
                         </Badge>
                       )}
                       {trigger.filter_organization_id && (
-                        <Badge variant="secondary" className="text-[10px]">
+                        <Badge variant="secondary" className="text-xs">
                           Org filter
                         </Badge>
                       )}
                       {trigger.filter_project_id && (
-                        <Badge variant="secondary" className="text-[10px]">
+                        <Badge variant="secondary" className="text-xs">
                           Project filter
                         </Badge>
                       )}
                       {trigger.model_override && (
-                        <Badge variant="outline" className="text-[10px]">
+                        <Badge variant="outline" className="text-xs">
                           Model: {trigger.model_override}
                         </Badge>
                       )}
                       {trigger.auto_approve && (
-                        <Badge className="text-[10px] bg-green-600">Auto-approve</Badge>
+                        <Badge className="text-xs bg-green-600">Auto-approve</Badge>
                       )}
                     </div>
 
                     {/* Webhook URL + secret */}
                     {trigger.trigger_type === 'webhook' && trigger.webhook_url && (
                       <div className="mt-2 space-y-1.5">
-                        <div className="flex items-center gap-1.5 text-[11px]">
+                        <div className="flex items-center gap-1.5 text-xs">
                           <Globe className="h-3 w-3 text-muted-foreground shrink-0" />
-                          <code className="bg-muted px-1.5 py-0.5 rounded text-[10px] truncate flex-1">
+                          <code className="bg-muted px-1.5 py-0.5 rounded text-xs truncate flex-1">
                             {trigger.webhook_url}
                           </code>
                           <button
@@ -349,9 +351,9 @@ export function WorkflowTriggersPanel({
                           </button>
                         </div>
                         {trigger.webhook_secret && (
-                          <div className="flex items-center gap-1.5 text-[11px]">
+                          <div className="flex items-center gap-1.5 text-xs">
                             <span className="text-muted-foreground shrink-0">Secret:</span>
-                            <code className="bg-muted px-1.5 py-0.5 rounded text-[10px] truncate flex-1">
+                            <code className="bg-muted px-1.5 py-0.5 rounded text-xs truncate flex-1">
                               {trigger.webhook_secret.slice(0, 8)}...
                             </code>
                             <button
@@ -371,7 +373,7 @@ export function WorkflowTriggersPanel({
 
                     {/* Error state */}
                     {trigger.last_error && (
-                      <div className="mt-2 flex items-start gap-1.5 text-[11px] text-destructive">
+                      <div className="mt-2 flex items-start gap-1.5 text-xs text-destructive">
                         <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
                         <span className="truncate">{trigger.last_error}</span>
                         {trigger.retry_count > 0 && (
@@ -383,7 +385,7 @@ export function WorkflowTriggersPanel({
                     )}
 
                     {/* Stats row */}
-                    <div className="mt-2 flex items-center gap-4 text-[11px] text-muted-foreground">
+                    <div className="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Activity className="h-3 w-3" />
                         {trigger.trigger_count} runs
@@ -438,7 +440,7 @@ export function WorkflowTriggersPanel({
                       <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">
                         Webhook triggers accept external HTTP POST requests.
                       </p>
-                      <p className="text-[11px] text-muted-foreground mt-1">
+                      <p className="text-xs text-muted-foreground mt-1">
                         After creation, you'll receive a unique URL and HMAC secret.
                         External systems POST data to that URL, which fires this workflow
                         with the request body as content.
@@ -459,7 +461,7 @@ export function WorkflowTriggersPanel({
                           ))}
                         </SelectContent>
                       </Select>
-                      <p className="text-[11px] text-muted-foreground mt-1">
+                      <p className="text-xs text-muted-foreground mt-1">
                         Schedule triggers run without a data source, relying on action nodes.
                       </p>
                     </div>
@@ -581,7 +583,7 @@ export function WorkflowTriggersPanel({
                     </div>
                   </div>
 
-                  <div className="flex justify-end gap-2 pt-1">
+                  <DialogFooter className="pt-1">
                     <Button variant="ghost" size="sm" onClick={resetForm}>
                       Cancel
                     </Button>
@@ -595,7 +597,7 @@ export function WorkflowTriggersPanel({
                       )}
                       Create Trigger
                     </Button>
-                  </div>
+                  </DialogFooter>
                 </div>
               )}
             </div>
@@ -604,7 +606,7 @@ export function WorkflowTriggersPanel({
 
         {/* Footer */}
         <div className="flex justify-between items-center pt-3 border-t">
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Triggers run workflows automatically when matching data sources are created.
             They are disabled by default.
           </p>

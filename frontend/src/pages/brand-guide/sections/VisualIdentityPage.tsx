@@ -43,7 +43,7 @@ export function VisualIdentityPage({ primary, secondary, accent, headingFont, bo
       </div>
 
       {/* Usage guidance */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-14 text-[11px]">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-14 text-xs">
         <div className="rounded-xl border border-gray-100 p-4 space-y-1">
           <p className="font-semibold text-gray-700">Primary -- Midnight</p>
           <p className="text-gray-500">Backgrounds, hero sections, primary CTAs, print media base.</p>
@@ -59,11 +59,11 @@ export function VisualIdentityPage({ primary, secondary, accent, headingFont, bo
       </div>
 
       {/* Typography section */}
-      <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-gray-400 mb-8">Typography System</p>
+      <p className="text-xs uppercase tracking-[0.25em] font-semibold text-gray-400 mb-8">Typography System</p>
 
       {/* Heading specimen */}
       <div className="overflow-hidden mb-6">
-        <p className="text-[10px] text-gray-400 mb-2 uppercase tracking-widest">Display / Headings</p>
+        <p className="text-xs text-gray-400 mb-2 uppercase tracking-widest">Display / Headings</p>
         <div
           className="heading-font text-[96px] leading-none font-black text-gray-900 select-none overflow-hidden whitespace-nowrap"
           style={{ fontFamily: `'${headingFont}', Cinzel, serif`, letterSpacing: '-0.02em' }}
@@ -75,21 +75,21 @@ export function VisualIdentityPage({ primary, secondary, accent, headingFont, bo
           <span className="heading-font text-xl font-semibold text-gray-600" style={{ fontFamily: `'${headingFont}', Cinzel, serif` }}>H2 Semibold</span>
           <span className="heading-font text-base font-medium text-gray-500" style={{ fontFamily: `'${headingFont}', Cinzel, serif` }}>H3 Medium</span>
         </div>
-        <p className="text-[10px] text-gray-400 mt-1">{headingFont}</p>
+        <p className="text-xs text-gray-400 mt-1">{headingFont}</p>
       </div>
 
       <div className="h-px bg-gray-100 mb-6" />
 
       {/* Body specimen */}
       <div>
-        <p className="text-[10px] text-gray-400 mb-2 uppercase tracking-widest">Body / Interface</p>
+        <p className="text-xs text-gray-400 mb-2 uppercase tracking-widest">Body / Interface</p>
         <p
           className="text-2xl text-gray-700 leading-relaxed"
           style={{ fontFamily: `'${bodyFont}', Inter, sans-serif` }}
         >
           The quick brown fox jumps over the lazy dog. 0123456789
         </p>
-        <p className="text-[10px] text-gray-400 mt-1">{bodyFont}</p>
+        <p className="text-xs text-gray-400 mt-1">{bodyFont}</p>
       </div>
     </div>
   );

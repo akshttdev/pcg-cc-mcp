@@ -2,6 +2,8 @@ import { useNavigate } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ListItem } from '@/components/ui/list-item';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Building2, ExternalLink, FolderKanban } from 'lucide-react';
 import { useDealClient } from '@/hooks/useCrmPipeline';
@@ -37,21 +39,21 @@ export function ProjectsTab({ deal, orgId }: ProjectsTabProps) {
 
   if (!client) {
     return (
-      <div className="p-5 text-center py-12">
-        <FolderKanban className="h-8 w-8 mx-auto mb-2 text-muted-foreground/40" />
-        <p className="text-sm text-muted-foreground">
-          No client found for &quot;{deal.contact_company}&quot;.
-        </p>
-      </div>
+      <EmptyState
+        icon={FolderKanban}
+        title={`No client found for "${deal.contact_company}"`}
+        className="p-5"
+      />
     );
   }
 
   if (projects.length === 0) {
     return (
-      <div className="p-5 text-center py-12">
-        <FolderKanban className="h-8 w-8 mx-auto mb-2 text-muted-foreground/40" />
-        <p className="text-sm text-muted-foreground">No projects for {client.name} yet.</p>
-      </div>
+      <EmptyState
+        icon={FolderKanban}
+        title={`No projects for ${client.name} yet`}
+        className="p-5"
+      />
     );
   }
 
@@ -60,7 +62,7 @@ export function ProjectsTab({ deal, orgId }: ProjectsTabProps) {
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Building2 className="h-3.5 w-3.5" />
         <span className="font-medium">{client.name}</span>
-        <Badge variant="secondary" className="text-[10px]">
+        <Badge variant="secondary" className="text-xs">
           {projects.length} project{projects.length !== 1 ? 's' : ''}
         </Badge>
       </div>
@@ -68,20 +70,22 @@ export function ProjectsTab({ deal, orgId }: ProjectsTabProps) {
         {projects.map((project) => (
           <Card key={project.id} className="hover:shadow-sm transition-shadow border-border/60">
             <CardContent className="p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <FolderKanban className="h-4 w-4 text-primary shrink-0" />
-                  <p className="text-sm font-medium truncate">{project.name}</p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="shrink-0 h-7 text-xs gap-1"
-                  onClick={() => navigate(`/projects/${project.id}/tasks`)}
-                >
-                  Open <ExternalLink className="h-3 w-3" />
-                </Button>
-              </div>
+              <ListItem
+                icon={FolderKanban}
+                iconClassName="text-primary"
+                title={project.name}
+                size="sm"
+                actions={
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="shrink-0 h-7 text-xs gap-1"
+                    onClick={() => navigate(`/projects/${project.id}/tasks`)}
+                  >
+                    Open <ExternalLink className="h-3 w-3" />
+                  </Button>
+                }
+              />
             </CardContent>
           </Card>
         ))}

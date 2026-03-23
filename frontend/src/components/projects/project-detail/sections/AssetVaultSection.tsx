@@ -1,5 +1,9 @@
-import { Button } from '@/components/ui/button';
+import { AlertCircle, Folder, Loader2, Plus, Trash2 } from 'lucide-react';
+import type { ProjectAsset, ProjectBoard } from 'shared/types';
+
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -7,7 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   Table,
   TableBody,
@@ -16,8 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { AlertCircle, Folder, Loader2, Plus, Trash2 } from 'lucide-react';
-import type { ProjectAsset, ProjectBoard } from 'shared/types';
+
 import { formatByteSize, formatStatusLabel } from '../helpers';
 import { BOARD_TYPE_LABELS } from '../helpers';
 
@@ -131,15 +134,12 @@ export function AssetVaultSection({
                       {new Date(asset.updated_at).toLocaleDateString()}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-muted-foreground hover:text-destructive"
+                      <IconButton
+                        variant="ghost" className="text-muted-foreground hover:text-destructive"
                         onClick={() => onDeleteAsset(asset.id)}
-                        aria-label={`Delete asset ${asset.name}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                        icon={Trash2}
+                        label={`Delete asset ${asset.name}`}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}

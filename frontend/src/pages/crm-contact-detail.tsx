@@ -1,30 +1,31 @@
-import { useMemo } from 'react';
-import { AskTopsiButton } from '@/components/topsi/AskTopsiButton';
-import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import { formatDistanceToNow } from 'date-fns';
 import {
   ArrowLeft,
-  Mail,
-  Phone,
   Building2,
+  DollarSign,
   Globe,
   Linkedin,
-  Twitter,
+  Mail,
+  Phone,
   Star,
-  DollarSign,
+  Twitter,
 } from 'lucide-react';
-import { crmApi, crmDealsApi } from '@/lib/api';
-import { crmKeys } from '@/lib/query-keys';
-import type { CrmContactRecord, CrmDealRecord } from '@/lib/api';
-import { LIFECYCLE_STAGE_INFO } from '@/types/crm';
-import type { LifecycleStage } from '@/types/crm';
+import { useMemo } from 'react';
+import { useNavigate,useParams } from 'react-router-dom';
+
 import { CrmActivityTimeline } from '@/components/crm/CrmActivityTimeline';
-import { formatDistanceToNow } from 'date-fns';
+import { AskTopsiButton } from '@/components/topsi/AskTopsiButton';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
+import { Skeleton } from '@/components/ui/skeleton';
+import type { CrmContactRecord, CrmDealRecord } from '@/lib/api';
+import { crmApi, crmDealsApi } from '@/lib/api';
 import { formatCurrencyFull } from '@/lib/formatters';
+import { crmKeys } from '@/lib/query-keys';
+import type { LifecycleStage } from '@/types/crm';
+import { LIFECYCLE_STAGE_INFO } from '@/types/crm';
 
 export function CrmContactDetailPage() {
   const { projectId, contactId } = useParams<{
@@ -89,13 +90,11 @@ export function CrmContactDetailPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => navigate(`/projects/${projectId}/crm`)}
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
+        <IconButton
+          variant="ghost" onClick={() => navigate(`/projects/${projectId}/crm`)}
+          icon={ArrowLeft}
+          label="Go back"
+        />
         <div className="flex items-center gap-4 flex-1">
           <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xl font-semibold">
             {contact.avatar_url ? (
@@ -113,7 +112,7 @@ export function CrmContactDetailPage() {
             )}
           </div>
           <div>
-            <h1 className="text-2xl font-semibold">
+            <h1 className="text-2xl font-bold">
               {contact.full_name || contact.email || 'Unnamed Contact'}
             </h1>
             <div className="flex items-center gap-2 mt-1">

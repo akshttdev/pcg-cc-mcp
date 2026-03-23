@@ -45,17 +45,17 @@ export function ContactCard({ contact, onClick }: { contact: CrmContactRecord; o
         {stageInfo && (
           <Badge
             variant="secondary"
-            className="text-[10px]"
+            className="text-xs"
             style={{ backgroundColor: stageInfo.color + '20', color: stageInfo.color }}
           >
             {stageInfo.label}
           </Badge>
         )}
         {contact.source && (
-          <Badge variant="outline" className="text-[10px] capitalize">{contact.source}</Badge>
+          <Badge variant="outline" className="text-xs capitalize">{contact.source}</Badge>
         )}
         {importedViaWorkflow && (
-          <Badge variant="outline" className="text-[10px] gap-0.5" title="Imported via workflow">
+          <Badge variant="outline" className="text-xs gap-0.5" title="Imported via workflow">
             <GitBranch className="h-2.5 w-2.5" />
             Workflow
           </Badge>

@@ -89,11 +89,11 @@ export function SidebarUserCard({ isCollapsed }: SidebarUserCardProps) {
           </div>
         </div>
         <div className="mt-2 flex items-center gap-1.5">
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+          <Badge variant="outline" className="text-xs px-1.5 py-0">
             {ROLE_LABELS[naturalRole]}
           </Badge>
           {isOverridden && viewAsRole && (
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-amber-500/15 text-amber-600 border-amber-500/20">
+            <Badge variant="secondary" className="text-xs px-1.5 py-0 bg-amber-500/15 text-amber-600 border-amber-500/20">
               <Eye className="h-2.5 w-2.5 mr-0.5" />
               {ROLE_LABELS[viewAsRole]}
             </Badge>
@@ -104,12 +104,12 @@ export function SidebarUserCard({ isCollapsed }: SidebarUserCardProps) {
       {/* View as selector */}
       {availableRoleGroups.length > 0 && (
         <div className="p-2 border-b border-border/40">
-          <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-2 mb-1">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-2 mb-1">
             View as...
           </div>
           {availableRoleGroups.map(({ group, label, roles }) => (
             <div key={group} className="mb-1 last:mb-0">
-              <div className="text-[10px] text-muted-foreground/70 px-2 py-0.5 uppercase tracking-wider">
+              <div className="text-xs text-muted-foreground/70 px-2 py-0.5 uppercase tracking-wider">
                 {label}
               </div>
               {roles.map((role) => (
@@ -199,7 +199,7 @@ export function SidebarUserCard({ isCollapsed }: SidebarUserCardProps) {
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-sm font-medium truncate">{user.full_name}</div>
-            <div className="text-[11px] text-muted-foreground truncate">
+            <div className="text-xs text-muted-foreground truncate">
               {ROLE_LABELS[displayRole]}
             </div>
           </div>

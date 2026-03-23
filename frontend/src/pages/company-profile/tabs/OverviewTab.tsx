@@ -109,18 +109,18 @@ export function OverviewTab({
             onClick={() => onNavigate('proposals')}
             className="flex flex-col items-center gap-1 p-4 rounded-xl bg-muted hover:bg-muted/70 transition-colors text-center"
           >
-            <span className="text-2xl font-bold">{proposals.length}</span>
+            <span className="text-2xl font-semibold">{proposals.length}</span>
             <span className="text-xs text-muted-foreground">Proposal{proposals.length !== 1 ? 's' : ''}</span>
           </button>
           <button
             onClick={() => onNavigate('contacts')}
             className="flex flex-col items-center gap-1 p-4 rounded-xl bg-muted hover:bg-muted/70 transition-colors text-center"
           >
-            <span className="text-2xl font-bold">{contacts.length}</span>
+            <span className="text-2xl font-semibold">{contacts.length}</span>
             <span className="text-xs text-muted-foreground">Contact{contacts.length !== 1 ? 's' : ''}</span>
           </button>
           <div className="flex flex-col items-center gap-1 p-4 rounded-xl bg-muted text-center">
-            <span className="text-2xl font-bold">
+            <span className="text-2xl font-semibold">
               {proposals.filter(p => p.status === 'contract_signed').length}
             </span>
             <span className="text-xs text-muted-foreground">Won Deals</span>

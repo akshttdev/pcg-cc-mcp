@@ -43,7 +43,7 @@ export default function DiffViewSwitch({ className, size = 'xs' }: Props) {
         onClick={() => setMode('unified')}
       >
         <FileText className="h-3 w-3" />
-        <span className="text-[11px]">Inline</span>
+        <span className="text-xs">Inline</span>
       </Button>
       <Button
         variant={!isUnified ? 'default' : 'outline'}
@@ -59,7 +59,7 @@ export default function DiffViewSwitch({ className, size = 'xs' }: Props) {
         onClick={() => setMode('split')}
       >
         <Columns className="h-3 w-3" />
-        <span className="text-[11px]">Split</span>
+        <span className="text-xs">Split</span>
       </Button>
     </div>
   );

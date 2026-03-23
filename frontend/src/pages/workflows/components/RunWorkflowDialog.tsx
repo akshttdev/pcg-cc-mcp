@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -210,7 +211,7 @@ export function RunWorkflowDialog({ workflow, onClose, onRunComplete }: RunWorkf
             )}
 
             {/* Actions */}
-            <div className="flex items-center justify-end gap-2 shrink-0">
+            <DialogFooter>
               <Button variant="outline" size="sm" onClick={handleClose}>Cancel</Button>
               <Button
                 size="sm"
@@ -225,7 +226,7 @@ export function RunWorkflowDialog({ workflow, onClose, onRunComplete }: RunWorkf
                 )}
                 Run Workflow
               </Button>
-            </div>
+            </DialogFooter>
           </div>
         </DialogContent>
       </Dialog>

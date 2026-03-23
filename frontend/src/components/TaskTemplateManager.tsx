@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { Edit2, Loader2,Plus, Trash2 } from 'lucide-react';
+import { useCallback,useEffect, useState } from 'react';
+import type { TaskTemplate } from 'shared/types';
+
 import { Button } from '@/components/ui/button';
-import { Plus, Edit2, Trash2, Loader2 } from 'lucide-react';
+import { IconButton } from '@/components/ui/icon-button';
 import { templatesApi } from '@/lib/api';
 import { showTaskTemplateEdit } from '@/lib/modals';
-import type { TaskTemplate } from 'shared/types';
 
 interface TaskTemplateManagerProps {
   projectId?: string;
@@ -148,24 +150,20 @@ export function TaskTemplateManager({
                     </td>
                     <td className="p-2">
                       <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
+                        <IconButton
+                          variant="ghost" className="h-7 w-7"
                           onClick={() => handleOpenDialog(template)}
-                          title="Edit template"
-                        >
-                          <Edit2 className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
+                          icon={Edit2}
+                          label="Edit template"
+                          iconClassName="h-3 w-3"
+                        />
+                        <IconButton
+                          variant="ghost" className="h-7 w-7"
                           onClick={() => handleDelete(template)}
-                          title="Delete template"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
+                          icon={Trash2}
+                          label="Delete template"
+                          iconClassName="h-3 w-3"
+                        />
                       </div>
                     </td>
                   </tr>

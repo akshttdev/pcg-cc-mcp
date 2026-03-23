@@ -1,24 +1,25 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { resolveApiUrl } from '@/lib/api';
-import ReactMarkdown from 'react-markdown';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Textarea } from '@/components/ui/textarea';
-import { Loader } from '@/components/ui/loader';
 import {
+  Crown,
   Mic,
   MicOff,
   Send,
+  Settings,
   Volume2,
-  VolumeX,
-  Crown,
-  Settings
-} from 'lucide-react';
+  VolumeX} from 'lucide-react';
+import React, { useEffect, useRef,useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { toast } from 'sonner';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Loader } from '@/components/ui/loader';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
+import { resolveApiUrl } from '@/lib/api';
 
 interface SpeechRecognitionAlternative {
   transcript: string;
@@ -98,7 +99,7 @@ interface ExecutiveAction {
   actionId: string;
   actionType: string;
   description: string;
-  parameters: any;
+  parameters: Record<string, unknown>;
   requiresApproval: boolean;
   estimatedDuration?: string;
   assignedTo?: string;
@@ -107,7 +108,7 @@ interface ExecutiveAction {
 interface ContextUpdate {
   updateType: string;
   key: string;
-  value: any;
+  value: unknown;
   confidence: number;
   source: string;
 }
@@ -901,13 +902,12 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
                     </span>
                   )}
                 </Button>
-                <Button
+                <IconButton
                   onClick={handleSend}
                   disabled={!canSend || isLoading}
-                  size="icon"
-                >
-                  <Send className="w-4 h-4" />
-                </Button>
+                  icon={Send}
+                  label="Send message"
+                />
               </div>
             </div>
 

@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -280,14 +281,14 @@ export function ScheduleMeetingDialog({ open, onClose, proposalId, defaultInvite
             </div>
           )}
 
-          <div className="flex justify-end gap-2 pt-1">
+          <DialogFooter className="pt-1">
             <Button type="button" variant="ghost" onClick={handleClose} disabled={saving}>
               Cancel
             </Button>
             <Button type="submit" disabled={saving}>
               {saving ? 'Scheduling…' : 'Send Invitations'}
             </Button>
-          </div>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

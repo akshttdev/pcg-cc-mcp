@@ -94,7 +94,7 @@ export const useLogStream = (processId: string): UseLogStreamResult => {
           // Handle different message types based on LogMsg enum
           if ('JsonPatch' in data) {
             const patches = data.JsonPatch;
-            patches.forEach((patch: any) => {
+            patches.forEach((patch: { op: string; path: string; value?: { type: string; content: string } }) => {
               const value = patch?.value;
               if (!value || !value.type) return;
 

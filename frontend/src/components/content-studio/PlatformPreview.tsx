@@ -172,7 +172,7 @@ function PlatformPreviewCard({
       )}>
         <div className="flex items-start gap-3">
           <div className={cn(
-            'w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold',
+            'w-10 h-10 rounded-full flex items-center justify-center text-xs font-semibold',
             platform === 'twitter' || platform === 'tiktok' ? 'bg-gray-700' : 'bg-gray-300'
           )}>
             {PLATFORM_ICONS[platform]}

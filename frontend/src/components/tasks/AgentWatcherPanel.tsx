@@ -98,7 +98,7 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
           <Eye className="h-3 w-3" />
           Agent Reviewers
         </p>
@@ -186,7 +186,7 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
                 </div>
                 <Badge
                   variant="secondary"
-                  className={cn('text-[10px] px-1.5 py-0', status.className)}
+                  className={cn('text-xs px-1.5 py-0', status.className)}
                 >
                   {status.label}
                 </Badge>

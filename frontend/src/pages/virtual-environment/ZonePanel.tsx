@@ -9,7 +9,7 @@ export function ZoneEntryPrompt({ enterZoneTarget }: ZoneEntryPromptProps) {
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-28 flex justify-center">
       <div
-        className="rounded-full px-6 py-2 text-[11px] uppercase tracking-[0.4em]"
+        className="rounded-full px-6 py-2 text-xs uppercase tracking-[0.4em]"
         style={{
           border: `1px solid ${enterZoneTarget.color}66`,
           backgroundColor: 'rgba(0,0,0,0.7)',
@@ -42,13 +42,13 @@ export function ZoneSidePanel({ activeZone, allProjects, onClose }: ZoneSidePane
           <div className="h-3 w-3 rounded-full" style={{ backgroundColor: activeZone.color, boxShadow: `0 0 8px ${activeZone.color}` }} />
           <div>
             <p className="text-base font-semibold tracking-wide text-white">{activeZone.space_name}</p>
-            <p className="text-[11px] tracking-[0.2em] text-amber-200/60">HOST: {activeZone.host_username.toUpperCase()}</p>
+            <p className="text-xs tracking-[0.2em] text-amber-200/60">HOST: {activeZone.host_username.toUpperCase()}</p>
           </div>
         </div>
         <button
           type="button"
           onClick={onClose}
-          className="rounded border border-amber-500/30 px-3 py-1 text-[10px] tracking-[0.2em] text-amber-200/80 transition hover:bg-amber-500/20 hover:text-white"
+          className="rounded border border-amber-500/30 px-3 py-1 text-xs tracking-[0.2em] text-amber-200/80 transition hover:bg-amber-500/20 hover:text-white"
         >
           ESC / CLOSE
         </button>
@@ -79,7 +79,7 @@ export function ZoneSidePanel({ activeZone, allProjects, onClose }: ZoneSidePane
       </div>
 
       {/* Footer */}
-      <div className="border-t border-amber-500/20 px-6 py-3 text-[10px] tracking-[0.2em] text-amber-200/40">
+      <div className="border-t border-amber-500/20 px-6 py-3 text-xs tracking-[0.2em] text-amber-200/40">
         YOU REMAIN IN THE GLOBAL ENVIRONMENT &middot; ESC TO CLOSE
       </div>
     </div>

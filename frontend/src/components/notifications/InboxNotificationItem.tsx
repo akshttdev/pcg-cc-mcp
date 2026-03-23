@@ -30,14 +30,14 @@ export function InboxNotificationItem({ item, onClick, onDismiss }: InboxNotific
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium leading-tight">{item.title}</p>
           {item.message && (
-            <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{item.message}</p>
+            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{item.message}</p>
           )}
-          <p className="text-[10px] text-muted-foreground mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5">
             {timeAgo(item.created_at)}
           </p>
           {item.source === 'task' && item.source_id && (
             <button
-              className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline mt-0.5"
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-0.5"
               onClick={(e) => {
                 e.stopPropagation();
                 onClick(item);
@@ -49,7 +49,7 @@ export function InboxNotificationItem({ item, onClick, onDismiss }: InboxNotific
           )}
           {item.source === 'workflow' && item.source_id && (
             <button
-              className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline mt-0.5"
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-0.5"
               onClick={(e) => {
                 e.stopPropagation();
                 onClick(item);

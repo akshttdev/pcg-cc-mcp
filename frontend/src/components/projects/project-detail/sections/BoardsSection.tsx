@@ -1,15 +1,3 @@
-import { useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { cn } from '@/lib/utils';
 import {
   AlertCircle,
   Code2,
@@ -20,7 +8,18 @@ import {
   Shapes,
   Trash2,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import type { ProjectBoard, TaskWithAttemptStatus } from 'shared/types';
+
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { CardGrid } from '@/components/ui/card-grid';
+import { IconButton } from '@/components/ui/icon-button';
+import { SectionHeader } from '@/components/ui/section-header';
+import { cn } from '@/lib/utils';
+
 import { formatStatusLabel } from '../helpers';
 import type { BoardMeta } from '../types';
 
@@ -121,24 +120,18 @@ export function BoardsSection({
 
   return (
     <Card className="h-full">
-      <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <CardTitle className="flex items-center gap-2">
-            <LayoutGrid className="h-5 w-5" />
-            Workstreams &amp; Boards
-          </CardTitle>
-          <CardDescription>
-            Activate and monitor each delivery lane across the brand.
-          </CardDescription>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onCreateBoard}
-        >
-          <Plus className="mr-1 h-4 w-4" /> Create Board
-        </Button>
-      </CardHeader>
+      <div className="p-6 pb-0">
+        <SectionHeader
+          icon={LayoutGrid}
+          title="Workstreams & Boards"
+          subtitle="Activate and monitor each delivery lane across the brand."
+          actions={
+            <Button variant="outline" size="sm" onClick={onCreateBoard}>
+              <Plus className="mr-1 h-4 w-4" /> Create Board
+            </Button>
+          }
+        />
+      </div>
       <CardContent className="space-y-4">
         {boardsLoading ? (
           <div className="flex items-center gap-2 text-muted-foreground">
@@ -162,7 +155,7 @@ export function BoardsSection({
                 <AlertDescription>{tasksError}</AlertDescription>
               </Alert>
             )}
-            <div className="grid gap-4 lg:grid-cols-2">
+            <CardGrid columns={{ sm: 1, lg: 2 }} gap={4}>
               {boards.map((board) => {
                 const meta = boardTemplateMeta[board.board_type] || boardTemplateMeta.custom;
                 const Icon = meta.icon;
@@ -223,20 +216,17 @@ export function BoardsSection({
                         </div>
                       </div>
                       {!isDefaultBoard(board.board_type) && (
-                        <Button
+                        <IconButton
                           type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="relative text-muted-foreground hover:text-destructive"
+                          variant="ghost" className="relative text-muted-foreground hover:text-destructive"
                           onClick={(event) => {
                             event.stopPropagation();
                             event.preventDefault();
                             onDeleteBoard(board);
                           }}
-                          aria-label={`Delete board ${board.name}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                          icon={Trash2}
+                          label={`Delete board ${board.name}`}
+                        />
                       )}
                     </div>
                     <div className="relative mt-4 space-y-2">
@@ -265,7 +255,7 @@ export function BoardsSection({
                               </span>
                               <Badge
                                 variant={task.status === 'done' ? 'secondary' : 'outline'}
-                                className="uppercase text-[10px]"
+                                className="uppercase text-xs"
                               >
                                 {formatStatusLabel(task.status)}
                               </Badge>
@@ -279,7 +269,7 @@ export function BoardsSection({
                           )}
                         </ul>
                       )}
-                      <div className="flex flex-wrap items-center justify-between gap-3 pt-3 text-[11px] uppercase tracking-wide text-muted-foreground">
+                      <div className="flex flex-wrap items-center justify-between gap-3 pt-3 text-xs uppercase tracking-wide text-muted-foreground">
                         <span>
                           Updated {new Date(board.updated_at).toLocaleDateString()}
                         </span>
@@ -301,7 +291,7 @@ export function BoardsSection({
                   </div>
                 );
               })}
-            </div>
+            </CardGrid>
             {unassignedTasks.length > 0 && (
               <div
                 role="button"
@@ -336,7 +326,7 @@ export function BoardsSection({
                       Tasks without a board. Assign them to keep workstreams organized.
                     </p>
                   </div>
-                  <Badge variant="outline" className="uppercase text-[10px]">
+                  <Badge variant="outline" className="uppercase text-xs">
                     {unassignedTasks.length}
                   </Badge>
                 </div>
@@ -351,7 +341,7 @@ export function BoardsSection({
                       </span>
                       <Badge
                         variant={task.status === 'done' ? 'secondary' : 'outline'}
-                        className="uppercase text-[10px]"
+                        className="uppercase text-xs"
                       >
                         {formatStatusLabel(task.status)}
                       </Badge>

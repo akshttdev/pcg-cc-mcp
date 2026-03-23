@@ -37,7 +37,7 @@ export function CommunicationSection() {
           discordSessions.length > 0 ? (
             <div className="space-y-1 pt-1">
               {discordSessions.slice(0, 3).map(s => (
-                <p key={s.meeting_session_id} className="text-[11px] text-muted-foreground">
+                <p key={s.meeting_session_id} className="text-xs text-muted-foreground">
                   #{s.channel_name} · {s.guild_id}
                 </p>
               ))}
@@ -55,7 +55,7 @@ export function CommunicationSection() {
         status="connected"
         statusLabel="Active"
         actions={
-          <span className="text-[11px] text-muted-foreground italic">Managed via environment config</span>
+          <span className="text-xs text-muted-foreground italic">Managed via environment config</span>
         }
       />
     </section>

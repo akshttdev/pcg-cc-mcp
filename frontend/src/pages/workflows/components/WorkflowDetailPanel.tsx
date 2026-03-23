@@ -100,7 +100,7 @@ export function WorkflowDetailPanel({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <CardTitle className="text-base">{workflow.name}</CardTitle>
-            {workflow.is_system && <Badge variant="secondary" className="text-[10px]">System</Badge>}
+            {workflow.is_system && <Badge variant="secondary" className="text-xs">System</Badge>}
           </div>
           <div className="flex items-center gap-1.5">
             <Button size="sm" variant="outline" className="gap-1.5 h-7 text-xs" onClick={onRun}>
@@ -130,19 +130,19 @@ export function WorkflowDetailPanel({
         <div className="grid grid-cols-4 gap-3">
           <div className="rounded-md border p-2.5 text-center">
             <div className="text-lg font-semibold">{nodeCount}</div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Nodes</div>
+            <div className="text-xs text-muted-foreground uppercase tracking-wide">Nodes</div>
           </div>
           <div className="rounded-md border p-2.5 text-center">
             <div className="text-lg font-semibold">{totalRuns}</div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Runs</div>
+            <div className="text-xs text-muted-foreground uppercase tracking-wide">Runs</div>
           </div>
           <div className="rounded-md border p-2.5 text-center">
             <div className="text-lg font-semibold text-green-600">{successRuns}</div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Successful</div>
+            <div className="text-xs text-muted-foreground uppercase tracking-wide">Successful</div>
           </div>
           <div className="rounded-md border p-2.5 text-center">
             <div className="text-lg font-semibold">{totalRecordsStaged}</div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Records</div>
+            <div className="text-xs text-muted-foreground uppercase tracking-wide">Records</div>
           </div>
         </div>
 
@@ -158,7 +158,7 @@ export function WorkflowDetailPanel({
                 output_tasks: 'Tasks',
               };
               return (
-                <Badge key={node.id} variant="secondary" className="text-[10px]">
+                <Badge key={node.id} variant="secondary" className="text-xs">
                   {outputLabels[node.type] ?? node.type}
                 </Badge>
               );
@@ -195,7 +195,7 @@ export function WorkflowDetailPanel({
                 {(workflow.nodes ?? []).map((node: WorkflowNode, idx: number) => (
                     <div key={node.id} className="flex items-center gap-1.5">
                       {idx > 0 && <ArrowRight className="h-3 w-3 text-muted-foreground" />}
-                      <Badge variant="outline" className="text-[10px]">
+                      <Badge variant="outline" className="text-xs">
                         {node.name}
                       </Badge>
                     </div>

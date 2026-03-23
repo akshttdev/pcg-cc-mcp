@@ -24,7 +24,7 @@ export function FoundationPage({ profile, primary, secondary, accent }: BrandPag
           <div className="space-y-4">
             <div className="flex items-center gap-3">
               <div className="h-5 w-1 rounded-full" style={{ background: accent }} />
-              <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-gray-400">Mission</p>
+              <p className="text-xs uppercase tracking-[0.25em] font-semibold text-gray-400">Mission</p>
             </div>
             <p
               className="heading-font text-xl font-semibold text-gray-900 leading-relaxed"
@@ -40,7 +40,7 @@ export function FoundationPage({ profile, primary, secondary, accent }: BrandPag
           <div className="space-y-4">
             <div className="flex items-center gap-3">
               <div className="h-5 w-1 rounded-full" style={{ background: primary }} />
-              <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-gray-400">Vision</p>
+              <p className="text-xs uppercase tracking-[0.25em] font-semibold text-gray-400">Vision</p>
             </div>
             <p
               className="heading-font text-xl font-semibold text-gray-900 leading-relaxed"
@@ -58,7 +58,7 @@ export function FoundationPage({ profile, primary, secondary, accent }: BrandPag
           className="rounded-3xl p-10 mb-14"
           style={{ background: primary }}
         >
-          <p className="text-[10px] uppercase tracking-[0.3em] mb-4" style={{ color: accent }}>Unique Value Proposition</p>
+          <p className="text-xs uppercase tracking-[0.3em] mb-4" style={{ color: accent }}>Unique Value Proposition</p>
           <p
             className="heading-font text-xl font-semibold leading-relaxed"
             style={{ color: secondary, lineHeight: 1.7 }}
@@ -71,7 +71,7 @@ export function FoundationPage({ profile, primary, secondary, accent }: BrandPag
       {/* Core Values */}
       {values.length > 0 && (
         <div>
-          <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-gray-400 mb-6">Core Values</p>
+          <p className="text-xs uppercase tracking-[0.25em] font-semibold text-gray-400 mb-6">Core Values</p>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {values.map((v, i) => (
               <div

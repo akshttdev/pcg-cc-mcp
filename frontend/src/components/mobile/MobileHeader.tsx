@@ -1,6 +1,9 @@
+import { Bell, Menu, User, Wifi, WifiOff } from 'lucide-react';
 import { useState } from 'react';
-import { Menu, Bell, User, Wifi, WifiOff } from 'lucide-react';
+
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   Sheet,
   SheetContent,
@@ -8,7 +11,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
-import { Badge } from '@/components/ui/badge';
 
 interface MobileHeaderProps {
   title?: string;
@@ -31,9 +33,12 @@ export function MobileHeader({
         {/* Menu Button */}
         <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
           <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="touch-manipulation">
-              <Menu className="h-5 w-5" />
-            </Button>
+            <IconButton
+              variant="ghost" className="touch-manipulation"
+              icon={Menu}
+              label="Menu"
+              iconClassName="h-5 w-5"
+            />
           </SheetTrigger>
           <SheetContent side="left" className="w-[280px]">
             <SheetHeader>
@@ -54,7 +59,7 @@ export function MobileHeader({
 
         {/* Title with Mesh Status */}
         <div className="flex items-center gap-2">
-          <h1 className="text-lg font-semibold">{title}</h1>
+          <h1 className="text-lg font-bold">{title}</h1>
           {showMeshStatus && (
             <Badge
               variant={meshConnected ? 'default' : 'secondary'}
@@ -71,7 +76,7 @@ export function MobileHeader({
 
         {/* Right Actions */}
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="relative touch-manipulation">
+          <Button variant="ghost" size="icon" className="relative touch-manipulation" title="Notifications">
             <Bell className="h-5 w-5" />
             {notificationCount > 0 && (
               <span className="absolute -top-1 -right-1 h-4 w-4 bg-destructive text-destructive-foreground text-xs rounded-full flex items-center justify-center">
@@ -79,9 +84,12 @@ export function MobileHeader({
               </span>
             )}
           </Button>
-          <Button variant="ghost" size="icon" className="touch-manipulation">
-            <User className="h-5 w-5" />
-          </Button>
+          <IconButton
+            variant="ghost" className="touch-manipulation"
+            icon={User}
+            label="Profile"
+            iconClassName="h-5 w-5"
+          />
         </div>
       </div>
     </header>

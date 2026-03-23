@@ -1,31 +1,33 @@
-import { useCallback } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
 import {
-  FolderOpen,
-  Settings,
-  Plus,
   Command as CommandIcon,
+  FolderOpen,
   Menu,
-  PanelLeftOpen,
-  PanelLeftClose,
-  Sun,
   Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  Settings,
+  Sun,
 } from 'lucide-react';
-import { SearchBar } from '@/components/search-bar';
-import { useSearch } from '@/contexts/search-context';
-import { openTaskForm } from '@/lib/openTaskForm';
-import { useProject } from '@/contexts/project-context';
-import { useOrganization } from '@/contexts/organization-context';
-import { showProjectForm } from '@/lib/modals';
-import { useOpenProjectInEditor } from '@/hooks/useOpenProjectInEditor';
-import { useCommandStore } from '@/stores/useCommandStore';
-import { NotificationCenter } from '@/components/notifications/NotificationCenter';
-import { NavbarUserButton } from '@/components/layout/NavbarUserButton';
-import { useViewStore } from '@/stores/useViewStore';
-import { DevBanner } from '@/components/DevBanner';
-import { useTheme } from '@/components/theme-provider';
+import { useCallback } from 'react';
+import { Link,useLocation, useNavigate } from 'react-router-dom';
 import { ThemeMode } from 'shared/types';
+
+import { DevBanner } from '@/components/DevBanner';
+import { NavbarUserButton } from '@/components/layout/NavbarUserButton';
+import { NotificationCenter } from '@/components/notifications/NotificationCenter';
+import { SearchBar } from '@/components/search-bar';
+import { useTheme } from '@/components/theme-provider';
+import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
+import { useOrganization } from '@/contexts/organization-context';
+import { useProject } from '@/contexts/project-context';
+import { useSearch } from '@/contexts/search-context';
+import { useOpenProjectInEditor } from '@/hooks/useOpenProjectInEditor';
+import { showProjectForm } from '@/lib/modals';
+import { openTaskForm } from '@/lib/openTaskForm';
+import { useCommandStore } from '@/stores/useCommandStore';
+import { useViewStore } from '@/stores/useViewStore';
 
 const ADMIN_ROUTES = ['/site-directory', '/nora', '/mission-control', '/admin'];
 
@@ -37,7 +39,7 @@ function ScopeIndicator() {
   // Project scope takes priority (more specific)
   if (projectId && project) {
     return (
-      <Link to={`/projects/${projectId}`} className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 truncate max-w-[180px] hover:bg-emerald-500/25 transition-colors">
+      <Link to={`/projects/${projectId}`} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 truncate max-w-[180px] hover:bg-emerald-500/25 transition-colors">
         Project: {project.name}
       </Link>
     );
@@ -45,7 +47,7 @@ function ScopeIndicator() {
 
   if (orgId && organization) {
     return (
-      <Link to={`/organizations/${orgId}`} className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/20 truncate max-w-[180px] hover:bg-blue-500/25 transition-colors">
+      <Link to={`/organizations/${orgId}`} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/20 truncate max-w-[180px] hover:bg-blue-500/25 transition-colors">
         Org: {organization.name}
       </Link>
     );
@@ -53,7 +55,7 @@ function ScopeIndicator() {
 
   if (ADMIN_ROUTES.some((r) => location.pathname.startsWith(r))) {
     return (
-      <Link to="/site-directory" className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-500/15 text-orange-600 dark:text-orange-400 border border-orange-500/20 hover:bg-orange-500/25 transition-colors">
+      <Link to="/site-directory" className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-500/15 text-orange-600 dark:text-orange-400 border border-orange-500/20 hover:bg-orange-500/25 transition-colors">
         Admin
       </Link>
     );
@@ -176,47 +178,35 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
               </kbd>
             </Button>
             {/* Command Palette — mobile icon */}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={openCommandPalette}
+            <IconButton
+              variant="ghost" onClick={openCommandPalette}
               className="sm:hidden h-8 w-8"
-              aria-label="Quick actions"
-            >
-              <CommandIcon className="h-4 w-4" />
-            </Button>
+              icon={CommandIcon}
+              label="Quick actions"
+            />
 
             {projectId && (
               <>
                 <div className="h-4 w-px bg-border/50 hidden sm:block mx-1" />
 
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleOpenInIDE}
-                  aria-label="Open project in IDE"
+                <IconButton
+                  variant="ghost" onClick={handleOpenInIDE}
                   className="hidden md:inline-flex h-8 w-8"
-                >
-                  <FolderOpen className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleProjectSettings}
-                  aria-label="Project settings"
+                  icon={FolderOpen}
+                  label="Open project in IDE"
+                />
+                <IconButton
+                  variant="ghost" onClick={handleProjectSettings}
                   className="hidden md:inline-flex h-8 w-8"
-                >
-                  <Settings className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleCreateTask}
-                  aria-label="Create new task"
+                  icon={Settings}
+                  label="Project settings"
+                />
+                <IconButton
+                  variant="ghost" onClick={handleCreateTask}
                   className="h-8 w-8"
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
+                  icon={Plus}
+                  label="Create new task"
+                />
 
                 <div className="h-4 w-px bg-border/50 hidden sm:block mx-1" />
               </>

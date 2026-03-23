@@ -1,22 +1,23 @@
 import { useQuery } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import {
+  AlertTriangle,
   Bot,
   CheckCircle2,
-  Clock,
-  AlertTriangle,
-  Loader2,
-  FileText,
   ChevronDown,
   ChevronRight,
+  Clock,
+  FileText,
+  Loader2,
 } from 'lucide-react';
 import { useState } from 'react';
 
-import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { StatusBadge } from '@/components/ui/status-badge';
+import { handleApiResponse,makeRequest } from '@/lib/api/client';
 import { crmKeys } from '@/lib/query-keys';
-import { makeRequest, handleApiResponse } from '@/lib/api/client';
-import { cn } from '@/lib/utils';
+import { getStatusInfo } from '@/lib/status-utils';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -74,13 +75,12 @@ export function AgentHistoryTab({ dealId }: AgentHistoryTabProps) {
 
   if (!flows || flows.length === 0) {
     return (
-      <div className="p-5 text-center">
-        <Bot className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
-        <p className="text-sm text-muted-foreground">No agent activity yet</p>
-        <p className="text-xs text-muted-foreground/60 mt-1">
-          Agent flows will appear here when triggered by stage transitions
-        </p>
-      </div>
+      <EmptyState
+        icon={Bot}
+        title="No agent activity yet"
+        description="Agent flows will appear here when triggered by stage transitions"
+        className="p-5"
+      />
     );
   }
 
@@ -110,8 +110,7 @@ function FlowCard({ flow }: { flow: AgentFlowSummary }) {
   })();
 
   const agentName = config.agent_name || flow.flow_type || 'Agent';
-  const statusIcon = getStatusIcon(flow.status);
-  const statusColor = getStatusColor(flow.status);
+  const flowStatus = getStatusInfo(flow.status, 'flow');
   const duration = flow.execution_started_at && flow.execution_completed_at
     ? formatDuration(flow.execution_started_at, flow.execution_completed_at)
     : flow.execution_started_at
@@ -130,17 +129,18 @@ function FlowCard({ flow }: { flow: AgentFlowSummary }) {
           ) : (
             <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           )}
-          <Bot className="h-4 w-4 shrink-0" style={{ color: statusColor }} />
+          <Bot className="h-4 w-4 shrink-0" />
           <span className="text-sm font-medium capitalize">{agentName}</span>
-          <Badge
-            variant="outline"
-            className={cn('text-[10px] ml-auto', `text-[${statusColor}] border-[${statusColor}]/30`)}
-          >
-            {statusIcon}
-            <span className="ml-1">{flow.status}</span>
-          </Badge>
+          <StatusBadge
+            status={flowStatus.variant}
+            label={flowStatus.label}
+            icon={flowStatus.icon}
+            pulse={flow.status === 'executing' || flow.status === 'planning'}
+            size="sm"
+            className="ml-auto"
+          />
           {duration && (
-            <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+            <span className="text-xs text-muted-foreground flex items-center gap-0.5">
               <Clock className="h-2.5 w-2.5" />
               {duration}
             </span>
@@ -148,18 +148,18 @@ function FlowCard({ flow }: { flow: AgentFlowSummary }) {
         </div>
 
         {flow.retry_count > 0 && (
-          <p className="text-[10px] text-amber-500 mt-1 ml-7">
+          <p className="text-xs text-amber-500 mt-1 ml-7">
             {flow.retry_count} retry attempt(s)
           </p>
         )}
 
         {flow.last_error && flow.status === 'failed' && (
-          <p className="text-[10px] text-red-500 mt-1 ml-7 line-clamp-2">
+          <p className="text-xs text-red-500 mt-1 ml-7 line-clamp-2">
             {flow.last_error}
           </p>
         )}
 
-        <p className="text-[10px] text-muted-foreground mt-1 ml-7">
+        <p className="text-xs text-muted-foreground mt-1 ml-7">
           {formatDistanceToNow(new Date(flow.created_at), { addSuffix: true })}
         </p>
 
@@ -172,7 +172,7 @@ function FlowCard({ flow }: { flow: AgentFlowSummary }) {
         )}
 
         {expanded && flow.events.length === 0 && (
-          <p className="text-[10px] text-muted-foreground mt-2 ml-7">No events recorded</p>
+          <p className="text-xs text-muted-foreground mt-2 ml-7">No events recorded</p>
         )}
       </CardContent>
     </Card>
@@ -186,10 +186,10 @@ function EventRow({ event }: { event: AgentFlowEventSummary }) {
   const label = event.event_type.replace(/_/g, ' ');
 
   return (
-    <div className="flex items-center gap-2 text-[11px]">
+    <div className="flex items-center gap-2 text-xs">
       {icon}
       <span className="capitalize text-muted-foreground">{label}</span>
-      <span className="text-muted-foreground/50 ml-auto text-[10px]">
+      <span className="text-muted-foreground/50 ml-auto text-xs">
         {formatDistanceToNow(new Date(event.created_at), { addSuffix: true })}
       </span>
     </div>
@@ -197,34 +197,6 @@ function EventRow({ event }: { event: AgentFlowEventSummary }) {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function getStatusIcon(status: string) {
-  switch (status) {
-    case 'completed':
-      return <CheckCircle2 className="h-3 w-3 text-green-500" />;
-    case 'failed':
-      return <AlertTriangle className="h-3 w-3 text-red-500" />;
-    case 'executing':
-    case 'planning':
-      return <Loader2 className="h-3 w-3 text-blue-500 animate-spin" />;
-    default:
-      return <Clock className="h-3 w-3 text-muted-foreground" />;
-  }
-}
-
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'completed':
-      return '#22c55e';
-    case 'failed':
-      return '#ef4444';
-    case 'executing':
-    case 'planning':
-      return '#3b82f6';
-    default:
-      return '#6b7280';
-  }
-}
 
 function getEventIcon(eventType: string) {
   switch (eventType) {

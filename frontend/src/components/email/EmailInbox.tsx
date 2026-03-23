@@ -1,6 +1,20 @@
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import {
+  AlertCircle,
+  ChevronRight,
+  Clock,
+  Inbox,
+  Mail,
+  MailOpen,
+  Paperclip,
+  RefreshCw,
+  Search,
+  Star,
+  Trash2,
+} from 'lucide-react';
+import { useState } from 'react';
+
+import { Badge } from '@/components/ui/badge';
 import {
   Card,
   CardContent,
@@ -8,10 +22,15 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { EmptyState } from '@/components/ui/empty-state';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
   SelectContent,
@@ -19,29 +38,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  Mail,
-  MailOpen,
-  Star,
-  Trash2,
-  Search,
-  Inbox,
-  Clock,
-  Paperclip,
-  ChevronRight,
-  RefreshCw,
-  AlertCircle,
-} from 'lucide-react';
-import {
-  emailMessagesApi,
-  EmailMessageRecord,
   EmailInboxStats,
+  EmailMessageRecord,
+  emailMessagesApi,
 } from '@/lib/api';
 import { commsKeys } from '@/lib/query-keys';
 
@@ -148,7 +150,7 @@ export function EmailInbox({ projectId, accountId }: EmailInboxProps) {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Total</p>
-                  <p className="text-2xl font-bold">{stats.total}</p>
+                  <p className="text-2xl font-semibold">{stats.total}</p>
                 </div>
               </div>
             </CardContent>
@@ -161,7 +163,7 @@ export function EmailInbox({ projectId, accountId }: EmailInboxProps) {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Unread</p>
-                  <p className="text-2xl font-bold">{stats.unread}</p>
+                  <p className="text-2xl font-semibold">{stats.unread}</p>
                 </div>
               </div>
             </CardContent>
@@ -174,7 +176,7 @@ export function EmailInbox({ projectId, accountId }: EmailInboxProps) {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Starred</p>
-                  <p className="text-2xl font-bold">{stats.starred}</p>
+                  <p className="text-2xl font-semibold">{stats.starred}</p>
                 </div>
               </div>
             </CardContent>
@@ -187,7 +189,7 @@ export function EmailInbox({ projectId, accountId }: EmailInboxProps) {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Needs Response</p>
-                  <p className="text-2xl font-bold">{stats.needs_response}</p>
+                  <p className="text-2xl font-semibold">{stats.needs_response}</p>
                 </div>
               </div>
             </CardContent>
@@ -226,9 +228,11 @@ export function EmailInbox({ projectId, accountId }: EmailInboxProps) {
                   <SelectItem value="needs_response">Needs Response</SelectItem>
                 </SelectContent>
               </Select>
-              <Button variant="outline" size="icon" onClick={() => refetch()}>
-                <RefreshCw className="h-4 w-4" />
-              </Button>
+              <IconButton
+                variant="outline" onClick={() => refetch()}
+                icon={RefreshCw}
+                label="Refresh"
+              />
             </div>
           </div>
         </CardHeader>
@@ -240,15 +244,13 @@ export function EmailInbox({ projectId, accountId }: EmailInboxProps) {
               ))}
             </div>
           ) : filteredMessages.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Inbox className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium">No emails yet</p>
-              <p className="text-sm">
-                {messages.length === 0
-                  ? 'Connect an email account and sync to see your messages'
-                  : 'No emails match your current filter'}
-              </p>
-            </div>
+            <EmptyState
+              icon={Inbox}
+              title="No emails yet"
+              description={messages.length === 0
+                ? 'Connect an email account and sync to see your messages'
+                : 'No emails match your current filter'}
+            />
           ) : (
             <div className="divide-y">
               {filteredMessages.map((message) => (
@@ -293,26 +295,22 @@ export function EmailInbox({ projectId, accountId }: EmailInboxProps) {
                     <span className="text-sm text-muted-foreground">
                       {new Date(selectedMessage.received_at).toLocaleString()}
                     </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => toggleStarMutation.mutate(selectedMessage.id)}
-                    >
-                      <Star
-                        className={`h-4 w-4 ${
+                    <IconButton
+                      variant="ghost" onClick={() => toggleStarMutation.mutate(selectedMessage.id)}
+                      icon={Star}
+                      label="Toggle star"
+                      iconClassName={`h-4 w-4 ${
                           selectedMessage.is_starred
                             ? 'fill-yellow-400 text-yellow-400'
                             : ''
                         }`}
-                      />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => moveToTrashMutation.mutate(selectedMessage.id)}
-                    >
-                      <Trash2 className="h-4 w-4 text-red-500" />
-                    </Button>
+                    />
+                    <IconButton
+                      variant="ghost" onClick={() => moveToTrashMutation.mutate(selectedMessage.id)}
+                      icon={Trash2}
+                      label="Move to trash"
+                      iconClassName="h-4 w-4 text-red-500"
+                    />
                   </div>
                 </div>
 
@@ -373,21 +371,18 @@ function EmailRow({
       onClick={onClick}
     >
       {/* Star */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="shrink-0"
+      <IconButton
+        variant="ghost" className="shrink-0"
         onClick={(e) => {
           e.stopPropagation();
           onStar();
         }}
-      >
-        <Star
-          className={`h-4 w-4 ${
+        icon={Star}
+        label="Toggle star"
+        iconClassName={`h-4 w-4 ${
             message.is_starred ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground'
           }`}
-        />
-      </Button>
+      />
 
       {/* Read/Unread indicator */}
       <div className="shrink-0">
@@ -431,17 +426,16 @@ function EmailRow({
         <span className="text-xs text-muted-foreground">
           {formatDate(message.received_at)}
         </span>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="opacity-0 group-hover:opacity-100"
+        <IconButton
+          variant="ghost" className="opacity-0 group-hover:opacity-100"
           onClick={(e) => {
             e.stopPropagation();
             onDelete();
           }}
-        >
-          <Trash2 className="h-4 w-4 text-muted-foreground hover:text-red-500" />
-        </Button>
+          icon={Trash2}
+          label="Delete"
+          iconClassName="h-4 w-4 text-muted-foreground hover:text-red-500"
+        />
         <ChevronRight className="h-4 w-4 text-muted-foreground" />
       </div>
     </div>

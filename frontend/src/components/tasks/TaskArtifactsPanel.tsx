@@ -1,25 +1,27 @@
-import { useState, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
-  FileText,
-  Image,
-  Video,
-  Upload,
-  Link2,
   Download,
   Eye,
-  Pin,
-  FolderOpen,
   FileOutput,
+  FileText,
+  FolderOpen,
+  Image,
+  Link2,
+  Pin,
+  Upload,
+  Video,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import type { ExecutionArtifact, ArtifactType, ArtifactPhase } from 'shared/types';
+import { useCallback,useState } from 'react';
+import type { ArtifactPhase,ArtifactType, ExecutionArtifact } from 'shared/types';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatDate } from '@/lib/formatters';
+import { cn } from '@/lib/utils';
 
 interface TaskArtifactsPanelProps {
   taskId: string;
@@ -122,29 +124,37 @@ function ArtifactCard({
           {/* Actions */}
           <div className="flex items-center gap-1">
             {isPreviewable && onPreview && (
-              <Button variant="ghost" size="icon" onClick={onPreview} className="h-7 w-7" title="Preview">
-                <Eye className="h-3.5 w-3.5" />
-              </Button>
+              <IconButton
+                variant="ghost" onClick={onPreview} className="h-7 w-7"
+                icon={Eye}
+                label="Preview"
+                iconClassName="h-3.5 w-3.5"
+              />
             )}
             {onDownload && (artifact.file_path || artifact.content) && (
-              <Button variant="ghost" size="icon" onClick={onDownload} className="h-7 w-7" title="Download">
-                <Download className="h-3.5 w-3.5" />
-              </Button>
+              <IconButton
+                variant="ghost" onClick={onDownload} className="h-7 w-7"
+                icon={Download}
+                label="Download"
+                iconClassName="h-3.5 w-3.5"
+              />
             )}
             {isExportable && onExportXml && (
-              <Button variant="ghost" size="icon" onClick={onExportXml} className="h-7 w-7" title="Export XML">
-                <FileOutput className="h-3.5 w-3.5" />
-              </Button>
+              <IconButton
+                variant="ghost" onClick={onExportXml} className="h-7 w-7"
+                icon={FileOutput}
+                label="Export XML"
+                iconClassName="h-3.5 w-3.5"
+              />
             )}
             {onPin && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={onPin}
+              <IconButton
+                variant="ghost" onClick={onPin}
                 className={cn('h-7 w-7', isPinned && 'text-primary')}
-              >
-                <Pin className="h-3.5 w-3.5" />
-              </Button>
+                icon={Pin}
+                label={isPinned ? 'Unpin' : 'Pin'}
+                iconClassName="h-3.5 w-3.5"
+              />
             )}
           </div>
         </div>

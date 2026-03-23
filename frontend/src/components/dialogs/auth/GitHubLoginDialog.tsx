@@ -204,7 +204,7 @@ const GitHubLoginDialog = NiceModal.create(() => {
               <div className="flex-1">
                 <p className="text-sm font-medium mb-3">Enter this code:</p>
                 <div className="flex items-center gap-3">
-                  <span className="text-sm font-mono font-bold tracking-[0.2em] bg-muted border flex h-9 px-2 items-center">
+                  <span className="text-sm font-mono font-semibold tracking-[0.2em] bg-muted border flex h-9 px-2 items-center">
                     <span>{deviceState.user_code}</span>
                   </span>
                   <Button

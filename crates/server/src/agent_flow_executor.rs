@@ -30,6 +30,7 @@ pub struct AgentFlowExecutorConfig {
 
 impl AgentFlowExecutorConfig {
     /// Load configuration from environment variables.
+    /// Falls back to sensible defaults if vars are not set.
     pub fn from_env() -> Self {
         Self {
             poll_interval_secs: std::env::var("AGENT_FLOW_POLL_INTERVAL")

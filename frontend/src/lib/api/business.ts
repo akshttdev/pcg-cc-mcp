@@ -588,16 +588,26 @@ export interface DiscordTranscript {
   segments: DiscordSegment[];
 }
 
+export interface DiscordArchivedSession {
+  id: string;
+  title?: string;
+  agent_name?: string;
+  agent?: string;
+  started_at: string;
+  created_at?: string;
+  ended_at?: string;
+}
+
 export const discordApi = {
   activeSessions: async (): Promise<DiscordSessionSummary[]> => {
     const response = await makeRequest('/api/discord/sessions');
     return handleApiResponse<DiscordSessionSummary[]>(response);
   },
 
-  archivedSessions: async (params?: { limit?: number; offset?: number }): Promise<any[]> => {
+  archivedSessions: async (params?: { limit?: number; offset?: number }): Promise<DiscordArchivedSession[]> => {
     const qs = params ? '?' + new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]))).toString() : '';
     const response = await makeRequest(`/api/discord/archive${qs}`);
-    return handleApiResponse<any[]>(response);
+    return handleApiResponse<DiscordArchivedSession[]>(response);
   },
 
   getTranscript: async (sessionId: string): Promise<DiscordTranscript> => {

@@ -37,9 +37,9 @@ export function PreviewPanel({ source, onClose, onDelete, onRunWorkflow }: {
             <span className="text-sm font-medium truncate">{source.title}</span>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant="outline" className="text-[10px] capitalize">{source.data_type}</Badge>
-            {source.file_type && <Badge variant="outline" className="text-[10px] uppercase">{source.file_type}</Badge>}
-            {!downloadable && <Badge variant="secondary" className="text-[10px]">No local file</Badge>}
+            <Badge variant="outline" className="text-xs capitalize">{source.data_type}</Badge>
+            {source.file_type && <Badge variant="outline" className="text-xs uppercase">{source.file_type}</Badge>}
+            {!downloadable && <Badge variant="secondary" className="text-xs">No local file</Badge>}
           </div>
         </div>
         <button onClick={onClose} className="p-1 rounded hover:bg-muted shrink-0">
@@ -66,17 +66,17 @@ export function PreviewPanel({ source, onClose, onDelete, onRunWorkflow }: {
         )}
 
         {/* Summary / text preview */}
-        {(source as any).summary && (
+        {(source as DataSourceRecord & { summary?: string }).summary && (
           <div>
-            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Summary</p>
-            <p className="text-sm text-muted-foreground leading-relaxed">{(source as any).summary}</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Summary</p>
+            <p className="text-sm text-muted-foreground leading-relaxed">{(source as DataSourceRecord & { summary?: string }).summary}</p>
           </div>
         )}
 
         {/* Text content preview */}
         {isText && source.content && (
           <div>
-            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Content Preview</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Content Preview</p>
             <pre className="text-xs bg-muted/40 rounded-md p-3 overflow-auto max-h-40 whitespace-pre-wrap font-mono">
               {source.content.slice(0, 800)}{source.content.length > 800 ? '...' : ''}
             </pre>
@@ -85,7 +85,7 @@ export function PreviewPanel({ source, onClose, onDelete, onRunWorkflow }: {
 
         {/* Metadata */}
         <div>
-          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Details</p>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Details</p>
           <div className="space-y-1.5 text-sm">
             {source.file_size_bytes && (
               <div className="flex justify-between">
@@ -101,10 +101,10 @@ export function PreviewPanel({ source, onClose, onDelete, onRunWorkflow }: {
               <span className="text-muted-foreground">Added</span>
               <span>{formatDate(source.created_at)}</span>
             </div>
-            {meta.dropbox_path && (
+            {(meta.dropbox_path as string | undefined) && (
               <div className="flex flex-col gap-0.5">
                 <span className="text-muted-foreground">Dropbox path</span>
-                <span className="text-xs text-muted-foreground/70 truncate font-mono">{meta.dropbox_path}</span>
+                <span className="text-xs text-muted-foreground/70 truncate font-mono">{meta.dropbox_path as string}</span>
               </div>
             )}
             {getFolderContext(source) && (

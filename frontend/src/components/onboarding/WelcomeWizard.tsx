@@ -460,7 +460,7 @@ function GitHubStep({ onConnected }: GitHubStepProps) {
           <div className="flex-1">
             <p className="text-sm font-medium mb-2">Enter this code:</p>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-mono font-bold tracking-[0.2em] bg-muted border flex h-8 px-2 items-center">
+              <span className="text-sm font-mono font-semibold tracking-[0.2em] bg-muted border flex h-8 px-2 items-center">
                 {deviceState.user_code}
               </span>
               <Button

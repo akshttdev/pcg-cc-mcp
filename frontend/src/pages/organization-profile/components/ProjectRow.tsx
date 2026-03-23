@@ -28,7 +28,7 @@ export function ProjectRow({ project, folderName, depth = 0 }: { project: Sideba
             <FolderOpen className="h-4 w-4 text-muted-foreground shrink-0" />
             <span className="text-sm font-medium truncate">{project.name}</span>
             {folderName && <Badge variant="secondary" className="text-xs shrink-0">{folderName}</Badge>}
-            {hasChildren && <Badge variant="outline" className="text-[10px] shrink-0">{project.children.length}</Badge>}
+            {hasChildren && <Badge variant="outline" className="text-xs shrink-0">{project.children.length}</Badge>}
           </div>
           <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />
         </Link>

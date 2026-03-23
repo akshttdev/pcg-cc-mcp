@@ -75,7 +75,7 @@ export function MemberAssignments({ orgId, userId }: { orgId: string; userId: st
     queryFn: async () => {
       try {
         const response = await makeRequest(`/api/projects?organization_id=${orgId}`);
-        return await handleApiResponse<any[]>(response);
+        return await handleApiResponse<OrgProject[]>(response);
       } catch {
         return [];
       }

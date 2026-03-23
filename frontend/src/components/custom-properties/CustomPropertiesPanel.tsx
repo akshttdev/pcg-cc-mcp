@@ -13,6 +13,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -415,7 +416,7 @@ function ManageFieldsDialog({
             Add Field
           </Button>
 
-          <div className="flex justify-end gap-2 pt-4">
+          <DialogFooter className="pt-4">
             <Button variant="outline" onClick={() => setIsOpen(false)}>
               Cancel
             </Button>
@@ -423,7 +424,7 @@ function ManageFieldsDialog({
               <Save className="h-4 w-4 mr-2" />
               Save Changes
             </Button>
-          </div>
+          </DialogFooter>
           </div>
         </DialogContent>
       </Dialog>
@@ -543,14 +544,14 @@ function EditFieldForm({ field, onSave, onCancel }: EditFieldFormProps) {
         </div>
       )}
 
-      <div className="flex justify-end gap-2 pt-2">
+      <DialogFooter className="pt-2">
         <Button variant="outline" size="sm" onClick={onCancel}>
           Cancel
         </Button>
         <Button size="sm" onClick={handleSave}>
           Save
         </Button>
-      </div>
+      </DialogFooter>
     </div>
   );
 }

@@ -27,7 +27,7 @@ export function DevelopmentSection() {
         status={ghConnected ? 'connected' : 'disconnected'}
         actions={
           ghConnected ? (
-            <span className="text-[11px] text-muted-foreground italic">Connected via agent settings</span>
+            <span className="text-xs text-muted-foreground italic">Connected via agent settings</span>
           ) : (
             <Link to="/settings/agents" className="h-7 px-2.5 text-xs border rounded-md hover:bg-accent flex items-center gap-1.5">
               <Plug className="h-3 w-3" />Connect in Agent Settings
@@ -59,7 +59,7 @@ export function DevelopmentSection() {
         description="Connect any external tool via Zapier automations or custom HTTP webhooks."
         status="disconnected"
         statusLabel="Coming soon"
-        actions={<span className="text-[11px] text-muted-foreground italic">Not yet configured</span>}
+        actions={<span className="text-xs text-muted-foreground italic">Not yet configured</span>}
       />
     </section>
   );

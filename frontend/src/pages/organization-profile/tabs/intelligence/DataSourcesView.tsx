@@ -1,27 +1,33 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  ChevronDown,
+  ChevronRight,
+  Database,
+  FileText,
+  FolderOpen,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card } from '@/components/ui/card';
+
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { Card } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,6 +35,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { FormField } from '@/components/ui/form-field';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -37,27 +54,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Textarea } from '@/components/ui/textarea';
 import {
-  Search,
-  FileText,
-  Database,
-  Plus,
-  MoreHorizontal,
-  Trash2,
-  Upload,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
-  ChevronDown,
-  ChevronRight,
-  Pencil,
-  FolderOpen,
-} from 'lucide-react';
-import {
-  dataSourcesApi,
-  type DataSourceRecord,
-  type UpdateDataSourceRequest,
   DATA_TYPE_OPTIONS,
+  type DataSourceRecord,
+  dataSourcesApi,
+  type UpdateDataSourceRequest,
 } from '@/lib/api';
 import { formatDate } from '@/lib/formatters';
 import { dataSourceKeys } from '@/lib/query-keys';
@@ -87,7 +89,7 @@ function AddDataSourceDialog({
   const [description, setDescription] = useState(editingSource?.description ?? '');
   const [content, setContent] = useState(editingSource?.content ?? '');
   const [file, setFile] = useState<File | null>(null);
-  const [folder, setFolder] = useState((editingSource as any)?.folder ?? '');
+  const [folder, setFolder] = useState(editingSource?.folder ?? '');
 
   // Reset form when dialog opens/closes or editingSource changes
   const resetForm = () => {
@@ -97,7 +99,7 @@ function AddDataSourceDialog({
     setTitle(editingSource?.title ?? '');
     setDescription(editingSource?.description ?? '');
     setContent(editingSource?.content ?? '');
-    setFolder((editingSource as any)?.folder ?? '');
+    setFolder(editingSource?.folder ?? '');
     setFile(null);
   };
 
@@ -123,7 +125,8 @@ function AddDataSourceDialog({
         data_type: dataType,
         source_type: sourceType,
         content: sourceType === 'text' && content.trim() ? content.trim() : undefined,
-      } as any);
+        folder: folder.trim() || undefined,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: dataSourceKeys.list(orgId) });
@@ -150,7 +153,8 @@ function AddDataSourceDialog({
         data_type: dataType,
         source_type: sourceType,
         content: sourceType === 'text' && content.trim() ? content.trim() : undefined,
-      } as any);
+        folder: folder.trim() || undefined,
+      });
     } else {
       createMutation.mutate();
     }
@@ -191,18 +195,16 @@ function AddDataSourceDialog({
             </RadioGroup>
           </div>
 
-          <div className="space-y-2">
-            <Label>Title</Label>
+          <FormField label="Title">
             <Input
               placeholder="e.g. Client kickoff call notes"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               autoFocus
             />
-          </div>
+          </FormField>
 
-          <div className="space-y-2">
-            <Label>Data Type</Label>
+          <FormField label="Data Type">
             <Select value={dataType} onValueChange={setDataType}>
               <SelectTrigger>
                 <SelectValue />
@@ -213,32 +215,28 @@ function AddDataSourceDialog({
                 ))}
               </SelectContent>
             </Select>
-          </div>
+          </FormField>
 
-          <div className="space-y-2">
-            <Label>Description (optional)</Label>
+          <FormField label="Description (optional)">
             <Textarea
               placeholder="Brief description of this data source..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
             />
-          </div>
+          </FormField>
 
-          <div className="space-y-2">
-            <Label>Folder (optional)</Label>
+          <FormField label="Folder (optional)" description='Use / to create subfolders. Leave blank to file under "Unfiled".'>
             <Input
               placeholder="e.g. Meetings or Meetings/Google Meet"
               value={folder}
               onChange={(e) => setFolder(e.target.value)}
             />
-            <p className="text-xs text-muted-foreground">Use / to create subfolders. Leave blank to file under "Unfiled".</p>
-          </div>
+          </FormField>
 
           {/* Conditional input based on source type */}
           {sourceType === 'text' && (
-            <div className="space-y-2">
-              <Label>Content</Label>
+            <FormField label="Content">
               <Textarea
                 placeholder="Paste or type your content here..."
                 value={content}
@@ -246,11 +244,10 @@ function AddDataSourceDialog({
                 rows={6}
                 className="font-mono text-xs"
               />
-            </div>
+            </FormField>
           )}
           {sourceType === 'file' && !isEdit && (
-            <div className="space-y-2">
-              <Label>File</Label>
+            <FormField label="File">
               <div className="flex items-center gap-2">
                 <Input
                   type="file"
@@ -263,7 +260,7 @@ function AddDataSourceDialog({
                   </span>
                 )}
               </div>
-            </div>
+            </FormField>
           )}
           {sourceType === 'integration' && (
             <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
@@ -391,7 +388,7 @@ export function DataSourcesView({
   const folderTree = useMemo(() => {
     const tree: Record<string, Record<string, number>> = {}; // root -> { sub: count }
     sources.forEach(s => {
-      const f = (s as any).folder || 'Unfiled';
+      const f = s.folder || 'Unfiled';
       const parts = f.split('/');
       const root = parts[0];
       const sub = parts[1] || null;
@@ -412,7 +409,7 @@ export function DataSourcesView({
     // Folder filter
     if (selectedFolder) {
       arr = arr.filter(s => {
-        const f = (s as any).folder || 'Unfiled';
+        const f = s.folder || 'Unfiled';
         return f === selectedFolder || f.startsWith(selectedFolder + '/');
       });
     }
@@ -452,7 +449,7 @@ export function DataSourcesView({
       error: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
     };
     return (
-      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${variants[status] ?? 'bg-muted text-muted-foreground'}`}>
+      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${variants[status] ?? 'bg-muted text-muted-foreground'}`}>
         {status}
       </span>
     );
@@ -468,7 +465,7 @@ export function DataSourcesView({
 
   const folderCount = (f: string) =>
     sources.filter(s => {
-      const sf = (s as any).folder || 'Unfiled';
+      const sf = s.folder || 'Unfiled';
       return sf === f || sf.startsWith(f + '/');
     }).length;
 
@@ -607,7 +604,7 @@ export function DataSourcesView({
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline" className="text-[10px]">{dataTypeLabel(source.data_type)}</Badge>
+                    <Badge variant="outline" className="text-xs">{dataTypeLabel(source.data_type)}</Badge>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1 text-xs text-muted-foreground">

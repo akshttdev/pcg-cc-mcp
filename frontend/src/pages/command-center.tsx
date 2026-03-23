@@ -114,7 +114,7 @@ export function CommandCenterPage() {
       <div className="flex items-center gap-3">
         <LayoutDashboard className="h-6 w-6 text-muted-foreground" />
         <div>
-          <h1 className="text-2xl font-semibold">Command Center</h1>
+          <h1 className="text-2xl font-bold">Command Center</h1>
           <p className="text-sm text-muted-foreground">
             {totalAlerts === 0
               ? 'Everything is on track'

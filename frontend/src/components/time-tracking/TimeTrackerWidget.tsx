@@ -99,7 +99,7 @@ export function TimeTrackerWidget({ taskId, compact = false }: TimeTrackerWidget
 
           {isActive && (
             <div className="text-center">
-              <div className="text-2xl font-mono font-bold">
+              <div className="text-2xl font-mono font-semibold">
                 {formatDuration(elapsed)}
               </div>
               <p className="text-xs text-muted-foreground mt-1">Active timer</p>

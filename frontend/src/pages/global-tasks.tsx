@@ -1,9 +1,24 @@
-import { useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  AlertCircle,
+  ArrowRight,
+  CheckCircle2,
+  Clock,
+  Filter,
+  FolderKanban,
+  LayoutGrid,
+  List,
+  Search,
+} from 'lucide-react';
+import { useMemo,useState } from 'react';
+import { Link } from 'react-router-dom';
+import type { TaskWithAttemptStatus } from 'shared/types';
+
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CardGrid } from '@/components/ui/card-grid';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Loader } from '@/components/ui/loader';
 import {
@@ -21,21 +36,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  LayoutGrid,
-  List,
-  Search,
-  Clock,
-  AlertCircle,
-  CheckCircle2,
-  ArrowRight,
-  FolderKanban,
-  Filter,
-} from 'lucide-react';
 import { useProjectList } from '@/hooks/queries';
-import { cn } from '@/lib/utils';
 import { taskKeys } from '@/lib/query-keys';
-import type { TaskWithAttemptStatus } from 'shared/types';
+import { cn } from '@/lib/utils';
 
 interface GlobalTask extends TaskWithAttemptStatus {
   project_name: string;
@@ -256,17 +259,13 @@ export function GlobalTasksPage() {
       {/* Content */}
       <div className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full">
         {filteredTasks.length === 0 ? (
-          <Card className="border-dashed">
-            <CardContent className="empty-state">
-              <FolderKanban className="empty-state-icon" />
-              <h3 className="empty-state-title">No tasks found</h3>
-              <p className="empty-state-description">
-                {searchQuery || statusFilter !== 'all' || priorityFilter !== 'all' || projectFilter !== 'all'
-                  ? 'Try adjusting your filters'
-                  : 'No tasks have been created yet'}
-              </p>
-            </CardContent>
-          </Card>
+          <EmptyState
+            icon={FolderKanban}
+            title="No tasks found"
+            description={searchQuery || statusFilter !== 'all' || priorityFilter !== 'all' || projectFilter !== 'all'
+              ? 'Try adjusting your filters'
+              : 'No tasks have been created yet'}
+          />
         ) : viewMode === 'table' ? (
           <Card className="card-elevated overflow-hidden">
             <Table>
@@ -321,7 +320,7 @@ export function GlobalTasksPage() {
             </Table>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 animate-stagger">
+          <CardGrid columns={{ sm: 2, lg: 3 }} gap={4} className="animate-stagger">
             {filteredTasks.map((task) => (
               <Link
                 key={task.id}
@@ -360,7 +359,7 @@ export function GlobalTasksPage() {
                 </Card>
               </Link>
             ))}
-          </div>
+          </CardGrid>
         )}
       </div>
     </div>

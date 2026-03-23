@@ -1,7 +1,27 @@
+import { useQuery } from '@tanstack/react-query';
+import { formatDistanceToNow } from 'date-fns';
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  Coins,
+  Copy,
+  Download,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  Loader2,
+  QrCode,
+  RefreshCw,
+  Send,
+} from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
-import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import { toast } from 'sonner';
+
+import { useUserSystem } from '@/components/config-provider';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -9,10 +29,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 // Table components currently unused but may be needed for expanded tx history
 // import {
 //   Table,
@@ -30,25 +46,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { toast } from 'sonner';
-import {
-  Copy,
-  Eye,
-  EyeOff,
-  Send,
-  Download,
-  Coins,
-  RefreshCw,
-  ExternalLink,
-  Loader2,
-  ArrowUpRight,
-  ArrowDownLeft,
-  QrCode,
-} from 'lucide-react';
-import { useUserSystem } from '@/components/config-provider';
+import { FormField } from '@/components/ui/form-field';
+import { IconButton } from '@/components/ui/icon-button';
+import { Input } from '@/components/ui/input';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import { aptosApi, type AptosTransaction, type SendVibeRequest } from '@/lib/api';
-import { formatDistanceToNow } from 'date-fns';
 
 export function WalletSettings() {
   useTranslation('settings'); // Load translations namespace
@@ -244,7 +246,7 @@ export function WalletSettings() {
           {/* Balance Display */}
           <div className="text-center py-6 border-b">
             <p className="text-sm text-muted-foreground mb-1">VIBE Balance</p>
-            <div className="text-4xl font-bold">
+            <div className="text-4xl font-semibold">
               {balanceLoading ? (
                 <Loader2 className="h-8 w-8 animate-spin mx-auto" />
               ) : balanceError ? (
@@ -384,22 +386,19 @@ export function WalletSettings() {
             </Alert>
           ) : (
             <>
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Account Address</Label>
+              <FormField label="Account Address">
                 <div className="flex gap-2">
                   <Input
                     value={wallet.account_address}
                     readOnly
                     className="font-mono text-xs"
                   />
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => handleCopy('Address', wallet.account_address)}
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                  <Button variant="outline" size="icon" asChild>
+                  <IconButton
+                    variant="outline" onClick={() => handleCopy('Address', wallet.account_address)}
+                    icon={Copy}
+                    label="Copy address"
+                  />
+                  <Button variant="outline" size="icon" asChild title="View in explorer">
                     <a
                       href={getAccountExplorerUrl(wallet.account_address)}
                       target="_blank"
@@ -409,28 +408,24 @@ export function WalletSettings() {
                     </a>
                   </Button>
                 </div>
-              </div>
+              </FormField>
 
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Public Key</Label>
+              <FormField label="Public Key">
                 <div className="flex gap-2">
                   <Input
                     value={wallet.public_key}
                     readOnly
                     className="font-mono text-xs"
                   />
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => handleCopy('Public key', wallet.public_key)}
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
+                  <IconButton
+                    variant="outline" onClick={() => handleCopy('Public key', wallet.public_key)}
+                    icon={Copy}
+                    label="Copy public key"
+                  />
                 </div>
-              </div>
+              </FormField>
 
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Private Key</Label>
+              <FormField label="Private Key">
                 {showPrivateKey ? (
                   <div className="space-y-2">
                     <div className="flex gap-2">
@@ -440,20 +435,16 @@ export function WalletSettings() {
                         readOnly
                         className="font-mono text-xs"
                       />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={handleLockPrivateKey}
-                      >
-                        <EyeOff className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => handleCopy('Private key', wallet.private_key)}
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
+                      <IconButton
+                        variant="ghost" onClick={handleLockPrivateKey}
+                        icon={EyeOff}
+                        label="Hide private key"
+                      />
+                      <IconButton
+                        variant="outline" onClick={() => handleCopy('Private key', wallet.private_key)}
+                        icon={Copy}
+                        label="Copy private key"
+                      />
                     </div>
                     <p className="text-xs text-amber-600 dark:text-amber-400">
                       Auto-locks in 30 seconds
@@ -484,7 +475,7 @@ export function WalletSettings() {
                 <p className="text-xs text-destructive">
                   Never share your private key with anyone
                 </p>
-              </div>
+              </FormField>
             </>
           )}
         </CardContent>
@@ -500,17 +491,15 @@ export function WalletSettings() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Recipient Address</Label>
+            <FormField label="Recipient Address">
               <Input
                 placeholder="0x..."
                 value={recipientAddress}
                 onChange={(e) => setRecipientAddress(e.target.value)}
                 className="font-mono"
               />
-            </div>
-            <div className="space-y-2">
-              <Label>Amount (VIBE)</Label>
+            </FormField>
+            <FormField label="Amount (VIBE)" description={`Available: ${formatVibe(balance?.balance_vibe ?? 0)}`}>
               <Input
                 type="number"
                 placeholder="0"
@@ -519,10 +508,7 @@ export function WalletSettings() {
                 step="1"
                 min="1"
               />
-              <p className="text-xs text-muted-foreground">
-                Available: {formatVibe(balance?.balance_vibe ?? 0)}
-              </p>
-            </div>
+            </FormField>
             <div className="rounded-lg bg-muted p-3 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Network Fee</span>
@@ -564,29 +550,26 @@ export function WalletSettings() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="flex justify-center p-6 bg-white rounded-lg">
+            <div className="flex justify-center p-6 bg-background rounded-lg">
               <div className="text-center">
                 <QrCode className="h-32 w-32 mx-auto text-muted-foreground" />
                 <p className="text-xs text-muted-foreground mt-2">QR Code placeholder</p>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>Your Address</Label>
+            <FormField label="Your Address">
               <div className="flex gap-2">
                 <Input
                   value={wallet?.account_address ?? ''}
                   readOnly
                   className="font-mono text-xs"
                 />
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => handleCopy('Address', wallet?.account_address ?? '')}
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
+                <IconButton
+                  variant="outline" onClick={() => handleCopy('Address', wallet?.account_address ?? '')}
+                  icon={Copy}
+                  label="Copy address"
+                />
               </div>
-            </div>
+            </FormField>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setReceiveModalOpen(false)}>
@@ -612,8 +595,7 @@ export function WalletSettings() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Password</Label>
+            <FormField label="Password" error={passwordError || undefined}>
               <Input
                 type="password"
                 placeholder="Enter your password"
@@ -628,10 +610,7 @@ export function WalletSettings() {
                   }
                 }}
               />
-              {passwordError && (
-                <p className="text-xs text-destructive">{passwordError}</p>
-              )}
-            </div>
+            </FormField>
             <Alert>
               <AlertDescription className="text-xs">
                 Your private key will be visible for 30 seconds before automatically locking again.

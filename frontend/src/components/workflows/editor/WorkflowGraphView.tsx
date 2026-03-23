@@ -109,7 +109,7 @@ export function WorkflowGraphView({ nodes, connections, selectedNodeId, onSelect
         <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={handleZoomOut} title="Zoom out">
           <ZoomOut className="h-3.5 w-3.5" />
         </Button>
-        <span className="text-[10px] text-muted-foreground w-8 text-center">{Math.round(zoom * 100)}%</span>
+        <span className="text-xs text-muted-foreground w-8 text-center">{Math.round(zoom * 100)}%</span>
         <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={handleZoomIn} title="Zoom in">
           <ZoomIn className="h-3.5 w-3.5" />
         </Button>

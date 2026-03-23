@@ -259,7 +259,7 @@ export const FeedbackDialog = NiceModal.create(({ defaultType }: { defaultType?:
                     )}
                   </Button>
                   {!isSubmitting && (!title.trim() || !description.trim()) && (
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       {!title.trim() && !description.trim()
                         ? 'Title and description required'
                         : !title.trim()

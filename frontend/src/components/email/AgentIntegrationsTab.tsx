@@ -57,7 +57,7 @@ const providerLabels: Record<string, string> = {
 };
 
 const providerIcons: Record<string, React.ReactNode> = {
-  zoho: <span className="text-base font-bold">Z</span>,
+  zoho: <span className="text-base font-semibold">Z</span>,
   gmail: <Mail className="h-4 w-4" />,
   twilio: <MessageSquare className="h-4 w-4" />,
 };

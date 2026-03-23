@@ -241,7 +241,7 @@ function MetadataDisplay({ meta }: { meta: ParsedMetadata }) {
       <div className="flex items-center gap-2 flex-wrap">
         {/* Phase badge */}
         {meta.phase && (
-          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[10px] font-medium">
+          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-xs font-medium">
             <Layers className="h-2.5 w-2.5" />
             Phase {meta.phase}
           </div>
@@ -249,7 +249,7 @@ function MetadataDisplay({ meta }: { meta: ParsedMetadata }) {
 
         {/* Agent badge */}
         {meta.agent && (
-          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 text-[10px] font-medium">
+          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 text-xs font-medium">
             <Cpu className="h-2.5 w-2.5" />
             {meta.agent}
           </div>
@@ -257,7 +257,7 @@ function MetadataDisplay({ meta }: { meta: ParsedMetadata }) {
 
         {/* VIBE estimate (on creation) */}
         {meta.vibe_estimate != null && (
-          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 text-[10px] font-medium">
+          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 text-xs font-medium">
             <Zap className="h-2.5 w-2.5" />
             ~{meta.vibe_estimate} VIBE estimated
           </div>
@@ -265,7 +265,7 @@ function MetadataDisplay({ meta }: { meta: ParsedMetadata }) {
 
         {/* Total VIBE cost (final on completion) */}
         {meta.total_vibe_cost != null && (
-          <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/50 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 text-[11px] font-semibold">
+          <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/50 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 text-xs font-semibold">
             <Zap className="h-3 w-3" />
             {meta.total_vibe_cost} VIBE total
           </div>
@@ -273,7 +273,7 @@ function MetadataDisplay({ meta }: { meta: ParsedMetadata }) {
 
         {/* Layer badge */}
         {meta.layer && (
-          <div className="px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[10px] font-medium">
+          <div className="px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-xs font-medium">
             {meta.layer}
           </div>
         )}

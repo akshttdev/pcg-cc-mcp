@@ -233,7 +233,7 @@ export function TaskCard({
             {assignee && (
               <div className="flex items-center gap-1.5 min-w-0">
                 <div
-                  className="h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300 border border-violet-200 dark:border-violet-800 shrink-0"
+                  className="h-5 w-5 rounded-full flex items-center justify-center text-xs font-medium bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300 border border-violet-200 dark:border-violet-800 shrink-0"
                   title={assignee.displayName}
                 >
                   {assignee.initials}
@@ -257,7 +257,7 @@ export function TaskCard({
           </div>
           {task.vibe_cost != null && task.vibe_cost > 0 && (
             <div
-              className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 text-[10px] font-medium shrink-0"
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 text-xs font-medium shrink-0"
               title={`${task.vibe_cost} VIBE${task.vibe_model ? ` (${task.vibe_model})` : ''}`}
             >
               <Zap className="h-2.5 w-2.5" />

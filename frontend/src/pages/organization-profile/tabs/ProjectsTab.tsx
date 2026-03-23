@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { FolderOpen, Briefcase, X } from 'lucide-react';
 import { ProjectRow } from '../components/ProjectRow';
 import type { SidebarOrg, SidebarClient, SidebarProject } from '@/lib/api';
@@ -27,10 +28,11 @@ export function ProjectsTab({
 }) {
   if (!sidebarOrg) {
     return (
-      <div className="text-center py-12 text-muted-foreground">
-        <FolderOpen className="h-8 w-8 mx-auto mb-2 opacity-40" />
-        <p>No projects found</p>
-      </div>
+      <EmptyState
+        icon={FolderOpen}
+        title="No projects found"
+        className="py-12"
+      />
     );
   }
 

@@ -175,7 +175,7 @@ export function AgentFlowBadges({ flow, compact = false, className }: AgentFlowB
         {/* Status badge */}
         <Badge
           variant="outline"
-          className={cn('text-[10px] h-5 px-1.5 gap-1', config.bgColor, config.color, 'border-0')}
+          className={cn('text-xs h-5 px-1.5 gap-1', config.bgColor, config.color, 'border-0')}
         >
           {config.icon}
           {config.label}
@@ -183,7 +183,7 @@ export function AgentFlowBadges({ flow, compact = false, className }: AgentFlowB
 
         {/* Verification score */}
         {flow.verification_score !== undefined && flow.verification_score !== null && (
-          <Badge variant="outline" className="text-[10px] h-5 px-1.5">
+          <Badge variant="outline" className="text-xs h-5 px-1.5">
             {(flow.verification_score * 100).toFixed(0)}%
           </Badge>
         )}
@@ -193,7 +193,7 @@ export function AgentFlowBadges({ flow, compact = false, className }: AgentFlowB
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 bg-green-50 text-green-700 border-green-200">
+                <Badge variant="outline" className="text-xs h-5 px-1.5 gap-1 bg-green-50 text-green-700 border-green-200">
                   <User className="h-2.5 w-2.5" />
                   Approved
                 </Badge>

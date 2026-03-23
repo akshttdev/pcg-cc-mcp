@@ -1,19 +1,34 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  ArrowLeft,
+  BookMarked,
+  BookOpen,
+  CheckCircle,
+  Code,
+  FileText,
+  Image,
+  Link,
+  Music,
+  Package,
+  Plus,
+  Video,
+} from 'lucide-react';
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Button } from '@/components/ui/button';
+import { useNavigate,useParams } from 'react-router-dom';
+
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@/components/ui/dialog';
+import { EmptyState } from '@/components/ui/empty-state';
+import { FormField } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -21,22 +36,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  ArrowLeft,
-  Plus,
-  CheckCircle,
-  FileText,
-  Code,
-  Music,
-  Video,
-  Image,
-  BookOpen,
-  Package,
-  Link,
-  BookMarked,
-} from 'lucide-react';
-import { deliverablesApi, projectsApi, type DeliverableRecord, type CreateDeliverableInput, type DeliverableStatus, type DeliverableType } from '@/lib/api';
-import { projectKeys, businessKeys } from '@/lib/query-keys';
+import { Textarea } from '@/components/ui/textarea';
+import { type CreateDeliverableInput, type DeliverableRecord, deliverablesApi, type DeliverableStatus, type DeliverableType,projectsApi } from '@/lib/api';
+import { businessKeys,projectKeys } from '@/lib/query-keys';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -191,24 +193,22 @@ function CreateDeliverableDialog({ projectId, open, onClose, onCreated }: {
           <DialogTitle>New Deliverable</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
-          <div>
-            <Label className="text-xs">Title</Label>
+          <FormField label="Title">
             <Input
-              className="h-8 text-sm mt-1"
+              className="h-8 text-sm"
               placeholder="e.g. Hero Reel — Sirak Studios"
               value={form.title ?? ''}
               onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
             />
-          </div>
+          </FormField>
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs">Type</Label>
+            <FormField label="Type">
               <Select
                 value={form.deliverable_type}
                 onValueChange={v => setForm(f => ({ ...f, deliverable_type: v as DeliverableType }))}
               >
-                <SelectTrigger className="h-8 text-sm mt-1">
+                <SelectTrigger className="h-8 text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -217,39 +217,36 @@ function CreateDeliverableDialog({ projectId, open, onClose, onCreated }: {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div>
-              <Label className="text-xs">Revisions Allowed</Label>
+            </FormField>
+            <FormField label="Revisions Allowed">
               <Input
-                className="h-8 text-sm mt-1"
+                className="h-8 text-sm"
                 type="number"
                 min="0"
                 max="10"
                 value={form.revision_rounds_allowed ?? 2}
                 onChange={e => setForm(f => ({ ...f, revision_rounds_allowed: parseInt(e.target.value) }))}
               />
-            </div>
+            </FormField>
           </div>
 
-          <div>
-            <Label className="text-xs">Description</Label>
+          <FormField label="Description">
             <Textarea
-              className="text-sm mt-1 min-h-[60px]"
+              className="text-sm min-h-[60px]"
               placeholder="Brief for this deliverable…"
               value={form.description ?? ''}
               onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
             />
-          </div>
+          </FormField>
 
-          <div>
-            <Label className="text-xs">Due Date</Label>
+          <FormField label="Due Date">
             <Input
-              className="h-8 text-sm mt-1"
+              className="h-8 text-sm"
               type="date"
               value={form.due_date ?? ''}
               onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))}
             />
-          </div>
+          </FormField>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -348,15 +345,12 @@ export function ProjectDeliverablesPage() {
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <FileText className="h-10 w-10 mx-auto mb-3 opacity-20" />
-          <p className="font-medium">No deliverables yet</p>
-          <p className="text-xs mt-1">Create the first deliverable to start tracking outputs</p>
-          <Button variant="outline" size="sm" className="mt-4" onClick={() => setCreateOpen(true)}>
-            <Plus className="h-3.5 w-3.5 mr-1.5" />
-            New Deliverable
-          </Button>
-        </div>
+        <EmptyState
+          icon={FileText}
+          title="No deliverables yet"
+          description="Create the first deliverable to start tracking outputs"
+          action={{ label: 'New Deliverable', onClick: () => setCreateOpen(true) }}
+        />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map(item => (

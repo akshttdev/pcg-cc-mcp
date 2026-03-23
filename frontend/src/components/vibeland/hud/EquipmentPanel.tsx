@@ -67,7 +67,7 @@ export function EquipmentPanel() {
                   <div className="h-5 w-5 border border-dashed border-amber-500/30 rounded" />
                 )}
                 <div>
-                  <p className="text-[10px] uppercase tracking-wide text-amber-200/70">{label}</p>
+                  <p className="text-xs uppercase tracking-wide text-amber-200/70">{label}</p>
                   <p className="text-sm font-semibold text-white">
                     {item ? item.name : 'Empty'}
                   </p>
@@ -77,7 +77,7 @@ export function EquipmentPanel() {
                 <button
                   type="button"
                   onClick={() => unequipSlot(slot)}
-                  className="text-[10px] px-2 py-1 rounded border border-red-500/40 text-red-400 hover:bg-red-500/20 transition"
+                  className="text-xs px-2 py-1 rounded border border-red-500/40 text-red-400 hover:bg-red-500/20 transition"
                 >
                   Unequip
                 </button>

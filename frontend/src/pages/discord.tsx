@@ -26,6 +26,18 @@ import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/lib/formatters';
 import { EmptyState } from '@/components/ui/empty-state';
 
+// ── Types ────────────────────────────────────────────────────────────────────
+
+interface DiscordArchivedSession {
+  id: string;
+  title?: string;
+  agent_name?: string;
+  agent?: string;
+  started_at: string;
+  created_at?: string;
+  ended_at?: string;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatElapsed(secs: number) {
@@ -276,7 +288,7 @@ function ArchivedSessionRow({
   isSelected,
   onClick,
 }: {
-  session: any;
+  session: DiscordArchivedSession;
   isSelected: boolean;
   onClick: () => void;
 }) {
@@ -352,7 +364,7 @@ export function DiscordPage() {
       <div className="flex items-center justify-between px-6 py-4 border-b">
         <div className="flex items-center gap-3">
           <Radio className="h-5 w-5 text-primary" />
-          <h1 className="text-lg font-semibold">Discord Voice</h1>
+          <h1 className="text-lg font-bold">Discord Voice</h1>
           {activeSessions.length > 0 && (
             <Badge className="bg-green-500/15 text-green-400 border-green-500/20 text-xs">
               {activeSessions.length} live

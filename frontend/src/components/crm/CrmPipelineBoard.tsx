@@ -1,26 +1,29 @@
-import { useState, useMemo, useEffect } from 'react';
+import NiceModal from '@ebay/nice-modal-react';
+import { Bot, DollarSign, Loader2, Plus,Settings, Target, User, Users } from 'lucide-react';
+import { useEffect,useMemo, useState } from 'react';
+import { toast } from 'sonner';
+
+import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import {
+  type DragEndEvent,
   KanbanBoard,
+  KanbanCard,
   KanbanCards,
   KanbanHeader,
   KanbanProvider,
-  KanbanCard,
-  type DragEndEvent,
 } from '@/components/ui/shadcn-io/kanban';
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { DollarSign, Settings, Loader2, Bot, User, Users, Target, Plus } from 'lucide-react';
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
-import { toast } from 'sonner';
-import NiceModal from '@ebay/nice-modal-react';
-import { useCrmKanban, useCrmPipelineByType, useOrgCrmPipelineByType, useOrgCrmKanban, useMoveDeal, useCreateDeal, useUpdateDeal, useDeleteDeal } from '@/hooks/useCrmPipeline';
+import { Tooltip, TooltipContent, TooltipProvider,TooltipTrigger } from '@/components/ui/tooltip';
+import { useCreateDeal, useCrmKanban, useCrmPipelineByType, useDeleteDeal,useMoveDeal, useOrgCrmKanban, useOrgCrmPipelineByType, useUpdateDeal } from '@/hooks/useCrmPipeline';
 import { useProjectBoardProgress } from '@/hooks/useProjectBoardProgress';
-import { CrmDealCard } from './CrmDealCard';
-import { CrmDealForm } from './CrmDealForm';
-import { CrmDealDetailPanel } from './CrmDealDetailPanel';
-import type { PipelineType, CrmDealWithContact, CreateCrmDeal, UpdateCrmDeal } from '@/types/crm';
 import { formatCurrencyFull } from '@/lib/formatters';
+import type { CreateCrmDeal, CrmDealWithContact, PipelineType, UpdateCrmDeal } from '@/types/crm';
+
+import { CrmDealCard } from './CrmDealCard';
+import { CrmDealDetailPanel } from './CrmDealDetailPanel';
+import { CrmDealForm } from './CrmDealForm';
 
 interface CrmPipelineBoardProps {
   projectId?: string;
@@ -79,7 +82,7 @@ function StageOwnerBadge({ owner }: { owner: StageOwner }) {
   const typeLabel = owner.type === 'agent' ? 'AI agent' : owner.type === 'team' ? 'Team' : 'Human';
   return (
     <span
-      className="inline-flex items-center gap-1 text-[10px] text-muted-foreground font-normal cursor-default"
+      className="inline-flex items-center gap-1 text-xs text-muted-foreground font-normal cursor-default"
       title={`${owner.label} — ${typeLabel}`}
     >
       <Icon className="h-2.5 w-2.5" />
@@ -274,7 +277,7 @@ export function CrmPipelineBoard({
             <DollarSign className="h-4 w-4" />
           </div>
           <div>
-            <h1 className="text-lg sm:text-xl font-semibold">{title || kanbanData.pipeline_name}</h1>
+            <h1 className="text-lg sm:text-xl font-bold">{title || kanbanData.pipeline_name}</h1>
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
               <span>{totalDeals} deals</span>
               <span className="flex items-center gap-1">
@@ -290,9 +293,11 @@ export function CrmPipelineBoard({
             Add Deal
           </Button>
           {onSettingsClick && (
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={onSettingsClick}>
-              <Settings className="h-4 w-4" />
-            </Button>
+            <IconButton
+              variant="outline" className="h-8 w-8" onClick={onSettingsClick}
+              icon={Settings}
+              label="Pipeline settings"
+            />
           )}
         </div>
       </div>
@@ -349,7 +354,7 @@ export function CrmPipelineBoard({
                     <div className="flex items-center justify-between pl-4">
                       {owner ? <StageOwnerBadge owner={owner} /> : <span />}
                       {stageData.total_amount > 0 && (
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="text-xs text-muted-foreground">
                           {formatCurrencyFull(stageData.total_amount)}
                         </span>
                       )}

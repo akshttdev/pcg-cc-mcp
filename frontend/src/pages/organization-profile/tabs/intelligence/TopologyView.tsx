@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQueries } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { CardGrid } from '@/components/ui/card-grid';
 import {
   Network,
   Loader2,
@@ -48,7 +49,7 @@ export function TopologyView({
         <h2 className="text-lg font-semibold">Topology</h2>
         <Badge variant="secondary">{topologyItems.length}</Badge>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <CardGrid columns={{ md: 2 }} gap={3}>
         {topologyItems.map(({ source, projectName, projectId }) => (
           <Card key={source.id} className={`bg-card/80 ${source.is_stale ? 'border-yellow-500/30' : 'border-border/50'}`}>
             <CardContent className="pt-4 pb-4">
@@ -58,8 +59,8 @@ export function TopologyView({
                   <p className="text-sm font-medium truncate">{source.source_title}</p>
                   {source.source_summary && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{source.source_summary}</p>}
                   <div className="flex items-center justify-between mt-1.5">
-                    <Link to={`/projects/${projectId}`} className="text-[10px] text-muted-foreground hover:text-foreground">{projectName}</Link>
-                    <span className="text-[10px] text-muted-foreground">{Math.round(source.coverage_score * 100)}% coverage</span>
+                    <Link to={`/projects/${projectId}`} className="text-xs text-muted-foreground hover:text-foreground">{projectName}</Link>
+                    <span className="text-xs text-muted-foreground">{Math.round(source.coverage_score * 100)}% coverage</span>
                   </div>
                   {source.is_stale && <Badge variant="outline" className="text-[9px] mt-1 text-yellow-600 border-yellow-600">Stale</Badge>}
                 </div>
@@ -67,7 +68,7 @@ export function TopologyView({
             </CardContent>
           </Card>
         ))}
-      </div>
+      </CardGrid>
     </div>
   );
 }
@@ -115,7 +116,7 @@ export function TopologyIntelView({ projectEntries }: { projectEntries: { id: st
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <CardGrid columns={{ md: 2 }} gap={3}>
         {topologyItems.map((t, i) => (
           <Card key={i} className={`bg-card/80 ${t.isStale ? 'border-yellow-500/30' : 'border-border/50'}`}>
             <CardContent className="pt-4 pb-4">
@@ -125,8 +126,8 @@ export function TopologyIntelView({ projectEntries }: { projectEntries: { id: st
                   <p className="text-sm font-medium truncate">{t.title}</p>
                   {t.summary && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{t.summary}</p>}
                   <div className="flex items-center justify-between mt-1.5">
-                    <Link to={`/projects/${t.projectId}`} className="text-[10px] text-muted-foreground hover:text-foreground">{t.projectName}</Link>
-                    {t.coverage != null && <span className="text-[10px] text-muted-foreground">{Math.round(t.coverage * 100)}% coverage</span>}
+                    <Link to={`/projects/${t.projectId}`} className="text-xs text-muted-foreground hover:text-foreground">{t.projectName}</Link>
+                    {t.coverage != null && <span className="text-xs text-muted-foreground">{Math.round(t.coverage * 100)}% coverage</span>}
                   </div>
                   {t.isStale && <Badge variant="outline" className="text-[9px] mt-1 text-yellow-600 border-yellow-600">Stale</Badge>}
                 </div>
@@ -134,7 +135,7 @@ export function TopologyIntelView({ projectEntries }: { projectEntries: { id: st
             </CardContent>
           </Card>
         ))}
-      </div>
+      </CardGrid>
     </div>
   );
 }

@@ -1,35 +1,37 @@
-import { useState, useMemo, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuItem,
-} from '@/components/ui/dropdown-menu';
-import {
-  Inbox,
-  MessageSquare,
-  Heart,
+  AlertTriangle,
+  Archive,
   AtSign,
-  Share2,
-  Search,
-  Filter,
   CheckCircle2,
   Clock,
-  AlertTriangle,
-  Send,
-  MoreHorizontal,
   ExternalLink,
-  Archive,
+  Filter,
+  Heart,
+  Inbox,
+  MessageSquare,
+  MoreHorizontal,
+  Search,
+  Send,
+  Share2,
 } from 'lucide-react';
+import { useCallback,useMemo, useState } from 'react';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { IconButton } from '@/components/ui/icon-button';
+import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import type { SocialPlatform } from '@/types/social';
 import { PLATFORM_ICONS } from '@/types/social';
@@ -227,7 +229,7 @@ function MentionCard({
             )}
             <div
               className={cn(
-                'absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold',
+                'absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-semibold',
                 mention.platform === 'linkedin' && 'bg-[#0A66C2]',
                 mention.platform === 'instagram' && 'bg-[#E4405F]',
                 mention.platform === 'twitter' && 'bg-black',
@@ -323,6 +325,7 @@ function MentionCard({
                 size="icon"
                 asChild
                 onClick={(e) => e.stopPropagation()}
+                title="View original post"
               >
                 <a href={mention.post_url} target="_blank" rel="noopener noreferrer">
                   <ExternalLink className="h-4 w-4" />
@@ -330,27 +333,23 @@ function MentionCard({
               </Button>
             )}
             {!isExpanded && onRespond && mention.status !== 'responded' && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={(e) => {
+              <IconButton
+                variant="ghost" onClick={(e) => {
                   e.stopPropagation();
                   setIsExpanded(true);
                 }}
-              >
-                <MessageSquare className="h-4 w-4" />
-              </Button>
+                icon={MessageSquare}
+                label="Reply"
+              />
             )}
             {(onArchive || onMarkRead) ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
+                  <IconButton
+                    variant="ghost" onClick={(e) => e.stopPropagation()}
+                    icon={MoreHorizontal}
+                    label="More options"
+                  />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-40">
                   <DropdownMenuLabel>Quick Actions</DropdownMenuLabel>
@@ -380,13 +379,11 @@ function MentionCard({
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
+              <IconButton
+                variant="ghost" onClick={(e) => e.stopPropagation()}
+                icon={MoreHorizontal}
+                label="More options"
+              />
             )}
           </div>
         </div>

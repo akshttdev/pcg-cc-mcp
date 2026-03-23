@@ -1,31 +1,34 @@
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
+  AlertCircle,
+  Building2,
+  Calendar,
+  CheckCircle2,
+  ChevronRight,
+  Clock,
+  Download,
   FileText,
   Image,
-  Share2,
-  Download,
-  RefreshCw,
-  Calendar,
-  MapPin,
-  Users,
-  Building2,
-  PartyPopper,
-  ChevronRight,
-  CheckCircle2,
-  Clock,
-  AlertCircle,
   Loader2,
+  MapPin,
+  PartyPopper,
+  RefreshCw,
+  Share2,
+  Users,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { useState } from 'react';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription,CardHeader, CardTitle } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { resolveApiUrl } from '@/lib/api';
 import { workflowKeys } from '@/lib/query-keys';
+import { cn } from '@/lib/utils';
+
 import { ArticlePreview } from './ArticlePreview';
 
 interface WorkflowListItem {
@@ -258,7 +261,7 @@ function WorkflowDetails({
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-2xl font-bold">{status.conferenceName}</h2>
+          <h2 className="text-2xl font-semibold">{status.conferenceName}</h2>
           <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
             <span className="flex items-center gap-1">
               <Calendar className="w-4 h-4" />
@@ -288,7 +291,7 @@ function WorkflowDetails({
             <div className="flex items-center gap-2">
               <Users className="w-5 h-5 text-blue-500" />
               <div>
-                <p className="text-2xl font-bold">{status.speakersDiscovered ?? 0}</p>
+                <p className="text-2xl font-semibold">{status.speakersDiscovered ?? 0}</p>
                 <p className="text-xs text-muted-foreground">Speakers</p>
               </div>
             </div>
@@ -299,7 +302,7 @@ function WorkflowDetails({
             <div className="flex items-center gap-2">
               <Building2 className="w-5 h-5 text-purple-500" />
               <div>
-                <p className="text-2xl font-bold">{status.sponsorsDiscovered ?? 0}</p>
+                <p className="text-2xl font-semibold">{status.sponsorsDiscovered ?? 0}</p>
                 <p className="text-xs text-muted-foreground">Sponsors</p>
               </div>
             </div>
@@ -310,7 +313,7 @@ function WorkflowDetails({
             <div className="flex items-center gap-2">
               <PartyPopper className="w-5 h-5 text-amber-500" />
               <div>
-                <p className="text-2xl font-bold">{status.sideEventsDiscovered ?? 0}</p>
+                <p className="text-2xl font-semibold">{status.sideEventsDiscovered ?? 0}</p>
                 <p className="text-xs text-muted-foreground">Side Events</p>
               </div>
             </div>
@@ -321,7 +324,7 @@ function WorkflowDetails({
             <div className="flex items-center gap-2">
               <Share2 className="w-5 h-5 text-green-500" />
               <div>
-                <p className="text-2xl font-bold">{status.postsScheduled}</p>
+                <p className="text-2xl font-semibold">{status.postsScheduled}</p>
                 <p className="text-xs text-muted-foreground">Posts Scheduled</p>
               </div>
             </div>
@@ -460,9 +463,11 @@ export function ConferenceWorkflowDashboard() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>Conference Workflows</CardTitle>
-              <Button variant="ghost" size="icon" onClick={() => refetch()}>
-                <RefreshCw className="w-4 h-4" />
-              </Button>
+              <IconButton
+                variant="ghost" onClick={() => refetch()}
+                icon={RefreshCw}
+                label="Refresh"
+              />
             </div>
           </CardHeader>
           <CardContent>

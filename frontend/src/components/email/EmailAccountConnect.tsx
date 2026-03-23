@@ -1,20 +1,22 @@
-import { useState, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import {
-  Mail,
-  Link2,
-  Unlink,
-  RefreshCw,
-  CheckCircle2,
   AlertCircle,
+  CheckCircle2,
   Clock,
   Inbox,
+  Link2,
+  Mail,
+  RefreshCw,
+  Unlink,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import type { EmailAccount, EmailProvider, EmailAccountStatus } from '@/types/email';
+import { useCallback,useState } from 'react';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription,CardHeader, CardTitle } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
 import { formatDate } from '@/lib/formatters';
+import { cn } from '@/lib/utils';
+import type { EmailAccount, EmailAccountStatus,EmailProvider } from '@/types/email';
 
 interface EmailAccountConnectProps {
   accounts: EmailAccount[];
@@ -42,14 +44,14 @@ const providerConfig: Record<EmailProvider, {
   },
   zoho: {
     name: 'Zoho Mail',
-    icon: <span className="text-lg font-bold">Z</span>,
+    icon: <span className="text-lg font-semibold">Z</span>,
     color: 'text-[#C8202B]',
     bgColor: 'bg-[#C8202B]',
     description: 'Zoho Mail - Team operations and CRM integration',
   },
   imap_custom: {
     name: 'Custom IMAP',
-    icon: <span className="text-lg font-bold">@</span>,
+    icon: <span className="text-lg font-semibold">@</span>,
     color: 'text-gray-600',
     bgColor: 'bg-gray-600',
     description: 'Connect any email provider via IMAP/SMTP',
@@ -189,23 +191,18 @@ function ConnectedAccountCard({
 
           {/* Actions */}
           <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleSync}
+            <IconButton
+              variant="ghost" onClick={handleSync}
               disabled={isSyncing}
-              title="Sync now"
-            >
-              <RefreshCw className={cn('h-4 w-4', isSyncing && 'animate-spin')} />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onDisconnect}
-              title="Disconnect"
-            >
-              <Unlink className="h-4 w-4" />
-            </Button>
+              icon={RefreshCw}
+              label="Sync now"
+              iconClassName={cn('h-4 w-4', isSyncing && 'animate-spin')}
+            />
+            <IconButton
+              variant="ghost" onClick={onDisconnect}
+              icon={Unlink}
+              label="Disconnect"
+            />
           </div>
         </div>
 
@@ -380,7 +377,7 @@ export function EmailAccountConnect({
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-lg bg-[#C8202B] flex items-center justify-center text-white">
-              <span className="text-lg font-bold">Z</span>
+              <span className="text-lg font-semibold">Z</span>
             </div>
             <div>
               <h4 className="font-medium text-gray-900">Zoho Mail + CRM Integration</h4>

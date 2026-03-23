@@ -1,38 +1,40 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader } from '@/components/ui/loader';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Bot,
-  Send,
-  Settings,
   Activity,
-  Sparkles,
-  User,
-  MessageSquarePlus,
-  History,
-  Trash2,
+  AlertCircle,
+  Bot,
   CheckCircle2,
   Circle,
+  History,
+  MessageSquarePlus,
   PlayCircle,
-  AlertCircle,
+  Send,
+  Settings,
+  Sparkles,
+  Trash2,
+  User,
 } from 'lucide-react';
+import { useCallback, useEffect, useRef,useState } from 'react';
+import { useParams } from 'react-router-dom';
+import type { Project, TaskWithAttemptStatus } from 'shared/types';
+
+import { ControllerSettingsDialog } from '@/components/dialogs/controller-settings-dialog';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
+import { Input } from '@/components/ui/input';
+import { Loader } from '@/components/ui/loader';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
-  projectsApi,
-  projectControllersApi,
-  tasksApi,
   type ProjectControllerConfig,
   type ProjectControllerConversation,
+  projectControllersApi,
+  projectsApi,
+  tasksApi,
 } from '@/lib/api';
-import { cn } from '@/lib/utils';
 import { controllerKeys, projectKeys, taskKeys } from '@/lib/query-keys';
-import { ControllerSettingsDialog } from '@/components/dialogs/controller-settings-dialog';
-import type { Project, TaskWithAttemptStatus } from 'shared/types';
+import { cn } from '@/lib/utils';
 
 interface ChatMessage {
   id: string;
@@ -226,7 +228,7 @@ export function ProjectControllerPage() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-semibold">{displayName}</h1>
+              <h1 className="text-xl font-bold">{displayName}</h1>
               <Badge variant="secondary" className="text-xs">
                 {project?.name}
               </Badge>
@@ -242,25 +244,21 @@ export function ProjectControllerPage() {
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
             <span>Online</span>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={startNewConversation}
-            title="New conversation"
-          >
-            <MessageSquarePlus className="h-4 w-4" />
-          </Button>
-          <Button
-            variant={showHistory ? 'secondary' : 'ghost'}
-            size="icon"
-            onClick={() => setShowHistory(!showHistory)}
-            title="Conversation history"
-          >
-            <History className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={() => setSettingsOpen(true)}>
-            <Settings className="h-4 w-4" />
-          </Button>
+          <IconButton
+            variant="ghost" onClick={startNewConversation}
+            icon={MessageSquarePlus}
+            label="New conversation"
+          />
+          <IconButton
+            variant={showHistory ? 'secondary' : 'ghost'} onClick={() => setShowHistory(!showHistory)}
+            icon={History}
+            label="Conversation history"
+          />
+          <IconButton
+            variant="ghost" onClick={() => setSettingsOpen(true)}
+            icon={Settings}
+            label="Settings"
+          />
         </div>
       </div>
 
@@ -299,17 +297,16 @@ export function ProjectControllerPage() {
                         {new Date(conv.updated_at).toLocaleDateString()}
                       </p>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 shrink-0"
+                    <IconButton
+                      variant="ghost" className="h-8 w-8 shrink-0"
                       onClick={(e) => {
                         e.stopPropagation();
                         deleteConversationMutation.mutate(conv.id);
                       }}
-                    >
-                      <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
-                    </Button>
+                      icon={Trash2}
+                      label="Delete conversation"
+                      iconClassName="h-4 w-4 text-muted-foreground hover:text-destructive"
+                    />
                   </div>
                 ))}
               </div>

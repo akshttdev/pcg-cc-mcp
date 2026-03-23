@@ -297,17 +297,17 @@ export function RalphLoopProgress({
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4">
           <div className="text-center p-3 rounded-lg bg-muted/50">
-            <div className="text-2xl font-bold">{loopState.current_iteration}</div>
+            <div className="text-2xl font-semibold">{loopState.current_iteration}</div>
             <div className="text-xs text-muted-foreground">Iterations</div>
           </div>
           <div className="text-center p-3 rounded-lg bg-muted/50">
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-semibold">
               {totalDuration ? formatDuration(totalDuration) : '-'}
             </div>
             <div className="text-xs text-muted-foreground">Duration</div>
           </div>
           <div className="text-center p-3 rounded-lg bg-muted/50">
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-semibold">
               {loopState.total_tokens_used?.toLocaleString() || '-'}
             </div>
             <div className="text-xs text-muted-foreground">Tokens</div>

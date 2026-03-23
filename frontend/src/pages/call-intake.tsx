@@ -1,19 +1,21 @@
-import { useState, useEffect, useCallback } from 'react';
+import {
+Brain,
+Briefcase,
+  CheckCircle,   ChevronDown, ChevronRight, Clock, FileText, Loader2,   PhoneIncoming, Play, Plus, RefreshCw, Upload,
+User, XCircle, } from 'lucide-react';
+import { useCallback,useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { formatDateTime } from '@/lib/formatters';
-import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
+
 import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  PhoneIncoming, RefreshCw, Play, FileText, Briefcase,
-  CheckCircle, XCircle, Clock, Loader2, Upload,
-  ChevronDown, ChevronRight, Plus, User, Brain,
-} from 'lucide-react';
-import { toast } from 'sonner';
-import { callIntakeApi, reportsApi } from '@/lib/api';
+import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/contexts/AuthContext';
+import { callIntakeApi, reportsApi } from '@/lib/api';
+import { formatDateTime } from '@/lib/formatters';
 
 interface CallIntakeItem {
   id: string;
@@ -150,7 +152,7 @@ export default function CallIntakePage() {
               <PhoneIncoming className="w-5 h-5 text-blue-400" />
             </div>
             <div>
-              <h1 className="text-xl font-semibold text-white">Call Intake</h1>
+              <h1 className="text-xl font-bold text-white">Call Intake</h1>
               <p className="text-sm text-gray-400">Process call transcripts and email summaries into CRM intelligence</p>
             </div>
           </div>
@@ -175,7 +177,7 @@ export default function CallIntakePage() {
                   <Icon className="w-4 h-4 text-gray-400" />
                   <span className="text-xs text-gray-400 capitalize">{status}</span>
                 </div>
-                <div className="text-2xl font-bold text-white">{count}</div>
+                <div className="text-2xl font-semibold text-white">{count}</div>
               </div>
             );
           })}
@@ -245,16 +247,12 @@ export default function CallIntakePage() {
               Loading intake items…
             </div>
           ) : items.length === 0 ? (
-            <div className="text-center py-16 text-gray-500">
-              <div className="rounded-full bg-gray-800 p-4 mb-4 inline-flex">
-                <PhoneIncoming className="w-8 h-8 text-gray-500" />
-              </div>
-              <h3 className="text-base font-medium text-gray-300 mb-1">No intake items yet</h3>
-              <p className="text-sm">Add call transcripts or email summaries to start building CRM intelligence.</p>
-              <Button variant="outline" size="sm" className="mt-4" onClick={() => setShowUpload(true)}>
-                <Plus className="w-4 h-4 mr-1" /> Add Intake
-              </Button>
-            </div>
+            <EmptyState
+              icon={PhoneIncoming}
+              title="No intake items yet"
+              description="Add call transcripts or email summaries to start building CRM intelligence."
+              action={{ label: 'Add Intake', onClick: () => setShowUpload(true) }}
+            />
           ) : (
             items.map(item => {
               const isExpanded = expanded === item.id;

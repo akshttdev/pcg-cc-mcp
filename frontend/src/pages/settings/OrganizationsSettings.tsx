@@ -88,7 +88,7 @@ export function OrganizationsSettings() {
             <Building2 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{orgs.length}</div>
+            <div className="text-2xl font-semibold">{orgs.length}</div>
           </CardContent>
         </Card>
         <Card>
@@ -97,7 +97,7 @@ export function OrganizationsSettings() {
             <Power className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{activeCount}</div>
+            <div className="text-2xl font-semibold">{activeCount}</div>
           </CardContent>
         </Card>
         <Card>
@@ -106,7 +106,7 @@ export function OrganizationsSettings() {
             <PowerOff className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{inactiveCount}</div>
+            <div className="text-2xl font-semibold">{inactiveCount}</div>
           </CardContent>
         </Card>
       </div>

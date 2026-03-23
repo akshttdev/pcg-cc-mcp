@@ -18,26 +18,26 @@ export function ApplicationsPage({ org, profile, primary, accent, effectiveLogo 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-14">
         {/* Business card */}
         <div>
-          <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-gray-400 mb-5">Business Card</p>
+          <p className="text-xs uppercase tracking-[0.25em] font-semibold text-gray-400 mb-5">Business Card</p>
           <BusinessCardMockup org={org.name} primary={primary} accent={accent} logoUrl={effectiveLogo} />
-          <p className="text-[10px] text-gray-400 mt-3">Standard 3.5" &times; 2" &middot; Matte laminate &middot; Foil accent recommended</p>
+          <p className="text-xs text-gray-400 mt-3">Standard 3.5" &times; 2" &middot; Matte laminate &middot; Foil accent recommended</p>
         </div>
 
         {/* Social post */}
         <div>
-          <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-gray-400 mb-5">Social Media &middot; Instagram</p>
+          <p className="text-xs uppercase tracking-[0.25em] font-semibold text-gray-400 mb-5">Social Media &middot; Instagram</p>
           <SocialPostMockup org={org.name} tagline={profile.tagline} primary={primary} accent={accent} logoUrl={effectiveLogo} />
         </div>
 
         {/* Email signature */}
         <div>
-          <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-gray-400 mb-5">Email Signature</p>
+          <p className="text-xs uppercase tracking-[0.25em] font-semibold text-gray-400 mb-5">Email Signature</p>
           <EmailSignatureMockup org={org.name} primary={primary} accent={accent} logoUrl={effectiveLogo} />
         </div>
 
         {/* Letterhead */}
         <div>
-          <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-gray-400 mb-5">Letterhead</p>
+          <p className="text-xs uppercase tracking-[0.25em] font-semibold text-gray-400 mb-5">Letterhead</p>
           <LetterheadMockup org={org.name} primary={primary} accent={accent} logoUrl={effectiveLogo} address={org.address} />
         </div>
       </div>

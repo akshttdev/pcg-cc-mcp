@@ -1,6 +1,21 @@
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import {
+  ChevronRight,
+  Clock,
+  MessageSquare,
+  Phone,
+  PhoneIncoming,
+  PhoneMissed,
+  PhoneOutgoing,
+  Play,
+  RefreshCw,
+  Star,
+  User,
+} from 'lucide-react';
+import { useState } from 'react';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -8,34 +23,22 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { EmptyState } from '@/components/ui/empty-state';
+import { IconButton } from '@/components/ui/icon-button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import {
-  Phone,
-  PhoneIncoming,
-  PhoneOutgoing,
-  PhoneMissed,
-  MessageSquare,
-  Star,
-  Clock,
-  Play,
-  ChevronRight,
-  RefreshCw,
-  User,
-} from 'lucide-react';
-import {
-  communicationsApi,
   CallLogRecord,
-  SmsMessageRecord,
   CallStats,
+  communicationsApi,
+  SmsMessageRecord,
   SmsStats,
 } from '@/lib/api';
 import { commsKeys } from '@/lib/query-keys';
@@ -165,7 +168,7 @@ export function CommunicationsInbox({ projectId }: CommunicationsInboxProps) {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Total Calls</p>
-                <p className="text-2xl font-bold">{callStats?.total || 0}</p>
+                <p className="text-2xl font-semibold">{callStats?.total || 0}</p>
               </div>
             </div>
           </CardContent>
@@ -178,7 +181,7 @@ export function CommunicationsInbox({ projectId }: CommunicationsInboxProps) {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Inbound</p>
-                <p className="text-2xl font-bold">{callStats?.inbound || 0}</p>
+                <p className="text-2xl font-semibold">{callStats?.inbound || 0}</p>
               </div>
             </div>
           </CardContent>
@@ -191,7 +194,7 @@ export function CommunicationsInbox({ projectId }: CommunicationsInboxProps) {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">SMS Messages</p>
-                <p className="text-2xl font-bold">{smsStats?.total || 0}</p>
+                <p className="text-2xl font-semibold">{smsStats?.total || 0}</p>
               </div>
             </div>
           </CardContent>
@@ -204,7 +207,7 @@ export function CommunicationsInbox({ projectId }: CommunicationsInboxProps) {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Unread SMS</p>
-                <p className="text-2xl font-bold">{smsStats?.unread || 0}</p>
+                <p className="text-2xl font-semibold">{smsStats?.unread || 0}</p>
               </div>
             </div>
           </CardContent>
@@ -219,16 +222,14 @@ export function CommunicationsInbox({ projectId }: CommunicationsInboxProps) {
               <CardTitle>Communications</CardTitle>
               <CardDescription>Phone calls and text messages</CardDescription>
             </div>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => {
+            <IconButton
+              variant="outline" onClick={() => {
                 refetchCalls();
                 refetchSms();
               }}
-            >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
+              icon={RefreshCw}
+              label="Refresh"
+            />
           </div>
         </CardHeader>
         <CardContent>
@@ -258,11 +259,11 @@ export function CommunicationsInbox({ projectId }: CommunicationsInboxProps) {
                   ))}
                 </div>
               ) : calls.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Phone className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p className="text-lg font-medium">No calls yet</p>
-                  <p className="text-sm">Calls made through Nora will appear here</p>
-                </div>
+                <EmptyState
+                  icon={Phone}
+                  title="No calls yet"
+                  description="Calls made through Nora will appear here"
+                />
               ) : (
                 <div className="divide-y">
                   {calls.map((call) => (
@@ -304,11 +305,11 @@ export function CommunicationsInbox({ projectId }: CommunicationsInboxProps) {
                   ))}
                 </div>
               ) : smsMessages.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground">
-                  <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p className="text-lg font-medium">No text messages yet</p>
-                  <p className="text-sm">SMS messages will appear here</p>
-                </div>
+                <EmptyState
+                  icon={MessageSquare}
+                  title="No text messages yet"
+                  description="SMS messages will appear here"
+                />
               ) : (
                 <div className="divide-y">
                   {smsMessages.map((sms) => (
@@ -319,21 +320,18 @@ export function CommunicationsInbox({ projectId }: CommunicationsInboxProps) {
                       }`}
                       onClick={() => handleOpenSms(sms)}
                     >
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="shrink-0"
+                      <IconButton
+                        variant="ghost" className="shrink-0"
                         onClick={(e) => {
                           e.stopPropagation();
                           toggleSmsStarMutation.mutate(sms.id);
                         }}
-                      >
-                        <Star
-                          className={`h-4 w-4 ${
+                        icon={Star}
+                        label="Toggle star"
+                        iconClassName={`h-4 w-4 ${
                             sms.is_starred ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground'
                           }`}
-                        />
-                      </Button>
+                      />
                       <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center text-white shrink-0">
                         <User className="h-5 w-5" />
                       </div>

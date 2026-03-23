@@ -1,15 +1,5 @@
-import { useEffect, useState, useMemo } from 'react';
-import TaskDetailsHeader from './TaskDetailsHeader';
-import { TaskFollowUpSection } from './TaskFollowUpSection';
-import { TaskTitleDescription } from './TaskDetails/TaskTitleDescription';
-import { TimeTrackerWidget } from '@/components/time-tracking/TimeTrackerWidget';
-import { TimeEntriesList } from '@/components/time-tracking/TimeEntriesList';
-import { DependencyManager } from '@/components/dependencies/DependencyManager';
-import { CustomPropertiesPanel } from '@/components/custom-properties/CustomPropertiesPanel';
-import { TaskCommentThread } from './TaskCommentThread';
-import { ActivityTimeline } from './ActivityTimeline';
-import { ApprovalPanel } from './ApprovalPanel';
-import { AgentWatcherPanel } from './AgentWatcherPanel';
+import { Download, Package, X } from 'lucide-react';
+import { useEffect, useMemo,useState } from 'react';
 import type {
   AgentFlowEvent,
   ArtifactType,
@@ -18,44 +8,57 @@ import type {
   TaskAttempt,
   TaskWithAttemptStatus,
 } from 'shared/types';
+import type { AgentChatRequest } from 'shared/types';
+
+import { BreadcrumbNav } from '@/components/breadcrumb/BreadcrumbNav';
+import { CustomPropertiesPanel } from '@/components/custom-properties/CustomPropertiesPanel';
+import { DependencyManager } from '@/components/dependencies/DependencyManager';
+import DiffTab from '@/components/tasks/TaskDetails/DiffTab.tsx';
+import LogsTab from '@/components/tasks/TaskDetails/LogsTab.tsx';
+import ProcessesTab from '@/components/tasks/TaskDetails/ProcessesTab.tsx';
+import TabNavigation from '@/components/tasks/TaskDetails/TabNavigation.tsx';
+import TodoPanel from '@/components/tasks/TodoPanel';
+import { TimeEntriesList } from '@/components/time-tracking/TimeEntriesList';
+import { TimeTrackerWidget } from '@/components/time-tracking/TimeTrackerWidget';
+import { AskTopsiButton } from '@/components/topsi/AskTopsiButton';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { IconButton } from '@/components/ui/icon-button';
+import { SectionHeader } from '@/components/ui/section-header';
+import { Skeleton } from '@/components/ui/skeleton';
+import { EntriesProvider } from '@/contexts/EntriesContext';
+import { ProcessSelectionProvider } from '@/contexts/ProcessSelectionContext';
+import { ReviewProvider } from '@/contexts/ReviewProvider';
+import { TabNavContext } from '@/contexts/TabNavigationContext';
+import { useExecutionSummary } from '@/hooks';
+import { useTaskViewManager } from '@/hooks/useTaskViewManager.ts';
+import type {
+  ExecutionArtifact as ApiExecutionArtifact,
+} from '@/lib/api';
+import { agentFlowsApi, agentsApi, artifactContentApi, editronApi,resolveApiUrl, taskArtifactsApi } from '@/lib/api';
 import {
   getBackdropClasses,
   getTaskPanelClasses,
   getTaskPanelInnerClasses,
 } from '@/lib/responsive-config';
 import type { TabType } from '@/types/tabs';
-import DiffTab from '@/components/tasks/TaskDetails/DiffTab.tsx';
-import LogsTab from '@/components/tasks/TaskDetails/LogsTab.tsx';
-import ProcessesTab from '@/components/tasks/TaskDetails/ProcessesTab.tsx';
-import TabNavigation from '@/components/tasks/TaskDetails/TabNavigation.tsx';
-import TaskDetailsToolbar from './TaskDetailsToolbar.tsx';
-import TodoPanel from '@/components/tasks/TodoPanel';
-import { TabNavContext } from '@/contexts/TabNavigationContext';
-import { ProcessSelectionProvider } from '@/contexts/ProcessSelectionContext';
-import { ReviewProvider } from '@/contexts/ReviewProvider';
-import { EntriesProvider } from '@/contexts/EntriesContext';
-import { AttemptHeaderCard } from './AttemptHeaderCard';
 import { inIframe } from '@/vscode/bridge';
-import { TaskRelationshipViewer } from './TaskRelationshipViewer';
-import { useTaskViewManager } from '@/hooks/useTaskViewManager.ts';
-import { useExecutionSummary } from '@/hooks';
-import { ExecutionSummaryCard } from './ExecutionSummaryCard';
+
+import { ActivityTimeline } from './ActivityTimeline';
+import { AgentWatcherPanel } from './AgentWatcherPanel';
 import { AirtableRecordLinkBadge } from './AirtableRecordLinkBadge';
-import { AskTopsiButton } from '@/components/topsi/AskTopsiButton';
-import { BreadcrumbNav } from '@/components/breadcrumb/BreadcrumbNav';
+import { ApprovalPanel } from './ApprovalPanel';
+import { AttemptHeaderCard } from './AttemptHeaderCard';
+import { ExecutionSummaryCard } from './ExecutionSummaryCard';
 import { TaskArtifactsPanel } from './TaskArtifactsPanel';
+import { TaskCommentThread } from './TaskCommentThread';
+import { TaskTitleDescription } from './TaskDetails/TaskTitleDescription';
+import TaskDetailsHeader from './TaskDetailsHeader';
+import TaskDetailsToolbar from './TaskDetailsToolbar.tsx';
+import { TaskFollowUpSection } from './TaskFollowUpSection';
+import { TaskRelationshipViewer } from './TaskRelationshipViewer';
 import { WorkflowTerminal } from './WorkflowTerminal';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Download, X } from 'lucide-react';
-import { agentFlowsApi, taskArtifactsApi, agentsApi, resolveApiUrl, artifactContentApi, editronApi } from '@/lib/api';
-import type {
-  ExecutionArtifact as ApiExecutionArtifact,
-} from '@/lib/api';
-import type { AgentChatRequest } from 'shared/types';
 
 interface TaskDetailsPanelProps {
   task: TaskWithAttemptStatus | null;
@@ -532,9 +535,7 @@ export function TaskDetailsPanel({
 
                           {/* Agent artifacts */}
                           <div className="p-3 space-y-2">
-                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                              Agent Artifacts
-                            </p>
+                            <SectionHeader title="Agent Artifacts" icon={Package} />
                             {renderArtifactsBody()}
                           </div>
 
@@ -745,12 +746,16 @@ function ArtifactPreviewModal({
             <DialogTitle className="text-lg">{artifact.title}</DialogTitle>
             <div className="flex items-center gap-2">
               <Badge variant="outline">{artifact.artifact_type}</Badge>
-              <Button variant="ghost" size="icon" onClick={() => onDownload(artifact)} title="Download">
-                <Download className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" onClick={onClose}>
-                <X className="h-4 w-4" />
-              </Button>
+              <IconButton
+                variant="ghost" onClick={() => onDownload(artifact)}
+                icon={Download}
+                label="Download"
+              />
+              <IconButton
+                variant="ghost" onClick={onClose}
+                icon={X}
+                label="Close"
+              />
             </div>
           </div>
         </DialogHeader>

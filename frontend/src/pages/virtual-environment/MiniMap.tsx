@@ -16,7 +16,7 @@ export function MiniMap({ projects, selectedProject, userPosition, size = 220, z
 
   return (
     <div>
-      <div className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-[0.3em] text-amber-200">
+      <div className="mb-2 flex items-center justify-between text-xs uppercase tracking-[0.3em] text-amber-200">
         <span>Global Map</span>
         <Compass className="h-4 w-4" />
       </div>
@@ -79,7 +79,7 @@ export function MiniMap({ projects, selectedProject, userPosition, size = 220, z
           {/* Player position */}
           <circle cx={toMapX(userX)} cy={toMapY(userZ)} r={5} fill="#f472b6" stroke="#ffffff" strokeWidth={1} />
         </svg>
-        <span className="pointer-events-none absolute right-4 top-3 text-[10px] font-semibold text-amber-200">N</span>
+        <span className="pointer-events-none absolute right-4 top-3 text-xs font-semibold text-amber-200">N</span>
       </div>
       {/* Zone legend */}
       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">

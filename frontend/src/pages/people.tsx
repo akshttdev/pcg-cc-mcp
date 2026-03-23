@@ -129,7 +129,7 @@ export function PeoplePage() {
   const [myContacts, setMyContacts] = useState(false);
 
   // Org scoping: default to the user's first org, allow switching to "All"
-  const userOrgs: { id: string; name: string; slug: string }[] = (user as any)?.organizations ?? [];
+  const userOrgs = user?.organizations ?? [];
   const orgId = user?.home_organization_id ?? userOrgs[0]?.id;
   const [selectedOrgId, setSelectedOrgId] = useState<string | undefined>(orgId);
   const selectedOrg = userOrgs.find(o => o.id === selectedOrgId);
@@ -168,7 +168,7 @@ export function PeoplePage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">All People</h1>
+          <h1 className="text-2xl font-bold">All People</h1>
           <p className="text-sm text-muted-foreground mt-1">
             CRM contacts across {selectedOrg?.name ?? 'your organization'}.
           </p>

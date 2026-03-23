@@ -81,7 +81,7 @@ function PostPill({
         e.stopPropagation();
         onClick?.();
       }}
-      className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer hover:opacity-80 transition-opacity truncate"
+      className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium cursor-pointer hover:opacity-80 transition-opacity truncate"
       style={{ backgroundColor: categoryColor + '20', color: categoryColor }}
     >
       <span>{CATEGORY_ICONS[post.category]}</span>
@@ -156,7 +156,7 @@ function CalendarCell({
           {day.date.getDate()}
         </span>
         {day.posts.length > 0 && (
-          <Badge variant="secondary" className="text-[10px] h-4 px-1">
+          <Badge variant="secondary" className="text-xs h-4 px-1">
             {day.posts.length}
           </Badge>
         )}
@@ -171,7 +171,7 @@ function CalendarCell({
           />
         ))}
         {day.posts.length > 3 && (
-          <div className="text-[10px] text-muted-foreground pl-1">
+          <div className="text-xs text-muted-foreground pl-1">
             +{day.posts.length - 3} more
           </div>
         )}

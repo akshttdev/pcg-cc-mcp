@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import { taskApprovalApi } from '@/lib/api';
@@ -197,7 +198,7 @@ export function ApprovalPanel({ task, canApprove = true }: ApprovalPanelProps) {
                   onChange={(e) => setComment(e.target.value)}
                   className="min-h-[100px]"
                 />
-                <div className="flex justify-end gap-2">
+                <DialogFooter>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -219,7 +220,7 @@ export function ApprovalPanel({ task, canApprove = true }: ApprovalPanelProps) {
                       ? 'Sending...'
                       : 'Send Request'}
                   </Button>
-                </div>
+                </DialogFooter>
               </div>
             )}
           </div>

@@ -111,7 +111,7 @@ export function AgentExecutionsPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Active Agents</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{agents.filter(a => a.status === 'active').length}</div>
+            <div className="text-2xl font-semibold">{agents.filter(a => a.status === 'active').length}</div>
           </CardContent>
         </Card>
         <Card>
@@ -119,7 +119,7 @@ export function AgentExecutionsPage() {
             <CardTitle className="text-sm font-medium text-blue-500">Running</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-500">{running}</div>
+            <div className="text-2xl font-semibold text-blue-500">{running}</div>
           </CardContent>
         </Card>
         <Card>
@@ -127,7 +127,7 @@ export function AgentExecutionsPage() {
             <CardTitle className="text-sm font-medium text-green-500">Completed</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-500">{completed}</div>
+            <div className="text-2xl font-semibold text-green-500">{completed}</div>
           </CardContent>
         </Card>
         <Card>
@@ -135,7 +135,7 @@ export function AgentExecutionsPage() {
             <CardTitle className="text-sm font-medium text-red-500">Failed</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-500">{failed}</div>
+            <div className="text-2xl font-semibold text-red-500">{failed}</div>
           </CardContent>
         </Card>
       </div>

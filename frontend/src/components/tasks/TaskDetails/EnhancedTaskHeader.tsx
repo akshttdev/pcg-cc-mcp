@@ -32,6 +32,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   Select,
   SelectContent,
@@ -246,9 +247,11 @@ export function EnhancedTaskHeader({
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
+                <IconButton
+                  variant="ghost" className="h-8 w-8"
+                  icon={MoreHorizontal}
+                  label="More options"
+                />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 {onEdit && (
@@ -281,14 +284,12 @@ export function EnhancedTaskHeader({
             {!hideClose && onClose && (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={onClose}
+                  <IconButton
+                    variant="ghost" onClick={onClose}
                     className="h-8 w-8"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+                    icon={X}
+                    label="Close"
+                  />
                 </TooltipTrigger>
                 <TooltipContent>Close (Esc)</TooltipContent>
               </Tooltip>

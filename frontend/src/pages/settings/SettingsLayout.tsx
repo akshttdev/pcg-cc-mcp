@@ -319,7 +319,7 @@ export function SettingsLayout() {
                 <>
                   <div className="pt-3 pb-1 px-3">
                     <div className="border-t border-border/40" />
-                    <p className="text-[10px] font-medium text-muted-foreground/40 uppercase tracking-wider mt-2">Planned</p>
+                    <p className="text-xs font-medium text-muted-foreground/40 uppercase tracking-wider mt-2">Planned</p>
                   </div>
                   {plannedNavigation.map((item) => {
                     const Icon = item.icon;
