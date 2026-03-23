@@ -15,13 +15,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { FormField } from '@/components/ui/form-field';
-import { StatusBadge } from '@/components/ui/status-badge';
-import { CardGrid } from '@/components/ui/card-grid';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Loader2, Plus, Wallet, Search, X, SortAsc, SortDesc, Mail, MessageSquare } from 'lucide-react';
-import { emailApi } from '@/lib/api';
+import { Loader2, Plus, Wallet } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -39,128 +35,21 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useQuery } from '@tanstack/react-query';
-import { agentWalletApi, agentsApi, type AgentSearchParams } from '@/lib/api';
-import type {
-  AgentWallet,
-  AgentWithParsedFields,
-  UpsertAgentWallet,
-  AgentStatus,
-} from 'shared/types';
+import { agentWalletApi } from '@/lib/api';
+import type { AgentWallet, UpsertAgentWallet } from 'shared/types';
 import { toast } from 'sonner';
 import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import { agentKeys } from '@/lib/query-keys';
-
 import { useProfiles } from '@/hooks/useProfiles';
-import { AgentDetailDialog } from '@/components/dialogs/agent-detail-dialog';
 
-// Status options for filter
-const STATUS_OPTIONS: { value: AgentStatus | 'all'; label: string }[] = [
-  { value: 'all', label: 'All Statuses' },
-  { value: 'active', label: 'Active' },
-  { value: 'inactive', label: 'Inactive' },
-  { value: 'maintenance', label: 'Maintenance' },
-  { value: 'training', label: 'Training' },
-];
-
-// Sort options
-const SORT_OPTIONS = [
-  { value: 'name', label: 'Name' },
-  { value: 'designation', label: 'Designation' },
-  { value: 'status', label: 'Status' },
-  { value: 'priority', label: 'Priority' },
-  { value: 'tasks_completed', label: 'Tasks Completed' },
-] as const;
-
-// Nora's agent UUID — stable, set at DB seed time
-const NORA_AGENT_ID = '0907dc4f3f7f4c4093cff36a833eaa78';
-
-function NoraCommunicationChannels() {
-  const [connecting, setConnecting] = useState<string | null>(null);
-  const [emailStatus, setEmailStatus] = useState<'unknown' | 'connected' | 'error'>('unknown');
-
-  const handleConnectEmail = async () => {
-    try {
-      setConnecting('email');
-      const result = await emailApi.initiateOAuth(
-        null,
-        'zoho',
-        `${window.location.origin}/oauth/zoho/callback`,
-        'agent',
-        NORA_AGENT_ID,
-      );
-      window.location.href = result.auth_url;
-    } catch (err) {
-      console.error('Failed to initiate Nora email OAuth:', err);
-      setEmailStatus('error');
-    } finally {
-      setConnecting(null);
-    }
-  };
-
-  return (
-    <div className="space-y-3">
-      {/* Email */}
-      <div className="flex items-center justify-between rounded-lg border p-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-[#C8202B] flex items-center justify-center text-white font-semibold">
-            Z
-          </div>
-          <div>
-            <p className="font-medium">nora@powerclubglobal.com</p>
-            <p className="text-sm text-muted-foreground">Zoho Mail — Nora's email identity</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {emailStatus === 'connected' && (
-            <StatusBadge status="success" label="Connected" />
-          )}
-          {emailStatus === 'error' && (
-            <StatusBadge status="error" label="Error" />
-          )}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleConnectEmail}
-            disabled={connecting === 'email'}
-          >
-            {connecting === 'email' ? (
-              <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Connecting…</>
-            ) : (
-              <><Mail className="h-3 w-3 mr-1" />Connect / Reconnect</>
-            )}
-          </Button>
-        </div>
-      </div>
-
-      {/* SMS — informational (auto-configured via env) */}
-      <div className="flex items-center justify-between rounded-lg border p-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-[#F22F46] flex items-center justify-center text-white">
-            <MessageSquare className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="font-medium">+14053008311</p>
-            <p className="text-sm text-muted-foreground">Twilio SMS — Nora's phone identity</p>
-          </div>
-        </div>
-        <StatusBadge status="success" label="Active" />
-      </div>
-    </div>
-  );
-}
-
-export function AgentSettings() {
+export function WalletSection() {
   const { t } = useTranslation('settings');
-  // Use profiles hook to get executor profiles for wallet profile options
   const {
     profilesContent: serverProfilesContent,
     isLoading: profilesLoading,
-    error: profilesError,
   } = useProfiles();
 
-  // Parsed profiles for wallet profile options
   const [localParsedProfiles, setLocalParsedProfiles] = useState<any>(null);
 
   const {
@@ -171,50 +60,6 @@ export function AgentSettings() {
     queryKey: agentKeys.wallets(),
     queryFn: agentWalletApi.list,
   });
-
-  // Search and filter state
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<AgentStatus | 'all'>('all');
-  const [sortBy, setSortBy] = useState<AgentSearchParams['sort_by']>('name');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
-
-  // Build search params
-  const searchParams = useMemo((): AgentSearchParams => {
-    const params: AgentSearchParams = {};
-    if (searchQuery.trim()) params.q = searchQuery.trim();
-    if (statusFilter !== 'all') params.status = statusFilter;
-    params.sort_by = sortBy;
-    params.sort_dir = sortDir;
-    return params;
-  }, [searchQuery, statusFilter, sortBy, sortDir]);
-
-  const hasFilters = searchQuery.trim() || statusFilter !== 'all';
-
-  const {
-    data: agentDirectory = [],
-    isLoading: agentsLoading,
-    error: agentsError,
-  } = useQuery<AgentWithParsedFields[], Error>({
-    queryKey: ['agents', 'search', searchParams],
-    queryFn: () => agentsApi.search(searchParams),
-  });
-
-  // Agent detail dialog state
-  const [selectedAgent, setSelectedAgent] = useState<AgentWithParsedFields | null>(null);
-  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
-
-  // Clear all filters
-  const clearFilters = useCallback(() => {
-    setSearchQuery('');
-    setStatusFilter('all');
-    setSortBy('name');
-    setSortDir('asc');
-  }, []);
-
-  const handleAgentClick = useCallback((agent: AgentWithParsedFields) => {
-    setSelectedAgent(agent);
-    setDetailDialogOpen(true);
-  }, []);
 
   const [budgetModalOpen, setBudgetModalOpen] = useState(false);
   const [budgetProfileKey, setBudgetProfileKey] = useState<string>('');
@@ -395,243 +240,10 @@ export function AgentSettings() {
     upsertWalletMutation,
   ]);
 
-  const agentStatusToVariant: Record<string, 'success' | 'muted' | 'warning' | 'info'> = {
-    active: 'success',
-    inactive: 'muted',
-    maintenance: 'warning',
-    training: 'info',
-  };
-
-  if (profilesLoading) {
-    return (
-      <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-6 w-48 mb-2" />
-            <Skeleton className="h-4 w-72" />
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {[1, 2, 3, 4, 5, 6].map((i) => (
-                <div key={i} className="rounded-xl border bg-card overflow-hidden">
-                  <Skeleton className="aspect-square w-full" />
-                  <div className="p-4 space-y-2">
-                    <Skeleton className="h-5 w-32" />
-                    <Skeleton className="h-4 w-24" />
-                    <Skeleton className="h-3 w-full" />
-                    <Skeleton className="h-3 w-3/4" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  if (profilesLoading) return null;
 
   return (
     <>
-      <div className="space-y-6">
-      {!!profilesError && (
-        <Alert variant="destructive">
-          <AlertDescription>
-            {profilesError instanceof Error
-              ? profilesError.message
-              : String(profilesError)}
-          </AlertDescription>
-        </Alert>
-      )}
-
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-4">
-            <div>
-              <CardTitle>Autonomous Agents</CardTitle>
-              <CardDescription>
-                Live Directory of all Powerclub Global Agents
-              </CardDescription>
-            </div>
-
-            {/* Search and Filter Controls */}
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              {/* Search Input */}
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Search agents by name, role, or description..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 pr-9"
-                />
-                {searchQuery && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 p-0"
-                    onClick={() => setSearchQuery('')}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-
-              {/* Status Filter */}
-              <Select
-                value={statusFilter}
-                onValueChange={(v) => setStatusFilter(v as AgentStatus | 'all')}
-              >
-                <SelectTrigger className="w-[150px]">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  {STATUS_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              {/* Sort Controls */}
-              <Select value={sortBy} onValueChange={(v) => setSortBy(v as AgentSearchParams['sort_by'])}>
-                <SelectTrigger className="w-[150px]">
-                  <SelectValue placeholder="Sort by" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SORT_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
-                title={sortDir === 'asc' ? 'Sort ascending' : 'Sort descending'}
-              >
-                {sortDir === 'asc' ? <SortAsc className="h-4 w-4" /> : <SortDesc className="h-4 w-4" />}
-              </Button>
-
-              {/* Clear Filters */}
-              {hasFilters && (
-                <Button variant="ghost" size="sm" onClick={clearFilters}>
-                  Clear filters
-                </Button>
-              )}
-            </div>
-
-            {/* Results count */}
-            {!agentsLoading && (
-              <p className="text-sm text-muted-foreground">
-                {agentDirectory.length} agent{agentDirectory.length !== 1 ? 's' : ''} found
-                {hasFilters && ' (filtered)'}
-              </p>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {agentsLoading ? (
-            <Skeleton className="h-40 w-full" />
-          ) : agentsError ? (
-            <Alert variant="destructive">
-              <AlertDescription>
-                {agentsError instanceof Error
-                  ? agentsError.message
-                  : 'Unable to load agent directory.'}
-              </AlertDescription>
-            </Alert>
-          ) : agentDirectory.length === 0 ? (
-            <EmptyState
-              title="No registered agents"
-              description="Seed the registry to expose Nora’s team."
-              className="py-8"
-            />
-          ) : (
-            <CardGrid columns={{ sm: 2, lg: 3 }} gap={4}>
-              {agentDirectory.map((agent) => {
-                const initials = agent.short_name
-                  .split(' ')
-                  .map((part) => part[0])
-                  .join('')
-                  .slice(0, 2)
-                  .toUpperCase();
-                return (
-                  <div
-                    key={agent.id}
-                    onClick={() => handleAgentClick(agent)}
-                    className="group relative rounded-xl border bg-card overflow-hidden transition-all hover:shadow-md hover:border-primary/20 cursor-pointer"
-                  >
-                    {/* Status indicator */}
-                    <div className="absolute top-3 right-3 z-10">
-                      <StatusBadge
-                        status={agentStatusToVariant[agent.status] || 'muted'}
-                        label={agent.status}
-                        className="capitalize backdrop-blur-sm"
-                      />
-                    </div>
-
-                    {/* Agent image */}
-                    <div className="aspect-square w-full bg-muted relative overflow-hidden">
-                      {agent.avatar_url ? (
-                        <img
-                          src={agent.avatar_url}
-                          alt={agent.short_name}
-                          className="h-full w-full object-cover transition-transform group-hover:scale-105"
-                        />
-                      ) : (
-                        <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5">
-                          <span className="text-4xl font-semibold text-primary/40">
-                            {initials}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Agent info */}
-                    <div className="p-4 space-y-2">
-                      <div>
-                        <h3 className="font-semibold text-lg leading-tight">
-                          {agent.short_name}
-                        </h3>
-                        <p className="text-sm font-medium text-primary/80">
-                          {agent.designation || 'Specialist Agent'}
-                        </p>
-                      </div>
-
-                      {agent.description && (
-                        <p className="text-sm text-muted-foreground line-clamp-3">
-                          {agent.description}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </CardGrid>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* ── Nora Channel Integrations ─────────────────────────────────────── */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Mail className="h-5 w-5" />
-            Nora Channel Integrations
-          </CardTitle>
-          <CardDescription>
-            Connect Nora's own communication channels — email and SMS identity.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <NoraCommunicationChannels />
-        </CardContent>
-      </Card>
-
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -755,8 +367,6 @@ export function AgentSettings() {
           )}
         </CardContent>
       </Card>
-
-      </div>
 
       <Dialog open={budgetModalOpen} onOpenChange={setBudgetModalOpen}>
         <DialogContent className="sm:max-w-lg">
@@ -901,13 +511,6 @@ export function AgentSettings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Agent Detail Dialog */}
-      <AgentDetailDialog
-        agent={selectedAgent}
-        open={detailDialogOpen}
-        onOpenChange={setDetailDialogOpen}
-      />
     </>
   );
 }

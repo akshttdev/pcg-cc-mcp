@@ -5,33 +5,19 @@
 //   - types.ts        — shared types & helpers
 //   - MeetingSetup    — idle state (new meeting form + join active)
 //   - MeetingNotesView — ended state (notes display + publish)
-//   - index.tsx        — orchestrator with all state, hooks, and active session UI
+//   - ControlBar      — top status bar
+//   - ActiveSession   — transcript, chat, screen share, controls
+//   - index.tsx        — orchestrator with all state and hooks
 
-import {
-  Clock,
-  Link as LinkIcon,
-  Loader2,
-  Monitor,
-  MonitorOff,
-  Network,
-  Pause,
-  Play,
-  Send,
-  Square,
-  Users,
-} from 'lucide-react';
-import { useCallback,useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
-import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { useProjectList } from '@/hooks/queries';
-import { meetingsApi,resolveApiUrl } from '@/lib/api';
+import { meetingsApi, resolveApiUrl } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
+import { ActiveSession } from './ActiveSession';
+import { ControlBar } from './ControlBar';
 import { MeetingNotesView } from './MeetingNotesView';
 import { MeetingSetup } from './MeetingSetup';
 import type {
@@ -42,7 +28,7 @@ import type {
   MeetingState,
   TranscriptEntry,
 } from './types';
-import { formatDuration, getAuthHeaders,isUrl } from './types';
+import { getAuthHeaders, isUrl } from './types';
 
 export function MeetingMode({ projectId: propProjectId, onClose, className }: MeetingModeProps) {
   // Meeting state
@@ -227,22 +213,19 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
     try {
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
         video: { frameRate: 5, width: { ideal: 1280 } },
-        audio: true, // capture system/tab audio if available
+        audio: true,
       });
       screenStreamRef.current = screenStream;
 
-      // Show preview thumbnail
       if (screenPreviewRef.current) {
         screenPreviewRef.current.srcObject = screenStream;
         screenPreviewRef.current.play().catch(() => {});
       }
 
-      // Rebuild the mixed audio stream with screen audio added
       if (meetingState === 'active' && micStreamRef.current) {
         rebuildMixedStream(micStreamRef.current, screenStream);
       }
 
-      // Stop screen share automatically when the user presses "Stop Sharing" in browser UI
       screenStream.getVideoTracks()[0]?.addEventListener('ended', () => {
         stopScreenShare();
       });
@@ -264,16 +247,13 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
     if (screenPreviewRef.current) {
       screenPreviewRef.current.srcObject = null;
     }
-    // Rebuild mixed stream with mic only
     if (meetingState === 'active' && micStreamRef.current) {
       rebuildMixedStream(micStreamRef.current, null);
     }
     setIsScreenSharing(false);
   };
 
-  // Mix mic + optional screen audio into a single stream for the MediaRecorder
   const rebuildMixedStream = (micStream: MediaStream, screenStream: MediaStream | null) => {
-    // Close previous AudioContext
     if (audioContextRef.current) {
       audioContextRef.current.close();
       audioContextRef.current = null;
@@ -283,10 +263,8 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
     audioContextRef.current = ctx;
     const dest = ctx.createMediaStreamDestination();
 
-    // Mic
     ctx.createMediaStreamSource(micStream).connect(dest);
 
-    // Screen audio (if any audio tracks)
     if (screenStream) {
       const audioTracks = screenStream.getAudioTracks();
       if (audioTracks.length > 0) {
@@ -297,7 +275,6 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
 
     mixedStreamRef.current = dest.stream;
 
-    // Restart MediaRecorder on the new mixed stream (if meeting is active)
     if (mediaRecorderRef.current && meetingState === 'active') {
       mediaRecorderRef.current.stop();
       startMediaRecorder(dest.stream);
@@ -305,7 +282,7 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
   };
 
   const startMediaRecorder = (stream: MediaStream) => {
-    firstChunkRef.current = null; // reset header on new recorder
+    firstChunkRef.current = null;
     const recorder = new MediaRecorder(stream, {
       mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
@@ -318,12 +295,9 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
         const idx = localChunkIndex++;
         setChunkIndex(idx);
         if (idx === 0) {
-          // First chunk contains the WebM EBML header — save it so we can
-          // prepend it to every subsequent fragment, making each a valid file.
           firstChunkRef.current = e.data;
           processAudioChunkRef.current(e.data, idx);
         } else {
-          // Prepend the header chunk so Whisper/ffmpeg can open the fragment.
           const blob = firstChunkRef.current
             ? new Blob([firstChunkRef.current, e.data], { type: e.data.type })
             : e.data;
@@ -331,7 +305,7 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
         }
       }
     };
-    recorder.start(5000); // 5-second chunks
+    recorder.start(5000);
   };
 
   // ── Participant management ──────────────────────────────────────────────────
@@ -372,7 +346,6 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
         if (!res.ok) return;
         const data = await res.json();
 
-        // Only add if non-empty and not already tracked by the polling loop
         if (data.text && data.text.trim()) {
           const segIdx = data.segmentIndex as number;
           if (!seenSegmentIndicesRef.current.has(segIdx)) {
@@ -407,7 +380,6 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
     },
     [sessionId, meetingState]
   );
-  // Keep the ref pointing at the latest version so MediaRecorder callbacks never go stale
   processAudioChunkRef.current = processAudioChunk;
 
   // ── Start mic and begin sending audio (shared by host start + observer join) ──
@@ -435,7 +407,7 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
     ctx.createMediaStreamSource(micStream).connect(dest);
     mixedStreamRef.current = dest.stream;
 
-    seenSegmentIndicesRef.current = new Set(); // reset seen-indices for fresh session
+    seenSegmentIndicesRef.current = new Set();
     setSessionId(sid);
     startMediaRecorder(dest.stream);
     setMeetingState('active');
@@ -537,7 +509,6 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
 
     setMeetingState('ended');
 
-    // Observers just leave — only the host generates notes
     if (meetingRole === 'observer') {
       setIsProcessing(false);
       toast.success('You have left the meeting');
@@ -627,7 +598,6 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
       });
       if (!res.ok) throw new Error('Failed to send');
       setChatInput('');
-      // The polling loop will pick up the new segment automatically
     } catch {
       toast.error('Failed to send message');
     } finally {
@@ -651,43 +621,15 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
   return (
     <div className={cn('flex flex-col h-full', className)}>
       {/* Control Bar */}
-      <div className="flex items-center justify-between p-3 border-b bg-cyan-50 dark:bg-cyan-950">
-        <div className="flex items-center gap-2">
-          <Network className="h-4 w-4 text-cyan-600" />
-          <span className="text-sm font-medium">
-            {meetingState === 'idle' ? 'Meetings' : meetingTitle || 'Meeting'}
-          </span>
-          {meetingState === 'active' && (
-            <Badge className="bg-red-500 text-white text-xs animate-pulse">REC</Badge>
-          )}
-          {meetingState === 'paused' && (
-            <Badge variant="secondary" className="text-xs">Paused</Badge>
-          )}
-          {meetingRole === 'observer' && meetingState !== 'idle' && meetingState !== 'ended' && (
-            <Badge variant="outline" className="text-xs text-blue-600 border-blue-300">Joined</Badge>
-          )}
-          {isScreenSharing && (
-            <Badge className="bg-blue-500 text-white text-xs">
-              <Monitor className="h-3 w-3 mr-1" />
-              Screen
-            </Badge>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {(meetingState === 'active' || meetingState === 'paused') && (
-            <>
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Clock className="h-3 w-3" />
-                {formatDuration(duration)}
-              </div>
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Users className="h-3 w-3" />
-                {Math.max(participantCount, participants.length)}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
+      <ControlBar
+        meetingState={meetingState}
+        meetingRole={meetingRole}
+        meetingTitle={meetingTitle}
+        isScreenSharing={isScreenSharing}
+        duration={duration}
+        participantCount={participantCount}
+        participants={participants}
+      />
 
       {/* ── Idle: Setup + Join ────────────────────────────────────────────── */}
       {meetingState === 'idle' && (
@@ -715,159 +657,24 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
 
       {/* ── Active / Paused ────────────────────────────────────────────────── */}
       {(meetingState === 'active' || meetingState === 'paused') && (
-        <>
-          {/* Screen share preview */}
-          {isScreenSharing && (
-            <div className="mx-3 mt-2 relative">
-              <video
-                ref={screenPreviewRef}
-                autoPlay
-                muted
-                playsInline
-                className="w-full max-h-32 rounded-lg border bg-black object-contain"
-              />
-              <button
-                onClick={stopScreenShare}
-                className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1 hover:bg-black/80"
-                title="Stop screen share"
-              >
-                <MonitorOff className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          )}
-
-          {/* Topsi Response Overlay */}
-          {topsiOverlay && (
-            <div className="mx-3 mt-2 p-3 bg-cyan-50 dark:bg-cyan-950 border border-cyan-200 dark:border-cyan-800 rounded-lg">
-              <div className="flex items-center gap-2 mb-1">
-                <Network className="h-4 w-4 text-cyan-600" />
-                <span className="text-xs font-semibold text-cyan-600">Topsi</span>
-              </div>
-              <p className="text-sm">{topsiOverlay}</p>
-            </div>
-          )}
-
-          {/* Transcript */}
-          <ScrollArea className="flex-1 p-3">
-            <div className="space-y-2">
-              {transcript.length === 0 && (
-                <div className="text-center text-sm text-muted-foreground py-8">
-                  {meetingState === 'active' ? 'Listening… speak to see the transcript.' : 'Recording paused.'}
-                </div>
-              )}
-              {transcript.map((entry, i) => (
-                <div
-                  key={i}
-                  className={cn(
-                    'text-sm rounded-lg p-2',
-                    entry.isTopsiAddressed
-                      ? 'bg-cyan-50 dark:bg-cyan-950 border border-cyan-200 dark:border-cyan-800'
-                      : entry.text.startsWith('[SHARED LINK]')
-                        ? 'bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800'
-                        : 'bg-muted'
-                  )}
-                >
-                  {entry.speakerLabel && (
-                    <span className="text-xs font-semibold text-muted-foreground">{entry.speakerLabel}: </span>
-                  )}
-                  {entry.text.startsWith('[SHARED LINK] ') ? (
-                    <>
-                      <LinkIcon className="h-3 w-3 inline mr-1 text-blue-500" />
-                      <a
-                        href={entry.text.replace('[SHARED LINK] ', '')}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 underline break-all"
-                      >
-                        {entry.text.replace('[SHARED LINK] ', '')}
-                      </a>
-                    </>
-                  ) : (
-                    <span>{entry.text}</span>
-                  )}
-                  {entry.topsiResponse && (
-                    <div className="mt-1 pt-1 border-t border-cyan-200 dark:border-cyan-800">
-                      <span className="text-xs font-semibold text-cyan-600">Topsi: </span>
-                      <span className="text-xs">{entry.topsiResponse}</span>
-                    </div>
-                  )}
-                </div>
-              ))}
-              <div ref={transcriptEndRef} />
-            </div>
-          </ScrollArea>
-
-          {/* Collaborative chat input (send text or link to meeting) */}
-          <div className="px-3 pb-1 pt-1 border-t border-muted">
-            <div className="flex gap-1.5 items-center">
-              <Input
-                placeholder="Share a message or paste a link…"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendChatMessage()}
-                className="h-8 text-sm"
-                disabled={isSendingChat}
-              />
-              <Button
-                variant={isUrl(chatInput) ? 'default' : 'outline'}
-                size="icon"
-                className={cn('h-8 w-8 shrink-0', isUrl(chatInput) && 'bg-blue-600 hover:bg-blue-700')}
-                onClick={sendChatMessage}
-                disabled={!chatInput.trim() || isSendingChat}
-                title={isUrl(chatInput) ? 'Share link' : 'Send message'}
-              >
-                {isSendingChat ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : isUrl(chatInput) ? (
-                  <LinkIcon className="h-3.5 w-3.5" />
-                ) : (
-                  <Send className="h-3.5 w-3.5" />
-                )}
-              </Button>
-            </div>
-          </div>
-
-          {/* Controls */}
-          <div className="p-3 border-t flex items-center justify-between">
-            {/* Screen share toggle */}
-            <Button
-              variant={isScreenSharing ? 'default' : 'outline'}
-              size="sm"
-              onClick={isScreenSharing ? stopScreenShare : startScreenShare}
-              className={cn(isScreenSharing && 'bg-blue-600 hover:bg-blue-700')}
-              title={isScreenSharing ? 'Stop screen share' : 'Share screen'}
-            >
-              {isScreenSharing ? (
-                <MonitorOff className="h-4 w-4 mr-1" />
-              ) : (
-                <Monitor className="h-4 w-4 mr-1" />
-              )}
-              {isScreenSharing ? 'Stop sharing' : 'Share screen'}
-            </Button>
-
-            <div className="flex items-center gap-2">
-              {meetingState === 'active' ? (
-                <IconButton
-                  variant="outline" onClick={pauseMeeting}
-                  icon={Pause}
-                  label="Pause"
-                />
-              ) : (
-                <IconButton
-                  variant="outline" onClick={resumeMeeting}
-                  icon={Play}
-                  label="Resume"
-                />
-              )}
-              <IconButton
-                variant="destructive" onClick={endMeeting}
-                className="h-10 w-10"
-                icon={Square}
-                label={meetingRole === 'observer' ? 'Leave meeting' : 'End meeting'}
-              />
-            </div>
-          </div>
-        </>
+        <ActiveSession
+          meetingState={meetingState}
+          meetingRole={meetingRole}
+          transcript={transcript}
+          isScreenSharing={isScreenSharing}
+          topsiOverlay={topsiOverlay}
+          chatInput={chatInput}
+          isSendingChat={isSendingChat}
+          screenPreviewRef={screenPreviewRef}
+          transcriptEndRef={transcriptEndRef}
+          onChatInputChange={setChatInput}
+          onSendChatMessage={sendChatMessage}
+          onStartScreenShare={startScreenShare}
+          onStopScreenShare={stopScreenShare}
+          onPauseMeeting={pauseMeeting}
+          onResumeMeeting={resumeMeeting}
+          onEndMeeting={endMeeting}
+        />
       )}
 
       {/* ── Ended: Notes ───────────────────────────────────────────────────── */}
