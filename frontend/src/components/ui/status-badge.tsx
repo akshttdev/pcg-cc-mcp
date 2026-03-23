@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 
-type StatusVariant =
+export type StatusVariant =
   | 'success'
   | 'warning'
   | 'error'
