@@ -43,7 +43,7 @@ export function TranscriptsTab({ deal }: TranscriptsTabProps) {
   });
 
   return (
-    <div className="p-5 space-y-4">
+    <div className="p-5 space-y-5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Mic className="h-4 w-4 text-purple-400" />

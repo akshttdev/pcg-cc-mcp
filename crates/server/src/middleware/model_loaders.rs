@@ -103,7 +103,17 @@ pub(crate) async fn load_task_middleware(
 
     // Verify the user has at least Viewer access to the task's project
     if let Some(access_context) = request.extensions().get::<AccessContext>() {
-        if let Err(e) = access_context
+        // Tasks with empty project_id (e.g., CRM deal review tasks) require admin access
+        if task.project_id.is_empty() {
+            if !access_context.is_admin {
+                tracing::warn!(
+                    "Non-admin user {} denied access to project-less task {}",
+                    access_context.user_id,
+                    task_id,
+                );
+                return Err(StatusCode::FORBIDDEN);
+            }
+        } else if let Err(e) = access_context
             .require_viewer(&deployment.db().pool, &task.project_id)
             .await
         {

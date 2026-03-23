@@ -1,0 +1,172 @@
+# Dockerfile.release - Uses pre-compiled binaries from GitHub Releases
+# Much faster than Dockerfile (no Rust compilation needed)
+
+# ============================================================================
+# Stage 1: Frontend Builder
+# ============================================================================
+FROM node:24-bookworm AS frontend-builder
+
+WORKDIR /app
+
+# Copy package files for dependency caching
+COPY package*.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY frontend/package*.json ./frontend/
+
+# Install pnpm and dependencies
+RUN npm install -g pnpm && pnpm install
+
+# Copy frontend source
+COPY frontend ./frontend
+COPY shared ./shared
+COPY tsconfig.json ./
+
+# Build frontend
+RUN cd frontend && npm install --ignore-scripts --legacy-peer-deps && npx vite build --mode production
+
+# ============================================================================
+# Stage 2: Documentation Builder
+# ============================================================================
+FROM node:24-bookworm AS docs-builder
+
+WORKDIR /app
+
+# Copy docs directory
+COPY docs ./docs
+
+# Build Mintlify documentation as static site
+RUN mkdir -p /app/.docs-output && \
+    (cd docs && npx mintlify build --output /app/.docs-output || \
+     echo '<html><head><meta http-equiv="refresh" content="0;url=/"></head><body>Docs not built. Redirecting...</body></html>' > /app/.docs-output/index.html)
+
+# ============================================================================
+# Stage 3: Runtime
+# ============================================================================
+FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04 AS runtime
+
+# Build arguments for release version
+ARG RELEASE_VERSION=latest
+ARG GITHUB_REPO=powerclubglobal/pcg-cc-mcp
+ARG GITHUB_TOKEN=""
+
+# Set timezone non-interactively to avoid tzdata prompts
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+# Install runtime dependencies including Python 3.11 for Chatterbox
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    tini \
+    wget \
+    curl \
+    jq \
+    sqlite3 \
+    software-properties-common \
+    git \
+    zstd \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3.11-dev \
+    python3.11-venv \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set Python 3.11 as default
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 \
+    && update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
+
+# Install Ollama for local LLM inference
+RUN curl -fsSL https://ollama.ai/install.sh | sh
+
+# Create app user for security
+RUN groupadd -g 1001 appgroup && \
+    useradd -u 1001 -g appgroup -m -s /bin/bash appuser
+
+# Upgrade pip, setuptools, and wheel for Python 3.11
+RUN python3.11 -m pip install --upgrade pip setuptools wheel
+
+# Install Chatterbox TTS via pip (simpler and more reliable)
+RUN python3.11 -m pip install --no-cache-dir chatterbox-tts
+
+# Download pre-compiled server binary from GitHub Releases
+RUN set -e && \
+    echo "Downloading server binary for version: ${RELEASE_VERSION}" && \
+    if [ "${RELEASE_VERSION}" = "latest" ]; then \
+        echo "Fetching latest release version..." && \
+        RELEASE_VERSION=$(curl -sS \
+            ${GITHUB_TOKEN:+-H "Authorization: token ${GITHUB_TOKEN}"} \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" | \
+            jq -r '.tag_name' | tr -d 'v'); \
+        echo "Latest version: ${RELEASE_VERSION}"; \
+    fi && \
+    DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/download/v${RELEASE_VERSION}/server-linux-x86_64" && \
+    echo "Downloading from: ${DOWNLOAD_URL}" && \
+    curl -L -f \
+        ${GITHUB_TOKEN:+-H "Authorization: token ${GITHUB_TOKEN}"} \
+        -o /usr/local/bin/server \
+        "${DOWNLOAD_URL}" && \
+    chmod +x /usr/local/bin/server && \
+    echo "${RELEASE_VERSION}" > /app/VERSION && \
+    echo "Server binary installed successfully"
+
+# Copy frontend assets from builder
+COPY --from=frontend-builder /app/frontend/dist /app/frontend-build
+COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
+
+# Copy built docs from builder
+COPY --from=docs-builder /app/.docs-output /app/docs-build
+COPY --from=docs-builder /app/.docs-output /app/docs-site
+
+# Copy Python scripts for Chatterbox server
+COPY scripts/chatterbox_server.py /app/scripts/chatterbox_server.py
+RUN chmod +x /app/scripts/chatterbox_server.py
+
+# Copy dev_assets as SEED (not to final location) - preserves existing data
+COPY dev_assets /app/dev_assets_seed
+
+# Copy entrypoint script
+COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Create necessary directories and set permissions
+RUN mkdir -p /repos /app/dev_assets /app/backups /app/scripts /app/version /root/.ollama \
+    && chown -R appuser:appgroup /repos /app \
+    && chown -R appuser:appgroup /root/.ollama
+
+# Pre-pull Ollama models as root before switching user
+RUN ollama serve & \
+    sleep 5 && \
+    ollama pull gpt-oss && \
+    ollama pull deepseek-r1 && \
+    pkill ollama && \
+    sleep 2
+
+# Switch to non-root user
+USER appuser
+
+# Set runtime environment
+ENV HOST=0.0.0.0
+ENV PORT=3001
+ENV FRONTEND_PORT=3000
+ENV BACKEND_PORT=3001
+ENV OLLAMA_BASE_URL=http://localhost:11434
+ENV CHATTERBOX_PORT=8100
+ENV CHATTERBOX_DEVICE=cuda
+EXPOSE 3001 11434 8100
+
+# Set working directory
+WORKDIR /app
+
+# Add version label
+LABEL org.opencontainers.image.version="${RELEASE_VERSION}"
+LABEL org.opencontainers.image.source="https://github.com/${GITHUB_REPO}"
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --quiet --tries=1 --spider "http://127.0.0.1:3001/api/health" || exit 1
+
+# Run the application with entrypoint that preserves data
+ENTRYPOINT ["/usr/bin/tini", "--", "docker-entrypoint.sh"]
+CMD ["server"]

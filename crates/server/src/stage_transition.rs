@@ -5,18 +5,24 @@
 //! stages without config.
 
 use chrono::{DateTime, Utc};
-use db::models::crm_deal::{CreateCrmDeal, CrmDeal};
-use db::models::crm_pipeline::{CrmPipeline, CrmPipelineStage, PipelineType};
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        crm_deal::{CreateCrmDeal, CrmDeal},
+        crm_pipeline::{CrmPipeline, CrmPipelineStage, PipelineType},
+    },
+};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use ts_rs::TS;
-use db::db_uuid::DbUuid;
 
-use crate::routes::crm_deal_automations::{
-    generate_deck_background, generate_phase1_business_report, trigger_deep_research_pass2,
-    trigger_who_is_research,
+use crate::routes::{
+    crm_deal_automations::{
+        generate_deck_background, generate_phase1_business_report, trigger_deep_research_pass2,
+        trigger_who_is_research,
+    },
+    crm_deal_transitions::manage_stage_review_tasks,
 };
-use crate::routes::crm_deal_transitions::manage_stage_review_tasks;
 
 // ── Stage Config Schema ─────────────────────────────────────────────────────
 
@@ -49,13 +55,8 @@ fn default_cancel_window() -> u32 {
 #[ts(export)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum StageAction {
-    TriggerAgent {
-        agent: String,
-        flow_type: String,
-    },
-    CreateReviewTask {
-        description: String,
-    },
+    TriggerAgent { agent: String, flow_type: String },
+    CreateReviewTask { description: String },
     CreateDeliveryDeal,
 }
 
@@ -63,17 +64,9 @@ pub enum StageAction {
 #[ts(export)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum StageValidation {
-    RequireField {
-        field: String,
-        message: String,
-    },
-    RequireIntel {
-        entity: String,
-        status: String,
-    },
-    RequirePendingTasks {
-        count: i32,
-    },
+    RequireField { field: String, message: String },
+    RequireIntel { entity: String, status: String },
+    RequirePendingTasks { count: i32 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -107,10 +100,18 @@ pub struct ValidationWarning {
 
 /// Load and parse stage_config JSON from a CrmPipelineStage.
 pub fn parse_stage_config(stage: &CrmPipelineStage) -> Option<StageConfig> {
-    stage
-        .stage_config
-        .as_deref()
-        .and_then(|json| serde_json::from_str(json).ok())
+    stage.stage_config.as_deref().and_then(|json| {
+        serde_json::from_str(json)
+            .map_err(|e| {
+                tracing::warn!(
+                    "[StageTransition] Failed to parse stage_config for stage '{}' (id={}): {}",
+                    stage.name,
+                    stage.id,
+                    e
+                );
+            })
+            .ok()
+    })
 }
 
 /// Unified stage transition processor.
@@ -159,15 +160,11 @@ pub async fn process_transition(
                     }
                 }
                 StageValidation::RequireIntel { entity, status } => {
-                    let intel_ok =
-                        check_intel_status(pool, deal, entity, status).await;
+                    let intel_ok = check_intel_status(pool, deal, entity, status).await;
                     if !intel_ok {
                         warnings.push(ValidationWarning {
                             field: format!("{}_intelligence", entity),
-                            message: format!(
-                                "{} intelligence is not '{}' yet",
-                                entity, status
-                            ),
+                            message: format!("{} intelligence is not '{}' yet", entity, status),
                         });
                     }
                 }
@@ -176,10 +173,7 @@ pub async fn process_transition(
                     if pending > *count as i64 {
                         warnings.push(ValidationWarning {
                             field: "pending_tasks".to_string(),
-                            message: format!(
-                                "{} pending task(s) should be completed",
-                                pending
-                            ),
+                            message: format!("{} pending task(s) should be completed", pending),
                         });
                     }
                 }
@@ -201,6 +195,15 @@ pub async fn process_transition(
         for action in &config.on_enter_actions {
             match action {
                 StageAction::TriggerAgent { agent, flow_type } => {
+                    const KNOWN_AGENTS: &[&str] =
+                        &["scout", "astra", "cash", "lux", "nora", "assistant"];
+                    if !KNOWN_AGENTS.contains(&agent.to_lowercase().as_str()) {
+                        tracing::warn!(
+                            "[StageTransition] Unknown agent '{}' in stage config — skipping",
+                            agent
+                        );
+                        continue;
+                    }
                     if config.auto_trigger {
                         match schedule_agent_flow(
                             pool,
@@ -214,8 +217,7 @@ pub async fn process_transition(
                             Ok((flow_id, deadline)) => {
                                 agent_flow_id = Some(flow_id);
                                 cancel_deadline = Some(deadline);
-                                actions_taken
-                                    .push(format!("Scheduled {} agent", agent));
+                                actions_taken.push(format!("Scheduled {} agent", agent));
                             }
                             Err(e) => {
                                 tracing::error!(
@@ -229,8 +231,7 @@ pub async fn process_transition(
                 }
                 StageAction::CreateReviewTask { description } => {
                     let stage_name = to_stage.name.to_lowercase();
-                    manage_stage_review_tasks(pool, deal, description, &stage_name)
-                        .await;
+                    manage_stage_review_tasks(pool, deal, description, &stage_name).await;
                     actions_taken.push("Created review task".to_string());
                 }
                 StageAction::CreateDeliveryDeal => {
@@ -266,11 +267,7 @@ async fn run_hardcoded_entry_actions(
     actions_taken: &mut Vec<String>,
 ) {
     let stage_name_lower = to_stage.name.to_lowercase();
-    let stage_type_lower = to_stage
-        .stage_type
-        .as_deref()
-        .unwrap_or("")
-        .to_lowercase();
+    let stage_type_lower = to_stage.stage_type.as_deref().unwrap_or("").to_lowercase();
 
     // Intel → Scout: Phase I Who-Is research
     if stage_name_lower == "intel" || stage_type_lower == "intel" {
@@ -321,13 +318,34 @@ async fn run_hardcoded_entry_actions(
 
     // Review task creation for gated stages
     let review_stages = [
-        ("intel", "Review Phase I intelligence (Scout): person profile & company overview"),
-        ("business analysis", "Review business report (Astra): pain points, opportunities, recommended services"),
-        ("discovery", "Review discovery transcript and confirm proposal readiness"),
-        ("proposal", "Review and approve proposal (Cash) before moving to Polish"),
-        ("polish", "Review and approve deck (Lux) before presenting to client"),
-        ("present", "Confirm invoice sent and await payment confirmation"),
-        ("follow up", "Update follow-up status — won, lost, or still in discussion"),
+        (
+            "intel",
+            "Review Phase I intelligence (Scout): person profile & company overview",
+        ),
+        (
+            "business analysis",
+            "Review business report (Astra): pain points, opportunities, recommended services",
+        ),
+        (
+            "discovery",
+            "Review discovery transcript and confirm proposal readiness",
+        ),
+        (
+            "proposal",
+            "Review and approve proposal (Cash) before moving to Polish",
+        ),
+        (
+            "polish",
+            "Review and approve deck (Lux) before presenting to client",
+        ),
+        (
+            "present",
+            "Confirm invoice sent and await payment confirmation",
+        ),
+        (
+            "follow up",
+            "Update follow-up status — won, lost, or still in discussion",
+        ),
     ];
 
     for (stage_key, task_desc) in &review_stages {
@@ -410,7 +428,11 @@ async fn handle_won_transition(pool: &SqlitePool, deal: &CrmDeal) -> Option<Stri
     {
         Ok(_) => {}
         Err(e) => {
-            tracing::error!("[StageTransition] Failed to create delivery deal for {}: {}", deal.id, e);
+            tracing::error!(
+                "[StageTransition] Failed to create delivery deal for {}: {}",
+                deal.id,
+                e
+            );
             return None;
         }
     }
@@ -429,8 +451,10 @@ async fn schedule_agent_flow(
     flow_type: &str,
     cancel_window_secs: u32,
 ) -> anyhow::Result<(String, DateTime<Utc>)> {
+    // Clamp cancel window to reasonable bounds (0 = immediate, max 1 hour)
+    let clamped_window = cancel_window_secs.min(3600);
     let flow_id = DbUuid::new().to_string();
-    let deadline = Utc::now() + chrono::Duration::seconds(cancel_window_secs as i64);
+    let deadline = Utc::now() + chrono::Duration::seconds(clamped_window as i64);
 
     // We need a task_id for the agent_flows table. Use the deal's linked task if any,
     // otherwise create a placeholder UUID.

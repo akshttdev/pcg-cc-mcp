@@ -95,7 +95,7 @@ test.describe("Bug Report Lifecycle Demo", () => {
   test("Step 3: Add QA watcher", async ({ page }) => {
     await navigateToTaskDetail(page, TASK_PATH);
     await addQaWatcher(page, { demoPause: demoPause.medium });
-    await expect(page.getByText(/ORCHA QA/i)).toBeVisible({ timeout: t(5_000) });
+    await expect(page.getByText(/ORCHA QA/i).first()).toBeVisible({ timeout: t(5_000) });
   });
 
   test("Step 4: Dev agent completes work → visit GitHub PR with summary", async ({ page, request }) => {

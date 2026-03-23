@@ -124,7 +124,7 @@ export function IntelTab({ deal }: IntelTabProps) {
   }
 
   return (
-    <div className="p-5 space-y-4">
+    <div className="p-5 space-y-5">
       {/* Status header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">

@@ -13,6 +13,7 @@ pub mod pulse_publisher;
 pub mod routes;
 pub mod sovereign_stack;
 pub mod sovereign_storage;
+pub mod stage_transition;
 pub mod task_scheduler;
 pub mod twilio_sms;
 pub mod workers;

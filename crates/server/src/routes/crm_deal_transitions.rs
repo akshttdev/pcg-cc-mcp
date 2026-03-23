@@ -7,10 +7,7 @@ use axum::{
     Extension, Json,
     extract::{Path, State},
 };
-use db::{
-    db_uuid::DbUuid,
-    models::crm_deal::CrmDeal,
-};
+use db::{db_uuid::DbUuid, models::crm_deal::CrmDeal};
 use deployment::Deployment;
 use utils::response::ApiResponse;
 
@@ -36,15 +33,12 @@ pub async fn move_deal_stage(
     let stage_id = DbUuid::from(data.stage_id);
 
     // Load source and target stages
-    let from_stage = deal
-        .crm_stage_id
-        .as_ref()
-        .and_then(|sid| {
-            futures::executor::block_on(
-                db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, sid),
-            )
-            .ok()
-        });
+    let from_stage = deal.crm_stage_id.as_ref().and_then(|sid| {
+        futures::executor::block_on(db::models::crm_pipeline::CrmPipelineStage::find_by_id(
+            pool, sid,
+        ))
+        .ok()
+    });
     let to_stage = db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, &stage_id)
         .await
         .map_err(|_| ApiError::NotFound("Target stage not found".to_string()))?;
@@ -53,13 +47,9 @@ pub async fn move_deal_stage(
     let deal = CrmDeal::move_to_stage(pool, &id, &stage_id, data.position).await?;
 
     // Run unified transition processor (automations, gates, agent scheduling)
-    let result = crate::stage_transition::process_transition(
-        pool,
-        &deal,
-        from_stage.as_ref(),
-        &to_stage,
-    )
-    .await;
+    let result =
+        crate::stage_transition::process_transition(pool, &deal, from_stage.as_ref(), &to_stage)
+            .await;
 
     Ok(Json(ApiResponse::success(result)))
 }
@@ -322,13 +312,9 @@ pub async fn advance_deal(
         .map_err(|_| ApiError::NotFound("Next stage not found".to_string()))?;
 
     // Run unified transition processor (automations, gates, agent scheduling)
-    let result = crate::stage_transition::process_transition(
-        pool,
-        &deal,
-        Some(&current_stage),
-        &to_stage,
-    )
-    .await;
+    let result =
+        crate::stage_transition::process_transition(pool, &deal, Some(&current_stage), &to_stage)
+            .await;
 
     Ok(Json(ApiResponse::success(result.deal)))
 }
@@ -521,4 +507,56 @@ pub async fn approve_deal_agent(
             "No pending agent flow found to approve".to_string(),
         ))
     }
+}
+
+/// GET /crm/deals/:id/agent-flows - List agent flows for a deal with events
+pub async fn get_deal_agent_flows(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let id = parse_db_uuid_param(&id, "deal ID")?;
+    let _deal = require_deal_org_access(&access_context, pool, &id).await?;
+
+    let flows = db::models::agent_flow::AgentFlow::find_by_deal(pool, id.as_str())
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to fetch agent flows: {}", e)))?;
+
+    let mut result = Vec::new();
+    for flow in flows {
+        let events = db::models::agent_flow_event::AgentFlowEvent::find_by_flow(pool, flow.id)
+            .await
+            .unwrap_or_default();
+
+        let event_values: Vec<serde_json::Value> = events
+            .iter()
+            .map(|e| {
+                serde_json::json!({
+                    "id": e.id.to_string(),
+                    "event_type": e.event_type.to_string(),
+                    "event_data": e.event_data,
+                    "created_at": e.created_at.to_rfc3339(),
+                })
+            })
+            .collect();
+
+        result.push(serde_json::json!({
+            "id": flow.id.to_string(),
+            "status": flow.status.to_string(),
+            "flow_type": flow.flow_type.to_string(),
+            "flow_config": flow.flow_config,
+            "current_phase": flow.current_phase.to_string(),
+            "retry_count": flow.retry_count,
+            "last_error": flow.last_error,
+            "cancel_deadline": flow.cancel_deadline.map(|d| d.to_rfc3339()),
+            "execution_started_at": flow.execution_started_at.map(|d| d.to_rfc3339()),
+            "execution_completed_at": flow.execution_completed_at.map(|d| d.to_rfc3339()),
+            "created_at": flow.created_at.to_rfc3339(),
+            "updated_at": flow.updated_at.to_rfc3339(),
+            "events": event_values,
+        }));
+    }
+
+    Ok(Json(ApiResponse::success(result)))
 }

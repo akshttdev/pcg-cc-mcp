@@ -64,8 +64,8 @@ test.describe("Manual QA Trigger Demo", () => {
     await navigateToTaskDetail(page, TASK_PATH);
     await addQaWatcher(page, { demoPause: demoPause.medium });
 
-    await expect(page.getByText(/ORCHA QA/i)).toBeVisible({ timeout: t(5_000) });
-    await expect(page.getByText("Watching")).toBeVisible({ timeout: t(5_000) });
+    await expect(page.getByText(/ORCHA QA/i).first()).toBeVisible({ timeout: t(5_000) });
+    await expect(page.getByText("Watching").first()).toBeVisible({ timeout: t(5_000) });
   });
 
   test("Step 3: Link PR → visit GitHub to see PR + dev summary", async ({ page, request }) => {

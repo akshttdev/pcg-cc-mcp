@@ -35,7 +35,16 @@ type StageOwner = {
   type: 'agent' | 'human' | 'team';
 };
 
-function getStageOwner(stageName: string): StageOwner | null {
+function getStageOwner(stageName: string, stageConfig?: string): StageOwner | null {
+  // Check stage_config first (data-driven)
+  if (stageConfig) {
+    try {
+      const config = JSON.parse(stageConfig);
+      if (config.stage_owner) return config.stage_owner;
+    } catch { /* fall through to hardcoded */ }
+  }
+
+  // Hardcoded fallback
   const name = stageName.toLowerCase();
   // --- 9-Stage Dealflow (Acquisition/Sales) ---
   if (name === 'intel') return { label: 'Scout', type: 'agent' };
@@ -259,7 +268,7 @@ export function CrmPipelineBoard({
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 border-b glass-strong shrink-0">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-5 border-b glass-strong shrink-0">
         <div className="flex items-center gap-3">
           <div className="section-header-icon !w-8 !h-8 !rounded-lg">
             <DollarSign className="h-4 w-4" />
@@ -294,7 +303,7 @@ export function CrmPipelineBoard({
         <KanbanProvider onDragEnd={handleDragEnd}>
           {kanbanData.stages.map((stageData) => {
             const stage = stageData.stage;
-            const owner = getStageOwner(stage.name);
+            const owner = getStageOwner(stage.name, stage.stage_config);
             const progress = pipelineType === 'delivery'
               ? getProgressForStage(stage.name)
               : undefined;

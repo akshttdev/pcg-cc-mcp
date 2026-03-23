@@ -39,6 +39,7 @@ import type {
   UpdateCrmPipeline,
 } from '@/types/crm';
 import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from 'lucide-react';
+import { StageConfigEditor } from './StageConfigEditor';
 
 type StageFormValues = {
   name: string;
@@ -47,6 +48,7 @@ type StageFormValues = {
   probability: number;
   is_closed: boolean;
   is_won: boolean;
+  stage_config?: Partial<import('@/types/crm').StageConfig>;
 };
 
 type PipelineFormValues = {
@@ -159,6 +161,10 @@ function StageDialog({ open, onOpenChange, initialValues, onSubmit, title }: Sta
             />
             <Label htmlFor="stage-won" className="text-sm">Counts as Closed Won</Label>
           </div>
+          <StageConfigEditor
+            config={formValues.stage_config ?? {}}
+            onChange={(config) => setFormValues((prev) => ({ ...prev, stage_config: config }))}
+          />
           <DialogFooter>
             <Button type="submit" disabled={isSubmitting}>
               {isSubmitting ? 'Saving…' : 'Save Stage'}
@@ -298,6 +304,11 @@ export function CrmPipelineSettings({ organizationId }: CrmPipelineSettingsProps
     selectedPipelineId ?? undefined
   );
 
+  const parseStageConfig = (json?: string) => {
+    if (!json) return {};
+    try { return JSON.parse(json); } catch { return {}; }
+  };
+
   const stageDialogValues: StageFormValues = editingStage
     ? {
         name: editingStage.name,
@@ -306,6 +317,7 @@ export function CrmPipelineSettings({ organizationId }: CrmPipelineSettingsProps
         probability: editingStage.probability,
         is_closed: !!editingStage.is_closed,
         is_won: !!editingStage.is_won,
+        stage_config: parseStageConfig(editingStage.stage_config),
       }
     : {
         name: 'New Stage',
@@ -342,6 +354,7 @@ export function CrmPipelineSettings({ organizationId }: CrmPipelineSettingsProps
           probability: values.probability,
           is_closed: values.is_closed,
           is_won: values.is_won,
+          stage_config: values.stage_config ? JSON.stringify(values.stage_config) : undefined,
         });
         return 'Stage updated.';
       } else {

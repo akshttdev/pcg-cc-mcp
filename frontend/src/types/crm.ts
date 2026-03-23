@@ -21,6 +21,8 @@ export interface CrmPipelineStage {
   probability: number;
   auto_move_after_days?: number;
   notify_on_enter?: number;
+  stage_type?: string;
+  stage_config?: string; // JSON-serialized StageConfig
   created_at: string;
   updated_at: string;
 }
@@ -82,6 +84,7 @@ export interface UpdateCrmPipelineStage {
   probability?: number;
   is_closed?: boolean;
   is_won?: boolean;
+  stage_config?: string; // JSON-serialized StageConfig
 }
 
 // Deal with contact info for Kanban display (matches backend CrmDealWithContact)
@@ -147,6 +150,11 @@ export interface CrmDealWithContact {
   won_at?: string;
   lost_at?: string;
   expedited?: number;
+  // Active agent flow (for pipeline indicator)
+  active_agent_flow_id?: string;
+  active_agent_flow_status?: string;
+  active_agent_name?: string;
+  active_agent_cancel_deadline?: string;
 }
 
 // Kanban board data structure
@@ -611,3 +619,44 @@ export const CONTACT_SOURCE_INFO: Record<
   zoho_sync: { label: 'Zoho CRM Sync', icon: 'refresh-cw' },
   gmail_sync: { label: 'Gmail Sync', icon: 'mail' },
 };
+
+// Stage transition result (returned by PATCH /crm/deals/:id/stage)
+export interface TransitionResult {
+  deal: CrmDealWithContact;
+  warnings: ValidationWarning[];
+  agent_flow_id?: string;
+  cancel_deadline?: string;
+  actions_taken: string[];
+}
+
+export interface ValidationWarning {
+  field: string;
+  message: string;
+}
+
+// Stage configuration (stored as JSON in stage_config column)
+export interface StageConfig {
+  assigned_agent?: string;
+  auto_trigger: boolean;
+  cancel_window_secs: number;
+  required_fields: string[];
+  approval_gate: boolean;
+  on_enter_actions: StageAction[];
+  on_exit_validations: StageValidation[];
+  stage_owner?: StageOwner;
+}
+
+export type StageAction =
+  | { type: 'trigger_agent'; agent: string; flow_type: string }
+  | { type: 'create_review_task'; description: string }
+  | { type: 'create_delivery_deal' };
+
+export type StageValidation =
+  | { type: 'require_field'; field: string; message: string }
+  | { type: 'require_intel'; entity: string; status: string }
+  | { type: 'require_pending_tasks'; count: number };
+
+export interface StageOwner {
+  label: string;
+  type: 'agent' | 'human' | 'team';
+}

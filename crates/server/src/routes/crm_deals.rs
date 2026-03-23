@@ -252,6 +252,10 @@ async fn list_enriched_deals(
             company_intelligence_status,
             company_intelligence_summary,
             company_id,
+            active_agent_flow_id: None,
+            active_agent_flow_status: None,
+            active_agent_name: None,
+            active_agent_cancel_deadline: None,
             deal,
         });
     }
@@ -420,6 +424,10 @@ async fn get_deal_rich(
         company_intelligence_status: deal_company_intel_status,
         company_intelligence_summary: None,
         company_id: None,
+        active_agent_flow_id: None,
+        active_agent_flow_status: None,
+        active_agent_name: None,
+        active_agent_cancel_deadline: None,
         deal,
     };
 
@@ -803,6 +811,10 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             post(crm_deal_transitions::approve_deal_agent),
         )
         .route(
+            "/crm/deals/{id}/agent-flows",
+            get(crm_deal_transitions::get_deal_agent_flows),
+        )
+        .route(
             "/crm/deals/{id}/generate-proposal",
             post(crm_deal_automations::generate_proposal),
         )
@@ -821,6 +833,10 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route(
             "/crm/deals/{id}/mark-won",
             post(crm_deal_automations::mark_deal_won),
+        )
+        .route(
+            "/crm/deals/{id}/generate-invite",
+            post(crm_deal_automations::generate_deal_invite),
         )
         .route(
             "/crm/deals/{id}/transcripts",

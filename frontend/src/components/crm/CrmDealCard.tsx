@@ -12,8 +12,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
   ArrowRight,
-  Calendar,
-  DollarSign,
   MoreHorizontal,
   Building2,
   Trash2,
@@ -32,6 +30,7 @@ import {
   Presentation,
   Receipt,
   Trophy,
+  Bot,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
@@ -112,6 +111,11 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
   const lastActivity = deal.last_activity_at
     ? formatDistanceToNow(new Date(deal.last_activity_at), { addSuffix: true })
     : null;
+
+  // Agent flow status
+  const agentRunning = deal.active_agent_flow_status === 'executing';
+  const agentPending = deal.active_agent_flow_status === 'planning';
+  const agentName = deal.active_agent_name;
 
   const intelStatus = deal.intelligence_status;
   const intelDone = intelStatus === 'done';
@@ -237,9 +241,11 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
         </div>
 
         {/* Row 2: Stage-aware status chips */}
-        {(researchNeeded || researchReady || intelRunning || hasActiveReviewTask || reviewTaskDone ||
+        {(agentRunning || agentPending || researchNeeded || researchReady || intelRunning || hasActiveReviewTask || reviewTaskDone ||
           deal.report_review_status === 'rejected' || hasProposal || hasDeck || hasInvoice || isWon) && (
           <div className="flex flex-wrap gap-1">
+            {agentRunning && <StatusChip icon={Bot} label={`${agentName ?? 'Agent'} running…`} variant="blue" pulse />}
+            {agentPending && <StatusChip icon={Clock} label={`${agentName ?? 'Agent'} pending`} variant="amber" pulse />}
             {researchNeeded && <StatusChip icon={Search} label="Research needed" variant="amber" />}
             {intelRunning && <StatusChip icon={Loader2} label="Researching…" variant="blue" pulse />}
             {researchReady && !hasActiveReviewTask && <StatusChip icon={ShieldCheck} label="Ready for review" variant="green" />}
@@ -333,35 +339,27 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
           </div>
         )}
 
-        {/* Row 8: Footer — amount, close date, last activity */}
-        <div className="flex items-center justify-between pt-1.5 border-t border-border/40">
-          <div className="flex items-center gap-2">
-            {formattedAmount && (
-              <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-green-600">
-                <DollarSign className="h-3 w-3" />
-                {formattedAmount}
-              </span>
-            )}
-            {deal.expected_close_date && (
-              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                <Calendar className="h-2.5 w-2.5" />
-                {new Date(deal.expected_close_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-              </span>
-            )}
-            {deal.probability > 0 && (
-              <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground">
-                <TrendingUp className="h-2.5 w-2.5" />
-                {deal.probability}%
-              </span>
-            )}
-          </div>
-          {lastActivity && (
-            <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/60 shrink-0">
-              <Clock className="h-2.5 w-2.5" />
-              {lastActivity}
+        {/* Row 8: Footer — amount, close date, probability */}
+        <div className="flex items-center gap-2 pt-1.5 border-t border-border/40">
+          {formattedAmount && (
+            <span className="inline-flex items-center text-xs font-semibold text-green-600">
+              {formattedAmount}
+            </span>
+          )}
+          {deal.probability > 0 && (
+            <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground">
+              <TrendingUp className="h-2.5 w-2.5" />
+              {deal.probability}%
             </span>
           )}
         </div>
+        {/* Row 9: Timestamp */}
+        {lastActivity && (
+          <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/60">
+            <Clock className="h-2.5 w-2.5 shrink-0" />
+            {lastActivity}
+          </span>
+        )}
 
         {/* Probability bar */}
         {deal.probability > 0 && (

@@ -27,9 +27,7 @@ impl BackgroundWorker for VibeDepositWatcher {
         let revenue_addr = match std::env::var("PLATFORM_REVENUE_ADDRESS") {
             Ok(a) if !a.is_empty() => a,
             _ => {
-                tracing::warn!(
-                    "[VIBE] PLATFORM_REVENUE_ADDRESS not set; deposit watcher disabled"
-                );
+                tracing::warn!("[VIBE] PLATFORM_REVENUE_ADDRESS not set; deposit watcher disabled");
                 return;
             }
         };

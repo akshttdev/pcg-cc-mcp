@@ -1,8 +1,6 @@
-import {
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from '@/components/ui/sheet';
+// Use plain elements instead of Sheet primitives — DealHeader renders inside
+// both Sheet and Dialog contexts (expand mode), and Radix Sheet/Dialog
+// primitives require their specific parent context or throw errors.
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -10,10 +8,12 @@ import {
   Building2,
   Edit,
   Trash2,
-  DollarSign,
+
   TrendingUp,
   CheckSquare,
   ChevronRight,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { CrmDealWithContact, CrmPipelineStage } from '@/types/crm';
@@ -48,16 +48,18 @@ interface DealHeaderProps {
   stageColor: string;
   onEdit: (deal: CrmDealWithContact) => void;
   onDelete: (deal: CrmDealWithContact) => void;
+  isExpanded?: boolean;
+  onToggleExpand?: () => void;
 }
 
-export function DealHeader({ deal, stageColor, onEdit, onDelete }: DealHeaderProps) {
+export function DealHeader({ deal, stageColor, onEdit, onDelete, isExpanded, onToggleExpand }: DealHeaderProps) {
   const initials = getInitials(deal);
   const formattedAmount = formatAmount(deal.amount, deal.currency);
   const taskTotal = deal.task_total ?? 0;
   const taskDone = deal.task_done ?? 0;
 
   return (
-    <SheetHeader className="px-5 pt-4 pb-3 border-b shrink-0">
+    <div className="flex flex-col space-y-2 text-center sm:text-left px-5 pt-4 pb-3 border-b shrink-0">
       <div className="flex items-start gap-3">
         <Avatar className="h-11 w-11 shrink-0 mt-0.5">
           {deal.contact_avatar_url && (
@@ -75,8 +77,8 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete }: DealHeaderPro
         </Avatar>
 
         <div className="min-w-0 flex-1">
-          <SheetTitle className="text-base leading-tight">{deal.name}</SheetTitle>
-          <SheetDescription className="text-xs mt-0.5 flex items-center gap-1.5 flex-wrap">
+          <h2 className="text-base font-semibold text-foreground leading-tight">{deal.name}</h2>
+          <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
             {deal.contact_name && <span>{deal.contact_name}</span>}
             {deal.contact_company && (
               <>
@@ -87,10 +89,15 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete }: DealHeaderPro
                 </span>
               </>
             )}
-          </SheetDescription>
+          </p>
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
+          {onToggleExpand && (
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onToggleExpand} title={isExpanded ? 'Minimize' : 'Expand'}>
+              {isExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+            </Button>
+          )}
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit(deal)}>
             <Edit className="h-3.5 w-3.5" />
           </Button>
@@ -108,8 +115,7 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete }: DealHeaderPro
       {/* Metric pills row */}
       <div className="flex items-center gap-2 mt-2 flex-wrap">
         {formattedAmount && (
-          <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-green-600">
-            <DollarSign className="h-3.5 w-3.5" />
+          <span className="inline-flex items-center text-xs font-semibold text-green-600">
             {formattedAmount}
           </span>
         )}
@@ -141,7 +147,7 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete }: DealHeaderPro
           </span>
         )}
       </div>
-    </SheetHeader>
+    </div>
   );
 }
 
@@ -191,7 +197,7 @@ export function PipelineStepper({ currentStage, allStages, onStageClick }: Pipel
               <div
                 className={cn("flex flex-col items-center flex-1 min-w-0", isClickable && "cursor-pointer group/stage")}
                 onClick={isClickable ? () => onStageClick(stage.name, stage.id) : undefined}
-                title={isClickable ? `Move to ${stage.name}` : undefined}
+                title={isClickable ? `Move to ${stage.name}` : stage.name}
               >
                 <div
                   className={cn(
