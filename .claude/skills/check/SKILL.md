@@ -25,9 +25,13 @@ If this changes files, `git diff --stat` will show them. **Stop and commit befor
 
 ### Step 2: Rust Clippy (slow — run in background)
 
+Read the `-A clippy::*` flags from `.github/workflows/ci.yml` (the lines after `cargo clippy`), then run:
+
 ```bash
-cd $(git rev-parse --show-toplevel) && CLIPPY_FLAGS=$(grep -A20 "cargo clippy" .github/workflows/ci.yml | grep -oP '\-A clippy::\S+' | tr '\n' ' ') && flox activate -- cargo clippy --all --all-targets -- -D warnings $CLIPPY_FLAGS
+cd $(git rev-parse --show-toplevel) && flox activate -- cargo clippy --all --all-targets -- -D warnings [paste -A flags from ci.yml here]
 ```
+
+**Do NOT use `grep -oP`** to extract flags — macOS zsh doesn't support Perl regex. Instead, read the ci.yml file and copy the flags directly.
 
 ### Step 3: TypeScript
 
