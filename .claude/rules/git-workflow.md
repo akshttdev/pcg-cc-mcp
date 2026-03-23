@@ -44,9 +44,39 @@ Every planning doc MUST include a **Worktree** field in the header metadata, imm
 - Squash merge to main via PR
 - After squash merge, sync branch with `git merge origin/main` (not rebase)
 
+## Pushing
+
+- **Only push when the user explicitly says to.** Don't auto-push after commits.
+- Before pushing, run the local CI checks below. Don't push with known failures.
+
+## Local CI Checks (run before push/merge)
+
+All of these must pass before pushing or requesting merge:
+
+```bash
+# 1. Rust formatting
+cargo fmt --all -- --check
+
+# 2. Rust linting (use exact flags from .github/workflows/ci.yml)
+flox activate -- cargo clippy --all --all-targets -- -D warnings [CI -A flags]
+
+# 3. TypeScript
+cd frontend && npx tsc --noEmit
+
+# 4. ESLint
+cd frontend && npx eslint . --ext ts,tsx --max-warnings [CI threshold]
+
+# 5. Type generation
+npm run generate-types:check
+```
+
+The `/check` skill runs all of these. Use it as shorthand.
+
+**Important**: Use the **exact** clippy `-A` flags from `ci.yml` — the flag list changes over time. If a lint name is invalid (e.g., renamed in newer Rust), clippy treats it as a hard error.
+
 ## QA Before Merging
 
-- Run `/check` before creating PR
+- Run `/check` (local CI) before creating PR — all checks must pass
 - Run `/qa-review` before requesting merge to main
 - For frontend changes: run `/playwright-smoke` on affected pages
 - For backend changes: run `cargo test --workspace` inside flox
