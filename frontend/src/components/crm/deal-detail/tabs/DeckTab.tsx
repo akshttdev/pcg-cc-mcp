@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Loader2, Presentation, Wand2, Receipt, Trophy, Share2, CheckCircle2, Link2, Copy } from 'lucide-react';
+import { SectionHeader } from '@/components/ui/section-header';
 import { toast } from 'sonner';
 import { crmDealsApi } from '@/lib/api/crm';
 import { crmKeys } from '@/lib/query-keys';
@@ -66,10 +67,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
     <div className="p-5 space-y-5">
       {/* Deck Section */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Presentation className="h-4 w-4 text-pink-400" />
-          <h3 className="font-semibold text-sm">Sales Deck</h3>
-        </div>
+        <SectionHeader icon={Presentation} title="Sales Deck" />
 
         {!deal.deck_url ? (
           <div className="rounded-xl border border-dashed border-pink-500/30 bg-pink-500/5 p-6 text-center space-y-3">
@@ -136,10 +134,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
 
       {/* Invoice Section — Present stage action */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Receipt className="h-4 w-4 text-blue-400" />
-          <h3 className="font-semibold text-sm">Invoice</h3>
-        </div>
+        <SectionHeader icon={Receipt} title="Invoice" />
 
         {deal.invoice_id ? (
           <div className="flex items-center gap-2 text-xs text-green-500">
@@ -196,10 +191,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
 
       {/* Won Section */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Trophy className="h-4 w-4 text-yellow-400" />
-          <h3 className="font-semibold text-sm">Close Deal</h3>
-        </div>
+        <SectionHeader icon={Trophy} title="Close Deal" />
 
         {deal.won_at ? (
           <div className="flex items-center gap-2 text-xs text-yellow-400">
@@ -285,10 +277,7 @@ function InviteLinkSection({ deal }: { deal: CrmDealWithContact }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <Link2 className="h-4 w-4 text-emerald-400" />
-        <h3 className="font-semibold text-sm">Client Invitation</h3>
-      </div>
+      <SectionHeader icon={Link2} title="Client Invitation" />
 
       {existingToken ? (
         <div className="space-y-2">

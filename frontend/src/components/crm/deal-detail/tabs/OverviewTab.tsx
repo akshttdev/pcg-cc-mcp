@@ -32,6 +32,10 @@ import { AskTopsiButton } from '@/components/topsi/AskTopsiButton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { CardGrid } from '@/components/ui/card-grid';
+import { ListItem } from '@/components/ui/list-item';
+import { MetricCard } from '@/components/ui/metric-card';
+import { SectionHeader } from '@/components/ui/section-header';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { organizationsApi } from '@/lib/api';
@@ -39,37 +43,6 @@ import { crmDealsApi } from '@/lib/api/crm';
 import { crmKeys, organizationKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
 import type { CrmDealWithContact } from '@/types/crm';
-
-// ── MetricCard (local helper) ────────────────────────────────────────────────
-
-function MetricCard({
-  label,
-  value,
-  icon: Icon,
-  accent,
-  sub,
-}: {
-  label: string;
-  value: string;
-  icon: React.ElementType;
-  accent: string;
-  sub?: React.ReactNode;
-}) {
-  return (
-    <Card className="bg-muted/30 border-border/60">
-      <CardContent className="p-3">
-        <div className="flex items-center gap-1.5 mb-1">
-          <Icon className="h-3.5 w-3.5" style={{ color: accent }} />
-          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
-            {label}
-          </span>
-        </div>
-        <p className="text-sm font-semibold">{value}</p>
-        {sub}
-      </CardContent>
-    </Card>
-  );
-}
 
 // ── CallSchedulingSection ────────────────────────────────────────────────────
 
@@ -187,41 +160,39 @@ function CallSchedulingSection({
     }
 
     return (
-      <div
-        className="flex items-center justify-between text-sm cursor-pointer hover:bg-muted/50 rounded px-2 py-1.5 -mx-2 transition-colors"
+      <ListItem
+        icon={icon}
+        title={label}
+        size="sm"
         onClick={() => setEditing(type)}
-      >
-        <div className="flex items-center gap-2">
-          <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-          <span>{label}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {method && date && (
-            <span className="text-[10px] text-muted-foreground">{method}</span>
-          )}
-          <Badge
-            variant="outline"
-            className={cn(
-              'text-[10px]',
-              status === 'completed'
-                ? 'text-green-500 border-green-500/30'
-                : status === 'cancelled'
-                  ? 'text-red-500 border-red-500/30'
-                  : 'text-muted-foreground'
+        className="-mx-2"
+        actions={
+          <div className="flex items-center gap-2">
+            {method && date && (
+              <span className="text-[10px] text-muted-foreground">{method}</span>
             )}
-          >
-            {date || 'Not scheduled'}
-          </Badge>
-        </div>
-      </div>
+            <Badge
+              variant="outline"
+              className={cn(
+                'text-[10px]',
+                status === 'completed'
+                  ? 'text-green-500 border-green-500/30'
+                  : status === 'cancelled'
+                    ? 'text-red-500 border-red-500/30'
+                    : 'text-muted-foreground'
+              )}
+            >
+              {date || 'Not scheduled'}
+            </Badge>
+          </div>
+        }
+      />
     );
   };
 
   return (
     <div>
-      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5">
-        <Phone className="h-3 w-3" /> Call Scheduling
-      </h4>
+      <SectionHeader icon={Phone} title="Call Scheduling" />
       <Card className="bg-muted/30 border-border/60">
         <CardContent className="p-3 space-y-1">
           {renderCallRow('discovery', 'Discovery Call', Phone)}
@@ -334,14 +305,12 @@ export function OverviewTab({
 
   return (
     <div className="p-5">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <CardGrid columns={{ md: 2 }} gap={6}>
         {/* Column 1: Context, Expedite, Metrics, Call Scheduling */}
         <div className="space-y-5">
       {/* Operator Context — "Tell us about this lead" */}
       <div>
-        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5">
-          <MessageSquare className="h-3 w-3" /> Operator Context
-        </h4>
+        <SectionHeader icon={MessageSquare} title="Operator Context" />
         {editingContext ? (
           <Card className="bg-muted/30 border-border/60">
             <CardContent className="p-3 space-y-2">
@@ -425,7 +394,7 @@ export function OverviewTab({
       )}
 
       {/* Key metrics grid */}
-      <div className="grid grid-cols-2 gap-3">
+      <CardGrid columns={{ sm: 2 }} gap={3}>
         <MetricCard
           label="Probability"
           value={deal.probability > 0 ? `${deal.probability}%` : '\u2014'}
@@ -486,7 +455,7 @@ export function OverviewTab({
             accent={stageColor}
           />
         )}
-      </div>
+      </CardGrid>
         </div>
 
         {/* Column 2: Contact, Organization, Timeline, Actions */}
@@ -811,7 +780,7 @@ export function OverviewTab({
         />
       </div>
         </div>
-      </div>
+      </CardGrid>
     </div>
   );
 }
