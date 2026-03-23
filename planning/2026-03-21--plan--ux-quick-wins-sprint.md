@@ -72,6 +72,17 @@
 
 ---
 
+## Post-Sprint Fix ✅
+
+| # | What | Commit |
+|---|------|--------|
+| 32 | FeedbackDialog defaultType bug — reset effect hardcoded `setType('bug')`, overriding defaultType prop | `61b6654` |
+| 33 | More popover closes on action click (Report Friction, Feedback & Support) | `61b6654` |
+
+**Root cause**: Two competing `useEffect` hooks — the `modal.visible` reset effect fired after the `defaultType` sync effect and overwrote the type back to `'bug'`. Fix: use `defaultType ?? 'bug'` in the reset effect.
+
+---
+
 ## Remaining (INVESTMENT-level — not mini sprint candidates)
 
 | Item | Effort | Owner |
