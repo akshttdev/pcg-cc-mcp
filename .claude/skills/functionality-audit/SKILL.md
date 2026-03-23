@@ -224,7 +224,7 @@ Record the full click path (e.g., "Sidebar → More → [menu item] → [sub-opt
 - If no seed data exists to test the feature, note it and fall back to code trace for that feature's rendering behavior
 
 #### Error & Edge Cases
-- Check `browser_console_messages` for JavaScript errors after each navigation
+- Check `browser_console_messages level: error` after **every interaction**, not just page navigations. Any user action that changes the UI — opening a panel, switching a tab, submitting a form, toggling a mode — can trigger errors. If you only check after navigations, you'll miss errors that fire when components mount inside overlays or respond to state changes.
 - Look for: loading spinners that never resolve, error toasts, blank content areas
 - Try submitting empty/invalid forms — does error feedback appear?
 
@@ -348,7 +348,7 @@ Add a summary section to the original planning file:
 - Do NOT run destructive git operations.
 - Do NOT skip features — every discrete feature in the plan gets a verdict.
 - Always confirm worktree before making changes.
-- When Playwright walkthrough is used, always check console messages — JS errors are a signal.
+- When Playwright walkthrough is used, check `browser_console_messages level: error` after every interaction — not just page loads. A "zero console errors" claim requires checking after opening panels, switching tabs, and submitting forms, not just after navigation.
 - If a feature has no frontend surface, still verify the backend wiring fully.
 - Be honest about STUB verdicts — a handler that compiles but does nothing useful is a STUB, not PARTIAL.
 - **False DONE is the highest-priority finding** — a feature the team thinks works but doesn't is worse than an honest STUB.
