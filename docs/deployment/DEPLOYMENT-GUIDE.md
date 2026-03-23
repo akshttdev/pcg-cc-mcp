@@ -34,9 +34,9 @@ Two configuration layers:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `FRONTEND_PORT` | `3000` | Vite dev server port |
-| `BACKEND_PORT` | `3002` | Axum backend port |
-| `DATABASE_URL` | `sqlite://dev_assets/db.sqlite` | SQLite path |
-| `HOST` | `0.0.0.0` | Backend bind address |
+| `BACKEND_PORT` | (auto-assigned) | Axum backend port. If not set, `pnpm run dev` finds the next free port after `FRONTEND_PORT`. Set explicitly in `.env` for stable port assignment (e.g., `3002`). |
+| `DATABASE_URL` | `sqlite://dev_assets/db.sqlite` | SQLite path. Note: `.env` may show `sqlite:///app/dev_assets/db.sqlite` (Docker path) — for local dev, use `sqlite://dev_assets/db.sqlite`. |
+| `HOST` | `127.0.0.1` | Backend bind address. Frontend Vite server always binds to `0.0.0.0`. Set `HOST=0.0.0.0` to expose backend on all interfaces (Docker, remote access). |
 | `RUST_LOG` | `info` | Log level (`debug` for development) |
 
 **Build toolchain (set by Flox, or add to `.env` if not using Flox):**
