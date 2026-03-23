@@ -8,7 +8,19 @@ DB_PATH="/app/dev_assets/db.sqlite"
 SEED_PATH="/app/dev_assets_seed/db.sqlite"
 BACKUP_LATEST="/app/backups/backup_latest.sqlite"
 
+# Version tracking paths
+VERSION_FILE="/app/VERSION"
+VERSION_STATE="/app/version/CURRENT_VERSION"
+
 echo "🚀 Starting PCG-CC-MCP..."
+
+# Version tracking - expose current version to updater
+if [ -f "$VERSION_FILE" ]; then
+    CURRENT_VERSION=$(cat "$VERSION_FILE")
+    mkdir -p "$(dirname "$VERSION_STATE")"
+    echo "$CURRENT_VERSION" > "$VERSION_STATE"
+    echo "📌 Version: ${CURRENT_VERSION}"
+fi
 
 # Refresh frontend assets in shared volume (ensures updates are picked up)
 # The frontend-dist volume is shared with nginx, so we need to sync on each start
