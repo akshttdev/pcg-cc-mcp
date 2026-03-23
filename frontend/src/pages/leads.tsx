@@ -1,15 +1,17 @@
+import { useQuery } from '@tanstack/react-query';
+import {
+Building2, ChevronRight, Clock,
+Layers,
+Loader2, Mail, Radio,   RefreshCw, Search, TrendingUp,   Users, } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { personsApi, type PersonRecord } from '@/lib/api';
-import { entityKeys } from '@/lib/query-keys';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+
 import { Badge } from '@/components/ui/badge';
-import {
-  Users, Search, Building2, Mail, TrendingUp, Layers,
-  RefreshCw, Loader2, ChevronRight, Radio, Clock,
-} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Input } from '@/components/ui/input';
+import { type PersonRecord,personsApi } from '@/lib/api';
+import { entityKeys } from '@/lib/query-keys';
 
 
 // Sirak Studios org ID (fixed seed)
@@ -216,16 +218,12 @@ export function LeadsPage() {
           <Loader2 className="w-6 h-6 animate-spin text-indigo-400" />
         </div>
       ) : persons.length === 0 ? (
-        <div className="text-center py-20 text-slate-500">
-          <div className="rounded-full bg-slate-800 p-4 mb-4 inline-flex">
-            <Users className="w-8 h-8 text-slate-500" />
-          </div>
-          <h3 className="text-base font-medium text-slate-300 mb-1">No leads found</h3>
-          <p className="text-sm">Process call transcripts via Call Intake to create leads.</p>
-          <Link to="/call-intake">
-            <Button variant="outline" size="sm" className="mt-4">Go to Call Intake</Button>
-          </Link>
-        </div>
+        <EmptyState
+          icon={Users}
+          title="No leads found"
+          description="Process call transcripts via Call Intake to create leads."
+          className="py-20"
+        />
       ) : showGrouped ? (
         <>
           {sirakLeads.length > 0 && (

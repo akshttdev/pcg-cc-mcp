@@ -1,21 +1,22 @@
-import { useState, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
-import { Badge } from '@/components/ui/badge';
 import {
-  Mail,
-  Link2,
-  Unlink,
-  RefreshCw,
-  CheckCircle2,
   AlertCircle,
+  CheckCircle2,
   Clock,
   Inbox,
+  Link2,
+  Mail,
+  RefreshCw,
+  Unlink,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import type { EmailAccount, EmailProvider, EmailAccountStatus } from '@/types/email';
+import { useCallback,useState } from 'react';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription,CardHeader, CardTitle } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
 import { formatDate } from '@/lib/formatters';
+import { cn } from '@/lib/utils';
+import type { EmailAccount, EmailAccountStatus,EmailProvider } from '@/types/email';
 
 interface EmailAccountConnectProps {
   accounts: EmailAccount[];

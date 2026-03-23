@@ -1,26 +1,27 @@
-import { useState, useCallback, useMemo } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import {
+  Brain,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Search,
-  Palette,
+  Clock,
   Globe,
+  Loader2,
   Mail,
+  Palette,
+  Play,
+  Plug,
   Scale,
+  Search,
   Share2,
   Target,
-  Brain,
-  Plug,
-  CheckCircle2,
-  Clock,
-  Play,
-  Loader2,
 } from 'lucide-react';
+import { useCallback, useMemo,useState } from 'react';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
+import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 
 // Segment types matching the backend

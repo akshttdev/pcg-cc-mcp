@@ -1,30 +1,32 @@
-import { useState, useEffect, useRef } from 'react';
-import { makeRequest } from '@/lib/api';
+import {
+  Loader2,
+  Mic,
+  MicOff,
+  Network,
+  Phone,
+  PhoneOff,
+  Send,
+  Users,
+  Volume2,
+  VolumeX,
+  X,
+} from 'lucide-react';
+import { useEffect, useRef,useState } from 'react';
+import { toast } from 'sonner';
+
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Badge } from '@/components/ui/badge';
-import {
-  Network,
-  X,
-  Send,
-  Mic,
-  MicOff,
-  Phone,
-  PhoneOff,
-  Volume2,
-  VolumeX,
-  Loader2,
-  Users,
-} from 'lucide-react';
+import { makeRequest } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { toast } from 'sonner';
+import { useActivityStore } from '@/stores/useActivityStore';
+import { useAgentChatStore } from '@/stores/useAgentChatStore';
+
+import { useTopsiVoice } from './hooks/useTopsiVoice';
 import { MeetingMode } from './meeting-mode';
 import { TopsiConnectionStatus } from './TopsiConnectionStatus';
-import { useTopsiVoice } from './hooks/useTopsiVoice';
-import { useAgentChatStore } from '@/stores/useAgentChatStore';
-import { useActivityStore } from '@/stores/useActivityStore';
 
 interface ChatMessage {
   id: string;

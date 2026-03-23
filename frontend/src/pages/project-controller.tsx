@@ -1,39 +1,40 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader } from '@/components/ui/loader';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Bot,
-  Send,
-  Settings,
   Activity,
-  Sparkles,
-  User,
-  MessageSquarePlus,
-  History,
-  Trash2,
+  AlertCircle,
+  Bot,
   CheckCircle2,
   Circle,
+  History,
+  MessageSquarePlus,
   PlayCircle,
-  AlertCircle,
+  Send,
+  Settings,
+  Sparkles,
+  Trash2,
+  User,
 } from 'lucide-react';
+import { useCallback, useEffect, useRef,useState } from 'react';
+import { useParams } from 'react-router-dom';
+import type { Project, TaskWithAttemptStatus } from 'shared/types';
+
+import { ControllerSettingsDialog } from '@/components/dialogs/controller-settings-dialog';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
+import { Input } from '@/components/ui/input';
+import { Loader } from '@/components/ui/loader';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
-  projectsApi,
-  projectControllersApi,
-  tasksApi,
   type ProjectControllerConfig,
   type ProjectControllerConversation,
+  projectControllersApi,
+  projectsApi,
+  tasksApi,
 } from '@/lib/api';
-import { cn } from '@/lib/utils';
 import { controllerKeys, projectKeys, taskKeys } from '@/lib/query-keys';
-import { ControllerSettingsDialog } from '@/components/dialogs/controller-settings-dialog';
-import type { Project, TaskWithAttemptStatus } from 'shared/types';
+import { cn } from '@/lib/utils';
 
 interface ChatMessage {
   id: string;

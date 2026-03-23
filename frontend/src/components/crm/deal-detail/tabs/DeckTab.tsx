@@ -1,9 +1,11 @@
+import { useMutation,useQueryClient } from '@tanstack/react-query';
+import { CheckCircle2, Copy,Link2, Loader2, Presentation, Receipt, Share2, Trophy, Wand2 } from 'lucide-react';
 import { useState } from 'react';
-import { useQueryClient, useMutation } from '@tanstack/react-query';
-import { Button } from '@/components/ui/button';
-import { Loader2, Presentation, Wand2, Receipt, Trophy, Share2, CheckCircle2, Link2, Copy } from 'lucide-react';
-import { SectionHeader } from '@/components/ui/section-header';
 import { toast } from 'sonner';
+
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { SectionHeader } from '@/components/ui/section-header';
 import { crmDealsApi } from '@/lib/api/crm';
 import { crmKeys } from '@/lib/query-keys';
 import type { CrmDealWithContact } from '@/types/crm';
@@ -70,27 +72,15 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
         <SectionHeader icon={Presentation} title="Sales Deck" />
 
         {!deal.deck_url ? (
-          <div className="rounded-xl border border-dashed border-pink-500/30 bg-pink-500/5 p-6 text-center space-y-3">
-            <Presentation className="h-8 w-8 mx-auto text-pink-400/60" />
-            <div>
-              <p className="text-sm font-medium">No deck generated yet</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                The deck agent will create a branded slide-by-slide deck script from your approved proposal.
-                {!deal.proposal_text && (
-                  <span className="block mt-1 text-amber-400">Generate and approve the proposal first.</span>
-                )}
-              </p>
-            </div>
-            <Button
-              size="sm"
-              className="gap-1.5 bg-pink-600 hover:bg-pink-700 text-white"
-              onClick={() => generateDeck.mutate()}
-              disabled={generateDeck.isPending || !deal.proposal_text}
-            >
-              {generateDeck.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
-              {generateDeck.isPending ? 'Generating…' : 'Generate Deck'}
-            </Button>
-          </div>
+          <EmptyState
+            variant="branded"
+            borderColor="pink-500"
+            bgTint="pink-500"
+            icon={Presentation}
+            title="No deck generated yet"
+            description={`The deck agent will create a branded slide-by-slide deck script from your approved proposal.${!deal.proposal_text ? ' Generate and approve the proposal first.' : ''}`}
+            action={{ label: generateDeck.isPending ? 'Generating...' : 'Generate Deck', onClick: () => generateDeck.mutate() }}
+          />
         ) : (
           <div className="space-y-3">
             <div className="flex items-center gap-2">

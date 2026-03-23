@@ -1,27 +1,29 @@
-import { useState, useMemo, useEffect } from 'react';
+import NiceModal from '@ebay/nice-modal-react';
+import { Bot, DollarSign, Loader2, Plus,Settings, Target, User, Users } from 'lucide-react';
+import { useEffect,useMemo, useState } from 'react';
+import { toast } from 'sonner';
+
+import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import {
+  type DragEndEvent,
   KanbanBoard,
+  KanbanCard,
   KanbanCards,
   KanbanHeader,
   KanbanProvider,
-  KanbanCard,
-  type DragEndEvent,
 } from '@/components/ui/shadcn-io/kanban';
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { DollarSign, Settings, Loader2, Bot, User, Users, Target, Plus } from 'lucide-react';
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
-import { toast } from 'sonner';
-import NiceModal from '@ebay/nice-modal-react';
-import { useCrmKanban, useCrmPipelineByType, useOrgCrmPipelineByType, useOrgCrmKanban, useMoveDeal, useCreateDeal, useUpdateDeal, useDeleteDeal } from '@/hooks/useCrmPipeline';
+import { Tooltip, TooltipContent, TooltipProvider,TooltipTrigger } from '@/components/ui/tooltip';
+import { useCreateDeal, useCrmKanban, useCrmPipelineByType, useDeleteDeal,useMoveDeal, useOrgCrmKanban, useOrgCrmPipelineByType, useUpdateDeal } from '@/hooks/useCrmPipeline';
 import { useProjectBoardProgress } from '@/hooks/useProjectBoardProgress';
-import { CrmDealCard } from './CrmDealCard';
-import { CrmDealForm } from './CrmDealForm';
-import { CrmDealDetailPanel } from './CrmDealDetailPanel';
-import type { PipelineType, CrmDealWithContact, CreateCrmDeal, UpdateCrmDeal } from '@/types/crm';
 import { formatCurrencyFull } from '@/lib/formatters';
+import type { CreateCrmDeal, CrmDealWithContact, PipelineType, UpdateCrmDeal } from '@/types/crm';
+
+import { CrmDealCard } from './CrmDealCard';
+import { CrmDealDetailPanel } from './CrmDealDetailPanel';
+import { CrmDealForm } from './CrmDealForm';
 
 interface CrmPipelineBoardProps {
   projectId?: string;

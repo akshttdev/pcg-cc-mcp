@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { Edit2, Loader2,Plus, Trash2 } from 'lucide-react';
+import { useCallback,useEffect, useState } from 'react';
+import type { TaskTemplate } from 'shared/types';
+
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
-import { Plus, Edit2, Trash2, Loader2 } from 'lucide-react';
 import { templatesApi } from '@/lib/api';
 import { showTaskTemplateEdit } from '@/lib/modals';
-import type { TaskTemplate } from 'shared/types';
 
 interface TaskTemplateManagerProps {
   projectId?: string;

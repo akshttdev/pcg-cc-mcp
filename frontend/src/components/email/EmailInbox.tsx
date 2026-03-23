@@ -1,6 +1,20 @@
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import {
+  AlertCircle,
+  ChevronRight,
+  Clock,
+  Inbox,
+  Mail,
+  MailOpen,
+  Paperclip,
+  RefreshCw,
+  Search,
+  Star,
+  Trash2,
+} from 'lucide-react';
+import { useState } from 'react';
+
+import { Badge } from '@/components/ui/badge';
 import {
   Card,
   CardContent,
@@ -8,10 +22,15 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { EmptyState } from '@/components/ui/empty-state';
 import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
   SelectContent,
@@ -19,29 +38,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  Mail,
-  MailOpen,
-  Star,
-  Trash2,
-  Search,
-  Inbox,
-  Clock,
-  Paperclip,
-  ChevronRight,
-  RefreshCw,
-  AlertCircle,
-} from 'lucide-react';
-import {
-  emailMessagesApi,
-  EmailMessageRecord,
   EmailInboxStats,
+  EmailMessageRecord,
+  emailMessagesApi,
 } from '@/lib/api';
 import { commsKeys } from '@/lib/query-keys';
 
@@ -242,15 +244,13 @@ export function EmailInbox({ projectId, accountId }: EmailInboxProps) {
               ))}
             </div>
           ) : filteredMessages.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Inbox className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium">No emails yet</p>
-              <p className="text-sm">
-                {messages.length === 0
-                  ? 'Connect an email account and sync to see your messages'
-                  : 'No emails match your current filter'}
-              </p>
-            </div>
+            <EmptyState
+              icon={Inbox}
+              title="No emails yet"
+              description={messages.length === 0
+                ? 'Connect an email account and sync to see your messages'
+                : 'No emails match your current filter'}
+            />
           ) : (
             <div className="divide-y">
               {filteredMessages.map((message) => (

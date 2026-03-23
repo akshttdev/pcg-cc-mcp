@@ -1,25 +1,28 @@
+import {
+  createColumnHelper,
+  flexRender,
+  getCoreRowModel,
+  getFilteredRowModel,
+  getSortedRowModel,
+  type SortingState,
+  useReactTable,
+} from '@tanstack/react-table';
+import { format } from 'date-fns';
+import { Bot, Calendar,ChevronDown, ChevronsUpDown, ChevronUp, Copy, Edit, ExternalLink, MoreHorizontal, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  useReactTable,
-  getCoreRowModel,
-  getSortedRowModel,
-  getFilteredRowModel,
-  flexRender,
-  createColumnHelper,
-  type SortingState,
-} from '@tanstack/react-table';
-import { ChevronDown, ChevronUp, ChevronsUpDown, ExternalLink, MoreHorizontal, Edit, Copy, Trash2, Bot, Calendar } from 'lucide-react';
+import type { TaskWithAttemptStatus } from 'shared/types';
+
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { format } from 'date-fns';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   Table,
   TableBody,
@@ -28,8 +31,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import type { TaskWithAttemptStatus } from 'shared/types';
 import { cn } from '@/lib/utils';
 import { useBulkSelectionStore } from '@/stores/useBulkSelectionStore';
 

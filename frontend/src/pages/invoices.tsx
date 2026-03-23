@@ -1,20 +1,31 @@
-import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMutationWithToast } from '@/hooks/useMutationWithToast';
-import { businessKeys } from '@/lib/query-keys';
-import { Button } from '@/components/ui/button';
+import { formatDistanceToNow } from 'date-fns';
+import {
+  AlertCircle,
+  CheckCircle,
+  Clock,
+  Coins,
+  DollarSign,
+  Plus,
+  Trash2,
+  TrendingDown,
+  TrendingUp,
+} from 'lucide-react';
+import { useState } from 'react';
+
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@/components/ui/dialog';
+import { EmptyState } from '@/components/ui/empty-state';
+import { FormField } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -22,19 +33,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  DollarSign,
-  Plus,
-  CheckCircle,
-  Clock,
-  AlertCircle,
-  Coins,
-  TrendingUp,
-  TrendingDown,
-  Trash2,
-} from 'lucide-react';
-import { invoicesApi, type InvoiceRecord, type CreateInvoiceInput } from '@/lib/api';
-import { formatDistanceToNow } from 'date-fns';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import { type CreateInvoiceInput,type InvoiceRecord, invoicesApi } from '@/lib/api';
+import { businessKeys } from '@/lib/query-keys';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -181,13 +183,12 @@ function CreateInvoiceDialog({ open, onClose, onCreated }: {
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs">Type</Label>
+            <FormField label="Type">
               <Select
                 value={form.invoice_type}
                 onValueChange={(v) => setForm(f => ({ ...f, invoice_type: v as 'ar' | 'ap' }))}
               >
-                <SelectTrigger className="h-8 text-sm mt-1">
+                <SelectTrigger className="h-8 text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -195,12 +196,10 @@ function CreateInvoiceDialog({ open, onClose, onCreated }: {
                   <SelectItem value="ap">AP — Accounts Payable</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            <div>
-              <Label className="text-xs">Status</Label>
+            </FormField>
+            <FormField label="Status">
               <Select defaultValue="draft">
-
-                <SelectTrigger className="h-8 text-sm mt-1">
+                <SelectTrigger className="h-8 text-sm">
                   <SelectValue placeholder="draft" />
                 </SelectTrigger>
                 <SelectContent>
@@ -208,24 +207,22 @@ function CreateInvoiceDialog({ open, onClose, onCreated }: {
                   <SelectItem value="pending">Pending</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
+            </FormField>
           </div>
 
-          <div>
-            <Label className="text-xs">Title</Label>
+          <FormField label="Title">
             <Input
-              className="h-8 text-sm mt-1"
+              className="h-8 text-sm"
               placeholder="e.g. Social Campaign — March 2026"
               value={form.title ?? ''}
               onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
             />
-          </div>
+          </FormField>
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs">Amount (USD)</Label>
+            <FormField label="Amount (USD)">
               <Input
-                className="h-8 text-sm mt-1"
+                className="h-8 text-sm"
                 type="number"
                 min="0"
                 step="0.01"
@@ -233,35 +230,32 @@ function CreateInvoiceDialog({ open, onClose, onCreated }: {
                 value={form.amount_usd ?? ''}
                 onChange={e => setForm(f => ({ ...f, amount_usd: parseFloat(e.target.value) || 0 }))}
               />
-            </div>
-            <div>
-              <Label className="text-xs">VIBE Equivalent</Label>
-              <div className="h-8 mt-1 flex items-center px-3 border rounded-md bg-muted text-sm text-purple-700 font-medium">
+            </FormField>
+            <FormField label="VIBE Equivalent">
+              <div className="h-8 flex items-center px-3 border rounded-md bg-muted text-sm text-purple-700 font-medium">
                 <Coins className="h-3.5 w-3.5 mr-1.5" />
                 {vibePreview.toLocaleString()}
               </div>
-            </div>
+            </FormField>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs">Issue Date</Label>
+            <FormField label="Issue Date">
               <Input
-                className="h-8 text-sm mt-1"
+                className="h-8 text-sm"
                 type="date"
                 value={form.issue_date ?? ''}
                 onChange={e => setForm(f => ({ ...f, issue_date: e.target.value }))}
               />
-            </div>
-            <div>
-              <Label className="text-xs">Due Date</Label>
+            </FormField>
+            <FormField label="Due Date">
               <Input
-                className="h-8 text-sm mt-1"
+                className="h-8 text-sm"
                 type="date"
                 value={form.due_date ?? ''}
                 onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))}
               />
-            </div>
+            </FormField>
           </div>
         </div>
         <DialogFooter>
@@ -395,10 +389,7 @@ export function InvoicesPage() {
           {isLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : filtered.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <AlertCircle className="h-8 w-8 mx-auto mb-3 opacity-30" />
-              <p className="text-sm">No AR invoices found</p>
-            </div>
+            <EmptyState icon={AlertCircle} title="No AR invoices found" />
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {filtered.map(inv => (
@@ -418,10 +409,7 @@ export function InvoicesPage() {
           {isLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : filtered.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <AlertCircle className="h-8 w-8 mx-auto mb-3 opacity-30" />
-              <p className="text-sm">No AP invoices found</p>
-            </div>
+            <EmptyState icon={AlertCircle} title="No AP invoices found" />
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {filtered.map(inv => (

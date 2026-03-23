@@ -1,32 +1,33 @@
+import {
+  Command as CommandIcon,
+  FolderOpen,
+  Menu,
+  Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  Settings,
+  Sun,
+} from 'lucide-react';
 import { useCallback } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { Link,useLocation, useNavigate } from 'react-router-dom';
+import { ThemeMode } from 'shared/types';
+
+import { DevBanner } from '@/components/DevBanner';
+import { NavbarUserButton } from '@/components/layout/NavbarUserButton';
+import { NotificationCenter } from '@/components/notifications/NotificationCenter';
+import { SearchBar } from '@/components/search-bar';
+import { useTheme } from '@/components/theme-provider';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
-import {
-  FolderOpen,
-  Settings,
-  Plus,
-  Command as CommandIcon,
-  Menu,
-  PanelLeftOpen,
-  PanelLeftClose,
-  Sun,
-  Moon,
-} from 'lucide-react';
-import { SearchBar } from '@/components/search-bar';
-import { useSearch } from '@/contexts/search-context';
-import { openTaskForm } from '@/lib/openTaskForm';
-import { useProject } from '@/contexts/project-context';
 import { useOrganization } from '@/contexts/organization-context';
-import { showProjectForm } from '@/lib/modals';
+import { useProject } from '@/contexts/project-context';
+import { useSearch } from '@/contexts/search-context';
 import { useOpenProjectInEditor } from '@/hooks/useOpenProjectInEditor';
+import { showProjectForm } from '@/lib/modals';
+import { openTaskForm } from '@/lib/openTaskForm';
 import { useCommandStore } from '@/stores/useCommandStore';
-import { NotificationCenter } from '@/components/notifications/NotificationCenter';
-import { NavbarUserButton } from '@/components/layout/NavbarUserButton';
 import { useViewStore } from '@/stores/useViewStore';
-import { DevBanner } from '@/components/DevBanner';
-import { useTheme } from '@/components/theme-provider';
-import { ThemeMode } from 'shared/types';
 
 const ADMIN_ROUTES = ['/site-directory', '/nora', '/mission-control', '/admin'];
 

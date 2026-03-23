@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Textarea } from '@/components/ui/textarea';
 import { crmDealsApi } from '@/lib/api/crm';
@@ -136,24 +137,15 @@ export function ProposalTab({ deal }: ProposalTabProps) {
 
       {/* No proposal yet */}
       {!deal.proposal_text && !editing && (
-        <div className="rounded-xl border border-dashed border-amber-500/30 bg-amber-500/5 p-6 text-center space-y-3">
-          <FileText className="h-8 w-8 mx-auto text-amber-400/60" />
-          <div>
-            <p className="text-sm font-medium">No proposal yet</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              The proposal agent will synthesize a proposal from the business report, discovery transcript, and intel wikis.
-            </p>
-          </div>
-          <Button
-            size="sm"
-            className="gap-1.5 bg-amber-500 hover:bg-amber-600 text-white"
-            onClick={() => generate.mutate()}
-            disabled={generate.isPending}
-          >
-            {generate.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
-            {generate.isPending ? 'Generating…' : 'Generate Proposal'}
-          </Button>
-        </div>
+        <EmptyState
+          variant="branded"
+          borderColor="amber-500"
+          bgTint="amber-500"
+          icon={FileText}
+          title="No proposal yet"
+          description="The proposal agent will synthesize a proposal from the business report, discovery transcript, and intel wikis."
+          action={{ label: generate.isPending ? 'Generating...' : 'Generate Proposal', onClick: () => generate.mutate() }}
+        />
       )}
 
       {/* Proposal text — view mode */}

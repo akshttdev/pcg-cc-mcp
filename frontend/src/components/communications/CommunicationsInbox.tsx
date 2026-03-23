@@ -1,6 +1,21 @@
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import {
+  ChevronRight,
+  Clock,
+  MessageSquare,
+  Phone,
+  PhoneIncoming,
+  PhoneMissed,
+  PhoneOutgoing,
+  Play,
+  RefreshCw,
+  Star,
+  User,
+} from 'lucide-react';
+import { useState } from 'react';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -8,35 +23,22 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { EmptyState } from '@/components/ui/empty-state';
+import { IconButton } from '@/components/ui/icon-button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import {
-  Phone,
-  PhoneIncoming,
-  PhoneOutgoing,
-  PhoneMissed,
-  MessageSquare,
-  Star,
-  Clock,
-  Play,
-  ChevronRight,
-  RefreshCw,
-  User,
-} from 'lucide-react';
-import {
-  communicationsApi,
   CallLogRecord,
-  SmsMessageRecord,
   CallStats,
+  communicationsApi,
+  SmsMessageRecord,
   SmsStats,
 } from '@/lib/api';
 import { commsKeys } from '@/lib/query-keys';
@@ -257,11 +259,11 @@ export function CommunicationsInbox({ projectId }: CommunicationsInboxProps) {
                   ))}
                 </div>
               ) : calls.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Phone className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p className="text-lg font-medium">No calls yet</p>
-                  <p className="text-sm">Calls made through Nora will appear here</p>
-                </div>
+                <EmptyState
+                  icon={Phone}
+                  title="No calls yet"
+                  description="Calls made through Nora will appear here"
+                />
               ) : (
                 <div className="divide-y">
                   {calls.map((call) => (
@@ -303,11 +305,11 @@ export function CommunicationsInbox({ projectId }: CommunicationsInboxProps) {
                   ))}
                 </div>
               ) : smsMessages.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground">
-                  <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p className="text-lg font-medium">No text messages yet</p>
-                  <p className="text-sm">SMS messages will appear here</p>
-                </div>
+                <EmptyState
+                  icon={MessageSquare}
+                  title="No text messages yet"
+                  description="SMS messages will appear here"
+                />
               ) : (
                 <div className="divide-y">
                   {smsMessages.map((sms) => (

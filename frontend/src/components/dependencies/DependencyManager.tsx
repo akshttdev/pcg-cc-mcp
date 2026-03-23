@@ -1,8 +1,12 @@
+import { AlertCircle,Link2, X } from 'lucide-react';
 import { useState } from 'react';
-import { Link2, X, AlertCircle } from 'lucide-react';
+import type { TaskWithAttemptStatus } from 'shared/types';
+import { toast } from 'sonner';
+
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   Select,
   SelectContent,
@@ -10,11 +14,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 import { useDependencyStore } from '@/stores/useDependencyStore';
 import type { DependencyType } from '@/types/dependencies';
-import type { TaskWithAttemptStatus } from 'shared/types';
-import { toast } from 'sonner';
 
 interface DependencyManagerProps {
   taskId: string;

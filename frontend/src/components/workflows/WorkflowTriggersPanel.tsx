@@ -1,19 +1,30 @@
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { workflowKeys } from '@/lib/query-keys';
-import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import {
+  Activity,
+  AlertTriangle,
+  Clock,
+  Copy,
+  Globe,
+  Loader2,
+  Plus,
+  Trash2,
+  Zap,
+  ZapOff,
+} from 'lucide-react';
+import { useState } from 'react';
+import { toast } from 'sonner';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
   DialogFooter,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
@@ -22,29 +33,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import type {
+  AvailableModel,
+  CreateWorkflowTrigger,
+} from '@/lib/api';
 import {
-  Plus,
-  Trash2,
-  Zap,
-  ZapOff,
-  Loader2,
-  Clock,
-  Activity,
-  Globe,
-  Copy,
-  AlertTriangle,
-} from 'lucide-react';
-import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
-import {
+  DATA_TYPE_OPTIONS,
   triggersApi,
   workflowsApi,
-  DATA_TYPE_OPTIONS,
 } from '@/lib/api';
-import type {
-  CreateWorkflowTrigger,
-  AvailableModel,
-} from '@/lib/api';
+import { workflowKeys } from '@/lib/query-keys';
+import { cn } from '@/lib/utils';
 
 const TRIGGER_TYPE_OPTIONS = [
   { value: 'data_source_created', label: 'Data Source Created' },

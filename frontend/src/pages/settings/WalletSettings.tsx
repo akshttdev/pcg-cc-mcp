@@ -1,7 +1,27 @@
+import { useQuery } from '@tanstack/react-query';
+import { formatDistanceToNow } from 'date-fns';
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  Coins,
+  Copy,
+  Download,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  Loader2,
+  QrCode,
+  RefreshCw,
+  Send,
+} from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
-import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import { toast } from 'sonner';
+
+import { useUserSystem } from '@/components/config-provider';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -9,12 +29,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { FormField } from '@/components/ui/form-field';
-import { Badge } from '@/components/ui/badge';
 // Table components currently unused but may be needed for expanded tx history
 // import {
 //   Table,
@@ -32,25 +46,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { toast } from 'sonner';
-import {
-  Copy,
-  Eye,
-  EyeOff,
-  Send,
-  Download,
-  Coins,
-  RefreshCw,
-  ExternalLink,
-  Loader2,
-  ArrowUpRight,
-  ArrowDownLeft,
-  QrCode,
-} from 'lucide-react';
-import { useUserSystem } from '@/components/config-provider';
+import { FormField } from '@/components/ui/form-field';
+import { IconButton } from '@/components/ui/icon-button';
+import { Input } from '@/components/ui/input';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import { aptosApi, type AptosTransaction, type SendVibeRequest } from '@/lib/api';
-import { formatDistanceToNow } from 'date-fns';
 
 export function WalletSettings() {
   useTranslation('settings'); // Load translations namespace
@@ -475,7 +475,7 @@ export function WalletSettings() {
                 <p className="text-xs text-destructive">
                   Never share your private key with anyone
                 </p>
-              </div>
+              </FormField>
             </>
           )}
         </CardContent>

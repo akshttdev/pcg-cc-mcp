@@ -1,14 +1,30 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Separator } from '@/components/ui/separator';
-import { NoraAssistant, NoraCoordinationPanel, NoraVoiceControls, NoraPlansPanel } from '@/components/nora';
-import { Crown, Users, Mic, Settings, MessageSquare, Activity, RefreshCw, Zap, Shuffle, Bot, Cpu, Clock, LayoutGrid, Video, Plug } from 'lucide-react';
-import { MeetingMode, MeetingHistory } from '@/components/topsi';
-import { AgentIntegrationsTab } from '@/components/email';
+import { Activity, Bot, Clock, Cpu, Crown, LayoutGrid, MessageSquare, Mic, Plug,RefreshCw, Settings, Shuffle, Users, Video, Zap } from 'lucide-react';
+import { useCallback,useEffect, useState } from 'react';
 import { toast } from 'sonner';
+
+import { PendingApprovalsIndicator } from '@/components/autonomy';
+import { AgentIntegrationsTab } from '@/components/email';
+import {
+  AgentCard,
+  AgentCardSkeleton,
+  ExecutionTimeline,
+  generateMockEvents,
+  LiveCommsPanel,
+} from '@/components/mission-control';
+import { NoraAssistant, NoraCoordinationPanel, NoraPlansPanel,NoraVoiceControls } from '@/components/nora';
+import { CompactSlotIndicator,SlotUtilizationBadge } from '@/components/parallel-execution';
+import { MeetingHistory,MeetingMode } from '@/components/topsi';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CardGrid } from '@/components/ui/card-grid';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useExecutionEvents } from '@/hooks/useExecutionEvents';
+import {
+  useMissionControlDashboard,
+} from '@/hooks/useMissionControl';
 import {
   applyNoraMode,
   fetchNoraModes,
@@ -16,19 +32,6 @@ import {
   runRapidPlaybook,
   syncNoraContext,
 } from '@/lib/api';
-import {
-  AgentCard,
-  AgentCardSkeleton,
-  ExecutionTimeline,
-  LiveCommsPanel,
-  generateMockEvents,
-} from '@/components/mission-control';
-import {
-  useMissionControlDashboard,
-} from '@/hooks/useMissionControl';
-import { useExecutionEvents } from '@/hooks/useExecutionEvents';
-import { SlotUtilizationBadge, CompactSlotIndicator } from '@/components/parallel-execution';
-import { PendingApprovalsIndicator } from '@/components/autonomy';
 
 export function NoraPage() {
   const [activeTab, setActiveTab] = useState('assistant');
@@ -360,13 +363,12 @@ export function NoraPage() {
                       <Card className="h-full">
                         <CardContent className="p-4 overflow-auto h-full">
                           {activeExecutions.length === 0 && completedExecutions.length === 0 && (dashboard?.active_workflows?.length ?? 0) === 0 ? (
-                            <div className="h-full flex items-center justify-center text-muted-foreground">
-                              <div className="text-center">
-                                <Activity className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                                <p>No workflow executions yet</p>
-                                <p className="text-xs mt-1">Ask Nora to run a workflow to see activity here</p>
-                              </div>
-                            </div>
+                            <EmptyState
+                              icon={Activity}
+                              title="No workflow executions yet"
+                              description="Ask Nora to run a workflow to see activity here"
+                              className="h-full"
+                            />
                           ) : (
                             <div className="space-y-4">
                               {activeExecutions.length > 0 && (
@@ -482,7 +484,7 @@ export function NoraPage() {
                     </TabsContent>
 
                     <TabsContent value="projects" className="flex-1 mt-3 overflow-hidden">
-                      <div className="grid grid-cols-2 gap-3 h-full overflow-auto">
+                      <CardGrid columns={{ sm: 2 }} gap={3} className="h-full overflow-auto">
                         {dashboard?.by_project.map((project) => (
                           <Card key={project.project_id}>
                             <CardHeader className="pb-2">
@@ -514,7 +516,7 @@ export function NoraPage() {
                             </CardContent>
                           </Card>
                         ))}
-                      </div>
+                      </CardGrid>
                     </TabsContent>
                   </Tabs>
                 </div>

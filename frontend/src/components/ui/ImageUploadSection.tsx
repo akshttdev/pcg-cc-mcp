@@ -1,17 +1,19 @@
-import { useState, useCallback, useRef } from 'react';
 import {
-  X,
+  AlertCircle,
+  ChevronRight,
   Image as ImageIcon,
   Upload,
-  ChevronRight,
-  AlertCircle,
+  X,
 } from 'lucide-react';
+import { useCallback, useRef,useState } from 'react';
+import type { ImageResponse } from 'shared/types';
+
+import { imagesApi } from '@/lib/api';
+import { cn } from '@/lib/utils';
+
+import { Alert, AlertDescription } from './alert';
 import { Button } from './button';
 import { IconButton } from './icon-button';
-import { Alert, AlertDescription } from './alert';
-import { cn } from '@/lib/utils';
-import { imagesApi } from '@/lib/api';
-import type { ImageResponse } from 'shared/types';
 
 interface ImageUploadSectionProps {
   images: ImageResponse[];

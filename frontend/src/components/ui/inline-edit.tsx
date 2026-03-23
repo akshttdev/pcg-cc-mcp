@@ -1,7 +1,9 @@
-import { useState, useRef, useEffect } from 'react';
+import { Check, X } from 'lucide-react';
+import { useEffect,useRef, useState } from 'react';
+
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { Check, X } from 'lucide-react';
+
 import { IconButton } from './icon-button';
 
 interface InlineEditProps {

@@ -1,19 +1,21 @@
-import { useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { personsApi, intelligenceApi, reportsApi, type PersonRecord, type PersonSocialProfile, type PersonCompanyRole } from '@/lib/api';
-import { entityKeys } from '@/lib/query-keys';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
-import { toast } from 'sonner';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeft, Building2, Mail, Phone, Globe, Layers, TrendingUp,
-  FileText, ChevronRight, Loader2, Zap, Linkedin, Twitter, Instagram,
-  Youtube, Github, Facebook, MessageCircle, Star, BookOpen, StickyNote,
-  Plus, Pencil, Trash2, CheckCircle2, Clock, AlertCircle, Hash, ExternalLink,
-  Target, DollarSign, User,
-} from 'lucide-react';
+AlertCircle,   ArrowLeft, BookOpen, Building2, CheckCircle2, ChevronRight, Clock, DollarSign, ExternalLink,
+Facebook,   FileText, Github, Globe, Hash, Instagram,
+Layers, Linkedin, Loader2, Mail, MessageCircle, Pencil, Phone,   Plus, Star, StickyNote,
+  Target, Trash2, TrendingUp,
+Twitter, User,
+  Youtube, Zap, } from 'lucide-react';
+import { useState } from 'react';
+import { Link, useNavigate,useParams } from 'react-router-dom';
+import { toast } from 'sonner';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Textarea } from '@/components/ui/textarea';
+import { intelligenceApi, type PersonCompanyRole,type PersonRecord, personsApi, type PersonSocialProfile, reportsApi } from '@/lib/api';
+import { entityKeys } from '@/lib/query-keys';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -305,11 +307,11 @@ function SocialTab({ profiles }: { profiles: PersonSocialProfile[] }) {
 
   if (profiles.length === 0) {
     return (
-      <div className="text-center py-16 text-muted-foreground">
-        <Globe className="w-10 h-10 mx-auto mb-3 opacity-20" />
-        <p className="text-sm">No social profiles linked yet.</p>
-        <p className="text-xs mt-1 text-muted-foreground/70">Social data is populated automatically during intelligence research.</p>
-      </div>
+      <EmptyState
+        icon={Globe}
+        title="No social profiles linked yet"
+        description="Social data is populated automatically during intelligence research."
+      />
     );
   }
 
@@ -432,10 +434,7 @@ function NotesTab({ personId }: { personId: string }) {
 
       {/* Notes list */}
       {notes.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <StickyNote className="w-8 h-8 mx-auto mb-2 opacity-20" />
-          <p className="text-sm">No notes yet.</p>
-        </div>
+        <EmptyState icon={StickyNote} title="No notes yet" />
       ) : (
         notes.map(note => (
           <div key={note.id} className="rounded-lg border border-border/80 bg-card p-4 shadow-md">
@@ -530,10 +529,7 @@ function ResearchTab({ personId }: { personId: string }) {
       </div>
 
       {passes.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <Layers className="w-8 h-8 mx-auto mb-2 opacity-30" />
-          <p className="text-sm">No research passes yet. Run the first pass to start building intelligence.</p>
-        </div>
+        <EmptyState icon={Layers} title="No research passes yet" description="Run the first pass to start building intelligence." />
       ) : (
         passes.map((pass) => {
           const findings = parseJson<string[]>(typeof pass.key_findings === 'string' ? pass.key_findings : JSON.stringify(pass.key_findings), []);
@@ -611,10 +607,7 @@ function ReportsTab({ personId }: { personId: string }) {
       </div>
 
       {reports.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
-          <p className="text-sm">No reports yet. Generate a business analytics report for this lead.</p>
-        </div>
+        <EmptyState icon={FileText} title="No reports yet" description="Generate a business analytics report for this lead." />
       ) : (
         reports.map((r) => (
           <Link key={r.id} to={`/business-reports/${r.id}`} className="block group">

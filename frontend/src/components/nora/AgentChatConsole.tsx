@@ -1,16 +1,17 @@
+import { Activity, Bot, Crown, MapPin, MessageSquare, Navigation, Radio, Terminal } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { resolveApiUrl, topsiApi } from '@/lib/api';
+
+import { SlashCommand, SlashCommandMenu, useSlashCommands } from '@/components/slash-commands/SlashCommandMenu';
 import { Badge } from '@/components/ui/badge';
-import { IconButton } from '@/components/ui/icon-button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { SlashCommandMenu, SlashCommand, useSlashCommands } from '@/components/slash-commands/SlashCommandMenu';
-import { cn } from '@/lib/utils';
 import { useAgentDirectory } from '@/hooks/useAgentDirectory';
-import type { AgentCoordinationState, CoordinationEvent } from '@/types/nora';
-import { Activity, Bot, Crown, MapPin, MessageSquare, Navigation, Radio, Terminal } from 'lucide-react';
+import { resolveApiUrl, topsiApi } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import { useMultiplayerStore } from '@/stores/useMultiplayerStore';
+import type { AgentCoordinationState, CoordinationEvent } from '@/types/nora';
 
 interface AgentChatConsoleProps {
   className?: string;

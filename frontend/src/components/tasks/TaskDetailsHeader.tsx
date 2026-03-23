@@ -1,24 +1,26 @@
+import { Copy, Edit, Maximize2, Minimize2, MoreHorizontal,Trash2, X } from 'lucide-react';
 import { memo } from 'react';
-import { Edit, Trash2, X, Maximize2, Minimize2, Copy, MoreHorizontal } from 'lucide-react';
+import type { TaskWithAttemptStatus } from 'shared/types';
+
 import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import type { TaskWithAttemptStatus } from 'shared/types';
-import { TaskTitleDescription } from './TaskDetails/TaskTitleDescription';
-import { Card } from '../ui/card';
-import { statusBoardColors, statusLabels } from '@/utils/status-labels';
 import { useTaskViewManager } from '@/hooks/useTaskViewManager';
+import { statusBoardColors, statusLabels } from '@/utils/status-labels';
+
+import { Card } from '../ui/card';
+import { TaskTitleDescription } from './TaskDetails/TaskTitleDescription';
 
 interface TaskDetailsHeaderProps {
   task: TaskWithAttemptStatus;

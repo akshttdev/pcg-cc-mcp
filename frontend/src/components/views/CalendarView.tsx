@@ -1,28 +1,29 @@
-import { useMemo, useState } from 'react';
-import type { TaskWithAttemptStatus } from 'shared/types';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
 import {
-  ChevronLeft,
-  ChevronRight,
-  Calendar as CalendarIcon,
-  Plus,
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
-import {
-  format,
-  startOfMonth,
-  endOfMonth,
-  startOfWeek,
-  endOfWeek,
+  addMonths,
   eachDayOfInterval,
+  endOfMonth,
+  endOfWeek,
+  format,
   isSameMonth,
   isToday,
-  addMonths,
-  subMonths,
   parseISO,
+  startOfMonth,
+  startOfWeek,
+  subMonths,
 } from 'date-fns';
+import {
+  Calendar as CalendarIcon,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+} from 'lucide-react';
+import { useMemo, useState } from 'react';
+import type { TaskWithAttemptStatus } from 'shared/types';
+
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
+import { cn } from '@/lib/utils';
 
 interface CalendarViewProps {
   tasks: TaskWithAttemptStatus[];

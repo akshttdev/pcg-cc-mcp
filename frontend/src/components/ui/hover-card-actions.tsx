@@ -1,4 +1,5 @@
-import { IconButton } from './icon-button';
+import { Copy, Edit, ExternalLink, MoreHorizontal, Star,Trash2 } from 'lucide-react';
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -6,8 +7,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Edit, Trash2, Copy, ExternalLink, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+import { IconButton } from './icon-button';
 
 export interface HoverAction {
   id: string;

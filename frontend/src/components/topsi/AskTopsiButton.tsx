@@ -1,5 +1,6 @@
-import { useState } from 'react';
 import { Bot, Send } from 'lucide-react';
+import { useState } from 'react';
+
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +9,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { useAgentChatStore, type AgentContext } from '@/stores/useAgentChatStore';
+import { type AgentContext,useAgentChatStore } from '@/stores/useAgentChatStore';
 
 type EntityType = AgentContext['entityType'];
 

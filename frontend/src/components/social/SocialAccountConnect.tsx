@@ -1,25 +1,27 @@
-import { useState, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
-import { Badge } from '@/components/ui/badge';
 import {
-  Linkedin,
-  Instagram,
-  Twitter,
-  Facebook,
-  Youtube,
-  Link2,
-  Unlink,
-  RefreshCw,
-  CheckCircle2,
   AlertCircle,
+  CheckCircle2,
   Clock,
+  Facebook,
+  Instagram,
+  Link2,
+  Linkedin,
+  RefreshCw,
+  Twitter,
+  Unlink,
   Users,
+  Youtube,
 } from 'lucide-react';
+import { useCallback,useState } from 'react';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription,CardHeader, CardTitle } from '@/components/ui/card';
+import { CardGrid } from '@/components/ui/card-grid';
+import { IconButton } from '@/components/ui/icon-button';
+import { formatDate } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { SocialAccount, SocialPlatform } from '@/types/social';
-import { formatDate } from '@/lib/formatters';
 
 interface SocialAccountConnectProps {
   accounts: SocialAccount[];
@@ -327,7 +329,7 @@ export function SocialAccountConnect({
         <CardContent>
           <div className="space-y-4">
             {/* Primary platforms */}
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+            <CardGrid columns={{ sm: 3, md: 6 }} gap={2}>
               {priorityPlatforms.map((platform) => (
                 <PlatformConnectButton
                   key={platform}
@@ -337,12 +339,12 @@ export function SocialAccountConnect({
                   onConnect={() => onConnect?.(platform)}
                 />
               ))}
-            </div>
+            </CardGrid>
 
             {/* Other platforms */}
             <div className="pt-2 border-t">
               <p className="text-xs text-muted-foreground mb-2">More platforms</p>
-              <div className="grid grid-cols-3 gap-2">
+              <CardGrid columns={{ sm: 3 }} gap={2}>
                 {otherPlatforms.map((platform) => (
                   <PlatformConnectButton
                     key={platform}
@@ -352,7 +354,7 @@ export function SocialAccountConnect({
                     onConnect={() => onConnect?.(platform)}
                   />
                 ))}
-              </div>
+              </CardGrid>
             </div>
           </div>
         </CardContent>

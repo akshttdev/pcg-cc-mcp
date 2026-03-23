@@ -1,10 +1,11 @@
 import { Clock, Trash2 } from 'lucide-react';
-import { IconButton } from '@/components/ui/icon-button';
+import { toast } from 'sonner';
+
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useTimeTrackingStore } from '@/stores/useTimeTrackingStore';
 import { formatDuration, formatTimeAgo } from '@/utils/timeUtils';
-import { toast } from 'sonner';
 
 interface TimeEntriesListProps {
   taskId: string;

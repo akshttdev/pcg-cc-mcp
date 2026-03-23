@@ -1,12 +1,3 @@
-import { useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { SectionHeader } from '@/components/ui/section-header';
-import { CardGrid } from '@/components/ui/card-grid';
-import { cn } from '@/lib/utils';
 import {
   AlertCircle,
   Code2,
@@ -17,7 +8,18 @@ import {
   Shapes,
   Trash2,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import type { ProjectBoard, TaskWithAttemptStatus } from 'shared/types';
+
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { CardGrid } from '@/components/ui/card-grid';
+import { IconButton } from '@/components/ui/icon-button';
+import { SectionHeader } from '@/components/ui/section-header';
+import { cn } from '@/lib/utils';
+
 import { formatStatusLabel } from '../helpers';
 import type { BoardMeta } from '../types';
 

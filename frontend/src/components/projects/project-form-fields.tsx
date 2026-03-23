@@ -1,28 +1,30 @@
-import { useState, useEffect } from 'react';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   AlertCircle,
+  ArrowLeft,
   Folder,
-  Search,
   FolderGit,
   FolderPlus,
-  ArrowLeft,
+  Search,
 } from 'lucide-react';
+import { useEffect,useState } from 'react';
+import { DirectoryEntry } from 'shared/types';
+
+import { useUserSystem } from '@/components/config-provider';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+// Removed collapsible sections for simplicity; show fields always in edit mode
+import { fileSystemApi } from '@/lib/api';
+import { showFolderPicker } from '@/lib/modals';
 import {
   createScriptPlaceholderStrategy,
   ScriptPlaceholderContext,
 } from '@/utils/script-placeholders';
-import { useUserSystem } from '@/components/config-provider';
-import { CopyFilesField } from './copy-files-field';
-// Removed collapsible sections for simplicity; show fields always in edit mode
-import { fileSystemApi } from '@/lib/api';
-import { showFolderPicker } from '@/lib/modals';
-import { DirectoryEntry } from 'shared/types';
 import { generateProjectNameFromPath } from '@/utils/string';
+
+import { CopyFilesField } from './copy-files-field';
 
 interface ProjectFormFieldsProps {
   isEditing: boolean;

@@ -1,21 +1,21 @@
 // Use plain elements instead of Sheet primitives — DealHeader renders inside
 // both Sheet and Dialog contexts (expand mode), and Radix Sheet/Dialog
 // primitives require their specific parent context or throw errors.
+import {
+  Building2,
+  Calendar,
+  CheckSquare,
+  ChevronRight,
+  Edit,
+  Maximize2,
+  Minimize2,
+  Trash2,
+  TrendingUp,
+} from 'lucide-react';
+
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
-import {
-  Calendar,
-  Building2,
-  Edit,
-  Trash2,
-
-  TrendingUp,
-  CheckSquare,
-  ChevronRight,
-  Maximize2,
-  Minimize2,
-} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { CrmDealWithContact, CrmPipelineStage } from '@/types/crm';
 

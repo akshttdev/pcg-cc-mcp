@@ -1,28 +1,30 @@
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { IconButton } from '@/components/ui/icon-button';
 import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  Download,
+  Eye,
+  File,
   FileText,
   Image,
-  Video,
-  File,
-  Clock,
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  Eye,
-  Download,
   Pin,
+  Video,
+  XCircle,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import type {
-  ExecutionArtifact,
-  ArtifactType,
   ArtifactPhase,
   ArtifactReviewStatus,
+  ArtifactType,
+  ExecutionArtifact,
 } from 'shared/types';
-import { parseArtifactMetadata, formatArtifactPhase } from './utils';
+
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
 import { formatDate } from '@/lib/formatters';
+import { cn } from '@/lib/utils';
+
+import { formatArtifactPhase,parseArtifactMetadata } from './utils';
 
 interface ArtifactCardProps {
   artifact: ExecutionArtifact;

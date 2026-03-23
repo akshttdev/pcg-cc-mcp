@@ -1,8 +1,29 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import {
+  Building2,
+  Clock,
+  Edit,
+  Globe,
+  Linkedin,
+  Mail,
+  MoreVertical,
+  Phone,
+  Search,
+  Star,
+  Trash2,
+  TrendingUp,
+  Twitter,
+  UserPlus,
+  Users,
+} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate,useSearchParams } from 'react-router-dom';
 import type { Project } from 'shared/types';
+
+import { EmailAccountConnect } from '@/components/email/EmailAccountConnect';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -10,21 +31,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
-import { Input } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
@@ -40,37 +46,34 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { EmptyState } from '@/components/ui/empty-state';
+import { FormField } from '@/components/ui/form-field';
+import { IconButton } from '@/components/ui/icon-button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
-  Users,
-  UserPlus,
-  Search,
-  Mail,
-  Phone,
-  Building2,
-  MoreVertical,
-  Edit,
-  Trash2,
-  TrendingUp,
-  Clock,
-  Star,
-  Linkedin,
-  Twitter,
-  Globe,
-} from 'lucide-react';
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import {
-  projectsApi,
+  CreateCrmContactRequest,
   crmApi,
-  emailApi,
   CrmContactRecord,
   CrmContactStats,
   EmailAccountRecord,
-  CreateCrmContactRequest,
+  emailApi,
+  projectsApi,
   UpdateCrmContactRequest,
 } from '@/lib/api';
-import { EmailAccountConnect } from '@/components/email/EmailAccountConnect';
-import { crmKeys, projectKeys, commsKeys } from '@/lib/query-keys';
-import { LIFECYCLE_STAGE_INFO, CONTACT_SOURCE_INFO } from '@/types/crm';
+import { commsKeys,crmKeys, projectKeys } from '@/lib/query-keys';
 import type { LifecycleStage } from '@/types/crm';
+import { CONTACT_SOURCE_INFO,LIFECYCLE_STAGE_INFO } from '@/types/crm';
 import type { EmailProvider } from '@/types/email';
 
 export function CrmPage() {
@@ -369,21 +372,13 @@ export function CrmPage() {
                     ))}
                   </div>
                 ) : contacts.length === 0 ? (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <Users className="h-12 w-12 mx-auto mb-4 opacity-30" />
-                    <p className="text-lg font-semibold mb-1">No contacts yet</p>
-                    <p className="text-sm max-w-sm mx-auto">Add your first contact to start building your CRM pipeline, or connect an email account to import contacts automatically.</p>
-                    <div className="flex gap-2 justify-center mt-4">
-                      <Button size="sm" onClick={() => setIsCreateDialogOpen(true)}>
-                        <UserPlus className="h-4 w-4 mr-1" />
-                        Add Contact
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => setActiveTab('email')}>
-                        <Mail className="h-4 w-4 mr-1" />
-                        Connect Email
-                      </Button>
-                    </div>
-                  </div>
+                  <EmptyState
+                    icon={Users}
+                    title="No contacts yet"
+                    description="Add your first contact to start building your CRM pipeline, or connect an email account to import contacts automatically."
+                    action={{ label: 'Add Contact', onClick: () => setIsCreateDialogOpen(true) }}
+                    secondaryAction={{ label: 'Connect Email', onClick: () => setActiveTab('email') }}
+                  />
                 ) : (
                   <div className="space-y-3">
                     {contacts.map((contact) => (
@@ -704,82 +699,73 @@ function ContactFormDialog({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="first_name">First Name</Label>
+            <FormField label="First Name" htmlFor="first_name">
               <Input
                 id="first_name"
                 value={formData.first_name}
                 onChange={handleFieldChange('first_name')}
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="last_name">Last Name</Label>
+            </FormField>
+            <FormField label="Last Name" htmlFor="last_name">
               <Input
                 id="last_name"
                 value={formData.last_name}
                 onChange={handleFieldChange('last_name')}
               />
-            </div>
+            </FormField>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+          <FormField label="Email" htmlFor="email">
             <Input
               id="email"
               type="email"
               value={formData.email}
               onChange={handleFieldChange('email')}
             />
-          </div>
+          </FormField>
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="phone">Phone</Label>
+            <FormField label="Phone" htmlFor="phone">
               <Input
                 id="phone"
                 value={formData.phone}
                 onChange={handleFieldChange('phone')}
                 placeholder="+1 555-0100"
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="mobile">Mobile</Label>
+            </FormField>
+            <FormField label="Mobile" htmlFor="mobile">
               <Input
                 id="mobile"
                 value={formData.mobile}
                 onChange={handleFieldChange('mobile')}
                 placeholder="+1 555-0101"
               />
-            </div>
+            </FormField>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="company_name">Company</Label>
+            <FormField label="Company" htmlFor="company_name">
               <Input
                 id="company_name"
                 value={formData.company_name}
                 onChange={handleFieldChange('company_name')}
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="job_title">Job Title</Label>
+            </FormField>
+            <FormField label="Job Title" htmlFor="job_title">
               <Input
                 id="job_title"
                 value={formData.job_title}
                 onChange={handleFieldChange('job_title')}
               />
-            </div>
+            </FormField>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="department">Department</Label>
+          <FormField label="Department" htmlFor="department">
             <Input
               id="department"
               value={formData.department}
               onChange={handleFieldChange('department')}
               placeholder="Engineering, Sales, Marketing..."
             />
-          </div>
+          </FormField>
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="lifecycle_stage">Lifecycle Stage</Label>
+            <FormField label="Lifecycle Stage" htmlFor="lifecycle_stage">
               <Select
                 value={formData.lifecycle_stage}
                 onValueChange={handleSelectChange('lifecycle_stage')}
@@ -795,9 +781,8 @@ function ContactFormDialog({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="source">Source</Label>
+            </FormField>
+            <FormField label="Source" htmlFor="source">
               <Select
                 value={formData.source || '__none__'}
                 onValueChange={handleSelectChange('source')}
@@ -814,46 +799,42 @@ function ContactFormDialog({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            </FormField>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="linkedin_url">LinkedIn URL</Label>
+          <FormField label="LinkedIn URL" htmlFor="linkedin_url">
             <Input
               id="linkedin_url"
               value={formData.linkedin_url}
               onChange={handleFieldChange('linkedin_url')}
               placeholder="https://linkedin.com/in/..."
             />
-          </div>
+          </FormField>
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="twitter_handle">Twitter Handle</Label>
+            <FormField label="Twitter Handle" htmlFor="twitter_handle">
               <Input
                 id="twitter_handle"
                 value={formData.twitter_handle}
                 onChange={handleFieldChange('twitter_handle')}
                 placeholder="@handle"
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="website">Website</Label>
+            </FormField>
+            <FormField label="Website" htmlFor="website">
               <Input
                 id="website"
                 value={formData.website}
                 onChange={handleFieldChange('website')}
                 placeholder="https://..."
               />
-            </div>
+            </FormField>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="tags">Tags</Label>
+          <FormField label="Tags" htmlFor="tags">
             <Input
               id="tags"
               value={formData.tags}
               onChange={handleFieldChange('tags')}
               placeholder="Comma-separated tags, e.g. vip, conference-2026"
             />
-          </div>
+          </FormField>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={handleCancel}>
               Cancel

@@ -1,10 +1,24 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { formatDistanceToNow } from 'date-fns';
+import {
+  AlertTriangle,
+  Bot,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  ExternalLink,
+  Eye,
+  Loader2,
+  Package,
+  Plus,
+  RefreshCw,
+  Trash2,
+} from 'lucide-react';
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
@@ -13,26 +27,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Package,
-  RefreshCw,
-  Plus,
-  ChevronDown,
-  ChevronRight,
-  ExternalLink,
-  Bot,
-  Clock,
-  AlertTriangle,
-  CheckCircle2,
-  Loader2,
-  Trash2,
-  Eye,
-} from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
 import { apiClient } from '@/lib/api';
 import { ossKeys } from '@/lib/query-keys';
-import { formatDistanceToNow } from 'date-fns';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

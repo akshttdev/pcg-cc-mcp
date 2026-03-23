@@ -1,30 +1,31 @@
-import { useMemo } from 'react';
-import { AskTopsiButton } from '@/components/topsi/AskTopsiButton';
-import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { IconButton } from '@/components/ui/icon-button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import { formatDistanceToNow } from 'date-fns';
 import {
   ArrowLeft,
-  Mail,
-  Phone,
   Building2,
+  DollarSign,
   Globe,
   Linkedin,
-  Twitter,
+  Mail,
+  Phone,
   Star,
-  DollarSign,
+  Twitter,
 } from 'lucide-react';
-import { crmApi, crmDealsApi } from '@/lib/api';
-import { crmKeys } from '@/lib/query-keys';
-import type { CrmContactRecord, CrmDealRecord } from '@/lib/api';
-import { LIFECYCLE_STAGE_INFO } from '@/types/crm';
-import type { LifecycleStage } from '@/types/crm';
+import { useMemo } from 'react';
+import { useNavigate,useParams } from 'react-router-dom';
+
 import { CrmActivityTimeline } from '@/components/crm/CrmActivityTimeline';
-import { formatDistanceToNow } from 'date-fns';
+import { AskTopsiButton } from '@/components/topsi/AskTopsiButton';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
+import { Skeleton } from '@/components/ui/skeleton';
+import type { CrmContactRecord, CrmDealRecord } from '@/lib/api';
+import { crmApi, crmDealsApi } from '@/lib/api';
 import { formatCurrencyFull } from '@/lib/formatters';
+import { crmKeys } from '@/lib/query-keys';
+import type { LifecycleStage } from '@/types/crm';
+import { LIFECYCLE_STAGE_INFO } from '@/types/crm';
 
 export function CrmContactDetailPage() {
   const { projectId, contactId } = useParams<{

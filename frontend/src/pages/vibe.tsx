@@ -1,31 +1,32 @@
-import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
-import { Progress } from '@/components/ui/progress';
-import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Input } from '@/components/ui/input';
-import {
-  Coins,
-  TrendingUp,
-  ArrowUpRight,
-  ArrowDownLeft,
-  RefreshCw,
-  Clock,
-  Zap,
-  Target,
-  Bot,
-  FileText,
-  CheckCircle,
-  Copy,
-  PlusCircle,
-  ExternalLink,
-} from 'lucide-react';
-import { MobileLayout } from '@/components/mobile';
-import { useMobile } from '@/hooks/useMobile';
-import { useProjectList } from '@/hooks/api/useProjectList';
 import { format } from 'date-fns';
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  Bot,
+  CheckCircle,
+  Clock,
+  Coins,
+  Copy,
+  ExternalLink,
+  FileText,
+  PlusCircle,
+  RefreshCw,
+  Target,
+  TrendingUp,
+  Zap,
+} from 'lucide-react';
+import { useEffect,useState } from 'react';
+
+import { MobileLayout } from '@/components/mobile';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
+import { Input } from '@/components/ui/input';
+import { Progress } from '@/components/ui/progress';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { useProjectList } from '@/hooks/api/useProjectList';
+import { useMobile } from '@/hooks/useMobile';
 import { resolveApiUrl, vibeApi } from '@/lib/api';
 
 interface VibeStats {

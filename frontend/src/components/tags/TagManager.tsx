@@ -1,8 +1,11 @@
+import { Edit2, Plus, Trash2 } from 'lucide-react';
+import { nanoid } from 'nanoid';
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
-import { Input } from '@/components/ui/input';
+import { HexColorPicker } from 'react-colorful';
+import { toast } from 'sonner';
+
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -11,16 +14,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { IconButton } from '@/components/ui/icon-button';
+import { Input } from '@/components/ui/input';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Plus, Edit2, Trash2 } from 'lucide-react';
-import { HexColorPicker } from 'react-colorful';
 import { useTagStore } from '@/stores/useTagStore';
-import { nanoid } from 'nanoid';
-import { toast } from 'sonner';
 
 interface TagManagerProps {
   projectId: string;

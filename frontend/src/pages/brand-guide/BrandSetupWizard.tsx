@@ -10,8 +10,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { FormField } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import { organizationsApi, type OrgBrandProfile } from '@/lib/api';
@@ -93,26 +93,23 @@ export function BrandSetupWizard({
       title: 'Brand Identity',
       content: (
         <div className="space-y-4">
-          <div>
-            <Label htmlFor="tagline">Tagline</Label>
+          <FormField label="Tagline" htmlFor="tagline">
             <Input
               id="tagline"
               placeholder="Your brand in one line"
               value={form.tagline}
               onChange={set('tagline')}
             />
-          </div>
-          <div>
-            <Label htmlFor="industry">Industry</Label>
+          </FormField>
+          <FormField label="Industry" htmlFor="industry">
             <Input
               id="industry"
               placeholder="e.g. Technology, Fashion, Finance"
               value={form.industry}
               onChange={set('industry')}
             />
-          </div>
-          <div>
-            <Label htmlFor="mission">Mission Statement</Label>
+          </FormField>
+          <FormField label="Mission Statement" htmlFor="mission">
             <Textarea
               id="mission"
               placeholder="Why does your brand exist?"
@@ -120,16 +117,15 @@ export function BrandSetupWizard({
               onChange={set('missionStatement')}
               rows={3}
             />
-          </div>
-          <div>
-            <Label htmlFor="voice">Brand Voice</Label>
+          </FormField>
+          <FormField label="Brand Voice" htmlFor="voice">
             <Input
               id="voice"
               placeholder="e.g. Professional, friendly, bold"
               value={form.brandVoice}
               onChange={set('brandVoice')}
             />
-          </div>
+          </FormField>
         </div>
       ),
     },
@@ -138,9 +134,8 @@ export function BrandSetupWizard({
       content: (
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-3">
-            <div>
-              <Label htmlFor="primary">Primary</Label>
-              <div className="flex gap-2 items-center mt-1">
+            <FormField label="Primary" htmlFor="primary">
+              <div className="flex gap-2 items-center">
                 <input
                   type="color"
                   id="primary"
@@ -154,10 +149,9 @@ export function BrandSetupWizard({
                   className="font-mono text-xs"
                 />
               </div>
-            </div>
-            <div>
-              <Label htmlFor="secondary">Secondary</Label>
-              <div className="flex gap-2 items-center mt-1">
+            </FormField>
+            <FormField label="Secondary" htmlFor="secondary">
+              <div className="flex gap-2 items-center">
                 <input
                   type="color"
                   id="secondary"
@@ -171,10 +165,9 @@ export function BrandSetupWizard({
                   className="font-mono text-xs"
                 />
               </div>
-            </div>
-            <div>
-              <Label htmlFor="accent">Accent</Label>
-              <div className="flex gap-2 items-center mt-1">
+            </FormField>
+            <FormField label="Accent" htmlFor="accent">
+              <div className="flex gap-2 items-center">
                 <input
                   type="color"
                   id="accent"
@@ -188,7 +181,7 @@ export function BrandSetupWizard({
                   className="font-mono text-xs"
                 />
               </div>
-            </div>
+            </FormField>
           </div>
           <div className="flex gap-2 mt-2">
             {[form.primaryColor, form.secondaryColor, form.accentColor].map(
@@ -202,24 +195,22 @@ export function BrandSetupWizard({
             )}
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label htmlFor="headingFont">Heading Font</Label>
+            <FormField label="Heading Font" htmlFor="headingFont">
               <Input
                 id="headingFont"
                 placeholder="e.g. Playfair Display"
                 value={form.typographyHeading}
                 onChange={set('typographyHeading')}
               />
-            </div>
-            <div>
-              <Label htmlFor="bodyFont">Body Font</Label>
+            </FormField>
+            <FormField label="Body Font" htmlFor="bodyFont">
               <Input
                 id="bodyFont"
                 placeholder="e.g. Inter, Roboto"
                 value={form.typographyBody}
                 onChange={set('typographyBody')}
               />
-            </div>
+            </FormField>
           </div>
         </div>
       ),
@@ -228,15 +219,14 @@ export function BrandSetupWizard({
       title: 'Web Presence',
       content: (
         <div className="space-y-4">
-          <div>
-            <Label htmlFor="website">Website URL</Label>
+          <FormField label="Website URL" htmlFor="website">
             <Input
               id="website"
               placeholder="https://example.com"
               value={form.websiteUrl}
               onChange={set('websiteUrl')}
             />
-          </div>
+          </FormField>
           <div className="rounded-lg border border-dashed p-4 text-center space-y-3">
             <Sparkles className="h-8 w-8 mx-auto text-yellow-500" />
             <p className="text-sm font-medium">Auto-fill with AI Research</p>

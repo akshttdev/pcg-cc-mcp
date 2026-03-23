@@ -7,41 +7,42 @@
 //   - MeetingNotesView — ended state (notes display + publish)
 //   - index.tsx        — orchestrator with all state, hooks, and active session UI
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { resolveApiUrl, meetingsApi } from '@/lib/api';
-import { useProjectList } from '@/hooks/queries';
+import {
+  Clock,
+  Link as LinkIcon,
+  Loader2,
+  Monitor,
+  MonitorOff,
+  Network,
+  Pause,
+  Play,
+  Send,
+  Square,
+  Users,
+} from 'lucide-react';
+import { useCallback,useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
+
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Badge } from '@/components/ui/badge';
-import {
-  Square,
-  Pause,
-  Play,
-  Users,
-  Clock,
-  Loader2,
-  Network,
-  Monitor,
-  MonitorOff,
-  Link as LinkIcon,
-  Send,
-} from 'lucide-react';
+import { useProjectList } from '@/hooks/queries';
+import { meetingsApi,resolveApiUrl } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { toast } from 'sonner';
 
+import { MeetingNotesView } from './MeetingNotesView';
+import { MeetingSetup } from './MeetingSetup';
 import type {
-  TranscriptEntry,
-  MeetingNotes,
   ActiveMeeting,
   MeetingModeProps,
-  MeetingState,
+  MeetingNotes,
   MeetingRole,
+  MeetingState,
+  TranscriptEntry,
 } from './types';
-import { formatDuration, isUrl, getAuthHeaders } from './types';
-import { MeetingSetup } from './MeetingSetup';
-import { MeetingNotesView } from './MeetingNotesView';
+import { formatDuration, getAuthHeaders,isUrl } from './types';
 
 export function MeetingMode({ projectId: propProjectId, onClose, className }: MeetingModeProps) {
   // Meeting state

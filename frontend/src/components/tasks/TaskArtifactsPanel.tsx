@@ -1,26 +1,27 @@
-import { useState, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
-  FileText,
-  Image,
-  Video,
-  Upload,
-  Link2,
   Download,
   Eye,
-  Pin,
-  FolderOpen,
   FileOutput,
+  FileText,
+  FolderOpen,
+  Image,
+  Link2,
+  Pin,
+  Upload,
+  Video,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import type { ExecutionArtifact, ArtifactType, ArtifactPhase } from 'shared/types';
+import { useCallback,useState } from 'react';
+import type { ArtifactPhase,ArtifactType, ExecutionArtifact } from 'shared/types';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatDate } from '@/lib/formatters';
+import { cn } from '@/lib/utils';
 
 interface TaskArtifactsPanelProps {
   taskId: string;

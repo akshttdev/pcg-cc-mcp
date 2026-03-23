@@ -1,6 +1,7 @@
 import { BookmarkPlus, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
+
 import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,8 +10,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { IconButton } from '@/components/ui/icon-button';
 import { useFilterStore } from '@/stores/useFilterStore';
-import { toast } from 'sonner';
 
 interface SavedFiltersMenuProps {
   projectId: string;

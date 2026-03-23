@@ -1,42 +1,43 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  Activity,
+  Brain,
+  Briefcase,
+  Building2,
+  ExternalLink,
+  Globe,
+  Linkedin,
+  Mail,
+  MapPin,
+  Pencil,
+  Phone,
+  Trash2,
+  User,
+  Users,
+} from 'lucide-react';
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
+
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Link } from 'react-router-dom';
+import { FormField } from '@/components/ui/form-field';
+import { Input } from '@/components/ui/input';
 import {
-  Building2,
-  MapPin,
-  Users,
-  Briefcase,
-  Globe,
-  Mail,
-  Pencil,
-  Trash2,
-  Linkedin,
-  Phone,
-  Activity,
-  Brain,
-  ExternalLink,
-  User,
-} from 'lucide-react';
-import { LIFECYCLE_STAGE_INFO, type LifecycleStage } from '@/types/crm';
-import {
-  crmDealsApi,
   crmActivitiesApi,
+  type CrmActivityRecord,
   crmApi,
   type CrmContactRecord,
-  type CrmActivityRecord,
+  crmDealsApi,
 } from '@/lib/api';
 import { crmKeys } from '@/lib/query-keys';
+import { LIFECYCLE_STAGE_INFO, type LifecycleStage } from '@/types/crm';
 
 export function ContactDetailModal({
   contact,
@@ -142,38 +143,30 @@ export function ContactDetailModal({
         <div className="space-y-4">
           {isEditing ? (
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">First Name</Label>
+              <FormField label="First Name">
                 <Input value={editData.first_name} onChange={(e) => setEditData(d => ({ ...d, first_name: e.target.value }))} />
-              </div>
-              <div>
-                <Label className="text-xs">Last Name</Label>
+              </FormField>
+              <FormField label="Last Name">
                 <Input value={editData.last_name} onChange={(e) => setEditData(d => ({ ...d, last_name: e.target.value }))} />
-              </div>
-              <div>
-                <Label className="text-xs">Email</Label>
+              </FormField>
+              <FormField label="Email">
                 <Input value={editData.email} onChange={(e) => setEditData(d => ({ ...d, email: e.target.value }))} />
-              </div>
-              <div>
-                <Label className="text-xs">Phone</Label>
+              </FormField>
+              <FormField label="Phone">
                 <Input value={editData.phone} onChange={(e) => setEditData(d => ({ ...d, phone: e.target.value }))} />
-              </div>
-              <div>
-                <Label className="text-xs">Company</Label>
+              </FormField>
+              <FormField label="Company">
                 <Input value={editData.company_name} onChange={(e) => setEditData(d => ({ ...d, company_name: e.target.value }))} />
-              </div>
-              <div>
-                <Label className="text-xs">Job Title</Label>
+              </FormField>
+              <FormField label="Job Title">
                 <Input value={editData.job_title} onChange={(e) => setEditData(d => ({ ...d, job_title: e.target.value }))} />
-              </div>
-              <div>
-                <Label className="text-xs">Department</Label>
+              </FormField>
+              <FormField label="Department">
                 <Input value={editData.department} onChange={(e) => setEditData(d => ({ ...d, department: e.target.value }))} />
-              </div>
-              <div>
-                <Label className="text-xs">LinkedIn URL</Label>
+              </FormField>
+              <FormField label="LinkedIn URL">
                 <Input value={editData.linkedin_url} onChange={(e) => setEditData(d => ({ ...d, linkedin_url: e.target.value }))} />
-              </div>
+              </FormField>
               <div className="col-span-2 flex gap-2 justify-end">
                 <Button size="sm" variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
                 <Button size="sm" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending}>

@@ -1,5 +1,7 @@
+import { Bell, Menu, User, Wifi, WifiOff } from 'lucide-react';
 import { useState } from 'react';
-import { Menu, Bell, User, Wifi, WifiOff } from 'lucide-react';
+
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import {
@@ -9,7 +11,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
-import { Badge } from '@/components/ui/badge';
 
 interface MobileHeaderProps {
   title?: string;

@@ -1,6 +1,9 @@
-import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
+import { AlertCircle, Folder, Loader2, Plus, Trash2 } from 'lucide-react';
+import type { ProjectAsset, ProjectBoard } from 'shared/types';
+
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -8,7 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   Table,
   TableBody,
@@ -17,8 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { AlertCircle, Folder, Loader2, Plus, Trash2 } from 'lucide-react';
-import type { ProjectAsset, ProjectBoard } from 'shared/types';
+
 import { formatByteSize, formatStatusLabel } from '../helpers';
 import { BOARD_TYPE_LABELS } from '../helpers';
 

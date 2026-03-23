@@ -1,40 +1,42 @@
-import { useState, useMemo } from 'react';
-import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
+import {
+  Bot,
+  Clapperboard,
+  Download,
+  File,
+  FileText,
+  FolderOpen,
+  Grid3X3,
+  Image,
+  Link2,
+  List,
+  Pin,
+  Plus,
+  Search,
+  SortAsc,
+  SortDesc,
+  Upload,
+  User,
+  Video,
+} from 'lucide-react';
+import { useMemo,useState } from 'react';
+import type { ArtifactPhase,ArtifactType, ExecutionArtifact } from 'shared/types';
+
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  Grid3X3,
-  List,
-  Search,
-  Upload,
-  Link2,
-  SortAsc,
-  SortDesc,
-  FolderOpen,
-  Pin,
-  Bot,
-  User,
-  FileText,
-  Image,
-  Video,
-  File,
-  Plus,
-  Download,
-  Clapperboard,
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { ArtifactPreviewCard } from '../ArtifactPreviewCard';
-import type { ExecutionArtifact, ArtifactType, ArtifactPhase } from 'shared/types';
+import { IconButton } from '@/components/ui/icon-button';
+import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatDate } from '@/lib/formatters';
+import { cn } from '@/lib/utils';
+
+import { ArtifactPreviewCard } from '../ArtifactPreviewCard';
 
 
 const VIDEO_EDIT_TYPES: ArtifactType[] = ['video_edit_session', 'render_deliverable'];

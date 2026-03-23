@@ -1,15 +1,4 @@
-import { useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { pulseApi } from '@/lib/api';
-import type { PulseContentItem, PulseSource as PulseSourceApi, PulseAlertRule as PulseAlertRuleApi, PulseAlert as PulseAlertApi } from '@/lib/api/pulse';
-import { pulseKeys } from '@/lib/query-keys';
-import { MobileLayout } from '@/components/mobile';
-import { useMobile } from '@/hooks/useMobile';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { PulseWidget } from '@/components/PulseWidget';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Activity,
   AlertTriangle,
@@ -21,6 +10,19 @@ import {
   Rss,
   Settings2,
 } from 'lucide-react';
+import { useState } from 'react';
+import { useParams } from 'react-router-dom';
+
+import { MobileLayout } from '@/components/mobile';
+import { PulseWidget } from '@/components/PulseWidget';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { useMobile } from '@/hooks/useMobile';
+import { pulseApi } from '@/lib/api';
+import type { PulseAlert as PulseAlertApi,PulseAlertRule as PulseAlertRuleApi, PulseContentItem, PulseSource as PulseSourceApi } from '@/lib/api/pulse';
+import { pulseKeys } from '@/lib/query-keys';
 
 type Tab = 'overview' | 'content' | 'sources' | 'alerts' | 'config';
 
@@ -233,7 +235,7 @@ export default function PulsePage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">No content collected yet</p>
+                <EmptyState title="No content collected yet" />
               )}
             </CardContent>
           </Card>
@@ -285,7 +287,7 @@ export default function PulsePage() {
               </div>
             ))
           ) : (
-            <p className="text-sm text-muted-foreground">No content found</p>
+            <EmptyState title="No content found" />
           )}
         </div>
       )}

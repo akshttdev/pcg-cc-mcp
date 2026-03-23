@@ -1,19 +1,19 @@
-import { useMemo, useState } from 'react';
-import type { TaskWithAttemptStatus } from 'shared/types';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
+import { addMonths, eachDayOfInterval, endOfMonth, format, isSameDay, parseISO,startOfMonth, subMonths } from 'date-fns';
 import {
+  Calendar,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Calendar,
-  Clock,
   Circle,
-  CheckCircle2
-} from 'lucide-react';
+  Clock} from 'lucide-react';
+import { useMemo, useState } from 'react';
+import type { TaskWithAttemptStatus } from 'shared/types';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, parseISO } from 'date-fns';
 
 interface TimelineViewProps {
   tasks: TaskWithAttemptStatus[];

@@ -1,41 +1,44 @@
-import { useState, useEffect, useCallback } from 'react';
-import { topiclipsApi } from '@/lib/api';
-import type {
-  TopiClipSession,
-  TopiClipGalleryResponse,
-  TopiClipTimelineEntry,
-  TopiClipSymbol,
-} from '@/lib/api';
+import {
+  AlertTriangle,
+  Calendar,
+  CheckCircle,
+  Clock,
+  Eye,
+  Film,
+  Flame,
+  Grid,
+  Layers,
+  Loader2,
+  Play,
+  Plus,
+  RefreshCw,
+  Sparkles,
+  Trophy,
+  XCircle,
+  Zap,
+} from 'lucide-react';
+import { useCallback,useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
+
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Separator } from '@/components/ui/separator';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription,CardHeader, CardTitle } from '@/components/ui/card';
+import { CardGrid } from '@/components/ui/card-grid';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import {
-  Flame,
-  Calendar,
-  Play,
-  Grid,
-  Clock,
-  Sparkles,
-  Film,
-  Loader2,
-  RefreshCw,
-  CheckCircle,
-  AlertTriangle,
-  XCircle,
-  Plus,
-  Eye,
-  Layers,
-  Zap,
-  Trophy,
-} from 'lucide-react';
-import { toast } from 'sonner';
+import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import type {
+  TopiClipGalleryResponse,
+  TopiClipSession,
+  TopiClipSymbol,
+  TopiClipTimelineEntry,
+} from '@/lib/api';
+import { topiclipsApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 // Types imported from @/lib/api/topiclips
@@ -283,21 +286,15 @@ export function TopiClipsPage() {
             {/* Gallery Tab */}
             <TabsContent value="gallery" className="flex-1 overflow-auto">
               {gallery?.sessions.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full gap-4">
-                  <Film className="w-16 h-16 text-gray-400" />
-                  <h2 className="text-xl font-semibold text-gray-600">No clips yet</h2>
-                  <p className="text-gray-500">Create your first TopiClip to start your streak!</p>
-                  <Button
-                    onClick={createManualClip}
-                    disabled={isGenerating}
-                    className="bg-gradient-to-r from-purple-600 to-pink-600"
-                  >
-                    <Sparkles className="w-4 h-4 mr-2" />
-                    Create First Clip
-                  </Button>
-                </div>
+                <EmptyState
+                  icon={Film}
+                  title="No clips yet"
+                  description="Create your first TopiClip to start your streak!"
+                  action={{ label: 'Create First Clip', onClick: createManualClip }}
+                  className="h-full"
+                />
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                <CardGrid columns={{ md: 2, lg: 3, xl: 4 }} gap={4}>
                   {gallery?.sessions.map((session) => (
                     <Card
                       key={session.id}
@@ -354,7 +351,7 @@ export function TopiClipsPage() {
                       </CardContent>
                     </Card>
                   ))}
-                </div>
+                </CardGrid>
               )}
             </TabsContent>
 
@@ -480,7 +477,7 @@ export function TopiClipsPage() {
 
             {/* Symbols Tab */}
             <TabsContent value="symbols" className="flex-1 overflow-auto">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <CardGrid columns={{ md: 2, lg: 3 }} gap={4}>
                 {symbols.map((symbol) => (
                   <Card key={symbol.id}>
                     <CardHeader className="pb-2">
@@ -512,7 +509,7 @@ export function TopiClipsPage() {
                     </CardContent>
                   </Card>
                 ))}
-              </div>
+              </CardGrid>
             </TabsContent>
 
             {/* Stats Tab */}
