@@ -36,6 +36,8 @@ Two configuration layers:
 | `FRONTEND_PORT` | `3000` | Vite dev server port |
 | `BACKEND_PORT` | `3002` | Axum backend port |
 | `DATABASE_URL` | `sqlite://dev_assets/db.sqlite` | SQLite path |
+| `HOST` | `0.0.0.0` | Backend bind address |
+| `RUST_LOG` | `info` | Log level (`debug` for development) |
 
 **Build toolchain (set by Flox, or add to `.env` if not using Flox):**
 
@@ -43,14 +45,17 @@ Two configuration layers:
 |----------|-------|-----|
 | `CMAKE_POLICY_VERSION_MINIMUM` | `3.5` | audiopus_sys build requires this |
 | `SQLX_OFFLINE` | `true` | Use cached query metadata at compile time |
+| `RUSTC_WRAPPER` | `sccache` | Shared compilation cache (optional, faster rebuilds) |
 
-**Optional — Agent Flow Engine:**
+**Secrets (add to `.env`, never commit):**
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ENABLE_AGENT_FLOW_ENGINE` | `0` | Set to `1` to enable AI agent auto-execution |
-| `AGENT_FLOW_POLL_INTERVAL` | `15` | Seconds between executor polls |
-| `AGENT_FLOW_MAX_CONCURRENT` | `5` | Max flows per tick |
+| Variable | Description |
+|----------|-------------|
+| `ANTHROPIC_API_KEY` | Claude AI integration |
+| `OPENAI_API_KEY` | NORA AI assistant (required for NORA) |
+| `GITHUB_TOKEN` | GitHub OAuth / E2E tests |
+
+**Feature-specific env vars** are documented in each sprint's planning file under "Deployment Instructions". Check the active branch's planning doc for any new env vars introduced by that branch.
 
 ### Git Worktree Port Isolation
 
@@ -119,18 +124,15 @@ cd frontend && npx vite build
 
 ## Database Migrations
 
-Migrations run automatically on server startup. Current migrations:
+Migrations run automatically on server startup via SQLx. All migrations live in `crates/db/migrations/` and follow the naming convention `YYYYMMDDHHMMSS_description.sql`.
 
-| Migration | What it does |
-|-----------|-------------|
-| `20260414000000` | Adds `stage_config` to pipeline stages, `crm_deal_id`/`cancel_deadline`/`retry_count`/`last_error` to agent_flows |
-| `20260414000001` | Seeds default stage_config JSON for all pipeline stages |
+**Branch-specific migration details** (new columns, seed data, rollback plans) are documented in each sprint's planning file under "Deployment Instructions".
 
-All migrations are **additive** (nullable columns, `IF NOT EXISTS` indexes). Safe to deploy without downtime.
-
-### Rollback
-
-All columns are nullable — old code ignores them. The agent flow engine is gated behind `ENABLE_AGENT_FLOW_ENGINE=1` (default off). To disable after deploy, unset the env var.
+General rules:
+- Migrations should be additive (add columns, don't drop them)
+- New columns should be nullable or have defaults (safe for existing data)
+- Use `IF NOT EXISTS` for index creation (idempotent)
+- After adding migrations, run `cargo sqlx prepare --workspace` and commit the `.sqlx/` cache
 
 ---
 
