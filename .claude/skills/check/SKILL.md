@@ -7,64 +7,49 @@ allowed-tools: Bash, Read, Grep
 
 # Full Project Check
 
-Run all 5 CI checks and report results. Use absolute paths to avoid directory confusion.
+Run all 5 CI checks and report results.
 
-## Step 1: Get project root
+**CRITICAL**: Each Bash tool call starts with a fresh working directory. You MUST `cd` to the correct directory at the START of every single command. Do NOT rely on `cd` from a previous Bash call.
+
+## Run all checks
+
+Run steps 1, 3, 4, 5 in parallel (they're independent). Step 2 (clippy) is slow — run in background or last.
+
+### Step 1: Rust Format
 
 ```bash
-# All paths relative to this
-PROJECT_ROOT=$(git rev-parse --show-toplevel)
+cd $(git rev-parse --show-toplevel) && cargo fmt --all && cargo fmt --all -- --check
 ```
 
-## Step 2: Rust Format
+If this changes files, `git diff --stat` will show them. **Stop and commit before continuing.**
+
+### Step 2: Rust Clippy (slow — run in background)
 
 ```bash
-# Format first (--check has caching that misses files), then verify
-cd "$PROJECT_ROOT" && cargo fmt --all
-cd "$PROJECT_ROOT" && cargo fmt --all -- --check
+cd $(git rev-parse --show-toplevel) && CLIPPY_FLAGS=$(grep -A20 "cargo clippy" .github/workflows/ci.yml | grep -oP '\-A clippy::\S+' | tr '\n' ' ') && flox activate -- cargo clippy --all --all-targets -- -D warnings $CLIPPY_FLAGS
 ```
 
-If formatting changed files, **stop and commit them** before continuing. Check with `git diff --stat`.
-
-## Step 3: Rust Clippy
-
-Extract the exact `-A` flags from CI config and run clippy:
+### Step 3: TypeScript
 
 ```bash
-# Read flags from ci.yml
-cd "$PROJECT_ROOT"
-CLIPPY_FLAGS=$(grep -A20 "cargo clippy" .github/workflows/ci.yml | grep -oP '\-A clippy::\S+' | tr '\n' ' ')
-# Run clippy
-flox activate -- cargo clippy --all --all-targets -- -D warnings $CLIPPY_FLAGS
+cd $(git rev-parse --show-toplevel)/frontend && npx tsc --noEmit
 ```
 
-If `flox activate` fails, run without it but ensure `CMAKE_POLICY_VERSION_MINIMUM=3.5` is set.
-
-## Step 4: TypeScript
+### Step 4: ESLint
 
 ```bash
-cd "$PROJECT_ROOT/frontend" && npx tsc --noEmit
-```
-
-## Step 5: ESLint
-
-```bash
-cd "$PROJECT_ROOT/frontend" && npx eslint . --ext ts,tsx
+cd $(git rev-parse --show-toplevel)/frontend && npx eslint . --ext ts,tsx
 ```
 
 0 errors required. Warnings are pre-existing and acceptable.
 
-## Step 6: Type Generation
+### Step 5: Type Generation
 
 ```bash
-cd "$PROJECT_ROOT" && npm run generate-types:check
+cd $(git rev-parse --show-toplevel) && npm run generate-types:check
 ```
 
-**Must run from project root** — this script is defined in root `package.json`, not `frontend/package.json`.
-
 ## Report
-
-After running all 5, output:
 
 | Check | Status | Issues |
 |-------|--------|--------|
@@ -74,6 +59,6 @@ After running all 5, output:
 | eslint | PASS/FAIL | N errors, N warnings |
 | generate-types | PASS/FAIL | up to date? |
 
-If any check fails, show the first 10 lines of errors and suggest fixes.
+If any fail, show first 10 lines of errors and suggest fixes.
 
 If all pass: **"All 5 checks pass. Ready to push."**
