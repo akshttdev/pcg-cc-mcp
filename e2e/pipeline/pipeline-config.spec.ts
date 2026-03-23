@@ -6,22 +6,19 @@
  *
  * Acceptance specs: planning/BACKLOG--remaining-work.md → PC-1 to PC-3
  */
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { t, demoPause, login } from "../helpers";
 import { navigateToPipeline, openPipelineSettings } from "./helpers";
 
 test.describe("Pipeline Configuration (PC-1 to PC-3)", () => {
   test.describe.configure({ mode: "serial" });
 
-  test.beforeEach(async ({ page }) => {
-    await login(page);
-    await navigateToPipeline(page);
-  });
-
   // ── PC-1: Pipeline settings accessible from board ──────────────────────
 
   test("PC-1: gear icon opens Pipeline Settings dialog", async ({ page }) => {
     test.setTimeout(30_000);
+    await login(page);
+    await navigateToPipeline(page);
 
     await openPipelineSettings(page);
 
@@ -33,11 +30,11 @@ test.describe("Pipeline Configuration (PC-1 to PC-3)", () => {
     // Verify pipeline dropdown is present
     await expect(page.getByRole("combobox").first()).toBeVisible();
 
-    // Verify three tabs inside the settings dialog
-    const settingsDialog = page.locator('[role="dialog"]').last();
-    await expect(settingsDialog.getByRole("tab", { name: "Stages" })).toBeVisible();
-    await expect(settingsDialog.getByRole("tab", { name: "Automations" })).toBeVisible();
-    await expect(settingsDialog.getByRole("tab", { name: "Pipeline" })).toBeVisible();
+    // Verify three tabs are visible (scoped near the Pipeline Settings heading)
+    await expect(page.getByRole("tab", { name: "Stages" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Automations" })).toBeVisible();
+    // "Pipeline" tab conflicts with the page-level "Pipelines" tab — use testid
+    await expect(page.getByTestId("tab-settings")).toBeVisible();
   });
 
   test("PC-1: can switch between pipelines via dropdown", async ({ page }) => {

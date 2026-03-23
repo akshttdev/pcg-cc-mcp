@@ -6,7 +6,7 @@
  *
  * Acceptance specs: planning/BACKLOG--remaining-work.md → DD-1 to DD-4
  */
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { t, demoPause, login, apiLogin, TEST_DATA_PREFIX } from "../helpers";
 import {
   ORG_ID,
@@ -22,13 +22,10 @@ const DEAL_NAME = `${TEST_DATA_PREFIX} Detail Test ${Date.now()}`;
 test.describe("Deal Detail Features (DD-1 to DD-4)", () => {
   test.describe.configure({ mode: "serial" });
 
-  test.beforeEach(async ({ page }) => {
-    await login(page);
-    await navigateToPipeline(page);
-  });
-
   test("Setup: create deal and open detail", async ({ page }) => {
     test.setTimeout(60_000);
+    await login(page);
+    await navigateToPipeline(page);
 
     await createDealViaUI(page, {
       name: DEAL_NAME,

@@ -6,7 +6,7 @@
  *
  * Acceptance specs: planning/BACKLOG--remaining-work.md → RG-1, RG-2
  */
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { t, demoPause, login, apiLogin, TEST_DATA_PREFIX } from "../helpers";
 import {
   ORG_ID,
@@ -22,13 +22,10 @@ let dealId: string;
 test.describe("Review Gates (RG-1 to RG-2)", () => {
   test.describe.configure({ mode: "serial" });
 
-  test.beforeEach(async ({ page }) => {
-    await login(page);
-    await navigateToPipeline(page);
-  });
-
   test("Setup: create deal and move to Intel", async ({ page, request }) => {
     test.setTimeout(60_000);
+    await login(page);
+    await navigateToPipeline(page);
     await apiLogin(request);
 
     await createDealViaUI(page, {

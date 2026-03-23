@@ -3,7 +3,7 @@
  *
  * Shared browser context and page for serial pipeline tests.
  * Same pattern as e2e/demos/fixtures.ts — one persistent session
- * across all tests in a worker.
+ * across all tests in a worker. Login once, reuse throughout.
  */
 import { test as base, type BrowserContext, type Page } from "@playwright/test";
 
@@ -15,7 +15,7 @@ export const test = base.extend({
     if (!_sharedContext) {
       _sharedContext = await browser.newContext({
         storageState: testInfo.project.use.storageState,
-        viewport: testInfo.project.use.viewport ?? { width: 1440, height: 900 },
+        viewport: testInfo.project.use.viewport,
         baseURL: testInfo.project.use.baseURL,
       });
     }

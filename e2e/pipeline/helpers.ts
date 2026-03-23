@@ -132,13 +132,13 @@ export async function moveDealViaContextMenu(
   await menuBtn.click({ force: true });
   await page.waitForTimeout(500);
 
-  // Click "Move to..." submenu trigger
+  // Hover "Move to..." to open the submenu (radix sub-menus open on hover)
   const moveToTrigger = page.getByText("Move to...");
   await expect(moveToTrigger).toBeVisible({ timeout: t(3_000) });
-  await moveToTrigger.click();
-  await page.waitForTimeout(300);
+  await moveToTrigger.hover();
+  await page.waitForTimeout(500);
 
-  // Click the target stage
+  // Click the target stage in the submenu
   const stageItem = page.getByRole("menuitem", { name: targetStage });
   await expect(stageItem).toBeVisible({ timeout: t(3_000) });
   await stageItem.click();
