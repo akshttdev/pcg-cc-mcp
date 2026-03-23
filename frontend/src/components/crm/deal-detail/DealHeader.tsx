@@ -94,7 +94,7 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete, isExpanded, onT
 
         <div className="flex items-center gap-1 shrink-0">
           {onToggleExpand && (
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onToggleExpand} title={isExpanded ? 'Minimize' : 'Expand'}>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onToggleExpand} title={isExpanded ? 'Minimize' : 'Expand'} data-testid="deal-detail-expand">
               {isExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
             </Button>
           )}

@@ -97,9 +97,11 @@ test.describe("DL-1: Create and track a deal through the pipeline", () => {
 
   test("view details — And: can expand to full dialog mode", async ({ page }) => {
     test.setTimeout(30_000);
-    const panel = page.locator('[role="dialog"]').last();
-
-    test.fixme(true, "Expand/minimize toggle is icon-only — needs data-testid='deal-detail-expand'");
+    // BUG: Sheet→Dialog expand transition closes the panel because Sheet's
+    // onOpenChange(false) fires during unmount, calling onClose() which sets
+    // isOpen=false before Dialog mounts. Expand button exists (testid works)
+    // but the component transition is broken.
+    test.fixme(true, "Sheet→Dialog expand transition closes panel — onOpenChange race condition");
 
     // Close panel
     await page.keyboard.press("Escape");
