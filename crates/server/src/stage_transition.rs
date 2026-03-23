@@ -100,10 +100,18 @@ pub struct ValidationWarning {
 
 /// Load and parse stage_config JSON from a CrmPipelineStage.
 pub fn parse_stage_config(stage: &CrmPipelineStage) -> Option<StageConfig> {
-    stage
-        .stage_config
-        .as_deref()
-        .and_then(|json| serde_json::from_str(json).ok())
+    stage.stage_config.as_deref().and_then(|json| {
+        serde_json::from_str(json)
+            .map_err(|e| {
+                tracing::warn!(
+                    "[StageTransition] Failed to parse stage_config for stage '{}' (id={}): {}",
+                    stage.name,
+                    stage.id,
+                    e
+                );
+            })
+            .ok()
+    })
 }
 
 /// Unified stage transition processor.
@@ -113,6 +121,14 @@ pub fn parse_stage_config(stage: &CrmPipelineStage) -> Option<StageConfig> {
 /// 1. Exit validation (soft warnings, not blocking)
 /// 2. Entry actions (agent triggers, review tasks, delivery deal creation)
 /// 3. Won transition handling (deduplicated)
+///
+/// The processor merges two config sources:
+/// - **Explicit** `on_enter_actions` / `on_exit_validations` (set via migration or raw JSON)
+/// - **Derived** from simple UI fields (`assigned_agent`, `required_fields`, `approval_gate`)
+///
+/// Explicit actions always take priority. Derived actions only fire when the
+/// explicit arrays don't already cover the same intent (e.g., if `on_enter_actions`
+/// already contains a `TriggerAgent`, the `assigned_agent` field won't add a duplicate).
 pub async fn process_transition(
     pool: &SqlitePool,
     deal: &CrmDeal,
@@ -127,9 +143,10 @@ pub async fn process_transition(
     let to_config = parse_stage_config(to_stage);
     let from_config = from_stage.and_then(parse_stage_config);
 
-    // ── 1. Exit validation (soft: collect warnings, don't block) ────────
+    // ── 1. Exit validation (explicit on_exit_validations + derived from required_fields) ──
     if let Some(ref config) = from_config {
-        for validation in &config.on_exit_validations {
+        let effective_validations = build_effective_exit_validations(config);
+        for validation in &effective_validations {
             match validation {
                 StageValidation::RequireField { field, message } => {
                     let value = match field.as_str() {
@@ -142,6 +159,15 @@ pub async fn process_transition(
                                 ""
                             }
                         }
+                        "crm_contact_id" => {
+                            if deal.crm_contact_id.is_some() {
+                                "set"
+                            } else {
+                                ""
+                            }
+                        }
+                        "proposal_text" => deal.proposal_text.as_deref().unwrap_or(""),
+                        "deck_url" => deal.deck_url.as_deref().unwrap_or(""),
                         _ => "",
                     };
                     if value.trim().is_empty() {
@@ -181,12 +207,22 @@ pub async fn process_transition(
         }
     }
 
-    // ── 3. Entry actions ────────────────────────────────────────────────
+    // ── 3. Entry actions (explicit on_enter_actions + derived from UI fields) ──
     if let Some(ref config) = to_config {
-        // Config-driven entry actions
-        for action in &config.on_enter_actions {
+        let effective_actions = build_effective_entry_actions(config);
+
+        for action in &effective_actions {
             match action {
                 StageAction::TriggerAgent { agent, flow_type } => {
+                    const KNOWN_AGENTS: &[&str] =
+                        &["scout", "astra", "cash", "lux", "nora", "assistant"];
+                    if !KNOWN_AGENTS.contains(&agent.to_lowercase().as_str()) {
+                        tracing::warn!(
+                            "[StageTransition] Unknown agent '{}' in stage config — skipping",
+                            agent
+                        );
+                        continue;
+                    }
                     if config.auto_trigger {
                         match schedule_agent_flow(
                             pool,
@@ -235,6 +271,97 @@ pub async fn process_transition(
         agent_flow_id,
         cancel_deadline,
         actions_taken,
+    }
+}
+
+// ── Effective Action/Validation Builders ─────────────────────────────────────
+
+/// Build the effective list of entry actions by merging explicit `on_enter_actions`
+/// with actions derived from simple UI fields (`assigned_agent`, `approval_gate`).
+///
+/// Rules:
+/// - If `on_enter_actions` already contains a `TriggerAgent`, don't add another from `assigned_agent`
+/// - If `on_enter_actions` already contains a `CreateReviewTask`, don't add another from `approval_gate`
+/// - Explicit actions always come first (preserve ordering from migration/admin JSON)
+fn build_effective_entry_actions(config: &StageConfig) -> Vec<StageAction> {
+    let mut actions = config.on_enter_actions.clone();
+
+    let has_trigger_agent = actions
+        .iter()
+        .any(|a| matches!(a, StageAction::TriggerAgent { .. }));
+    let has_review_task = actions
+        .iter()
+        .any(|a| matches!(a, StageAction::CreateReviewTask { .. }));
+
+    // Derive TriggerAgent from assigned_agent + auto_trigger
+    if !has_trigger_agent {
+        if let Some(ref agent) = config.assigned_agent {
+            if config.auto_trigger && !agent.is_empty() {
+                actions.push(StageAction::TriggerAgent {
+                    agent: agent.clone(),
+                    flow_type: agent_default_flow_type(agent),
+                });
+            }
+        }
+    }
+
+    // Derive CreateReviewTask from approval_gate
+    if !has_review_task && config.approval_gate {
+        actions.push(StageAction::CreateReviewTask {
+            description: "Approval required before deal can leave this stage".to_string(),
+        });
+    }
+
+    actions
+}
+
+/// Build the effective list of exit validations by merging explicit `on_exit_validations`
+/// with validations derived from `required_fields`.
+///
+/// Rules:
+/// - If `on_exit_validations` already contains a `RequireField` for a given field, skip it
+/// - Explicit validations come first
+fn build_effective_exit_validations(config: &StageConfig) -> Vec<StageValidation> {
+    let mut validations = config.on_exit_validations.clone();
+
+    let existing_fields: Vec<String> = validations
+        .iter()
+        .filter_map(|v| match v {
+            StageValidation::RequireField { field, .. } => Some(field.clone()),
+            _ => None,
+        })
+        .collect();
+
+    for field in &config.required_fields {
+        if !existing_fields.iter().any(|f| f == field) {
+            let label = match field.as_str() {
+                "description" => "Operator context (description)",
+                "amount" => "Deal amount",
+                "crm_contact_id" => "Contact",
+                "proposal_text" => "Proposal",
+                "deck_url" => "Deck",
+                other => other,
+            };
+            validations.push(StageValidation::RequireField {
+                field: field.clone(),
+                message: format!("{} is required before advancing", label),
+            });
+        }
+    }
+
+    validations
+}
+
+/// Map agent name to a sensible default flow_type when derived from the UI
+/// (the full seed configs specify explicit flow_types, but UI-only configs don't).
+fn agent_default_flow_type(agent: &str) -> String {
+    match agent.to_lowercase().as_str() {
+        "scout" => "research".to_string(),
+        "astra" => "business_analysis".to_string(),
+        "cash" => "proposal".to_string(),
+        "lux" => "deck".to_string(),
+        "nora" => "assistant".to_string(),
+        other => other.to_string(),
     }
 }
 
@@ -434,8 +561,10 @@ async fn schedule_agent_flow(
     flow_type: &str,
     cancel_window_secs: u32,
 ) -> anyhow::Result<(String, DateTime<Utc>)> {
+    // Clamp cancel window to reasonable bounds (0 = immediate, max 1 hour)
+    let clamped_window = cancel_window_secs.min(3600);
     let flow_id = DbUuid::new().to_string();
-    let deadline = Utc::now() + chrono::Duration::seconds(cancel_window_secs as i64);
+    let deadline = Utc::now() + chrono::Duration::seconds(clamped_window as i64);
 
     // We need a task_id for the agent_flows table. Use the deal's linked task if any,
     // otherwise create a placeholder UUID.
