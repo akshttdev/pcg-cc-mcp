@@ -208,9 +208,9 @@ function ActiveAutomations({
       <div className="flex items-center gap-2 text-sm font-medium">
         <Info className="h-4 w-4 text-muted-foreground" />
         Active Automations
-        <Badge variant="secondary" className="text-[10px]">read-only</Badge>
+        <Badge variant="secondary" className="text-xs">read-only</Badge>
       </div>
-      <p className="text-[11px] text-muted-foreground -mt-2">
+      <p className="text-xs text-muted-foreground -mt-2">
         These are configured via stage data and control pipeline behavior.
         Edit simple settings above; advanced rules require database changes.
       </p>
@@ -218,7 +218,7 @@ function ActiveAutomations({
       {hasOwner && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span className="font-medium">Stage Owner:</span>
-          <Badge variant="outline" className="text-[10px]">{stageOwner!.type}</Badge>
+          <Badge variant="outline" className="text-xs">{stageOwner!.type}</Badge>
           {stageOwner!.label}
         </div>
       )}
@@ -231,7 +231,7 @@ function ActiveAutomations({
           </Label>
           <div className="space-y-1 ml-1">
             {onEnterActions!.map((action, i) => (
-              <div key={i} className="flex items-start gap-1.5 text-[11px] text-muted-foreground bg-muted/50 rounded px-2 py-1">
+              <div key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1">
                 <span className="text-blue-500 mt-0.5">→</span>
                 <span>{formatAction(action)}</span>
               </div>
@@ -248,7 +248,7 @@ function ActiveAutomations({
           </Label>
           <div className="space-y-1 ml-1">
             {onExitValidations!.map((v, i) => (
-              <div key={i} className="flex items-start gap-1.5 text-[11px] text-muted-foreground bg-muted/50 rounded px-2 py-1">
+              <div key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1">
                 <span className="text-amber-500 mt-0.5">⚠</span>
                 <span>{formatValidation(v)}</span>
               </div>
