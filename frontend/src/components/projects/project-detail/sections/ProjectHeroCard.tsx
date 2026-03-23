@@ -77,7 +77,7 @@ export function ProjectHeroCard({
           </div>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-4">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/70 bg-white/80 text-2xl font-semibold text-foreground shadow-sm">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-background/70 bg-background/80 text-2xl font-semibold text-foreground shadow-sm">
                 {brandInitials}
               </div>
               <div>
@@ -99,21 +99,21 @@ export function ProjectHeroCard({
               </div>
             </div>
             <div className="grid w-full gap-3 sm:grid-cols-3 lg:w-auto">
-              <div className="rounded-2xl bg-white/80 p-4 text-center shadow-sm">
+              <div className="rounded-2xl bg-background/80 p-4 text-center shadow-sm">
                 <p className="text-xs uppercase text-muted-foreground">Boards</p>
                 <p className="text-2xl font-semibold text-foreground">
                   {totalBoards}
                 </p>
                 <p className="text-xs text-muted-foreground">Active lanes</p>
               </div>
-              <div className="rounded-2xl bg-white/80 p-4 text-center shadow-sm">
+              <div className="rounded-2xl bg-background/80 p-4 text-center shadow-sm">
                 <p className="text-xs uppercase text-muted-foreground">Active Tasks</p>
                 <p className="text-2xl font-semibold text-foreground">
                   {activeTasks}
                 </p>
                 <p className="text-xs text-muted-foreground">In flight</p>
               </div>
-              <div className="rounded-2xl bg-white/80 p-4 text-center shadow-sm">
+              <div className="rounded-2xl bg-background/80 p-4 text-center shadow-sm">
                 <p className="text-xs uppercase text-muted-foreground">Assets</p>
                 <p className="text-2xl font-semibold text-foreground">
                   {totalAssets}

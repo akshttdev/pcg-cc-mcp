@@ -53,7 +53,7 @@ const platformConfig: Record<SocialPlatform, {
   twitter: {
     name: 'X (Twitter)',
     icon: <Twitter className="h-5 w-5" />,
-    color: 'text-black',
+    color: 'text-foreground',
     bgColor: 'bg-black',
     description: 'Real-time updates & engagement',
   },
@@ -67,7 +67,7 @@ const platformConfig: Record<SocialPlatform, {
   tiktok: {
     name: 'TikTok',
     icon: <span className="text-lg font-bold">TT</span>,
-    color: 'text-black',
+    color: 'text-foreground',
     bgColor: 'bg-black',
     description: 'Short-form video content',
   },
@@ -95,7 +95,7 @@ const platformConfig: Record<SocialPlatform, {
   threads: {
     name: 'Threads',
     icon: <span className="text-lg font-bold">@</span>,
-    color: 'text-black',
+    color: 'text-foreground',
     bgColor: 'bg-black',
     description: 'Text-based conversations',
   },
@@ -217,6 +217,7 @@ function ConnectedAccountCard({
                 size="icon"
                 onClick={handleRefresh}
                 disabled={isRefreshing}
+                title="Refresh"
               >
                 <RefreshCw
                   className={cn('h-4 w-4', isRefreshing && 'animate-spin')}
@@ -229,6 +230,7 @@ function ConnectedAccountCard({
                 size="icon"
                 className="text-destructive hover:text-destructive"
                 onClick={onDisconnect}
+                title="Disconnect"
               >
                 <Unlink className="h-4 w-4" />
               </Button>

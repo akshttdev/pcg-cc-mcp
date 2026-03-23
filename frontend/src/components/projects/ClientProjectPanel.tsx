@@ -142,7 +142,7 @@ export function ClientProjectPanel({ projectId }: ClientProjectPanelProps) {
             {/* Brand identity */}
             <div className="flex items-center gap-4">
               <div
-                className="flex h-14 w-14 items-center justify-center rounded-2xl border-2 border-white/60 bg-white/80 text-xl font-bold text-foreground shadow-sm shrink-0"
+                className="flex h-14 w-14 items-center justify-center rounded-2xl border-2 border-background/60 bg-background/80 text-xl font-bold text-foreground shadow-sm shrink-0"
                 style={{ borderColor: hexToRgba(primaryColor, 0.4) }}
               >
                 {brandInitials}

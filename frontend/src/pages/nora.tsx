@@ -113,7 +113,7 @@ export function NoraPage() {
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Header */}
-      <div className="border-b bg-white shadow-sm">
+      <div className="border-b bg-background shadow-sm">
         <div className="flex items-center justify-between p-6">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-purple-100 rounded-lg">

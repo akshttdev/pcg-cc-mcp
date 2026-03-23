@@ -136,7 +136,7 @@ export function ArtifactCard({
 
         <div className="absolute top-2 right-2 flex gap-1">
           {reviewStatus !== 'none' && reviewStatusIcons[reviewStatus] && (
-            <div className="bg-white rounded-full p-1 shadow">
+            <div className="bg-background rounded-full p-1 shadow">
               {reviewStatusIcons[reviewStatus]}
             </div>
           )}
@@ -157,6 +157,7 @@ export function ArtifactCard({
                 e.stopPropagation();
                 onPreview();
               }}
+              title="Preview"
             >
               <Eye className="h-4 w-4" />
             </Button>
@@ -169,6 +170,7 @@ export function ArtifactCard({
                 e.stopPropagation();
                 onDownload();
               }}
+              title="Download"
             >
               <Download className="h-4 w-4" />
             </Button>
@@ -181,6 +183,7 @@ export function ArtifactCard({
                 e.stopPropagation();
                 onPin();
               }}
+              title={isPinned ? 'Unpin' : 'Pin'}
             >
               <Pin className="h-4 w-4" />
             </Button>

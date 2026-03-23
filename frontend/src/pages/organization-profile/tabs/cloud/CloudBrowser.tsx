@@ -389,7 +389,7 @@ function FilePreviewModal({ file, orgId, onClose }: { file: CloudFile; orgId: st
             <iframe
               src={previewUrl}
               title={file.file_name}
-              className="w-full h-full min-h-[75vh] bg-white"
+              className="w-full h-full min-h-[75vh] bg-white dark:bg-gray-950"
               sandbox="allow-same-origin"
             />
           )}
