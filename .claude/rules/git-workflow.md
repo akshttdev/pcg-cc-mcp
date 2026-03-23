@@ -18,8 +18,12 @@
 - **Only push when the user explicitly says to.** Don't auto-push after commits.
 - **Run `/check` before every push.** All checks must pass. Don't push with known failures.
 - **Never push or merge to main without explicit user approval.**
-- `/check` runs: `cargo fmt --check`, `cargo clippy` (with CI flags from `ci.yml`), `npx tsc --noEmit`, `npx eslint`, `npm run generate-types:check`
-- **Before fmt check, always run `cargo fmt --all` first.** The `--check` flag uses caching that can miss files. Run format unconditionally, then check if there are uncommitted changes. If `git diff` shows changes after formatting, stage and commit them before the check passes.
+- `/check` runs all checks below. Or run manually from **project root**:
+  1. `cargo fmt --all` then `cargo fmt --all -- --check` (format first — `--check` has caching that misses files)
+  2. `flox activate -- cargo clippy --all --all-targets -- -D warnings [flags from ci.yml]`
+  3. `cd frontend && npx tsc --noEmit` (from `frontend/`)
+  4. `cd frontend && npx eslint . --ext ts,tsx` (from `frontend/`)
+  5. `npm run generate-types:check` (from **project root**, not `frontend/`)
 
 ## Pull Requests
 
