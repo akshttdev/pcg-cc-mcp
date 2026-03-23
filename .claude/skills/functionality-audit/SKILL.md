@@ -216,7 +216,7 @@ Record the full click path (e.g., "Sidebar → More → [menu item] → [sub-opt
 - Fill any required forms
 - Submit and wait for response
 - Take snapshot of result — did the action complete?
-- Check persistence: navigate away and back — is the result still there?
+- **Verify persistence from a different view**: navigate away from the current panel/page, then navigate to the view that should reflect the change (e.g., after moving a deal in the detail panel, close it and check the kanban board). Don't trust the immediate UI response — verify the source of truth. A mutation that returns success but doesn't update the list/board/parent view is a bug.
 
 #### Empty State vs Broken
 - If the feature shows an empty state ("No items", "No data"), this is likely **correct behavior** with no seed data — not a bug
@@ -349,6 +349,7 @@ Add a summary section to the original planning file:
 - Do NOT skip features — every discrete feature in the plan gets a verdict.
 - Always confirm worktree before making changes.
 - When Playwright walkthrough is used, check `browser_console_messages level: error` after every interaction — not just page loads. A "zero console errors" claim requires checking after opening panels, switching tabs, and submitting forms, not just after navigation.
+- **Qualify absolute claims.** Never state "zero errors", "not implemented", or "all working" without listing the specific checks performed. Instead of "zero console errors on all pages", say "zero console errors after: page load, deal panel open, tab switch, stage move, panel close." This prevents false confidence from incomplete testing.
 - If a feature has no frontend surface, still verify the backend wiring fully.
 - Be honest about STUB verdicts — a handler that compiles but does nothing useful is a STUB, not PARTIAL.
 - **False DONE is the highest-priority finding** — a feature the team thinks works but doesn't is worse than an honest STUB.

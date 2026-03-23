@@ -181,7 +181,7 @@ For each journey, run through its script step by step using Playwright. The scri
 
 ### Execution rules
 
-1. **FIND steps**: Navigate from the dashboard. Record the exact click path and click count. Take a snapshot at the destination. If the feature can't be found within 5 clicks, flag as PAIN POINT.
+1. **FIND steps**: Navigate from the dashboard. Record the exact click path and click count. Take a snapshot at the destination AND a screenshot (snapshots find elements; screenshots reveal what the user actually sees — clipped content, truncated text, and layout issues are invisible in snapshots). If the feature can't be found within 5 clicks, flag as PAIN POINT.
 
 2. **DO steps**: Actually perform the interaction — click buttons, fill forms with realistic test data, submit, select options, drag items. If a form needs data, use descriptive test values (e.g., title: "Test deal from UX audit", not "asdf"). Use `browser_fill_form` for form fields, `browser_click` for buttons, `browser_select_option` for dropdowns.
 
@@ -195,8 +195,10 @@ For each journey, run through its script step by step using Playwright. The scri
 4. **VERIFY steps**: After each action, check:
    - Did a toast/notification confirm success? (snapshot for toast, or check if toast region updated)
    - Did the UI update? (take snapshot, compare to before)
-   - If something was created, can you find it? (navigate to the list/page where it should appear)
-   - Check `browser_console_messages level: error` after every submit — new console errors during a user action are a finding
+   - **Verify from a different view**: close the current panel/dialog and navigate to where the change should be visible (e.g., after moving a deal in the detail panel, close it and check the kanban board). A mutation that succeeds in the panel but doesn't update the parent view is a BLOCKER.
+   - **Check for silent side effects**: compare key values (status, probability, dates, counts) before and after the action. Changes the user wasn't notified about are findings.
+   - **Check data coherence**: does the data shown make sense for the current state? A "Closed" date on an active deal, an invoice button on a Lead, a 100% probability on a non-Won deal — these are semantically wrong even if the UI renders fine.
+   - Check `browser_console_messages level: error` after every interaction — not just submissions. Opening panels, switching tabs, toggling modes can all trigger errors.
 
 4. **BREAK steps**: Try to trigger error states:
    - Submit forms with empty required fields — does validation appear inline?

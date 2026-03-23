@@ -61,6 +61,7 @@ For each sprint item, check for:
    - **Frontend→Route**: New component exists → imported by a page → page has a route → route reachable from sidebar/tabs/links. A component with no mount point is dead code.
    - **Types→Consumer**: New Rust struct with `#[derive(TS)]` → type appears in `shared/types.ts` OR manually defined in `frontend/src/types/`. If the struct lives outside `crates/db/` (e.g., `crates/server/`), it won't auto-generate — flag the need for manual frontend type definition.
 8. **Type pipeline check** — If the plan adds `#[derive(TS)]` types in `crates/server/src/` (not `crates/db/`), flag that these will NOT auto-export to `shared/types.ts`. The `npm run generate-types` script only collects from `crates/db/bindings/`. Plan must include manual type definitions in `frontend/src/types/` for server-crate types.
+9. **Cache invalidation for multi-view data** — If a feature modifies data that is displayed in multiple views (e.g., a deal detail panel AND a kanban board), verify the plan specifies how the other views stay in sync. Look for: `queryClient.invalidateQueries` in the mutation's `onSuccess`, or optimistic updates via `setQueryData`. If the plan says "user moves deal in panel, board updates" but doesn't mention cache invalidation, flag it — this is a common source of "mutation succeeds but UI doesn't update" bugs.
 
 ## Phase 4: E2E Test & Frontend Verification Audit
 
