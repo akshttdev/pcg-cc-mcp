@@ -467,6 +467,17 @@ Replace hardcoded `getStageOwner()` (CrmPipelineBoard.tsx lines 38-66) with `sta
 
 ---
 
+## Functionality Audit (2026-03-23)
+
+**Overall**: SHIP WITH CAVEATS
+**Report**: `planning/reviews/2026-03-23--review--functionality-audit-pipeline-ops.md`
+**Features**: 29 WORKING, 1 NOT WIRED, 1 PARTIAL
+**Plan Accuracy**: 29/31 features matched plan status (2 false DONE claims — both low impact)
+**Action Items**: 0 Must Fix, 2 Should Fix, 1 Nice to Have
+**False DONEs**: CrmPipelineSettings not mounted in any route; type pipeline uses manual duplicates
+
+---
+
 ## Risk Mitigation
 
 | Risk | Mitigation |
