@@ -112,7 +112,7 @@ export function RunsTab() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-6 text-[10px] gap-1 ml-1"
+                        className="h-6 text-xs gap-1 ml-1"
                         onClick={() => navigate(`/workflows?tab=staging&run=${run.id}`)}
                       >
                         <ClipboardCheck className="h-3 w-3" />

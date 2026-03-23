@@ -135,17 +135,17 @@ export function PipelineNodeCard({ node, isLast }: { node: PipelineNode; isLast:
       <div className={`relative border rounded-lg p-3 w-44 shrink-0 ${colorClass}`}>
         {node.parallel && (
           <div className="absolute -top-2 right-2">
-            <Badge variant="outline" className="text-[10px] px-1 py-0">parallel</Badge>
+            <Badge variant="outline" className="text-xs px-1 py-0">parallel</Badge>
           </div>
         )}
         <div className="font-medium text-sm leading-tight mb-1">{node.label}</div>
         {node.agent && (
-          <div className="text-[10px] opacity-70 mb-1.5">{node.agent}</div>
+          <div className="text-xs opacity-70 mb-1.5">{node.agent}</div>
         )}
         {node.type === 'human' && (
-          <div className="text-[10px] opacity-70 mb-1.5">Human Gate</div>
+          <div className="text-xs opacity-70 mb-1.5">Human Gate</div>
         )}
-        <div className="text-[10px] opacity-60 leading-snug line-clamp-3">{node.description}</div>
+        <div className="text-xs opacity-60 leading-snug line-clamp-3">{node.description}</div>
         {node.tools && node.tools.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-2">
             {node.tools.map((t) => (
@@ -334,10 +334,10 @@ export function TemplatePipelineView({ template }: { template: WorkflowTemplate 
                         )}
                         <div className="font-medium text-xs leading-tight mb-1">{task.title}</div>
                         {task.agent_role && (
-                          <div className="text-[10px] opacity-60 capitalize">{task.agent_role}</div>
+                          <div className="text-xs opacity-60 capitalize">{task.agent_role}</div>
                         )}
                         {task.task_type === 'human_review' && (
-                          <div className="text-[10px] opacity-60">Human Review</div>
+                          <div className="text-xs opacity-60">Human Review</div>
                         )}
                         {(task.tags?.length ?? 0) > 0 && (
                           <div className="flex flex-wrap gap-0.5 mt-1.5">
@@ -416,7 +416,7 @@ export function LegacyPipelinesView({ orgId: _orgId }: { orgId: string }) {
             }`}
           >
             <div className="font-medium leading-tight">{p.name}</div>
-            <div className="text-[10px] opacity-60 mt-0.5">{p.category}</div>
+            <div className="text-xs opacity-60 mt-0.5">{p.category}</div>
           </button>
         ))}
       </div>

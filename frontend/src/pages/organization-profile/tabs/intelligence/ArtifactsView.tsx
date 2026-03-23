@@ -117,7 +117,7 @@ export function ArtifactsView({ orgId }: { orgId: string }) {
                     <div className="min-w-0">
                       <p className="text-sm font-medium truncate">{artifact.title || 'Untitled Artifact'}</p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <Badge variant="outline" className="text-[10px]">{artifact.artifact_type}</Badge>
+                        <Badge variant="outline" className="text-xs">{artifact.artifact_type}</Badge>
                         {meta.step_id && <span className="text-xs text-muted-foreground">{meta.step_id.replace(/_/g, ' ')}</span>}
                       </div>
                     </div>
@@ -223,14 +223,14 @@ export function DataSourcesIntelView({ orgId, projectEntries }: { orgId: string;
             <Card key={type} className="bg-card/80 border-border/50">
               <CardContent className="pt-4 pb-4">
                 <p className="text-xs text-muted-foreground capitalize">{type.replace(/_/g, ' ')}</p>
-                <p className="text-2xl font-bold mt-1">{count as number}</p>
+                <p className="text-2xl font-semibold mt-1">{count as number}</p>
               </CardContent>
             </Card>
           ))}
           <Card className="bg-primary/5 border-primary/20">
             <CardContent className="pt-4 pb-4">
               <p className="text-xs text-muted-foreground">Total Files</p>
-              <p className="text-2xl font-bold mt-1 text-primary">{sources.length}</p>
+              <p className="text-2xl font-semibold mt-1 text-primary">{sources.length}</p>
             </CardContent>
           </Card>
         </CardGrid>
@@ -294,7 +294,7 @@ export function ArtifactsIntelView({ projectEntries }: { projectEntries: { id: s
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate">{a.title}</p>
                   {a.summary && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{a.summary}</p>}
-                  <Link to={`/projects/${a.projectId}`} className="text-[10px] text-muted-foreground hover:text-foreground mt-1 block">{a.projectName}</Link>
+                  <Link to={`/projects/${a.projectId}`} className="text-xs text-muted-foreground hover:text-foreground mt-1 block">{a.projectName}</Link>
                 </div>
               </div>
             </CardContent>

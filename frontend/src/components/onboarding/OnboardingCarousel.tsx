@@ -337,7 +337,7 @@ export function OnboardingCarousel({
               >
                 <SegIcon className="h-4 w-4" />
               </div>
-              <span className="text-[10px] text-muted-foreground truncate w-full text-center">
+              <span className="text-xs text-muted-foreground truncate w-full text-center">
                 {segment.segment_type.charAt(0).toUpperCase() + segment.segment_type.slice(1)}
               </span>
             </button>

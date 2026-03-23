@@ -105,7 +105,7 @@ export function OrgDeliverablesPage() {
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
       <div>
-        <h1 className="text-2xl font-semibold flex items-center gap-2">
+        <h1 className="text-2xl font-bold flex items-center gap-2">
           <Package className="h-6 w-6 text-muted-foreground" />
           Deliverables
         </h1>

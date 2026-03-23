@@ -141,23 +141,23 @@ export function WorkflowRunsPanel({
             <div className="grid grid-cols-5 gap-3 px-6 py-3 border-b bg-muted/30">
               <div className="text-center">
                 <div className="text-lg font-semibold">{totalRuns}</div>
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Total Runs</div>
+                <div className="text-xs text-muted-foreground uppercase tracking-wider">Total Runs</div>
               </div>
               <div className="text-center">
                 <div className="text-lg font-semibold">{formatCost(totalCostMicros)}</div>
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Total Cost</div>
+                <div className="text-xs text-muted-foreground uppercase tracking-wider">Total Cost</div>
               </div>
               <div className="text-center">
                 <div className="text-lg font-semibold">{totalRecords}</div>
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Records Staged</div>
+                <div className="text-xs text-muted-foreground uppercase tracking-wider">Records Staged</div>
               </div>
               <div className="text-center">
                 <div className="text-lg font-semibold">{(duplicateRate * 100).toFixed(0)}%</div>
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Duplicate Rate</div>
+                <div className="text-xs text-muted-foreground uppercase tracking-wider">Duplicate Rate</div>
               </div>
               <div className="text-center">
                 <div className="text-lg font-semibold">{formatDuration(Math.round(avgDuration))}</div>
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Avg Duration</div>
+                <div className="text-xs text-muted-foreground uppercase tracking-wider">Avg Duration</div>
               </div>
             </div>
           )}
@@ -204,12 +204,12 @@ export function WorkflowRunsPanel({
                           <span className="text-sm font-medium truncate">{run.workflow_name}</span>
                           <Badge
                             variant="outline"
-                            className={cn('text-[10px] shrink-0', statusConfig.bg, statusConfig.color)}
+                            className={cn('text-xs shrink-0', statusConfig.bg, statusConfig.color)}
                           >
                             {statusConfig.label}
                           </Badge>
                         </div>
-                        <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
+                        <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                           <span className="flex items-center gap-1">
                             <Clock className="h-3 w-3" />
                             {formatRelativeDate(run.started_at)}

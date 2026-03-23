@@ -67,7 +67,7 @@ export function CallSchedulingSection({
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[10px] text-muted-foreground uppercase">Date</label>
+                <label className="text-xs text-muted-foreground uppercase">Date</label>
                 <input
                   type="date"
                   defaultValue={date || ''}
@@ -76,7 +76,7 @@ export function CallSchedulingSection({
                 />
               </div>
               <div>
-                <label className="text-[10px] text-muted-foreground uppercase">Method</label>
+                <label className="text-xs text-muted-foreground uppercase">Method</label>
                 <select
                   defaultValue={method}
                   className="w-full h-8 px-2 text-sm border rounded bg-background"
@@ -89,7 +89,7 @@ export function CallSchedulingSection({
               </div>
             </div>
             <div>
-              <label className="text-[10px] text-muted-foreground uppercase">Status</label>
+              <label className="text-xs text-muted-foreground uppercase">Status</label>
               <select
                 defaultValue={status}
                 className="w-full h-8 px-2 text-sm border rounded bg-background"
@@ -137,12 +137,12 @@ export function CallSchedulingSection({
         actions={
           <div className="flex items-center gap-2">
             {method && date && (
-              <span className="text-[10px] text-muted-foreground">{method}</span>
+              <span className="text-xs text-muted-foreground">{method}</span>
             )}
             <Badge
               variant="outline"
               className={cn(
-                'text-[10px]',
+                'text-xs',
                 status === 'completed'
                   ? 'text-green-500 border-green-500/30'
                   : status === 'cancelled'

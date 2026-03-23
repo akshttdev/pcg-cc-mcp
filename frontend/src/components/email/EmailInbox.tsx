@@ -150,7 +150,7 @@ export function EmailInbox({ projectId, accountId }: EmailInboxProps) {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Total</p>
-                  <p className="text-2xl font-bold">{stats.total}</p>
+                  <p className="text-2xl font-semibold">{stats.total}</p>
                 </div>
               </div>
             </CardContent>
@@ -163,7 +163,7 @@ export function EmailInbox({ projectId, accountId }: EmailInboxProps) {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Unread</p>
-                  <p className="text-2xl font-bold">{stats.unread}</p>
+                  <p className="text-2xl font-semibold">{stats.unread}</p>
                 </div>
               </div>
             </CardContent>
@@ -176,7 +176,7 @@ export function EmailInbox({ projectId, accountId }: EmailInboxProps) {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Starred</p>
-                  <p className="text-2xl font-bold">{stats.starred}</p>
+                  <p className="text-2xl font-semibold">{stats.starred}</p>
                 </div>
               </div>
             </CardContent>
@@ -189,7 +189,7 @@ export function EmailInbox({ projectId, accountId }: EmailInboxProps) {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Needs Response</p>
-                  <p className="text-2xl font-bold">{stats.needs_response}</p>
+                  <p className="text-2xl font-semibold">{stats.needs_response}</p>
                 </div>
               </div>
             </CardContent>

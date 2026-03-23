@@ -75,7 +75,7 @@ function AllowlistEntry({
           <code className="text-sm font-mono truncate">{entry.pattern}</code>
           <PatternTypeBadge type={entry.pattern_type} />
           {entry.is_global && (
-            <Badge variant="outline" className="text-[10px]">
+            <Badge variant="outline" className="text-xs">
               Global
             </Badge>
           )}

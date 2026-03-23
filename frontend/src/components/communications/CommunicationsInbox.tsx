@@ -168,7 +168,7 @@ export function CommunicationsInbox({ projectId }: CommunicationsInboxProps) {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Total Calls</p>
-                <p className="text-2xl font-bold">{callStats?.total || 0}</p>
+                <p className="text-2xl font-semibold">{callStats?.total || 0}</p>
               </div>
             </div>
           </CardContent>
@@ -181,7 +181,7 @@ export function CommunicationsInbox({ projectId }: CommunicationsInboxProps) {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Inbound</p>
-                <p className="text-2xl font-bold">{callStats?.inbound || 0}</p>
+                <p className="text-2xl font-semibold">{callStats?.inbound || 0}</p>
               </div>
             </div>
           </CardContent>
@@ -194,7 +194,7 @@ export function CommunicationsInbox({ projectId }: CommunicationsInboxProps) {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">SMS Messages</p>
-                <p className="text-2xl font-bold">{smsStats?.total || 0}</p>
+                <p className="text-2xl font-semibold">{smsStats?.total || 0}</p>
               </div>
             </div>
           </CardContent>
@@ -207,7 +207,7 @@ export function CommunicationsInbox({ projectId }: CommunicationsInboxProps) {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Unread SMS</p>
-                <p className="text-2xl font-bold">{smsStats?.unread || 0}</p>
+                <p className="text-2xl font-semibold">{smsStats?.unread || 0}</p>
               </div>
             </div>
           </CardContent>

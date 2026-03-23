@@ -178,7 +178,7 @@ function ActivityItem({ activity }: { activity: CrmActivityRecord }) {
           <span className="text-sm font-medium truncate">
             {activity.subject || formatType(activity.activity_type)}
           </span>
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">
+          <Badge variant="outline" className="text-xs px-1.5 py-0 shrink-0">
             {formatDistanceToNow(new Date(activity.activity_at), { addSuffix: true })}
           </Badge>
         </div>
@@ -193,7 +193,7 @@ function ActivityItem({ activity }: { activity: CrmActivityRecord }) {
           </p>
         )}
         {activity.duration_minutes && (
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             {activity.duration_minutes} min
           </span>
         )}

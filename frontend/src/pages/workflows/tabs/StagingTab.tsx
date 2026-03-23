@@ -499,7 +499,7 @@ export function StagingTab() {
                     <CardTitle className="text-sm">
                       {group.workflowName || 'Workflow Run'}
                     </CardTitle>
-                    <Badge variant="outline" className="text-[10px]">
+                    <Badge variant="outline" className="text-xs">
                       {group.records.length} pending
                     </Badge>
                   </div>
@@ -521,7 +521,7 @@ export function StagingTab() {
                           rejected: 'text-red-600',
                         };
                         return (
-                          <span key={status} className={`text-[10px] ${statusColors[status] || 'text-muted-foreground'}`}>
+                          <span key={status} className={`text-xs ${statusColors[status] || 'text-muted-foreground'}`}>
                             {count} {status}
                           </span>
                         );
@@ -555,7 +555,7 @@ export function StagingTab() {
                   <button
                     key={key}
                     onClick={() => updateParams({ filter: key })}
-                    className={`px-2 py-0.5 rounded text-[11px] transition-colors ${
+                    className={`px-2 py-0.5 rounded text-xs transition-colors ${
                       globalFilter === key
                         ? 'bg-primary text-primary-foreground'
                         : `hover:bg-muted text-muted-foreground ${color && globalFilter !== key ? color : ''}`
@@ -574,7 +574,7 @@ export function StagingTab() {
               <select
                 value={typeFilter}
                 onChange={(e) => updateParams({ type: e.target.value })}
-                className="h-6 text-[11px] rounded border bg-background px-1.5 text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                className="h-6 text-xs rounded border bg-background px-1.5 text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
               >
                 <option value="all">All types</option>
                 {uniqueTypes.map(type => (
@@ -590,7 +590,7 @@ export function StagingTab() {
               <select
                 value={workflowFilter}
                 onChange={(e) => updateParams({ wf: e.target.value })}
-                className="h-6 text-[11px] rounded border bg-background px-1.5 text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring max-w-[200px]"
+                className="h-6 text-xs rounded border bg-background px-1.5 text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring max-w-[200px]"
               >
                 <option value="all">All workflows</option>
                 {uniqueWorkflows.map(([id, name]) => (
@@ -600,14 +600,14 @@ export function StagingTab() {
             )}
 
             <div className="flex-1" />
-            <span className="text-[10px] text-muted-foreground">{filteredRecords.length} record{filteredRecords.length !== 1 ? 's' : ''}</span>
+            <span className="text-xs text-muted-foreground">{filteredRecords.length} record{filteredRecords.length !== 1 ? 's' : ''}</span>
           </div>
 
           {/* Common warnings banner -- collapse identical warnings */}
           {viewMode === 'table' && commonWarnings.length > 0 && (
             <div className="px-4 py-2 border-b bg-blue-50/60 dark:bg-blue-950/15 flex items-start gap-2">
               <Info className="h-3.5 w-3.5 text-blue-400 shrink-0 mt-0.5" />
-              <div className="text-[11px] text-blue-700 dark:text-blue-400">
+              <div className="text-xs text-blue-700 dark:text-blue-400">
                 {commonWarnings.map(w => (
                   <div key={w.msg}>{w.msg} <span className="text-blue-500">({w.count} records)</span></div>
                 ))}
@@ -616,7 +616,7 @@ export function StagingTab() {
           )}
 
           {/* Sortable table header */}
-          <div className="grid grid-cols-[20px_28px_minmax(120px,1fr)_minmax(100px,0.7fr)_80px_60px_60px_minmax(160px,1.5fr)_100px] gap-2 px-4 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider border-b bg-muted/10">
+          <div className="grid grid-cols-[20px_28px_minmax(120px,1fr)_minmax(100px,0.7fr)_80px_60px_60px_minmax(160px,1.5fr)_100px] gap-2 px-4 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider border-b bg-muted/10">
             <div />
             <div />
             <button onClick={() => handleSort('name')} className="flex items-center gap-1 hover:text-foreground text-left">
@@ -699,8 +699,8 @@ export function StagingTab() {
                     )}
                   </div>
 
-                  <span className="text-[10px] text-muted-foreground truncate">{workflowName || record.workflow_run_id.slice(0, 8)}</span>
-                  <span className="text-[10px] text-muted-foreground">{config?.label || record.target_type}</span>
+                  <span className="text-xs text-muted-foreground truncate">{workflowName || record.workflow_run_id.slice(0, 8)}</span>
+                  <span className="text-xs text-muted-foreground">{config?.label || record.target_type}</span>
 
                   <Badge
                     variant="outline"
@@ -715,7 +715,7 @@ export function StagingTab() {
                   </Badge>
 
                   {record.confidence != null ? (
-                    <Badge variant="outline" className={`text-[10px] ${
+                    <Badge variant="outline" className={`text-xs ${
                       record.confidence >= 0.8 ? 'text-green-600 border-green-200'
                         : record.confidence >= 0.5 ? 'text-amber-600 border-amber-200'
                         : 'text-red-600 border-red-200'
@@ -728,7 +728,7 @@ export function StagingTab() {
                     {detailFields.map(([key, value]) => {
                       const dv = value == null ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value);
                       return (
-                        <span key={key} className="text-[10px] text-muted-foreground truncate">
+                        <span key={key} className="text-xs text-muted-foreground truncate">
                           <span className="opacity-60">{key}:</span> {dv}
                         </span>
                       );
@@ -771,7 +771,7 @@ export function StagingTab() {
                         const isLong = dv.length > 80;
                         return (
                           <div key={key} className={isLong ? 'col-span-2 lg:col-span-3' : ''}>
-                            <dt className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                            <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                               {key.replace(/_/g, ' ')}
                               {schemaFields[key]?.required && <span className="text-red-400 ml-0.5">*</span>}
                             </dt>
@@ -792,7 +792,7 @@ export function StagingTab() {
                     {canEdit && missingFields.length > 0 && (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <button className="mt-2 flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+                          <button className="mt-2 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
                             <Plus className="h-3 w-3" /> Add field
                           </button>
                         </DropdownMenuTrigger>
@@ -805,14 +805,14 @@ export function StagingTab() {
                             >
                               <span>{fieldName.replace(/_/g, ' ')}</span>
                               {fieldDef.required && <span className="text-red-400 ml-1">*</span>}
-                              <span className="ml-auto text-[10px] text-muted-foreground pl-4">{fieldDef.type}</span>
+                              <span className="ml-auto text-xs text-muted-foreground pl-4">{fieldDef.type}</span>
                             </DropdownMenuItem>
                           ))}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     )}
 
-                    <div className="flex items-center gap-4 mt-3 pt-2 border-t border-muted text-[10px] text-muted-foreground">
+                    <div className="flex items-center gap-4 mt-3 pt-2 border-t border-muted text-xs text-muted-foreground">
                       <span>ID: <code className="text-[9px]">{record.id.slice(0, 8)}</code></span>
                       <span>Run: <code className="text-[9px]">{record.workflow_run_id.slice(0, 8)}</code></span>
                       {workflowName && <span>Workflow: {workflowName}</span>}
@@ -824,10 +824,10 @@ export function StagingTab() {
 
                     {validationErrs.length > 0 && (
                       <div className="mt-2 pt-2 border-t border-amber-200 dark:border-amber-800">
-                        <p className="text-[10px] font-medium text-amber-600 mb-1">Validation Issues</p>
+                        <p className="text-xs font-medium text-amber-600 mb-1">Validation Issues</p>
                         <ul className="space-y-0.5">
                           {validationErrs.map((err, i) => (
-                            <li key={i} className="text-[10px] text-amber-600 flex items-start gap-1.5">
+                            <li key={i} className="text-xs text-amber-600 flex items-start gap-1.5">
                               <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
                               {err}
                             </li>
@@ -843,7 +843,7 @@ export function StagingTab() {
                 {!isExpanded && rowSpecificErrs.length > 0 && record.status !== 'rejected' && (
                   <div className="px-4 py-1 bg-amber-50/50 dark:bg-amber-950/10 border-b flex items-center gap-1.5">
                     <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />
-                    <span className="text-[10px] text-amber-600">{rowSpecificErrs.join(' \u00b7 ')}</span>
+                    <span className="text-xs text-amber-600">{rowSpecificErrs.join(' \u00b7 ')}</span>
                   </div>
                 )}
               </div>

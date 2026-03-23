@@ -163,7 +163,7 @@ export function TimelineView({ tasks, onTaskClick }: TimelineViewProps) {
                         {format(day, 'EEE')}
                       </span>
                       <span className={cn(
-                        'text-2xl font-bold',
+                        'text-2xl font-semibold',
                         isToday ? 'text-accent-foreground' : 'text-foreground'
                       )}>
                         {format(day, 'd')}

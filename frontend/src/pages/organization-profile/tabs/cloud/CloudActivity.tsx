@@ -68,16 +68,16 @@ export function CloudActivity({ orgId }: CloudActivityProps) {
               <p className="text-xs font-medium truncate">
                 {c.description || `${c.contribution_type} via ${c.channel}`}
               </p>
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 {c.user_id ? `User ${c.user_id.slice(0, 8)}...` : 'System'}
                 {c.wallet_address && ` · ${c.wallet_address.slice(0, 10)}...`}
               </p>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              <Badge variant="outline" className="text-[10px] h-4 py-0 capitalize">
+              <Badge variant="outline" className="text-xs h-4 py-0 capitalize">
                 {c.contribution_type}
               </Badge>
-              <span className="text-[10px] text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 {formatRelativeTime(c.created_at)}
               </span>
             </div>

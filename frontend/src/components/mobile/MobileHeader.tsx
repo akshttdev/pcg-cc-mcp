@@ -59,7 +59,7 @@ export function MobileHeader({
 
         {/* Title with Mesh Status */}
         <div className="flex items-center gap-2">
-          <h1 className="text-lg font-semibold">{title}</h1>
+          <h1 className="text-lg font-bold">{title}</h1>
           {showMeshStatus && (
             <Badge
               variant={meshConnected ? 'default' : 'secondary'}

@@ -123,7 +123,7 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete, isExpanded, onT
           </span>
         )}
         {deal.probability > 0 && (
-          <span className="inline-flex items-center gap-0.5 text-[11px] text-muted-foreground">
+          <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground">
             <TrendingUp className="h-3 w-3" />
             {deal.probability}% probability
           </span>
@@ -131,7 +131,7 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete, isExpanded, onT
         {taskTotal > 0 && (
           <span
             className={cn(
-              'inline-flex items-center gap-0.5 text-[11px]',
+              'inline-flex items-center gap-0.5 text-xs',
               taskDone === taskTotal ? 'text-green-600 font-medium' : 'text-muted-foreground'
             )}
           >
@@ -140,7 +140,7 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete, isExpanded, onT
           </span>
         )}
         {deal.expected_close_date && (
-          <span className="inline-flex items-center gap-0.5 text-[11px] text-muted-foreground">
+          <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground">
             <Calendar className="h-3 w-3" />
             {new Date(deal.expected_close_date).toLocaleDateString('en-US', {
               month: 'short',
@@ -232,7 +232,7 @@ export function PipelineStepper({ currentStage, allStages, onStageClick }: Pipel
         })}
       </div>
       {isClosedLost && (
-        <p className="text-[10px] text-muted-foreground text-center mt-1 font-medium">
+        <p className="text-xs text-muted-foreground text-center mt-1 font-medium">
           Closed Lost
         </p>
       )}

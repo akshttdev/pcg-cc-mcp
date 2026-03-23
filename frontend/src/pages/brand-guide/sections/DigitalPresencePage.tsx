@@ -29,7 +29,7 @@ export function DigitalPresencePage({ org, profile, primary, accent, socials, kn
         >
           <MapPin className="h-5 w-5 shrink-0" style={{ color: accent }} />
           <div>
-            <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-0.5">Headquarters</p>
+            <p className="text-xs uppercase tracking-widest text-gray-400 mb-0.5">Headquarters</p>
             <p className="text-sm font-semibold text-gray-800">{org.address}</p>
           </div>
         </div>
@@ -46,7 +46,7 @@ export function DigitalPresencePage({ org, profile, primary, accent, socials, kn
         >
           <Globe className="h-5 w-5 shrink-0 text-gray-400" />
           <div className="flex-1">
-            <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-0.5">Website</p>
+            <p className="text-xs uppercase tracking-widest text-gray-400 mb-0.5">Website</p>
             <p className="text-sm font-semibold text-gray-800">{profile.websiteUrl}</p>
           </div>
           <ExternalLink className="h-4 w-4 text-gray-300 group-hover:text-gray-500" />
@@ -68,7 +68,7 @@ export function DigitalPresencePage({ org, profile, primary, accent, socials, kn
             >
               <Icon className="h-4 w-4 shrink-0 text-gray-400" />
               <div className="flex-1">
-                <p className="text-[10px] text-gray-400">{s.label}</p>
+                <p className="text-xs text-gray-400">{s.label}</p>
                 <p className="text-xs font-semibold text-gray-800">{s.handle}</p>
               </div>
               <ExternalLink className="h-3.5 w-3.5 text-gray-300 group-hover:text-gray-500" />
@@ -83,7 +83,7 @@ export function DigitalPresencePage({ org, profile, primary, accent, socials, kn
           className="rounded-3xl p-8"
           style={{ background: `${accent}10`, border: `1px solid ${accent}30` }}
         >
-          <p className="text-[10px] uppercase tracking-[0.3em] mb-3" style={{ color: accent }}>
+          <p className="text-xs uppercase tracking-[0.3em] mb-3" style={{ color: accent }}>
             Brand Intelligence Report &middot; {profile.researchRanAt ? new Date(profile.researchRanAt).toLocaleDateString('en-GB', { year: 'numeric', month: 'long' }) : 'Recent'}
           </p>
           <p className="text-sm text-gray-700 leading-relaxed">{profile.researchSummary}</p>
@@ -93,7 +93,7 @@ export function DigitalPresencePage({ org, profile, primary, accent, socials, kn
       {/* Knowledge graph entities */}
       {knowledge?.knowledge_entries && knowledge.knowledge_entries.length > 0 && (
         <div>
-          <p className="text-[10px] uppercase tracking-[0.3em] mb-4 mt-8" style={{ color: accent }}>
+          <p className="text-xs uppercase tracking-[0.3em] mb-4 mt-8" style={{ color: accent }}>
             Knowledge Graph &middot; {knowledge.knowledge_entries.length} Intelligence Sources
           </p>
           <div className="grid grid-cols-2 gap-3">
@@ -106,14 +106,14 @@ export function DigitalPresencePage({ org, profile, primary, accent, socials, kn
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <p className="text-xs font-semibold text-gray-800 leading-tight">{src.source_title}</p>
                   <span
-                    className="text-[10px] font-mono shrink-0 px-1.5 py-0.5 rounded-full"
+                    className="text-xs font-mono shrink-0 px-1.5 py-0.5 rounded-full"
                     style={{ background: `${accent}20`, color: accent }}
                   >
                     {Math.round(src.coverage_score * 100)}%
                   </span>
                 </div>
                 {src.source_summary && (
-                  <p className="text-[11px] text-gray-500 leading-relaxed line-clamp-3">{src.source_summary}</p>
+                  <p className="text-xs text-gray-500 leading-relaxed line-clamp-3">{src.source_summary}</p>
                 )}
               </div>
             ))}

@@ -281,21 +281,21 @@ function InvoiceSummary({ invoices, type }: { invoices: InvoiceRecord[]; type: '
       <Card>
         <CardContent className="pt-3 pb-3">
           <p className="text-xs text-muted-foreground">{type === 'ar' ? 'Total Billed' : 'Total Owed'}</p>
-          <p className="text-lg font-bold">{fmtUsd(total)}</p>
+          <p className="text-lg font-semibold">{fmtUsd(total)}</p>
           <p className="text-xs text-purple-600">{fmtVibe(Math.ceil(total * VIBE_PER_USD))}</p>
         </CardContent>
       </Card>
       <Card>
         <CardContent className="pt-3 pb-3">
           <p className="text-xs text-muted-foreground">Collected</p>
-          <p className="text-lg font-bold text-green-600">{fmtUsd(paid)}</p>
+          <p className="text-lg font-semibold text-green-600">{fmtUsd(paid)}</p>
           <p className="text-xs text-purple-600">{fmtVibe(Math.ceil(paid * VIBE_PER_USD))}</p>
         </CardContent>
       </Card>
       <Card>
         <CardContent className="pt-3 pb-3">
           <p className="text-xs text-muted-foreground">Outstanding</p>
-          <p className={`text-lg font-bold ${outstanding > 0 ? 'text-amber-600' : 'text-muted-foreground'}`}>
+          <p className={`text-lg font-semibold ${outstanding > 0 ? 'text-amber-600' : 'text-muted-foreground'}`}>
             {fmtUsd(outstanding)}
           </p>
           <p className="text-xs text-purple-600">{fmtVibe(Math.ceil(outstanding * VIBE_PER_USD))}</p>

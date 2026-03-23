@@ -51,7 +51,7 @@ function TimelineBar({ execution, startTime, totalMinutes }: TimelineBarProps) {
             ? `${execution.task_title.slice(0, 20)}...`
             : execution.task_title}
         </span>
-        <span className="text-[10px] text-muted-foreground">{execution.executor}</span>
+        <span className="text-xs text-muted-foreground">{execution.executor}</span>
       </div>
 
       {/* Timeline bar container */}
@@ -131,7 +131,7 @@ export function ExecutionTimeline({ executions, className }: ExecutionTimelinePr
             return (
               <div
                 key={i}
-                className="absolute text-[10px] text-muted-foreground -translate-x-1/2"
+                className="absolute text-xs text-muted-foreground -translate-x-1/2"
                 style={{ left: `${left}%` }}
               >
                 {format(marker, 'HH:mm')}

@@ -32,9 +32,9 @@ export function SocialSection() {
                 <Icon className="h-4 w-4 shrink-0" style={{ color: accent }} />
                 <span className="text-sm font-medium">{name}</span>
               </div>
-              <p className="text-[11px] text-muted-foreground leading-relaxed">{desc}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
             </div>
-            <span className="text-[11px] text-muted-foreground italic shrink-0 mt-0.5">Per-project</span>
+            <span className="text-xs text-muted-foreground italic shrink-0 mt-0.5">Per-project</span>
           </div>
         ))}
       </div>

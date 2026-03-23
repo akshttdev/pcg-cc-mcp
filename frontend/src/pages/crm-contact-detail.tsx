@@ -112,7 +112,7 @@ export function CrmContactDetailPage() {
             )}
           </div>
           <div>
-            <h1 className="text-2xl font-semibold">
+            <h1 className="text-2xl font-bold">
               {contact.full_name || contact.email || 'Unnamed Contact'}
             </h1>
             <div className="flex items-center gap-2 mt-1">

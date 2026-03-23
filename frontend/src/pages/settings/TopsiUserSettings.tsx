@@ -136,7 +136,7 @@ export function TopsiUserSettings() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold flex items-center gap-2">
+        <h2 className="text-2xl font-semibold flex items-center gap-2">
           <Bot className="h-6 w-6 text-cyan-600" />
           Topsi Preferences
         </h2>

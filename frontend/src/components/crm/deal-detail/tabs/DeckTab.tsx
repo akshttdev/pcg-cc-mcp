@@ -113,7 +113,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
                 {reviewLinkCopied ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Share2 className="h-3.5 w-3.5" />}
                 {reviewLinkCopied ? 'Copied!' : 'Share for Review'}
               </Button>
-              <span className="text-[10px] text-muted-foreground">Internal team review only</span>
+              <span className="text-xs text-muted-foreground">Internal team review only</span>
             </div>
           </div>
         )}
@@ -154,7 +154,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
                       Send Invoice
                     </Button>
                     {isTooEarly && (
-                      <p className="text-[10px] text-muted-foreground mt-1">Available after presenting to client</p>
+                      <p className="text-xs text-muted-foreground mt-1">Available after presenting to client</p>
                     )}
                   </div>
                 );
@@ -206,7 +206,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
             ) : (
               <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-3 space-y-2">
                 <p className="text-xs font-medium text-yellow-400">Confirm deal is won?</p>
-                <p className="text-[11px] text-muted-foreground">This will create a client, project, and all tasks from the proposal.</p>
+                <p className="text-xs text-muted-foreground">This will create a client, project, and all tasks from the proposal.</p>
                 <div className="flex gap-2">
                   <Button
                     size="sm"

@@ -93,7 +93,7 @@ function IntegrationCategoryCard({ category }: { category: IntegrationCategory }
               {connector.detail}
             </p>
             {connector.meta && (
-              <p className="text-[11px] text-muted-foreground/80">
+              <p className="text-xs text-muted-foreground/80">
                 {connector.meta}
               </p>
             )}

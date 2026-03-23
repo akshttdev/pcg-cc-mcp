@@ -77,7 +77,7 @@ export function ExecutionSummaryInline({
   if (compact) {
     return (
       <TooltipProvider>
-        <div className={cn('flex items-center gap-1.5 text-[10px] text-muted-foreground', className)}>
+        <div className={cn('flex items-center gap-1.5 text-xs text-muted-foreground', className)}>
           {totalFiles > 0 && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -139,7 +139,7 @@ export function ExecutionSummaryInline({
         {totalFiles > 0 && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1">
+              <Badge variant="outline" className="text-xs h-5 px-1.5 gap-1">
                 {filesModified > 0 && (
                   <span className="flex items-center gap-0.5">
                     <FileEdit className="h-2.5 w-2.5" />
@@ -176,7 +176,7 @@ export function ExecutionSummaryInline({
               <Badge
                 variant="outline"
                 className={cn(
-                  'text-[10px] h-5 px-1.5 gap-1',
+                  'text-xs h-5 px-1.5 gap-1',
                   commandsFailed > 0 && 'border-destructive text-destructive'
                 )}
               >
@@ -201,7 +201,7 @@ export function ExecutionSummaryInline({
         {tools.length > 0 && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1">
+              <Badge variant="outline" className="text-xs h-5 px-1.5 gap-1">
                 <Wrench className="h-2.5 w-2.5" />
                 {tools.slice(0, 2).join(', ')}
                 {tools.length > 2 && <span>+{tools.length - 2}</span>}
@@ -216,7 +216,7 @@ export function ExecutionSummaryInline({
         {commandsFailed > 0 && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 text-destructive">
+              <Badge variant="outline" className="text-xs h-5 px-1.5 gap-1 text-destructive">
                 <AlertTriangle className="h-2.5 w-2.5" />
                 {commandsFailed}
               </Badge>
@@ -235,7 +235,7 @@ export function ExecutionSummaryInline({
         {duration > 0 && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1">
+              <Badge variant="outline" className="text-xs h-5 px-1.5 gap-1">
                 <Clock className="h-2.5 w-2.5" />
                 {formatDuration(duration)}
               </Badge>

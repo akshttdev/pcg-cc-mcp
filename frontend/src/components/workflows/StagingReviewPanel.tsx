@@ -47,7 +47,7 @@ const ConfidenceBadge = ({ value }: { value: number | null }) => {
     : value >= 0.5 ? 'text-amber-600 border-amber-200'
     : 'text-red-600 border-red-200';
   return (
-    <Badge variant="outline" className={cn('text-[10px]', color)}>
+    <Badge variant="outline" className={cn('text-xs', color)}>
       {pct}%
     </Badge>
   );
@@ -468,7 +468,7 @@ export function StagingReviewContent({
           <div className="grid grid-cols-2 gap-2">
             {Object.entries(editData).map(([key, value]) => (
               <div key={key} className="flex items-center gap-2">
-                <Label className="text-[10px] text-muted-foreground w-20 shrink-0 text-right">{key}</Label>
+                <Label className="text-xs text-muted-foreground w-20 shrink-0 text-right">{key}</Label>
                 <Input
                   value={value == null ? '' : typeof value === 'string' ? value : JSON.stringify(value)}
                   onChange={(e) => handleEditField(key, e.target.value)}
@@ -478,8 +478,8 @@ export function StagingReviewContent({
             ))}
           </div>
           <div className="flex gap-2 justify-end">
-            <Button size="sm" variant="ghost" onClick={handleCancelEdit} className="h-5 text-[10px] px-2">Cancel</Button>
-            <Button size="sm" onClick={() => handleSaveEdit(record.id)} className="h-5 text-[10px] px-2">Save</Button>
+            <Button size="sm" variant="ghost" onClick={handleCancelEdit} className="h-5 text-xs px-2">Cancel</Button>
+            <Button size="sm" onClick={() => handleSaveEdit(record.id)} className="h-5 text-xs px-2">Save</Button>
           </div>
         </div>
       );
@@ -518,7 +518,7 @@ export function StagingReviewContent({
           <span className="text-xs text-muted-foreground">— {workflowName}</span>
         )}
         <div className="flex-1" />
-        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span>{records.length} total</span>
           {avgConfidence !== null && (
             <Badge variant="outline" className={cn('text-[9px] h-5',
@@ -573,7 +573,7 @@ export function StagingReviewContent({
                   key={f}
                   onClick={() => setFilter(f)}
                   className={cn(
-                    'px-2 py-0.5 rounded text-[11px] transition-colors',
+                    'px-2 py-0.5 rounded text-xs transition-colors',
                     filter === f
                       ? 'bg-primary text-primary-foreground'
                       : 'hover:bg-muted text-muted-foreground',
@@ -593,7 +593,7 @@ export function StagingReviewContent({
             <Button
               size="sm"
               variant="outline"
-              className="h-6 text-[10px] gap-1 text-amber-600 border-amber-200 hover:bg-amber-50"
+              className="h-6 text-xs gap-1 text-amber-600 border-amber-200 hover:bg-amber-50"
               onClick={handleRejectDuplicates}
               disabled={rejectDuplicatesMutation.isPending}
             >
@@ -606,7 +606,7 @@ export function StagingReviewContent({
             <Button
               size="sm"
               variant="outline"
-              className="h-6 text-[10px] gap-1 text-green-600 border-green-200 hover:bg-green-50"
+              className="h-6 text-xs gap-1 text-green-600 border-green-200 hover:bg-green-50"
               onClick={handleAutoApprove}
               disabled={autoApproveMutation.isPending}
             >
@@ -644,7 +644,7 @@ export function StagingReviewContent({
         {flatRecords.length > 0 && (
           <div className="w-full">
             {/* Table header */}
-            <div className="grid grid-cols-[20px_28px_minmax(120px,1fr)_80px_60px_60px_minmax(160px,2fr)_100px] gap-2 px-4 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider border-b bg-muted/20 sticky top-0">
+            <div className="grid grid-cols-[20px_28px_minmax(120px,1fr)_80px_60px_60px_minmax(160px,2fr)_100px] gap-2 px-4 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider border-b bg-muted/20 sticky top-0">
               <div />
               <div />
               <div>Name</div>
@@ -714,7 +714,7 @@ export function StagingReviewContent({
                     </div>
 
                     {/* Type label */}
-                    <span className="text-[10px] text-muted-foreground">{config?.label || targetType}</span>
+                    <span className="text-xs text-muted-foreground">{config?.label || targetType}</span>
 
                     {/* Status */}
                     <Badge
@@ -738,7 +738,7 @@ export function StagingReviewContent({
                       {detailFields.map(([key, value]) => {
                         const dv = value == null ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value);
                         return (
-                          <span key={key} className="text-[10px] text-muted-foreground truncate">
+                          <span key={key} className="text-xs text-muted-foreground truncate">
                             <span className="opacity-60">{key}:</span> {dv}
                           </span>
                         );
@@ -774,7 +774,7 @@ export function StagingReviewContent({
                           const fd = schemaFields[key];
                           return (
                             <div key={key} className={cn(isLong && 'col-span-2 lg:col-span-3')}>
-                              <dt className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                              <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                                 {key.replace(/_/g, ' ')}
                                 {fd?.required && <span className="text-red-400 ml-0.5">*</span>}
                               </dt>
@@ -800,7 +800,7 @@ export function StagingReviewContent({
                       {canEdit && missingFields.length > 0 && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <button className="mt-2 flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+                            <button className="mt-2 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
                               <Plus className="h-3 w-3" /> Add field
                             </button>
                           </DropdownMenuTrigger>
@@ -813,7 +813,7 @@ export function StagingReviewContent({
                               >
                                 <span>{fieldName.replace(/_/g, ' ')}</span>
                                 {fieldDef.required && <span className="text-red-400 ml-1">*</span>}
-                                <span className="ml-auto text-[10px] text-muted-foreground pl-4">{fieldDef.type}</span>
+                                <span className="ml-auto text-xs text-muted-foreground pl-4">{fieldDef.type}</span>
                               </DropdownMenuItem>
                             ))}
                           </DropdownMenuContent>
@@ -821,7 +821,7 @@ export function StagingReviewContent({
                       )}
 
                       {/* Metadata row */}
-                      <div className="flex items-center gap-4 mt-3 pt-2 border-t border-muted text-[10px] text-muted-foreground">
+                      <div className="flex items-center gap-4 mt-3 pt-2 border-t border-muted text-xs text-muted-foreground">
                         <span>ID: <code className="text-[9px]">{record.id.slice(0, 8)}</code></span>
                         <span>Run: <code className="text-[9px]">{record.workflow_run_id.slice(0, 8)}</code></span>
                         {record.duplicate_of_id && (
@@ -836,10 +836,10 @@ export function StagingReviewContent({
                       {/* Validation errors in expanded view */}
                       {validationErrs.length > 0 && (
                         <div className="mt-2 pt-2 border-t border-amber-200 dark:border-amber-800">
-                          <p className="text-[10px] font-medium text-amber-600 mb-1">Validation Issues</p>
+                          <p className="text-xs font-medium text-amber-600 mb-1">Validation Issues</p>
                           <ul className="space-y-0.5">
                             {validationErrs.map((err, i) => (
-                              <li key={i} className="text-[10px] text-amber-600 flex items-start gap-1.5">
+                              <li key={i} className="text-xs text-amber-600 flex items-start gap-1.5">
                                 <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
                                 {err}
                               </li>
@@ -851,8 +851,8 @@ export function StagingReviewContent({
                       {/* Error message in expanded view */}
                       {(record.error_message || commitErrors[record.id]) && (
                         <div className="mt-2 pt-2 border-t border-red-200 dark:border-red-800">
-                          <p className="text-[10px] font-medium text-red-600 mb-1">Error</p>
-                          <p className="text-[10px] text-red-600">{record.error_message || commitErrors[record.id]}</p>
+                          <p className="text-xs font-medium text-red-600 mb-1">Error</p>
+                          <p className="text-xs text-red-600">{record.error_message || commitErrors[record.id]}</p>
                         </div>
                       )}
                     </div>
@@ -865,14 +865,14 @@ export function StagingReviewContent({
                   {/* Compact inline warnings when NOT expanded */}
                   {!isExpanded && (record.error_message || commitErrors[record.id]) && (
                     <div className="px-4 py-1 bg-red-50/50 dark:bg-red-950/20 border-b">
-                      <p className="text-[10px] text-red-600">{record.error_message || commitErrors[record.id]}</p>
+                      <p className="text-xs text-red-600">{record.error_message || commitErrors[record.id]}</p>
                     </div>
                   )}
 
                   {!isExpanded && validationErrs.length > 0 && record.status !== 'rejected' && editingId !== record.id && (
                     <div className="px-4 py-1 bg-amber-50/50 dark:bg-amber-950/10 border-b flex items-center gap-1.5">
                       <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />
-                      <span className="text-[10px] text-amber-600">{validationErrs.join(' · ')}</span>
+                      <span className="text-xs text-amber-600">{validationErrs.join(' · ')}</span>
                     </div>
                   )}
                 </div>

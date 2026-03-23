@@ -125,7 +125,7 @@ export function OrganizationOverview() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Clients</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{clients.length}</div>
+            <div className="text-2xl font-semibold">{clients.length}</div>
           </CardContent>
         </Card>
         <Card
@@ -136,7 +136,7 @@ export function OrganizationOverview() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Projects</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalProjects}</div>
+            <div className="text-2xl font-semibold">{totalProjects}</div>
           </CardContent>
         </Card>
         <Card>
@@ -144,7 +144,7 @@ export function OrganizationOverview() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Status</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold capitalize">
+            <div className="text-2xl font-semibold capitalize">
               {sidebarOrg?.health_status || 'healthy'}
             </div>
           </CardContent>

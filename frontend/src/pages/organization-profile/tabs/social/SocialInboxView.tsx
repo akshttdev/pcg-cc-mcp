@@ -81,7 +81,7 @@ export function SocialInboxView({ projectEntries }: { projectEntries: { id: stri
             <button key={key} onClick={() => setStatusFilter(key)}
               className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${statusFilter === key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
               {label}
-              {(counts as any)[key] > 0 && <span className="ml-1.5 text-[10px] text-muted-foreground">{(counts as any)[key]}</span>}
+              {(counts as any)[key] > 0 && <span className="ml-1.5 text-xs text-muted-foreground">{(counts as any)[key]}</span>}
             </button>
           ))}
         </div>
@@ -114,9 +114,9 @@ export function SocialInboxView({ projectEntries }: { projectEntries: { id: stri
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-medium">{mention.author_display_name || mention.author_username || 'Unknown'}</span>
-                        {mention.author_is_verified && <span className="text-[10px] text-blue-500">&#10003; verified</span>}
+                        {mention.author_is_verified && <span className="text-xs text-blue-500">&#10003; verified</span>}
                         <Badge variant="outline" className="text-[9px]">{mention.mention_type}</Badge>
-                        <span className={`text-[10px] font-medium ${PRIORITY_COLORS[mention.priority]}`}>{mention.priority !== 'normal' ? mention.priority : ''}</span>
+                        <span className={`text-xs font-medium ${PRIORITY_COLORS[mention.priority]}`}>{mention.priority !== 'normal' ? mention.priority : ''}</span>
                         {isUnread && <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />}
                       </div>
                       {mention.content && <p className="text-sm text-muted-foreground mt-1 line-clamp-3">{mention.content}</p>}
@@ -127,29 +127,29 @@ export function SocialInboxView({ projectEntries }: { projectEntries: { id: stri
                       )}
                       <div className="flex items-center gap-2 mt-2 flex-wrap">
                         {mention.sentiment && mention.sentiment !== 'unknown' && (
-                          <span className={`text-[10px] ${SENTIMENT_COLORS[mention.sentiment]}`}>&#9679; {mention.sentiment}</span>
+                          <span className={`text-xs ${SENTIMENT_COLORS[mention.sentiment]}`}>&#9679; {mention.sentiment}</span>
                         )}
-                        <span className="text-[10px] text-muted-foreground">{formatDate(mention.received_at)}</span>
+                        <span className="text-xs text-muted-foreground">{formatDate(mention.received_at)}</span>
                         <Badge variant="outline" className="text-[9px]">{mention._project}</Badge>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded border ${STATUS_COLORS[mention.status] || 'border-border text-muted-foreground'}`}>{mention.status}</span>
+                        <span className={`text-xs px-1.5 py-0.5 rounded border ${STATUS_COLORS[mention.status] || 'border-border text-muted-foreground'}`}>{mention.status}</span>
                       </div>
                     </div>
                     <div className="flex flex-col gap-1 shrink-0">
                       {isUnread && (
                         <button onClick={() => updateMut.mutate({ id: mention.id, data: { status: 'read' } })}
-                          className="text-[10px] px-2 py-1 rounded border border-border hover:bg-muted transition-colors" title="Mark read">
+                          className="text-xs px-2 py-1 rounded border border-border hover:bg-muted transition-colors" title="Mark read">
                           Mark read
                         </button>
                       )}
                       {mention.status !== 'archived' && (
                         <button onClick={() => updateMut.mutate({ id: mention.id, data: { status: 'archived' } })}
-                          className="text-[10px] px-2 py-1 rounded border border-border hover:bg-muted transition-colors">
+                          className="text-xs px-2 py-1 rounded border border-border hover:bg-muted transition-colors">
                           Archive
                         </button>
                       )}
                       {mention.status !== 'replied' && (
                         <button onClick={() => updateMut.mutate({ id: mention.id, data: { status: 'flagged', priority: 'high' } })}
-                          className="text-[10px] px-2 py-1 rounded border border-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/20 text-amber-600 transition-colors">
+                          className="text-xs px-2 py-1 rounded border border-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/20 text-amber-600 transition-colors">
                           Flag
                         </button>
                       )}

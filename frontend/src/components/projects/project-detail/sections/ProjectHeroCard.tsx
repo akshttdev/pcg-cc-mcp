@@ -84,7 +84,7 @@ export function ProjectHeroCard({
                 <p className="text-xs uppercase tracking-wide text-muted-foreground">
                   Brand Identity
                 </p>
-                <p className="text-3xl font-bold leading-tight text-foreground">
+                <p className="text-3xl font-semibold leading-tight text-foreground">
                   {projectName}
                 </p>
                 <p className="text-base text-muted-foreground">

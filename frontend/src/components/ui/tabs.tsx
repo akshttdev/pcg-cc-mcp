@@ -146,7 +146,7 @@ function TabPanel({
             {tab.icon && <span className="mr-1.5">{tab.icon}</span>}
             {tab.label}
             {tab.badge != null && tab.badge > 0 && (
-              <span className="ml-1.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+              <span className="ml-1.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-semibold text-primary">
                 {tab.badge}
               </span>
             )}

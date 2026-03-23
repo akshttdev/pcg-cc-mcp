@@ -48,7 +48,7 @@ function LeadCard({ person }: { person: PersonRecord }) {
       <div className="rounded-xl border border-slate-800 bg-slate-900/50 hover:border-indigo-700/50 hover:bg-slate-900 transition-all p-4">
         <div className="flex items-start gap-4">
           {/* Avatar */}
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-semibold shrink-0">
             {initials(person.full_name)}
           </div>
 
@@ -58,7 +58,7 @@ function LeadCard({ person }: { person: PersonRecord }) {
               <p className="font-semibold text-slate-200 group-hover:text-white transition-colors">
                 {person.full_name}
               </p>
-              <Badge variant="outline" className={`text-[10px] shrink-0 ${
+              <Badge variant="outline" className={`text-xs shrink-0 ${
                 person.person_type === 'lead'   ? 'border-amber-700 text-amber-400' :
                 person.person_type === 'client' ? 'border-emerald-700 text-emerald-400' :
                 'border-slate-700 text-slate-500'
@@ -66,7 +66,7 @@ function LeadCard({ person }: { person: PersonRecord }) {
                 {person.person_type}
               </Badge>
               {orgEntry && (
-                <Badge variant="outline" className={`text-[10px] shrink-0 ${orgEntry.color}`}>
+                <Badge variant="outline" className={`text-xs shrink-0 ${orgEntry.color}`}>
                   {orgEntry.label}
                 </Badge>
               )}
@@ -150,7 +150,7 @@ export function LeadsPage() {
             <TrendingUp className="w-5 h-5 text-amber-400" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-white">Leads</h1>
+            <h1 className="text-xl font-bold text-white">Leads</h1>
             <p className="text-xs text-slate-500">{persons.length} contact{persons.length !== 1 ? 's' : ''}</p>
           </div>
         </div>

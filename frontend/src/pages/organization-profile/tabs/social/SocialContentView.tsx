@@ -125,7 +125,7 @@ export function SocialContentView({ projectEntries }: { projectEntries: { id: st
       post.status === 'failed'    ? 'bg-destructive/15 text-destructive border-destructive/30' :
       'bg-muted text-muted-foreground border-border/50';
     return (
-      <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] leading-tight truncate ${statusColor}`}>
+      <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-xs leading-tight truncate ${statusColor}`}>
         <Icon className={`h-2.5 w-2.5 shrink-0 ${PLATFORM_COLORS[platforms[0]] || ''}`} />
         {!compact && <span className="truncate">{post.caption?.slice(0, 28) || '(no caption)'}</span>}
         {compact && <span className="truncate">{platforms[0]}</span>}
@@ -166,13 +166,13 @@ export function SocialContentView({ projectEntries }: { projectEntries: { id: st
                     <div className="min-w-0 flex-1">
                       <p className="text-xs line-clamp-2">{post.caption || <span className="italic text-muted-foreground">No caption</span>}</p>
                       <div className="flex items-center gap-2 mt-1">
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded border ${STATUS_COLORS[post.status] || ''}`}>{post.status.replace('_',' ')}</span>
+                        <span className={`text-xs px-1.5 py-0.5 rounded border ${STATUS_COLORS[post.status] || ''}`}>{post.status.replace('_',' ')}</span>
                         {(post.scheduled_for || post.published_at) && (
-                          <span className="text-[10px] text-muted-foreground">
+                          <span className="text-xs text-muted-foreground">
                             {new Date(post.scheduled_for || post.published_at!).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                           </span>
                         )}
-                        <span className="text-[10px] text-muted-foreground">{post._project}</span>
+                        <span className="text-xs text-muted-foreground">{post._project}</span>
                       </div>
                     </div>
                     <button onClick={() => { if (confirm('Delete?')) deleteMut.mutate(post.id); }}
@@ -332,7 +332,7 @@ export function SocialContentView({ projectEntries }: { projectEntries: { id: st
               <button key={s} onClick={() => setStatusFilter(s)}
                 className={`px-3 py-1 text-xs font-medium rounded-md transition-all capitalize ${statusFilter === s ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
                 {s === 'all' ? 'All' : s.replace('_', ' ')}
-                {counts[s] != null && counts[s] > 0 && <span className="ml-1.5 text-[10px] text-muted-foreground">{counts[s]}</span>}
+                {counts[s] != null && counts[s] > 0 && <span className="ml-1.5 text-xs text-muted-foreground">{counts[s]}</span>}
               </button>
             ))}
           </div>
@@ -363,13 +363,13 @@ export function SocialContentView({ projectEntries }: { projectEntries: { id: st
                           <p className="text-sm line-clamp-2">{post.caption || <span className="text-muted-foreground italic">No caption</span>}</p>
                           {hashtags.length > 0 && <p className="text-xs text-blue-500 mt-1 line-clamp-1">{hashtags.map(h => `#${h}`).join(' ')}</p>}
                           <div className="flex items-center gap-2 mt-2 flex-wrap">
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded border ${STATUS_COLORS[post.status] || ''}`}>{post.status.replace('_',' ')}</span>
-                            {post.scheduled_for && <span className="text-[10px] text-muted-foreground flex items-center gap-1"><CalendarDays className="h-3 w-3" />{formatDate(post.scheduled_for)}</span>}
-                            {post.published_at && <span className="text-[10px] text-muted-foreground">Published {formatDate(post.published_at)}</span>}
-                            <span className="text-[10px] text-muted-foreground">{post._project}</span>
+                            <span className={`text-xs px-1.5 py-0.5 rounded border ${STATUS_COLORS[post.status] || ''}`}>{post.status.replace('_',' ')}</span>
+                            {post.scheduled_for && <span className="text-xs text-muted-foreground flex items-center gap-1"><CalendarDays className="h-3 w-3" />{formatDate(post.scheduled_for)}</span>}
+                            {post.published_at && <span className="text-xs text-muted-foreground">Published {formatDate(post.published_at)}</span>}
+                            <span className="text-xs text-muted-foreground">{post._project}</span>
                           </div>
                           {post.status === 'published' && (post.impressions > 0 || post.likes > 0) && (
-                            <div className="flex gap-3 mt-2 text-[11px] text-muted-foreground">
+                            <div className="flex gap-3 mt-2 text-xs text-muted-foreground">
                               {post.impressions > 0 && <span>&#128065; {formatCompactNumber(post.impressions)}</span>}
                               {post.reach > 0 && <span>&#128225; {formatCompactNumber(post.reach)}</span>}
                               {post.likes > 0 && <span>&#9829; {post.likes}</span>}
@@ -405,8 +405,8 @@ export function SocialContentView({ projectEntries }: { projectEntries: { id: st
                 <div key={i} className={`border-r border-border/40 last:border-r-0 min-h-[520px] flex flex-col ${isToday ? 'bg-primary/5' : ''}`}>
                   {/* Day header */}
                   <div className={`px-2 py-2 border-b border-border/40 ${isToday ? 'bg-primary/10' : 'bg-muted/20'}`}>
-                    <p className="text-[10px] font-medium text-muted-foreground uppercase">{DAY_NAMES[day.getDay()]}</p>
-                    <p className={`text-lg font-bold leading-none mt-0.5 ${isToday ? 'text-primary' : ''}`}>{day.getDate()}</p>
+                    <p className="text-xs font-medium text-muted-foreground uppercase">{DAY_NAMES[day.getDay()]}</p>
+                    <p className={`text-lg font-semibold leading-none mt-0.5 ${isToday ? 'text-primary' : ''}`}>{day.getDate()}</p>
                     {dayPosts.length > 0 && (
                       <p className="text-[9px] text-muted-foreground mt-1">{dayPosts.length} post{dayPosts.length !== 1 ? 's' : ''}</p>
                     )}
@@ -430,7 +430,7 @@ export function SocialContentView({ projectEntries }: { projectEntries: { id: st
                             <Icon className={`h-2.5 w-2.5 shrink-0 ${PLATFORM_COLORS[platforms[0]] || ''}`} />
                             {timeStr && <span className="text-[9px] font-mono opacity-70">{timeStr}</span>}
                           </div>
-                          <p className="text-[10px] leading-tight line-clamp-3">{post.caption || '(no caption)'}</p>
+                          <p className="text-xs leading-tight line-clamp-3">{post.caption || '(no caption)'}</p>
                           {platforms.length > 1 && (
                             <div className="flex gap-0.5 mt-1">
                               {platforms.slice(1).map(p => {
@@ -450,7 +450,7 @@ export function SocialContentView({ projectEntries }: { projectEntries: { id: st
                     {dayPosts.length === 0 && (
                       <button
                         onClick={() => { setNewScheduled(`${dateKey(day)}T09:00`); setNewStatus('scheduled'); setShowCreate(true); }}
-                        className="w-full h-8 rounded border border-dashed border-border/30 text-[10px] text-muted-foreground/40 hover:border-border/60 hover:text-muted-foreground transition-colors flex items-center justify-center gap-1">
+                        className="w-full h-8 rounded border border-dashed border-border/30 text-xs text-muted-foreground/40 hover:border-border/60 hover:text-muted-foreground transition-colors flex items-center justify-center gap-1">
                         <Plus className="h-2.5 w-2.5" /> Add
                       </button>
                     )}
@@ -477,7 +477,7 @@ export function SocialContentView({ projectEntries }: { projectEntries: { id: st
             {/* Day-of-week headers */}
             <div className="grid grid-cols-7 bg-muted/30 border-b border-border/40">
               {DAY_NAMES.map(d => (
-                <div key={d} className="py-2 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{d}</div>
+                <div key={d} className="py-2 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide">{d}</div>
               ))}
             </div>
             {/* Calendar grid */}
@@ -525,7 +525,7 @@ export function SocialContentView({ projectEntries }: { projectEntries: { id: st
               })}
             </div>
             {/* Month legend */}
-            <div className="px-4 py-2 bg-muted/20 border-t border-border/40 flex items-center gap-4 text-[11px]">
+            <div className="px-4 py-2 bg-muted/20 border-t border-border/40 flex items-center gap-4 text-xs">
               {[['bg-purple-500/15 border-purple-300/50','scheduled'],['bg-green-500/15 border-green-300/50','published'],['bg-destructive/15 border-destructive/30','failed'],['bg-muted border-border/50','draft']].map(([cls, lbl]) => (
                 <span key={lbl} className="flex items-center gap-1.5">
                   <span className={`w-2.5 h-2.5 rounded border ${cls}`} />

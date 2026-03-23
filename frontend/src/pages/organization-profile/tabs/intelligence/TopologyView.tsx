@@ -59,8 +59,8 @@ export function TopologyView({
                   <p className="text-sm font-medium truncate">{source.source_title}</p>
                   {source.source_summary && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{source.source_summary}</p>}
                   <div className="flex items-center justify-between mt-1.5">
-                    <Link to={`/projects/${projectId}`} className="text-[10px] text-muted-foreground hover:text-foreground">{projectName}</Link>
-                    <span className="text-[10px] text-muted-foreground">{Math.round(source.coverage_score * 100)}% coverage</span>
+                    <Link to={`/projects/${projectId}`} className="text-xs text-muted-foreground hover:text-foreground">{projectName}</Link>
+                    <span className="text-xs text-muted-foreground">{Math.round(source.coverage_score * 100)}% coverage</span>
                   </div>
                   {source.is_stale && <Badge variant="outline" className="text-[9px] mt-1 text-yellow-600 border-yellow-600">Stale</Badge>}
                 </div>
@@ -126,8 +126,8 @@ export function TopologyIntelView({ projectEntries }: { projectEntries: { id: st
                   <p className="text-sm font-medium truncate">{t.title}</p>
                   {t.summary && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{t.summary}</p>}
                   <div className="flex items-center justify-between mt-1.5">
-                    <Link to={`/projects/${t.projectId}`} className="text-[10px] text-muted-foreground hover:text-foreground">{t.projectName}</Link>
-                    {t.coverage != null && <span className="text-[10px] text-muted-foreground">{Math.round(t.coverage * 100)}% coverage</span>}
+                    <Link to={`/projects/${t.projectId}`} className="text-xs text-muted-foreground hover:text-foreground">{t.projectName}</Link>
+                    {t.coverage != null && <span className="text-xs text-muted-foreground">{Math.round(t.coverage * 100)}% coverage</span>}
                   </div>
                   {t.isStale && <Badge variant="outline" className="text-[9px] mt-1 text-yellow-600 border-yellow-600">Stale</Badge>}
                 </div>

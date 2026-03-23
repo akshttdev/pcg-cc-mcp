@@ -54,7 +54,7 @@ export function CrmPipelineMetrics({
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Total Deals</p>
-                <p className="text-2xl font-bold">{metrics.total_deals}</p>
+                <p className="text-2xl font-semibold">{metrics.total_deals}</p>
               </div>
             </div>
           </CardContent>
@@ -68,7 +68,7 @@ export function CrmPipelineMetrics({
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Pipeline Value</p>
-                <p className="text-2xl font-bold">
+                <p className="text-2xl font-semibold">
                   {formatCurrencyFull(metrics.total_value)}
                 </p>
               </div>
@@ -84,7 +84,7 @@ export function CrmPipelineMetrics({
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Weighted Value</p>
-                <p className="text-2xl font-bold">
+                <p className="text-2xl font-semibold">
                   {formatCurrencyFull(metrics.weighted_value)}
                 </p>
               </div>
@@ -100,7 +100,7 @@ export function CrmPipelineMetrics({
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Avg Deal Size</p>
-                <p className="text-2xl font-bold">
+                <p className="text-2xl font-semibold">
                   {formatCurrencyFull(metrics.avg_deal_size)}
                 </p>
               </div>
@@ -116,7 +116,7 @@ export function CrmPipelineMetrics({
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Win Rate</p>
-                <p className="text-2xl font-bold">
+                <p className="text-2xl font-semibold">
                   {Math.round(metrics.win_rate * 100)}%
                 </p>
               </div>

@@ -132,7 +132,7 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
             {deal.contact_avatar_url && (
               <AvatarImage src={deal.contact_avatar_url} alt={deal.contact_name || deal.name} />
             )}
-            <AvatarFallback className="text-[10px] font-semibold" style={{
+            <AvatarFallback className="text-xs font-semibold" style={{
               backgroundColor: `${accentColor}22`,
               color: accentColor,
             }}>
@@ -143,7 +143,7 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
           <div className="min-w-0 flex-1">
             <p className="font-medium text-sm leading-tight line-clamp-2">{deal.name}</p>
             {deal.contact_company && (
-              <p className="text-[11px] text-muted-foreground truncate flex items-center gap-1 mt-0.5">
+              <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5">
                 <Building2 className="h-2.5 w-2.5 shrink-0" />
                 {deal.company_id ? (
                   <Link
@@ -234,7 +234,7 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
 
         {/* Row 3: Intel summary snippet */}
         {intelDone && deal.intelligence_summary && (
-          <p className="text-[11px] text-muted-foreground leading-relaxed italic border-l-2 pl-2 line-clamp-2"
+          <p className="text-xs text-muted-foreground leading-relaxed italic border-l-2 pl-2 line-clamp-2"
             style={{ borderColor: `${accentColor}60` }}>
             {deal.intelligence_summary}
           </p>
@@ -242,12 +242,12 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
 
         {/* Row 4: Review task assignee */}
         {deal.review_task_id && deal.review_task_assignee && (
-          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <User className="h-3 w-3 shrink-0" />
             <span className="truncate">{deal.review_task_assignee}</span>
             {deal.review_task_status && (
               <span className={cn(
-                'text-[10px] font-medium',
+                'text-xs font-medium',
                 deal.review_task_status === 'done' ? 'text-green-600' :
                 deal.review_task_status === 'inprogress' ? 'text-blue-600' : 'text-muted-foreground/60'
               )}>
@@ -261,7 +261,7 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
         {/* Row 5: Task progress */}
         {hasTasks && (
           <div className="space-y-1">
-            <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span className="flex items-center gap-1">
                 <CheckSquare className="h-3 w-3" />
                 <span className={cn(allTasksDone && 'text-green-600 font-medium')}>
@@ -282,7 +282,7 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
         {/* Row 6: Board progress (delivery pipeline) */}
         {boardProgress && boardProgress.totalAssets > 0 && (
           <div className="space-y-1">
-            <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>{boardProgress.boardName}</span>
               <span>{boardProgress.completedAssets}/{boardProgress.totalAssets}</span>
             </div>
@@ -299,12 +299,12 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
         {tags.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {tags.slice(0, 2).map((tag) => (
-              <span key={tag} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-muted text-muted-foreground border border-border/50">
+              <span key={tag} className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-muted text-muted-foreground border border-border/50">
                 {tag}
               </span>
             ))}
             {tags.length > 2 && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-muted text-muted-foreground border border-border/50">
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-muted text-muted-foreground border border-border/50">
                 +{tags.length - 2}
               </span>
             )}
@@ -319,7 +319,7 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
             </span>
           )}
           {deal.probability > 0 && (
-            <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground">
+            <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground">
               <TrendingUp className="h-2.5 w-2.5" />
               {deal.probability}%
             </span>
@@ -327,7 +327,7 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
         </div>
         {/* Row 9: Timestamp */}
         {lastActivity && (
-          <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/60">
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground/60">
             <Clock className="h-2.5 w-2.5 shrink-0" />
             {lastActivity}
           </span>

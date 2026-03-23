@@ -69,7 +69,7 @@ const platformConfig: Record<SocialPlatform, {
   },
   tiktok: {
     name: 'TikTok',
-    icon: <span className="text-lg font-bold">TT</span>,
+    icon: <span className="text-lg font-semibold">TT</span>,
     color: 'text-foreground',
     bgColor: 'bg-black',
     description: 'Short-form video content',
@@ -83,21 +83,21 @@ const platformConfig: Record<SocialPlatform, {
   },
   bluesky: {
     name: 'Bluesky',
-    icon: <span className="text-lg font-bold">🦋</span>,
+    icon: <span className="text-lg font-semibold">🦋</span>,
     color: 'text-[#0085FF]',
     bgColor: 'bg-[#0085FF]',
     description: 'Decentralized social',
   },
   pinterest: {
     name: 'Pinterest',
-    icon: <span className="text-lg font-bold">P</span>,
+    icon: <span className="text-lg font-semibold">P</span>,
     color: 'text-[#E60023]',
     bgColor: 'bg-[#E60023]',
     description: 'Visual discovery & pins',
   },
   threads: {
     name: 'Threads',
-    icon: <span className="text-lg font-bold">@</span>,
+    icon: <span className="text-lg font-semibold">@</span>,
     color: 'text-foreground',
     bgColor: 'bg-black',
     description: 'Text-based conversations',

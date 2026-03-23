@@ -104,7 +104,7 @@ function NoraCommunicationChannels() {
       {/* Email */}
       <div className="flex items-center justify-between rounded-lg border p-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-[#C8202B] flex items-center justify-center text-white font-bold">
+          <div className="w-10 h-10 rounded-lg bg-[#C8202B] flex items-center justify-center text-white font-semibold">
             Z
           </div>
           <div>
@@ -584,7 +584,7 @@ export function AgentSettings() {
                         />
                       ) : (
                         <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5">
-                          <span className="text-4xl font-bold text-primary/40">
+                          <span className="text-4xl font-semibold text-primary/40">
                             {initials}
                           </span>
                         </div>

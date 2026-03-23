@@ -85,7 +85,7 @@ export function OverviewContextSection({ deal, invalidateKanban }: OverviewConte
               <p className="text-sm whitespace-pre-wrap leading-relaxed">
                 {deal.description}
               </p>
-              <p className="text-[10px] text-muted-foreground mt-2">
+              <p className="text-xs text-muted-foreground mt-2">
                 Click to edit
               </p>
             </CardContent>

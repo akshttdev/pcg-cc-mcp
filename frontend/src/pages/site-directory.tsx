@@ -294,7 +294,7 @@ function DirectoryLinkList({ links }: { links: DirectoryLink[] }) {
             {link.admin && (
               <Badge
                 variant="secondary"
-                className="ml-auto text-[10px] px-1.5 py-0"
+                className="ml-auto text-xs px-1.5 py-0"
               >
                 ADMIN
               </Badge>

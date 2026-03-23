@@ -229,7 +229,7 @@ function MentionCard({
             )}
             <div
               className={cn(
-                'absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold',
+                'absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-semibold',
                 mention.platform === 'linkedin' && 'bg-[#0A66C2]',
                 mention.platform === 'instagram' && 'bg-[#E4405F]',
                 mention.platform === 'twitter' && 'bg-black',

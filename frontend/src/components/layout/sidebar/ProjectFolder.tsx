@@ -354,7 +354,7 @@ export function SortableSidebarProjectFolder({
               </span>
             )}
             {isContainer && (
-              <span className="text-[10px] text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 {project.children?.length || 0}
               </span>
             )}
@@ -536,7 +536,7 @@ export function SortableSidebarProjectFolder({
                     <Link
                       to={`/organizations/${orgId}`}
                       className={cn(
-                        'flex items-center gap-1.5 pl-2 pr-2 py-1 text-[10px] rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors text-muted-foreground',
+                        'flex items-center gap-1.5 pl-2 pr-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors text-muted-foreground',
                         location.pathname === `/organizations/${orgId}` && 'bg-primary/10 text-foreground font-medium'
                       )}
                     >

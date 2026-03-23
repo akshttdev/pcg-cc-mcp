@@ -246,7 +246,7 @@ export function WalletSettings() {
           {/* Balance Display */}
           <div className="text-center py-6 border-b">
             <p className="text-sm text-muted-foreground mb-1">VIBE Balance</p>
-            <div className="text-4xl font-bold">
+            <div className="text-4xl font-semibold">
               {balanceLoading ? (
                 <Loader2 className="h-8 w-8 animate-spin mx-auto" />
               ) : balanceError ? (

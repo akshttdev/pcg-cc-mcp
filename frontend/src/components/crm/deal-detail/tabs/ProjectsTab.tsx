@@ -62,7 +62,7 @@ export function ProjectsTab({ deal, orgId }: ProjectsTabProps) {
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Building2 className="h-3.5 w-3.5" />
         <span className="font-medium">{client.name}</span>
-        <Badge variant="secondary" className="text-[10px]">
+        <Badge variant="secondary" className="text-xs">
           {projects.length} project{projects.length !== 1 ? 's' : ''}
         </Badge>
       </div>

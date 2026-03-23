@@ -78,12 +78,12 @@ function SourceCard({
             <div className="flex items-center gap-2 mb-1">
               <span className="text-sm font-medium truncate">{source.source_title}</span>
               {source.is_stale && (
-                <Badge variant="outline" className="text-yellow-600 border-yellow-300 text-[10px]">
+                <Badge variant="outline" className="text-yellow-600 border-yellow-300 text-xs">
                   Stale
                 </Badge>
               )}
               {source.auto_registered && (
-                <Badge variant="outline" className="text-[10px]">
+                <Badge variant="outline" className="text-xs">
                   Auto
                 </Badge>
               )}
@@ -95,7 +95,7 @@ function SourceCard({
             )}
             <div className="flex items-center gap-2">
               <Progress value={source.coverage_score * 100} className="h-1.5 flex-1 max-w-[120px]" />
-              <span className="text-[10px] text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 {Math.round(source.coverage_score * 100)}% coverage
               </span>
             </div>
@@ -228,7 +228,7 @@ export function KnowledgePage() {
           <CardContent>
             <div className="flex items-center gap-3">
               <Progress value={completenessPercent} className="flex-1 h-2" />
-              <span className="text-2xl font-bold">{completenessPercent}%</span>
+              <span className="text-2xl font-semibold">{completenessPercent}%</span>
             </div>
           </CardContent>
         </Card>
@@ -247,7 +247,7 @@ export function KnowledgePage() {
                   <Badge
                     key={type}
                     variant={hasSources ? 'default' : 'outline'}
-                    className={`text-[10px] ${!hasSources ? 'opacity-40' : ''}`}
+                    className={`text-xs ${!hasSources ? 'opacity-40' : ''}`}
                   >
                     {SOURCE_TYPE_META[type]?.label || type}
                   </Badge>
@@ -268,7 +268,7 @@ export function KnowledgePage() {
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold">{data.total_sources}</span>
+              <span className="text-2xl font-semibold">{data.total_sources}</span>
               <span className="text-sm text-muted-foreground">total</span>
             </div>
             {data.stale_count > 0 && (
@@ -291,7 +291,7 @@ export function KnowledgePage() {
                 <Icon className="h-3 w-3" />
                 {SOURCE_TYPE_META[type]?.label || type}
                 {count > 0 && (
-                  <span className="text-[10px] ml-1 text-muted-foreground">({count})</span>
+                  <span className="text-xs ml-1 text-muted-foreground">({count})</span>
                 )}
               </TabsTrigger>
             );

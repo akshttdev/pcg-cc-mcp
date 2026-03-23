@@ -255,7 +255,7 @@ function FileCard({ file, orgId, onPreview }: { file: CloudFile; orgId: string; 
           <div className="p-1.5 rounded bg-muted">
             <Icon className="h-5 w-5 text-muted-foreground" />
           </div>
-          <Badge variant="outline" className="text-[10px] h-4 py-0">
+          <Badge variant="outline" className="text-xs h-4 py-0">
             {VOLUME_LABELS[file.storage_volume] ?? file.storage_volume}
           </Badge>
         </div>
@@ -263,7 +263,7 @@ function FileCard({ file, orgId, onPreview }: { file: CloudFile; orgId: string; 
           <p className="text-xs font-medium truncate" title={file.file_name}>
             {file.file_name}
           </p>
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {formatSize(file.file_size_bytes)}
           </p>
         </div>

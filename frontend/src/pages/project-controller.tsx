@@ -228,7 +228,7 @@ export function ProjectControllerPage() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-semibold">{displayName}</h1>
+              <h1 className="text-xl font-bold">{displayName}</h1>
               <Badge variant="secondary" className="text-xs">
                 {project?.name}
               </Badge>

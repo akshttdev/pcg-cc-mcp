@@ -108,7 +108,7 @@ export function SignupPage() {
               <span className="text-sm font-medium text-blue-700">{orgName}</span>
             </div>
           )}
-          <CardTitle className="text-2xl font-bold">
+          <CardTitle className="text-2xl font-semibold">
             {orgName ? `Join ${orgName}` : 'Create your account'}
           </CardTitle>
           <CardDescription>

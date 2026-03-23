@@ -29,7 +29,7 @@ function TaskPill({ task, getCategoryColor, onClick, onDragStart }: TaskPillProp
   return (
     <div
       className={cn(
-        'group flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] cursor-pointer',
+        'group flex items-center gap-1 px-1.5 py-0.5 rounded text-xs cursor-pointer',
         'bg-muted hover:bg-muted/80 transition-colors',
         'truncate max-w-full'
       )}
@@ -151,7 +151,7 @@ export function CalendarCell({
         {tasks.length > maxVisibleTasks && (
           <button
             onClick={() => onDateClick?.(date)}
-            className="text-[10px] text-muted-foreground hover:text-foreground px-1.5"
+            className="text-xs text-muted-foreground hover:text-foreground px-1.5"
           >
             +{tasks.length - maxVisibleTasks} more
           </button>

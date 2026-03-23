@@ -123,16 +123,16 @@ function ArtifactListItem({
           {isPinned && <Pin className="h-3 w-3 text-primary" />}
         </div>
         <div className="flex items-center gap-2 mt-0.5">
-          <Badge variant="outline" className="text-[10px] h-4">
+          <Badge variant="outline" className="text-xs h-4">
             {artifact.artifact_type.replace(/_/g, ' ')}
           </Badge>
           {phase && (
-            <Badge variant="outline" className={cn('text-[10px] h-4', phaseColors[phase])}>
+            <Badge variant="outline" className={cn('text-xs h-4', phaseColors[phase])}>
               {phase}
             </Badge>
           )}
           {createdBy && (
-            <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+            <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
               {createdBy === 'agent' ? <Bot className="h-3 w-3" /> : <User className="h-3 w-3" />}
             </span>
           )}
@@ -162,7 +162,7 @@ function ArtifactListItem({
                 }
               } catch { /* ignore */ }
             }}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 transition-colors"
+            className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 transition-colors"
           >
             <Clapperboard className="h-3 w-3" />
             Review

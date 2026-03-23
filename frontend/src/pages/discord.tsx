@@ -352,7 +352,7 @@ export function DiscordPage() {
       <div className="flex items-center justify-between px-6 py-4 border-b">
         <div className="flex items-center gap-3">
           <Radio className="h-5 w-5 text-primary" />
-          <h1 className="text-lg font-semibold">Discord Voice</h1>
+          <h1 className="text-lg font-bold">Discord Voice</h1>
           {activeSessions.length > 0 && (
             <Badge className="bg-green-500/15 text-green-400 border-green-500/20 text-xs">
               {activeSessions.length} live

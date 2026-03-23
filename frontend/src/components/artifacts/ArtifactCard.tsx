@@ -127,7 +127,7 @@ export function ArtifactCard({
           <div className="absolute top-2 left-2">
             <Badge
               className={cn(
-                'text-[10px] uppercase tracking-wide',
+                'text-xs uppercase tracking-wide',
                 phaseColors[artifactPhase]
               )}
             >

@@ -255,7 +255,7 @@ export function BoardsSection({
                               </span>
                               <Badge
                                 variant={task.status === 'done' ? 'secondary' : 'outline'}
-                                className="uppercase text-[10px]"
+                                className="uppercase text-xs"
                               >
                                 {formatStatusLabel(task.status)}
                               </Badge>
@@ -269,7 +269,7 @@ export function BoardsSection({
                           )}
                         </ul>
                       )}
-                      <div className="flex flex-wrap items-center justify-between gap-3 pt-3 text-[11px] uppercase tracking-wide text-muted-foreground">
+                      <div className="flex flex-wrap items-center justify-between gap-3 pt-3 text-xs uppercase tracking-wide text-muted-foreground">
                         <span>
                           Updated {new Date(board.updated_at).toLocaleDateString()}
                         </span>
@@ -326,7 +326,7 @@ export function BoardsSection({
                       Tasks without a board. Assign them to keep workstreams organized.
                     </p>
                   </div>
-                  <Badge variant="outline" className="uppercase text-[10px]">
+                  <Badge variant="outline" className="uppercase text-xs">
                     {unassignedTasks.length}
                   </Badge>
                 </div>
@@ -341,7 +341,7 @@ export function BoardsSection({
                       </span>
                       <Badge
                         variant={task.status === 'done' ? 'secondary' : 'outline'}
-                        className="uppercase text-[10px]"
+                        className="uppercase text-xs"
                       >
                         {formatStatusLabel(task.status)}
                       </Badge>

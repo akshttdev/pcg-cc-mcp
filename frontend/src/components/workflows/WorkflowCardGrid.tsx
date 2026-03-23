@@ -55,7 +55,7 @@ function OwnershipBadge({ ownerType }: { ownerType: string }) {
   const config = OWNER_BADGE_CONFIG[ownerType] ?? OWNER_BADGE_CONFIG.system;
   const Icon = config.icon;
   return (
-    <Badge variant="outline" className={cn('text-[10px] gap-1', config.className)}>
+    <Badge variant="outline" className={cn('text-xs gap-1', config.className)}>
       <Icon className="h-2.5 w-2.5" />
       {config.label}
     </Badge>
@@ -147,9 +147,9 @@ export function WorkflowCardGrid({
                 <div className="flex items-center gap-1.5">
                   {showOwnerBadge && <OwnershipBadge ownerType={wf.owner_type} />}
                   {wf.is_system && !showOwnerBadge && (
-                    <Badge variant="secondary" className="text-[10px]">System</Badge>
+                    <Badge variant="secondary" className="text-xs">System</Badge>
                   )}
-                  <Badge variant="outline" className="text-[10px]">
+                  <Badge variant="outline" className="text-xs">
                     {nodeCount} node{nodeCount !== 1 ? 's' : ''}
                   </Badge>
                 </div>
@@ -244,11 +244,11 @@ export function WorkflowCardGrid({
               {lastRunByWorkflow && (() => {
                 const lastRun = lastRunByWorkflow.get(wf.id);
                 if (!lastRun) {
-                  return <p className="text-[10px] text-muted-foreground/50 mt-1.5">Never run — click ▶ to execute</p>;
+                  return <p className="text-xs text-muted-foreground/50 mt-1.5">Never run — click ▶ to execute</p>;
                 }
                 const runStatus = getStatusInfo(lastRun.status, 'workflow');
                 return (
-                  <div className="text-[10px] text-muted-foreground mt-1.5 flex items-center gap-1">
+                  <div className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
                     Last run: {formatDistanceToNow(new Date(lastRun.created_at), { addSuffix: true })}
                     <StatusBadge
                       status={runStatus.variant}

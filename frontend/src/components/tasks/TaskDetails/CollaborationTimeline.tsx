@@ -187,7 +187,7 @@ function TimelineEventItem({ event }: { event: TimelineEvent }) {
             <Avatar className="h-6 w-6">
               <AvatarFallback
                 className={cn(
-                  'text-[10px]',
+                  'text-xs',
                   event.actor.type === 'agent'
                     ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
                     : event.actor.type === 'human'

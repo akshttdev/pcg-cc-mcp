@@ -580,11 +580,11 @@ export function ContactsTab({ orgId }: { orgId: string }) {
 
                 {/* Stage + analysis badges */}
                 <div className="mt-2 flex items-center gap-1.5">
-                  <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+                  <Badge variant="outline" className="text-xs h-4 px-1.5">
                     {deal.stage || 'Pipeline'}
                   </Badge>
                   {deal.report_id && (
-                    <Badge variant="secondary" className="text-[10px] h-4 px-1.5 gap-1">
+                    <Badge variant="secondary" className="text-xs h-4 px-1.5 gap-1">
                       <Contact2 className="h-2.5 w-2.5" />
                       Analysis
                     </Badge>

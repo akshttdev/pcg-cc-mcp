@@ -395,7 +395,7 @@ export function ArtifactPreviewCard({
                 }
               } catch { /* ignore */ }
             }}
-            className="absolute top-2 left-2 flex items-center gap-1 bg-amber-500/90 hover:bg-amber-400 text-white rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors opacity-0 group-hover:opacity-100"
+            className="absolute top-2 left-2 flex items-center gap-1 bg-amber-500/90 hover:bg-amber-400 text-white rounded px-1.5 py-0.5 text-xs font-medium transition-colors opacity-0 group-hover:opacity-100"
           >
             <Clapperboard className="h-2.5 w-2.5" />
             Review

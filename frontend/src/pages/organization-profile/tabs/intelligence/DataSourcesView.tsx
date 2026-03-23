@@ -447,7 +447,7 @@ export function DataSourcesView({
       error: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
     };
     return (
-      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${variants[status] ?? 'bg-muted text-muted-foreground'}`}>
+      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${variants[status] ?? 'bg-muted text-muted-foreground'}`}>
         {status}
       </span>
     );
@@ -602,7 +602,7 @@ export function DataSourcesView({
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline" className="text-[10px]">{dataTypeLabel(source.data_type)}</Badge>
+                    <Badge variant="outline" className="text-xs">{dataTypeLabel(source.data_type)}</Badge>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1 text-xs text-muted-foreground">

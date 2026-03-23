@@ -82,7 +82,7 @@ function StageOwnerBadge({ owner }: { owner: StageOwner }) {
   const typeLabel = owner.type === 'agent' ? 'AI agent' : owner.type === 'team' ? 'Team' : 'Human';
   return (
     <span
-      className="inline-flex items-center gap-1 text-[10px] text-muted-foreground font-normal cursor-default"
+      className="inline-flex items-center gap-1 text-xs text-muted-foreground font-normal cursor-default"
       title={`${owner.label} — ${typeLabel}`}
     >
       <Icon className="h-2.5 w-2.5" />
@@ -277,7 +277,7 @@ export function CrmPipelineBoard({
             <DollarSign className="h-4 w-4" />
           </div>
           <div>
-            <h1 className="text-lg sm:text-xl font-semibold">{title || kanbanData.pipeline_name}</h1>
+            <h1 className="text-lg sm:text-xl font-bold">{title || kanbanData.pipeline_name}</h1>
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
               <span>{totalDeals} deals</span>
               <span className="flex items-center gap-1">
@@ -354,7 +354,7 @@ export function CrmPipelineBoard({
                     <div className="flex items-center justify-between pl-4">
                       {owner ? <StageOwnerBadge owner={owner} /> : <span />}
                       {stageData.total_amount > 0 && (
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="text-xs text-muted-foreground">
                           {formatCurrencyFull(stageData.total_amount)}
                         </span>
                       )}

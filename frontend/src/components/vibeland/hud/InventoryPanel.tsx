@@ -56,8 +56,8 @@ export function InventoryPanel() {
             )}
             <ItemIcon className="h-8 w-8 mb-2 text-amber-300" />
             <p className="text-sm font-semibold text-white">{item.name}</p>
-            <p className="text-[10px] text-amber-200/70 mt-1 line-clamp-2">{item.description}</p>
-            <p className="text-[10px] uppercase tracking-wide text-amber-400/60 mt-2">
+            <p className="text-xs text-amber-200/70 mt-1 line-clamp-2">{item.description}</p>
+            <p className="text-xs uppercase tracking-wide text-amber-400/60 mt-2">
               Slot: {item.slot.replace(/([A-Z])/g, ' $1').trim()}
             </p>
           </button>

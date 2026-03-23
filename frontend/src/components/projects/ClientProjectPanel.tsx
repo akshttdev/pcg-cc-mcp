@@ -142,7 +142,7 @@ export function ClientProjectPanel({ projectId }: ClientProjectPanelProps) {
             {/* Brand identity */}
             <div className="flex items-center gap-4">
               <div
-                className="flex h-14 w-14 items-center justify-center rounded-2xl border-2 border-background/60 bg-background/80 text-xl font-bold text-foreground shadow-sm shrink-0"
+                className="flex h-14 w-14 items-center justify-center rounded-2xl border-2 border-background/60 bg-background/80 text-xl font-semibold text-foreground shadow-sm shrink-0"
                 style={{ borderColor: hexToRgba(primaryColor, 0.4) }}
               >
                 {brandInitials}
@@ -151,7 +151,7 @@ export function ClientProjectPanel({ projectId }: ClientProjectPanelProps) {
                 <p className="text-xs uppercase tracking-widest text-muted-foreground mb-0.5">
                   {'Active'}
                 </p>
-                <h3 className="text-xl font-bold leading-tight">{project.name}</h3>
+                <h3 className="text-xl font-semibold leading-tight">{project.name}</h3>
                 {/* Project type has no description field */}
                 {/* Brand palette chips */}
                 <div className="flex items-center gap-2 mt-2">
@@ -173,16 +173,16 @@ export function ClientProjectPanel({ projectId }: ClientProjectPanelProps) {
             {/* Stat chips */}
             <div className="flex gap-3 shrink-0 flex-wrap">
               <div className="text-center bg-white/70 dark:bg-black/20 rounded-xl px-4 py-2 shadow-sm">
-                <p className="text-2xl font-bold">{boards.length}</p>
-                <p className="text-[10px] uppercase text-muted-foreground">Boards</p>
+                <p className="text-2xl font-semibold">{boards.length}</p>
+                <p className="text-xs uppercase text-muted-foreground">Boards</p>
               </div>
               <div className="text-center bg-white/70 dark:bg-black/20 rounded-xl px-4 py-2 shadow-sm">
-                <p className="text-2xl font-bold">{activeTasks}</p>
-                <p className="text-[10px] uppercase text-muted-foreground">Active</p>
+                <p className="text-2xl font-semibold">{activeTasks}</p>
+                <p className="text-xs uppercase text-muted-foreground">Active</p>
               </div>
               <div className="text-center bg-white/70 dark:bg-black/20 rounded-xl px-4 py-2 shadow-sm">
-                <p className="text-2xl font-bold">{totalTasks}</p>
-                <p className="text-[10px] uppercase text-muted-foreground">Tasks</p>
+                <p className="text-2xl font-semibold">{totalTasks}</p>
+                <p className="text-xs uppercase text-muted-foreground">Tasks</p>
               </div>
             </div>
           </div>
@@ -212,7 +212,7 @@ export function ClientProjectPanel({ projectId }: ClientProjectPanelProps) {
               <ClipboardCheck className="h-3.5 w-3.5 mr-1.5" />
               Tasks
               {totalTasks > 0 && (
-                <Badge variant="secondary" className="ml-1.5 h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
+                <Badge variant="secondary" className="ml-1.5 h-4 text-xs bg-primary-foreground/20 text-primary-foreground">
                   {totalTasks}
                 </Badge>
               )}

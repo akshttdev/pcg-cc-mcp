@@ -187,7 +187,7 @@ export function NotificationsPage() {
           >
             {tab.label}
             {tab.count > 0 && (
-              <span className="min-w-[18px] h-5 rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400 px-1.5 text-xs font-bold flex items-center justify-center">
+              <span className="min-w-[18px] h-5 rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400 px-1.5 text-xs font-semibold flex items-center justify-center">
                 {tab.count > 99 ? '99+' : tab.count}
               </span>
             )}

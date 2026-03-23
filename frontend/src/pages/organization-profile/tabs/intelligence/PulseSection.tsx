@@ -81,10 +81,10 @@ export function PulseView({ projectEntries }: { projectEntries: { id: string; na
             <CardTitle className="text-sm font-medium text-muted-foreground">Unacknowledged Alerts</CardTitle>
           </CardHeader>
           <CardContent>
-            <span className={`text-2xl font-bold ${aggregated.unacknowledged > 0 ? 'text-amber-600' : ''}`}>
+            <span className={`text-2xl font-semibold ${aggregated.unacknowledged > 0 ? 'text-amber-600' : ''}`}>
               {aggregated.unacknowledged}
               {aggregated.unacknowledged > 0 && (
-                <Badge variant="default" className="text-[10px] ml-1">{aggregated.unacknowledged} new</Badge>
+                <Badge variant="default" className="text-xs ml-1">{aggregated.unacknowledged} new</Badge>
               )}
             </span>
           </CardContent>
@@ -94,7 +94,7 @@ export function PulseView({ projectEntries }: { projectEntries: { id: string; na
             <CardTitle className="text-sm font-medium text-muted-foreground">Recent Signals</CardTitle>
           </CardHeader>
           <CardContent>
-            <span className="text-2xl font-bold">{aggregated.content.length}</span>
+            <span className="text-2xl font-semibold">{aggregated.content.length}</span>
           </CardContent>
         </Card>
       </div>
@@ -106,7 +106,7 @@ export function PulseView({ projectEntries }: { projectEntries: { id: string; na
               <AlertTriangle className="h-4 w-4 text-amber-500" />
               Recent Alerts
               {aggregated.unacknowledged > 0 && (
-                <Badge variant="default" className="text-[10px] ml-1">{aggregated.unacknowledged} new</Badge>
+                <Badge variant="default" className="text-xs ml-1">{aggregated.unacknowledged} new</Badge>
               )}
             </CardTitle>
           </CardHeader>
@@ -132,7 +132,7 @@ export function PulseView({ projectEntries }: { projectEntries: { id: string; na
                           )}
                           <div className="flex items-center gap-2 mt-1">
                             <Badge variant="outline" className="text-[9px]">{alert._projectName}</Badge>
-                            <span className="text-[10px] text-muted-foreground">
+                            <span className="text-xs text-muted-foreground">
                               {fmtDate(alert.triggered_at || alert.created_at)}
                             </span>
                           </div>
@@ -171,9 +171,9 @@ export function PulseView({ projectEntries }: { projectEntries: { id: string; na
                       <div className="flex items-center gap-2 mt-1">
                         <Badge variant="outline" className="text-[9px]">{item._projectName}</Badge>
                         {item.source_name && (
-                          <span className="text-[10px] text-muted-foreground">{item.source_name}</span>
+                          <span className="text-xs text-muted-foreground">{item.source_name}</span>
                         )}
-                        <span className="text-[10px] text-muted-foreground ml-auto">
+                        <span className="text-xs text-muted-foreground ml-auto">
                           {fmtDate(item.collected_at || item.created_at)}
                         </span>
                       </div>
@@ -241,10 +241,10 @@ export function PulseSection({ projectEntries }: { projectEntries: { id: string;
             <CardTitle className="text-sm font-medium text-muted-foreground">Unacknowledged Alerts</CardTitle>
           </CardHeader>
           <CardContent>
-            <span className={`text-2xl font-bold ${aggregated.unacknowledged > 0 ? 'text-amber-600' : ''}`}>
+            <span className={`text-2xl font-semibold ${aggregated.unacknowledged > 0 ? 'text-amber-600' : ''}`}>
               {aggregated.unacknowledged}
               {aggregated.unacknowledged > 0 && (
-                <Badge variant="default" className="text-[10px] ml-1">{aggregated.unacknowledged} new</Badge>
+                <Badge variant="default" className="text-xs ml-1">{aggregated.unacknowledged} new</Badge>
               )}
             </span>
           </CardContent>
@@ -254,7 +254,7 @@ export function PulseSection({ projectEntries }: { projectEntries: { id: string;
             <CardTitle className="text-sm font-medium text-muted-foreground">Recent Signals</CardTitle>
           </CardHeader>
           <CardContent>
-            <span className="text-2xl font-bold">{aggregated.content.length}</span>
+            <span className="text-2xl font-semibold">{aggregated.content.length}</span>
           </CardContent>
         </Card>
       </div>
@@ -266,7 +266,7 @@ export function PulseSection({ projectEntries }: { projectEntries: { id: string;
               <AlertTriangle className="h-4 w-4 text-amber-500" />
               Recent Alerts
               {aggregated.unacknowledged > 0 && (
-                <Badge variant="default" className="text-[10px] ml-1">{aggregated.unacknowledged} new</Badge>
+                <Badge variant="default" className="text-xs ml-1">{aggregated.unacknowledged} new</Badge>
               )}
             </CardTitle>
           </CardHeader>
@@ -292,7 +292,7 @@ export function PulseSection({ projectEntries }: { projectEntries: { id: string;
                           )}
                           <div className="flex items-center gap-2 mt-1">
                             <Badge variant="outline" className="text-[9px]">{alert._projectName}</Badge>
-                            <span className="text-[10px] text-muted-foreground">
+                            <span className="text-xs text-muted-foreground">
                               {formatDate(alert.triggered_at || alert.created_at)}
                             </span>
                           </div>
@@ -331,9 +331,9 @@ export function PulseSection({ projectEntries }: { projectEntries: { id: string;
                       <div className="flex items-center gap-2 mt-1">
                         <Badge variant="outline" className="text-[9px]">{item._projectName}</Badge>
                         {item.source_name && (
-                          <span className="text-[10px] text-muted-foreground">{item.source_name}</span>
+                          <span className="text-xs text-muted-foreground">{item.source_name}</span>
                         )}
-                        <span className="text-[10px] text-muted-foreground ml-auto">
+                        <span className="text-xs text-muted-foreground ml-auto">
                           {formatDate(item.collected_at || item.created_at)}
                         </span>
                       </div>

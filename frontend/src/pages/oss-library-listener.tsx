@@ -403,7 +403,7 @@ export function OssLibraryListenerPage() {
         <div className="flex items-center gap-3">
           <Package className="h-6 w-6 text-muted-foreground" />
           <div>
-            <h1 className="text-2xl font-semibold">Library Listener</h1>
+            <h1 className="text-2xl font-bold">Library Listener</h1>
             <p className="text-sm text-muted-foreground">
               {pendingCount > 0
                 ? `${pendingCount} librar${pendingCount === 1 ? 'y has' : 'ies have'} new releases`

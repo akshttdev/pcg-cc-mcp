@@ -128,7 +128,7 @@ export function SocialOverviewView({
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">{label}</p>
-                  <p className="text-2xl font-bold">{value}</p>
+                  <p className="text-2xl font-semibold">{value}</p>
                 </div>
                 <Icon className={`h-5 w-5 ${color} mt-0.5`} />
               </div>
@@ -155,7 +155,7 @@ export function SocialOverviewView({
               </div>
             ) : agg.brandHandles.length > 0 ? (
               <div className="space-y-2">
-                <p className="text-[10px] text-muted-foreground mb-2">From brand profile</p>
+                <p className="text-xs text-muted-foreground mb-2">From brand profile</p>
                 {agg.brandHandles.map(({ platform, handle }) => {
                   const Icon = PLATFORM_ICONS[platform] || Globe;
                   return (
@@ -163,7 +163,7 @@ export function SocialOverviewView({
                       <Icon className={`h-4 w-4 shrink-0 ${PLATFORM_COLORS[platform] || 'text-muted-foreground'}`} />
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-medium truncate">{handle}</p>
-                        <p className="text-[10px] text-muted-foreground capitalize">{platform}</p>
+                        <p className="text-xs text-muted-foreground capitalize">{platform}</p>
                       </div>
                     </div>
                   );
@@ -178,9 +178,9 @@ export function SocialOverviewView({
                       <Icon className={`h-4 w-4 shrink-0 ${PLATFORM_COLORS[platform] || 'text-muted-foreground'}`} />
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-medium capitalize">{platform}</p>
-                        <p className="text-[10px] text-muted-foreground">{formatCompactNumber(data.followers)} followers</p>
+                        <p className="text-xs text-muted-foreground">{formatCompactNumber(data.followers)} followers</p>
                       </div>
-                      <span className="text-[10px] text-muted-foreground">{data.accounts} acct{data.accounts !== 1 ? 's' : ''}</span>
+                      <span className="text-xs text-muted-foreground">{data.accounts} acct{data.accounts !== 1 ? 's' : ''}</span>
                     </div>
                   );
                 })}
@@ -222,15 +222,15 @@ export function SocialOverviewView({
                       <div className="min-w-0 flex-1">
                         <p className="text-xs line-clamp-1 font-medium">{post.caption || '(no caption)'}</p>
                         <div className="flex items-center gap-2 mt-0.5">
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded border ${STATUS_COLORS[post.status] || ''}`}>{post.status}</span>
-                          {post.scheduled_for && <span className="text-[10px] text-muted-foreground">{formatDate(post.scheduled_for)}</span>}
-                          <span className="text-[10px] text-muted-foreground">{post._project}</span>
+                          <span className={`text-xs px-1.5 py-0.5 rounded border ${STATUS_COLORS[post.status] || ''}`}>{post.status}</span>
+                          {post.scheduled_for && <span className="text-xs text-muted-foreground">{formatDate(post.scheduled_for)}</span>}
+                          <span className="text-xs text-muted-foreground">{post._project}</span>
                         </div>
                       </div>
                       {(post.likes > 0 || post.impressions > 0) && (
                         <div className="text-right shrink-0">
-                          {post.impressions > 0 && <p className="text-[10px] text-muted-foreground">{formatCompactNumber(post.impressions)} views</p>}
-                          {post.likes > 0 && <p className="text-[10px] text-muted-foreground">{post.likes} &#9829;</p>}
+                          {post.impressions > 0 && <p className="text-xs text-muted-foreground">{formatCompactNumber(post.impressions)} views</p>}
+                          {post.likes > 0 && <p className="text-xs text-muted-foreground">{post.likes} &#9829;</p>}
                         </div>
                       )}
                     </div>
@@ -250,8 +250,8 @@ export function SocialOverviewView({
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <Inbox className="h-4 w-4 text-amber-500" />
                 Recent Inbox
-                {agg.unread > 0 && <Badge variant="default" className="text-[10px]">{agg.unread} unread</Badge>}
-                {agg.urgent > 0 && <Badge variant="destructive" className="text-[10px]">{agg.urgent} urgent</Badge>}
+                {agg.unread > 0 && <Badge variant="default" className="text-xs">{agg.unread} unread</Badge>}
+                {agg.urgent > 0 && <Badge variant="destructive" className="text-xs">{agg.urgent} urgent</Badge>}
               </CardTitle>
               <button onClick={() => onSwitchView('inbox')} className="text-xs text-primary hover:underline">View all &rarr;</button>
             </div>
@@ -267,7 +267,7 @@ export function SocialOverviewView({
                       <span className="text-xs font-medium truncate flex-1">{m.author_display_name || m.author_username || 'Unknown'}</span>
                       {m.status === 'unread' && <span className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />}
                     </div>
-                    {m.content && <p className="text-[11px] text-muted-foreground line-clamp-2">{m.content}</p>}
+                    {m.content && <p className="text-xs text-muted-foreground line-clamp-2">{m.content}</p>}
                     <div className="flex items-center gap-1.5 mt-1">
                       <Badge variant="outline" className="text-[9px]">{m.mention_type}</Badge>
                       {m.sentiment && m.sentiment !== 'unknown' && (

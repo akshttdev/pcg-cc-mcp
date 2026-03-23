@@ -30,7 +30,7 @@ export function PageHeader({
           <Icon className="h-5 w-5" />
         </div>
         <div>
-          <h1 className="text-lg sm:text-xl font-semibold">{title}</h1>
+          <h1 className="text-lg sm:text-xl font-bold">{title}</h1>
           {subtitle && (
             <p className="text-sm text-muted-foreground">{subtitle}</p>
           )}

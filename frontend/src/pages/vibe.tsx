@@ -169,7 +169,7 @@ export default function VibePage() {
           <div className="text-center">
             <Coins className="h-12 w-12 mx-auto mb-2 text-yellow-500" />
             <p className="text-sm text-muted-foreground mb-1">Available Balance</p>
-            <p className="text-4xl font-bold text-yellow-500">
+            <p className="text-4xl font-semibold text-yellow-500">
               {(stats.budget_limit > 0 ? stats.budget_limit - stats.total_spent : stats.balance).toFixed(0)}
             </p>
             <p className="text-sm text-muted-foreground mt-1">VIBE</p>
@@ -391,12 +391,12 @@ export default function VibePage() {
                         </div>
                         <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                           {tx.model && (
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                            <Badge variant="secondary" className="text-xs px-1.5 py-0">
                               {tx.model}
                             </Badge>
                           )}
                           {meta.phase && (
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                            <Badge variant="secondary" className="text-xs px-1.5 py-0">
                               {meta.phase}
                             </Badge>
                           )}
@@ -460,7 +460,7 @@ export default function VibePage() {
           <Coins className="h-5 w-5 text-yellow-500" />
         </div>
         <div>
-          <h1 className="text-xl font-semibold">VIBE Treasury</h1>
+          <h1 className="text-xl font-bold">VIBE Treasury</h1>
           <p className="text-sm text-muted-foreground">Token balances, deposits, and transaction history</p>
         </div>
       </div>

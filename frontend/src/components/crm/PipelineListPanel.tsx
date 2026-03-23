@@ -70,7 +70,7 @@ export function PipelineListPanel({
               >
                 <div className="flex items-center justify-between">
                   <span className="font-medium">{pipeline.name}</span>
-                  <Badge variant="outline" className="text-[11px]">
+                  <Badge variant="outline" className="text-xs">
                     {pipeline.pipeline_type}
                   </Badge>
                 </div>

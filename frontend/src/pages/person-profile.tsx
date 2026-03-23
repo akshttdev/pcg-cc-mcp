@@ -538,7 +538,7 @@ function ResearchTab({ personId }: { personId: string }) {
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">
                   <div className="w-7 h-7 rounded-full bg-muted border border-border flex items-center justify-center">
-                    <span className="text-xs font-bold text-foreground">{pass.pass_number}</span>
+                    <span className="text-xs font-semibold text-foreground">{pass.pass_number}</span>
                   </div>
                   <span className={`text-sm font-medium capitalize ${focusColors[pass.research_focus ?? ''] ?? 'text-foreground'}`}>
                     {(pass.research_focus ?? '').replace(/_/g, ' ')}
@@ -616,7 +616,7 @@ function ReportsTab({ personId }: { personId: string }) {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 mb-1">
                     <p className="font-semibold text-foreground group-hover:text-foreground transition-colors">{r.title}</p>
-                    <Badge variant="outline" className={`shrink-0 text-[10px] ${
+                    <Badge variant="outline" className={`shrink-0 text-xs ${
                       r.status === 'ready' ? 'border-emerald-700 text-emerald-400' : 'border-amber-700 text-amber-400'
                     }`}>{r.status}</Badge>
                   </div>
@@ -676,7 +676,7 @@ export function PersonProfilePage() {
       <div className="rounded-2xl border border-border bg-card p-6">
         <div className="flex items-start gap-5">
           {/* Avatar */}
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xl font-bold shrink-0 shadow-lg">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xl font-semibold shrink-0 shadow-lg">
             {person.avatar_url
               ? <img src={person.avatar_url} alt={person.full_name} className="w-full h-full object-cover rounded-2xl" />
               : initials}

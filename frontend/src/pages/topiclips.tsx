@@ -202,7 +202,7 @@ export function TopiClipsPage() {
             <div className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-500 to-red-500 rounded-lg text-white">
               <Flame className="w-5 h-5" />
               <div className="text-right">
-                <div className="text-lg font-bold">{gallery?.currentStreak || 0}</div>
+                <div className="text-lg font-semibold">{gallery?.currentStreak || 0}</div>
                 <div className="text-xs opacity-80">day streak</div>
               </div>
             </div>
@@ -524,7 +524,7 @@ export function TopiClipsPage() {
                   <CardContent>
                     <div className="flex items-center gap-2">
                       <Flame className="w-8 h-8 text-orange-500" />
-                      <div className="text-3xl font-bold">{gallery?.currentStreak || 0}</div>
+                      <div className="text-3xl font-semibold">{gallery?.currentStreak || 0}</div>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">consecutive days</p>
                   </CardContent>
@@ -539,7 +539,7 @@ export function TopiClipsPage() {
                   <CardContent>
                     <div className="flex items-center gap-2">
                       <Trophy className="w-8 h-8 text-yellow-500" />
-                      <div className="text-3xl font-bold">{gallery?.longestStreak || 0}</div>
+                      <div className="text-3xl font-semibold">{gallery?.longestStreak || 0}</div>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">personal best</p>
                   </CardContent>
@@ -554,7 +554,7 @@ export function TopiClipsPage() {
                   <CardContent>
                     <div className="flex items-center gap-2">
                       <Film className="w-8 h-8 text-purple-500" />
-                      <div className="text-3xl font-bold">{gallery?.totalClips || 0}</div>
+                      <div className="text-3xl font-semibold">{gallery?.totalClips || 0}</div>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">generated</p>
                   </CardContent>
@@ -569,7 +569,7 @@ export function TopiClipsPage() {
                   <CardContent>
                     <div className="flex items-center gap-2">
                       <Calendar className="w-8 h-8 text-blue-500" />
-                      <div className="text-xl font-bold">
+                      <div className="text-xl font-semibold">
                         {gallery?.schedule?.scheduledTime || 'Not set'}
                       </div>
                     </div>

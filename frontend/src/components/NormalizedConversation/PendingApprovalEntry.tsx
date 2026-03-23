@@ -145,7 +145,7 @@ const PendingApprovalEntry = ({
 
   return (
     <div className="relative mt-3">
-      <div className="absolute -top-3 left-4 rounded-full border bg-background px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide shadow-sm">
+      <div className="absolute -top-3 left-4 rounded-full border bg-background px-2 py-0.5 text-xs font-semibold uppercase tracking-wide shadow-sm">
         Awaiting approval
       </div>
       <div className="overflow-hidden border">

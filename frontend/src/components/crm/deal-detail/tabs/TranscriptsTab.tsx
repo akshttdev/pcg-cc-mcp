@@ -152,19 +152,19 @@ export function TranscriptsTab({ deal }: TranscriptsTabProps) {
           {transcripts.map((t) => (
             <div key={t.id} className="rounded-lg border p-3 space-y-1.5">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Clock className="h-3 w-3" />
                   {formatDistanceToNow(new Date(t.created_at), {
                     addSuffix: true,
                   })}
                   {t.matched_by && (
-                    <span className="bg-purple-500/10 text-purple-400 px-1 rounded text-[10px]">
+                    <span className="bg-purple-500/10 text-purple-400 px-1 rounded text-xs">
                       {t.matched_by}
                     </span>
                   )}
                 </div>
                 {t.call_log_id && (
-                  <span className="text-[10px] text-muted-foreground font-mono">
+                  <span className="text-xs text-muted-foreground font-mono">
                     {t.call_log_id}
                   </span>
                 )}
@@ -175,7 +175,7 @@ export function TranscriptsTab({ deal }: TranscriptsTabProps) {
                 </p>
               )}
               {t.transcript_text && (
-                <details className="text-[11px] text-muted-foreground">
+                <details className="text-xs text-muted-foreground">
                   <summary className="cursor-pointer hover:text-foreground">
                     Full transcript
                   </summary>

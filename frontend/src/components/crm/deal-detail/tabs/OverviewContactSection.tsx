@@ -91,7 +91,7 @@ export function OverviewContactSection({ deal, orgId }: OverviewContactSectionPr
                     />
                   </div>
                   {(deal.deliverable_count ?? 0) > 0 && (
-                    <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
                       <FileText className="h-3 w-3" />
                       {deal.deliverable_count} deliverable
                       {(deal.deliverable_count ?? 0) !== 1 ? 's' : ''}
@@ -119,7 +119,7 @@ export function OverviewContactSection({ deal, orgId }: OverviewContactSectionPr
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-5 text-[10px] px-1 ml-auto gap-0.5"
+                    className="h-5 text-xs px-1 ml-auto gap-0.5"
                     asChild
                   >
                     <Link to={`/people/${deal.person_id}`}>
@@ -143,7 +143,7 @@ export function OverviewContactSection({ deal, orgId }: OverviewContactSectionPr
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-5 text-[10px] px-1 ml-auto gap-0.5"
+                    className="h-5 text-xs px-1 ml-auto gap-0.5"
                     asChild
                   >
                     <Link to={`/companies/${deal.company_id}`}>
@@ -175,7 +175,7 @@ export function OverviewContactSection({ deal, orgId }: OverviewContactSectionPr
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-6 text-[10px] px-1.5 shrink-0 gap-0.5"
+                  className="h-6 text-xs px-1.5 shrink-0 gap-0.5"
                   asChild
                 >
                   <Link to={`/organizations/${effectiveOrgId}`}>
@@ -200,7 +200,7 @@ export function OverviewContactSection({ deal, orgId }: OverviewContactSectionPr
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-5 text-[10px] px-1 ml-auto gap-0.5 shrink-0"
+                      className="h-5 text-xs px-1 ml-auto gap-0.5 shrink-0"
                       asChild
                     >
                       <Link to={`/companies/${deal.company_id}`}>
@@ -219,7 +219,7 @@ export function OverviewContactSection({ deal, orgId }: OverviewContactSectionPr
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-5 text-[10px] px-1 ml-auto gap-0.5 shrink-0"
+                    className="h-5 text-xs px-1 ml-auto gap-0.5 shrink-0"
                     asChild
                   >
                     <Link to={`/organizations/${effectiveOrgId}`}>

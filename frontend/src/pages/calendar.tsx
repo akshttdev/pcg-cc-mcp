@@ -228,14 +228,14 @@ export default function CalendarPage() {
     if (e.kind === 'post') {
       const Icon = PLATFORM_ICONS[e.platform ?? ''] ?? Globe;
       return (
-        <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] leading-tight truncate ${colorCls}`}>
+        <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-xs leading-tight truncate ${colorCls}`}>
           <Icon className={`h-2.5 w-2.5 shrink-0 ${PLATFORM_COLORS[e.platform ?? ''] ?? ''}`} />
           {!compact && <span className="truncate">{e.title}</span>}
         </div>
       );
     }
     return (
-      <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] leading-tight truncate ${colorCls}`}>
+      <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-xs leading-tight truncate ${colorCls}`}>
         {e.status === 'done'
           ? <CheckCircle2 className="h-2.5 w-2.5 shrink-0" />
           : <Circle className="h-2.5 w-2.5 shrink-0" />}
@@ -275,14 +275,14 @@ export default function CalendarPage() {
                   <div className="min-w-0">
                     <p className="text-xs font-medium line-clamp-2">{e.title}</p>
                     <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className={`text-[10px] px-1 py-0.5 rounded border ${
+                      <span className={`text-xs px-1 py-0.5 rounded border ${
                         e.kind === 'task'
                           ? TASK_STATUS_COLORS[e.status] ?? ''
                           : POST_STATUS_COLORS[e.status] ?? ''
                       }`}>
                         {e.status.replace(/_/g,' ')}
                       </span>
-                      <span className="text-[10px] text-muted-foreground capitalize">{e.kind}</span>
+                      <span className="text-xs text-muted-foreground capitalize">{e.kind}</span>
                     </div>
                   </div>
                 </div>
@@ -317,7 +317,7 @@ export default function CalendarPage() {
               <div key={key}>
                 <div className={`text-xs font-semibold mb-2 flex items-center gap-2 ${isSameDay(day, today) ? 'text-primary' : 'text-muted-foreground'}`}>
                   <span>{day.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</span>
-                  {isSameDay(day, today) && <Badge variant="secondary" className="text-[10px] h-4">Today</Badge>}
+                  {isSameDay(day, today) && <Badge variant="secondary" className="text-xs h-4">Today</Badge>}
                 </div>
                 <div className="space-y-1.5 pl-2 border-l-2 border-border/50">
                   {evts.map(e => (
@@ -331,14 +331,14 @@ export default function CalendarPage() {
                         return <Icon className={`h-3.5 w-3.5 shrink-0 ${PLATFORM_COLORS[e.platform ?? ''] ?? ''}`} />;
                       })()}
                       <span className="text-sm flex-1 truncate">{e.title}</span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded border shrink-0 ${
+                      <span className={`text-xs px-1.5 py-0.5 rounded border shrink-0 ${
                         e.kind === 'task'
                           ? TASK_STATUS_COLORS[e.status] ?? ''
                           : POST_STATUS_COLORS[e.status] ?? ''
                       }`}>
                         {e.status.replace(/_/g,' ')}
                       </span>
-                      <span className="text-[10px] text-muted-foreground capitalize shrink-0">{e.kind}</span>
+                      <span className="text-xs text-muted-foreground capitalize shrink-0">{e.kind}</span>
                     </div>
                   ))}
                 </div>
@@ -391,7 +391,7 @@ export default function CalendarPage() {
                     <div className="space-y-0.5">
                       {dayEvts.slice(0, 3).map(e => <EventPill key={e.id} e={e} />)}
                       {dayEvts.length > 3 && (
-                        <div className="text-[10px] text-muted-foreground pl-1">+{dayEvts.length - 3} more</div>
+                        <div className="text-xs text-muted-foreground pl-1">+{dayEvts.length - 3} more</div>
                       )}
                     </div>
                   </div>
@@ -466,7 +466,7 @@ export default function CalendarPage() {
             <div className="rounded-lg bg-primary p-1.5 mr-1 shrink-0">
               <CalendarDays className="h-4 w-4 text-primary-foreground" />
             </div>
-            <h1 className="text-sm font-semibold mr-2 hidden sm:block">Calendar</h1>
+            <h1 className="text-sm font-bold mr-2 hidden sm:block">Calendar</h1>
             <button onClick={prev} className="p-1 rounded hover:bg-muted">
               <ChevronLeft className="h-4 w-4" />
             </button>

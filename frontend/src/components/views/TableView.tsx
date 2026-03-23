@@ -204,12 +204,12 @@ export function TableView({ tasks, projectId, onEditTask, onDeleteTask, onDuplic
           return (
             <div className="flex flex-wrap gap-1">
               {mcpList.slice(0, 2).map((mcp: string) => (
-                <Badge key={mcp} variant="outline" className="text-[10px] bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                <Badge key={mcp} variant="outline" className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
                   {mcp}
                 </Badge>
               ))}
               {mcpList.length > 2 && (
-                <Badge variant="secondary" className="text-[10px]">+{mcpList.length - 2}</Badge>
+                <Badge variant="secondary" className="text-xs">+{mcpList.length - 2}</Badge>
               )}
             </div>
           );
@@ -226,12 +226,12 @@ export function TableView({ tasks, projectId, onEditTask, onDeleteTask, onDuplic
           return (
             <div className="flex flex-wrap gap-1">
               {tagList.slice(0, 2).map((tag: string) => (
-                <Badge key={tag} variant="secondary" className="text-[10px]">
+                <Badge key={tag} variant="secondary" className="text-xs">
                   {tag}
                 </Badge>
               ))}
               {tagList.length > 2 && (
-                <Badge variant="secondary" className="text-[10px]">+{tagList.length - 2}</Badge>
+                <Badge variant="secondary" className="text-xs">+{tagList.length - 2}</Badge>
               )}
             </div>
           );

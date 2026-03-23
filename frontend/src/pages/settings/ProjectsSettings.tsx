@@ -147,7 +147,7 @@ export function ProjectsSettings() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-3xl font-bold tracking-tight">Project Access Management</h2>
+        <h2 className="text-3xl font-semibold tracking-tight">Project Access Management</h2>
         <p className="text-muted-foreground mt-2">
           Manage user access and permissions for each project.
         </p>
@@ -161,7 +161,7 @@ export function ProjectsSettings() {
             <FolderKanban className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{projects.length}</div>
+            <div className="text-2xl font-semibold">{projects.length}</div>
           </CardContent>
         </Card>
         
@@ -171,7 +171,7 @@ export function ProjectsSettings() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">-</div>
+            <div className="text-2xl font-semibold">-</div>
             <p className="text-xs text-muted-foreground">
               Projects with access controls
             </p>
@@ -184,7 +184,7 @@ export function ProjectsSettings() {
             <Shield className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">All</div>
+            <div className="text-2xl font-semibold">All</div>
             <p className="text-xs text-muted-foreground">
               Admins have full access
             </p>

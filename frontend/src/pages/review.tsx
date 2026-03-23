@@ -49,7 +49,7 @@ function CommentCard({
           </button>
         )}
         {comment.is_resolved && (
-          <Badge variant="secondary" className="text-[10px] ml-auto">
+          <Badge variant="secondary" className="text-xs ml-auto">
             resolved
           </Badge>
         )}
@@ -89,7 +89,7 @@ function SourceFilesDrawer({
       >
         <Film className="h-4 w-4 text-muted-foreground" />
         <span className="text-sm font-medium">Source Files</span>
-        <Badge variant="secondary" className="text-[10px]">{files.length}</Badge>
+        <Badge variant="secondary" className="text-xs">{files.length}</Badge>
         <span className="ml-auto text-muted-foreground">
           {open ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
         </span>
@@ -110,7 +110,7 @@ function SourceFilesDrawer({
                 >
                   <Film className="h-3 w-3 text-muted-foreground shrink-0" />
                   <span className="text-xs truncate flex-1" title={f.name}>{f.name}</span>
-                  <span className="text-[10px] text-muted-foreground shrink-0">{formatFileSize(f.size_bytes)}</span>
+                  <span className="text-xs text-muted-foreground shrink-0">{formatFileSize(f.size_bytes)}</span>
                   <a
                     href={f.url}
                     download={f.name}
@@ -138,7 +138,7 @@ function SourceFilesDrawer({
                   <div className="absolute bottom-2 right-2 flex gap-1.5">
                     <button
                       onClick={() => onSelect(previewFile.url)}
-                      className="flex items-center gap-1 bg-primary text-primary-foreground text-[10px] font-medium px-2 py-1 rounded hover:bg-primary/90 transition-colors"
+                      className="flex items-center gap-1 bg-primary text-primary-foreground text-xs font-medium px-2 py-1 rounded hover:bg-primary/90 transition-colors"
                       title="Use this clip as main video"
                     >
                       <Play className="h-2.5 w-2.5" />
@@ -234,7 +234,7 @@ export function ReviewPage() {
     <div className="h-screen bg-background flex flex-col overflow-hidden">
       {/* Header */}
       <div className="border-b border-border px-6 py-3 flex items-center gap-3 shrink-0">
-        <h1 className="font-semibold text-sm">{deliverable.title}</h1>
+        <h1 className="font-bold text-sm">{deliverable.title}</h1>
         <Badge variant="secondary" className="text-xs capitalize">
           {deliverable.status.replace('_', ' ')}
         </Badge>

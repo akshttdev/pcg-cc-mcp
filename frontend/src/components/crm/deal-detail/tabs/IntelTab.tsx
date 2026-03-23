@@ -151,7 +151,7 @@ export function IntelTab({ deal }: IntelTabProps) {
             </Badge>
           )}
           {(deal.research_pass_count ?? 0) > 0 && (
-            <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
               <RotateCcw className="h-3 w-3" />
               {deal.research_pass_count} pass
               {(deal.research_pass_count ?? 0) !== 1 ? 'es' : ''}
@@ -171,7 +171,7 @@ export function IntelTab({ deal }: IntelTabProps) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-5 text-[10px] gap-1 ml-auto px-1.5"
+                  className="h-5 text-xs gap-1 ml-auto px-1.5"
                   asChild
                 >
                   <Link to={`/people/${deal.person_id}`}>
@@ -208,7 +208,7 @@ export function IntelTab({ deal }: IntelTabProps) {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-5 text-[10px] gap-1 px-1.5"
+                    className="h-5 text-xs gap-1 px-1.5"
                     asChild
                   >
                     <Link to={`/companies/${deal.company_id}`}>
@@ -247,7 +247,7 @@ export function IntelTab({ deal }: IntelTabProps) {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-5 text-[10px] gap-1 ml-auto px-1.5 text-primary"
+                className="h-5 text-xs gap-1 ml-auto px-1.5 text-primary"
                 asChild
               >
                 <Link to={`/business-reports/${deal.report_id}`}>

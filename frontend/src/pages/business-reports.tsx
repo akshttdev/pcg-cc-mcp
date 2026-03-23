@@ -110,14 +110,14 @@ function IntelSourcePanels({ personId, companyId }: { personId?: string; company
               <Fingerprint className="w-4 h-4 text-indigo-400" />
               <span className="text-xs font-semibold uppercase tracking-widest text-indigo-400">Person Intel</span>
               {person.intelligence_status === 'done' && (
-                <Badge variant="outline" className="text-[10px] px-1.5 border-emerald-700 text-emerald-400">verified</Badge>
+                <Badge variant="outline" className="text-xs px-1.5 border-emerald-700 text-emerald-400">verified</Badge>
               )}
             </div>
             <div className="flex items-center gap-2">
-              <Link to={`/people/${person.id}?tab=reports`} className="text-[10px] text-slate-500 hover:text-slate-300 flex items-center gap-0.5">
+              <Link to={`/people/${person.id}?tab=reports`} className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-0.5">
                 <Brain className="w-3 h-3" /> Intel
               </Link>
-              <Link to={`/people/${person.id}`} className="text-[10px] text-slate-500 hover:text-slate-300 flex items-center gap-0.5">
+              <Link to={`/people/${person.id}`} className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-0.5">
                 <ExternalLink className="w-3 h-3" /> Profile
               </Link>
               <button
@@ -149,7 +149,7 @@ function IntelSourcePanels({ personId, companyId }: { personId?: string; company
                   style={{ width: `${Math.round((person.intelligence_confidence ?? 0) * 100)}%` }}
                 />
               </div>
-              <span className="text-[10px] text-slate-500">{Math.round((person.intelligence_confidence ?? 0) * 100)}% confidence</span>
+              <span className="text-xs text-slate-500">{Math.round((person.intelligence_confidence ?? 0) * 100)}% confidence</span>
             </div>
           )}
         </div>
@@ -165,11 +165,11 @@ function IntelSourcePanels({ personId, companyId }: { personId?: string; company
               <Brain className="w-4 h-4 text-violet-400" />
               <span className="text-xs font-semibold uppercase tracking-widest text-violet-400">Brand Intel</span>
               {company.intelligence_status === 'done' && (
-                <Badge variant="outline" className="text-[10px] px-1.5 border-emerald-700 text-emerald-400">verified</Badge>
+                <Badge variant="outline" className="text-xs px-1.5 border-emerald-700 text-emerald-400">verified</Badge>
               )}
             </div>
             <div className="flex items-center gap-2">
-              <Link to={`/companies/${company.id}`} className="text-[10px] text-slate-500 hover:text-slate-300 flex items-center gap-0.5">
+              <Link to={`/companies/${company.id}`} className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-0.5">
                 <ExternalLink className="w-3 h-3" /> Profile
               </Link>
               <button
@@ -187,7 +187,7 @@ function IntelSourcePanels({ personId, companyId }: { personId?: string; company
             {company.industry && <p className="text-xs text-slate-400">{company.industry}</p>}
             {company.website && (
               <a href={company.website} target="_blank" rel="noopener noreferrer"
-                className="text-[10px] text-violet-400 hover:text-violet-300 flex items-center gap-0.5 mt-0.5">
+                className="text-xs text-violet-400 hover:text-violet-300 flex items-center gap-0.5 mt-0.5">
                 <Globe className="w-3 h-3" />{company.website.replace(/^https?:\/\//, '')}
               </a>
             )}
@@ -207,7 +207,7 @@ function IntelSourcePanels({ personId, companyId }: { personId?: string; company
                   style={{ width: `${Math.round((company.intelligence_confidence ?? 0) * 100)}%` }}
                 />
               </div>
-              <span className="text-[10px] text-slate-500">{Math.round((company.intelligence_confidence ?? 0) * 100)}% confidence</span>
+              <span className="text-xs text-slate-500">{Math.round((company.intelligence_confidence ?? 0) * 100)}% confidence</span>
             </div>
           )}
         </div>
@@ -433,7 +433,7 @@ export function ReportDetail() {
         <InlineEdit
           value={report.title}
           onSave={(v) => save('title', v)}
-          className="text-3xl font-bold text-white tracking-tight"
+          className="text-3xl font-semibold text-white tracking-tight"
           placeholder="Report Title"
         />
         <div className="mt-3 h-px bg-gradient-to-r from-indigo-500/40 to-transparent" />
@@ -568,7 +568,7 @@ export function ReportDetail() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 mb-1">
                     <p className="font-semibold text-slate-200">{c.name}</p>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${threatBadge(c.threat_level)}`}>
+                    <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${threatBadge(c.threat_level)}`}>
                       {c.threat_level} threat
                     </span>
                     {c.website && (
@@ -580,11 +580,11 @@ export function ReportDetail() {
                   </div>
                   <div className="grid grid-cols-2 gap-3 mt-2">
                     <div>
-                      <p className="text-[10px] uppercase tracking-wider text-emerald-500 mb-1">Strengths</p>
+                      <p className="text-xs uppercase tracking-wider text-emerald-500 mb-1">Strengths</p>
                       <p className="text-xs text-slate-400">{c.strengths}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] uppercase tracking-wider text-red-500 mb-1">Weaknesses</p>
+                      <p className="text-xs uppercase tracking-wider text-red-500 mb-1">Weaknesses</p>
                       <p className="text-xs text-slate-400">{c.weaknesses}</p>
                     </div>
                   </div>
@@ -604,7 +604,7 @@ export function ReportDetail() {
               <div key={i} className={`flex items-start gap-3 px-4 py-3 rounded-lg border text-sm ${severityColor(p.severity)}`}>
                 <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
                 <p>{p.point}</p>
-                <span className="ml-auto text-[10px] uppercase tracking-wider font-medium opacity-70">{p.severity}</span>
+                <span className="ml-auto text-xs uppercase tracking-wider font-medium opacity-70">{p.severity}</span>
               </div>
             ))}
           </div>
@@ -624,7 +624,7 @@ export function ReportDetail() {
                 </div>
                 <p className="text-xs text-slate-400 leading-relaxed mb-3">{o.description}</p>
                 {o.estimated_value && (
-                  <span className="text-[10px] px-2 py-1 rounded-full border border-emerald-800 text-emerald-400 bg-emerald-950/30 font-medium">
+                  <span className="text-xs px-2 py-1 rounded-full border border-emerald-800 text-emerald-400 bg-emerald-950/30 font-medium">
                     {o.estimated_value}
                   </span>
                 )}
@@ -642,13 +642,13 @@ export function ReportDetail() {
             {recommendedServices.map((s, i) => (
               <div key={i} className="flex items-start gap-4">
                 <div className="w-6 h-6 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center shrink-0 mt-0.5">
-                  <span className="text-[10px] font-bold text-indigo-400">{i + 1}</span>
+                  <span className="text-xs font-semibold text-indigo-400">{i + 1}</span>
                 </div>
                 <div>
                   <p className="font-semibold text-slate-200 text-sm">{s.name}</p>
                   <p className="text-xs text-slate-400 mt-0.5">{s.rationale}</p>
                   {s.timeline && (
-                    <p className="text-[10px] text-slate-500 mt-1">Timeline: {s.timeline}</p>
+                    <p className="text-xs text-slate-500 mt-1">Timeline: {s.timeline}</p>
                   )}
                 </div>
               </div>
@@ -740,7 +740,7 @@ export default function BusinessReportsPage() {
             <ClipboardList className="w-5 h-5 text-indigo-400" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-white">Business Analytics</h1>
+            <h1 className="text-xl font-bold text-white">Business Analytics</h1>
             <p className="text-xs text-slate-500">{reports.length} report{reports.length !== 1 ? 's' : ''}</p>
           </div>
         </div>
@@ -772,7 +772,7 @@ export default function BusinessReportsPage() {
                       <p className="font-semibold text-slate-200 group-hover:text-white transition-colors truncate">
                         {r.title}
                       </p>
-                      <Badge variant="outline" className={`shrink-0 text-[10px] ${
+                      <Badge variant="outline" className={`shrink-0 text-xs ${
                         r.status === 'ready' ? 'border-emerald-700 text-emerald-400' :
                         r.status === 'draft' ? 'border-amber-700 text-amber-400' :
                         'border-slate-700 text-slate-500'
@@ -780,7 +780,7 @@ export default function BusinessReportsPage() {
                         {r.status}
                       </Badge>
                       {r.review_status && r.review_status !== 'pending_review' && (
-                        <Badge variant="outline" className={`shrink-0 text-[10px] ${
+                        <Badge variant="outline" className={`shrink-0 text-xs ${
                           r.review_status === 'approved' ? 'border-emerald-700 text-emerald-400' :
                           r.review_status === 'rejected' ? 'border-amber-700 text-amber-400' :
                           'border-slate-700 text-slate-500'
@@ -789,7 +789,7 @@ export default function BusinessReportsPage() {
                         </Badge>
                       )}
                       {r.review_status === 'pending_review' && (
-                        <Badge variant="outline" className="shrink-0 text-[10px] border-yellow-700 text-yellow-400">
+                        <Badge variant="outline" className="shrink-0 text-xs border-yellow-700 text-yellow-400">
                           awaiting review
                         </Badge>
                       )}

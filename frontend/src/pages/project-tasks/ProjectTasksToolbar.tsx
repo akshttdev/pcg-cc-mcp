@@ -87,7 +87,7 @@ export function ProjectTasksToolbar({
           <Archive className="h-4 w-4" />
           {showArchived ? 'Archived' : 'Archived'}
           {archivedCount > 0 && (
-            <span className="ml-1 rounded-full bg-muted-foreground/20 px-1.5 py-0.5 text-[10px] font-medium">
+            <span className="ml-1 rounded-full bg-muted-foreground/20 px-1.5 py-0.5 text-xs font-medium">
               {archivedCount}
             </span>
           )}

@@ -140,7 +140,7 @@ function FlowCard({ flow }: { flow: AgentFlowSummary }) {
             className="ml-auto"
           />
           {duration && (
-            <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+            <span className="text-xs text-muted-foreground flex items-center gap-0.5">
               <Clock className="h-2.5 w-2.5" />
               {duration}
             </span>
@@ -148,18 +148,18 @@ function FlowCard({ flow }: { flow: AgentFlowSummary }) {
         </div>
 
         {flow.retry_count > 0 && (
-          <p className="text-[10px] text-amber-500 mt-1 ml-7">
+          <p className="text-xs text-amber-500 mt-1 ml-7">
             {flow.retry_count} retry attempt(s)
           </p>
         )}
 
         {flow.last_error && flow.status === 'failed' && (
-          <p className="text-[10px] text-red-500 mt-1 ml-7 line-clamp-2">
+          <p className="text-xs text-red-500 mt-1 ml-7 line-clamp-2">
             {flow.last_error}
           </p>
         )}
 
-        <p className="text-[10px] text-muted-foreground mt-1 ml-7">
+        <p className="text-xs text-muted-foreground mt-1 ml-7">
           {formatDistanceToNow(new Date(flow.created_at), { addSuffix: true })}
         </p>
 
@@ -172,7 +172,7 @@ function FlowCard({ flow }: { flow: AgentFlowSummary }) {
         )}
 
         {expanded && flow.events.length === 0 && (
-          <p className="text-[10px] text-muted-foreground mt-2 ml-7">No events recorded</p>
+          <p className="text-xs text-muted-foreground mt-2 ml-7">No events recorded</p>
         )}
       </CardContent>
     </Card>
@@ -186,10 +186,10 @@ function EventRow({ event }: { event: AgentFlowEventSummary }) {
   const label = event.event_type.replace(/_/g, ' ');
 
   return (
-    <div className="flex items-center gap-2 text-[11px]">
+    <div className="flex items-center gap-2 text-xs">
       {icon}
       <span className="capitalize text-muted-foreground">{label}</span>
-      <span className="text-muted-foreground/50 ml-auto text-[10px]">
+      <span className="text-muted-foreground/50 ml-auto text-xs">
         {formatDistanceToNow(new Date(event.created_at), { addSuffix: true })}
       </span>
     </div>

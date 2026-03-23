@@ -152,7 +152,7 @@ export default function CallIntakePage() {
               <PhoneIncoming className="w-5 h-5 text-blue-400" />
             </div>
             <div>
-              <h1 className="text-xl font-semibold text-white">Call Intake</h1>
+              <h1 className="text-xl font-bold text-white">Call Intake</h1>
               <p className="text-sm text-gray-400">Process call transcripts and email summaries into CRM intelligence</p>
             </div>
           </div>
@@ -177,7 +177,7 @@ export default function CallIntakePage() {
                   <Icon className="w-4 h-4 text-gray-400" />
                   <span className="text-xs text-gray-400 capitalize">{status}</span>
                 </div>
-                <div className="text-2xl font-bold text-white">{count}</div>
+                <div className="text-2xl font-semibold text-white">{count}</div>
               </div>
             );
           })}

@@ -35,9 +35,9 @@ import { OnboardingCarousel, type OnboardingSegment } from '@/components/onboard
 import { formatDate, formatCurrency } from '../helpers';
 
 function TrendIndicator({ value }: { value: number }) {
-  if (value === 0) return <span className="text-[10px] text-muted-foreground">No data</span>;
+  if (value === 0) return <span className="text-xs text-muted-foreground">No data</span>;
   return (
-    <span className="text-[10px] text-green-600 dark:text-green-400 flex items-center gap-0.5">
+    <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-0.5">
       <TrendingUp className="h-3 w-3" /> Active
     </span>
   );
@@ -239,8 +239,8 @@ export function OverviewTab({
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant="outline" className="text-[10px]">workflow run</Badge>
-                        <Badge variant="secondary" className={`text-[10px] ${statusColor}`}>
+                        <Badge variant="outline" className="text-xs">workflow run</Badge>
+                        <Badge variant="secondary" className={`text-xs ${statusColor}`}>
                           {run.status}
                         </Badge>
                       </div>
@@ -259,7 +259,7 @@ export function OverviewTab({
                           <span>{run.model_used}</span>
                         )}
                       </div>
-                      <p className="text-[10px] text-muted-foreground mt-1">
+                      <p className="text-xs text-muted-foreground mt-1">
                         {formatDate(run.created_at)}
                       </p>
                     </div>
@@ -274,10 +274,10 @@ export function OverviewTab({
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <Badge variant="outline" className="text-[10px]">
+                      <Badge variant="outline" className="text-xs">
                         {activity.activity_type.replace(/_/g, ' ')}
                       </Badge>
-                      <Badge variant="secondary" className="text-[10px]">
+                      <Badge variant="secondary" className="text-xs">
                         {activity._projectName}
                       </Badge>
                     </div>
@@ -287,7 +287,7 @@ export function OverviewTab({
                     {activity.description && (
                       <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{activity.description}</p>
                     )}
-                    <p className="text-[10px] text-muted-foreground mt-1">
+                    <p className="text-xs text-muted-foreground mt-1">
                       {formatDate(activity.created_at)}
                     </p>
                   </div>

@@ -337,7 +337,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 </div>
               ) : brandProfile ? (
                 <div
-                  className="h-11 w-11 rounded-xl flex items-center justify-center text-white text-sm font-bold shrink-0 shadow-sm select-none"
+                  className="h-11 w-11 rounded-xl flex items-center justify-center text-white text-sm font-semibold shrink-0 shadow-sm select-none"
                   style={{ background: `linear-gradient(135deg, ${brandProfile.primaryColor}, ${brandProfile.accentColor ?? brandProfile.secondaryColor})` }}
                 >
                   {org.name.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase()}
@@ -373,9 +373,9 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                       <div className="h-3.5 w-3.5 rounded-full border border-border/60 shadow-sm" style={{ backgroundColor: brandProfile.secondaryColor }} title={`Secondary: ${brandProfile.secondaryColor}`} />
                       {brandProfile.accentColor && <div className="h-3.5 w-3.5 rounded-full border border-border/60 shadow-sm" style={{ backgroundColor: brandProfile.accentColor }} title={`Accent: ${brandProfile.accentColor}`} />}
                     </div>
-                    {brandProfile.industry && <Badge variant="secondary" className="text-[10px] h-4 py-0">{brandProfile.industry}</Badge>}
-                    {brandProfile.marketPosition && <Badge variant="outline" className="text-[10px] h-4 py-0 capitalize">{brandProfile.marketPosition}</Badge>}
-                    {brandProfile.brandArchetype && <Badge className="text-[10px] h-4 py-0 bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">{brandProfile.brandArchetype}</Badge>}
+                    {brandProfile.industry && <Badge variant="secondary" className="text-xs h-4 py-0">{brandProfile.industry}</Badge>}
+                    {brandProfile.marketPosition && <Badge variant="outline" className="text-xs h-4 py-0 capitalize">{brandProfile.marketPosition}</Badge>}
+                    {brandProfile.brandArchetype && <Badge className="text-xs h-4 py-0 bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">{brandProfile.brandArchetype}</Badge>}
                   </div>
                 )}
               </div>

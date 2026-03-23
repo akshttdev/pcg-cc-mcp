@@ -142,7 +142,7 @@ export function AgentDetailDialog({ agent, open, onOpenChange }: AgentDetailDial
                 />
               ) : (
                 <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/5">
-                  <span className="text-2xl font-bold text-primary/50">{initials}</span>
+                  <span className="text-2xl font-semibold text-primary/50">{initials}</span>
                 </div>
               )}
             </div>
@@ -212,7 +212,7 @@ export function AgentDetailDialog({ agent, open, onOpenChange }: AgentDetailDial
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Est. cost per request</span>
                 <div className="text-right">
-                  <div className="text-lg font-bold text-primary">
+                  <div className="text-lg font-semibold text-primary">
                     {vibeEstimate ? `~${vibeEstimate} VIBE` : 'N/A'}
                   </div>
                   {vibeEstimate && (
@@ -321,25 +321,25 @@ export function AgentDetailDialog({ agent, open, onOpenChange }: AgentDetailDial
             <CardContent>
               <div className="grid grid-cols-4 gap-3 text-center">
                 <div>
-                  <div className="text-2xl font-bold">
+                  <div className="text-2xl font-semibold">
                     {profile?.execution_stats.total_attempts ?? agent.tasks_completed?.toString() ?? '0'}
                   </div>
                   <div className="text-xs text-muted-foreground">Total</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-green-600">
+                  <div className="text-2xl font-semibold text-green-600">
                     {profile?.execution_stats.completed ?? agent.tasks_completed?.toString() ?? '0'}
                   </div>
                   <div className="text-xs text-muted-foreground">Completed</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-red-600">
+                  <div className="text-2xl font-semibold text-red-600">
                     {profile?.execution_stats.failed ?? agent.tasks_failed?.toString() ?? '0'}
                   </div>
                   <div className="text-xs text-muted-foreground">Failed</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-primary">
+                  <div className="text-2xl font-semibold text-primary">
                     {profile?.execution_stats.success_rate ?? '—'}
                   </div>
                   <div className="text-xs text-muted-foreground">Success Rate</div>

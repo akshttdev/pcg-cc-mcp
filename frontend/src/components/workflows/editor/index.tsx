@@ -462,7 +462,7 @@ export function WorkflowEditor({
                     />
                     {isNew && (
                       <div className="flex items-center gap-1.5 mt-1">
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="text-xs text-muted-foreground">
                           ID: <code className="font-mono">{id || 'auto_generated'}</code>
                         </span>
                         <button
@@ -628,7 +628,7 @@ export function WorkflowEditor({
                               {previewWarningNodes.has(node.id) && (
                                 <Badge
                                   variant="outline"
-                                  className="text-[10px] px-1.5 text-amber-600 border-amber-200 gap-0.5"
+                                  className="text-xs px-1.5 text-amber-600 border-amber-200 gap-0.5"
                                   title={previewWarningNodes.get(node.id)}
                                 >
                                   <AlertTriangle className="h-2.5 w-2.5" />
@@ -636,7 +636,7 @@ export function WorkflowEditor({
                               )}
                               <Badge
                                 variant="outline"
-                                className="text-[10px] px-1.5"
+                                className="text-xs px-1.5"
                               >
                                 {idx + 1}
                               </Badge>
@@ -770,13 +770,13 @@ export function WorkflowEditor({
                         previewWarningNodes.has(r.node_id) && 'border-amber-300 bg-amber-50/30 dark:bg-amber-950/10'
                       )}>
                         <div className="flex items-center gap-2 mb-2">
-                          <div className={cn('w-5 h-5 rounded flex items-center justify-center text-white text-[10px]', typeDef?.color ?? 'bg-gray-500')}>
+                          <div className={cn('w-5 h-5 rounded flex items-center justify-center text-white text-xs', typeDef?.color ?? 'bg-gray-500')}>
                             {r.node_name.charAt(0)}
                           </div>
                           <span className="text-sm font-medium">{r.node_name}</span>
-                          <Badge variant="outline" className="text-[10px]">{r.node_type}</Badge>
+                          <Badge variant="outline" className="text-xs">{r.node_type}</Badge>
                           {previewWarningNodes.has(r.node_id) && (
-                            <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-200 gap-0.5">
+                            <Badge variant="outline" className="text-xs text-amber-600 border-amber-200 gap-0.5">
                               <AlertTriangle className="h-2.5 w-2.5" />
                               {previewWarningNodes.get(r.node_id)}
                             </Badge>
@@ -789,7 +789,7 @@ export function WorkflowEditor({
                           })()}
                         </pre>
                         {r.usage && (
-                          <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
+                          <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
                             {r.usage.model_used && <span>Model: {r.usage.model_used}</span>}
                             {r.usage.provider && <span>Provider: {r.usage.provider}</span>}
                             {r.usage.input_tokens != null && <span>In: {r.usage.input_tokens.toLocaleString()}</span>}

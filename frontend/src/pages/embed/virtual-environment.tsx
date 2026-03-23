@@ -270,9 +270,9 @@ function GlobalChatConsole({
 
   return (
     <div className="rounded-lg border border-emerald-600/60 bg-[#0b1209]/90 shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
-      <div className="flex items-center justify-between border-b border-emerald-500/40 px-3 py-1 text-[11px] uppercase tracking-[0.3em] text-emerald-200">
+      <div className="flex items-center justify-between border-b border-emerald-500/40 px-3 py-1 text-xs uppercase tracking-[0.3em] text-emerald-200">
         <div className="flex items-center gap-2 font-semibold">
-          <span className="rounded border border-emerald-500/50 bg-black/30 px-2 py-0.5 text-[10px] tracking-[0.2em]">
+          <span className="rounded border border-emerald-500/50 bg-black/30 px-2 py-0.5 text-xs tracking-[0.2em]">
             Global Chat
           </span>
           <span className="text-emerald-400/60 text-[9px] normal-case tracking-normal">
@@ -296,7 +296,7 @@ function GlobalChatConsole({
       >
         <div className="h-40 overflow-y-auto p-3 space-y-2">
           {messages.map((msg) => (
-            <div key={msg.id} className="text-[12px]">
+            <div key={msg.id} className="text-xs">
               <span className="font-semibold text-emerald-300">{msg.user}:</span>{' '}
               <span className="text-emerald-100/80">{msg.message}</span>
             </div>
@@ -313,12 +313,12 @@ function GlobalChatConsole({
             onFocus={onActivateInput}
             onKeyDown={handleKeyDown}
             placeholder="Type a message..."
-            className="w-full bg-black/40 border border-emerald-500/30 rounded px-3 py-1.5 text-[12px] text-emerald-100 placeholder-emerald-500/50 focus:outline-none focus:border-emerald-400/60"
+            className="w-full bg-black/40 border border-emerald-500/30 rounded px-3 py-1.5 text-xs text-emerald-100 placeholder-emerald-500/50 focus:outline-none focus:border-emerald-400/60"
           />
         </form>
       </div>
 
-      <div className="border-t border-emerald-500/30 px-3 py-1 text-[10px] text-emerald-200/80">
+      <div className="border-t border-emerald-500/30 px-3 py-1 text-xs text-emerald-200/80">
         {isCollapsed ? 'Press Enter to open chat' : 'Type message + Enter to send · Empty Enter to close'}
       </div>
     </div>
@@ -473,7 +473,7 @@ export function EmbedVirtualEnvironmentPage() {
         <p className="text-xs text-emerald-400">
           {user?.full_name || user?.username || 'Visitor'}
         </p>
-        <p className="text-[10px] text-emerald-400/60">Jungleverse Space</p>
+        <p className="text-xs text-emerald-400/60">Jungleverse Space</p>
       </div>
 
       <Canvas

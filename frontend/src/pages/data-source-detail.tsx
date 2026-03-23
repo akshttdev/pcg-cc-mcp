@@ -536,7 +536,7 @@ export function DataSourceDetailPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium">{step.name ?? `Step ${index + 1}`}</span>
-                          <Badge variant="outline" className="text-[10px]">
+                          <Badge variant="outline" className="text-xs">
                             {step.status}
                           </Badge>
                         </div>
@@ -584,7 +584,7 @@ export function DataSourceDetailPage() {
                           });
                           return (
                           <div key={node.id} className="flex items-center gap-2">
-                            <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-medium text-muted-foreground shrink-0">
+                            <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground shrink-0">
                               {idx + 1}
                             </div>
                             <span className="text-sm">{node.name}</span>
@@ -641,7 +641,7 @@ export function DataSourceDetailPage() {
                         {artifact.title ?? artifact.name ?? 'Artifact'}
                       </span>
                       {artifact.type && (
-                        <Badge variant="outline" className="text-[10px]">
+                        <Badge variant="outline" className="text-xs">
                           {artifact.type}
                         </Badge>
                       )}

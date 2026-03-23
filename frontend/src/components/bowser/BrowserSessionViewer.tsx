@@ -67,7 +67,7 @@ function ActionItem({ action }: { action: BrowserSessionDetails['actions'][0] })
       {action.result && (
         <Badge
           variant={isSuccess ? 'default' : isBlocked ? 'outline' : 'destructive'}
-          className="text-[10px] px-1 py-0"
+          className="text-xs px-1 py-0"
         >
           {action.result}
         </Badge>

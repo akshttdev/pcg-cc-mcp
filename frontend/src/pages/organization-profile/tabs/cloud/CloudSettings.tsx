@@ -134,7 +134,7 @@ function SettingRow({
     <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
       <div>
         <p className="text-xs font-medium">{label}</p>
-        <p className="text-[10px] text-muted-foreground">{description}</p>
+        <p className="text-xs text-muted-foreground">{description}</p>
       </div>
       <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} />
     </div>

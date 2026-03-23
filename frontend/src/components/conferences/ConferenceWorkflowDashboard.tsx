@@ -261,7 +261,7 @@ function WorkflowDetails({
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-2xl font-bold">{status.conferenceName}</h2>
+          <h2 className="text-2xl font-semibold">{status.conferenceName}</h2>
           <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
             <span className="flex items-center gap-1">
               <Calendar className="w-4 h-4" />
@@ -291,7 +291,7 @@ function WorkflowDetails({
             <div className="flex items-center gap-2">
               <Users className="w-5 h-5 text-blue-500" />
               <div>
-                <p className="text-2xl font-bold">{status.speakersDiscovered ?? 0}</p>
+                <p className="text-2xl font-semibold">{status.speakersDiscovered ?? 0}</p>
                 <p className="text-xs text-muted-foreground">Speakers</p>
               </div>
             </div>
@@ -302,7 +302,7 @@ function WorkflowDetails({
             <div className="flex items-center gap-2">
               <Building2 className="w-5 h-5 text-purple-500" />
               <div>
-                <p className="text-2xl font-bold">{status.sponsorsDiscovered ?? 0}</p>
+                <p className="text-2xl font-semibold">{status.sponsorsDiscovered ?? 0}</p>
                 <p className="text-xs text-muted-foreground">Sponsors</p>
               </div>
             </div>
@@ -313,7 +313,7 @@ function WorkflowDetails({
             <div className="flex items-center gap-2">
               <PartyPopper className="w-5 h-5 text-amber-500" />
               <div>
-                <p className="text-2xl font-bold">{status.sideEventsDiscovered ?? 0}</p>
+                <p className="text-2xl font-semibold">{status.sideEventsDiscovered ?? 0}</p>
                 <p className="text-xs text-muted-foreground">Side Events</p>
               </div>
             </div>
@@ -324,7 +324,7 @@ function WorkflowDetails({
             <div className="flex items-center gap-2">
               <Share2 className="w-5 h-5 text-green-500" />
               <div>
-                <p className="text-2xl font-bold">{status.postsScheduled}</p>
+                <p className="text-2xl font-semibold">{status.postsScheduled}</p>
                 <p className="text-xs text-muted-foreground">Posts Scheduled</p>
               </div>
             </div>

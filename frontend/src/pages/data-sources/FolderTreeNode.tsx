@@ -19,7 +19,7 @@ export function FolderTreeNode({
       <button
         className={`flex items-center gap-1.5 w-full text-left px-2 py-1 rounded-md text-sm transition-colors hover:bg-muted/60
           ${isSelected ? 'bg-primary/10 text-primary font-medium' : ''}
-          ${depth === 0 ? 'font-semibold text-[11px] tracking-wide uppercase mt-2 text-muted-foreground' : ''}
+          ${depth === 0 ? 'font-semibold text-xs tracking-wide uppercase mt-2 text-muted-foreground' : ''}
         `}
         style={{ paddingLeft: `${8 + depth * 12}px` }}
         onClick={() => {
@@ -37,7 +37,7 @@ export function FolderTreeNode({
           : <Folder className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         }
         <span className="truncate">{node.name}</span>
-        <span className="ml-auto text-[10px] text-muted-foreground shrink-0">{node.count}</span>
+        <span className="ml-auto text-xs text-muted-foreground shrink-0">{node.count}</span>
       </button>
       {(open || isAncestor) && hasChildren && (
         <div>

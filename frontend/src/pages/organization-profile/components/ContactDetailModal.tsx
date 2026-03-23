@@ -264,7 +264,7 @@ export function ContactDetailModal({
                         </span>
                       )}
                       {deal.stage && (
-                        <Badge variant="outline" className="text-[10px]">{deal.stage}</Badge>
+                        <Badge variant="outline" className="text-xs">{deal.stage}</Badge>
                       )}
                     </div>
                   </div>
@@ -284,7 +284,7 @@ export function ContactDetailModal({
                       <Activity className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                       <span className="truncate">{activity.subject || activity.activity_type}</span>
                     </div>
-                    <span className="text-[10px] text-muted-foreground shrink-0">
+                    <span className="text-xs text-muted-foreground shrink-0">
                       {new Date(activity.activity_at).toLocaleDateString()}
                     </span>
                   </div>
@@ -294,7 +294,7 @@ export function ContactDetailModal({
           )}
 
           {/* Metadata */}
-          <div className="text-[10px] text-muted-foreground pt-2 border-t border-border/50 flex items-center justify-between">
+          <div className="text-xs text-muted-foreground pt-2 border-t border-border/50 flex items-center justify-between">
             <span>Created {new Date(contact.created_at).toLocaleDateString()}</span>
             {contact.last_activity_at && (
               <span>Last active {new Date(contact.last_activity_at).toLocaleDateString()}</span>

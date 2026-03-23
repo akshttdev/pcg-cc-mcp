@@ -251,7 +251,7 @@ export function NodeConfigPanel({
                           <span className="flex items-center gap-2">
                             <span
                               className={cn(
-                                'w-4 h-4 rounded flex items-center justify-center text-white shrink-0 text-[10px]',
+                                'w-4 h-4 rounded flex items-center justify-center text-white shrink-0 text-xs',
                                 nDef?.color ?? 'bg-gray-500'
                               )}
                             >
@@ -305,7 +305,7 @@ export function NodeConfigPanel({
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-[10px] text-muted-foreground mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     Override the workflow's default model for this node.
                   </p>
                 </div>
@@ -316,7 +316,7 @@ export function NodeConfigPanel({
                       const tpl = PROMPT_TEMPLATES.find(t => t.label === v);
                       if (tpl) onUpdateParameter('prompt_template', tpl.prompt);
                     }}>
-                      <SelectTrigger className="h-6 w-auto text-[11px] gap-1 border-dashed px-2">
+                      <SelectTrigger className="h-6 w-auto text-xs gap-1 border-dashed px-2">
                         <FileText className="h-3 w-3" />
                         <span>Templates</span>
                       </SelectTrigger>
@@ -343,7 +343,7 @@ export function NodeConfigPanel({
                           onUpdateParameter('prompt_template', (node.parameters.prompt_template ?? '') + '{{content}}');
                         }
                       }}
-                      className="inline-flex items-center gap-1 rounded-md bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 text-[11px] font-mono text-blue-700 dark:text-blue-300 hover:bg-blue-500/20 transition-colors"
+                      className="inline-flex items-center gap-1 rounded-md bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 text-xs font-mono text-blue-700 dark:text-blue-300 hover:bg-blue-500/20 transition-colors"
                     >
                       {'{{content}}'}
                       <span className="text-[9px] font-sans text-muted-foreground">raw input</span>
@@ -369,7 +369,7 @@ export function NodeConfigPanel({
                               onUpdateParameter('prompt_template', (node.parameters.prompt_template ?? '') + varName);
                             }
                           }}
-                          className="inline-flex items-center gap-1 rounded-md bg-green-500/10 border border-green-500/20 px-2 py-0.5 text-[11px] font-mono text-green-700 dark:text-green-300 hover:bg-green-500/20 transition-colors"
+                          className="inline-flex items-center gap-1 rounded-md bg-green-500/10 border border-green-500/20 px-2 py-0.5 text-xs font-mono text-green-700 dark:text-green-300 hover:bg-green-500/20 transition-colors"
                         >
                           {varName}
                           <span className="text-[9px] font-sans text-muted-foreground">
@@ -392,7 +392,7 @@ export function NodeConfigPanel({
                             onUpdateParameter('prompt_template', (node.parameters.prompt_template ?? '') + '{{previous_results}}');
                           }
                         }}
-                        className="inline-flex items-center gap-1 rounded-md bg-purple-500/10 border border-purple-500/20 px-2 py-0.5 text-[11px] font-mono text-purple-700 dark:text-purple-300 hover:bg-purple-500/20 transition-colors"
+                        className="inline-flex items-center gap-1 rounded-md bg-purple-500/10 border border-purple-500/20 px-2 py-0.5 text-xs font-mono text-purple-700 dark:text-purple-300 hover:bg-purple-500/20 transition-colors"
                       >
                         {'{{previous_results}}'}
                         <span className="text-[9px] font-sans text-muted-foreground">
@@ -438,7 +438,7 @@ export function NodeConfigPanel({
                       </button>
                     ))}
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     Auto uses JSON when output schema is defined, text otherwise.
                   </p>
                 </div>

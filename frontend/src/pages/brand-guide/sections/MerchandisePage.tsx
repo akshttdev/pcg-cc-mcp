@@ -40,10 +40,10 @@ export function MerchandisePage({ org, profile, primary, accent }: BrandPageProp
         </div>
         <div>
           <p className="text-xs font-semibold text-gray-900">Vistaprint Brand Partner</p>
-          <p className="text-[10px] text-gray-500">All print materials and merchandise available at partner pricing through your Corporate Store.</p>
+          <p className="text-xs text-gray-500">All print materials and merchandise available at partner pricing through your Corporate Store.</p>
         </div>
         <div className="ml-auto">
-          <span className="text-[10px] font-semibold uppercase tracking-wider px-3 py-1 rounded-full" style={{ background: `${accent}20`, color: accent }}>
+          <span className="text-xs font-semibold uppercase tracking-wider px-3 py-1 rounded-full" style={{ background: `${accent}20`, color: accent }}>
             Exclusive Rates
           </span>
         </div>
@@ -60,17 +60,17 @@ export function MerchandisePage({ org, profile, primary, accent }: BrandPageProp
       {/* Product table */}
       <div className="rounded-2xl border border-gray-100 overflow-hidden">
         <div className="px-5 py-3" style={{ background: primary }}>
-          <p className="text-[10px] uppercase tracking-[0.25em] font-semibold" style={{ color: accent }}>
+          <p className="text-xs uppercase tracking-[0.25em] font-semibold" style={{ color: accent }}>
             Corporate Store &middot; Available Products
           </p>
         </div>
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-gray-100">
-              <th className="text-left px-5 py-3 font-semibold text-gray-500 uppercase tracking-wider text-[10px]">Product</th>
-              <th className="text-left px-5 py-3 font-semibold text-gray-500 uppercase tracking-wider text-[10px]">Variants</th>
-              <th className="text-left px-5 py-3 font-semibold text-gray-500 uppercase tracking-wider text-[10px]">Min. Order</th>
-              <th className="text-left px-5 py-3 font-semibold text-gray-500 uppercase tracking-wider text-[10px]">Use Case</th>
+              <th className="text-left px-5 py-3 font-semibold text-gray-500 uppercase tracking-wider text-xs">Product</th>
+              <th className="text-left px-5 py-3 font-semibold text-gray-500 uppercase tracking-wider text-xs">Variants</th>
+              <th className="text-left px-5 py-3 font-semibold text-gray-500 uppercase tracking-wider text-xs">Min. Order</th>
+              <th className="text-left px-5 py-3 font-semibold text-gray-500 uppercase tracking-wider text-xs">Use Case</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">

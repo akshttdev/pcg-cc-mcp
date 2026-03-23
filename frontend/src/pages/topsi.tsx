@@ -708,7 +708,7 @@ export function TopsiPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold">{topology?.totalNodes || 0}</div>
+                    <div className="text-3xl font-semibold">{topology?.totalNodes || 0}</div>
                   </CardContent>
                 </Card>
                 <Card>
@@ -718,7 +718,7 @@ export function TopsiPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold">{topology?.totalEdges || 0}</div>
+                    <div className="text-3xl font-semibold">{topology?.totalEdges || 0}</div>
                   </CardContent>
                 </Card>
                 <Card>
@@ -728,7 +728,7 @@ export function TopsiPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold">{topology?.totalClusters || 0}</div>
+                    <div className="text-3xl font-semibold">{topology?.totalClusters || 0}</div>
                   </CardContent>
                 </Card>
                 <Card>
@@ -738,7 +738,7 @@ export function TopsiPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold text-green-600">
+                    <div className="text-3xl font-semibold text-green-600">
                       {topology?.systemHealth ? `${(topology.systemHealth * 100).toFixed(0)}%` : 'N/A'}
                     </div>
                   </CardContent>

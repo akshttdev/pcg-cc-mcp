@@ -44,14 +44,14 @@ const providerConfig: Record<EmailProvider, {
   },
   zoho: {
     name: 'Zoho Mail',
-    icon: <span className="text-lg font-bold">Z</span>,
+    icon: <span className="text-lg font-semibold">Z</span>,
     color: 'text-[#C8202B]',
     bgColor: 'bg-[#C8202B]',
     description: 'Zoho Mail - Team operations and CRM integration',
   },
   imap_custom: {
     name: 'Custom IMAP',
-    icon: <span className="text-lg font-bold">@</span>,
+    icon: <span className="text-lg font-semibold">@</span>,
     color: 'text-gray-600',
     bgColor: 'bg-gray-600',
     description: 'Connect any email provider via IMAP/SMTP',
@@ -377,7 +377,7 @@ export function EmailAccountConnect({
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-lg bg-[#C8202B] flex items-center justify-center text-white">
-              <span className="text-lg font-bold">Z</span>
+              <span className="text-lg font-semibold">Z</span>
             </div>
             <div>
               <h4 className="font-medium text-gray-900">Zoho Mail + CRM Integration</h4>

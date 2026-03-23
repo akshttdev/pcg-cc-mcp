@@ -227,7 +227,7 @@ export function MyTasksPage() {
             <ListTodo className="h-5 w-5 text-primary-foreground" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold">My Tasks</h1>
+            <h1 className="text-xl font-bold">My Tasks</h1>
             <p className="text-sm text-muted-foreground">
               {assignedTasks.length} assigned, {createdTasks.length} created, {watchedTasks.length} watching
             </p>

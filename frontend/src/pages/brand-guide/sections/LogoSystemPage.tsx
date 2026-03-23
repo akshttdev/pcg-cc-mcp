@@ -19,7 +19,7 @@ export function LogoSystemPage({ org, primary, accent, effectiveLogo }: BrandPag
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
         {/* Primary -- on dark */}
         <div className="space-y-3">
-          <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-gray-400">Primary &middot; On Dark</p>
+          <p className="text-xs uppercase tracking-[0.25em] font-semibold text-gray-400">Primary &middot; On Dark</p>
           <div
             className="rounded-2xl flex items-center justify-center p-10 min-h-[160px]"
             style={{ background: primary }}
@@ -32,12 +32,12 @@ export function LogoSystemPage({ org, primary, accent, effectiveLogo }: BrandPag
               </div>
             )}
           </div>
-          <p className="text-[10px] text-gray-400">Primary version. Use on dark backgrounds, print, and hero sections.</p>
+          <p className="text-xs text-gray-400">Primary version. Use on dark backgrounds, print, and hero sections.</p>
         </div>
 
         {/* Reversed -- on light */}
         <div className="space-y-3">
-          <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-gray-400">Reversed &middot; On Light</p>
+          <p className="text-xs uppercase tracking-[0.25em] font-semibold text-gray-400">Reversed &middot; On Light</p>
           <div
             className="rounded-2xl flex items-center justify-center p-10 min-h-[160px] border border-gray-100"
             style={{ background: '#F8F7F4' }}
@@ -50,12 +50,12 @@ export function LogoSystemPage({ org, primary, accent, effectiveLogo }: BrandPag
               </div>
             )}
           </div>
-          <p className="text-[10px] text-gray-400">Reversed version. Use on light backgrounds, documents, and stationery.</p>
+          <p className="text-xs text-gray-400">Reversed version. Use on light backgrounds, documents, and stationery.</p>
         </div>
 
         {/* Icon / monogram */}
         <div className="space-y-3">
-          <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-gray-400">Icon &middot; Monogram</p>
+          <p className="text-xs uppercase tracking-[0.25em] font-semibold text-gray-400">Icon &middot; Monogram</p>
           <div
             className="rounded-2xl flex items-center justify-center p-10 min-h-[160px]"
             style={{ background: `linear-gradient(135deg, ${primary} 0%, ${primary}e0 100%)`, border: `1px solid ${accent}30` }}
@@ -67,14 +67,14 @@ export function LogoSystemPage({ org, primary, accent, effectiveLogo }: BrandPag
               {org.name.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase()}
             </div>
           </div>
-          <p className="text-[10px] text-gray-400">Icon/monogram. App icons, favicons, social avatars, embossing.</p>
+          <p className="text-xs text-gray-400">Icon/monogram. App icons, favicons, social avatars, embossing.</p>
         </div>
       </div>
 
       {/* Clear space + minimum size */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
         <div className="p-6 rounded-2xl bg-gray-50 border border-gray-100">
-          <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-gray-400 mb-4">Clear Space Rule</p>
+          <p className="text-xs uppercase tracking-[0.25em] font-semibold text-gray-400 mb-4">Clear Space Rule</p>
           <div className="relative flex items-center justify-center mb-4" style={{ height: 100 }}>
             <div className="absolute inset-4 border border-dashed border-gray-300 rounded" />
             {effectiveLogo ? (
@@ -85,11 +85,11 @@ export function LogoSystemPage({ org, primary, accent, effectiveLogo }: BrandPag
             <div className="absolute top-1 left-1/2 -translate-x-1/2 text-[8px] text-gray-400">&times; height</div>
             <div className="absolute left-1 top-1/2 -translate-y-1/2 text-[8px] text-gray-400" style={{ writingMode: 'vertical-rl' }}>&times; height</div>
           </div>
-          <p className="text-[11px] text-gray-500">Maintain clear space equal to the cap-height of the logo on all sides. Never crowd the mark.</p>
+          <p className="text-xs text-gray-500">Maintain clear space equal to the cap-height of the logo on all sides. Never crowd the mark.</p>
         </div>
 
         <div className="p-6 rounded-2xl bg-gray-50 border border-gray-100">
-          <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-gray-400 mb-4">Minimum Sizes</p>
+          <p className="text-xs uppercase tracking-[0.25em] font-semibold text-gray-400 mb-4">Minimum Sizes</p>
           <div className="space-y-3">
             {[
               ['Print', '0.75" / 19mm wide'],
@@ -107,7 +107,7 @@ export function LogoSystemPage({ org, primary, accent, effectiveLogo }: BrandPag
       </div>
 
       {/* Do / Don't */}
-      <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-gray-400 mb-5">Logo Usage -- Do's & Don'ts</p>
+      <p className="text-xs uppercase tracking-[0.25em] font-semibold text-gray-400 mb-5">Logo Usage -- Do's & Don'ts</p>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         {/* DO examples */}
         {[
@@ -122,7 +122,7 @@ export function LogoSystemPage({ org, primary, accent, effectiveLogo }: BrandPag
             >
               {item.text}
             </div>
-            <p className="text-[10px] text-green-600 font-semibold flex items-center gap-1">
+            <p className="text-xs text-green-600 font-semibold flex items-center gap-1">
               <span>{'\u2713'}</span> {item.label}
             </p>
           </div>
@@ -140,7 +140,7 @@ export function LogoSystemPage({ org, primary, accent, effectiveLogo }: BrandPag
             >
               <span style={item.style}>{org.name.split(' ')[0].toUpperCase()}</span>
             </div>
-            <p className="text-[10px] text-red-500 font-semibold flex items-center gap-1">
+            <p className="text-xs text-red-500 font-semibold flex items-center gap-1">
               <span>{'\u2717'}</span> {item.label}
             </p>
           </div>

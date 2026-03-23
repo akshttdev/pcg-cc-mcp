@@ -79,7 +79,7 @@ export function StageListPanel({
                           style={{ backgroundColor: stage.color }}
                         />
                         <p className="font-medium text-sm">{stage.name}</p>
-                        <Badge variant="secondary" className="text-[11px]">
+                        <Badge variant="secondary" className="text-xs">
                           {stage.probability}%
                         </Badge>
                       </div>

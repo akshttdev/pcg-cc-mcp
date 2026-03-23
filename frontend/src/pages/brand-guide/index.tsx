@@ -206,7 +206,7 @@ export function BrandGuidePage() {
             Back to {org.name}
           </Link>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] uppercase tracking-widest text-yellow-600 font-semibold">
+            <span className="text-xs uppercase tracking-widest text-yellow-600 font-semibold">
               Brand Guide
             </span>
             <Button

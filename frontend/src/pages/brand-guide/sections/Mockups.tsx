@@ -14,7 +14,7 @@ export function ColourCard({ color, name, role }: { color: string; name: string;
       </div>
       <div className="bg-white/10 backdrop-blur px-6 py-3 flex items-center justify-between">
         <p className="text-xs font-semibold" style={{ color: fg }}>{name}</p>
-        <p className="text-[10px] font-mono" style={{ color: fg === '#FFFFFF' ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.45)' }}>
+        <p className="text-xs font-mono" style={{ color: fg === '#FFFFFF' ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.45)' }}>
           RGB {hexToRgb(color)}
         </p>
       </div>
@@ -54,7 +54,7 @@ export function BusinessCardMockup({ org, primary, accent, logoUrl }: { org: str
 
         {/* Contact info bottom */}
         <div>
-          <p className="text-[10px] font-semibold tracking-[0.12em] uppercase mb-0.5" style={{ color: accent }}>
+          <p className="text-xs font-semibold tracking-[0.12em] uppercase mb-0.5" style={{ color: accent }}>
             Creative Direction
           </p>
           <p className="text-xs font-medium" style={{ color: fg === '#FFFFFF' ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)' }}>
@@ -87,7 +87,7 @@ export function SocialPostMockup({ org, tagline, primary, accent, logoUrl }: { o
           )}
         </div>
         <div>
-          <p className="font-semibold text-[10px] text-gray-900 leading-none">powerclubglobal</p>
+          <p className="font-semibold text-xs text-gray-900 leading-none">powerclubglobal</p>
           <p className="text-[8px] text-gray-400">Sponsored</p>
         </div>
       </div>
@@ -115,7 +115,7 @@ export function SocialPostMockup({ org, tagline, primary, accent, logoUrl }: { o
           <span>{'\u2661'}</span><span>{'\u2708'}</span>
           <span className="ml-auto">{'\uD83D\uDD16'}</span>
         </div>
-        <p className="font-semibold text-[10px] text-gray-900">{org}</p>
+        <p className="font-semibold text-xs text-gray-900">{org}</p>
         {tagline && <p className="text-[9px] text-gray-500 line-clamp-2">{tagline}</p>}
       </div>
     </div>
@@ -127,17 +127,17 @@ export function SocialPostMockup({ org, tagline, primary, accent, logoUrl }: { o
 export function EmailSignatureMockup({ org, primary, accent, logoUrl }: { org: string; primary: string; accent: string; logoUrl?: string | null }) {
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-      <div className="bg-gray-50 px-4 py-2 text-[10px] text-gray-400 border-b border-gray-100 font-mono">
+      <div className="bg-gray-50 px-4 py-2 text-xs text-gray-400 border-b border-gray-100 font-mono">
         From: firstname@powerclubglobal.com
       </div>
       <div className="p-5">
-        <p className="text-[10px] text-gray-400 mb-4 italic">... previous message text ...</p>
+        <p className="text-xs text-gray-400 mb-4 italic">... previous message text ...</p>
         <div className="border-t pt-4 flex items-start gap-3">
           <div className="h-px w-0.5 self-stretch rounded-full" style={{ background: accent }} />
           <div>
             {logoUrl && <img src={logoUrl} alt={org} className="h-5 object-contain mb-2" style={{ filter: primary === '#000000' ? 'none' : undefined }} />}
-            <p className="font-bold text-[11px] text-gray-900">Alex Martinez</p>
-            <p className="text-[10px]" style={{ color: accent }}>Creative Director &middot; {org}</p>
+            <p className="font-bold text-xs text-gray-900">Alex Martinez</p>
+            <p className="text-xs" style={{ color: accent }}>Creative Director &middot; {org}</p>
             <p className="text-[9px] text-gray-400 mt-1">powerclubglobal.com &middot; @powerclubglobal</p>
           </div>
         </div>
@@ -206,7 +206,7 @@ export function TshirtMockup({ primary, accent, org }: { primary: string; accent
         </text>
         <line x1="75" y1="120" x2="125" y2="120" stroke={accent} strokeWidth="0.8" opacity="0.5" />
       </svg>
-      <p className="text-[10px] text-gray-500 font-medium">Branded T-Shirt</p>
+      <p className="text-xs text-gray-500 font-medium">Branded T-Shirt</p>
     </div>
   );
 }
@@ -228,7 +228,7 @@ export function MugMockup({ primary, accent }: { primary: string; accent: string
         {/* Brand line on mug */}
         <text x="60" y="85" textAnchor="middle" fontSize="10" fontWeight="bold" fontFamily="serif" fill={accent}>PCG</text>
       </svg>
-      <p className="text-[10px] text-gray-500 font-medium">Branded Mug</p>
+      <p className="text-xs text-gray-500 font-medium">Branded Mug</p>
     </div>
   );
 }
@@ -251,7 +251,7 @@ export function ToteMockup({ primary, accent }: { primary: string; accent: strin
         <text x="80" y="115" textAnchor="middle" fontSize="10" fontWeight="bold" fontFamily="serif" fill={accent}>PCG</text>
         <line x1="55" y1="120" x2="105" y2="120" stroke={accent} strokeWidth="0.8" opacity="0.5" />
       </svg>
-      <p className="text-[10px] text-gray-500 font-medium">Branded Tote</p>
+      <p className="text-xs text-gray-500 font-medium">Branded Tote</p>
     </div>
   );
 }
@@ -287,7 +287,7 @@ export function BannerMockup({ primary, accent, org, tagline }: { primary: strin
         <div className="h-2 w-1 mx-auto" style={{ background: accent, opacity: 0.3 }} />
         <div className="h-0.5 w-20 rounded-full" style={{ background: accent, opacity: 0.25 }} />
       </div>
-      <p className="text-[10px] text-gray-500 font-medium">Roll-Up Banner</p>
+      <p className="text-xs text-gray-500 font-medium">Roll-Up Banner</p>
     </div>
   );
 }

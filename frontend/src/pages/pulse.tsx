@@ -179,25 +179,25 @@ export default function PulsePage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-stagger">
             <Card>
               <CardContent className="p-4">
-                <div className="text-2xl font-bold">{stats?.total_content ?? 0}</div>
+                <div className="text-2xl font-semibold">{stats?.total_content ?? 0}</div>
                 <div className="text-sm text-muted-foreground">Content Items</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="text-2xl font-bold">{stats?.active_sources ?? 0}</div>
+                <div className="text-2xl font-semibold">{stats?.active_sources ?? 0}</div>
                 <div className="text-sm text-muted-foreground">Active Sources</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="text-2xl font-bold">{stats?.total_sources ?? 0}</div>
+                <div className="text-2xl font-semibold">{stats?.total_sources ?? 0}</div>
                 <div className="text-sm text-muted-foreground">Total Sources</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="text-2xl font-bold text-orange-500">{stats?.unacknowledged_alerts ?? 0}</div>
+                <div className="text-2xl font-semibold text-orange-500">{stats?.unacknowledged_alerts ?? 0}</div>
                 <div className="text-sm text-muted-foreground">Unread Alerts</div>
               </CardContent>
             </Card>

@@ -223,7 +223,7 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
             <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
               Stage Checklist
             </h4>
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               {checkedItems.size}/{checklist.length}
             </span>
           </div>
@@ -267,7 +267,7 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
                       {item}
                     </p>
                     {description && (
-                      <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
                     )}
                   </div>
                 </button>
@@ -319,12 +319,12 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
                       <span className="text-xs font-medium">Person Intel</span>
                     </div>
                     {deal.person_id && (
-                      <Link to={`/people/${deal.person_id}?tab=reports`} className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-0.5">
+                      <Link to={`/people/${deal.person_id}?tab=reports`} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5">
                         <ExternalLink className="h-3 w-3" /> Intel
                       </Link>
                     )}
                   </div>
-                  <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-3">
+                  <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
                     {deal.intelligence_summary}
                   </p>
                 </CardContent>
@@ -341,12 +341,12 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
                       </span>
                     </div>
                     {deal.company_id && (
-                      <Link to={`/companies/${deal.company_id}`} className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-0.5">
+                      <Link to={`/companies/${deal.company_id}`} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5">
                         <ExternalLink className="h-3 w-3" /> View
                       </Link>
                     )}
                   </div>
-                  <p className="text-[11px] text-muted-foreground">Company research complete.</p>
+                  <p className="text-xs text-muted-foreground">Company research complete.</p>
                 </CardContent>
               </Card>
             )}
@@ -393,7 +393,7 @@ function DataSourcesSection({ deal }: { deal: CrmDealWithContact }) {
                   <ExternalLink className="h-3 w-3 text-muted-foreground" />
                 </div>
                 {deal.report_status && (
-                  <p className="text-[11px] text-muted-foreground mt-1 capitalize">
+                  <p className="text-xs text-muted-foreground mt-1 capitalize">
                     Status: {deal.report_status.replace(/_/g, ' ')}
                   </p>
                 )}
@@ -415,7 +415,7 @@ function DataSourcesSection({ deal }: { deal: CrmDealWithContact }) {
                   <ExternalLink className="h-3 w-3 text-muted-foreground" />
                 </div>
                 {deal.intelligence_status && (
-                  <p className="text-[11px] text-muted-foreground mt-1 capitalize">
+                  <p className="text-xs text-muted-foreground mt-1 capitalize">
                     Intel: {deal.intelligence_status}
                   </p>
                 )}
@@ -437,16 +437,16 @@ function DataSourcesSection({ deal }: { deal: CrmDealWithContact }) {
                   {log.caller_name ?? log.from_number}
                 </span>
                 {log.created_at && (
-                  <span className="text-[10px] text-muted-foreground shrink-0">
+                  <span className="text-xs text-muted-foreground shrink-0">
                     {formatDistanceToNow(new Date(log.created_at), { addSuffix: true })}
                   </span>
                 )}
               </div>
               {log.summary && (
-                <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{log.summary}</p>
+                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{log.summary}</p>
               )}
               {log.transcription_status === 'completed' && (
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0 mt-1.5 text-green-600">
+                <Badge variant="outline" className="text-xs px-1.5 py-0 mt-1.5 text-green-600">
                   Transcript available
                 </Badge>
               )}

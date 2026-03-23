@@ -157,7 +157,7 @@ export function UsersSettings() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{users.length}</div>
+            <div className="text-2xl font-semibold">{users.length}</div>
           </CardContent>
         </Card>
         <Card>
@@ -166,7 +166,7 @@ export function UsersSettings() {
             <UserCheck className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-semibold">
               {users.filter(u => u.is_active === 1).length}
             </div>
           </CardContent>
@@ -177,7 +177,7 @@ export function UsersSettings() {
             <Shield className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-semibold">
               {users.filter(u => u.is_admin === 1).length}
             </div>
           </CardContent>

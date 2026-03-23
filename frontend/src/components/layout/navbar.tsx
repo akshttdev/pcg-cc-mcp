@@ -39,7 +39,7 @@ function ScopeIndicator() {
   // Project scope takes priority (more specific)
   if (projectId && project) {
     return (
-      <Link to={`/projects/${projectId}`} className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 truncate max-w-[180px] hover:bg-emerald-500/25 transition-colors">
+      <Link to={`/projects/${projectId}`} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 truncate max-w-[180px] hover:bg-emerald-500/25 transition-colors">
         Project: {project.name}
       </Link>
     );
@@ -47,7 +47,7 @@ function ScopeIndicator() {
 
   if (orgId && organization) {
     return (
-      <Link to={`/organizations/${orgId}`} className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/20 truncate max-w-[180px] hover:bg-blue-500/25 transition-colors">
+      <Link to={`/organizations/${orgId}`} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/20 truncate max-w-[180px] hover:bg-blue-500/25 transition-colors">
         Org: {organization.name}
       </Link>
     );
@@ -55,7 +55,7 @@ function ScopeIndicator() {
 
   if (ADMIN_ROUTES.some((r) => location.pathname.startsWith(r))) {
     return (
-      <Link to="/site-directory" className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-500/15 text-orange-600 dark:text-orange-400 border border-orange-500/20 hover:bg-orange-500/25 transition-colors">
+      <Link to="/site-directory" className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-500/15 text-orange-600 dark:text-orange-400 border border-orange-500/20 hover:bg-orange-500/25 transition-colors">
         Admin
       </Link>
     );
