@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { CardGrid } from '@/components/ui/card-grid';
 import { Button } from '@/components/ui/button';
 import {
   GitBranch,
@@ -465,7 +466,7 @@ export function SystemAutomationsSection() {
       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
         System Automations ({automations.length} active)
       </p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <CardGrid columns={{ md: 2 }} gap={3}>
         {(automations as SystemAutomation[]).map((a) => (
           <Card key={a.id} className="bg-card/80 border-border/50">
             <CardContent className="pt-4 pb-4">
@@ -483,7 +484,7 @@ export function SystemAutomationsSection() {
             </CardContent>
           </Card>
         ))}
-      </div>
+      </CardGrid>
     </div>
   );
 }
@@ -515,7 +516,7 @@ export function WorkflowsIntelView({ orgId }: { orgId: string }) {
       {automations.length > 0 && (
         <div>
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">System Automations ({automations.length} active)</p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <CardGrid columns={{ md: 2 }} gap={3}>
             {(automations as SystemAutomation[]).map((a) => (
               <Card key={a.id} className="bg-card/80 border-border/50">
                 <CardContent className="pt-4 pb-4">
@@ -533,7 +534,7 @@ export function WorkflowsIntelView({ orgId }: { orgId: string }) {
                 </CardContent>
               </Card>
             ))}
-          </div>
+          </CardGrid>
         </div>
       )}
 

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQueries } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { CardGrid } from '@/components/ui/card-grid';
 import {
   Network,
   Loader2,
@@ -48,7 +49,7 @@ export function TopologyView({
         <h2 className="text-lg font-semibold">Topology</h2>
         <Badge variant="secondary">{topologyItems.length}</Badge>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <CardGrid columns={{ md: 2 }} gap={3}>
         {topologyItems.map(({ source, projectName, projectId }) => (
           <Card key={source.id} className={`bg-card/80 ${source.is_stale ? 'border-yellow-500/30' : 'border-border/50'}`}>
             <CardContent className="pt-4 pb-4">
@@ -67,7 +68,7 @@ export function TopologyView({
             </CardContent>
           </Card>
         ))}
-      </div>
+      </CardGrid>
     </div>
   );
 }
@@ -115,7 +116,7 @@ export function TopologyIntelView({ projectEntries }: { projectEntries: { id: st
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <CardGrid columns={{ md: 2 }} gap={3}>
         {topologyItems.map((t, i) => (
           <Card key={i} className={`bg-card/80 ${t.isStale ? 'border-yellow-500/30' : 'border-border/50'}`}>
             <CardContent className="pt-4 pb-4">
@@ -134,7 +135,7 @@ export function TopologyIntelView({ projectEntries }: { projectEntries: { id: st
             </CardContent>
           </Card>
         ))}
-      </div>
+      </CardGrid>
     </div>
   );
 }
