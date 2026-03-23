@@ -319,7 +319,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
         )}
         <div className="bg-card/50 backdrop-blur-sm">
           <div className="max-w-[1600px] mx-auto px-6 py-4">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 flex-wrap">
               <Link to="/projects" className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
                 <ArrowLeft className="h-5 w-5" />
               </Link>
@@ -380,7 +380,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 )}
               </div>
 
-              <div className="ml-auto flex items-center gap-2 shrink-0">
+              <div className="ml-auto flex items-center gap-2 shrink-0 flex-wrap">
                 <Badge variant={org.is_active ? 'default' : 'secondary'} className="text-xs">
                   {org.is_active ? 'Active' : 'Inactive'}
                 </Badge>
