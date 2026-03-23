@@ -238,8 +238,8 @@ export function RecordRow({
             {record.duplicate_of_id && (
               <span className="text-amber-600">Duplicate of: <code className="text-[9px]">{record.duplicate_of_id.slice(0, 8)}</code></span>
             )}
-            {(record as any).committed_entity_id && (
-              <span className="text-blue-600">Entity: <code className="text-[9px]">{(record as any).committed_entity_id.slice(0, 8)}</code></span>
+            {(record as WorkflowStagingRecord & { committed_entity_id?: string }).committed_entity_id && (
+              <span className="text-blue-600">Entity: <code className="text-[9px]">{(record as WorkflowStagingRecord & { committed_entity_id?: string }).committed_entity_id!.slice(0, 8)}</code></span>
             )}
             {record.created_at && <span>Created: {new Date(record.created_at).toLocaleString()}</span>}
           </div>

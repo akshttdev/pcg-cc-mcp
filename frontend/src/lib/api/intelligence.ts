@@ -296,12 +296,12 @@ export const dataSourcesApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model, force }),
     });
-    return handleApiResponse<any>(response);
+    return handleApiResponse<{ workflow_run_id: string; staged_records: number }>(response);
   },
 
   getArtifacts: async (dataSourceId: string) => {
     const response = await makeRequest(`/api/data-sources/${dataSourceId}/artifacts`);
-    return handleApiResponse<any[]>(response);
+    return handleApiResponse<ExecutionArtifact[]>(response);
   },
 
   download: async (id: string): Promise<Blob> => {
@@ -328,6 +328,7 @@ export interface WorkflowNode {
   id: string;
   name: string;
   type: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic workflow node params accessed by string keys
   parameters: Record<string, any>;
   position: WorkflowNodePosition;
 }

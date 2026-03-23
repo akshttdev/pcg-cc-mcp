@@ -99,7 +99,7 @@ interface ExecutiveAction {
   actionId: string;
   actionType: string;
   description: string;
-  parameters: any;
+  parameters: Record<string, unknown>;
   requiresApproval: boolean;
   estimatedDuration?: string;
   assignedTo?: string;
@@ -108,7 +108,7 @@ interface ExecutiveAction {
 interface ContextUpdate {
   updateType: string;
   key: string;
-  value: any;
+  value: unknown;
   confidence: number;
   source: string;
 }

@@ -190,7 +190,7 @@ export function useTasksWorkflowEventPolling(
       // Update events map
       const newEventsMap = new Map(eventsByTask);
       for (const [taskId, events] of Object.entries(data.events || {})) {
-        const normalizedEvents = (events as any[]).map((event) => ({
+        const normalizedEvents = (events as AgentFlowEvent[]).map((event) => ({
           ...event,
           event_type: normalizeFlowEventType(event.event_type || ''),
           event_data: event.event_data ?? '',
@@ -235,7 +235,7 @@ export function useExecutionEventStream(
 ) {
   const { enabled = true, onEvent, onError } = options;
 
-  const [events, setEvents] = useState<any[]>([]);
+  const [events, setEvents] = useState<AgentFlowEvent[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

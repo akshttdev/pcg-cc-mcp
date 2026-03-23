@@ -109,8 +109,8 @@ const Dialog = React.forwardRef<
 
   // Provide onOpenChange and uncloseable to DialogContent children via context
   const enrichedChildren = React.Children.map(children, (child) => {
-    if (React.isValidElement(child) && (child.type as any)?.displayName === 'DialogContent') {
-      return React.cloneElement(child as React.ReactElement<any>, {
+    if (React.isValidElement(child) && (child.type as React.FC & { displayName?: string })?.displayName === 'DialogContent') {
+      return React.cloneElement(child as React.ReactElement<{ _onClose?: () => void; _uncloseable?: boolean }>, {
         _onClose: uncloseable ? undefined : () => onOpenChange?.(false),
         _uncloseable: uncloseable,
       });

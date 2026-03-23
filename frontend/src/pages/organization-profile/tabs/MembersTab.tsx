@@ -51,7 +51,7 @@ export function MembersTab({ orgId, orgName }: { orgId: string; orgName: string 
     queryFn: async () => {
       try {
         const response = await makeRequest('/api/users');
-        return await handleApiResponse<any[]>(response);
+        return await handleApiResponse<{ id: string; username: string; full_name?: string }[]>(response);
       } catch {
         return [];
       }
@@ -102,8 +102,8 @@ export function MembersTab({ orgId, orgName }: { orgId: string; orgName: string 
     mutationFn: () => organizationsApi.createInvitation(orgId, inviteRole),
     successMessage: 'Invite link created',
     errorMessage: 'Failed to create invite',
-    onSuccess: (data: { invite_url?: string }) => {
-      setInviteLink(data.invite_url || '');
+    onSuccess: (data) => {
+      setInviteLink((data as unknown as { invite_url?: string }).invite_url || '');
     },
   });
 

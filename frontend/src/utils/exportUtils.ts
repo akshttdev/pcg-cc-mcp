@@ -23,7 +23,7 @@ export function tasksToCSV(tasks: TaskWithAttemptStatus[]): string {
   ];
 
   // Escape CSV values
-  const escapeCSV = (value: any): string => {
+  const escapeCSV = (value: unknown): string => {
     if (value === null || value === undefined) {
       return '';
     }
@@ -131,7 +131,7 @@ export function parseCSV(content: string): Partial<TaskExportData>[] {
   const tasks: Partial<TaskExportData>[] = [];
   for (let i = 1; i < lines.length; i++) {
     const values = lines[i].split(',').map((v) => v.trim().replace(/^"|"$/g, ''));
-    const task: any = {};
+    const task: Partial<TaskExportData> = {};
 
     headers.forEach((header, index) => {
       const value = values[index];

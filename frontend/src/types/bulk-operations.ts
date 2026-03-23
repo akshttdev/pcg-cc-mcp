@@ -17,5 +17,5 @@ export type BulkActionType =
 export interface BulkAction {
   type: BulkActionType;
   taskIds: string[];
-  params?: Record<string, any>; // Action-specific parameters
+  params?: Record<string, unknown>; // Action-specific parameters
 }

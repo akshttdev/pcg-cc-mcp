@@ -50,7 +50,7 @@ export function WalletSection() {
     isLoading: profilesLoading,
   } = useProfiles();
 
-  const [localParsedProfiles, setLocalParsedProfiles] = useState<any>(null);
+  const [localParsedProfiles, setLocalParsedProfiles] = useState<{ executors?: Record<string, Record<string, unknown>> } | null>(null);
 
   const {
     data: agentWallets = [],

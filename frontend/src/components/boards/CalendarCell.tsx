@@ -23,8 +23,8 @@ interface TaskPillProps {
 }
 
 function TaskPill({ task, getCategoryColor, onClick, onDragStart }: TaskPillProps) {
-  const category = (task.custom_properties as any)?.category;
-  const platforms = (task.custom_properties as any)?.platforms as string[] | undefined;
+  const category = (task.custom_properties as Record<string, unknown> | null)?.category as string | undefined;
+  const platforms = (task.custom_properties as Record<string, unknown> | null)?.platforms as string[] | undefined;
 
   return (
     <div

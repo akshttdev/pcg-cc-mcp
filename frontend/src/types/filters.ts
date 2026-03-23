@@ -25,7 +25,8 @@ export interface FilterCondition {
   id: string; // nanoid for removal
   field: FilterableField;
   operator: FilterOperator;
-  value: any; // Type depends on field
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- polymorphic; narrowing requires discriminated union refactor
+  value: any;
 }
 
 export interface FilterGroup {

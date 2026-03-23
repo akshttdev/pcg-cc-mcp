@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use ts_rs::TS;
 use utils::response::ApiResponse;
-use db::DbUuid;
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};

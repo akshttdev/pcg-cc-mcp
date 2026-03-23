@@ -147,32 +147,32 @@ export default function CalendarPage() {
     const out: CalEvent[] = [];
 
     if (showTasks) {
-      for (const t of tasksRaw as any[]) {
-        const rawDate = t.due_date ?? t.scheduled_start ?? t.scheduled_end;
+      for (const t of tasksRaw as Array<Record<string, unknown>>) {
+        const rawDate = (t.due_date ?? t.scheduled_start ?? t.scheduled_end) as string | undefined;
         if (!rawDate) continue;
         out.push({
-          id:        `task-${t.id}`,
-          title:     t.title,
+          id:        `task-${t.id as string}`,
+          title:     t.title as string,
           date:      new Date(rawDate),
           kind:      'task',
-          status:    t.status ?? 'todo',
-          projectId: t.project_id,
+          status:    (t.status as string) ?? 'todo',
+          projectId: t.project_id as string | undefined,
         });
       }
     }
 
     if (showPosts) {
-      for (const p of postsRaw as any[]) {
-        const rawDate = p.scheduled_for ?? p.published_at;
+      for (const p of postsRaw as unknown as Array<Record<string, unknown>>) {
+        const rawDate = (p.scheduled_for ?? p.published_at) as string | undefined;
         if (!rawDate) continue;
         let platform = 'globe';
-        try { const arr = JSON.parse(p.platforms); platform = arr[0] ?? 'globe'; } catch { platform = p.platforms ?? 'globe'; }
+        try { const arr = JSON.parse(p.platforms as string); platform = (arr as string[])[0] ?? 'globe'; } catch { platform = (p.platforms as string) ?? 'globe'; }
         out.push({
-          id:       `post-${p.id}`,
-          title:    p.caption?.slice(0, 48) || `(${platform} post)`,
+          id:       `post-${p.id as string}`,
+          title:    (p.caption as string | undefined)?.slice(0, 48) || `(${platform} post)`,
           date:     new Date(rawDate),
           kind:     'post',
-          status:   p.status ?? 'draft',
+          status:   (p.status as string) ?? 'draft',
           platform,
         });
       }

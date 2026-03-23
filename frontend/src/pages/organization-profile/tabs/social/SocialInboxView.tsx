@@ -81,7 +81,7 @@ export function SocialInboxView({ projectEntries }: { projectEntries: { id: stri
             <button key={key} onClick={() => setStatusFilter(key)}
               className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${statusFilter === key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
               {label}
-              {(counts as any)[key] > 0 && <span className="ml-1.5 text-xs text-muted-foreground">{(counts as any)[key]}</span>}
+              {counts[key as keyof typeof counts] > 0 && <span className="ml-1.5 text-xs text-muted-foreground">{counts[key as keyof typeof counts]}</span>}
             </button>
           ))}
         </div>

@@ -26,6 +26,18 @@ import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/lib/formatters';
 import { EmptyState } from '@/components/ui/empty-state';
 
+// ── Types ────────────────────────────────────────────────────────────────────
+
+interface DiscordArchivedSession {
+  id: string;
+  title?: string;
+  agent_name?: string;
+  agent?: string;
+  started_at: string;
+  created_at?: string;
+  ended_at?: string;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatElapsed(secs: number) {
@@ -276,7 +288,7 @@ function ArchivedSessionRow({
   isSelected,
   onClick,
 }: {
-  session: any;
+  session: DiscordArchivedSession;
   isSelected: boolean;
   onClick: () => void;
 }) {

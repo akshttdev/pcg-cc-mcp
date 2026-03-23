@@ -21,7 +21,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { JSONEditor } from '@/components/ui/json-editor';
 import { Loader2 } from 'lucide-react';
-import type { BaseCodingAgent, ExecutorConfig } from 'shared/types';
+import type { BaseCodingAgent, ExecutorConfig, JsonValue } from 'shared/types';
 import { McpConfig } from 'shared/types';
 import { useUserSystem } from '@/components/config-provider';
 import { mcpServersApi } from '@/lib/api';
@@ -160,7 +160,7 @@ export function McpSettings() {
             {
               executor: selectedProfileKey as BaseCodingAgent,
             },
-            { servers: mcpServersConfig }
+            { servers: mcpServersConfig as Record<string, JsonValue | undefined> }
           );
 
           // Show success feedback
@@ -206,14 +206,14 @@ export function McpSettings() {
     }
   };
 
-  const preconfigured = (mcpConfig?.preconfigured ?? {}) as Record<string, any>;
+  const preconfigured = (mcpConfig?.preconfigured ?? {}) as Record<string, unknown>;
   const meta = (preconfigured.meta ?? {}) as Record<
     string,
     { name?: string; description?: string; url?: string; icon?: string }
   >;
   const servers = Object.fromEntries(
     Object.entries(preconfigured).filter(([k]) => k !== 'meta')
-  ) as Record<string, any>;
+  ) as Record<string, unknown>;
   const getMetaFor = (key: string) => meta[key] || {};
 
   if (!config) {

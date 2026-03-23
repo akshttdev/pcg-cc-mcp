@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import MarkdownRenderer from '@/components/ui/markdown-renderer.tsx';
 import {
   ActionType,
+  ExecutorAction,
   NormalizedEntry,
   TaskAttempt,
   ToolStatus,
@@ -40,7 +41,7 @@ type Props = {
 };
 
 type FileEditAction = Extract<ActionType, { action: 'file_edit' }>;
-type JsonValue = any;
+type JsonValue = unknown;
 
 const renderJson = (v: JsonValue) => (
   <pre className="whitespace-pre-wrap">{JSON.stringify(v, null, 2)}</pre>
@@ -422,7 +423,7 @@ const PlanPresentationCard: React.FC<{
 
 const ToolCallCard: React.FC<{
   entryType?: Extract<NormalizedEntryType, { type: 'tool_use' }>;
-  action?: any;
+  action?: ActionType | ExecutorAction;
   expansionKey: string;
   content?: string;
   entryContent?: string;
@@ -440,7 +441,7 @@ const ToolCallCard: React.FC<{
   forceExpanded = false,
 }) => {
   const { t } = useTranslation('common');
-  const at: any = entryType?.action_type || action;
+  const at: ActionType | undefined = entryType?.action_type || (action && 'action' in action ? action as ActionType : undefined);
   const [expanded, toggle] = useExpandable(
     `tool-entry:${expansionKey}`,
     defaultExpanded
@@ -450,7 +451,7 @@ const ToolCallCard: React.FC<{
   const label =
     at?.action === 'command_run'
       ? 'Ran'
-      : entryType?.tool_name || at?.tool_name || 'Tool';
+      : entryType?.tool_name || (at?.action === 'tool' ? at.tool_name : undefined) || 'Tool';
 
   const isCommand = at?.action === 'command_run';
 
@@ -461,18 +462,12 @@ const ToolCallCard: React.FC<{
   const hasArgs = at?.action === 'tool' && !!at?.arguments;
   const hasResult = at?.action === 'tool' && !!at?.result;
 
-  const output: string | null = isCommand ? (at?.result?.output ?? null) : null;
+  const output: string | null = (at?.action === 'command_run' ? (at.result?.output ?? null) : null);
   let argsText: string | null = null;
-  if (isCommand) {
-    const fromArgs =
-      typeof at?.arguments === 'string'
-        ? at.arguments
-        : at?.arguments != null
-          ? JSON.stringify(at.arguments, null, 2)
-          : '';
-
+  if (isCommand && at?.action === 'command_run') {
+    const cmdText = at.command || '';
     const fallback = (entryContent || content || '').trim();
-    argsText = (fromArgs || fallback).trim();
+    argsText = (cmdText || fallback).trim();
   }
 
   const hasExpandableDetails = isCommand
@@ -613,12 +608,13 @@ function DisplayConversationEntry({
   ): entry is ProcessStartPayload => 'processId' in entry;
 
   if (isProcessStart(entry)) {
-    const toolAction: any = entry.action ?? null;
+    const toolAction = entry.action ?? undefined;
+    const actionRecord = toolAction as Record<string, unknown> | undefined;
     return (
       <ToolCallCard
         action={toolAction}
         expansionKey={expansionKey}
-        content={toolAction?.message ?? toolAction?.summary ?? undefined}
+        content={(actionRecord?.message as string) ?? (actionRecord?.summary as string) ?? undefined}
       />
     );
   }

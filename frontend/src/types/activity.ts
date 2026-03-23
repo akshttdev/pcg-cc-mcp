@@ -21,7 +21,7 @@ export interface ActivityEntry {
   userId?: string;
   userName?: string;
   description: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   timestamp: string;
 }
 

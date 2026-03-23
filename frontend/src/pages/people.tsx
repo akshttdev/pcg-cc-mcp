@@ -129,7 +129,7 @@ export function PeoplePage() {
   const [myContacts, setMyContacts] = useState(false);
 
   // Org scoping: default to the user's first org, allow switching to "All"
-  const userOrgs: { id: string; name: string; slug: string }[] = (user as any)?.organizations ?? [];
+  const userOrgs = user?.organizations ?? [];
   const orgId = user?.home_organization_id ?? userOrgs[0]?.id;
   const [selectedOrgId, setSelectedOrgId] = useState<string | undefined>(orgId);
   const selectedOrg = userOrgs.find(o => o.id === selectedOrgId);

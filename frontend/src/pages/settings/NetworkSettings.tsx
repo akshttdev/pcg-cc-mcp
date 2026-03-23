@@ -43,6 +43,13 @@ interface Capabilities {
   contribution: string[];
 }
 
+interface PythiaEconomicsStats {
+  total_vibe_distributed?: number;
+  total_wallets?: number;
+  total_transactions?: number;
+  active_reward_peers?: number;
+}
+
 const KNOWN_AGENTS = [
   { id: 'nora', name: 'Nora', description: 'LLM assistant - natural language tasks' },
   { id: 'editron', name: 'Editron', description: 'Video editing and processing' },
@@ -101,9 +108,9 @@ export function NetworkSettings() {
   });
 
   // Fetch Pythia economics stats
-  const { data: economicsStats } = useQuery({
+  const { data: economicsStats } = useQuery<PythiaEconomicsStats>({
     queryKey: networkKeys.pythiaEconomics(),
-    queryFn: () => fetchJson('/api/pythia/economics/stats'),
+    queryFn: () => fetchJson<PythiaEconomicsStats>('/api/pythia/economics/stats'),
     refetchInterval: 30000,
   });
 
@@ -280,25 +287,25 @@ export function NetworkSettings() {
                   <div>
                     <span className="text-muted-foreground">Total Distributed</span>
                     <p className="text-lg font-semibold">
-                      {(economicsStats as any)?.total_vibe_distributed?.toFixed(2) ?? '0.00'} VIBE
+                      {economicsStats?.total_vibe_distributed?.toFixed(2) ?? '0.00'} VIBE
                     </p>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Active Wallets</span>
                     <p className="text-lg font-semibold">
-                      {(economicsStats as any)?.total_wallets ?? 0}
+                      {economicsStats?.total_wallets ?? 0}
                     </p>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Transactions</span>
                     <p className="text-lg font-semibold">
-                      {(economicsStats as any)?.total_transactions ?? 0}
+                      {economicsStats?.total_transactions ?? 0}
                     </p>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Reward Peers</span>
                     <p className="text-lg font-semibold">
-                      {(economicsStats as any)?.active_reward_peers ?? 0}
+                      {economicsStats?.active_reward_peers ?? 0}
                     </p>
                   </div>
                 </div>

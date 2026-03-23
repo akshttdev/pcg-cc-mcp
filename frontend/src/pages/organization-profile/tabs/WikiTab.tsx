@@ -30,7 +30,7 @@ export function OrgWikiTab({ orgId, orgName }: { orgId: string; orgName: string 
   const [saving, setSaving] = useState(false);
 
   const startEdit = () => {
-    setDesc((org as any)?.description ?? '');
+    setDesc(org?.description ?? '');
     setEditing(true);
   };
 
@@ -139,8 +139,8 @@ export function OrgWikiTab({ orgId, orgName }: { orgId: string; orgName: string 
                 </Button>
               </div>
             </div>
-          ) : (org as any)?.description ? (
-            <p className="text-sm leading-relaxed whitespace-pre-wrap">{(org as any)?.description}</p>
+          ) : org?.description ? (
+            <p className="text-sm leading-relaxed whitespace-pre-wrap">{org?.description}</p>
           ) : (
             <p className="text-sm text-muted-foreground italic">No description yet. Click Edit to add one.</p>
           )}

@@ -12,8 +12,8 @@ export type SortDir = 'asc' | 'desc';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-export function parseMetadata(raw: string): Record<string, any> {
-  try { return JSON.parse(raw); } catch { return {}; }
+export function parseMetadata(raw: string): Record<string, unknown> {
+  try { return JSON.parse(raw) as Record<string, unknown>; } catch { return {}; }
 }
 
 export function getFolderContext(source: DataSourceRecord): string {
@@ -22,7 +22,7 @@ export function getFolderContext(source: DataSourceRecord): string {
     return source.folder.split('/').map((p: string) => p.trim()).filter(Boolean).join(' > ');
   }
   const meta = parseMetadata(source.metadata);
-  return meta.folder_context || '';
+  return (meta.folder_context as string) || '';
 }
 
 export function buildFolderTree(sources: DataSourceRecord[]): FolderNode {
@@ -55,5 +55,5 @@ export function formatSize(bytes?: number | null): string {
 
 export function hasLocalFile(source: DataSourceRecord): boolean {
   const meta = parseMetadata(source.metadata);
-  return !!(meta.file_path || source.file_path || source.source_type === 'text');
+  return !!(meta.file_path as string | undefined || source.file_path || source.source_type === 'text');
 }

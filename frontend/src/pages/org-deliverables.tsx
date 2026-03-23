@@ -57,7 +57,7 @@ export function OrgDeliverablesPage() {
   });
 
   const orgProjects = projects.filter(
-    (p) => (p as any).organization_id === orgId,
+    (p) => p.organization_id === orgId,
   );
 
   const { data: allDeliverables = [], isLoading } = useQuery({
@@ -143,7 +143,7 @@ export function OrgDeliverablesPage() {
         <div className="border rounded-xl overflow-hidden divide-y">
           {allDeliverables.map((d: DeliverableRecord) => {
             const Icon =
-              TYPE_ICONS[(d as any).deliverable_type || 'other'] || Package;
+              TYPE_ICONS[d.deliverable_type || 'other'] || Package;
             const statusCls =
               STATUS_COLORS[d.status || 'working'] || STATUS_COLORS.working;
             return (

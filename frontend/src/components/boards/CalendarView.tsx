@@ -151,7 +151,7 @@ export function CalendarView({
   const categoryStats = useMemo(() => {
     const stats: Record<string, number> = {};
     tasks.forEach((task) => {
-      const category = (task.custom_properties as any)?.category || 'other';
+      const category = (task.custom_properties as Record<string, unknown> | null)?.category as string || 'other';
       stats[category] = (stats[category] || 0) + 1;
     });
     return stats;

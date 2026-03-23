@@ -299,24 +299,24 @@ export function BrandSetupWizard({
               <Button
                 onClick={() => {
                   const data: Partial<OrgBrandProfile> = {};
-                  if (form.tagline) (data as any).tagline = form.tagline;
+                  if (form.tagline) data.tagline = form.tagline;
                   if (form.primaryColor !== '#000000')
-                    (data as any).primaryColor = form.primaryColor;
+                    data.primaryColor = form.primaryColor;
                   if (form.secondaryColor !== '#FFFFFF')
-                    (data as any).secondaryColor = form.secondaryColor;
+                    data.secondaryColor = form.secondaryColor;
                   if (form.accentColor !== '#AF9041')
-                    (data as any).accentColor = form.accentColor;
+                    data.accentColor = form.accentColor;
                   if (form.typographyHeading)
-                    (data as any).typographyHeading = form.typographyHeading;
+                    data.typographyHeading = form.typographyHeading;
                   if (form.typographyBody)
-                    (data as any).typographyBody = form.typographyBody;
+                    data.typographyBody = form.typographyBody;
                   if (form.missionStatement)
-                    (data as any).missionStatement = form.missionStatement;
+                    data.missionStatement = form.missionStatement;
                   if (form.brandVoice)
-                    (data as any).brandVoice = form.brandVoice;
+                    data.brandVoice = form.brandVoice;
                   if (form.websiteUrl)
-                    (data as any).websiteUrl = form.websiteUrl;
-                  if (form.industry) (data as any).industry = form.industry;
+                    data.websiteUrl = form.websiteUrl;
+                  if (form.industry) data.industry = form.industry;
                   upsertMutation.mutate(data);
                 }}
                 disabled={upsertMutation.isPending}

@@ -66,10 +66,10 @@ export function PreviewPanel({ source, onClose, onDelete, onRunWorkflow }: {
         )}
 
         {/* Summary / text preview */}
-        {(source as any).summary && (
+        {(source as DataSourceRecord & { summary?: string }).summary && (
           <div>
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Summary</p>
-            <p className="text-sm text-muted-foreground leading-relaxed">{(source as any).summary}</p>
+            <p className="text-sm text-muted-foreground leading-relaxed">{(source as DataSourceRecord & { summary?: string }).summary}</p>
           </div>
         )}
 
@@ -101,10 +101,10 @@ export function PreviewPanel({ source, onClose, onDelete, onRunWorkflow }: {
               <span className="text-muted-foreground">Added</span>
               <span>{formatDate(source.created_at)}</span>
             </div>
-            {meta.dropbox_path && (
+            {(meta.dropbox_path as string | undefined) && (
               <div className="flex flex-col gap-0.5">
                 <span className="text-muted-foreground">Dropbox path</span>
-                <span className="text-xs text-muted-foreground/70 truncate font-mono">{meta.dropbox_path}</span>
+                <span className="text-xs text-muted-foreground/70 truncate font-mono">{meta.dropbox_path as string}</span>
               </div>
             )}
             {getFolderContext(source) && (

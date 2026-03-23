@@ -6,7 +6,7 @@ import { userKeys } from '@/lib/query-keys';
 export type UseProfilesReturn = {
   // data
   profilesContent: string;
-  parsedProfiles: any | null;
+  parsedProfiles: Record<string, unknown> | null;
   profilesPath: string;
 
   // status
@@ -34,7 +34,7 @@ export function useProfiles(): UseProfilesReturn {
     mutationFn: (content: string) => profilesApi.save(content),
     onSuccess: (_, content) => {
       // Optimistically update cache with new content
-      queryClient.setQueryData(userKeys.profiles(), (old: any) =>
+      queryClient.setQueryData(userKeys.profiles(), (old: { content: string; path: string } | undefined) =>
         old ? { ...old, content } : old
       );
     },

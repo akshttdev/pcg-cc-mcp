@@ -99,7 +99,8 @@ export function ModelsSettings() {
     useState<string>('CLAUDE_CODE');
   const [selectedConfiguration, setSelectedConfiguration] =
     useState<string>('DEFAULT');
-  const [localParsedProfiles, setLocalParsedProfiles] = useState<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [localParsedProfiles, setLocalParsedProfiles] = useState<Record<string, any> | null>(null);
   const [isDirty, setIsDirty] = useState(false);
 
   // Sync server state to local state when not dirty
@@ -124,7 +125,7 @@ export function ModelsSettings() {
 
   // Mark profiles as dirty
   const markDirty = (nextProfiles: unknown) => {
-    setLocalParsedProfiles(nextProfiles);
+    setLocalParsedProfiles(nextProfiles as Record<string, unknown> | null);
     syncRawProfiles(nextProfiles);
     setIsDirty(true);
   };
@@ -543,7 +544,7 @@ export function ModelsSettings() {
                 selectedConfiguration
               ]?.[selectedExecutorType] && (
                 <ExecutorConfigForm
-                  executor={selectedExecutorType as any}
+                  executor={selectedExecutorType as 'AMP' | 'CLAUDE_CODE' | 'GEMINI' | 'CODEX' | 'CURSOR' | 'OPENCODE' | 'QWEN_CODE'}
                   value={
                     localParsedProfiles.executors[selectedExecutorType][
                       selectedConfiguration

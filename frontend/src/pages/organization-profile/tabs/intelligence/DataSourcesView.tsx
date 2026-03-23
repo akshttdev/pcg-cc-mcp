@@ -89,7 +89,7 @@ function AddDataSourceDialog({
   const [description, setDescription] = useState(editingSource?.description ?? '');
   const [content, setContent] = useState(editingSource?.content ?? '');
   const [file, setFile] = useState<File | null>(null);
-  const [folder, setFolder] = useState((editingSource as any)?.folder ?? '');
+  const [folder, setFolder] = useState(editingSource?.folder ?? '');
 
   // Reset form when dialog opens/closes or editingSource changes
   const resetForm = () => {
@@ -99,7 +99,7 @@ function AddDataSourceDialog({
     setTitle(editingSource?.title ?? '');
     setDescription(editingSource?.description ?? '');
     setContent(editingSource?.content ?? '');
-    setFolder((editingSource as any)?.folder ?? '');
+    setFolder(editingSource?.folder ?? '');
     setFile(null);
   };
 
@@ -125,7 +125,8 @@ function AddDataSourceDialog({
         data_type: dataType,
         source_type: sourceType,
         content: sourceType === 'text' && content.trim() ? content.trim() : undefined,
-      } as any);
+        folder: folder.trim() || undefined,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: dataSourceKeys.list(orgId) });
@@ -152,7 +153,8 @@ function AddDataSourceDialog({
         data_type: dataType,
         source_type: sourceType,
         content: sourceType === 'text' && content.trim() ? content.trim() : undefined,
-      } as any);
+        folder: folder.trim() || undefined,
+      });
     } else {
       createMutation.mutate();
     }
@@ -386,7 +388,7 @@ export function DataSourcesView({
   const folderTree = useMemo(() => {
     const tree: Record<string, Record<string, number>> = {}; // root -> { sub: count }
     sources.forEach(s => {
-      const f = (s as any).folder || 'Unfiled';
+      const f = s.folder || 'Unfiled';
       const parts = f.split('/');
       const root = parts[0];
       const sub = parts[1] || null;
@@ -407,7 +409,7 @@ export function DataSourcesView({
     // Folder filter
     if (selectedFolder) {
       arr = arr.filter(s => {
-        const f = (s as any).folder || 'Unfiled';
+        const f = s.folder || 'Unfiled';
         return f === selectedFolder || f.startsWith(selectedFolder + '/');
       });
     }
@@ -463,7 +465,7 @@ export function DataSourcesView({
 
   const folderCount = (f: string) =>
     sources.filter(s => {
-      const sf = (s as any).folder || 'Unfiled';
+      const sf = s.folder || 'Unfiled';
       return sf === f || sf.startsWith(f + '/');
     }).length;
 

@@ -15,7 +15,7 @@ export interface ViewConfig {
   projectId: string;
   name: string;
   viewType: ViewType;
-  filters: Record<string, any>;
+  filters: Record<string, unknown>;
   sorts: Array<{ field: string; direction: 'asc' | 'desc' }>;
   visibleProperties: string[];
 }

@@ -12,7 +12,7 @@ interface ActivityStore {
     taskId: string,
     type: ActivityType,
     description: string,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ) => void;
   getActivitiesForTask: (taskId: string) => ActivityEntry[];
   getRecentActivities: (limit?: number) => ActivityEntry[];

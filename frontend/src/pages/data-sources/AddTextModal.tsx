@@ -24,7 +24,7 @@ export function AddTextModal({ orgId, projectId, onClose, onAdded }: {
         content: content || undefined,
         organization_id: orgId,
         project_id: projectId,
-      } as any);
+      });
       toast.success('Text source added');
       onAdded();
       onClose();
