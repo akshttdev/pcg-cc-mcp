@@ -9,6 +9,8 @@ import {
   Menu,
   PanelLeftOpen,
   PanelLeftClose,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { SearchBar } from '@/components/search-bar';
 import { useSearch } from '@/contexts/search-context';
@@ -22,6 +24,7 @@ import { NotificationCenter } from '@/components/notifications/NotificationCente
 import { NavbarUserButton } from '@/components/layout/NavbarUserButton';
 import { useViewStore } from '@/stores/useViewStore';
 import { DevBanner } from '@/components/DevBanner';
+import { useTheme } from '@/components/theme-provider';
 
 const ADMIN_ROUTES = ['/site-directory', '/nora', '/mission-control', '/admin'];
 
@@ -60,6 +63,22 @@ function ScopeIndicator() {
 
 interface NavbarProps {
   onToggleSidebar?: () => void;
+}
+
+function ThemeToggle() {
+  const { theme, setTheme } = useTheme();
+  const isDark = theme === 'dark';
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="h-8 w-8"
+      onClick={() => setTheme(isDark ? 'light' : 'dark')}
+      title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+    >
+      {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+    </Button>
+  );
 }
 
 export function Navbar({ onToggleSidebar }: NavbarProps) {
@@ -201,6 +220,8 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
                 <div className="h-4 w-px bg-border/50 hidden sm:block mx-1" />
               </>
             )}
+
+            <ThemeToggle />
 
             <NotificationCenter />
 
