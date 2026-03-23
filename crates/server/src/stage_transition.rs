@@ -101,14 +101,16 @@ pub struct ValidationWarning {
 /// Load and parse stage_config JSON from a CrmPipelineStage.
 pub fn parse_stage_config(stage: &CrmPipelineStage) -> Option<StageConfig> {
     stage.stage_config.as_deref().and_then(|json| {
-        serde_json::from_str(json).map_err(|e| {
-            tracing::warn!(
-                "[StageTransition] Failed to parse stage_config for stage '{}' (id={}): {}",
-                stage.name,
-                stage.id,
-                e
-            );
-        }).ok()
+        serde_json::from_str(json)
+            .map_err(|e| {
+                tracing::warn!(
+                    "[StageTransition] Failed to parse stage_config for stage '{}' (id={}): {}",
+                    stage.name,
+                    stage.id,
+                    e
+                );
+            })
+            .ok()
     })
 }
 
@@ -193,9 +195,13 @@ pub async fn process_transition(
         for action in &config.on_enter_actions {
             match action {
                 StageAction::TriggerAgent { agent, flow_type } => {
-                    const KNOWN_AGENTS: &[&str] = &["scout", "astra", "cash", "lux", "nora", "assistant"];
+                    const KNOWN_AGENTS: &[&str] =
+                        &["scout", "astra", "cash", "lux", "nora", "assistant"];
                     if !KNOWN_AGENTS.contains(&agent.to_lowercase().as_str()) {
-                        tracing::warn!("[StageTransition] Unknown agent '{}' in stage config — skipping", agent);
+                        tracing::warn!(
+                            "[StageTransition] Unknown agent '{}' in stage config — skipping",
+                            agent
+                        );
                         continue;
                     }
                     if config.auto_trigger {

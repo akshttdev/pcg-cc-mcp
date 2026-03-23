@@ -130,7 +130,11 @@ impl AgentFlowExecutor {
         )
         .await
         {
-            tracing::warn!("[AgentFlowEngine] Failed to emit phase_started for flow {}: {}", flow.id, e);
+            tracing::warn!(
+                "[AgentFlowEngine] Failed to emit phase_started for flow {}: {}",
+                flow.id,
+                e
+            );
         }
 
         // Dispatch LLM execution
@@ -188,7 +192,11 @@ impl AgentFlowExecutor {
                 )
                 .await
                 {
-                    tracing::warn!("[AgentFlowEngine] Failed to emit artifact for flow {}: {}", flow.id, e);
+                    tracing::warn!(
+                        "[AgentFlowEngine] Failed to emit artifact for flow {}: {}",
+                        flow.id,
+                        e
+                    );
                 }
 
                 // Store the output in flow_config for retrieval
@@ -317,9 +325,16 @@ impl AgentFlowExecutor {
                 }
                 LLMResponse::ToolCalls { calls, .. } => {
                     // Dedup: break if LLM repeats the exact same tool call
-                    let sig = calls.iter().map(|c| format!("{}:{}", c.name, c.arguments)).collect::<Vec<_>>().join("|");
+                    let sig = calls
+                        .iter()
+                        .map(|c| format!("{}:{}", c.name, c.arguments))
+                        .collect::<Vec<_>>()
+                        .join("|");
                     if last_tool_sig.as_deref() == Some(&sig) {
-                        tracing::warn!("[AgentFlowEngine] LLM repeated same tool call on turn {} — breaking loop", turn + 1);
+                        tracing::warn!(
+                            "[AgentFlowEngine] LLM repeated same tool call on turn {} — breaking loop",
+                            turn + 1
+                        );
                         anyhow::bail!("LLM stuck in tool-call loop (repeated same call)");
                     }
                     last_tool_sig = Some(sig);
@@ -477,7 +492,10 @@ impl AgentFlowExecutor {
         let flow_id = match Uuid::parse_str(flow_id_str) {
             Ok(id) => id,
             Err(_) => {
-                tracing::debug!("[AgentFlowEngine] Invalid flow_id in save_artifact: {}", &flow_id_str[..flow_id_str.len().min(50)]);
+                tracing::debug!(
+                    "[AgentFlowEngine] Invalid flow_id in save_artifact: {}",
+                    &flow_id_str[..flow_id_str.len().min(50)]
+                );
                 return json!({"error": "Invalid flow_id"}).to_string();
             }
         };
@@ -535,7 +553,11 @@ impl AgentFlowExecutor {
         )
         .await
         {
-            tracing::warn!("[AgentFlowEngine] Failed to emit FlowCompleted for flow {}: {}", flow.id, e);
+            tracing::warn!(
+                "[AgentFlowEngine] Failed to emit FlowCompleted for flow {}: {}",
+                flow.id,
+                e
+            );
         }
 
         // Mark as completed
@@ -565,7 +587,11 @@ impl AgentFlowExecutor {
         )
         .await
         {
-            tracing::warn!("[AgentFlowEngine] Failed to emit FlowFailed for flow {}: {}", flow.id, e);
+            tracing::warn!(
+                "[AgentFlowEngine] Failed to emit FlowFailed for flow {}: {}",
+                flow.id,
+                e
+            );
         }
 
         // Mark as failed
