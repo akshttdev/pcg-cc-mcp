@@ -19,6 +19,7 @@
 - **Run `/check` before every push.** All checks must pass. Don't push with known failures.
 - **Never push or merge to main without explicit user approval.**
 - `/check` runs: `cargo fmt --check`, `cargo clippy` (with CI flags from `ci.yml`), `npx tsc --noEmit`, `npx eslint`, `npm run generate-types:check`
+- **Before fmt check, always run `cargo fmt --all` first.** The `--check` flag uses caching that can miss files. Run format unconditionally, then check if there are uncommitted changes. If `git diff` shows changes after formatting, stage and commit them before the check passes.
 
 ## Pull Requests
 

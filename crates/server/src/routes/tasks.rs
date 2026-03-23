@@ -122,11 +122,8 @@ pub async fn get_tasks(
         Ok(ResponseJson(ApiResponse::success(tasks)))
     } else if let Some(ref deal_id) = query.crm_deal_id {
         // Return tasks linked to this CRM deal
-        let tasks = Task::find_by_deal_id_with_attempt_status(
-            &deployment.db().pool,
-            deal_id,
-        )
-        .await?;
+        let tasks =
+            Task::find_by_deal_id_with_attempt_status(&deployment.db().pool, deal_id).await?;
 
         Ok(ResponseJson(ApiResponse::success(tasks)))
     } else {
@@ -142,7 +139,9 @@ pub async fn stream_tasks_ws(
     Query(query): Query<TaskQuery>,
 ) -> impl IntoResponse {
     ws.on_upgrade(move |socket| async move {
-        if let Err(e) = handle_tasks_ws(socket, deployment, query.project_id.unwrap_or_default()).await {
+        if let Err(e) =
+            handle_tasks_ws(socket, deployment, query.project_id.unwrap_or_default()).await
+        {
             tracing::warn!("tasks WS closed: {}", e);
         }
     })
