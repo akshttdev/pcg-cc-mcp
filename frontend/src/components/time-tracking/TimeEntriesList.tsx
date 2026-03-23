@@ -1,5 +1,5 @@
 import { Clock, Trash2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useTimeTrackingStore } from '@/stores/useTimeTrackingStore';
@@ -81,15 +81,13 @@ export function TimeEntriesList({ taskId }: TimeEntriesListProps) {
                     )}
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 shrink-0"
+                <IconButton
+                  variant="ghost" className="h-7 w-7 shrink-0"
                   onClick={() => handleDelete(entry.id)}
-                  title="Delete time entry"
-                >
-                  <Trash2 className="h-3 w-3" />
-                </Button>
+                  icon={Trash2}
+                  label="Delete time entry"
+                  iconClassName="h-3 w-3"
+                />
               </div>
             ))}
           </div>

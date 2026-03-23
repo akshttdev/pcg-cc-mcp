@@ -3,6 +3,7 @@ import { resolveApiUrl } from '@/lib/api';
 import ReactMarkdown from 'react-markdown';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -901,14 +902,12 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
                     </span>
                   )}
                 </Button>
-                <Button
+                <IconButton
                   onClick={handleSend}
                   disabled={!canSend || isLoading}
-                  size="icon"
-                  title="Send message"
-                >
-                  <Send className="w-4 h-4" />
-                </Button>
+                  icon={Send}
+                  label="Send message"
+                />
               </div>
             </div>
 

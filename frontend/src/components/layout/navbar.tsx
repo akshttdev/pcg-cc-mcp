@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   FolderOpen,
   Settings,
@@ -176,47 +177,35 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
               </kbd>
             </Button>
             {/* Command Palette — mobile icon */}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={openCommandPalette}
+            <IconButton
+              variant="ghost" onClick={openCommandPalette}
               className="sm:hidden h-8 w-8"
-              aria-label="Quick actions"
-            >
-              <CommandIcon className="h-4 w-4" />
-            </Button>
+              icon={CommandIcon}
+              label="Quick actions"
+            />
 
             {projectId && (
               <>
                 <div className="h-4 w-px bg-border/50 hidden sm:block mx-1" />
 
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleOpenInIDE}
-                  aria-label="Open project in IDE"
+                <IconButton
+                  variant="ghost" onClick={handleOpenInIDE}
                   className="hidden md:inline-flex h-8 w-8"
-                >
-                  <FolderOpen className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleProjectSettings}
-                  aria-label="Project settings"
+                  icon={FolderOpen}
+                  label="Open project in IDE"
+                />
+                <IconButton
+                  variant="ghost" onClick={handleProjectSettings}
                   className="hidden md:inline-flex h-8 w-8"
-                >
-                  <Settings className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleCreateTask}
-                  aria-label="Create new task"
+                  icon={Settings}
+                  label="Project settings"
+                />
+                <IconButton
+                  variant="ghost" onClick={handleCreateTask}
                   className="h-8 w-8"
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
+                  icon={Plus}
+                  label="Create new task"
+                />
 
                 <div className="h-4 w-px bg-border/50 hidden sm:block mx-1" />
               </>

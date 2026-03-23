@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link2, X, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Select,
@@ -158,15 +159,13 @@ export function DependencyManager({
                     >
                       {getTaskTitle(dep.targetTaskId)}
                     </button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
+                    <IconButton
+                      variant="ghost" className="h-6 w-6"
                       onClick={() => handleRemove(dep.id)}
-                      title="Remove dependency"
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
+                      icon={X}
+                      label="Remove dependency"
+                      iconClassName="h-3 w-3"
+                    />
                   </div>
                 ))}
               </div>
@@ -187,15 +186,13 @@ export function DependencyManager({
                     >
                       {getTaskTitle(dep.sourceTaskId)}
                     </button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
+                    <IconButton
+                      variant="ghost" className="h-6 w-6"
                       onClick={() => handleRemove(dep.id)}
-                      title="Remove dependency"
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
+                      icon={X}
+                      label="Remove dependency"
+                      iconClassName="h-3 w-3"
+                    />
                   </div>
                 ))}
               </div>
@@ -219,15 +216,13 @@ export function DependencyManager({
                       >
                         {getTaskTitle(relatedTaskId)}
                       </button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
+                      <IconButton
+                        variant="ghost" className="h-6 w-6"
                         onClick={() => handleRemove(dep.id)}
-                        title="Remove dependency"
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
+                        icon={X}
+                        label="Remove dependency"
+                        iconClassName="h-3 w-3"
+                      />
                     </div>
                   );
                 })}

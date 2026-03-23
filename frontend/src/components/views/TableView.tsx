@@ -11,6 +11,7 @@ import {
 } from '@tanstack/react-table';
 import { ChevronDown, ChevronUp, ChevronsUpDown, ExternalLink, MoreHorizontal, Edit, Copy, Trash2, Bot, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { format } from 'date-fns';
 import {
@@ -137,18 +138,16 @@ export function TableView({ tasks, projectId, onEditTask, onDeleteTask, onDuplic
         cell: (info) => (
           <div className="flex items-center gap-2">
             <span className="font-medium truncate max-w-md">{info.getValue()}</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+            <IconButton
+              variant="ghost" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
               onClick={(e) => {
                 e.stopPropagation();
                 navigate(`/projects/${projectId}/tasks/${info.row.original.id}`);
               }}
-              title="Open task"
-            >
-              <ExternalLink className="h-3 w-3" />
-            </Button>
+              icon={ExternalLink}
+              label="Open task"
+              iconClassName="h-3 w-3"
+            />
           </div>
         ),
         size: 400,

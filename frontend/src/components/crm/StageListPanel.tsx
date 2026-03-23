@@ -2,6 +2,7 @@ import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
@@ -88,44 +89,36 @@ export function StageListPanel({
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button
-                        size="icon"
+                      <IconButton
                         variant="ghost"
                         className="h-8 w-8"
                         onClick={() => onMoveStage(stage.id, 'up')}
                         disabled={index === 0 || reorderPending}
-                        title="Move up"
-                      >
-                        <ArrowUp className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="icon"
+                        icon={ArrowUp}
+                        label="Move up"
+                      />
+                      <IconButton
                         variant="ghost"
                         className="h-8 w-8"
                         onClick={() => onMoveStage(stage.id, 'down')}
                         disabled={index === (stages?.length ?? 0) - 1 || reorderPending}
-                        title="Move down"
-                      >
-                        <ArrowDown className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="icon"
+                        icon={ArrowDown}
+                        label="Move down"
+                      />
+                      <IconButton
                         variant="ghost"
                         className="h-8 w-8"
                         onClick={() => onEditStage(stage)}
-                        title="Edit stage"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="icon"
+                        icon={Pencil}
+                        label="Edit stage"
+                      />
+                      <IconButton
                         variant="ghost"
                         className="h-8 w-8 text-destructive"
                         onClick={() => onDeleteStage(stage)}
-                        title="Delete stage"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                        icon={Trash2}
+                        label="Delete stage"
+                      />
                     </div>
                   </div>
                   {stage.description && (

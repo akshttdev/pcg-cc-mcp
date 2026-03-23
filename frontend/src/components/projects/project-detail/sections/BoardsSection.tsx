@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -213,20 +214,17 @@ export function BoardsSection({
                         </div>
                       </div>
                       {!isDefaultBoard(board.board_type) && (
-                        <Button
+                        <IconButton
                           type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="relative text-muted-foreground hover:text-destructive"
+                          variant="ghost" className="relative text-muted-foreground hover:text-destructive"
                           onClick={(event) => {
                             event.stopPropagation();
                             event.preventDefault();
                             onDeleteBoard(board);
                           }}
-                          aria-label={`Delete board ${board.name}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                          icon={Trash2}
+                          label={`Delete board ${board.name}`}
+                        />
                       )}
                     </div>
                     <div className="relative mt-4 space-y-2">

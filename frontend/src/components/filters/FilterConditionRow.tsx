@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   Select,
   SelectContent,
@@ -219,15 +219,12 @@ export function FilterConditionRow({
       {renderValueInput()}
 
       {/* Remove Button */}
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={onRemove}
+      <IconButton
+        variant="ghost" onClick={onRemove}
         className="shrink-0"
-        title="Remove condition"
-      >
-        <X className="h-4 w-4" />
-      </Button>
+        icon={X}
+        label="Remove condition"
+      />
     </div>
   );
 }

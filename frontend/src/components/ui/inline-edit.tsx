@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { Check, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from './icon-button';
 
 interface InlineEditProps {
   value: string;
@@ -105,30 +105,28 @@ export function InlineEdit({
         />
       )}
       <div className="flex items-center gap-1 shrink-0">
-        <Button
-          size="icon"
+        <IconButton
           variant="ghost"
           className="h-7 w-7"
           onClick={(e) => {
             e.stopPropagation();
             handleSave();
           }}
-          title="Save"
-        >
-          <Check className="h-4 w-4 text-green-600" />
-        </Button>
-        <Button
-          size="icon"
+          icon={Check}
+          label="Save"
+          iconClassName="h-4 w-4 text-green-600"
+        />
+        <IconButton
           variant="ghost"
           className="h-7 w-7"
           onClick={(e) => {
             e.stopPropagation();
             handleCancel();
           }}
-          title="Cancel"
-        >
-          <X className="h-4 w-4 text-red-600" />
-        </Button>
+          icon={X}
+          label="Cancel"
+          iconClassName="h-4 w-4 text-red-600"
+        />
       </div>
     </div>
   );

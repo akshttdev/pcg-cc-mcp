@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   Dialog,
   DialogContent,
@@ -81,21 +81,29 @@ function ImageLightbox({
             {alt}
           </DialogTitle>
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" onClick={handleZoomOut} className="h-8 w-8" title="Zoom out">
-              <ZoomOut className="h-4 w-4" />
-            </Button>
+            <IconButton
+              variant="ghost" onClick={handleZoomOut} className="h-8 w-8"
+              icon={ZoomOut}
+              label="Zoom out"
+            />
             <span className="text-xs text-muted-foreground w-12 text-center">
               {Math.round(zoom * 100)}%
             </span>
-            <Button variant="ghost" size="icon" onClick={handleZoomIn} className="h-8 w-8" title="Zoom in">
-              <ZoomIn className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" onClick={handleRotate} className="h-8 w-8" title="Rotate">
-              <RotateCw className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8" title="Close">
-              <X className="h-4 w-4" />
-            </Button>
+            <IconButton
+              variant="ghost" onClick={handleZoomIn} className="h-8 w-8"
+              icon={ZoomIn}
+              label="Zoom in"
+            />
+            <IconButton
+              variant="ghost" onClick={handleRotate} className="h-8 w-8"
+              icon={RotateCw}
+              label="Rotate"
+            />
+            <IconButton
+              variant="ghost" onClick={onClose} className="h-8 w-8"
+              icon={X}
+              label="Close"
+            />
           </div>
         </DialogHeader>
         <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-black/5 dark:bg-black/20 min-h-[60vh]">
@@ -395,18 +403,16 @@ export function ArtifactPreviewCard({
 
         {/* Download button on hover */}
         {onDownload && (artifact.file_path || artifact.content) && (
-          <Button
-            variant="secondary"
-            size="icon"
-            className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+          <IconButton
+            variant="secondary" className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
             onClick={(e) => {
               e.stopPropagation();
               onDownload();
             }}
-            title="Download"
-          >
-            <Download className="h-3 w-3" />
-          </Button>
+            icon={Download}
+            label="Download"
+            iconClassName="h-3 w-3"
+          />
         )}
       </div>
 

@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/shadcn-io/kanban';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DollarSign, Settings, Loader2, Bot, User, Users, Target, Plus } from 'lucide-react';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
@@ -290,9 +291,11 @@ export function CrmPipelineBoard({
             Add Deal
           </Button>
           {onSettingsClick && (
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={onSettingsClick} title="Pipeline settings">
-              <Settings className="h-4 w-4" />
-            </Button>
+            <IconButton
+              variant="outline" className="h-8 w-8" onClick={onSettingsClick}
+              icon={Settings}
+              label="Pipeline settings"
+            />
           )}
         </div>
       </div>

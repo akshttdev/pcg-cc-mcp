@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -159,15 +160,19 @@ export function CalendarView({
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" onClick={goToPreviousMonth} title="Previous month">
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
+            <IconButton
+              variant="outline" onClick={goToPreviousMonth}
+              icon={ChevronLeft}
+              label="Previous month"
+            />
             <CardTitle className="text-lg font-semibold min-w-[160px] text-center">
               {MONTHS[month]} {year}
             </CardTitle>
-            <Button variant="outline" size="icon" onClick={goToNextMonth} title="Next month">
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+            <IconButton
+              variant="outline" onClick={goToNextMonth}
+              icon={ChevronRight}
+              label="Next month"
+            />
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={goToToday}>

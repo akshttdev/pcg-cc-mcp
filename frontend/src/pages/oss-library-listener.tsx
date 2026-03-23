@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -264,26 +265,22 @@ function LibraryCard({ lib }: { lib: OssLibrary }) {
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
+          <IconButton
+            variant="ghost" className="h-7 w-7"
             onClick={() => checkNow.mutate()}
             disabled={checkNow.isPending}
-            title="Check now"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${checkNow.isPending ? 'animate-spin' : ''}`} />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+            icon={RefreshCw}
+            label="Check now"
+            iconClassName={`h-3.5 w-3.5 ${checkNow.isPending ? 'animate-spin' : ''}`}
+          />
+          <IconButton
+            variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive"
             onClick={() => deleteLib.mutate()}
             disabled={deleteLib.isPending}
-            title="Remove"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+            icon={Trash2}
+            label="Remove"
+            iconClassName="h-3.5 w-3.5"
+          />
         </div>
       </div>
 

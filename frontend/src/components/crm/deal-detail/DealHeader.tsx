@@ -3,6 +3,7 @@
 // primitives require their specific parent context or throw errors.
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   Calendar,
   Building2,
@@ -98,18 +99,19 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete, isExpanded, onT
               {isExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
             </Button>
           )}
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit(deal)} title="Edit deal">
-            <Edit className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-destructive hover:text-destructive"
+          <IconButton
+            variant="ghost" className="h-7 w-7" onClick={() => onEdit(deal)}
+            icon={Edit}
+            label="Edit deal"
+            iconClassName="h-3.5 w-3.5"
+          />
+          <IconButton
+            variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive"
             onClick={() => onDelete(deal)}
-            title="Delete deal"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+            icon={Trash2}
+            label="Delete deal"
+            iconClassName="h-3.5 w-3.5"
+          />
         </div>
       </div>
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { resolveApiUrl, topsiApi } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -666,9 +666,11 @@ export function AgentChatConsole({
               name="command-net-input"
               className="bg-black/60 border-cyan-500/30 text-sm"
             />
-            <Button size="icon" onClick={handleButtonSend} disabled={isSending || !isInputActive} title="Send">
-              <SendIcon className="h-4 w-4" />
-            </Button>
+            <IconButton
+              onClick={handleButtonSend} disabled={isSending || !isInputActive}
+              icon={SendIcon}
+              label="Send"
+            />
           </div>
           <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-cyan-200/70">
             <span>{isInputActive ? 'Enter sends · Esc exits typing' : 'Enter to open · Esc to cancel'}</span>

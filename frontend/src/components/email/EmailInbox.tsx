@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -226,9 +226,11 @@ export function EmailInbox({ projectId, accountId }: EmailInboxProps) {
                   <SelectItem value="needs_response">Needs Response</SelectItem>
                 </SelectContent>
               </Select>
-              <Button variant="outline" size="icon" onClick={() => refetch()} title="Refresh">
-                <RefreshCw className="h-4 w-4" />
-              </Button>
+              <IconButton
+                variant="outline" onClick={() => refetch()}
+                icon={RefreshCw}
+                label="Refresh"
+              />
             </div>
           </div>
         </CardHeader>
@@ -293,28 +295,22 @@ export function EmailInbox({ projectId, accountId }: EmailInboxProps) {
                     <span className="text-sm text-muted-foreground">
                       {new Date(selectedMessage.received_at).toLocaleString()}
                     </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => toggleStarMutation.mutate(selectedMessage.id)}
-                      title="Toggle star"
-                    >
-                      <Star
-                        className={`h-4 w-4 ${
+                    <IconButton
+                      variant="ghost" onClick={() => toggleStarMutation.mutate(selectedMessage.id)}
+                      icon={Star}
+                      label="Toggle star"
+                      iconClassName={`h-4 w-4 ${
                           selectedMessage.is_starred
                             ? 'fill-yellow-400 text-yellow-400'
                             : ''
                         }`}
-                      />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => moveToTrashMutation.mutate(selectedMessage.id)}
-                      title="Move to trash"
-                    >
-                      <Trash2 className="h-4 w-4 text-red-500" />
-                    </Button>
+                    />
+                    <IconButton
+                      variant="ghost" onClick={() => moveToTrashMutation.mutate(selectedMessage.id)}
+                      icon={Trash2}
+                      label="Move to trash"
+                      iconClassName="h-4 w-4 text-red-500"
+                    />
                   </div>
                 </div>
 
@@ -375,22 +371,18 @@ function EmailRow({
       onClick={onClick}
     >
       {/* Star */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="shrink-0"
+      <IconButton
+        variant="ghost" className="shrink-0"
         onClick={(e) => {
           e.stopPropagation();
           onStar();
         }}
-        title="Toggle star"
-      >
-        <Star
-          className={`h-4 w-4 ${
+        icon={Star}
+        label="Toggle star"
+        iconClassName={`h-4 w-4 ${
             message.is_starred ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground'
           }`}
-        />
-      </Button>
+      />
 
       {/* Read/Unread indicator */}
       <div className="shrink-0">
@@ -434,18 +426,16 @@ function EmailRow({
         <span className="text-xs text-muted-foreground">
           {formatDate(message.received_at)}
         </span>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="opacity-0 group-hover:opacity-100"
+        <IconButton
+          variant="ghost" className="opacity-0 group-hover:opacity-100"
           onClick={(e) => {
             e.stopPropagation();
             onDelete();
           }}
-          title="Delete"
-        >
-          <Trash2 className="h-4 w-4 text-muted-foreground hover:text-red-500" />
-        </Button>
+          icon={Trash2}
+          label="Delete"
+          iconClassName="h-4 w-4 text-muted-foreground hover:text-red-500"
+        />
         <ChevronRight className="h-4 w-4 text-muted-foreground" />
       </div>
     </div>

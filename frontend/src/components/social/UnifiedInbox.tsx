@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -331,29 +332,23 @@ function MentionCard({
               </Button>
             )}
             {!isExpanded && onRespond && mention.status !== 'responded' && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={(e) => {
+              <IconButton
+                variant="ghost" onClick={(e) => {
                   e.stopPropagation();
                   setIsExpanded(true);
                 }}
-                title="Reply"
-              >
-                <MessageSquare className="h-4 w-4" />
-              </Button>
+                icon={MessageSquare}
+                label="Reply"
+              />
             )}
             {(onArchive || onMarkRead) ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={(e) => e.stopPropagation()}
-                    title="More options"
-                  >
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
+                  <IconButton
+                    variant="ghost" onClick={(e) => e.stopPropagation()}
+                    icon={MoreHorizontal}
+                    label="More options"
+                  />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-40">
                   <DropdownMenuLabel>Quick Actions</DropdownMenuLabel>
@@ -383,14 +378,11 @@ function MentionCard({
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={(e) => e.stopPropagation()}
-                title="More options"
-              >
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
+              <IconButton
+                variant="ghost" onClick={(e) => e.stopPropagation()}
+                icon={MoreHorizontal}
+                label="More options"
+              />
             )}
           </div>
         </div>

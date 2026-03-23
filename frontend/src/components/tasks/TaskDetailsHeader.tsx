@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { Edit, Trash2, X, Maximize2, Minimize2, Copy, MoreHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -85,9 +86,11 @@ function TaskDetailsHeader({
           {(onEditTask || onDuplicateTask || onDeleteTask) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" title="More options">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
+                <IconButton
+                  variant="ghost"
+                  icon={MoreHorizontal}
+                  label="More options"
+                />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 {onEditTask && (
@@ -118,9 +121,11 @@ function TaskDetailsHeader({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" onClick={onClose}>
-                    <X className="h-4 w-4" />
-                  </Button>
+                  <IconButton
+                    variant="ghost" onClick={onClose}
+                    icon={X}
+                    label="Close"
+                  />
                 </TooltipTrigger>
                 <TooltipContent>
                   <p>Close (Esc)</p>

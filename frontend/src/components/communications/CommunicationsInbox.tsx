@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -219,17 +220,14 @@ export function CommunicationsInbox({ projectId }: CommunicationsInboxProps) {
               <CardTitle>Communications</CardTitle>
               <CardDescription>Phone calls and text messages</CardDescription>
             </div>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => {
+            <IconButton
+              variant="outline" onClick={() => {
                 refetchCalls();
                 refetchSms();
               }}
-              title="Refresh"
-            >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
+              icon={RefreshCw}
+              label="Refresh"
+            />
           </div>
         </CardHeader>
         <CardContent>
@@ -320,22 +318,18 @@ export function CommunicationsInbox({ projectId }: CommunicationsInboxProps) {
                       }`}
                       onClick={() => handleOpenSms(sms)}
                     >
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="shrink-0"
+                      <IconButton
+                        variant="ghost" className="shrink-0"
                         onClick={(e) => {
                           e.stopPropagation();
                           toggleSmsStarMutation.mutate(sms.id);
                         }}
-                        title="Toggle star"
-                      >
-                        <Star
-                          className={`h-4 w-4 ${
+                        icon={Star}
+                        label="Toggle star"
+                        iconClassName={`h-4 w-4 ${
                             sms.is_starred ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground'
                           }`}
-                        />
-                      </Button>
+                      />
                       <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center text-white shrink-0">
                         <User className="h-5 w-5" />
                       </div>

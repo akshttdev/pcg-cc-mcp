@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -238,19 +239,17 @@ export default function VibePage() {
                     <code className="text-xs flex-1 truncate">
                       {vibeConfig?.revenue_address || 'Loading...'}
                     </code>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 shrink-0"
+                    <IconButton
+                      variant="ghost" className="h-7 w-7 shrink-0"
                       onClick={() => {
                         if (vibeConfig?.revenue_address) {
-                          navigator.clipboard.writeText(vibeConfig.revenue_address);
-                        }
+                        navigator.clipboard.writeText(vibeConfig.revenue_address);
+                      }
                       }}
-                      title="Copy address"
-                    >
-                      <Copy className="h-3.5 w-3.5" />
-                    </Button>
+                      icon={Copy}
+                      label="Copy address"
+                      iconClassName="h-3.5 w-3.5"
+                    />
                   </div>
                   <p className="text-xs text-muted-foreground">Aptos Testnet · VIBE token</p>
                 </div>

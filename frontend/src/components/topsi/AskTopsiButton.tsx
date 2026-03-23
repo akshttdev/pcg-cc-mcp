@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Bot, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import {
   Popover,
@@ -106,15 +107,14 @@ export function AskTopsiButton({
             onKeyDown={(e) => e.key === 'Enter' && handleSend(freeText)}
             className="text-sm h-8"
           />
-          <Button
-            size="icon"
+          <IconButton
             className="h-8 w-8 shrink-0"
             onClick={() => handleSend(freeText)}
             disabled={!freeText.trim()}
-            title="Send"
-          >
-            <Send className="h-3.5 w-3.5" />
-          </Button>
+            icon={Send}
+            label="Send"
+            iconClassName="h-3.5 w-3.5"
+          />
         </div>
       </PopoverContent>
     </Popover>

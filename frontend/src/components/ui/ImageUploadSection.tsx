@@ -7,6 +7,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { Button } from './button';
+import { IconButton } from './icon-button';
 import { Alert, AlertDescription } from './alert';
 import { cn } from '@/lib/utils';
 import { imagesApi } from '@/lib/api';
@@ -247,15 +248,13 @@ export function ImageUploadSection({
                 </div>
               </div>
               {!disabled && !readOnly && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                <IconButton
+                  variant="ghost" className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
                   onClick={() => handleRemoveImage(image.id)}
-                  title="Remove image"
-                >
-                  <X className="h-3 w-3" />
-                </Button>
+                  icon={X}
+                  label="Remove image"
+                  iconClassName="h-3 w-3"
+                />
               )}
             </div>
           ))}

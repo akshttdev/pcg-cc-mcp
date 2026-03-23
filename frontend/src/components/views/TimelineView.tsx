@@ -3,6 +3,7 @@ import type { TaskWithAttemptStatus } from 'shared/types';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   ChevronLeft,
   ChevronRight,
@@ -110,17 +111,21 @@ export function TimelineView({ tasks, onTaskClick }: TimelineViewProps) {
           <Button variant="outline" size="sm" onClick={handleToday}>
             Today
           </Button>
-          <Button variant="ghost" size="icon" onClick={handlePreviousMonth} title="Previous month">
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
+          <IconButton
+            variant="ghost" onClick={handlePreviousMonth}
+            icon={ChevronLeft}
+            label="Previous month"
+          />
           <div className="min-w-[140px] text-center">
             <span className="text-sm font-medium">
               {format(currentMonth, 'MMMM yyyy')}
             </span>
           </div>
-          <Button variant="ghost" size="icon" onClick={handleNextMonth} title="Next month">
-            <ChevronRight className="h-4 w-4" />
-          </Button>
+          <IconButton
+            variant="ghost" onClick={handleNextMonth}
+            icon={ChevronRight}
+            label="Next month"
+          />
         </div>
       </div>
 

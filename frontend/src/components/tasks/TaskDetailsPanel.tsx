@@ -49,7 +49,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { SectionHeader } from '@/components/ui/section-header';
 import { Download, Package, X } from 'lucide-react';
 import { agentFlowsApi, taskArtifactsApi, agentsApi, resolveApiUrl, artifactContentApi, editronApi } from '@/lib/api';
@@ -744,12 +744,16 @@ function ArtifactPreviewModal({
             <DialogTitle className="text-lg">{artifact.title}</DialogTitle>
             <div className="flex items-center gap-2">
               <Badge variant="outline">{artifact.artifact_type}</Badge>
-              <Button variant="ghost" size="icon" onClick={() => onDownload(artifact)} title="Download">
-                <Download className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" onClick={onClose} title="Close">
-                <X className="h-4 w-4" />
-              </Button>
+              <IconButton
+                variant="ghost" onClick={() => onDownload(artifact)}
+                icon={Download}
+                label="Download"
+              />
+              <IconButton
+                variant="ghost" onClick={onClose}
+                icon={X}
+                label="Close"
+              />
             </div>
           </div>
         </DialogHeader>

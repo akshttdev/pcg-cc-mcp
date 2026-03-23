@@ -11,6 +11,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { resolveApiUrl, meetingsApi } from '@/lib/api';
 import { useProjectList } from '@/hooks/queries';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
@@ -845,23 +846,24 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
 
             <div className="flex items-center gap-2">
               {meetingState === 'active' ? (
-                <Button variant="outline" size="icon" onClick={pauseMeeting} title="Pause">
-                  <Pause className="h-4 w-4" />
-                </Button>
+                <IconButton
+                  variant="outline" onClick={pauseMeeting}
+                  icon={Pause}
+                  label="Pause"
+                />
               ) : (
-                <Button variant="outline" size="icon" onClick={resumeMeeting} title="Resume">
-                  <Play className="h-4 w-4" />
-                </Button>
+                <IconButton
+                  variant="outline" onClick={resumeMeeting}
+                  icon={Play}
+                  label="Resume"
+                />
               )}
-              <Button
-                variant="destructive"
-                size="icon"
-                onClick={endMeeting}
-                title={meetingRole === 'observer' ? 'Leave meeting' : 'End meeting'}
+              <IconButton
+                variant="destructive" onClick={endMeeting}
                 className="h-10 w-10"
-              >
-                <Square className="h-4 w-4" />
-              </Button>
+                icon={Square}
+                label={meetingRole === 'observer' ? 'Leave meeting' : 'End meeting'}
+              />
             </div>
           </div>
         </>

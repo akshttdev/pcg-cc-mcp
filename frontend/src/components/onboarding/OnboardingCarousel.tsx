@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import {
@@ -218,30 +219,24 @@ export function OnboardingCarousel({
         onClick={() => onSegmentClick?.(activeSegment)}
       >
         {/* Navigation Arrows */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="absolute left-2 top-1/2 -translate-y-1/2 z-10 h-8 w-8 rounded-full bg-background/80 hover:bg-background"
+        <IconButton
+          variant="ghost" className="absolute left-2 top-1/2 -translate-y-1/2 z-10 h-8 w-8 rounded-full bg-background/80 hover:bg-background"
           onClick={(e) => {
             e.stopPropagation();
             handlePrev();
           }}
-          title="Previous"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="absolute right-2 top-1/2 -translate-y-1/2 z-10 h-8 w-8 rounded-full bg-background/80 hover:bg-background"
+          icon={ChevronLeft}
+          label="Previous"
+        />
+        <IconButton
+          variant="ghost" className="absolute right-2 top-1/2 -translate-y-1/2 z-10 h-8 w-8 rounded-full bg-background/80 hover:bg-background"
           onClick={(e) => {
             e.stopPropagation();
             handleNext();
           }}
-          title="Next"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
+          icon={ChevronRight}
+          label="Next"
+        />
 
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between">

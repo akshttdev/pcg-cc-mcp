@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { TaskWithAttemptStatus } from 'shared/types';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   ChevronLeft,
   ChevronRight,
@@ -113,17 +114,21 @@ export function CalendarView({ tasks, onTaskClick, onCreateTask }: CalendarViewP
           <Button variant="outline" size="sm" onClick={handleToday}>
             Today
           </Button>
-          <Button variant="ghost" size="icon" onClick={handlePreviousMonth} title="Previous month">
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
+          <IconButton
+            variant="ghost" onClick={handlePreviousMonth}
+            icon={ChevronLeft}
+            label="Previous month"
+          />
           <div className="min-w-[140px] text-center">
             <span className="text-sm font-medium">
               {format(currentMonth, 'MMMM yyyy')}
             </span>
           </div>
-          <Button variant="ghost" size="icon" onClick={handleNextMonth} title="Next month">
-            <ChevronRight className="h-4 w-4" />
-          </Button>
+          <IconButton
+            variant="ghost" onClick={handleNextMonth}
+            icon={ChevronRight}
+            label="Next month"
+          />
         </div>
       </div>
 
@@ -174,15 +179,13 @@ export function CalendarView({ tasks, onTaskClick, onCreateTask }: CalendarViewP
                       {dayNumber}
                     </span>
                     {onCreateTask && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5 opacity-0 hover:opacity-100 transition-opacity"
+                      <IconButton
+                        variant="ghost" className="h-5 w-5 opacity-0 hover:opacity-100 transition-opacity"
                         onClick={() => onCreateTask(day)}
-                        title="Add task"
-                      >
-                        <Plus className="h-3 w-3" />
-                      </Button>
+                        icon={Plus}
+                        label="Add task"
+                        iconClassName="h-3 w-3"
+                      />
                     )}
                   </div>
 

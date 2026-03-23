@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -211,24 +212,20 @@ export function TagManager({ projectId }: TagManagerProps) {
                       {tag.name}
                     </Badge>
                     <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
+                      <IconButton
+                        variant="ghost" className="h-7 w-7"
                         onClick={() => startEditingTag(tag)}
-                        title="Edit tag"
-                      >
-                        <Edit2 className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-destructive"
+                        icon={Edit2}
+                        label="Edit tag"
+                        iconClassName="h-3 w-3"
+                      />
+                      <IconButton
+                        variant="ghost" className="h-7 w-7 text-destructive"
                         onClick={() => handleDeleteTag(tag.id, tag.name)}
-                        title="Delete tag"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                        icon={Trash2}
+                        label="Delete tag"
+                        iconClassName="h-3 w-3"
+                      />
                     </div>
                   </div>
                 ))}

@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import {
   Card,
@@ -131,15 +132,12 @@ export function AssetVaultSection({
                       {new Date(asset.updated_at).toLocaleDateString()}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-muted-foreground hover:text-destructive"
+                      <IconButton
+                        variant="ghost" className="text-muted-foreground hover:text-destructive"
                         onClick={() => onDeleteAsset(asset.id)}
-                        aria-label={`Delete asset ${asset.name}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                        icon={Trash2}
+                        label={`Delete asset ${asset.name}`}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}

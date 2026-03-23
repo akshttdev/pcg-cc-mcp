@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -460,9 +461,11 @@ export function ConferenceWorkflowDashboard() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>Conference Workflows</CardTitle>
-              <Button variant="ghost" size="icon" onClick={() => refetch()} title="Refresh">
-                <RefreshCw className="w-4 h-4" />
-              </Button>
+              <IconButton
+                variant="ghost" onClick={() => refetch()}
+                icon={RefreshCw}
+                label="Refresh"
+              />
             </div>
           </CardHeader>
           <CardContent>

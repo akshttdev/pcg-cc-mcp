@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
@@ -122,30 +123,37 @@ function ArtifactCard({
           {/* Actions */}
           <div className="flex items-center gap-1">
             {isPreviewable && onPreview && (
-              <Button variant="ghost" size="icon" onClick={onPreview} className="h-7 w-7" title="Preview">
-                <Eye className="h-3.5 w-3.5" />
-              </Button>
+              <IconButton
+                variant="ghost" onClick={onPreview} className="h-7 w-7"
+                icon={Eye}
+                label="Preview"
+                iconClassName="h-3.5 w-3.5"
+              />
             )}
             {onDownload && (artifact.file_path || artifact.content) && (
-              <Button variant="ghost" size="icon" onClick={onDownload} className="h-7 w-7" title="Download">
-                <Download className="h-3.5 w-3.5" />
-              </Button>
+              <IconButton
+                variant="ghost" onClick={onDownload} className="h-7 w-7"
+                icon={Download}
+                label="Download"
+                iconClassName="h-3.5 w-3.5"
+              />
             )}
             {isExportable && onExportXml && (
-              <Button variant="ghost" size="icon" onClick={onExportXml} className="h-7 w-7" title="Export XML">
-                <FileOutput className="h-3.5 w-3.5" />
-              </Button>
+              <IconButton
+                variant="ghost" onClick={onExportXml} className="h-7 w-7"
+                icon={FileOutput}
+                label="Export XML"
+                iconClassName="h-3.5 w-3.5"
+              />
             )}
             {onPin && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={onPin}
+              <IconButton
+                variant="ghost" onClick={onPin}
                 className={cn('h-7 w-7', isPinned && 'text-primary')}
-                title={isPinned ? 'Unpin' : 'Pin'}
-              >
-                <Pin className="h-3.5 w-3.5" />
-              </Button>
+                icon={Pin}
+                label={isPinned ? 'Unpin' : 'Pin'}
+                iconClassName="h-3.5 w-3.5"
+              />
             )}
           </div>
         </div>

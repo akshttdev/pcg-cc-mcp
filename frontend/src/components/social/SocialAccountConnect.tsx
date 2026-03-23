@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import {
   Linkedin,
@@ -212,28 +213,21 @@ function ConnectedAccountCard({
           {/* Actions */}
           <div className="flex items-center gap-1">
             {onRefresh && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleRefresh}
+              <IconButton
+                variant="ghost" onClick={handleRefresh}
                 disabled={isRefreshing}
-                title="Refresh"
-              >
-                <RefreshCw
-                  className={cn('h-4 w-4', isRefreshing && 'animate-spin')}
-                />
-              </Button>
+                icon={RefreshCw}
+                label="Refresh"
+                iconClassName={cn('h-4 w-4', isRefreshing && 'animate-spin')}
+              />
             )}
             {onDisconnect && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-destructive hover:text-destructive"
+              <IconButton
+                variant="ghost" className="text-destructive hover:text-destructive"
                 onClick={onDisconnect}
-                title="Disconnect"
-              >
-                <Unlink className="h-4 w-4" />
-              </Button>
+                icon={Unlink}
+                label="Disconnect"
+              />
             )}
           </div>
         </div>

@@ -10,6 +10,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -392,14 +393,11 @@ export function WalletSettings() {
                     readOnly
                     className="font-mono text-xs"
                   />
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => handleCopy('Address', wallet.account_address)}
-                    title="Copy address"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
+                  <IconButton
+                    variant="outline" onClick={() => handleCopy('Address', wallet.account_address)}
+                    icon={Copy}
+                    label="Copy address"
+                  />
                   <Button variant="outline" size="icon" asChild title="View in explorer">
                     <a
                       href={getAccountExplorerUrl(wallet.account_address)}
@@ -420,14 +418,11 @@ export function WalletSettings() {
                     readOnly
                     className="font-mono text-xs"
                   />
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => handleCopy('Public key', wallet.public_key)}
-                    title="Copy public key"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
+                  <IconButton
+                    variant="outline" onClick={() => handleCopy('Public key', wallet.public_key)}
+                    icon={Copy}
+                    label="Copy public key"
+                  />
                 </div>
               </div>
 
@@ -442,22 +437,16 @@ export function WalletSettings() {
                         readOnly
                         className="font-mono text-xs"
                       />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={handleLockPrivateKey}
-                        title="Hide private key"
-                      >
-                        <EyeOff className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => handleCopy('Private key', wallet.private_key)}
-                        title="Copy private key"
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
+                      <IconButton
+                        variant="ghost" onClick={handleLockPrivateKey}
+                        icon={EyeOff}
+                        label="Hide private key"
+                      />
+                      <IconButton
+                        variant="outline" onClick={() => handleCopy('Private key', wallet.private_key)}
+                        icon={Copy}
+                        label="Copy private key"
+                      />
                     </div>
                     <p className="text-xs text-amber-600 dark:text-amber-400">
                       Auto-locks in 30 seconds
@@ -582,14 +571,11 @@ export function WalletSettings() {
                   readOnly
                   className="font-mono text-xs"
                 />
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => handleCopy('Address', wallet?.account_address ?? '')}
-                  title="Copy address"
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
+                <IconButton
+                  variant="outline" onClick={() => handleCopy('Address', wallet?.account_address ?? '')}
+                  icon={Copy}
+                  label="Copy address"
+                />
               </div>
             </div>
           </div>

@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -166,32 +167,28 @@ function ArtifactListItem({
           </button>
         )}
         {onDownload && (artifact.file_path || artifact.content) && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            title="Download"
+          <IconButton
+            variant="ghost" className="h-7 w-7"
             onClick={(e) => {
               e.stopPropagation();
               onDownload();
             }}
-          >
-            <Download className="h-3.5 w-3.5" />
-          </Button>
+            icon={Download}
+            label="Download"
+            iconClassName="h-3.5 w-3.5"
+          />
         )}
         {onPin && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn('h-7 w-7', isPinned && 'text-primary')}
-            title={isPinned ? 'Unpin' : 'Pin'}
+          <IconButton
+            variant="ghost" className={cn('h-7 w-7', isPinned && 'text-primary')}
             onClick={(e) => {
               e.stopPropagation();
               onPin();
             }}
-          >
-            <Pin className="h-3.5 w-3.5" />
-          </Button>
+            icon={Pin}
+            label={isPinned ? 'Unpin' : 'Pin'}
+            iconClassName="h-3.5 w-3.5"
+          />
         )}
       </div>
     </div>

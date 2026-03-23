@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -275,19 +276,17 @@ export function WorkflowTriggersPanel({
                             (o) => o.value === trigger.trigger_type
                           )?.label || trigger.trigger_type}
                         </Badge>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        <IconButton
+                          variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive"
                           onClick={() => {
                             if (confirm('Delete this trigger?')) {
-                              deleteMutation.mutate(trigger.id);
+                            deleteMutation.mutate(trigger.id);
                             }
                           }}
-                          title="Delete trigger"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                          icon={Trash2}
+                          label="Delete trigger"
+                          iconClassName="h-3.5 w-3.5"
+                        />
                       </div>
                     </div>
 

@@ -1,5 +1,6 @@
 import { BookmarkPlus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,18 +55,16 @@ export function SavedFiltersMenu({ projectId }: SavedFiltersMenuProps) {
             onClick={() => handleLoadPreset(preset.id)}
           >
             <span className="truncate flex-1">{preset.name}</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 shrink-0"
+            <IconButton
+              variant="ghost" className="h-6 w-6 shrink-0"
               onClick={(e) => {
                 e.stopPropagation();
                 handleDeletePreset(preset.id, preset.name);
               }}
-              title="Delete filter"
-            >
-              <Trash2 className="h-3 w-3 text-destructive" />
-            </Button>
+              icon={Trash2}
+              label="Delete filter"
+              iconClassName="h-3 w-3 text-destructive"
+            />
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

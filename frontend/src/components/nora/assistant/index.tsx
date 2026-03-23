@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { resolveApiUrl } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader } from '@/components/ui/loader';
 import {
@@ -589,14 +590,12 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
                     </span>
                   )}
                 </Button>
-                <Button
+                <IconButton
                   onClick={handleSend}
                   disabled={!canSend || isLoading}
-                  size="icon"
-                  title="Send message"
-                >
-                  <Send className="w-4 h-4" />
-                </Button>
+                  icon={Send}
+                  label="Send message"
+                />
               </div>
             </div>
 

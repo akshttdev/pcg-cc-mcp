@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -242,25 +243,21 @@ export function ProjectControllerPage() {
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
             <span>Online</span>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={startNewConversation}
-            title="New conversation"
-          >
-            <MessageSquarePlus className="h-4 w-4" />
-          </Button>
-          <Button
-            variant={showHistory ? 'secondary' : 'ghost'}
-            size="icon"
-            onClick={() => setShowHistory(!showHistory)}
-            title="Conversation history"
-          >
-            <History className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={() => setSettingsOpen(true)} title="Settings">
-            <Settings className="h-4 w-4" />
-          </Button>
+          <IconButton
+            variant="ghost" onClick={startNewConversation}
+            icon={MessageSquarePlus}
+            label="New conversation"
+          />
+          <IconButton
+            variant={showHistory ? 'secondary' : 'ghost'} onClick={() => setShowHistory(!showHistory)}
+            icon={History}
+            label="Conversation history"
+          />
+          <IconButton
+            variant="ghost" onClick={() => setSettingsOpen(true)}
+            icon={Settings}
+            label="Settings"
+          />
         </div>
       </div>
 
@@ -299,18 +296,16 @@ export function ProjectControllerPage() {
                         {new Date(conv.updated_at).toLocaleDateString()}
                       </p>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 shrink-0"
+                    <IconButton
+                      variant="ghost" className="h-8 w-8 shrink-0"
                       onClick={(e) => {
                         e.stopPropagation();
                         deleteConversationMutation.mutate(conv.id);
                       }}
-                      title="Delete conversation"
-                    >
-                      <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
-                    </Button>
+                      icon={Trash2}
+                      label="Delete conversation"
+                      iconClassName="h-4 w-4 text-muted-foreground hover:text-destructive"
+                    />
                   </div>
                 ))}
               </div>

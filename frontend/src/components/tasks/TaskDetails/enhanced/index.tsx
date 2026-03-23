@@ -12,6 +12,7 @@ import type { TaskWithAttemptStatus } from 'shared/types';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 
@@ -179,20 +180,16 @@ export function EnhancedTaskDetailsPanel({
                 <Minimize2 className="h-4 w-4" />
               )}
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleRefresh}
+            <IconButton
+              variant="ghost" onClick={handleRefresh}
               className="h-8 w-8"
-              title="Refresh"
-            >
-              <RefreshCw
-                className={cn(
+              icon={RefreshCw}
+              label="Refresh"
+              iconClassName={cn(
                   'h-4 w-4',
                   (artifactsLoading || workflowLoading) && 'animate-spin'
                 )}
-              />
-            </Button>
+            />
           </div>
         </div>
 

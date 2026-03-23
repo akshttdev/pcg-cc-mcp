@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   AlertCircle,
@@ -352,24 +353,21 @@ export function ProjectFormFields({
                   placeholder="Current Directory"
                   className="flex-1 placeholder:text-secondary-foreground placeholder:opacity-100"
                 />
-                <Button
+                <IconButton
                   type="button"
-                  variant="ghost"
-                  size="icon"
-                  title="Browse folders"
-                  onClick={async () => {
+                  variant="ghost" onClick={async () => {
                     const selectedPath = await showFolderPicker({
-                      title: 'Select Parent Directory',
-                      description: 'Choose where to create the new repository',
-                      value: parentPath,
+                    title: 'Select Parent Directory',
+                    description: 'Choose where to create the new repository',
+                    value: parentPath,
                     });
                     if (selectedPath) {
-                      setParentPath(selectedPath);
+                    setParentPath(selectedPath);
                     }
                   }}
-                >
-                  <Folder className="h-4 w-4" />
-                </Button>
+                  icon={Folder}
+                  label="Browse folders"
+                />
               </div>
               <p className="text-xs text-muted-foreground">
                 Leave empty to use your current working directory, or specify a

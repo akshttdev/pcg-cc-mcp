@@ -1,6 +1,6 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   FileText,
   Image,
@@ -150,43 +150,37 @@ export function ArtifactCard({
         {/* Action buttons on hover */}
         <div className="absolute inset-0 bg-black/50 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
           {onPreview && (
-            <Button
-              size="icon"
+            <IconButton
               variant="secondary"
               onClick={(e) => {
                 e.stopPropagation();
                 onPreview();
               }}
-              title="Preview"
-            >
-              <Eye className="h-4 w-4" />
-            </Button>
+              icon={Eye}
+              label="Preview"
+            />
           )}
           {onDownload && artifact.file_path && (
-            <Button
-              size="icon"
+            <IconButton
               variant="secondary"
               onClick={(e) => {
                 e.stopPropagation();
                 onDownload();
               }}
-              title="Download"
-            >
-              <Download className="h-4 w-4" />
-            </Button>
+              icon={Download}
+              label="Download"
+            />
           )}
           {onPin && (
-            <Button
-              size="icon"
+            <IconButton
               variant={isPinned ? 'default' : 'secondary'}
               onClick={(e) => {
                 e.stopPropagation();
                 onPin();
               }}
-              title={isPinned ? 'Unpin' : 'Pin'}
-            >
-              <Pin className="h-4 w-4" />
-            </Button>
+              icon={Pin}
+              label={isPinned ? 'Unpin' : 'Pin'}
+            />
           )}
         </div>
       </div>

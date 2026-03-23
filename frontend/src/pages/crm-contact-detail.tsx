@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { AskTopsiButton } from '@/components/topsi/AskTopsiButton';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -89,14 +89,11 @@ export function CrmContactDetailPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => navigate(`/projects/${projectId}/crm`)}
-          title="Go back"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
+        <IconButton
+          variant="ghost" onClick={() => navigate(`/projects/${projectId}/crm`)}
+          icon={ArrowLeft}
+          label="Go back"
+        />
         <div className="flex items-center gap-4 flex-1">
           <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xl font-semibold">
             {contact.avatar_url ? (

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Menu, Bell, User, Wifi, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   Sheet,
   SheetContent,
@@ -31,9 +32,12 @@ export function MobileHeader({
         {/* Menu Button */}
         <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
           <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="touch-manipulation" title="Menu">
-              <Menu className="h-5 w-5" />
-            </Button>
+            <IconButton
+              variant="ghost" className="touch-manipulation"
+              icon={Menu}
+              label="Menu"
+              iconClassName="h-5 w-5"
+            />
           </SheetTrigger>
           <SheetContent side="left" className="w-[280px]">
             <SheetHeader>
@@ -79,9 +83,12 @@ export function MobileHeader({
               </span>
             )}
           </Button>
-          <Button variant="ghost" size="icon" className="touch-manipulation" title="Profile">
-            <User className="h-5 w-5" />
-          </Button>
+          <IconButton
+            variant="ghost" className="touch-manipulation"
+            icon={User}
+            label="Profile"
+            iconClassName="h-5 w-5"
+          />
         </div>
       </div>
     </header>

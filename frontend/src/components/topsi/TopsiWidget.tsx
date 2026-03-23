@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { makeRequest } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
@@ -359,36 +360,27 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
         <div className="flex items-center gap-1">
           {widgetState === 'chat' && (
             <>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-white hover:bg-cyan-700"
+              <IconButton
+                variant="ghost" className="h-8 w-8 text-white hover:bg-cyan-700"
                 onClick={() => setWidgetState('meeting')}
-                title="Meeting mode"
-              >
-                <Users className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-white hover:bg-cyan-700"
+                icon={Users}
+                label="Meeting mode"
+              />
+              <IconButton
+                variant="ghost" className="h-8 w-8 text-white hover:bg-cyan-700"
                 onClick={handleStartCall}
-                title="Start voice call"
                 disabled={connectionState === 'disconnected'}
-              >
-                <Phone className="h-4 w-4" />
-              </Button>
+                icon={Phone}
+                label="Start voice call"
+              />
             </>
           )}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-white hover:bg-cyan-700"
+          <IconButton
+            variant="ghost" className="h-8 w-8 text-white hover:bg-cyan-700"
             onClick={collapseChat}
-            title="Close"
-          >
-            <X className="h-4 w-4" />
-          </Button>
+            icon={X}
+            label="Close"
+          />
         </div>
       </div>
 
@@ -431,15 +423,13 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
               {voiceState.isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
             </Button>
 
-            <Button
-              variant="destructive"
-              size="icon"
-              className="h-14 w-14 rounded-full"
+            <IconButton
+              variant="destructive" className="h-14 w-14 rounded-full"
               onClick={handleEndCall}
-              title="End call"
-            >
-              <PhoneOff className="h-6 w-6" />
-            </Button>
+              icon={PhoneOff}
+              label="End call"
+              iconClassName="h-6 w-6"
+            />
 
             <Button
               variant={voiceState.isSpeakerOn ? "outline" : "secondary"}

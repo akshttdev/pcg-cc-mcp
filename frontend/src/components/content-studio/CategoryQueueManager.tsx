@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -101,24 +102,18 @@ function QueueCard({
               checked={queue.is_active}
               onCheckedChange={(is_active) => onUpdate?.({ is_active })}
             />
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsEditing(!isEditing)}
-              title="Queue settings"
-            >
-              <Settings2 className="h-4 w-4" />
-            </Button>
+            <IconButton
+              variant="ghost" onClick={() => setIsEditing(!isEditing)}
+              icon={Settings2}
+              label="Queue settings"
+            />
             {onDelete && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-destructive hover:text-destructive"
+              <IconButton
+                variant="ghost" className="text-destructive hover:text-destructive"
                 onClick={onDelete}
-                title="Delete queue"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+                icon={Trash2}
+                label="Delete queue"
+              />
             )}
           </div>
         </div>
