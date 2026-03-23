@@ -124,26 +124,31 @@ export async function moveDealViaContextMenu(
 
   // Hover the card to reveal the hidden menu button
   await dealCard.hover();
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(demoPause.short);
 
-  // Click the three-dot menu — use data-testid pattern: deal-menu-{id}
-  // Since we don't know the ID, find by testid prefix within the card area
-  const menuBtn = page.locator('[data-testid^="deal-menu-"]').first();
+  // Click the three-dot menu — scoped to the specific deal card
+  // Strategy: find the deal-card-{id} wrapper that contains our deal text,
+  // then find the deal-menu-{id} inside it
+  const cardWrapper = page.locator('[data-testid^="deal-card-"]').filter({
+    hasText: new RegExp(dealNameFragment, "i"),
+  }).first();
+  const menuBtn = cardWrapper.locator('[data-testid^="deal-menu-"]');
   await menuBtn.click({ force: true });
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(demoPause.short);
 
   // Hover "Move to..." to open the submenu (radix sub-menus open on hover)
   const moveToTrigger = page.getByText("Move to...");
   await expect(moveToTrigger).toBeVisible({ timeout: t(3_000) });
   await moveToTrigger.hover();
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(demoPause.short);
 
   // Click the target stage in the submenu
-  const stageItem = page.getByRole("menuitem", { name: targetStage });
+  const stageItem = page.getByRole("menuitem", { name: targetStage, exact: true });
   await expect(stageItem).toBeVisible({ timeout: t(3_000) });
   await stageItem.click();
 
-  await page.waitForTimeout(demoPause.medium);
+  // Wait for the move to complete
+  await page.waitForTimeout(demoPause.long);
 }
 
 // ── Pipeline Settings UI ─────────────────────────────────────────────────────

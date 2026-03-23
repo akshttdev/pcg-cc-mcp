@@ -199,11 +199,33 @@ pub async fn process_transition(
         }
     }
 
-    // ── 2. Won transition (deduplicated, uses contact_id dedup) ─────────
+    // ── 2. Won/Lost timestamps ──────────────────────────────────────────
     let is_won = to_stage.is_won.unwrap_or(0) == 1;
+    let is_closed = to_stage.is_closed.unwrap_or(0) == 1;
+    let is_lost = is_closed && !is_won;
+
     if is_won {
+        // Set won_at and trigger delivery deal creation
+        if let Err(e) = sqlx::query(
+            "UPDATE crm_deals SET won_at = datetime('now','subsec'), updated_at = datetime('now','subsec') WHERE id = ?1 AND won_at IS NULL"
+        ).bind(deal.id.to_string()).execute(pool).await {
+            tracing::warn!("[StageTransition] Failed to set won_at for deal {}: {}", deal.id, e);
+        } else {
+            actions_taken.push("Set won_at".to_string());
+        }
         if let Some(action) = handle_won_transition(pool, deal).await {
             actions_taken.push(action);
+        }
+    }
+
+    if is_lost {
+        // Set lost_at when deal enters a closed-but-not-won stage
+        if let Err(e) = sqlx::query(
+            "UPDATE crm_deals SET lost_at = datetime('now','subsec'), updated_at = datetime('now','subsec') WHERE id = ?1 AND lost_at IS NULL"
+        ).bind(deal.id.to_string()).execute(pool).await {
+            tracing::warn!("[StageTransition] Failed to set lost_at for deal {}: {}", deal.id, e);
+        } else {
+            actions_taken.push("Set lost_at".to_string());
         }
     }
 

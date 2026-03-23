@@ -36,9 +36,10 @@ export type KanbanBoardProps = {
   id: Status['id'];
   children: ReactNode;
   className?: string;
+  'data-testid'?: string;
 };
 
-export const KanbanBoard = ({ id, children, className }: KanbanBoardProps) => {
+export const KanbanBoard = ({ id, children, className, 'data-testid': dataTestId }: KanbanBoardProps) => {
   const { isOver, setNodeRef } = useDroppable({ id });
 
   return (
@@ -49,6 +50,7 @@ export const KanbanBoard = ({ id, children, className }: KanbanBoardProps) => {
         className
       )}
       ref={setNodeRef}
+      data-testid={dataTestId}
     >
       {children}
     </div>
