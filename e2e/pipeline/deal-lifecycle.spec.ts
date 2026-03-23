@@ -96,15 +96,36 @@ test.describe("DL-1: Create and track a deal through the pipeline", () => {
   });
 
   test("view details — And: can expand to full dialog mode", async ({ page }) => {
-    test.setTimeout(30_000);
-    // BUG: Sheet→Dialog expand transition closes the panel because Sheet's
-    // onOpenChange(false) fires during unmount, calling onClose() which sets
-    // isOpen=false before Dialog mounts. Expand button exists (testid works)
-    // but the component transition is broken.
-    test.fixme(true, "Sheet→Dialog expand transition closes panel — onOpenChange race condition");
+    // Reopen deal if sheet closed from previous test
+    const sheet = page.getByTestId("deal-detail-sheet");
+    if (!(await sheet.isVisible().catch(() => false))) {
+      const dealText = DEAL_NAME.replace(`${TEST_DATA_PREFIX} `, "");
+      await page.getByText(dealText).first().click();
+      await expect(sheet).toBeVisible({ timeout: t(10_000) });
+    }
 
-    // Close panel
-    await page.keyboard.press("Escape");
+    // Click expand toggle (Sheet → Dialog)
+    await page.getByTestId("deal-detail-expand").click();
+    await page.waitForTimeout(demoPause.medium);
+
+    // Dialog should be visible after expansion (using testid, not role)
+    const expandedPanel = page.getByTestId("deal-detail-dialog");
+    await expect(expandedPanel).toBeVisible({ timeout: t(5_000) });
+
+    // Deal name should still be visible in expanded view
+    const dealText = DEAL_NAME.replace(`${TEST_DATA_PREFIX} `, "");
+    await expect(expandedPanel.getByText(dealText).first()).toBeVisible({ timeout: t(3_000) });
+
+    // Minimize back (Dialog → Sheet)
+    await page.getByTestId("deal-detail-expand").click();
+    await page.waitForTimeout(demoPause.medium);
+    await expect(page.getByTestId("deal-detail-sheet")).toBeVisible({ timeout: t(5_000) });
+
+    // Close panel by clicking the X button
+    const closeBtn = page.getByRole("button", { name: "Close" }).first();
+    if (await closeBtn.isVisible().catch(() => false)) {
+      await closeBtn.click();
+    }
     await page.waitForTimeout(demoPause.short);
   });
 });

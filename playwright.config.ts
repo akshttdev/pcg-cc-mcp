@@ -94,7 +94,7 @@ export default defineConfig({
       },
     },
 
-    // Pipeline specs — shared page, login in first test, no auth setup dependency
+    // Pipeline specs — shared page, login in first test, no auth setup
     {
       name: "pipeline",
       testMatch: /pipeline\/.+\.spec\.ts/,

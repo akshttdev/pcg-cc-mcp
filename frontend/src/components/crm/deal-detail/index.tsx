@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { TabPanel, TabsContent } from '@/components/ui/tabs';
@@ -49,6 +49,9 @@ export function CrmDealDetailPanel({
   const [activeTab, setActiveTab] = useState('overview');
   const [convertOpen, setConvertOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  // Ref tracks expand intent so Sheet's onOpenChange callback can distinguish
+  // "user closed the sheet" from "sheet closing because we're switching to dialog"
+  const expandIntentRef = useRef(false);
 
   if (!deal) return null;
 
@@ -78,7 +81,11 @@ export function CrmDealDetailPanel({
         onEdit={onEdit}
         onDelete={onDelete}
         isExpanded={isExpanded}
-        onToggleExpand={() => setIsExpanded(!isExpanded)}
+        onToggleExpand={() => {
+          console.log(`[DealDetail] toggleExpand: isExpanded=${isExpanded} → ${!isExpanded}`);
+          expandIntentRef.current = !isExpanded;
+          setIsExpanded(!isExpanded);
+        }}
       />
 
           {/* Pipeline Stage Stepper */}
@@ -175,23 +182,30 @@ export function CrmDealDetailPanel({
 
   return (
     <>
-      {isExpanded ? (
-        <Dialog open={isOpen} onOpenChange={(open) => { if (!open) { setIsExpanded(false); onClose(); } }}>
-          <DialogContent className="max-w-6xl h-[90vh] p-0 overflow-hidden flex flex-col">
-            <DialogTitle className="sr-only">{deal.name}</DialogTitle>
-            <DialogDescription className="sr-only">Deal detail panel</DialogDescription>
-            {panelContent}
-          </DialogContent>
-        </Dialog>
-      ) : (
-        <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-          <SheetContent className="w-full sm:max-w-xl overflow-hidden flex flex-col p-0">
-            <SheetTitle className="sr-only">{deal.name}</SheetTitle>
-            <SheetDescription className="sr-only">Deal detail panel</SheetDescription>
-            {panelContent}
-          </SheetContent>
-        </Sheet>
-      )}
+      {/* Render both Sheet and Dialog — only one is open at a time.
+          This avoids the unmount race where Sheet's onOpenChange(false)
+          fires during conditional rendering and closes the panel. */}
+      <Sheet open={isOpen && !isExpanded} onOpenChange={(open) => {
+        console.log(`[DealDetail] Sheet.onOpenChange: open=${open}, expandIntent=${expandIntentRef.current}, isExpanded=${isExpanded}`);
+        if (!open && !expandIntentRef.current) {
+          console.log(`[DealDetail] Sheet.onOpenChange → calling onClose()`);
+          onClose();
+        }
+        if (expandIntentRef.current) expandIntentRef.current = false;
+      }}>
+        <SheetContent className="w-full sm:max-w-xl overflow-hidden flex flex-col p-0" data-testid="deal-detail-sheet">
+          <SheetTitle className="sr-only">{deal.name}</SheetTitle>
+          <SheetDescription className="sr-only">Deal detail panel</SheetDescription>
+          {!isExpanded && panelContent}
+        </SheetContent>
+      </Sheet>
+      <Dialog open={isOpen && isExpanded} onOpenChange={(open) => { if (!open) { setIsExpanded(false); onClose(); } }}>
+        <DialogContent className="max-w-6xl h-[90vh] p-0 overflow-hidden flex flex-col" data-testid="deal-detail-dialog">
+          <DialogTitle className="sr-only">{deal.name}</DialogTitle>
+          <DialogDescription className="sr-only">Deal detail panel</DialogDescription>
+          {isExpanded && panelContent}
+        </DialogContent>
+      </Dialog>
 
       <DealConvertDialog deal={deal} open={convertOpen} onOpenChange={setConvertOpen} orgId={orgId} />
     </>
