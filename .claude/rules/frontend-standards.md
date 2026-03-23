@@ -103,6 +103,14 @@ paths:
 - Colors, timeouts, batch sizes, and validation limits should be in named constants
 - Task status values: `todo`, `inprogress`, `inreview`, `done`, `cancelled` (no underscores)
 
+## Testability
+
+- Every interactive element MUST have a `data-testid` attribute — buttons, menu triggers, cards, form containers
+- Naming convention: `{feature}-{element}` or `{feature}-{element}-{qualifier}` (e.g., `pipeline-add-deal`, `deal-card-{id}`, `deal-menu-{id}`)
+- Custom wrapper components (KanbanCard, etc.) MUST accept and forward `data-testid` as a prop
+- If a test needs a fragile CSS/positional selector to reach an element, that's a component bug — add a testid
+- Add testids when building components, not retroactively when writing tests
+
 ## Post-Feature QA
 
 - After completing feature work, run `/review-frontend` on changed files
