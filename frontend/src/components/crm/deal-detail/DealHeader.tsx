@@ -1,8 +1,6 @@
-import {
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from '@/components/ui/sheet';
+// Use plain elements instead of Sheet primitives — DealHeader renders inside
+// both Sheet and Dialog contexts (expand mode), and Radix Sheet/Dialog
+// primitives require their specific parent context or throw errors.
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -61,7 +59,7 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete, isExpanded, onT
   const taskDone = deal.task_done ?? 0;
 
   return (
-    <SheetHeader className="px-5 pt-4 pb-3 border-b shrink-0">
+    <div className="flex flex-col space-y-2 text-center sm:text-left px-5 pt-4 pb-3 border-b shrink-0">
       <div className="flex items-start gap-3">
         <Avatar className="h-11 w-11 shrink-0 mt-0.5">
           {deal.contact_avatar_url && (
@@ -79,8 +77,8 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete, isExpanded, onT
         </Avatar>
 
         <div className="min-w-0 flex-1">
-          <SheetTitle className="text-base leading-tight">{deal.name}</SheetTitle>
-          <SheetDescription className="text-xs mt-0.5 flex items-center gap-1.5 flex-wrap">
+          <h2 className="text-base font-semibold text-foreground leading-tight">{deal.name}</h2>
+          <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
             {deal.contact_name && <span>{deal.contact_name}</span>}
             {deal.contact_company && (
               <>
@@ -91,7 +89,7 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete, isExpanded, onT
                 </span>
               </>
             )}
-          </SheetDescription>
+          </p>
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
@@ -150,7 +148,7 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete, isExpanded, onT
           </span>
         )}
       </div>
-    </SheetHeader>
+    </div>
   );
 }
 

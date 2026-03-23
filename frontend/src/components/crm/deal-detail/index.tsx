@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { TabPanel, TabsContent } from '@/components/ui/tabs';
 import type { TabDefinition } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -178,12 +178,16 @@ export function CrmDealDetailPanel({
       {isExpanded ? (
         <Dialog open={isOpen} onOpenChange={(open) => { if (!open) { setIsExpanded(false); onClose(); } }}>
           <DialogContent className="max-w-6xl h-[90vh] p-0 overflow-hidden flex flex-col">
+            <DialogTitle className="sr-only">{deal.name}</DialogTitle>
+            <DialogDescription className="sr-only">Deal detail panel</DialogDescription>
             {panelContent}
           </DialogContent>
         </Dialog>
       ) : (
         <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
           <SheetContent className="w-full sm:max-w-xl overflow-hidden flex flex-col p-0">
+            <SheetTitle className="sr-only">{deal.name}</SheetTitle>
+            <SheetDescription className="sr-only">Deal detail panel</SheetDescription>
             {panelContent}
           </SheetContent>
         </Sheet>
