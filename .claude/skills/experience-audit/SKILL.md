@@ -237,7 +237,61 @@ Some steps may be impossible due to missing seed data, feature not wired, or bac
 - If the feature has no seed data, try to create test data via the UI as part of the script (e.g., create a deal before trying to move it between stages)
 - If creation isn't possible (no create button, API error), flag the entire journey and note what blocked it
 
-## Phase 4: State Quality Audit
+## Phase 4: Visual & Layout Quality
+
+**Use `browser_take_screenshot` for this phase, not just `browser_snapshot`.** Accessibility snapshots show element structure but are blind to sizing, spacing, overflow, contrast, and visual hierarchy. Screenshots reveal what the user actually sees.
+
+### 4a. Screenshot every major view in both sidebar states
+
+For each page or panel the sprint touches:
+1. Take a screenshot with sidebar **expanded**
+2. Take a screenshot with sidebar **collapsed** (click Collapse or ⌘B)
+3. Compare: does the main content area resize correctly? Does anything get cut off, overlap, or break when the sidebar changes width?
+
+Flag: content that doesn't reflow, fixed-width layouts that leave dead space or overflow, elements that become unreachable behind the sidebar.
+
+### 4b. Dialog and panel sizing
+
+For every dialog, drawer, sheet, or modal the sprint adds or modifies:
+1. Open it and take a screenshot
+2. Check: does the container **fit its content**? Or is there excessive empty space, or content that overflows/scrolls unnecessarily?
+3. Check: are action buttons (Save, Cancel, Close) **visible without scrolling**? Buttons pushed below the fold in a modal are a pain point.
+4. Check: on smaller viewports, does the dialog still work? Resize to 1024x768 and re-check.
+
+Flag: dialogs where content is cramped while the container has unused space, panels that require scrolling to reach the primary action, modals that extend beyond the viewport.
+
+### 4c. Interactive element reachability
+
+For each page, check whether all interactive elements are usable:
+1. **Click targets**: Are buttons, links, and interactive elements large enough to click? Do they have visible hover/active states? Take a screenshot while hovering over key elements.
+2. **Overflow clipping**: Do any buttons, menus, or tooltips get clipped by `overflow: hidden` on a parent? Open every dropdown and menu and verify the full content is visible.
+3. **Z-index stacking**: When overlays (toasts, dialogs, dropdowns) are open, can you still interact with them? Or do other elements cover them?
+4. **Scroll traps**: In scrollable panels, can the user reach all content? Scroll to the bottom of every scrollable area and take a screenshot — content shouldn't be hidden behind fixed footers or cut off.
+
+Flag: buttons that look clickable but don't respond, interactive elements partially hidden by overflow, dropdowns that open behind other elements.
+
+### 4d. Text and content quality
+
+1. **Readability**: Are text sizes appropriate? Is there sufficient contrast against backgrounds? Check both light and dark mode if applicable.
+2. **Truncation vs wrapping**: Long text (deal names, descriptions, email addresses) — does it truncate with ellipsis, wrap, or overflow its container? Take a screenshot with long content visible.
+3. **Data formatting**: Are numbers formatted (commas, currency symbols)? Are dates human-readable? Are IDs hidden from users?
+4. **Whitespace**: Is spacing consistent? Are there areas that feel cramped (elements touching) or wasteful (large empty gaps between sparse content)?
+
+Flag: text that overflows its container, numbers without formatting, inconsistent spacing between similar elements.
+
+### 4e. Workflow coherence
+
+For multi-step features (create deal → move stages → close → delivery):
+1. Is the sequence of steps **obvious** without documentation? Can a new user figure out what to do next?
+2. Are disabled/unavailable actions **explained**? (e.g., "Generate Deck" is disabled — does it say why?)
+3. Are there **dead ends** where the user completes an action but has no clear next step?
+4. Do related features **link to each other**? (e.g., can you get from a deal to its contact? From a contact to their deals?)
+
+Flag: disabled buttons with no explanation, workflows that require the user to navigate away and back, actions available at the wrong stage (e.g., "Send Invoice" on a Lead).
+
+---
+
+## Phase 5: State Quality Audit
 
 Navigate to each major page area and check these states:
 
@@ -269,7 +323,7 @@ Navigate to each major page area and check these states:
   - Can the user filter/search?
   - Is the sort order obvious and useful?
 
-## Phase 5: Accessibility Quick-Check
+## Phase 6: Accessibility Quick-Check
 
 This is not a full WCAG audit — it's a practical check of the most impactful issues.
 
@@ -307,7 +361,7 @@ This is not a full WCAG audit — it's a practical check of the most impactful i
   - Do status indicators have text equivalents?
 - Flag: icon-only buttons with no aria-label (FRICTION), unlabeled form fields (PAIN POINT)
 
-## Phase 6: Generate Report
+## Phase 7: Generate Report
 
 Create `planning/reviews/YYYY-MM-DD--review--experience-audit.md`:
 
@@ -381,6 +435,17 @@ Changes that require rethinking a pattern or system:
 | Color/contrast | PASS/PARTIAL/FAIL | [details] |
 | Screen reader basics | PASS/PARTIAL/FAIL | [details] |
 
+## Visual & Layout Quality
+
+| Check | Status | Issues |
+|-------|--------|--------|
+| Sidebar expanded/collapsed | PASS/FAIL | [content reflow, overlap, clipping] |
+| Dialog/panel sizing | PASS/FAIL | [content fit, button visibility, scroll] |
+| Interactive element reachability | PASS/FAIL | [hidden buttons, clipped menus, z-index] |
+| Text/content overflow | PASS/FAIL | [truncation, wrapping, formatting] |
+| Whitespace consistency | PASS/FAIL | [cramped areas, dead space, alignment] |
+| Workflow coherence | PASS/FAIL | [dead ends, unexplained disabled states, wrong-stage actions] |
+
 ## State Quality Summary
 
 | State | Coverage | Issues |
@@ -391,7 +456,7 @@ Changes that require rethinking a pattern or system:
 | Validation feedback | Inline/on-submit/missing | [details] |
 ```
 
-## Phase 7: Update Planning File (if provided)
+## Phase 8: Update Planning File (if provided)
 
 If a planning file was provided as argument, append:
 
@@ -410,7 +475,7 @@ If a planning file was provided as argument, append:
 
 - **DO, don't just look.** The biggest failure mode of this skill is navigating to pages, taking screenshots, and calling it an audit. That's a rendering check, not a UX audit. You must actually click buttons, fill forms, submit data, and verify results. If you finish Phase 3 without having filled a single form or clicked a single submit button, you did it wrong.
 - **Be the user, not the developer.** Don't excuse bad UX because you can read the code. If a user would be confused, it's a finding.
-- **Screenshots are evidence.** Take a screenshot for every BLOCKER and PAIN POINT. Snapshots (accessibility tree) are better for analysis, screenshots are better for communicating findings to the team.
+- **Screenshots are evidence AND discovery tools.** Snapshots (accessibility tree) tell you what elements exist. Screenshots tell you what users actually see — sizing, spacing, overflow, contrast, alignment. Use **both**: snapshots to find interactive elements, screenshots to evaluate visual quality. Take a screenshot for every BLOCKER, PAIN POINT, and any visual issue. Phase 4 (Visual & Layout Quality) requires screenshots, not snapshots.
 - **Recommendations must be specific.** Not "improve the empty state" but "add a CTA button labeled 'Create your first pipeline' with a link to /organizations/{orgId}/crm/pipelines/new."
 - **Create test data when needed.** If a feature has no data to test (empty pipeline, no agent flows), create it via the UI as part of the journey. "No test data" is not an excuse to skip interaction testing — the creation flow IS part of the experience.
 - **Don't boil the ocean.** Audit the journeys in scope, not every page in the app. Depth over breadth.
