@@ -224,11 +224,13 @@ fn should_skip_dir(name: &str) -> bool {
 
 pub struct SovereignStackService {
     config: SovereignStackConfig,
+    pool: Option<sqlx::SqlitePool>,
+    org_id: String,
 }
 
 impl SovereignStackService {
-    pub fn new(config: SovereignStackConfig) -> Self {
-        Self { config }
+    pub fn new(config: SovereignStackConfig, pool: Option<sqlx::SqlitePool>, org_id: String) -> Self {
+        Self { config, pool, org_id }
     }
 
     /// Start the background scraper loop.
@@ -265,6 +267,15 @@ impl SovereignStackService {
 
             if let Err(e) = self.run_scan().await {
                 tracing::error!("[SOVEREIGN_STACK] Scan failed: {}", e);
+            }
+
+            // Re-index cloud files after each scan so new Dropbox files appear in the Cloud Browser
+            if let Some(ref pool) = self.pool {
+                match crate::org_cloud_indexer::index_existing_data(pool, &self.org_id).await {
+                    Ok(n) if n > 0 => tracing::info!("[SOVEREIGN_STACK] Re-indexed {} new cloud files", n),
+                    Ok(_) => {}
+                    Err(e) => tracing::warn!("[SOVEREIGN_STACK] Cloud re-index failed: {}", e),
+                }
             }
         }
 

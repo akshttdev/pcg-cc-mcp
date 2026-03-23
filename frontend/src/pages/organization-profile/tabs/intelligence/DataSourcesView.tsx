@@ -52,6 +52,13 @@ import {
   ChevronRight,
   Pencil,
   FolderOpen,
+  LayoutGrid,
+  List,
+  Image,
+  Film,
+  Music,
+  File,
+  FileSpreadsheet,
 } from 'lucide-react';
 import {
   dataSourcesApi,
@@ -358,6 +365,7 @@ export function DataSourcesView({
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['Meetings', 'Documents']));
   const [search, setSearch] = useState('');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   const { data: sources = [], isLoading } = useQuery({
     queryKey: dataSourceKeys.list(orgId),
@@ -561,19 +569,123 @@ export function DataSourcesView({
 
           {/* Main content */}
           <div className="flex-1 min-w-0 space-y-3">
-            {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search sources..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 text-sm border rounded bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-              />
+            {/* Search + View Toggle */}
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Search sources..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 text-sm border rounded bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+              </div>
+              <div className="flex items-center border rounded overflow-hidden">
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className={`p-1.5 ${viewMode === 'grid' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50'}`}
+                  title="Grid view"
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`p-1.5 ${viewMode === 'list' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50'}`}
+                  title="List view"
+                >
+                  <List className="h-4 w-4" />
+                </button>
+              </div>
             </div>
-            {sorted.length === 0 ? (
+            {/* Show folder tiles when at root (no folder selected) and not searching */}
+            {!selectedFolder && !search.trim() && viewMode === 'grid' ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                {Object.entries(folderTree).sort(([a],[b]) => a.localeCompare(b)).map(([root]) => {
+                  const cnt = folderCount(root);
+                  return (
+                    <button
+                      key={root}
+                      onClick={() => setSelectedFolder(root)}
+                      className="group border rounded-lg overflow-hidden hover:shadow-md hover:border-primary/30 transition-all bg-card text-left"
+                    >
+                      <div className="aspect-square flex items-center justify-center bg-amber-50 dark:bg-amber-950/20">
+                        <FolderOpen className="h-12 w-12 text-amber-500 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                      <div className="p-2 space-y-0.5">
+                        <p className="text-xs font-medium truncate" title={root}>{root}</p>
+                        <span className="text-[10px] text-muted-foreground">{cnt} items</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : sorted.length === 0 ? (
               <div className="text-center py-8 text-sm text-muted-foreground">No sources in this folder.</div>
+            ) : viewMode === 'grid' ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                {sorted.slice(0, 200).map((source) => {
+                  const isImage = source.file_type?.startsWith('image/');
+                  const isVideo = source.file_type?.startsWith('video/');
+                  const isAudio = source.file_type?.startsWith('audio/');
+                  const isPdf = source.file_type === 'application/pdf';
+                  const isDoc = source.file_type?.includes('document') || source.file_type?.includes('wordprocessing');
+                  const isSpreadsheet = source.file_type?.includes('spreadsheet') || source.file_type === 'text/csv';
+                  const FileIcon2 = isImage ? Image : isVideo ? Film : isAudio ? Music : isSpreadsheet ? FileSpreadsheet : isPdf || isDoc ? FileText : File;
+                  const bgColor = isImage ? 'bg-purple-50 dark:bg-purple-950/30' : isVideo ? 'bg-blue-50 dark:bg-blue-950/30' : isAudio ? 'bg-orange-50 dark:bg-orange-950/30' : 'bg-muted/30';
+                  const iconColor = isImage ? 'text-purple-500' : isVideo ? 'text-blue-500' : isAudio ? 'text-orange-500' : 'text-muted-foreground';
+                  return (
+                    <Link
+                      key={source.id}
+                      to={`/organizations/${orgId}/data-sources/${source.id}`}
+                      className="group border rounded-lg overflow-hidden hover:shadow-md hover:border-primary/30 transition-all bg-card"
+                    >
+                      <div className={`aspect-square flex items-center justify-center ${bgColor}`}>
+                        <FileIcon2 className={`h-10 w-10 ${iconColor} opacity-60 group-hover:opacity-100 transition-opacity`} />
+                      </div>
+                      <div className="p-2 space-y-0.5">
+                        <p className="text-xs font-medium truncate" title={source.title}>{source.title}</p>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] text-muted-foreground capitalize">{source.data_type}</span>
+                          {source.file_size_bytes != null && (
+                            <span className="text-[10px] text-muted-foreground">{formatFileSize(source.file_size_bytes)}</span>
+                          )}
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+                {sorted.length > 200 && (
+                  <div className="col-span-full text-center py-4 text-xs text-muted-foreground">
+                    Showing 200 of {sorted.length} files. Use search or subfolders to narrow down.
+                  </div>
+                )}
+              </div>
+            ) : !selectedFolder && !search.trim() ? (
+              /* List view: show folders at root */
+              <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead className="w-[100px] text-right">Items</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {Object.entries(folderTree).sort(([a],[b]) => a.localeCompare(b)).map(([root]) => (
+                      <TableRow key={root} className="cursor-pointer hover:bg-muted/50" onClick={() => setSelectedFolder(root)}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <FolderOpen className="h-4 w-4 text-amber-500 shrink-0" />
+                            <span className="text-sm font-medium">{root}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right text-sm text-muted-foreground">{folderCount(root)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Card>
             ) : (
         <Card className="bg-card/80 backdrop-blur-sm border-border/50">
           <Table>

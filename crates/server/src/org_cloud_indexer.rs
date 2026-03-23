@@ -110,7 +110,65 @@ pub async fn index_existing_data(pool: &SqlitePool, org_id: &str) -> Result<i64,
     // 3. Scan physical filesystem volumes
     indexed += index_filesystem_volumes(pool, org_id).await?;
 
+    // 4. Sync cloud_files → data_sources so Intelligence tab shows sovereign stack files
+    if let Err(e) = sync_cloud_to_data_sources(pool, org_id).await {
+        tracing::warn!("[CLOUD_INDEX] data_sources sync failed: {}", e);
+    }
+
     Ok(indexed)
+}
+
+/// Populate data_sources from cloud_files so the Intelligence Data Sources view
+/// shows sovereign stack files. Uses INSERT OR IGNORE for idempotency.
+/// source_type='integration' prevents index_data_sources() from re-indexing these back.
+async fn sync_cloud_to_data_sources(pool: &SqlitePool, org_id: &str) -> Result<(), ApiError> {
+    let result = sqlx::query(
+        r#"INSERT OR IGNORE INTO data_sources
+           (id, organization_id, title, file_name, file_path, file_type, file_size_bytes, file_hash,
+            data_type, source_type, status, folder, metadata)
+        SELECT
+            cf.id, cf.organization_id, cf.file_name, cf.file_name, cf.file_path,
+            cf.mime_type, cf.file_size_bytes, cf.content_hash,
+            CASE
+                WHEN cf.mime_type LIKE 'video/%' OR cf.mime_type LIKE 'audio/%' OR cf.mime_type LIKE 'image/%' THEN 'media'
+                WHEN cf.mime_type LIKE 'text/%' OR cf.mime_type = 'application/pdf'
+                     OR cf.mime_type LIKE 'application/vnd.openxmlformats%' THEN 'document'
+                WHEN cf.mime_type IN ('application/json', 'text/csv') THEN 'dataset'
+                ELSE 'other'
+            END,
+            'integration', 'ready',
+            CASE cf.storage_volume
+                WHEN 'sovereign_personal' THEN 'Personal/' || COALESCE(
+                    CASE WHEN instr(cf.file_path, '/') > 0
+                         THEN substr(cf.file_path, 1, instr(cf.file_path, '/') - 1)
+                         ELSE 'Unfiled' END, 'Unfiled')
+                ELSE COALESCE(
+                    CASE WHEN instr(cf.file_path, '/') > 0
+                         THEN substr(cf.file_path, 1, instr(cf.file_path, '/') - 1)
+                         ELSE 'Unfiled' END, 'Unfiled')
+            END,
+            json_object('storage_volume', cf.storage_volume, 'cloud_file_id', cf.id, 'synced_from_cloud', 1)
+        FROM cloud_files cf
+        WHERE cf.organization_id = ? AND cf.deleted_at IS NULL
+          AND cf.storage_volume IN ('sovereign_org', 'sovereign_personal')
+          AND cf.file_path NOT LIKE '%/Cache/%'
+          AND cf.file_path NOT LIKE '%/Thumbnails/%'
+          AND cf.file_path NOT LIKE '%/Proxies/%'
+          AND cf.file_path NOT LIKE '%.lrdata/%'
+          AND cf.file_path NOT LIKE '%/CaptureOne/Settings%'
+          AND cf.id NOT IN (SELECT id FROM data_sources WHERE organization_id = ?)"#,
+    )
+    .bind(org_id)
+    .bind(org_id)
+    .execute(pool)
+    .await
+    .map_err(|e| ApiError::InternalError(format!("data_sources sync: {}", e)))?;
+
+    let count = result.rows_affected();
+    if count > 0 {
+        tracing::info!("[CLOUD_INDEX] Synced {} new data_sources from cloud_files", count);
+    }
+    Ok(())
 }
 
 /// Walk a filesystem directory and index all files into cloud_files.
@@ -276,6 +334,7 @@ async fn index_data_sources(pool: &SqlitePool, org_id: &str) -> Result<i64, ApiE
            WHERE organization_id = ?
              AND file_path IS NOT NULL
              AND archived_at IS NULL
+             AND source_type != 'integration'
              AND id NOT IN (
                 SELECT source_id FROM cloud_files
                 WHERE source_table = 'data_sources' AND organization_id = ? AND deleted_at IS NULL

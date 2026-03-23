@@ -228,9 +228,6 @@ pub async fn get_sidebar_tree(
 ) -> Result<Json<ApiResponse<SidebarTree>>, ApiError> {
     let pool = &deployment.db().pool;
     let user_id = &access_context.user_id;
-    // organization_members.user_id is stored as BLOB (raw bytes), not TEXT UUID
-    let user_id_bytes = db::bind_uuid_blob(user_id)
-        .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {e}")))?;
 
     // For admin: get ALL organizations. For regular users: only orgs they belong to.
     let org_rows: Vec<OrgRow> = if access_context.is_admin {
@@ -242,7 +239,7 @@ pub async fn get_sidebar_tree(
                WHERE o.is_active = 1
                ORDER BY o.name ASC"#,
         )
-        .bind(&user_id_bytes)
+        .bind(user_id)
         .fetch_all(pool)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to fetch orgs: {}", e)))?
@@ -254,7 +251,7 @@ pub async fn get_sidebar_tree(
                WHERE om.user_id = ? AND o.is_active = 1
                ORDER BY o.name ASC"#,
         )
-        .bind(&user_id_bytes)
+        .bind(user_id)
         .fetch_all(pool)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to fetch orgs: {}", e)))?
@@ -302,9 +299,9 @@ pub async fn get_sidebar_tree(
                    ORDER BY p.sort_order ASC, p.name ASC"#,
             )
             .bind(org_id_str)
-            .bind(&user_id_bytes)
-            .bind(&user_id_bytes)
-            .bind(&user_id_bytes)
+            .bind(user_id)
+            .bind(user_id)
+            .bind(user_id)
             .fetch_all(pool)
             .await
             .unwrap_or_default()
@@ -335,7 +332,7 @@ pub async fn get_sidebar_tree(
                    WHERE c.organization_id = ? AND c.deleted_at IS NULL AND c.is_active = 1
                    ORDER BY c.name ASC"#,
             )
-            .bind(&user_id_bytes)
+            .bind(user_id)
             .bind(org_id_str)
             .fetch_all(pool)
             .await
@@ -473,7 +470,7 @@ pub async fn get_sidebar_tree(
                WHERE pm.user_id = ? AND p.organization_id IS NULL AND p.deleted_at IS NULL
                ORDER BY p.sort_order ASC, p.name ASC"#,
         )
-        .bind(&user_id_bytes)
+        .bind(user_id)
         .fetch_all(pool)
         .await
         .unwrap_or_default();

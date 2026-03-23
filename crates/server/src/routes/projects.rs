@@ -512,8 +512,6 @@ pub async fn create_project(
         Ok(project) => {
             // Set owner_id on the project (TEXT column — bind as string)
             let user_id = access_context.user_id.clone();
-            let user_id_blob = db::bind_uuid_blob(&user_id)
-                .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {e}")))?;
             let _ = sqlx::query("UPDATE projects SET owner_id = ? WHERE id = ?")
                 .bind(user_id.as_str())
                 .bind(&project.id)
@@ -528,9 +526,9 @@ pub async fn create_project(
             )
             .bind(db::bind_uuid(&member_id))
             .bind(&project.id)
-            .bind(&user_id_blob)
+            .bind(user_id.as_str())
             .bind("owner")
-            .bind(&user_id_blob)
+            .bind(user_id.as_str())
             .execute(&deployment.db().pool)
             .await
             {

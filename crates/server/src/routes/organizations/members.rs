@@ -360,6 +360,7 @@ pub async fn list_org_data_sources(
             'metadata', metadata,
             'status', status,
             'source_type', source_type,
+            'folder', folder,
             'created_at', created_at,
             'updated_at', updated_at
         ) FROM data_sources
@@ -531,10 +532,7 @@ pub async fn assign_member(
             .bind(&target_bytes)
             .bind(user_id.as_bytes().to_vec())
             .bind(role)
-            .bind(
-                db::bind_uuid_blob(&access_context.user_id)
-                    .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {e}")))?,
-            )
+            .bind(access_context.user_id.as_str())
             .execute(pool)
             .await
             .map_err(|e| ApiError::InternalError(format!("Failed to assign to project: {}", e)))?;
@@ -574,10 +572,7 @@ pub async fn assign_member(
             .bind(&target_bytes)
             .bind(user_id.as_bytes().to_vec())
             .bind(role)
-            .bind(
-                db::bind_uuid_blob(&access_context.user_id)
-                    .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {e}")))?,
-            )
+            .bind(access_context.user_id.as_str())
             .execute(pool)
             .await
             .map_err(|e| ApiError::InternalError(format!("Failed to assign to client: {}", e)))?;

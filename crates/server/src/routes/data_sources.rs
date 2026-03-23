@@ -20,6 +20,26 @@ use crate::{DeploymentImpl, error::ApiError};
 
 // ── List endpoints ──────────────────────────────────────────────────────────
 
+/// GET /api/data-sources  (list all for the authenticated user's orgs)
+async fn list_all(
+    axum::Extension(access_context): axum::Extension<crate::middleware::access_control::AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<Vec<DataSource>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    // Return data sources from all orgs the user has access to
+    let sources: Vec<DataSource> = sqlx::query_as(
+        r#"SELECT ds.* FROM data_sources ds
+           INNER JOIN organization_members om ON om.organization_id = ds.organization_id
+           WHERE om.user_id = ? AND ds.archived_at IS NULL
+           ORDER BY ds.created_at DESC"#,
+    )
+    .bind(&access_context.user_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to list data sources: {e}")))?;
+    Ok(Json(ApiResponse::success(sources)))
+}
+
 /// GET /api/projects/:project_id/data-sources
 async fn list_by_project(
     Path(project_id): Path<String>,
@@ -534,7 +554,10 @@ async fn download_data_source(
 
     // Check if this is a cloud-indexed file with a storage_volume
     let storage_volume = meta.get("storage_volume").and_then(|v| v.as_str());
-    let original_path = meta.get("original_path").and_then(|v| v.as_str());
+    let original_path = meta
+        .get("original_path")
+        .and_then(|v| v.as_str())
+        .or(source.file_path.as_deref());
 
     let file_path = if let (Some(volume), Some(rel_path)) = (storage_volume, original_path) {
         // Prevent path traversal
@@ -624,6 +647,7 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/projects/{project_id}/data-sources", get(list_by_project))
         .route("/data-sources", post(create_data_source))
+        .route("/data-sources/all", get(list_all))
         .route(
             "/data-sources/upload",
             post(upload_data_source).layer(DefaultBodyLimit::max(50 * 1024 * 1024)), // 50MB
@@ -639,4 +663,68 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
                 .delete(delete_data_source),
         )
         .route("/data-sources/{id}/download", get(download_data_source))
+        .route("/data-sources/{id}/preview", get(preview_data_source))
+}
+
+/// GET /api/data-sources/:id/preview — serve the file inline for preview
+async fn preview_data_source(
+    Path(id): Path<String>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Response, ApiError> {
+    let pool = &deployment.db().pool;
+    let source = DataSource::find_by_id(pool, &id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("{e}")))?
+        .ok_or_else(|| ApiError::NotFound("Data source not found".to_string()))?;
+
+    // For text content, serve inline
+    if source.source_type == "text" {
+        if let Some(content) = &source.content {
+            return Response::builder()
+                .status(200)
+                .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+                .body(Body::from(content.clone().into_bytes()))
+                .map_err(|e| ApiError::InternalError(format!("{e}")));
+        }
+    }
+
+    let meta: serde_json::Value =
+        serde_json::from_str(&source.metadata).unwrap_or(serde_json::json!({}));
+
+    let storage_volume = meta.get("storage_volume").and_then(|v| v.as_str());
+    let rel_path = meta
+        .get("original_path")
+        .and_then(|v| v.as_str())
+        .or(source.file_path.as_deref());
+
+    let file_path = if let (Some(volume), Some(rel)) = (storage_volume, rel_path) {
+        if rel.contains("..") || rel.contains('\0') {
+            return Err(ApiError::BadRequest("Invalid file path".into()));
+        }
+        utils::volume::resolve_volume_path(volume, rel)
+            .map_err(|e| ApiError::NotFound(format!("{e}")))?
+    } else {
+        let stored = source.file_path.as_deref()
+            .ok_or_else(|| ApiError::NotFound("File not stored locally".to_string()))?;
+        utils::cache_dir().join("data_sources").join(stored)
+    };
+
+    if !file_path.exists() {
+        return Err(ApiError::NotFound("File not found on disk".to_string()));
+    }
+
+    let bytes = std::fs::read(&file_path)
+        .map_err(|e| ApiError::InternalError(format!("Failed to read file: {e}")))?;
+
+    let mime = source.file_type.as_deref()
+        .or_else(|| meta.get("file_mime").and_then(|v| v.as_str()))
+        .unwrap_or("application/octet-stream");
+
+    Response::builder()
+        .status(200)
+        .header(header::CONTENT_TYPE, mime)
+        .header(header::CONTENT_LENGTH, bytes.len())
+        .header("Content-Disposition", "inline")
+        .body(Body::from(bytes))
+        .map_err(|e| ApiError::InternalError(format!("{e}")))
 }

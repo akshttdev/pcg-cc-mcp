@@ -298,70 +298,130 @@ export function DataSourceDetailPage() {
         </div>
       </div>
 
-      {/* Content Preview */}
+      {/* File Preview */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            {source.source_type === 'file' ? (
-              <Upload className="h-4 w-4" />
-            ) : source.source_type === 'text' ? (
-              <FileText className="h-4 w-4" />
-            ) : (
-              <Database className="h-4 w-4" />
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              {source.source_type === 'file' || source.source_type === 'integration' ? (
+                <Upload className="h-4 w-4" />
+              ) : source.source_type === 'text' ? (
+                <FileText className="h-4 w-4" />
+              ) : (
+                <Database className="h-4 w-4" />
+              )}
+              Preview
+            </CardTitle>
+            {(source.source_type === 'file' || source.source_type === 'integration') && source.file_path && (
+              <div className="flex items-center gap-2">
+                <a
+                  href={`/api/data-sources/${source.id}/preview`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border hover:bg-muted transition-colors"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Open
+                </a>
+                <a
+                  href={`/api/data-sources/${source.id}/download`}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                >
+                  <Upload className="h-3.5 w-3.5 rotate-180" />
+                  Download
+                </a>
+              </div>
             )}
-            Content
-          </CardTitle>
+          </div>
         </CardHeader>
         <CardContent>
           {source.source_type === 'text' && source.content ? (
             <pre className="bg-muted/50 rounded-md p-4 text-sm font-mono whitespace-pre-wrap max-h-96 overflow-auto border">
               {source.content}
             </pre>
-          ) : source.source_type === 'file' ? (
-            <div className="space-y-2 text-sm">
-              {source.file_name && (
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">File:</span>
-                  <span className="font-medium">{source.file_name}</span>
+          ) : (() => {
+            const mime = source.file_type || '';
+            const previewUrl = `/api/data-sources/${source.id}/preview`;
+            const isImage = mime.startsWith('image/');
+            const isVideo = mime.startsWith('video/');
+            const isAudio = mime.startsWith('audio/');
+            const isPdf = mime === 'application/pdf';
+            const isText = mime.startsWith('text/') || mime === 'application/json';
+
+            if (isImage) {
+              return (
+                <div className="flex justify-center bg-muted/30 rounded-lg p-4">
+                  <img src={previewUrl} alt={source.title} className="max-h-[600px] max-w-full object-contain rounded" />
                 </div>
-              )}
-              {source.file_size_bytes != null && (
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Size:</span>
-                  <span>{formatFileSize(source.file_size_bytes)}</span>
+              );
+            }
+            if (isVideo) {
+              return (
+                <video controls className="w-full max-h-[500px] rounded-lg bg-black">
+                  <source src={previewUrl} type={mime} />
+                  Your browser does not support video playback.
+                </video>
+              );
+            }
+            if (isAudio) {
+              return (
+                <div className="bg-muted/30 rounded-lg p-6 flex flex-col items-center gap-4">
+                  <Play className="h-12 w-12 text-muted-foreground" />
+                  <audio controls className="w-full max-w-md">
+                    <source src={previewUrl} type={mime} />
+                  </audio>
                 </div>
-              )}
-              {metadata.mime_type && (
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Type:</span>
-                  <span>{metadata.mime_type}</span>
+              );
+            }
+            if (isPdf) {
+              return (
+                <iframe src={previewUrl} className="w-full h-[700px] rounded-lg border" title={source.title} />
+              );
+            }
+            if (isText) {
+              return (
+                <iframe src={previewUrl} className="w-full h-[500px] rounded-lg border bg-white" title={source.title} />
+              );
+            }
+            // Fallback: show file info
+            return (
+              <div className="space-y-3 text-sm">
+                <div className="flex items-center justify-center py-12 bg-muted/30 rounded-lg">
+                  <div className="text-center space-y-2">
+                    <Database className="h-12 w-12 mx-auto text-muted-foreground opacity-40" />
+                    <p className="text-muted-foreground">Preview not available for this file type</p>
+                    <p className="text-xs text-muted-foreground">{mime || 'Unknown type'}</p>
+                  </div>
                 </div>
-              )}
-              {source.file_hash && (
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Hash:</span>
-                  <span className="font-mono text-xs">{source.file_hash}</span>
-                </div>
-              )}
+                {source.file_name && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">File:</span>
+                    <span className="font-medium">{source.file_name}</span>
+                  </div>
+                )}
+                {source.file_size_bytes != null && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Size:</span>
+                    <span>{formatFileSize(source.file_size_bytes)}</span>
+                  </div>
+                )}
+              </div>
+            );
+          })()
+          }
+          {/* File metadata below preview */}
+          {(source.source_type === 'file' || source.source_type === 'integration') && (
+            <div className="mt-4 pt-4 border-t flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
+              {source.file_name && <span>Name: <span className="text-foreground">{source.file_name}</span></span>}
+              {source.file_type && <span>Type: <span className="text-foreground">{source.file_type}</span></span>}
+              {source.file_size_bytes != null && <span>Size: <span className="text-foreground">{formatFileSize(source.file_size_bytes)}</span></span>}
+              {metadata.storage_volume && <span>Volume: <span className="text-foreground">{metadata.storage_volume}</span></span>}
             </div>
-          ) : source.source_type === 'integration' ? (
-            <div className="space-y-2 text-sm">
-              {Object.entries(metadata).map(([key, value]) => (
-                <div key={key} className="flex items-center gap-2">
-                  <span className="text-muted-foreground">{key.replace(/_/g, ' ')}:</span>
-                  <span>{String(value)}</span>
-                </div>
-              ))}
-              {Object.keys(metadata).length === 0 && (
-                <p className="text-muted-foreground italic">No integration details available.</p>
-              )}
-            </div>
-          ) : (
-            <p className="text-muted-foreground italic">No content preview available.</p>
           )}
         </CardContent>
       </Card>
 
+      {/* Legacy metadata section for integration sources */}
       {/* Workflows */}
       <Card>
         <CardHeader>

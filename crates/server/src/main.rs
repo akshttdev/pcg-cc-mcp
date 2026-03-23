@@ -176,9 +176,15 @@ async fn main() -> Result<(), VibeKanbanError> {
 
     // Start Sovereign Stack scraper service (Dropbox C: → sovereign stack E:)
     let sovereign_stack_shutdown = tokio_util::sync::CancellationToken::new();
+    let sovereign_stack_org_id = std::env::var("SOVEREIGN_STACK_ORG_ID")
+        .unwrap_or_else(|_| "02020202-0202-0202-0202-020202020202".to_string());
     match server::sovereign_stack::SovereignStackConfig::from_env() {
         Ok(config) if config.enabled => {
-            let mut service = server::sovereign_stack::SovereignStackService::new(config);
+            let mut service = server::sovereign_stack::SovereignStackService::new(
+                config,
+                Some(deployment.db().pool.clone()),
+                sovereign_stack_org_id.clone(),
+            );
             let shutdown_token = sovereign_stack_shutdown.clone();
             tokio::spawn(async move {
                 if let Err(e) = service.start(shutdown_token).await {
@@ -194,6 +200,20 @@ async fn main() -> Result<(), VibeKanbanError> {
         Err(e) => {
             tracing::warn!("Failed to load sovereign stack config: {}", e);
         }
+    }
+
+    // Auto-index cloud files on startup (10s delay to let scraper do first pass)
+    {
+        let pool_for_index = deployment.db().pool.clone();
+        let org_id_for_index = sovereign_stack_org_id.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            tracing::info!("[CLOUD_INDEX] Running startup index for org {}", org_id_for_index);
+            match server::org_cloud_indexer::index_existing_data(&pool_for_index, &org_id_for_index).await {
+                Ok(count) => tracing::info!("[CLOUD_INDEX] Startup index complete: {} files indexed", count),
+                Err(e) => tracing::error!("[CLOUD_INDEX] Startup index failed: {}", e),
+            }
+        });
     }
 
     // Start Pulse Engine NATS consumer and publisher
