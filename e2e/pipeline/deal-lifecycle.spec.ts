@@ -6,7 +6,7 @@
  *
  * Acceptance specs: planning/BACKLOG--remaining-work.md → DL-1 to DL-4
  */
-import { test, expect } from "./fixtures";
+import { test, expect } from "@playwright/test";
 import { t, demoPause, login, apiLogin, TEST_DATA_PREFIX } from "../helpers";
 import {
   ORG_ID,
@@ -24,12 +24,15 @@ const DEAL_DESCRIPTION = "E2E lifecycle test — operator context for pipeline p
 test.describe("Deal Lifecycle (DL-1 to DL-4)", () => {
   test.describe.configure({ mode: "serial" });
 
+  test.beforeEach(async ({ page }) => {
+    await login(page);
+    await navigateToPipeline(page);
+  });
+
   // ── DL-1: Create and track a deal ──────────────────────────────────────
 
   test("DL-1: create a deal via the pipeline board", async ({ page }) => {
     test.setTimeout(60_000);
-    await login(page);
-    await navigateToPipeline(page);
 
     await createDealViaUI(page, {
       name: DEAL_NAME,
@@ -146,20 +149,17 @@ test.describe("Deal Lifecycle (DL-1 to DL-4)", () => {
     expect(deliveryDeal, "Delivery deal should be auto-created").toBeTruthy();
   });
 
-  test.fixme(
-    true,
-    "DL-3: won deal creates Client record — not yet implemented in unified processor"
-  );
+  test("DL-3: won deal creates Client record", async () => {
+    test.fixme(true, "Not yet implemented in unified processor");
+  });
 
-  test.fixme(
-    true,
-    "DL-3: won deal creates Project from deal — not yet implemented in unified processor"
-  );
+  test("DL-3: won deal creates Project from deal", async () => {
+    test.fixme(true, "Not yet implemented in unified processor");
+  });
 
-  test.fixme(
-    true,
-    "DL-3: won deal creates VIBE transaction — not yet implemented in unified processor"
-  );
+  test("DL-3: won deal creates VIBE transaction", async () => {
+    test.fixme(true, "Not yet implemented in unified processor");
+  });
 
   // ── DL-4: Lost deal tracking ───────────────────────────────────────────
 

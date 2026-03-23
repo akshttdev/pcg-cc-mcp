@@ -6,7 +6,7 @@
  *
  * Acceptance specs: planning/BACKLOG--remaining-work.md → AA-1 to AA-5
  */
-import { test, expect } from "./fixtures";
+import { test, expect } from "@playwright/test";
 import { t, demoPause, login, apiLogin, TEST_DATA_PREFIX } from "../helpers";
 import {
   ORG_ID,
@@ -25,11 +25,14 @@ let dealId: string;
 test.describe("Agent Automations (AA-1 to AA-5)", () => {
   test.describe.configure({ mode: "serial" });
 
+  test.beforeEach(async ({ page }) => {
+    await login(page);
+    await navigateToPipeline(page);
+  });
+
   test("Setup: create deal and find its ID", async ({ page, request }) => {
     test.setTimeout(60_000);
-    await login(page);
     await apiLogin(request);
-    await navigateToPipeline(page);
 
     await createDealViaUI(page, {
       name: DEAL_NAME,
@@ -194,10 +197,9 @@ test.describe("Agent Automations (AA-1 to AA-5)", () => {
 
   // ── AA-4: Astra Pass 2 chaining ────────────────────────────────────────
 
-  test.fixme(
-    true,
-    "AA-4: Proposal stage triggers Astra Pass 2 then chains to Cash — not yet implemented"
-  );
+  test("AA-4: Proposal triggers Astra Pass 2 then chains to Cash", async () => {
+    test.fixme(true, "Astra Pass 2 chaining not yet implemented");
+  });
 
   // ── AA-5: Lux on Polish stage ──────────────────────────────────────────
 

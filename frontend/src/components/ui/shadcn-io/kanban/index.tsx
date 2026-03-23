@@ -65,6 +65,7 @@ export type KanbanCardProps = Pick<Feature, 'id' | 'name'> & {
   forwardedRef?: Ref<HTMLDivElement>;
   onKeyDown?: (e: KeyboardEvent) => void;
   isOpen?: boolean;
+  'data-testid'?: string;
 };
 
 export const KanbanCard = ({
@@ -79,6 +80,7 @@ export const KanbanCard = ({
   forwardedRef,
   onKeyDown,
   isOpen,
+  'data-testid': dataTestId,
 }: KanbanCardProps) => {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({
@@ -111,6 +113,7 @@ export const KanbanCard = ({
       tabIndex={tabIndex}
       onClick={onClick}
       onKeyDown={onKeyDown}
+      data-testid={dataTestId}
       style={{
         zIndex: isDragging ? 1000 : 1,
         transform: transform

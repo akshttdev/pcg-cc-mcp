@@ -6,15 +6,14 @@
  *
  * Acceptance specs: planning/BACKLOG--remaining-work.md → PC-1 to PC-3
  */
-import { test, expect } from "./fixtures";
+import { test, expect } from "@playwright/test";
 import { t, demoPause, login } from "../helpers";
 import { navigateToPipeline, openPipelineSettings } from "./helpers";
 
 test.describe("Pipeline Configuration (PC-1 to PC-3)", () => {
   test.describe.configure({ mode: "serial" });
 
-  test("Setup: login and navigate to pipeline", async ({ page }) => {
-    test.setTimeout(60_000);
+  test.beforeEach(async ({ page }) => {
     await login(page);
     await navigateToPipeline(page);
   });
@@ -34,10 +33,11 @@ test.describe("Pipeline Configuration (PC-1 to PC-3)", () => {
     // Verify pipeline dropdown is present
     await expect(page.getByRole("combobox").first()).toBeVisible();
 
-    // Verify three tabs
-    await expect(page.getByRole("tab", { name: "Stages" })).toBeVisible();
-    await expect(page.getByRole("tab", { name: "Automations" })).toBeVisible();
-    await expect(page.getByRole("tab", { name: "Pipeline" })).toBeVisible();
+    // Verify three tabs inside the settings dialog
+    const settingsDialog = page.locator('[role="dialog"]').last();
+    await expect(settingsDialog.getByRole("tab", { name: "Stages" })).toBeVisible();
+    await expect(settingsDialog.getByRole("tab", { name: "Automations" })).toBeVisible();
+    await expect(settingsDialog.getByRole("tab", { name: "Pipeline" })).toBeVisible();
   });
 
   test("PC-1: can switch between pipelines via dropdown", async ({ page }) => {

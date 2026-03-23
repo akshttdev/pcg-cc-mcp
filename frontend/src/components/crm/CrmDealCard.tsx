@@ -199,6 +199,7 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
                   variant="ghost"
                   size="sm"
                   className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 hover:bg-muted transition-opacity shrink-0"
+                  data-testid={`deal-menu-${deal.id}`}
                 >
                   <MoreHorizontal className="h-3.5 w-3.5" />
                 </Button>

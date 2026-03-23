@@ -286,11 +286,11 @@ export function CrmPipelineBoard({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={() => handleAddDeal()} size="sm">
+          <Button onClick={() => handleAddDeal()} size="sm" data-testid="pipeline-add-deal">
             Add Deal
           </Button>
           {onSettingsClick && (
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={onSettingsClick}>
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={onSettingsClick} data-testid="pipeline-settings">
               <Settings className="h-4 w-4" />
             </Button>
           )}
@@ -309,7 +309,7 @@ export function CrmPipelineBoard({
               : undefined;
 
             return (
-              <KanbanBoard key={stage.id} id={stage.id}>
+              <KanbanBoard key={stage.id} id={stage.id} data-testid={`stage-column-${stage.name.toLowerCase().replace(/\s+/g, '-')}`}>
                 <KanbanHeader>
                   <div
                     className="sticky top-0 z-20 flex shrink-0 flex-col gap-1 p-3 border-b border-dashed bg-background"
@@ -377,6 +377,7 @@ export function CrmPipelineBoard({
                         onClick={() => { setSelectedDeal(deal); setSelectedDealStage(stage.name); }}
                         isOpen={selectedDeal?.id === deal.id}
                         className="mx-2 my-1.5 p-0 rounded-lg border border-border/60 hover:border-border hover:shadow-sm transition-all"
+                        data-testid={`deal-card-${deal.id}`}
                       >
                         <CrmDealCard
                           deal={deal}
@@ -401,7 +402,7 @@ export function CrmPipelineBoard({
                       <p className="text-xs text-muted-foreground">
                         Add your first deal to start tracking prospects through your sales process.
                       </p>
-                      <Button size="sm" variant="default" onClick={() => handleAddDeal(stageData.stage.id)}>
+                      <Button size="sm" variant="default" onClick={() => handleAddDeal(stageData.stage.id)} data-testid="pipeline-add-deal-empty">
                         <Plus className="h-3.5 w-3.5 mr-1" /> Add Deal
                       </Button>
                     </div>
@@ -416,6 +417,7 @@ export function CrmPipelineBoard({
                       size="sm"
                       className="w-full h-7 text-xs text-muted-foreground hover:text-foreground justify-start gap-1.5"
                       onClick={() => handleAddDeal(stage.id)}
+                      data-testid={`pipeline-add-deal-${stage.name.toLowerCase().replace(/\s+/g, '-')}`}
                     >
                       + Add deal
                     </Button>
