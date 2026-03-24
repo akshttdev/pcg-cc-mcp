@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import {
   AlertTriangle,
@@ -9,13 +9,17 @@ import {
   Clock,
   FileText,
   Loader2,
+  RotateCcw,
 } from 'lucide-react';
 import { useState } from 'react';
+import { toast } from 'sonner';
 
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { StatusBadge } from '@/components/ui/status-badge';
-import { handleApiResponse,makeRequest } from '@/lib/api/client';
+import { crmDealsApi } from '@/lib/api/crm';
+import { handleApiResponse, makeRequest } from '@/lib/api/client';
 import { crmKeys } from '@/lib/query-keys';
 import { getStatusInfo } from '@/lib/status-utils';
 
@@ -58,11 +62,25 @@ interface AgentHistoryTabProps {
 }
 
 export function AgentHistoryTab({ dealId }: AgentHistoryTabProps) {
+  const qc = useQueryClient();
   const { data: flows, isLoading } = useQuery({
     queryKey: [...crmKeys.deal(dealId), 'agent-flows'],
     queryFn: () => fetchDealAgentFlows(dealId),
     staleTime: 30 * 1000,
   });
+
+  const retrigger = useMutation({
+    mutationFn: () => crmDealsApi.retriggerDealAgent(dealId),
+    onSuccess: (res) => {
+      toast.success(`Re-triggered ${res.agent} agent`, { description: 'Agent will start shortly' });
+      qc.invalidateQueries({ queryKey: [...crmKeys.deal(dealId), 'agent-flows'] });
+      qc.invalidateQueries({ queryKey: crmKeys.kanbanAll() });
+    },
+    onError: (e: Error) => toast.error(e.message ?? 'Failed to re-trigger agent'),
+  });
+
+  const hasActiveFlow = flows?.some(f => f.status === 'planning' || f.status === 'executing');
+  const hasFailedOrCancelled = flows?.some(f => f.status === 'failed' || f.status === 'cancelled');
 
   if (isLoading) {
     return (
@@ -86,9 +104,24 @@ export function AgentHistoryTab({ dealId }: AgentHistoryTabProps) {
 
   return (
     <div className="p-5 space-y-3">
-      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-        <Bot className="h-3 w-3" /> Agent Execution History
-      </h4>
+      <div className="flex items-center justify-between">
+        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+          <Bot className="h-3 w-3" /> Agent Execution History
+        </h4>
+        {!hasActiveFlow && hasFailedOrCancelled && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs gap-1"
+            onClick={() => retrigger.mutate()}
+            disabled={retrigger.isPending}
+            data-testid="agent-retrigger"
+          >
+            {retrigger.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+            Retry Agent
+          </Button>
+        )}
+      </div>
       {flows.map((flow) => (
         <FlowCard key={flow.id} flow={flow} />
       ))}

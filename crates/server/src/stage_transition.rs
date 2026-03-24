@@ -381,7 +381,7 @@ fn build_effective_exit_validations(config: &StageConfig) -> Vec<StageValidation
 
 /// Map agent name to a sensible default flow_type when derived from the UI
 /// (the full seed configs specify explicit flow_types, but UI-only configs don't).
-fn agent_default_flow_type(agent: &str) -> String {
+pub fn agent_default_flow_type(agent: &str) -> String {
     match agent.to_lowercase().as_str() {
         "scout" => "research".to_string(),
         "astra" => "business_analysis".to_string(),
@@ -581,7 +581,7 @@ async fn handle_won_transition(pool: &SqlitePool, deal: &CrmDeal) -> Option<Stri
 
 /// Schedule an agent flow for a deal with a cancel window.
 /// Returns (flow_id, cancel_deadline).
-async fn schedule_agent_flow(
+pub async fn schedule_agent_flow(
     pool: &SqlitePool,
     deal: &CrmDeal,
     agent_name: &str,

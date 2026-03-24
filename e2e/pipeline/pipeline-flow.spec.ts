@@ -89,48 +89,53 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
     await expect(page.getByText("Needs review").first()).toBeVisible({ timeout: t(10_000) });
   });
 
-  // Scenario: Auto-trigger Scout (AA-1)
+  // Scenario: Auto-trigger Scout (AA-1) — toast with Run Now interaction
   //   Then an agent flow is created → UI shows "Scheduled scout agent" toast
   //   And toast has Cancel / Run Now buttons (cancel window)
-  test("AA-1: Intel stage schedules Scout agent — toast with cancel/run buttons", async ({ page }) => {
+  //   When I click "Run Now", the agent executes immediately
+  //   And the agent flow transitions to executing/completed
+  test("AA-1: Intel stage schedules Scout — verify toast + click Run Now", async ({ page, request }) => {
     test.setTimeout(30_000);
+    await apiLogin(request);
 
     // MCP verified: after moving to Intel, a toast appears with:
     // "Agent starting soon..." / "Scheduled scout agent" / Cancel / Run Now
     await expect(page.getByText("Scheduled scout agent")).toBeVisible({ timeout: t(10_000) });
     await expect(page.getByRole("button", { name: "Cancel" })).toBeVisible({ timeout: t(3_000) });
     await expect(page.getByRole("button", { name: "Run Now" })).toBeVisible({ timeout: t(3_000) });
-  });
 
-  // Scenario: Click "Run Now" to trigger the agent immediately (AA-2)
-  //   Given the "Scheduled scout agent" toast is visible with Run Now button
-  //   When I click "Run Now"
-  //   Then the agent flow transitions from planning to executing
-  //   And the deal card shows an agent-running indicator
-  test("AA-2: click Run Now — agent flow starts executing", async ({ page, request }) => {
-    test.fixme(true, "Toast with Run Now disappears before this serial test runs — merge Run Now click into AA-1 or add toast persistence");
-    test.setTimeout(30_000);
-    await apiLogin(request);
-
-    // Click Run Now on the agent toast
+    // Click Run Now to trigger immediate execution (clears cancel_deadline)
     await page.getByRole("button", { name: "Run Now" }).click();
     await page.waitForTimeout(demoPause.medium);
 
-    // Verify agent is running — deal card should show agent badge
-    // (e.g., "Scout running…" or agent spinner)
-    await expect(page.getByText("Scout running").first()).toBeVisible({ timeout: t(10_000) });
-
-    // Verify via API that agent_flow status transitioned
-    const flowsRes = await request.get(`/api/crm/deals/${dealId}/agent-flows`);
-    const flows = (await flowsRes.json()).data || (await flowsRes.json());
-    const scoutFlow = flows.find((f: { flow_config?: string }) =>
-      f.flow_config?.includes("scout")
-    );
-    expect(scoutFlow, "Scout agent flow should exist").toBeTruthy();
+    // Wait for agent engine to pick up the flow (polls every 15s, simulation takes ~2s)
+    // Poll API until flow transitions from planning → executing/completed
+    let scoutStatus = "planning";
+    for (let i = 0; i < 8; i++) {
+      const flowsRes = await request.get(`/api/crm/deals/${dealId}/agent-flows`);
+      const flows = (await flowsRes.json()).data || (await flowsRes.json());
+      const scoutFlow = flows.find((f: { flow_config?: string }) =>
+        f.flow_config?.includes("scout")
+      );
+      if (scoutFlow) {
+        scoutStatus = scoutFlow.status;
+        if (["executing", "completed"].includes(scoutStatus)) break;
+      }
+      await page.waitForTimeout(3_000);
+    }
     expect(
-      ["executing", "completed"].includes(scoutFlow.status),
-      `Agent flow should be executing or completed, got: ${scoutFlow?.status}`
+      ["executing", "completed"].includes(scoutStatus),
+      `Agent flow should be executing or completed, got: ${scoutStatus}`
     ).toBe(true);
+  });
+
+  // Scenario: Cancel an agent flow (AA-2)
+  //   Given a new deal is moved to an agent stage and the toast appears
+  //   When I click "Cancel" on the agent toast
+  //   Then the agent flow is cancelled and no agent work runs
+  test("AA-2: cancel agent flow — agent does not execute", async ({ page, request }) => {
+    test.fixme(true, "Cancel test needs a second deal to avoid interfering with the main lifecycle flow — setup + move + cancel + verify status=cancelled via API");
+    test.setTimeout(30_000);
   });
 
   // Scenario: View agent results in Agent History tab (AA-3)
@@ -160,14 +165,24 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
   });
 
   // ═══════════════════════════════════════════════════════════════════════
-  // INTEL → BA → PROPOSAL: Move through stages
+  // INTEL → BA → PROPOSAL: Wait for agent auto-advance
+  //
+  // Agent-owned stages auto-advance when the agent completes:
+  //   Intel (Scout) → BA (Astra) → Proposal (Cash)
+  // The test waits for each stage transition instead of manually moving.
   // ═══════════════════════════════════════════════════════════════════════
 
-  test("move to BA and Proposal (setup for DD-2)", async ({ page, request }) => {
-    test.setTimeout(60_000);
+  // Scenario: Agent auto-advance through Intel → BA → Proposal
+  //   Given the deal is in Intel with Scout agent scheduled
+  //   When I click "Run Now" on the agent toast to trigger immediate execution
+  //   And each agent completes and auto-advances the deal to the next stage
+  //   Then the deal reaches Proposal stage
+
+  test("agent auto-advance: Intel → BA → Proposal (setup for DD-2)", async ({ page, request }) => {
+    test.setTimeout(120_000);
     await apiLogin(request);
 
-    // Helper to complete pending tasks
+    // Helper to complete pending review tasks (so advance isn't blocked)
     const completeTasks = async () => {
       const res = await request.get(`/api/tasks?crm_deal_id=${dealId}`);
       if (res.ok()) {
@@ -179,15 +194,55 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
       }
     };
 
-    await completeTasks();
-    await moveDealViaContextMenu(page, dealText, "Business Analysis");
-    await expect(page.getByText("Moved to Business Analysis")).toBeVisible({ timeout: t(5_000) });
-    await page.waitForTimeout(demoPause.medium);
+    // Helper to wait for deal to reach a stage via API polling
+    const waitForStage = async (stageName: string, timeoutMs: number) => {
+      const start = Date.now();
+      while (Date.now() - start < timeoutMs) {
+        await completeTasks();
+        const dealRes = await request.get(`/api/crm/deals/${dealId}`);
+        const deal = (await dealRes.json()).data || (await dealRes.json());
+        if (deal.stage?.toLowerCase() === stageName.toLowerCase()) return true;
+        await page.waitForTimeout(3_000);
+      }
+      return false;
+    };
 
-    await completeTasks();
-    await moveDealViaContextMenu(page, dealText, "Proposal");
-    await expect(page.getByText("Moved to Proposal")).toBeVisible({ timeout: t(5_000) });
-    await page.waitForTimeout(demoPause.medium);
+    // Helper to click "Run Now" on agent toast if visible
+    const clickRunNowIfVisible = async () => {
+      try {
+        const runNow = page.getByRole("button", { name: "Run Now" });
+        if (await runNow.isVisible({ timeout: 3_000 })) {
+          await runNow.click();
+          await page.waitForTimeout(demoPause.medium);
+        }
+      } catch { /* toast may have already dismissed */ }
+    };
+
+    // Click Run Now on Scout toast (from AA-1) to trigger immediate execution
+    await clickRunNowIfVisible();
+
+    // Wait for agent chain to advance deal to Proposal
+    // Intel(Scout) → BA(Astra) → Proposal(Cash)
+    // Each agent: ~2s simulation + auto-advance triggers next
+    // Click Run Now on each subsequent agent toast as they appear
+    for (let i = 0; i < 10; i++) {
+      await clickRunNowIfVisible();
+      const dealRes = await request.get(`/api/crm/deals/${dealId}`);
+      const deal = (await dealRes.json()).data || (await dealRes.json());
+      if (deal.stage?.toLowerCase() === "proposal") break;
+      await page.waitForTimeout(3_000);
+    }
+
+    const reachedProposal = await waitForStage("Proposal", 60_000);
+    expect(reachedProposal, "Deal should auto-advance to Proposal via agent chain").toBe(true);
+
+    // Refresh the kanban to see updated positions
+    await page.reload();
+    await expect(page.getByText("Acquisition Pipeline")).toBeVisible({ timeout: t(15_000) });
+
+    // Verify deal is visible in Proposal column
+    const proposalColumn = page.getByTestId(pipeline.stageColumn("proposal"));
+    await expect(proposalColumn.getByText(dealText)).toBeVisible({ timeout: t(10_000) });
   });
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -300,10 +355,10 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
 
   test("DL-3/DD-3: move to Won — delivery deal + invite link visible", async ({ page, request }) => {
     test.fail(true, "Won chain: delivery deal auto-creation not finding the deal — needs investigation");
-    test.setTimeout(120_000);
+    test.setTimeout(180_000);
     await apiLogin(request);
 
-    // Complete pending tasks and move through remaining stages
+    // Helper to complete pending review tasks
     const completeTasks = async () => {
       const res = await request.get(`/api/tasks?crm_deal_id=${dealId}`);
       if (res.ok()) {
@@ -315,15 +370,30 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
       }
     };
 
-    // Proposal → Polish → Invoice → Negotiation → Won
-    await completeTasks();
-    await moveDealViaContextMenu(page, dealText, "Polish");
-    await expect(page.getByText("Moved to Polish")).toBeVisible({ timeout: t(5_000) });
-    await page.waitForTimeout(demoPause.medium);
+    // Helper to wait for deal to reach a stage via agent auto-advance
+    const waitForStage = async (stageName: string, timeoutMs: number) => {
+      const start = Date.now();
+      while (Date.now() - start < timeoutMs) {
+        await completeTasks();
+        const dealRes = await request.get(`/api/crm/deals/${dealId}`);
+        const deal = (await dealRes.json()).data || (await dealRes.json());
+        if (deal.stage?.toLowerCase() === stageName.toLowerCase()) return true;
+        await page.waitForTimeout(5_000);
+      }
+      return false;
+    };
+
+    // Proposal → Polish: Cash agent auto-advances to Polish (agent stage)
+    // Polish → Invoice: Lux agent auto-advances to Invoice (human stage)
+    await waitForStage("Invoice", 60_000);
+
+    // Invoice → Negotiation → Won: human stages, move manually
+    await page.reload();
+    await expect(page.getByText("Acquisition Pipeline")).toBeVisible({ timeout: t(15_000) });
 
     await completeTasks();
-    await moveDealViaContextMenu(page, dealText, "Invoice");
-    await expect(page.getByText("Moved to Invoice")).toBeVisible({ timeout: t(5_000) });
+    await moveDealViaContextMenu(page, dealText, "Negotiation");
+    await expect(page.getByText("Moved to Negotiation")).toBeVisible({ timeout: t(5_000) });
     await page.waitForTimeout(demoPause.medium);
 
     await completeTasks();

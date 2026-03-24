@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
+  AlertTriangle,
   ArrowRight,
   MoreHorizontal,
   Building2,
@@ -88,6 +89,8 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
   // Agent flow status
   const agentRunning = deal.active_agent_flow_status === 'executing';
   const agentPending = deal.active_agent_flow_status === 'planning';
+  const agentFailed = deal.active_agent_flow_status === 'failed';
+  const agentCancelled = deal.active_agent_flow_status === 'cancelled';
   const agentName = deal.active_agent_name;
 
   const intelStatus = deal.intelligence_status;
@@ -215,11 +218,13 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
         </div>
 
         {/* Row 2: Stage-aware status chips */}
-        {(agentRunning || agentPending || researchNeeded || researchReady || intelRunning || hasActiveReviewTask || reviewTaskDone ||
+        {(agentRunning || agentPending || agentFailed || agentCancelled || researchNeeded || researchReady || intelRunning || hasActiveReviewTask || reviewTaskDone ||
           deal.report_review_status === 'rejected' || hasProposal || hasDeck || hasInvoice || isWon) && (
           <div className="flex flex-wrap gap-1">
             {agentRunning && <StatusBadge status="info" icon={Bot} label={`${agentName ?? 'Agent'} running…`} pulse size="sm" />}
             {agentPending && <StatusBadge status="warning" icon={Clock} label={`${agentName ?? 'Agent'} pending`} pulse size="sm" />}
+            {agentFailed && <StatusBadge status="error" icon={AlertTriangle} label={`${agentName ?? 'Agent'} failed`} size="sm" />}
+            {agentCancelled && <StatusBadge status="warning" icon={RotateCcw} label={`${agentName ?? 'Agent'} cancelled`} size="sm" />}
             {researchNeeded && <StatusBadge status="warning" icon={Search} label="Research needed" size="sm" />}
             {intelRunning && <StatusBadge status="info" icon={Loader2} label="Researching…" pulse size="sm" />}
             {researchReady && !hasActiveReviewTask && <StatusBadge status="success" icon={ShieldCheck} label="Ready for review" size="sm" />}
