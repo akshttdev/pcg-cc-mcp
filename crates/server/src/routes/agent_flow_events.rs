@@ -4,8 +4,11 @@ use axum::{
     http::StatusCode,
     routing::get,
 };
-use db::models::agent_flow_event::{
-    AgentFlowEvent, CreateFlowEvent, FlowEventPayload, FlowEventType,
+use db::{
+    db_uuid::DbUuid,
+    models::agent_flow_event::{
+        AgentFlowEvent, CreateFlowEvent, FlowEventPayload, FlowEventType,
+    },
 };
 use deployment::Deployment;
 use serde::Deserialize;
@@ -39,17 +42,19 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
 
 async fn list_events(
     State(deployment): State<DeploymentImpl>,
-    Path(flow_id): Path<Uuid>,
+    Path(flow_id): Path<String>,
     Query(query): Query<ListEventsQuery>,
 ) -> Result<Json<ApiResponse<Vec<AgentFlowEvent>>>, ApiError> {
     let pool = &deployment.db().pool;
+    let flow_id = DbUuid::parse(&flow_id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
 
     let events = if let Some(since) = query.since {
-        AgentFlowEvent::find_since(pool, flow_id, since).await?
+        AgentFlowEvent::find_since(pool, &flow_id, since).await?
     } else if let Some(event_type) = query.event_type {
-        AgentFlowEvent::find_by_type(pool, flow_id, event_type).await?
+        AgentFlowEvent::find_by_type(pool, &flow_id, event_type).await?
     } else {
-        AgentFlowEvent::find_by_flow(pool, flow_id).await?
+        AgentFlowEvent::find_by_flow(pool, &flow_id).await?
     };
 
     Ok(Json(ApiResponse::success(events)))
@@ -57,9 +62,11 @@ async fn list_events(
 
 async fn create_event(
     State(deployment): State<DeploymentImpl>,
-    Path(flow_id): Path<Uuid>,
+    Path(flow_id): Path<String>,
     Json(payload): Json<CreateEventPayload>,
 ) -> Result<(StatusCode, Json<ApiResponse<AgentFlowEvent>>), ApiError> {
+    let flow_id = DbUuid::parse(&flow_id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
     let event = AgentFlowEvent::create(
         &deployment.db().pool,
         CreateFlowEvent {
@@ -93,16 +100,16 @@ use db::models::agent_flow_event::AgentFlowEventError;
 
 pub async fn emit_phase_started(
     pool: &sqlx::SqlitePool,
-    flow_id: Uuid,
+    flow_id: &DbUuid,
     phase: &str,
-    agent_id: Option<Uuid>,
+    agent_id: Option<&DbUuid>,
 ) -> Result<AgentFlowEvent, AgentFlowEventError> {
     AgentFlowEvent::emit_phase_started(pool, flow_id, phase, agent_id).await
 }
 
 pub async fn emit_artifact_created(
     pool: &sqlx::SqlitePool,
-    flow_id: Uuid,
+    flow_id: &DbUuid,
     artifact_id: Uuid,
     artifact_type: &str,
     title: &str,
@@ -114,7 +121,7 @@ pub async fn emit_artifact_created(
 
 pub async fn emit_subagent_progress(
     pool: &sqlx::SqlitePool,
-    flow_id: Uuid,
+    flow_id: &DbUuid,
     session_id: Uuid,
     subagent_id: Uuid,
     subagent_index: i32,

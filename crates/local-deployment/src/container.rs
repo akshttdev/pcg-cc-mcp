@@ -87,7 +87,7 @@ pub struct LocalContainerService {
     image_service: ImageService,
     analytics: Option<AnalyticsContext>,
     /// Maps execution_process_id → agent_flow_id for workflow tracking
-    flow_ids: Arc<RwLock<HashMap<Uuid, Uuid>>>,
+    flow_ids: Arc<RwLock<HashMap<Uuid, db::db_uuid::DbUuid>>>,
 }
 
 use services::services::qa_review::{self, PrCreatedInfo};
@@ -2146,7 +2146,7 @@ impl LocalContainerService {
                 // Transition to Execution phase (classic pipeline skips Planning)
                 if let Err(e) = AgentFlow::transition_to_phase(
                     &self.db.pool,
-                    flow.id,
+                    &flow.id,
                     AgentPhase::Execution,
                     None,
                 )
@@ -2157,7 +2157,7 @@ impl LocalContainerService {
 
                 // Emit phase_started event
                 if let Err(e) =
-                    AgentFlowEvent::emit_phase_started(&self.db.pool, flow.id, "execution", None)
+                    AgentFlowEvent::emit_phase_started(&self.db.pool, &flow.id, "execution", None)
                         .await
                 {
                     tracing::warn!("Failed to emit phase_started event: {}", e);
@@ -2167,7 +2167,7 @@ impl LocalContainerService {
                 self.flow_ids
                     .write()
                     .await
-                    .insert(ctx.execution_process.id, flow.id);
+                    .insert(ctx.execution_process.id, flow.id.clone());
 
                 tracing::info!(
                     "Created classic pipeline flow {} for task {}",
@@ -2185,16 +2185,17 @@ impl LocalContainerService {
     async fn complete_classic_pipeline_flow(&self, ctx: &ExecutionContext) {
         let flow_id = {
             let map = self.flow_ids.read().await;
-            map.get(&ctx.execution_process.id).copied()
+            map.get(&ctx.execution_process.id).cloned()
         };
 
         let flow_id = match flow_id {
             Some(id) => id,
             None => {
                 // Fallback: try to find by task_id
+                let task_id = db::db_uuid::DbUuid::from_string(&ctx.task.id);
                 match AgentFlow::find_by_task(
                     &self.db.pool,
-                    Uuid::parse_str(&ctx.task.id).unwrap_or_default(),
+                    &task_id,
                 )
                 .await
                 {
@@ -2223,7 +2224,7 @@ impl LocalContainerService {
             if let Err(e) = AgentFlowEvent::create(
                 &self.db.pool,
                 CreateFlowEvent {
-                    agent_flow_id: flow_id,
+                    agent_flow_id: flow_id.clone(),
                     event_type: FlowEventType::PhaseCompleted,
                     event_data: FlowEventPayload::PhaseCompleted {
                         phase: "execution".to_string(),
@@ -2240,7 +2241,7 @@ impl LocalContainerService {
             if let Err(e) = AgentFlowEvent::create(
                 &self.db.pool,
                 CreateFlowEvent {
-                    agent_flow_id: flow_id,
+                    agent_flow_id: flow_id.clone(),
                     event_type: FlowEventType::FlowCompleted,
                     event_data: FlowEventPayload::FlowCompleted {
                         verification_score: None,
@@ -2254,7 +2255,7 @@ impl LocalContainerService {
             }
 
             // Complete the flow
-            if let Err(e) = AgentFlow::complete(&self.db.pool, flow_id, None).await {
+            if let Err(e) = AgentFlow::complete(&self.db.pool, &flow_id, None).await {
                 tracing::warn!("Failed to complete agent flow: {}", e);
             }
         } else {
@@ -2266,7 +2267,7 @@ impl LocalContainerService {
             if let Err(e) = AgentFlowEvent::create(
                 &self.db.pool,
                 CreateFlowEvent {
-                    agent_flow_id: flow_id,
+                    agent_flow_id: flow_id.clone(),
                     event_type: FlowEventType::FlowFailed,
                     event_data: FlowEventPayload::FlowFailed {
                         error: error_msg,
@@ -2283,7 +2284,7 @@ impl LocalContainerService {
             let _ = sqlx::query(
                 "UPDATE agent_flows SET status = 'failed', updated_at = datetime('now', 'subsec') WHERE id = ?1"
             )
-            .bind(flow_id)
+            .bind(&flow_id)
             .execute(&self.db.pool)
             .await;
         }

@@ -7,11 +7,10 @@ use axum::{
     routing::get,
 };
 use chrono::{DateTime, Utc};
-use db::models::agent_flow_event::AgentFlowEvent;
+use db::{db_uuid::DbUuid, models::agent_flow_event::AgentFlowEvent};
 use deployment::Deployment;
 use futures::stream::{self, Stream};
 use serde::Deserialize;
-use uuid::Uuid;
 
 use crate::DeploymentImpl;
 
@@ -23,11 +22,12 @@ pub struct EventStreamQuery {
 
 /// Stream agent flow events for a specific flow via SSE
 pub async fn stream_flow_events(
-    Path(flow_id): Path<Uuid>,
+    Path(flow_id): Path<String>,
     Query(query): Query<EventStreamQuery>,
     State(deployment): State<DeploymentImpl>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let pool = deployment.db().pool.clone();
+    let flow_id = DbUuid::from_string(flow_id);
     let last_event_time = query
         .since
         .unwrap_or_else(|| Utc::now() - chrono::Duration::hours(1));
@@ -38,7 +38,7 @@ pub async fn stream_flow_events(
             // Poll every 500ms
             tokio::time::sleep(Duration::from_millis(500)).await;
 
-            match AgentFlowEvent::find_since(&pool, flow_id, since).await {
+            match AgentFlowEvent::find_since(&pool, &flow_id, since).await {
                 Ok(events) if !events.is_empty() => {
                     // Update the since timestamp to the last event
                     if let Some(last) = events.last() {

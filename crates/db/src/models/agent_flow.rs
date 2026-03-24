@@ -5,8 +5,6 @@ use sqlx::{FromRow, SqlitePool, Type};
 use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
-// DbUuid available if needed for BLOB/TEXT compat
-#[allow(unused_imports)]
 use crate::db_uuid::DbUuid;
 
 #[derive(Debug, Error)]
@@ -144,15 +142,15 @@ impl std::fmt::Display for AgentPhase {
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct AgentFlow {
-    pub id: Uuid,
-    pub task_id: Uuid,
+    pub id: DbUuid,
+    pub task_id: DbUuid,
     pub flow_type: FlowType,
     pub status: FlowStatus,
 
     // Phase agents (Planner → Executor → Verifier)
-    pub planner_agent_id: Option<Uuid>,
-    pub executor_agent_id: Option<Uuid>,
-    pub verifier_agent_id: Option<Uuid>,
+    pub planner_agent_id: Option<DbUuid>,
+    pub executor_agent_id: Option<DbUuid>,
+    pub verifier_agent_id: Option<DbUuid>,
 
     pub current_phase: AgentPhase,
 
@@ -227,10 +225,14 @@ pub struct UpdateAgentFlow {
 impl AgentFlow {
     /// Create a new agent flow
     pub async fn create(pool: &SqlitePool, data: CreateAgentFlow) -> Result<Self, AgentFlowError> {
-        let id = Uuid::new_v4();
+        let id = DbUuid::new();
+        let task_id = DbUuid::from(data.task_id);
         let flow_type_str = data.flow_type.to_string();
         let flow_config_str = data.flow_config.map(|v| v.to_string());
         let human_approval = data.human_approval_required.unwrap_or(false);
+        let planner = data.planner_agent_id.map(DbUuid::from);
+        let executor = data.executor_agent_id.map(DbUuid::from);
+        let verifier = data.verifier_agent_id.map(DbUuid::from);
 
         let flow = sqlx::query_as::<_, AgentFlow>(
             r#"
@@ -243,12 +245,12 @@ impl AgentFlow {
             RETURNING *
             "#,
         )
-        .bind(id)
-        .bind(data.task_id)
+        .bind(&id)
+        .bind(&task_id)
         .bind(flow_type_str)
-        .bind(data.planner_agent_id)
-        .bind(data.executor_agent_id)
-        .bind(data.verifier_agent_id)
+        .bind(&planner)
+        .bind(&executor)
+        .bind(&verifier)
         .bind(flow_config_str)
         .bind(human_approval)
         .fetch_one(pool)
@@ -258,11 +260,13 @@ impl AgentFlow {
     }
 
     /// Find flow by ID
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, AgentFlowError> {
-        let flow = sqlx::query_as::<_, AgentFlow>(r#"SELECT * FROM agent_flows WHERE id = ?1"#)
-            .bind(id)
-            .fetch_optional(pool)
-            .await?;
+    pub async fn find_by_id(pool: &SqlitePool, id: &DbUuid) -> Result<Option<Self>, AgentFlowError> {
+        let flow = sqlx::query_as::<_, AgentFlow>(
+            r#"SELECT * FROM agent_flows WHERE id = ?1 OR CAST(id AS TEXT) = ?1"#,
+        )
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
 
         Ok(flow)
     }
@@ -270,7 +274,7 @@ impl AgentFlow {
     /// Find all flows for a task
     pub async fn find_by_task(
         pool: &SqlitePool,
-        task_id: Uuid,
+        task_id: &DbUuid,
     ) -> Result<Vec<Self>, AgentFlowError> {
         let flows = sqlx::query_as::<_, AgentFlow>(
             r#"
@@ -342,28 +346,14 @@ impl AgentFlow {
     }
 
     /// Find flows ready for execution (past cancel window, in actionable state).
-    /// Uses CAST for BLOB/TEXT UUID compatibility — the id column may contain either format.
+    /// DbUuid handles both BLOB and TEXT UUID formats transparently.
     pub async fn find_pending_flows(
         pool: &SqlitePool,
         limit: i32,
     ) -> Result<Vec<Self>, AgentFlowError> {
-        // Use a raw query with CAST to handle both BLOB and TEXT UUIDs
-        let rows = sqlx::query(
+        let flows = sqlx::query_as::<_, AgentFlow>(
             r#"
-            SELECT CAST(id AS BLOB) as id, CAST(task_id AS BLOB) as task_id,
-                   flow_type, status,
-                   CAST(planner_agent_id AS BLOB) as planner_agent_id,
-                   CAST(executor_agent_id AS BLOB) as executor_agent_id,
-                   CAST(verifier_agent_id AS BLOB) as verifier_agent_id,
-                   current_phase, flow_config, handoff_instructions,
-                   human_approval_required, verification_score, approved_by, approved_at,
-                   planning_started_at, planning_completed_at,
-                   execution_started_at, execution_completed_at,
-                   verification_started_at, verification_completed_at,
-                   created_at, updated_at,
-                   crm_deal_id, cancel_deadline, clarification_request,
-                   retry_count, last_error
-            FROM agent_flows
+            SELECT * FROM agent_flows
             WHERE status IN ('planning', 'executing')
               AND (cancel_deadline IS NULL OR cancel_deadline < datetime('now', 'subsec'))
             ORDER BY created_at ASC
@@ -373,69 +363,6 @@ impl AgentFlow {
         .bind(limit)
         .fetch_all(pool)
         .await?;
-
-        // Manual deserialization to handle BLOB/TEXT id flexibility
-        let mut flows = Vec::new();
-        for row in rows {
-            use sqlx::Row;
-            // Try to get id as BLOB (16 bytes) first, then as TEXT string
-            let id_bytes: Vec<u8> = row.try_get("id").unwrap_or_default();
-            let id = if id_bytes.len() == 16 {
-                Uuid::from_slice(&id_bytes).unwrap_or_default()
-            } else {
-                // TEXT UUID stored as bytes
-                let text = String::from_utf8_lossy(&id_bytes);
-                Uuid::parse_str(&text).unwrap_or_default()
-            };
-
-            let task_bytes: Vec<u8> = row.try_get("task_id").unwrap_or_default();
-            let task_id = if task_bytes.len() == 16 {
-                Uuid::from_slice(&task_bytes).unwrap_or_default()
-            } else {
-                let text = String::from_utf8_lossy(&task_bytes);
-                Uuid::parse_str(&text).unwrap_or_default()
-            };
-
-            let flow = AgentFlow {
-                id,
-                task_id,
-                flow_type: row.try_get::<String, _>("flow_type")
-                    .ok()
-                    .and_then(|s| serde_json::from_value(serde_json::Value::String(s)).ok())
-                    .unwrap_or(FlowType::Custom),
-                status: row.try_get::<String, _>("status")
-                    .ok()
-                    .and_then(|s| serde_json::from_value(serde_json::Value::String(s)).ok())
-                    .unwrap_or(FlowStatus::Planning),
-                planner_agent_id: None,
-                executor_agent_id: None,
-                verifier_agent_id: None,
-                current_phase: row.try_get::<String, _>("current_phase")
-                    .ok()
-                    .and_then(|s| serde_json::from_value(serde_json::Value::String(s)).ok())
-                    .unwrap_or(AgentPhase::Planning),
-                flow_config: row.try_get("flow_config").ok(),
-                handoff_instructions: row.try_get("handoff_instructions").ok(),
-                human_approval_required: row.try_get("human_approval_required").unwrap_or(false),
-                verification_score: row.try_get("verification_score").ok(),
-                approved_by: row.try_get("approved_by").ok(),
-                planning_started_at: row.try_get("planning_started_at").ok(),
-                planning_completed_at: row.try_get("planning_completed_at").ok(),
-                execution_started_at: row.try_get("execution_started_at").ok(),
-                execution_completed_at: row.try_get("execution_completed_at").ok(),
-                verification_started_at: row.try_get("verification_started_at").ok(),
-                verification_completed_at: row.try_get("verification_completed_at").ok(),
-                approved_at: row.try_get("approved_at").ok(),
-                created_at: row.try_get("created_at").unwrap_or_default(),
-                updated_at: row.try_get("updated_at").unwrap_or_default(),
-                crm_deal_id: row.try_get("crm_deal_id").ok(),
-                cancel_deadline: row.try_get("cancel_deadline").ok(),
-                clarification_request: row.try_get("clarification_request").ok(),
-                retry_count: row.try_get("retry_count").unwrap_or(0),
-                last_error: row.try_get("last_error").ok(),
-            };
-            flows.push(flow);
-        }
 
         Ok(flows)
     }
@@ -460,7 +387,7 @@ impl AgentFlow {
     /// the UPDATE only succeeds if the flow is still in the expected status.
     pub async fn transition_to_phase(
         pool: &SqlitePool,
-        id: Uuid,
+        id: &DbUuid,
         phase: AgentPhase,
         expected_status: Option<&str>,
     ) -> Result<Self, AgentFlowError> {
@@ -479,7 +406,7 @@ impl AgentFlow {
                 SET current_phase = ?2, status = ?3,
                     planning_started_at = datetime('now', 'subsec'),
                     updated_at = datetime('now', 'subsec')
-                WHERE (id = ?1 OR CAST(id AS TEXT) = ?1) AND (?4 IS NULL OR status = ?4)
+                WHERE id = ?1 AND (?4 IS NULL OR status = ?4)
                 RETURNING *
                 "#
             }
@@ -490,7 +417,7 @@ impl AgentFlow {
                     planning_completed_at = datetime('now', 'subsec'),
                     execution_started_at = datetime('now', 'subsec'),
                     updated_at = datetime('now', 'subsec')
-                WHERE (id = ?1 OR CAST(id AS TEXT) = ?1) AND (?4 IS NULL OR status = ?4)
+                WHERE id = ?1 AND (?4 IS NULL OR status = ?4)
                 RETURNING *
                 "#
             }
@@ -501,7 +428,7 @@ impl AgentFlow {
                     execution_completed_at = datetime('now', 'subsec'),
                     verification_started_at = datetime('now', 'subsec'),
                     updated_at = datetime('now', 'subsec')
-                WHERE (id = ?1 OR CAST(id AS TEXT) = ?1) AND (?4 IS NULL OR status = ?4)
+                WHERE id = ?1 AND (?4 IS NULL OR status = ?4)
                 RETURNING *
                 "#
             }
@@ -522,7 +449,7 @@ impl AgentFlow {
     /// Complete the flow
     pub async fn complete(
         pool: &SqlitePool,
-        id: Uuid,
+        id: &DbUuid,
         verification_score: Option<f64>,
     ) -> Result<Self, AgentFlowError> {
         let flow = sqlx::query_as::<_, AgentFlow>(
@@ -545,7 +472,7 @@ impl AgentFlow {
     }
 
     /// Request approval
-    pub async fn request_approval(pool: &SqlitePool, id: Uuid) -> Result<Self, AgentFlowError> {
+    pub async fn request_approval(pool: &SqlitePool, id: &DbUuid) -> Result<Self, AgentFlowError> {
         let flow = sqlx::query_as::<_, AgentFlow>(
             r#"
             UPDATE agent_flows
@@ -565,7 +492,7 @@ impl AgentFlow {
     /// Approve the flow
     pub async fn approve(
         pool: &SqlitePool,
-        id: Uuid,
+        id: &DbUuid,
         approved_by: &str,
     ) -> Result<Self, AgentFlowError> {
         let flow = sqlx::query_as::<_, AgentFlow>(
