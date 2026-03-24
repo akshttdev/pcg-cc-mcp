@@ -600,7 +600,7 @@ impl AgentFlowExecutor {
             }
         };
 
-        let artifact_id = Uuid::new_v4();
+        let artifact_id = DbUuid::new().to_uuid();
         match AgentFlowEvent::create(
             &self.pool,
             CreateFlowEvent {
