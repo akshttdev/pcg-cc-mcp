@@ -1537,7 +1537,6 @@ pub async fn link_deal_transcript(
 
 // ── POST /crm/deals/:id/data-sources ─────────────────────────────────────────
 /// Link a data source from the data library to a deal.
-
 pub async fn link_deal_data_source(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
@@ -1587,7 +1586,6 @@ pub async fn link_deal_data_source(
 
 // ── GET /crm/deals/:id/data-sources ──────────────────────────────────────────
 /// List data sources linked to a deal.
-
 pub async fn list_deal_data_sources(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,

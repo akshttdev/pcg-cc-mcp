@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { FileText, Phone } from 'lucide-react';
+import { discovery as tid } from 'shared/testids';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -7,7 +8,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CardGrid } from '@/components/ui/card-grid';
 import { crmKeys } from '@/lib/query-keys';
 import type { CrmDealWithContact } from '@/types/crm';
-import { discovery as tid } from 'shared/testids';
 
 import { CallSchedulingSection } from './OverviewCallSchedulingSection';
 import { OverviewContactSection } from './OverviewContactSection';

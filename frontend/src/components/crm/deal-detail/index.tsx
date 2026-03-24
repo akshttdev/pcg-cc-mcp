@@ -10,10 +10,9 @@ import type { TabDefinition } from '@/components/ui/tabs';
 import { TabPanel, TabsContent } from '@/components/ui/tabs';
 import type { CrmDealWithContact, CrmPipelineStage } from '@/types/crm';
 
-import { getVisibleTabs } from './stage-tab-config';
-
 import { DealConvertDialog } from '../DealConvertDialog';
 import { DealHeader, PipelineStepper } from './DealHeader';
+import { getVisibleTabs } from './stage-tab-config';
 import { ActivityTab } from './tabs/ActivityTab';
 import { AgentHistoryTab } from './tabs/AgentHistoryTab';
 import { DeckTab } from './tabs/DeckTab';
