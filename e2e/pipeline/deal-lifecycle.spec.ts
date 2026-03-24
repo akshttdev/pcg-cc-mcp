@@ -252,7 +252,7 @@ test.describe("DL-2: Move deals between stages", () => {
   //   Then the deal moves to the next stage by position
   //   And stage entry actions fire (agent triggers, review tasks)
 
-  test("advance API — Then: deal moves to next stage, entry actions fire", async ({ request }) => {
+  test("advance API — Then: deal moves to next stage, entry actions fire", async ({ page, request }) => {
     test.setTimeout(60_000);
     await apiLogin(request);
     expect(dl2DealId, "DL-2 deal ID should be set from previous test").toBeTruthy();
