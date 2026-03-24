@@ -6,7 +6,7 @@
  */
 import { test, expect } from "./fixtures";
 import { t, demoPause, login, apiLogin, TEST_DATA_PREFIX } from "../helpers";
-import { ORG_ID, PIPELINE_URL, moveDealViaContextMenu } from "./helpers";
+import { ORG_ID, PIPELINE_URL, moveDealViaContextMenu, waitForDealStage } from "./helpers";
 import { dealDetail, callScheduling, deck } from "./testids";
 
 let dealId: string;
@@ -112,42 +112,25 @@ test.describe("Deal Detail Features (DD-1 to DD-4)", () => {
   // Call scheduling section only appears on discovery/proposal/present stages.
   // Must move deal to Proposal first.
 
-  test("DD-2: move deal to Proposal for call scheduling", async ({ page, request }) => {
-    test.setTimeout(60_000);
+  test("DD-2: move deal to Proposal for call scheduling (via agent auto-advance)", async ({ page, request }) => {
+    test.setTimeout(120_000);
     await apiLogin(request);
 
     // Close the detail panel first
     await page.getByTestId(dealDetail.panel).getByRole("button", { name: "Close" }).click();
     await page.waitForTimeout(demoPause.short);
 
-    // Complete pending review tasks at each stage
-    const completeTasks = async () => {
-      const tasksRes = await request.get(`/api/tasks?crm_deal_id=${dealId}`);
-      if (tasksRes.ok()) {
-        for (const task of ((await tasksRes.json()).data || [])) {
-          if (task.status !== "done" && task.status !== "cancelled") {
-            await request.put(`/api/tasks/${task.id}`, { data: { status: "done" } });
-          }
-        }
-      }
-    };
-
-    // Move Lead → Intel → BA → Proposal (adjacent moves only)
+    // Move to Intel (user action) — agents auto-advance through BA → Proposal
     await moveDealViaContextMenu(page, dealText, "Intel");
     await expect(page.getByText("Moved to Intel")).toBeVisible({ timeout: t(5_000) });
-    await page.waitForTimeout(demoPause.medium);
-    await completeTasks();
 
-    await moveDealViaContextMenu(page, dealText, "Business Analysis");
-    await expect(page.getByText("Moved to Business Analysis")).toBeVisible({ timeout: t(5_000) });
-    await page.waitForTimeout(demoPause.medium);
-    await completeTasks();
+    // Wait for agent chain: Intel(Scout) → BA(Astra) → Proposal(Cash)
+    const reached = await waitForDealStage(page, request, dealId, "Proposal", 90_000);
+    expect(reached, "Deal should auto-advance to Proposal via agent chain").toBe(true);
 
-    await moveDealViaContextMenu(page, dealText, "Proposal");
-    await expect(page.getByText("Moved to Proposal")).toBeVisible({ timeout: t(5_000) });
-    await page.waitForTimeout(demoPause.medium);
-
-    // Re-open the deal detail panel
+    // Refresh and re-open the deal detail panel
+    await page.reload();
+    await expect(page.getByText("Acquisition Pipeline")).toBeVisible({ timeout: t(15_000) });
     await page.getByText(dealText).first().click();
     await expect(page.getByTestId(dealDetail.panel)).toBeVisible({ timeout: t(10_000) });
     await page.waitForTimeout(demoPause.short);

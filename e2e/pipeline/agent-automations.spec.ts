@@ -6,7 +6,7 @@
  */
 import { test, expect } from "./fixtures";
 import { t, demoPause, login, apiLogin, TEST_DATA_PREFIX } from "../helpers";
-import { ORG_ID, PIPELINE_URL, moveDealViaContextMenu } from "./helpers";
+import { ORG_ID, PIPELINE_URL, moveDealViaContextMenu, waitForDealStage, completeDealTasks } from "./helpers";
 
 let dealId: string;
 let dealName: string;
@@ -135,22 +135,13 @@ test.describe("Agent Automations (AA-1 to AA-5)", () => {
   //     Then an agent flow is created for Astra with flow_type "business_analysis"
   //     And a review task is created: "Review business report (Astra)"
 
-  test("AA-2: move to BA — toast + review task with correct title", async ({ page, request }) => {
-    test.setTimeout(60_000);
+  test("AA-2: auto-advance to BA — Astra triggers + review task created", async ({ page, request }) => {
+    test.setTimeout(90_000);
     await apiLogin(request);
 
-    // Complete pending Intel tasks
-    const tasksRes = await request.get(`/api/tasks?crm_deal_id=${dealId}`);
-    if (tasksRes.ok()) {
-      for (const task of ((await tasksRes.json()).data || [])) {
-        if (task.status !== "done" && task.status !== "cancelled") {
-          await request.put(`/api/tasks/${task.id}`, { data: { status: "done" } });
-        }
-      }
-    }
-
-    await moveDealViaContextMenu(page, dealText, "Business Analysis");
-    await expect(page.getByText("Moved to Business Analysis")).toBeVisible({ timeout: t(5_000) });
+    // Scout completes → deal auto-advances to BA → Astra triggers
+    const reached = await waitForDealStage(page, request, dealId, "Business Analysis", 60_000);
+    expect(reached, "Deal should auto-advance to BA after Scout completes").toBe(true);
 
     // Then: review task created with title mentioning "business report" or "Astra"
     const newTasksRes = await request.get(`/api/tasks?crm_deal_id=${dealId}`);
@@ -176,22 +167,13 @@ test.describe("Agent Automations (AA-1 to AA-5)", () => {
   //     Then an agent flow is created for Cash with flow_type "proposal"
   //     And a review task is created: "Review and approve proposal"
 
-  test("AA-3: move to Proposal — toast + review task with correct title", async ({ page, request }) => {
-    test.setTimeout(60_000);
+  test("AA-3: auto-advance to Proposal — Cash triggers + review task created", async ({ page, request }) => {
+    test.setTimeout(90_000);
     await apiLogin(request);
 
-    // Complete pending BA tasks
-    const tasksRes = await request.get(`/api/tasks?crm_deal_id=${dealId}`);
-    if (tasksRes.ok()) {
-      for (const task of ((await tasksRes.json()).data || [])) {
-        if (task.status !== "done" && task.status !== "cancelled") {
-          await request.put(`/api/tasks/${task.id}`, { data: { status: "done" } });
-        }
-      }
-    }
-
-    await moveDealViaContextMenu(page, dealText, "Proposal");
-    await expect(page.getByText("Moved to Proposal")).toBeVisible({ timeout: t(5_000) });
+    // Astra completes → deal auto-advances to Proposal → Cash triggers
+    const reached = await waitForDealStage(page, request, dealId, "Proposal", 60_000);
+    expect(reached, "Deal should auto-advance to Proposal after Astra completes").toBe(true);
 
     // Then: review task created mentioning "proposal" or "Cash"
     const newTasksRes = await request.get(`/api/tasks?crm_deal_id=${dealId}`);
@@ -249,22 +231,13 @@ test.describe("Agent Automations (AA-1 to AA-5)", () => {
   //     And a review task is created: "Review and approve deck"
   //     And proposal_text is required before entry (soft gate)
 
-  test("AA-5: move to Polish — toast + review task with correct title", async ({ page, request }) => {
-    test.setTimeout(60_000);
+  test("AA-5: auto-advance to Polish — Lux triggers + review task created", async ({ page, request }) => {
+    test.setTimeout(90_000);
     await apiLogin(request);
 
-    // Complete pending Proposal tasks
-    const tasksRes = await request.get(`/api/tasks?crm_deal_id=${dealId}`);
-    if (tasksRes.ok()) {
-      for (const task of ((await tasksRes.json()).data || [])) {
-        if (task.status !== "done" && task.status !== "cancelled") {
-          await request.put(`/api/tasks/${task.id}`, { data: { status: "done" } });
-        }
-      }
-    }
-
-    await moveDealViaContextMenu(page, dealText, "Polish");
-    await expect(page.getByText("Moved to Polish")).toBeVisible({ timeout: t(5_000) });
+    // Cash completes → deal auto-advances to Polish → Lux triggers
+    const reached = await waitForDealStage(page, request, dealId, "Polish", 60_000);
+    expect(reached, "Deal should auto-advance to Polish after Cash completes").toBe(true);
 
     // Then: review task created mentioning "deck" or "Lux"
     const newTasksRes = await request.get(`/api/tasks?crm_deal_id=${dealId}`);
