@@ -357,3 +357,19 @@ After cherry-picked features are merged to main via PR, merge main back into slo
 - DbUuid Phase C/D (model batch conversion)
 - VIBE tokenomics implementation (planning doc only)
 - Virtual environment 3D features (already on main, not modified)
+
+---
+
+## Post-Integration Status (Updated 2026-03-24)
+
+This integration plan was executed across PRs #55–#58. The pipeline was rebuilt into a 9-stage config-driven architecture. Several sloperation intents were not ported during the rebuild.
+
+**Resolved out-of-scope items:**
+- Agent Flow Orchestration Engine → fully built (`crates/server/src/agent_flow_executor.rs`)
+- DbUuid migration → completed for agent_flows and 13 tables
+
+**See also:**
+- `planning/2026-03-18--reference--pipeline-status.md` — original intent document with resolution tracking
+- `docs/PIPELINE.md` — canonical architecture doc with full gap analysis (audited 2026-03-24)
+- `planning/2026-03-21--plan--pipeline-ops-sprint.md` — the sprint that built the StageTransitionProcessor + AgentFlowExecutor
+- `planning/BACKLOG--remaining-work.md` — pipeline specs and remaining test coverage
