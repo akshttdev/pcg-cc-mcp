@@ -6,7 +6,7 @@
 
 use chrono::{DateTime, Utc};
 use db::{
-    db_uuid::DbUuid,
+    db_uuid::{bind_uuid_blob, DbUuid},
     models::{
         crm_deal::{CreateCrmDeal, CrmDeal},
         crm_pipeline::{CrmPipeline, CrmPipelineStage, PipelineType},
@@ -583,14 +583,17 @@ async fn schedule_agent_flow(
     flow_type: &str,
     cancel_window_secs: u32,
 ) -> anyhow::Result<(String, DateTime<Utc>)> {
+    tracing::info!("[schedule_agent_flow] Creating flow for deal {} agent={} flow_type={}", deal.id, agent_name, flow_type);
+
     // Clamp cancel window to reasonable bounds (0 = immediate, max 1 hour)
     let clamped_window = cancel_window_secs.min(3600);
-    let flow_id = DbUuid::new().to_string();
+    let flow_uuid = DbUuid::new();
+    let flow_id = flow_uuid.to_string();
     let deadline = Utc::now() + chrono::Duration::seconds(clamped_window as i64);
 
     // We need a task_id for the agent_flows table. Use the deal's linked task if any,
     // otherwise create a placeholder UUID.
-    let task_id = DbUuid::new().to_string();
+    let task_uuid = DbUuid::new();
 
     let flow_config = serde_json::json!({
         "agent_name": agent_name,
@@ -599,6 +602,12 @@ async fn schedule_agent_flow(
         "deal_name": deal.name,
         "contact_id": deal.crm_contact_id,
     });
+
+    // agent_flows.id and task_id are BLOB columns — bind as 16-byte BLOB
+    let flow_blob = bind_uuid_blob(&flow_uuid)
+        .map_err(|e| anyhow::anyhow!("Invalid flow UUID: {}", e))?;
+    let task_blob = bind_uuid_blob(&task_uuid)
+        .map_err(|e| anyhow::anyhow!("Invalid task UUID: {}", e))?;
 
     sqlx::query(
         r#"
@@ -610,8 +619,8 @@ async fn schedule_agent_flow(
         VALUES (?1, ?2, ?3, 'planning', 'planning', ?4, 0, datetime('now', 'subsec'), ?5, ?6)
         "#,
     )
-    .bind(&flow_id)
-    .bind(&task_id)
+    .bind(flow_blob)
+    .bind(task_blob)
     .bind(flow_type)
     .bind(flow_config.to_string())
     .bind(deal.id.to_string())
@@ -619,6 +628,7 @@ async fn schedule_agent_flow(
     .execute(pool)
     .await?;
 
+    tracing::info!("[schedule_agent_flow] Created flow {} for deal {}", flow_id, deal.id);
     Ok((flow_id, deadline))
 }
 

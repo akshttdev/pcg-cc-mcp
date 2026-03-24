@@ -766,3 +766,18 @@ Audit against Gherkin specs in `planning/BACKLOG--remaining-work.md` revealed si
 5. Strengthen AA-1/2/3/5 agent flow assertions
 6. Add PC-2 save+reopen round-trip test
 7. Document soft-vs-hard gate decision for RG-1/RG-2
+
+### Current Progress (2026-03-24 evening)
+
+**pipeline-flow.spec.ts** created — consolidated E2E flow (one deal, full lifecycle).
+Old spec files kept for now (agent-automations, deal-detail, deal-lifecycle).
+
+**AA-1 fix in progress**: `schedule_agent_flow` was binding UUIDs as TEXT to BLOB columns.
+Fixed to use `bind_uuid_blob()`. Rebuild pending. Still fails — need to verify the INSERT
+actually reaches the database. Added tracing logs to `schedule_agent_flow`.
+
+**Next steps (in order)**:
+1. Verify AA-1 agent_flow INSERT works (check DB + logs after rebuild)
+2. If still failing: check if `process_transition` → `build_effective_entry_actions` → `TriggerAgent` path actually fires
+3. Once AA-1 GREEN: commit, move to DL-3/DD-3 (Won chain — delivery deal + invite link)
+4. Each fix: one at a time, run test, confirm GREEN, commit
