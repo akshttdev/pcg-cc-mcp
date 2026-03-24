@@ -230,46 +230,14 @@ pub async fn process_transition(
     }
 
     // ── 3. Entry actions (explicit on_enter_actions + derived from UI fields) ──
+    // Run in two passes: review tasks + delivery deals first, then agent triggers.
+    // This ensures the review task exists before schedule_agent_flow needs a task_id FK.
     if let Some(ref config) = to_config {
         let effective_actions = build_effective_entry_actions(config);
 
+        // Pass 1: non-agent actions (review tasks, delivery deals)
         for action in &effective_actions {
             match action {
-                StageAction::TriggerAgent { agent, flow_type } => {
-                    const KNOWN_AGENTS: &[&str] =
-                        &["scout", "astra", "cash", "lux", "nora", "assistant"];
-                    if !KNOWN_AGENTS.contains(&agent.to_lowercase().as_str()) {
-                        tracing::warn!(
-                            "[StageTransition] Unknown agent '{}' in stage config — skipping",
-                            agent
-                        );
-                        continue;
-                    }
-                    if config.auto_trigger {
-                        match schedule_agent_flow(
-                            pool,
-                            deal,
-                            agent,
-                            flow_type,
-                            config.cancel_window_secs,
-                        )
-                        .await
-                        {
-                            Ok((flow_id, deadline)) => {
-                                agent_flow_id = Some(flow_id);
-                                cancel_deadline = Some(deadline);
-                                actions_taken.push(format!("Scheduled {} agent", agent));
-                            }
-                            Err(e) => {
-                                tracing::error!(
-                                    "Failed to schedule agent flow for deal {}: {}",
-                                    deal.id,
-                                    e
-                                );
-                            }
-                        }
-                    }
-                }
                 StageAction::CreateReviewTask { description } => {
                     let stage_name = to_stage.name.to_lowercase();
                     manage_stage_review_tasks(pool, deal, description, &stage_name).await;
@@ -278,6 +246,46 @@ pub async fn process_transition(
                 StageAction::CreateDeliveryDeal => {
                     if let Some(action) = handle_won_transition(pool, deal).await {
                         actions_taken.push(action);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // Pass 2: agent triggers (can now find the review task for FK)
+        for action in &effective_actions {
+            if let StageAction::TriggerAgent { agent, flow_type } = action {
+                const KNOWN_AGENTS: &[&str] =
+                    &["scout", "astra", "cash", "lux", "nora", "assistant"];
+                if !KNOWN_AGENTS.contains(&agent.to_lowercase().as_str()) {
+                    tracing::warn!(
+                        "[StageTransition] Unknown agent '{}' in stage config — skipping",
+                        agent
+                    );
+                    continue;
+                }
+                if config.auto_trigger {
+                    match schedule_agent_flow(
+                        pool,
+                        deal,
+                        agent,
+                        flow_type,
+                        config.cancel_window_secs,
+                    )
+                    .await
+                    {
+                        Ok((flow_id, deadline)) => {
+                            agent_flow_id = Some(flow_id);
+                            cancel_deadline = Some(deadline);
+                            actions_taken.push(format!("Scheduled {} agent", agent));
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                "Failed to schedule agent flow for deal {}: {}",
+                                deal.id,
+                                e
+                            );
+                        }
                     }
                 }
             }
@@ -591,9 +599,9 @@ async fn schedule_agent_flow(
     let flow_id = flow_uuid.to_string();
     let deadline = Utc::now() + chrono::Duration::seconds(clamped_window as i64);
 
-    // agent_flows.task_id has FK to tasks(id). Find the deal's review task, or create a
-    // placeholder task so the FK constraint is satisfied.
-    let task_uuid = {
+    // agent_flows.task_id has FK to tasks(id). The review task should already exist
+    // (CreateReviewTask runs before TriggerAgent in the two-pass entry action loop).
+    let task_id_str = {
         #[derive(sqlx::FromRow)]
         struct TaskIdRow { id: String }
         let existing = sqlx::query_as::<_, TaskIdRow>(
@@ -605,20 +613,21 @@ async fn schedule_agent_flow(
         .ok()
         .flatten();
 
-        if let Some(row) = existing {
-            DbUuid::from_string(row.id)
-        } else {
-            // No task exists — create a minimal placeholder task (tasks.id is TEXT)
-            let placeholder = DbUuid::new();
-            let _ = sqlx::query(
-                "INSERT INTO tasks (id, title, status, crm_deal_id) VALUES (?, ?, 'todo', ?)"
-            )
-            .bind(placeholder.to_string())
-            .bind(format!("Agent flow: {} ({})", agent_name, flow_type))
-            .bind(deal.id.to_string())
-            .execute(pool)
-            .await;
-            placeholder
+        match existing {
+            Some(row) => row.id,
+            None => {
+                // No review task found — create one so the FK is satisfied
+                let task_id = DbUuid::new();
+                let _ = sqlx::query(
+                    "INSERT INTO tasks (id, title, status, crm_deal_id) VALUES (?, ?, 'todo', ?)"
+                )
+                .bind(task_id.to_string())
+                .bind(format!("Review: {} agent ({})", agent_name, flow_type))
+                .bind(deal.id.to_string())
+                .execute(pool)
+                .await;
+                task_id.to_string()
+            }
         }
     };
 
@@ -646,7 +655,7 @@ async fn schedule_agent_flow(
         "#,
     )
     .bind(flow_blob)
-    .bind(task_uuid.to_string())
+    .bind(&task_id_str)
     .bind(flow_type)
     .bind(flow_config.to_string())
     .bind(deal.id.to_string())

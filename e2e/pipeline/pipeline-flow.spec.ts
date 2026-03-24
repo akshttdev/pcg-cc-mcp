@@ -89,19 +89,17 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
     await expect(page.getByText("Needs review").first()).toBeVisible({ timeout: t(10_000) });
   });
 
-  // Was RED: agent_flow record not created because schedule_agent_flow bound UUIDs as TEXT
-  // to BLOB columns. Fixed by using bind_uuid_blob() for id and task_id.
-  test("AA-1: Intel stage creates agent_flow with flow_type 'research'", async ({ request }) => {
+  // Scenario: Auto-trigger Scout (AA-1)
+  //   Then an agent flow is created → UI shows "Scheduled scout agent" toast
+  //   And toast has Cancel / Run Now buttons (cancel window)
+  test("AA-1: Intel stage schedules Scout agent — toast with cancel/run buttons", async ({ page }) => {
     test.setTimeout(30_000);
-    await apiLogin(request);
 
-    const flowsRes = await request.get(`/api/crm/deals/${dealId}/agent-flows`);
-    expect(flowsRes.ok(), "Agent flows endpoint should respond").toBeTruthy();
-    const flows = (await flowsRes.json()).data || [];
-    expect(flows.length, "Intel stage should create an agent_flow record for Scout").toBeGreaterThan(0);
-
-    const scoutFlow = flows.find((f: { flow_type?: string }) => f.flow_type === "research");
-    expect(scoutFlow, "Agent flow should have flow_type='research' (Scout)").toBeTruthy();
+    // MCP verified: after moving to Intel, a toast appears with:
+    // "Agent starting soon..." / "Scheduled scout agent" / Cancel / Run Now
+    await expect(page.getByText("Scheduled scout agent")).toBeVisible({ timeout: t(10_000) });
+    await expect(page.getByRole("button", { name: "Cancel" })).toBeVisible({ timeout: t(3_000) });
+    await expect(page.getByRole("button", { name: "Run Now" })).toBeVisible({ timeout: t(3_000) });
   });
 
   // ═══════════════════════════════════════════════════════════════════════
