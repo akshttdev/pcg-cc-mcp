@@ -591,9 +591,36 @@ async fn schedule_agent_flow(
     let flow_id = flow_uuid.to_string();
     let deadline = Utc::now() + chrono::Duration::seconds(clamped_window as i64);
 
-    // We need a task_id for the agent_flows table. Use the deal's linked task if any,
-    // otherwise create a placeholder UUID.
-    let task_uuid = DbUuid::new();
+    // agent_flows.task_id has FK to tasks(id). Find the deal's review task, or create a
+    // placeholder task so the FK constraint is satisfied.
+    let task_uuid = {
+        #[derive(sqlx::FromRow)]
+        struct TaskIdRow { id: String }
+        let existing = sqlx::query_as::<_, TaskIdRow>(
+            "SELECT CAST(id AS TEXT) as id FROM tasks WHERE crm_deal_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1"
+        )
+        .bind(deal.id.to_string())
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten();
+
+        if let Some(row) = existing {
+            DbUuid::from_string(row.id)
+        } else {
+            // No task exists — create a minimal placeholder task (tasks.id is TEXT)
+            let placeholder = DbUuid::new();
+            let _ = sqlx::query(
+                "INSERT INTO tasks (id, title, status, crm_deal_id) VALUES (?, ?, 'todo', ?)"
+            )
+            .bind(placeholder.to_string())
+            .bind(format!("Agent flow: {} ({})", agent_name, flow_type))
+            .bind(deal.id.to_string())
+            .execute(pool)
+            .await;
+            placeholder
+        }
+    };
 
     let flow_config = serde_json::json!({
         "agent_name": agent_name,
@@ -603,11 +630,10 @@ async fn schedule_agent_flow(
         "contact_id": deal.crm_contact_id,
     });
 
-    // agent_flows.id and task_id are BLOB columns — bind as 16-byte BLOB
+    // agent_flows.id is BLOB, task_id is BLOB but FK references tasks(id) which is TEXT.
+    // Bind id as BLOB, task_id as TEXT to satisfy the FK constraint.
     let flow_blob = bind_uuid_blob(&flow_uuid)
         .map_err(|e| anyhow::anyhow!("Invalid flow UUID: {}", e))?;
-    let task_blob = bind_uuid_blob(&task_uuid)
-        .map_err(|e| anyhow::anyhow!("Invalid task UUID: {}", e))?;
 
     sqlx::query(
         r#"
@@ -620,7 +646,7 @@ async fn schedule_agent_flow(
         "#,
     )
     .bind(flow_blob)
-    .bind(task_blob)
+    .bind(task_uuid.to_string())
     .bind(flow_type)
     .bind(flow_config.to_string())
     .bind(deal.id.to_string())

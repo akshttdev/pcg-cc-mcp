@@ -93,6 +93,13 @@
 - **Regression**: Fix the app
 - **Environment**: Fix setup (servers, DB seed)
 
+## Context Management
+
+- **Save progress to the planning doc** periodically so context compaction doesn't lose state
+- **Be targeted with MCP** — don't take full page snapshots when you only need one element's selector
+- **Use subagents for test runs** when feasible — keeps verbose test output out of main context
+- **Compact proactively** before context gets forced — not every cycle, but don't wait until it's required either
+
 ## Running Tests
 
 ```bash
