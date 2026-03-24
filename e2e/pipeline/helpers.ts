@@ -162,6 +162,17 @@ export async function moveDealViaContextMenu(
  *
  * Returns true if the deal reached the stage, false on timeout.
  */
+/**
+ * Wait for a deal to reach a target stage via agent auto-advance.
+ *
+ * UI interactions per poll cycle:
+ * 1. Click "Run Now" on agent toast (bypasses 30s cancel window)
+ * 2. Open deal detail via testid `deal-card-{dealId}`
+ * 3. Click Review tab via testid `deal-detail-tabs-review`
+ * 4. Click "Mark Review Complete" via testid `review-mark-complete`
+ * 5. Close panel via testid `deal-detail-close`
+ * 6. Read-only API check for current stage
+ */
 export async function waitForDealStage(
   page: Page,
   request: APIRequestContext,
@@ -171,7 +182,7 @@ export async function waitForDealStage(
 ) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    // Click Run Now if visible (speeds up agent execution past cancel window)
+    // 1. Click Run Now on toast if visible
     try {
       const runNow = page.getByRole("button", { name: "Run Now" });
       if (await runNow.isVisible({ timeout: 1_000 })) {
@@ -180,45 +191,43 @@ export async function waitForDealStage(
       }
     } catch { /* toast may not be visible */ }
 
-    // Complete review tasks via UI: open deal detail → Review tab → Mark Complete → close
-    try {
-      // Find and click the deal card to open detail panel
-      const dealCard = page.locator(`[data-testid^="deal-card-"]`).filter({
-        has: page.locator(`[data-testid="deal-card-${dealId}"], :text("${dealId.slice(0, 8)}")`)
-      }).first();
-      // Simpler: just check if panel is already open, or open via card click
-      const panel = page.getByTestId("deal-detail-panel");
-      if (!(await panel.isVisible({ timeout: 500 }).catch(() => false))) {
-        // Try clicking any card that might be our deal
-        const anyCard = page.locator(`[data-testid="deal-card-${dealId}"]`);
-        if (await anyCard.isVisible({ timeout: 500 }).catch(() => false)) {
-          await anyCard.click();
+    // 2. Open deal detail panel via card testid
+    const panel = page.getByTestId(dealDetail.panel);
+    const panelOpen = await panel.isVisible({ timeout: 300 }).catch(() => false);
+    if (!panelOpen) {
+      try {
+        const card = page.getByTestId(`deal-card-${dealId}`);
+        if (await card.isVisible({ timeout: 500 })) {
+          await card.click();
           await page.waitForTimeout(500);
         }
-      }
+      } catch { /* card may not be visible on current board view */ }
+    }
 
-      // If panel is open, try Review tab → Mark Complete
-      if (await panel.isVisible({ timeout: 500 }).catch(() => false)) {
-        const reviewTab = page.getByTestId("deal-detail-tabs-review");
-        if (await reviewTab.isVisible({ timeout: 500 }).catch(() => false)) {
-          await reviewTab.click();
-          await page.waitForTimeout(300);
-          const markComplete = page.getByTestId("review-mark-complete");
-          if (await markComplete.isVisible({ timeout: 500 }).catch(() => false)) {
-            await markComplete.click();
-            await page.waitForTimeout(1_000);
-          }
-        }
-        // Close panel
-        const closeBtn = panel.getByTestId("deal-detail-close");
-        if (await closeBtn.isVisible({ timeout: 300 }).catch(() => false)) {
-          await closeBtn.click();
-          await page.waitForTimeout(300);
+    // 3-4. Review tab → Mark Review Complete
+    try {
+      const reviewTab = page.getByTestId(dealDetail.tab("review"));
+      if (await reviewTab.isVisible({ timeout: 300 })) {
+        await reviewTab.click();
+        await page.waitForTimeout(300);
+        const markComplete = page.getByTestId("review-mark-complete");
+        if (await markComplete.isVisible({ timeout: 500 })) {
+          await markComplete.click();
+          await page.waitForTimeout(1_000);
         }
       }
-    } catch { /* UI interaction may fail if deal not visible */ }
+    } catch { /* review tab or button not available */ }
 
-    // Check deal's current stage via API (read-only check, not a shortcut)
+    // 5. Close panel
+    try {
+      const closeBtn = page.getByTestId(dealDetail.close);
+      if (await closeBtn.isVisible({ timeout: 300 })) {
+        await closeBtn.click();
+        await page.waitForTimeout(300);
+      }
+    } catch { /* panel may already be closed */ }
+
+    // 6. Read-only API check for current stage
     const dealRes = await request.get(`/api/crm/deals/${dealId}`);
     const deal = (await dealRes.json()).data || (await dealRes.json());
     if (deal.stage?.toLowerCase() === stageName.toLowerCase()) return true;

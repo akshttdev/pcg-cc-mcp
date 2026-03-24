@@ -194,26 +194,27 @@ test.describe("DL-2: Move deals between stages", () => {
     test.setTimeout(60_000);
     await apiLogin(request);
 
-    // Complete pending review tasks via UI — open deal, click Mark Review Complete
-    if (dl2DealId && dl2DealText) {
-      await page.getByText(dl2DealText).first().click();
-      await expect(page.getByTestId(dealDetail.panel)).toBeVisible({ timeout: t(5_000) });
-      // Switch to Review tab and mark complete if button is visible
-      const reviewTab = page.getByTestId(dealDetail.tab("review"));
-      if (await reviewTab.isVisible({ timeout: 1_000 }).catch(() => false)) {
-        await reviewTab.click();
-        await page.waitForTimeout(demoPause.short);
-        const markComplete = page.getByTestId("review-mark-complete");
-        if (await markComplete.isVisible({ timeout: 1_000 }).catch(() => false)) {
-          await markComplete.click();
-          await page.waitForTimeout(demoPause.medium);
+    // Complete pending review tasks via UI — open deal card, Review tab, Mark Complete
+    if (dl2DealId) {
+      const card = page.getByTestId(`deal-card-${dl2DealId}`);
+      if (await card.isVisible({ timeout: t(3_000) }).catch(() => false)) {
+        await card.click();
+        await expect(page.getByTestId(dealDetail.panel)).toBeVisible({ timeout: t(5_000) });
+        const reviewTab = page.getByTestId(dealDetail.tab("review"));
+        if (await reviewTab.isVisible({ timeout: 1_000 }).catch(() => false)) {
+          await reviewTab.click();
+          await page.waitForTimeout(demoPause.short);
+          const markComplete = page.getByTestId("review-mark-complete");
+          if (await markComplete.isVisible({ timeout: 1_000 }).catch(() => false)) {
+            await markComplete.click();
+            await page.waitForTimeout(demoPause.medium);
+          }
         }
-      }
-      // Close the panel
-      const closeBtn = page.getByTestId(dealDetail.panel).getByRole("button", { name: /close/i }).first();
-      if (await closeBtn.isVisible({ timeout: 500 }).catch(() => false)) {
-        await closeBtn.click();
-        await page.waitForTimeout(demoPause.short);
+        const closeBtn = page.getByTestId(dealDetail.close);
+        if (await closeBtn.isVisible({ timeout: 500 }).catch(() => false)) {
+          await closeBtn.click();
+          await page.waitForTimeout(demoPause.short);
+        }
       }
     }
 
@@ -257,25 +258,28 @@ test.describe("DL-2: Move deals between stages", () => {
     expect(dl2DealId, "DL-2 deal ID should be set from previous test").toBeTruthy();
 
     // Complete pending review tasks via UI
-    if (dl2DealText) {
+    if (dl2DealId) {
       await page.goto(PIPELINE_URL);
       await expect(page.getByText("Acquisition Pipeline").first()).toBeVisible({ timeout: t(10_000) });
-      await page.getByText(dl2DealText).first().click();
-      await expect(page.getByTestId(dealDetail.panel)).toBeVisible({ timeout: t(5_000) });
-      const reviewTab = page.getByTestId(dealDetail.tab("review"));
-      if (await reviewTab.isVisible({ timeout: 1_000 }).catch(() => false)) {
-        await reviewTab.click();
-        await page.waitForTimeout(demoPause.short);
-        const markComplete = page.getByTestId("review-mark-complete");
-        if (await markComplete.isVisible({ timeout: 1_000 }).catch(() => false)) {
-          await markComplete.click();
-          await page.waitForTimeout(demoPause.medium);
+      const card = page.getByTestId(`deal-card-${dl2DealId}`);
+      if (await card.isVisible({ timeout: t(3_000) }).catch(() => false)) {
+        await card.click();
+        await expect(page.getByTestId(dealDetail.panel)).toBeVisible({ timeout: t(5_000) });
+        const reviewTab = page.getByTestId(dealDetail.tab("review"));
+        if (await reviewTab.isVisible({ timeout: 1_000 }).catch(() => false)) {
+          await reviewTab.click();
+          await page.waitForTimeout(demoPause.short);
+          const markComplete = page.getByTestId("review-mark-complete");
+          if (await markComplete.isVisible({ timeout: 1_000 }).catch(() => false)) {
+            await markComplete.click();
+            await page.waitForTimeout(demoPause.medium);
+          }
         }
-      }
-      const closeBtn = page.getByTestId(dealDetail.panel).getByRole("button", { name: /close/i }).first();
-      if (await closeBtn.isVisible({ timeout: 500 }).catch(() => false)) {
-        await closeBtn.click();
-        await page.waitForTimeout(demoPause.short);
+        const closeBtn = page.getByTestId(dealDetail.close);
+        if (await closeBtn.isVisible({ timeout: 500 }).catch(() => false)) {
+          await closeBtn.click();
+          await page.waitForTimeout(demoPause.short);
+        }
       }
     }
 
