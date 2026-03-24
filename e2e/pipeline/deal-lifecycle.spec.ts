@@ -7,7 +7,7 @@
 import { test, expect } from "./fixtures";
 import { t, demoPause, login, apiLogin, TEST_DATA_PREFIX } from "../helpers";
 import { ORG_ID, PIPELINE_URL, moveDealViaContextMenu } from "./helpers";
-import { pipeline, dealDetail } from "./testids";
+import { pipeline, dealCard, dealDetail } from "./testids";
 
 const DEAL_NAME = `${TEST_DATA_PREFIX} Lifecycle ${Date.now()}`;
 let dl2DealId: string;
@@ -196,7 +196,7 @@ test.describe("DL-2: Move deals between stages", () => {
 
     // Complete pending review tasks via UI — open deal card, Review tab, Mark Complete
     if (dl2DealId) {
-      const card = page.getByTestId(`deal-card-${dl2DealId}`);
+      const card = page.getByTestId(dealCard.card(dl2DealId));
       if (await card.isVisible({ timeout: t(3_000) }).catch(() => false)) {
         await card.click();
         await expect(page.getByTestId(dealDetail.panel)).toBeVisible({ timeout: t(5_000) });
@@ -261,7 +261,7 @@ test.describe("DL-2: Move deals between stages", () => {
     if (dl2DealId) {
       await page.goto(PIPELINE_URL);
       await expect(page.getByText("Acquisition Pipeline").first()).toBeVisible({ timeout: t(10_000) });
-      const card = page.getByTestId(`deal-card-${dl2DealId}`);
+      const card = page.getByTestId(dealCard.card(dl2DealId));
       if (await card.isVisible({ timeout: t(3_000) }).catch(() => false)) {
         await card.click();
         await expect(page.getByTestId(dealDetail.panel)).toBeVisible({ timeout: t(5_000) });

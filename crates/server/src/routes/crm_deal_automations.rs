@@ -1267,12 +1267,13 @@ pub async fn provision_won_deal(
     } else {
         let pid = DbUuid::new();
         let project_name = format!("{} — {}", deal.name, company_name);
+        let repo_path = format!("deals/{}", deal_id);
         if let Err(e) = sqlx::query(
-            "INSERT INTO projects (id, name, git_repo_path, client_id, organization_id, created_at, updated_at) VALUES (?, ?, '', ?, ?, datetime('now','subsec'), datetime('now','subsec'))"
+            "INSERT INTO projects (id, name, git_repo_path, organization_id, created_at, updated_at) VALUES (?, ?, ?, ?, datetime('now','subsec'), datetime('now','subsec'))"
         )
         .bind(&pid)
         .bind(&project_name)
-        .bind(&client_id)
+        .bind(&repo_path)
         .bind(&deal.organization_id)
         .execute(pool).await
         {

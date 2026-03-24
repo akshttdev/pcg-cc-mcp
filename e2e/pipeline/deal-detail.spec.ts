@@ -7,7 +7,7 @@
 import { test, expect } from "./fixtures";
 import { t, demoPause, login, apiLogin, TEST_DATA_PREFIX } from "../helpers";
 import { ORG_ID, PIPELINE_URL, moveDealViaContextMenu, waitForDealStage } from "./helpers";
-import { dealDetail, callScheduling, deck } from "./testids";
+import { dealCard, dealDetail, callScheduling, deck } from "./testids";
 
 let dealId: string;
 let dealName: string;
@@ -58,10 +58,12 @@ test.describe("Deal Detail Features (DD-1 to DD-5)", () => {
     const deal = (await dealRes.json()).data || (await dealRes.json());
     dealId = deal.id;
 
-    // Navigate and open deal
+    // Navigate and open deal via card testid (sets stageName for tab visibility)
     await page.goto(PIPELINE_URL);
     await expect(page.getByText("Acquisition Pipeline")).toBeVisible({ timeout: t(15_000) });
-    await page.getByText(dealText).first().click();
+    // Wait for kanban to load the new deal, click card (sets stageName for tab visibility)
+    await expect(page.getByTestId(dealCard.card(dealId))).toBeVisible({ timeout: t(15_000) });
+    await page.getByTestId(dealCard.card(dealId)).click();
     await expect(page.getByTestId(dealDetail.panel)).toBeVisible({ timeout: t(10_000) });
     await page.waitForTimeout(demoPause.short);
   });

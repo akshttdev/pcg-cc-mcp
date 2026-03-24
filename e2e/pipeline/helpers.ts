@@ -7,7 +7,7 @@
 import type { Page, APIRequestContext } from "@playwright/test";
 import { expect } from "./fixtures";
 import { t, demoPause } from "../helpers";
-import { dealDetail } from "./testids";
+import { dealCard, dealDetail } from "./testids";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -196,7 +196,7 @@ export async function waitForDealStage(
     const panelOpen = await panel.isVisible({ timeout: 300 }).catch(() => false);
     if (!panelOpen) {
       try {
-        const card = page.getByTestId(`deal-card-${dealId}`);
+        const card = page.getByTestId(dealCard.card(dealId));
         if (await card.isVisible({ timeout: 500 })) {
           await card.click();
           await page.waitForTimeout(500);
