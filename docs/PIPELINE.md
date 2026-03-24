@@ -251,6 +251,39 @@ Won (full provisioning)         Won (full provisioning)     ✅ UNIFIED
 
 ---
 
+## Production Deployment
+
+### Required Environment Variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `ENABLE_AGENT_FLOW_ENGINE` | `0` (off) | Set to `1` to enable the background agent flow worker |
+| `SIMULATE_LLM` | `0` (off) | **Development/testing only.** Set to `1` for simulated agent responses. Never enable in production — agents must produce real work. |
+| `AGENT_FLOW_POLL_INTERVAL` | `15` | Seconds between engine ticks. Lower = faster agent response, higher = less DB load. |
+| `ANTHROPIC_API_KEY` | required if `SIMULATE_LLM=0` | API key for Claude LLM calls |
+| `BACKEND_PORT` | `3002` | Server port |
+| `DATABASE_URL` | `sqlite:dev_assets/db.sqlite` | SQLite database path |
+
+### Deployment Checklist
+
+1. **Database**: Run all migrations. Migration `20260416000000` normalizes BLOB UUIDs to TEXT — run once, idempotent.
+2. **Stage configs**: Verify `crm_pipeline_stages.stage_config` is populated for all agent stages. If blank, re-run `20260414000001_seed_stage_configs.sql`.
+3. **Agent engine**: Set `ENABLE_AGENT_FLOW_ENGINE=1`. Without this, agent flows stay in "planning" indefinitely.
+4. **LLM mode**: Do NOT set `SIMULATE_LLM=1` in production. Real LLM calls require a funded `ANTHROPIC_API_KEY`. Use `SIMULATE_LLM=1` only in dev/staging to validate the pipeline without API costs.
+5. **Cancel window**: Default 30s per stage config. Deals entering agent stages show a toast with Cancel/Run Now. "Run Now" clears the cancel_deadline so the engine picks it up on the next tick.
+6. **Auto-advance**: After each agent completes, the deal auto-moves to the next stage and triggers the next agent. The full chain (Intel→BA→Proposal→Polish) runs without user intervention.
+7. **Error handling**: All pipeline DB writes log at `tracing::error!` level on failure. Monitor logs for `[StageTransition]` and `[AgentFlowEngine]` prefixes.
+8. **Retrigger**: If an agent fails, users can retry via the Agent History tab "Retry Agent" button, or `POST /crm/deals/:id/retrigger-agent`.
+
+### Monitoring
+
+Watch for these log patterns:
+- `[AgentFlowEngine] Found N pending flows` — engine is processing
+- `[AgentFlowEngine] Auto-advancing deal` — deal moving between stages
+- `[AgentFlowEngine] Flow completed successfully` — agent finished
+- `[StageTransition] Failed to` — stage transition error (investigate)
+- `[mark_deal_won] Failed to` — won chain error (client/project creation)
+
 ## Key Source Files
 
 | File | Purpose |
