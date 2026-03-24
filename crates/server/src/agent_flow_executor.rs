@@ -10,6 +10,7 @@ use db::{
     models::{
         agent_flow::{AgentFlow, AgentPhase, FlowStatus},
         agent_flow_event::{AgentFlowEvent, CreateFlowEvent, FlowEventPayload, FlowEventType},
+        crm_deal::CrmDeal,
     },
 };
 use serde_json::{Value, json};
@@ -226,9 +227,18 @@ impl AgentFlowExecutor {
                     agent_name
                 );
 
-                // Auto-advance: if the stage is agent-owned, move deal to next stage
+                // Chain next agent if chain_actions exist, otherwise auto-advance
                 if !deal_id.is_empty() {
-                    self.try_auto_advance_deal(deal_id).await;
+                    let flow_config = self.parse_flow_config(flow);
+                    if self.try_chain_next_agent(deal_id, &flow_config).await {
+                        tracing::info!(
+                            "[AgentFlowEngine] Chained next agent for deal {} (from flow {})",
+                            deal_id,
+                            flow.id
+                        );
+                    } else {
+                        self.try_auto_advance_deal(deal_id).await;
+                    }
                 }
             }
             Err(e) => {
@@ -643,6 +653,79 @@ impl AgentFlowExecutor {
             .as_deref()
             .and_then(|s| serde_json::from_str(s).ok())
             .unwrap_or_else(|| json!({}))
+    }
+
+    /// Check if the completed flow has chained agent actions queued.
+    /// If so, schedule the next agent and pass remaining chain to it.
+    /// Returns true if a chained agent was scheduled (caller should NOT auto-advance).
+    async fn try_chain_next_agent(&self, deal_id: &str, flow_config: &Value) -> bool {
+        let chain_actions = match flow_config.get("chain_actions").and_then(|v| v.as_array()) {
+            Some(actions) if !actions.is_empty() => actions,
+            _ => return false,
+        };
+
+        let next = &chain_actions[0];
+        let agent = match next.get("agent").and_then(|v| v.as_str()) {
+            Some(a) => a,
+            None => return false,
+        };
+        let flow_type = next.get("flow_type").and_then(|v| v.as_str()).unwrap_or("custom");
+
+        // Load the deal for schedule_agent_flow
+        let deal_uuid = DbUuid::from_string(deal_id.to_string());
+        let deal = match CrmDeal::find_by_id(&self.pool, &deal_uuid).await {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::error!("[AgentFlowEngine] Chain: deal {} not found: {}", deal_id, e);
+                return false;
+            }
+        };
+
+        // Schedule the next agent with default 30s cancel window
+        match crate::stage_transition::schedule_agent_flow(&self.pool, &deal, agent, flow_type, 30)
+            .await
+        {
+            Ok((new_flow_id, _)) => {
+                // Pass remaining chain to the new flow
+                let remaining: Vec<&Value> = chain_actions.iter().skip(1).collect();
+                if !remaining.is_empty() {
+                    let remaining_json =
+                        serde_json::to_string(&remaining).unwrap_or_else(|_| "[]".to_string());
+                    if let Err(e) = sqlx::query(
+                        "UPDATE agent_flows SET flow_config = json_set(COALESCE(flow_config, '{}'), '$.chain_actions', json(?1)), updated_at = datetime('now', 'subsec') WHERE id = ?2",
+                    )
+                    .bind(&remaining_json)
+                    .bind(&new_flow_id)
+                    .execute(&self.pool)
+                    .await
+                    {
+                        tracing::error!(
+                            "[AgentFlowEngine] Failed to set chain_actions on chained flow {}: {}",
+                            new_flow_id,
+                            e
+                        );
+                    }
+                }
+
+                tracing::info!(
+                    "[AgentFlowEngine] Chained {} agent (flow {}) for deal {} ({} remaining in chain)",
+                    agent,
+                    new_flow_id,
+                    deal_id,
+                    remaining.len()
+                );
+                true
+            }
+            Err(e) => {
+                tracing::error!(
+                    "[AgentFlowEngine] Failed to schedule chained {} agent for deal {}: {}",
+                    agent,
+                    deal_id,
+                    e
+                );
+                false
+            }
+        }
     }
 }
 

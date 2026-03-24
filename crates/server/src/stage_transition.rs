@@ -260,41 +260,88 @@ pub async fn process_transition(
         }
 
         // Pass 2: agent triggers (can now find the review task for FK)
-        for action in &effective_actions {
-            if let StageAction::TriggerAgent { agent, flow_type } = action {
-                const KNOWN_AGENTS: &[&str] =
-                    &["scout", "astra", "cash", "lux", "nora", "assistant"];
-                if !KNOWN_AGENTS.contains(&agent.to_lowercase().as_str()) {
-                    tracing::warn!(
-                        "[StageTransition] Unknown agent '{}' in stage config — skipping",
-                        agent
-                    );
-                    continue;
-                }
-                if config.auto_trigger {
-                    match schedule_agent_flow(
-                        pool,
-                        deal,
-                        agent,
-                        flow_type,
-                        config.cancel_window_secs,
-                    )
-                    .await
-                    {
-                        Ok((flow_id, deadline)) => {
-                            agent_flow_id = Some(flow_id);
-                            cancel_deadline = Some(deadline);
-                            actions_taken.push(format!("Scheduled {} agent", agent));
+        // Sequential queue: collect all TriggerAgent actions, schedule only the first,
+        // store the rest as chain_actions in the flow's config for the executor to chain.
+        let agent_actions: Vec<&StageAction> = effective_actions
+            .iter()
+            .filter(|a| matches!(a, StageAction::TriggerAgent { .. }))
+            .collect();
+
+        if !agent_actions.is_empty() && config.auto_trigger {
+            let StageAction::TriggerAgent { agent, flow_type } = agent_actions[0] else {
+                unreachable!()
+            };
+
+            const KNOWN_AGENTS: &[&str] =
+                &["scout", "astra", "cash", "lux", "nora", "assistant"];
+            if KNOWN_AGENTS.contains(&agent.to_lowercase().as_str()) {
+                // Build chain_actions from remaining agent triggers
+                let chain_actions: Vec<serde_json::Value> = agent_actions[1..]
+                    .iter()
+                    .filter_map(|a| {
+                        if let StageAction::TriggerAgent { agent, flow_type } = a {
+                            Some(serde_json::json!({
+                                "agent": agent,
+                                "flow_type": flow_type
+                            }))
+                        } else {
+                            None
                         }
-                        Err(e) => {
-                            tracing::error!(
-                                "Failed to schedule agent flow for deal {}: {}",
-                                deal.id,
-                                e
-                            );
+                    })
+                    .collect();
+
+                match schedule_agent_flow(
+                    pool,
+                    deal,
+                    agent,
+                    flow_type,
+                    config.cancel_window_secs,
+                )
+                .await
+                {
+                    Ok((flow_id, deadline)) => {
+                        // Store chain_actions in the flow's config if there are queued agents
+                        if !chain_actions.is_empty() {
+                            let chain_json = serde_json::to_string(&chain_actions)
+                                .unwrap_or_else(|_| "[]".to_string());
+                            if let Err(e) = sqlx::query(
+                                "UPDATE agent_flows SET flow_config = json_set(COALESCE(flow_config, '{}'), '$.chain_actions', json(?1)), updated_at = datetime('now', 'subsec') WHERE id = ?2",
+                            )
+                            .bind(&chain_json)
+                            .bind(&flow_id)
+                            .execute(pool)
+                            .await
+                            {
+                                tracing::error!(
+                                    "[StageTransition] Failed to set chain_actions on flow {}: {}",
+                                    flow_id, e
+                                );
+                            } else {
+                                let chain_names: Vec<&str> = agent_actions[1..]
+                                    .iter()
+                                    .filter_map(|a| if let StageAction::TriggerAgent { agent, .. } = a { Some(agent.as_str()) } else { None })
+                                    .collect();
+                                actions_taken.push(format!("Queued chained agents: {}", chain_names.join(" → ")));
+                            }
                         }
+
+                        agent_flow_id = Some(flow_id);
+                        cancel_deadline = Some(deadline);
+                        actions_taken.push(format!("Scheduled {} agent", agent));
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            "Failed to schedule agent flow for deal {}: {}",
+                            deal.id,
+                            e
+                        );
                     }
                 }
+            } else {
+                tracing::warn!(
+                    "[StageTransition] Unknown agent '{}' in stage config — skipping",
+                    agent
+                );
             }
         }
     } else {
