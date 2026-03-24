@@ -175,7 +175,59 @@ INSERT INTO crm_pipeline_stages (id, pipeline_id, name, stage_type, color, posit
 
 SQL
 
-# 2b. Re-apply stage config seed data.
+# 2b. Seed a deal with a failed agent flow (for visual verification of badges + retry button)
+echo "  Seeding failed-agent-flow deal..."
+sqlite3 "$TEMP_DB" <<'SEEDSQL'
+-- Contact for the seed deal
+INSERT INTO crm_contacts (id, organization_id, first_name, last_name, email, company_name, created_at, updated_at)
+VALUES (
+  'seed-contact-0001-0000-000000000001',
+  '02020202-0202-0202-0202-020202020202',
+  'Seed', 'Contact',
+  'seed@test.local',
+  'SeedCorp',
+  datetime('now'), datetime('now')
+);
+
+-- Deal in Intel stage with a failed agent flow
+INSERT INTO crm_deals (id, organization_id, crm_pipeline_id, crm_stage_id, crm_contact_id, name, description, amount, currency, stage, probability, created_at, updated_at)
+VALUES (
+  'seed-deal-0001-0000-000000000001',
+  '02020202-0202-0202-0202-020202020202',
+  '138ff8ec-6d65-493e-b6a9-0f9fef409968',
+  'a1000002-0000-0000-0000-000000000002',
+  'seed-contact-0001-0000-000000000001',
+  'Seed Deal — Agent Failed',
+  'Deal with a failed Scout agent flow for visual testing',
+  25000, 'USD', 'Intel', 20,
+  datetime('now'), datetime('now')
+);
+
+-- Review task for this deal
+INSERT INTO tasks (id, title, status, crm_deal_id, created_at, updated_at)
+VALUES (
+  'seed-task-0001-0000-0000-000000000001',
+  'Review & approve: intel — Review Phase I intelligence (Scout)',
+  'todo',
+  'seed-deal-0001-0000-000000000001',
+  datetime('now'), datetime('now')
+);
+
+-- Failed agent flow for this deal
+INSERT INTO agent_flows (id, task_id, flow_type, status, current_phase, flow_config, human_approval_required, crm_deal_id, last_error, created_at, updated_at)
+VALUES (
+  'seed-flow-0001-0000-0000-000000000001',
+  'seed-task-0001-0000-0000-000000000001',
+  'research', 'failed', 'execution',
+  '{"agent_name":"scout","flow_type":"research","deal_id":"seed-deal-0001-0000-000000000001","deal_name":"Seed Deal — Agent Failed"}',
+  0,
+  'seed-deal-0001-0000-000000000001',
+  'LLM API timeout after 3 retries',
+  datetime('now', '-1 hour'), datetime('now')
+);
+SEEDSQL
+
+# 2b-cont. Re-apply stage config seed data.
 #     The seed migration (20260414000001) is marked as applied in _sqlx_migrations
 #     but its data was wiped when we cleared entity tables. Re-apply it so that
 #     pipeline tests have agent triggers configured.
