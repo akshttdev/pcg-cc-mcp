@@ -887,14 +887,14 @@ async fn fetch_recent_workflow_results(
     output.push_str("═══════════════════════════════════════════════════════════════\n\n");
 
     // Group events by flow and format them
-    let mut current_flow_id: Option<Uuid> = None;
+    let mut current_flow_id: Option<db::db_uuid::DbUuid> = None;
 
     for event in events.iter().rev() {
         // Parse the event data
         if let Ok(data) = serde_json::from_str::<serde_json::Value>(&event.event_data) {
             // New flow header
-            if current_flow_id != Some(event.agent_flow_id) {
-                current_flow_id = Some(event.agent_flow_id);
+            if current_flow_id.as_ref() != Some(&event.agent_flow_id) {
+                current_flow_id = Some(event.agent_flow_id.clone());
                 output
                     .push_str("───────────────────────────────────────────────────────────────\n");
                 output.push_str(&format!("Workflow: {}\n", event.agent_flow_id));

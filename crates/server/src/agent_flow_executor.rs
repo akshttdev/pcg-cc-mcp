@@ -5,9 +5,12 @@
 //!
 //! Disabled by default. Enable with `ENABLE_AGENT_FLOW_ENGINE=1`.
 
-use db::models::{
-    agent_flow::{AgentFlow, AgentPhase, FlowStatus},
-    agent_flow_event::{AgentFlowEvent, CreateFlowEvent, FlowEventPayload, FlowEventType},
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        agent_flow::{AgentFlow, AgentPhase, FlowStatus},
+        agent_flow_event::{AgentFlowEvent, CreateFlowEvent, FlowEventPayload, FlowEventType},
+    },
 };
 use serde_json::{Value, json};
 use services::services::workflow_llm::{
@@ -110,7 +113,7 @@ impl AgentFlowExecutor {
         // Transition to Executing
         if let Err(e) = AgentFlow::transition_to_phase(
             &self.pool,
-            flow.id,
+            &flow.id,
             AgentPhase::Execution,
             Some("planning"),
         )
@@ -127,9 +130,9 @@ impl AgentFlowExecutor {
         // Emit phase started event
         if let Err(e) = AgentFlowEvent::emit_phase_started(
             &self.pool,
-            flow.id,
+            &flow.id,
             "execution",
-            flow.executor_agent_id,
+            flow.executor_agent_id.as_ref(),
         )
         .await
         {
@@ -187,7 +190,7 @@ impl AgentFlowExecutor {
                 let artifact_id = Uuid::new_v4();
                 if let Err(e) = AgentFlowEvent::emit_artifact_created(
                     &self.pool,
-                    flow.id,
+                    &flow.id,
                     artifact_id,
                     "agent_output",
                     &format!("{} output", agent_name),
@@ -207,7 +210,7 @@ impl AgentFlowExecutor {
                     "UPDATE agent_flows SET flow_config = json_set(COALESCE(flow_config, '{}'), '$.output', ?1), updated_at = datetime('now', 'subsec') WHERE id = ?2",
                 )
                 .bind(&output)
-                .bind(flow.id)
+                .bind(&flow.id)
                 .execute(&self.pool)
                 .await
                 {
@@ -248,7 +251,7 @@ impl AgentFlowExecutor {
                 "UPDATE agent_flows SET retry_count = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2",
             )
             .bind(attempt as i32)
-            .bind(flow.id)
+            .bind(&flow.id)
             .execute(&self.pool)
             .await
             {
@@ -274,7 +277,7 @@ impl AgentFlowExecutor {
                         "UPDATE agent_flows SET last_error = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2",
                     )
                     .bind(e.to_string())
-                    .bind(flow.id)
+                    .bind(&flow.id)
                     .execute(&self.pool)
                     .await
                     {
@@ -499,7 +502,7 @@ impl AgentFlowExecutor {
             return json!({"error": format!("Content too large ({} > {} bytes)", content.len(), MAX_CONTENT_LEN)}).to_string();
         }
 
-        let flow_id = match Uuid::parse_str(flow_id_str) {
+        let flow_id = match DbUuid::parse(flow_id_str) {
             Ok(id) => id,
             Err(_) => {
                 tracing::debug!(
@@ -514,7 +517,7 @@ impl AgentFlowExecutor {
         match AgentFlowEvent::create(
             &self.pool,
             CreateFlowEvent {
-                agent_flow_id: flow_id,
+                agent_flow_id: flow_id.clone(),
                 event_type: FlowEventType::ArtifactCreated,
                 event_data: FlowEventPayload::ArtifactCreated {
                     artifact_id,
@@ -531,7 +534,7 @@ impl AgentFlowExecutor {
                 let _ = AgentFlowEvent::create(
                     &self.pool,
                     CreateFlowEvent {
-                        agent_flow_id: flow_id,
+                        agent_flow_id: flow_id.clone(),
                         event_type: FlowEventType::ArtifactUpdated,
                         event_data: FlowEventPayload::ArtifactUpdated {
                             artifact_id,
@@ -553,7 +556,7 @@ impl AgentFlowExecutor {
         if let Err(e) = AgentFlowEvent::create(
             &self.pool,
             CreateFlowEvent {
-                agent_flow_id: flow.id,
+                agent_flow_id: flow.id.clone(),
                 event_type: FlowEventType::FlowCompleted,
                 event_data: FlowEventPayload::FlowCompleted {
                     verification_score: None,
@@ -574,7 +577,7 @@ impl AgentFlowExecutor {
         if let Err(e) = sqlx::query(
             "UPDATE agent_flows SET status = 'completed', execution_completed_at = datetime('now', 'subsec'), updated_at = datetime('now', 'subsec') WHERE id = ?1",
         )
-        .bind(flow.id)
+        .bind(&flow.id)
         .execute(&self.pool)
         .await
         {
@@ -587,7 +590,7 @@ impl AgentFlowExecutor {
         if let Err(e) = AgentFlowEvent::create(
             &self.pool,
             CreateFlowEvent {
-                agent_flow_id: flow.id,
+                agent_flow_id: flow.id.clone(),
                 event_type: FlowEventType::FlowFailed,
                 event_data: FlowEventPayload::FlowFailed {
                     error: error.to_string(),
@@ -609,7 +612,7 @@ impl AgentFlowExecutor {
             "UPDATE agent_flows SET status = 'failed', last_error = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2",
         )
         .bind(error)
-        .bind(flow.id)
+        .bind(&flow.id)
         .execute(&self.pool)
         .await
         {

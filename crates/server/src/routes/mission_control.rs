@@ -171,7 +171,7 @@ pub async fn get_dashboard(
 
             // Get events count
             let events_count =
-                db::models::agent_flow_event::AgentFlowEvent::find_by_flow(pool, flow.id)
+                db::models::agent_flow_event::AgentFlowEvent::find_by_flow(pool, &flow.id)
                     .await
                     .map(|e| e.len())
                     .unwrap_or(0);

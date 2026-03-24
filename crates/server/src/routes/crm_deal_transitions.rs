@@ -539,7 +539,7 @@ pub async fn get_deal_agent_flows(
 
     let mut result = Vec::new();
     for flow in flows {
-        let events = db::models::agent_flow_event::AgentFlowEvent::find_by_flow(pool, flow.id)
+        let events = db::models::agent_flow_event::AgentFlowEvent::find_by_flow(pool, &flow.id)
             .await
             .unwrap_or_default();
 
