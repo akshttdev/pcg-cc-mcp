@@ -191,7 +191,7 @@ impl AgentFlowExecutor {
                 if let Err(e) = AgentFlowEvent::emit_artifact_created(
                     &self.pool,
                     &flow.id,
-                    artifact_id,
+                    artifact_id.into(),
                     "agent_output",
                     &format!("{} output", agent_name),
                     "execution",
@@ -525,7 +525,7 @@ impl AgentFlowExecutor {
                 agent_flow_id: flow_id.clone(),
                 event_type: FlowEventType::ArtifactCreated,
                 event_data: FlowEventPayload::ArtifactCreated {
-                    artifact_id,
+                    artifact_id: artifact_id.into(),
                     artifact_type: "text".to_string(),
                     title: title.to_string(),
                     phase: "execution".to_string(),
@@ -542,7 +542,7 @@ impl AgentFlowExecutor {
                         agent_flow_id: flow_id.clone(),
                         event_type: FlowEventType::ArtifactUpdated,
                         event_data: FlowEventPayload::ArtifactUpdated {
-                            artifact_id,
+                            artifact_id: artifact_id.into(),
                             changes: json!({"content": content}),
                         },
                     },
