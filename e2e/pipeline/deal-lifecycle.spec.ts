@@ -79,7 +79,7 @@ test.describe("DL-1: Create and track a deal through the pipeline", () => {
 
     // When: click the deal card
     await page.getByText(dealText).first().click();
-    const panel = page.locator('[role="dialog"]').last();
+    const panel = page.getByRole("dialog");
     await expect(panel).toBeVisible({ timeout: t(10_000) });
 
     // Then: panel has deal name

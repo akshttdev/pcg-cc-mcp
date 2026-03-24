@@ -82,7 +82,7 @@ export async function openDealDetail(page: Page, dealNameFragment: string) {
   await card.first().click();
 
   // Wait for detail panel
-  const dialog = page.locator('[role="dialog"]');
+  const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible({ timeout: t(10_000) });
   await page.waitForTimeout(demoPause.short);
   return dialog;
@@ -100,7 +100,7 @@ export async function clickDetailTab(page: Page, tabName: string) {
 /** Close the deal detail panel. */
 export async function closeDealDetail(page: Page) {
   const closeBtn = page
-    .locator('[role="dialog"]')
+    .getByRole("dialog")
     .getByRole("button", { name: /close/i })
     .first();
   if (await closeBtn.isVisible().catch(() => false)) {
