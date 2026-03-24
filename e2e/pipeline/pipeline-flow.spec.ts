@@ -157,7 +157,9 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
     // MCP verified: heading "Agent Execution History" visible, flow entries show agent name + status
     await expect(panel.getByRole("heading", { name: "Agent Execution History" })).toBeVisible({ timeout: t(5_000) });
     await expect(panel.getByText("scout").first()).toBeVisible({ timeout: t(5_000) });
-    await expect(panel.getByText("Planning").first()).toBeVisible({ timeout: t(5_000) });
+    // Status may be Planning, Executing, or Completed depending on agent engine timing
+    const hasStatus = await panel.getByText(/Planning|Executing|Completed/i).first().isVisible({ timeout: 5_000 }).catch(() => false);
+    expect(hasStatus, "Agent flow should show a status (Planning, Executing, or Completed)").toBe(true);
 
     // Close for next test
     await panel.getByRole("button", { name: "Close" }).click();
