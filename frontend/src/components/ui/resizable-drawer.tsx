@@ -22,6 +22,8 @@ interface ResizableDrawerProps {
   storageKey?: string;
   className?: string;
   'data-testid'?: string;
+  /** Called when the drawer's expand toggle is activated */
+  onExpand?: () => void;
 }
 
 export function ResizableDrawer({
@@ -33,6 +35,7 @@ export function ResizableDrawer({
   storageKey = 'orcha:drawer-width',
   className,
   'data-testid': dataTestId,
+  onExpand,
 }: ResizableDrawerProps) {
   const { sidebarCollapsed } = useViewStore();
   const isDraggingRef = useRef(false);
@@ -71,6 +74,11 @@ export function ResizableDrawer({
   }, [sidebarCollapsed, width, minWidth, isExpanded, getMaxWidth]);
 
   const toggleExpand = useCallback(() => {
+    if (onExpand) {
+      // Delegate expand to parent (e.g., switch to fullscreen dialog)
+      onExpand();
+      return;
+    }
     setIsExpanded((prev) => {
       if (!prev) {
         // Expanding — save current width, go to max
@@ -84,7 +92,7 @@ export function ResizableDrawer({
         return false;
       }
     });
-  }, [width, defaultWidth, getMaxWidth]);
+  }, [width, defaultWidth, getMaxWidth, onExpand]);
 
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
