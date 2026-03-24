@@ -132,11 +132,11 @@ test.describe("Agent Automations (AA-1 to AA-7)", () => {
   //     And a review task is created: "Review business report (Astra)"
 
   test("AA-2: auto-advance to BA — Astra triggers + review task created", async ({ page, request }) => {
-    test.setTimeout(90_000);
+    test.setTimeout(45_000);
     await apiLogin(request);
 
     // Scout completes → deal auto-advances to BA → Astra triggers
-    const reached = await waitForDealStage(page, request, dealId, "Business Analysis", 60_000);
+    const reached = await waitForDealStage(page, request, dealId, "Business Analysis", 30_000);
     expect(reached, "Deal should auto-advance to BA after Scout completes").toBe(true);
 
     // Then: review task created with title mentioning "business report" or "Astra"
@@ -160,18 +160,18 @@ test.describe("Agent Automations (AA-1 to AA-7)", () => {
   //     And a review task is created: "Review and approve proposal"
 
   test("AA-3: advance through Discovery to Proposal — Cash triggers + review task created", async ({ page, request }) => {
-    test.setTimeout(120_000);
+    test.setTimeout(45_000);
     await apiLogin(request);
 
     // Astra completes → deal auto-advances to Discovery (human stage, stops)
-    const reachedDiscovery = await waitForDealStage(page, request, dealId, "Discovery", 60_000);
+    const reachedDiscovery = await waitForDealStage(page, request, dealId, "Discovery", 30_000);
     expect(reachedDiscovery, "Deal should auto-advance to Discovery after Astra completes").toBe(true);
 
     // Manually advance from Discovery to Proposal
     await moveDealViaContextMenu(page, dealText, "Proposal");
     await page.waitForTimeout(3_000);
 
-    const reached = await waitForDealStage(page, request, dealId, "Proposal", 60_000);
+    const reached = await waitForDealStage(page, request, dealId, "Proposal", 30_000);
     expect(reached, "Deal should reach Proposal after Discovery advance").toBe(true);
 
     // Then: review task created mentioning "proposal" or "Cash"
@@ -213,7 +213,7 @@ test.describe("Agent Automations (AA-1 to AA-7)", () => {
   //     And Cash uses Astra's enhanced report to write the proposal
 
   test("AA-4: Proposal triggers Astra Pass 2 then chains to Cash", async ({ page, request }) => {
-    test.setTimeout(120_000);
+    test.setTimeout(45_000);
     await apiLogin(request);
 
     // AA-3 already moved the deal to Proposal — verify it's there
@@ -222,14 +222,14 @@ test.describe("Agent Automations (AA-1 to AA-7)", () => {
     const currentDeal = (await dealRes.json()).data || (await dealRes.json());
     if (currentDeal.stage?.toLowerCase() !== "proposal") {
       // Need to advance through Discovery first
-      const reachedDiscovery = await waitForDealStage(page, request, dealId, "Discovery", 60_000);
+      const reachedDiscovery = await waitForDealStage(page, request, dealId, "Discovery", 30_000);
       if (reachedDiscovery) {
         await moveDealViaContextMenu(page, dealText, "Proposal");
         await page.waitForTimeout(3_000);
       }
     }
 
-    const reachedProposal = await waitForDealStage(page, request, dealId, "Proposal", 60_000);
+    const reachedProposal = await waitForDealStage(page, request, dealId, "Proposal", 30_000);
     expect(reachedProposal, "Deal should be in Proposal stage").toBe(true);
 
     // Verify both Astra P2 and Cash flows exist
@@ -256,11 +256,11 @@ test.describe("Agent Automations (AA-1 to AA-7)", () => {
   //     And proposal_text is required before entry (soft gate)
 
   test("AA-5: auto-advance to Polish — Lux triggers + review task created", async ({ page, request }) => {
-    test.setTimeout(90_000);
+    test.setTimeout(45_000);
     await apiLogin(request);
 
     // Cash completes → deal auto-advances to Polish → Lux triggers
-    const reached = await waitForDealStage(page, request, dealId, "Polish", 60_000);
+    const reached = await waitForDealStage(page, request, dealId, "Polish", 30_000);
     expect(reached, "Deal should auto-advance to Polish after Cash completes").toBe(true);
 
     // Then: review task created mentioning "deck" or "Lux"

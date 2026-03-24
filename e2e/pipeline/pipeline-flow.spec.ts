@@ -185,7 +185,7 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
   //   Then the deal reaches Proposal stage
 
   test("agent auto-advance: Intel → BA → Discovery → Proposal (setup for DD-2)", async ({ page, request }) => {
-    test.setTimeout(90_000);
+    test.setTimeout(45_000);
     await apiLogin(request);
 
     // Helper to complete pending review tasks (so advance isn't blocked)
@@ -238,7 +238,7 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
     }
 
     // Discovery is human-owned — manually advance to Proposal
-    const reachedDiscovery = await waitForStage("Discovery", 60_000);
+    const reachedDiscovery = await waitForStage("Discovery", 30_000);
     if (reachedDiscovery) {
       // Advance from Discovery to Proposal via API
       const dealInfoRes = await request.get(`/api/crm/deals/${dealId}`);
@@ -255,7 +255,7 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
       }
     }
 
-    const reachedProposal = await waitForStage("Proposal", 60_000);
+    const reachedProposal = await waitForStage("Proposal", 30_000);
     expect(reachedProposal, "Deal should reach Proposal after Discovery advance").toBe(true);
 
     // Refresh the kanban to see updated positions
@@ -407,7 +407,7 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
 
     // Proposal → Polish: Cash agent auto-advances to Polish (agent stage)
     // Polish → Invoice: Lux agent auto-advances to Invoice (human stage)
-    await waitForStage("Invoice", 60_000);
+    await waitForStage("Invoice", 30_000);
 
     // Invoice → Negotiation → Won: human stages, move manually
     await page.reload();
