@@ -776,8 +776,21 @@ Old spec files kept for now (agent-automations, deal-detail, deal-lifecycle).
 Fixed to use `bind_uuid_blob()`. Rebuild pending. Still fails — need to verify the INSERT
 actually reaches the database. Added tracing logs to `schedule_agent_flow`.
 
-**Next steps (in order)**:
-1. Verify AA-1 agent_flow INSERT works (check DB + logs after rebuild)
-2. If still failing: check if `process_transition` → `build_effective_entry_actions` → `TriggerAgent` path actually fires
-3. Once AA-1 GREEN: commit, move to DL-3/DD-3 (Won chain — delivery deal + invite link)
-4. Each fix: one at a time, run test, confirm GREEN, commit
+**AA-1 agent_flow fix VERIFIED via MCP** — flow created in DB with flow_type="research".
+Root cause: FK constraint failed because task_id bound as BLOB but tasks.id is TEXT.
+Fix: bind task_id as TEXT, find existing review task or create placeholder.
+
+**Remaining issue**: test still fails because `get_deal_agent_flows` API returns non-200.
+Likely cause: `apiLogin(request)` not called in AA-1 test (auth not shared via request fixture).
+Also: placeholder task creation needs to be replaced — should use the review task that
+CreateReviewTask creates. Reorder on_enter_actions so CreateReviewTask runs first.
+
+**User feedback**: "no that isn't fine for now. fix it" — referring to placeholder task hack.
+Need to properly wire the review task ID to the agent flow.
+
+**Next steps**:
+1. Add `apiLogin(request)` to AA-1 test
+2. Reorder entry actions: CreateReviewTask first, TriggerAgent second
+3. Pass the created task ID to schedule_agent_flow
+4. Run test, confirm GREEN
+5. Move to next RED test (DL-3/DD-3)
