@@ -610,6 +610,21 @@ export const crmDealsApi = {
     });
     return handleApiResponse<import('@/types/crm').DealTranscript>(response);
   },
+
+  /** List data sources linked to a deal */
+  listDataSources: async (dealId: string): Promise<import('@/types/crm').DealDataSource[]> => {
+    const response = await makeRequest(`/api/crm/deals/${dealId}/data-sources`);
+    return handleApiResponse<import('@/types/crm').DealDataSource[]>(response);
+  },
+
+  /** Link a data source to a deal with optional agent/stage scoping */
+  linkDataSource: async (dealId: string, data: { data_source_id: string; relevant_stages?: string[]; relevant_agents?: string[] }): Promise<import('@/types/crm').DealDataSource> => {
+    const response = await makeRequest(`/api/crm/deals/${dealId}/data-sources`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<import('@/types/crm').DealDataSource>(response);
+  },
 };
 
 // CRM Activities API

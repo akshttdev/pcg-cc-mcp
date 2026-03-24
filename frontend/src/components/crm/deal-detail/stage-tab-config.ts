@@ -27,8 +27,8 @@ export const ALL_TAB_VALUES = [
 /** Tabs visible per stage (lowercase, normalized). Falls back to all tabs for unknown stages. */
 export const STAGE_TAB_MAP: Record<string, readonly string[]> = {
   'lead':                ['overview', 'activity'],
-  'intel':               ['overview', 'intel', 'review', 'activity', 'agents'],
-  'business_analysis':   ['overview', 'intel', 'review', 'activity', 'agents'],
+  'intel':               ['overview', 'intel', 'transcripts', 'review', 'activity', 'agents'],
+  'business_analysis':   ['overview', 'intel', 'transcripts', 'review', 'activity', 'agents'],
   'discovery':           ['overview', 'intel', 'transcripts', 'review', 'activity', 'agents'],
   'proposal':            ['overview', 'intel', 'transcripts', 'proposal', 'review', 'activity', 'agents'],
   'build_proposal':      ['overview', 'intel', 'transcripts', 'proposal', 'review', 'activity', 'agents'],

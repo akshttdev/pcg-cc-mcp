@@ -14,12 +14,33 @@
 ### W1 Discovery (2026-03-24)
 **Key discovery**: Discovery stage already exists in `create_sales_pipeline()` (position 2) and has stage_config seed, STAGE_DESCRIPTIONS, and getStageOwner() entries. The gap is only for **existing pipelines** created before that code (e.g., Sirak Studios Acquisition with the 9-stage rebuild).
 
-**Changes made**:
+**W1 changes**:
 - `stage_transition.rs` — added `RequireTranscriptOrSource` variant to `StageValidation` enum + handler + `check_deal_has_transcript_or_source()` helper
 - `20260417000000_discovery_stage_and_transcript_validation.sql` — migration: inserts Discovery stage into Sales pipelines missing it (position 3, shifts others), updates all Discovery stage_configs with the new exit validation
 - `shared/testids.ts` — added `discovery` testid group
 - `OverviewTab.tsx` — added Discovery hero card (call status badge, Schedule Call, Link Transcript CTA), `onSwitchTab` prop for tab navigation, also added `present_&_invoice` to call scheduling stage check
 - `deal-detail/index.tsx` — wired `onSwitchTab={setActiveTab}` to OverviewTab
+
+### W2 Sequential Agent Queue (2026-03-24)
+**Changes**:
+- `stage_transition.rs` — sequential agent scheduling: collect all TriggerAgent actions, schedule first, store remaining as `chain_actions` in flow_config JSON
+- `agent_flow_executor.rs` — `try_chain_next_agent()`: reads chain_actions after flow completion, schedules next agent with remaining chain, skips auto-advance until chain is empty
+- `20260417000001_proposal_sequential_agents.sql` — update Proposal stage_config with Astra deep_research first, Cash proposal second
+
+### W6 Design Revision: Data Source Scoping (2026-03-24)
+**User feedback**: Not all linked sources are relevant for every agent. Sources should be taggable by stage/agent relevance. Also, sources should be linkable from any input stage, not just the Transcripts tab.
+
+**Revised design**:
+- `deal_data_sources` join table has `relevant_stages TEXT` — JSON array of stage names the source is relevant for (e.g. `["proposal", "polish"]`). NULL = available to all agents.
+- Agent executor's `load_deal_context()` filters sources by current deal stage when loading context
+- "Add Source" action available from Overview tab at any stage (compact inline form)
+- Transcripts & Sources tab remains the primary management view with full link/unlink UI
+- Backlog: data source picker dialog (browse org's data library instead of paste UUID), file upload → auto-create source
+
+### Critical bug found: auto-advance skips review tasks (2026-03-24)
+**Issue**: `try_auto_advance_deal()` only checked for pending agent flows but NOT pending review tasks. Agents would complete → deal auto-advances → review task sits untouched in 'todo' status. This defeats the purpose of review gates.
+**Fix**: Added pending deal-linked task check (via `crm_deal_id`, not title matching) to `try_auto_advance_deal()`. Operator must complete/cancel review tasks in the UI before auto-advance proceeds.
+**Impact**: All agent-owned stages now properly gate on review task completion. This is a **behavioral change** — previously auto-advance was instant after agent completion, now it waits for human review.
 
 ---
 

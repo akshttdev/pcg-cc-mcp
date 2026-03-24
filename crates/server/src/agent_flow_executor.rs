@@ -160,8 +160,17 @@ impl AgentFlowExecutor {
             .and_then(|v| v.as_str())
             .unwrap_or("");
 
-        // Build context from deal data
-        let deal_context = self.load_deal_context(deal_id).await;
+        // Build context from deal data (scoped to this agent + deal's current stage)
+        let deal_stage: Option<String> = sqlx::query_scalar(
+            "SELECT s.name FROM crm_deals d JOIN crm_pipeline_stages s ON d.crm_stage_id = s.id WHERE d.id = ?1",
+        )
+        .bind(deal_id)
+        .fetch_optional(&self.pool)
+        .await
+        .ok()
+        .flatten();
+        let stage_ref = deal_stage.as_deref();
+        let deal_context = self.load_deal_context(deal_id, Some(agent_name), stage_ref).await;
 
         // Build system prompt based on agent name
         let system_prompt = build_agent_prompt(agent_name, &deal_context);
@@ -398,7 +407,8 @@ impl AgentFlowExecutor {
                     .get("deal_id")
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
-                self.load_deal_context(deal_id).await
+                // Tool call doesn't have agent/stage scope — load all sources
+                self.load_deal_context(deal_id, None, None).await
             }
             "update_deal_field" => {
                 let deal_id = call
@@ -444,7 +454,7 @@ impl AgentFlowExecutor {
 
     // ── Tool Implementations ────────────────────────────────────────────
 
-    async fn load_deal_context(&self, deal_id: &str) -> String {
+    async fn load_deal_context(&self, deal_id: &str, agent_name: Option<&str>, stage_name: Option<&str>) -> String {
         #[derive(sqlx::FromRow)]
         struct DealRow {
             name: String,
@@ -463,18 +473,72 @@ impl AgentFlowExecutor {
         .ok()
         .flatten();
 
-        match deal {
-            Some(d) => json!({
-                "name": d.name,
-                "description": d.description,
-                "stage": d.stage,
-                "amount": d.amount,
-                "currency": d.currency,
-                "has_proposal": d.proposal_text.is_some(),
-            })
-            .to_string(),
-            None => json!({"error": "Deal not found"}).to_string(),
+        let Some(d) = deal else {
+            return json!({"error": "Deal not found"}).to_string();
+        };
+
+        // Load linked transcripts
+        #[derive(sqlx::FromRow)]
+        struct TranscriptRow {
+            summary: Option<String>,
+            transcript_text: Option<String>,
         }
+        let transcripts: Vec<TranscriptRow> = sqlx::query_as(
+            "SELECT summary, transcript_text FROM deal_transcripts WHERE deal_id = ?1 ORDER BY created_at DESC LIMIT 5",
+        )
+        .bind(deal_id)
+        .fetch_all(&self.pool)
+        .await
+        .unwrap_or_default();
+
+        let transcript_summaries: Vec<String> = transcripts
+            .iter()
+            .filter_map(|t| t.summary.clone().or(t.transcript_text.clone()))
+            .collect();
+
+        // Load linked data sources (via join table), filtered by agent + stage scope
+        #[derive(sqlx::FromRow)]
+        struct SourceRow {
+            title: Option<String>,
+            content: Option<String>,
+        }
+        let agent_filter = agent_name.unwrap_or("");
+        let stage_filter = stage_name.unwrap_or("");
+        let sources: Vec<SourceRow> = sqlx::query_as(
+            r#"SELECT ds.title, SUBSTR(ds.content, 1, 10000) as content
+               FROM deal_data_sources dds
+               JOIN data_sources ds ON dds.data_source_id = ds.id
+               WHERE dds.deal_id = ?1
+                 AND (dds.relevant_agents IS NULL OR dds.relevant_agents LIKE '%"' || ?2 || '"%')
+                 AND (dds.relevant_stages IS NULL OR dds.relevant_stages LIKE '%"' || ?3 || '"%')
+               ORDER BY dds.created_at DESC LIMIT 5"#,
+        )
+        .bind(deal_id)
+        .bind(agent_filter)
+        .bind(stage_filter)
+        .fetch_all(&self.pool)
+        .await
+        .unwrap_or_default();
+
+        let source_items: Vec<Value> = sources
+            .iter()
+            .map(|s| json!({
+                "title": s.title,
+                "content": s.content,
+            }))
+            .collect();
+
+        json!({
+            "name": d.name,
+            "description": d.description,
+            "stage": d.stage,
+            "amount": d.amount,
+            "currency": d.currency,
+            "has_proposal": d.proposal_text.is_some(),
+            "transcripts": transcript_summaries,
+            "linked_sources": source_items,
+        })
+        .to_string()
     }
 
     async fn update_deal_field(&self, deal_id: &str, field: &str, value: &str) -> String {
@@ -948,9 +1012,9 @@ impl AgentFlowExecutor {
             deal_id
         );
 
-        // Load real deal context for realistic output
+        // Load real deal context for realistic output (simulated — no agent/stage scope)
         let context = if !deal_id.is_empty() {
-            self.load_deal_context(deal_id).await
+            self.load_deal_context(deal_id, None, None).await
         } else {
             "No deal context available".to_string()
         };

@@ -1523,6 +1523,75 @@ pub async fn link_deal_transcript(
     Ok(Json(ApiResponse::success(record)))
 }
 
+// ── POST /crm/deals/:id/data-sources ─────────────────────────────────────────
+/// Link a data source from the data library to a deal.
+
+pub async fn link_deal_data_source(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<String>,
+    Json(body): Json<db::models::crm_deal::LinkDataSourceRequest>,
+) -> Result<Json<ApiResponse<db::models::crm_deal::DealDataSource>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let deal_id = parse_db_uuid_param(&id, "deal ID")?;
+    require_deal_org_access(&access_context, pool, &deal_id).await?;
+
+    let link_id = DbUuid::new();
+    let data_source_id = DbUuid::parse(&body.data_source_id)
+        .map_err(|_| ApiError::BadRequest("Invalid data_source_id".to_string()))?;
+
+    let relevant_stages_json = body.relevant_stages.as_ref()
+        .and_then(|v| serde_json::to_string(v).ok());
+    let relevant_agents_json = body.relevant_agents.as_ref()
+        .and_then(|v| serde_json::to_string(v).ok());
+
+    sqlx::query(
+        "INSERT INTO deal_data_sources (id, deal_id, data_source_id, relevant_stages, relevant_agents, linked_by, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now','subsec'))"
+    )
+    .bind(&link_id)
+    .bind(&deal_id)
+    .bind(&data_source_id)
+    .bind(&relevant_stages_json)
+    .bind(&relevant_agents_json)
+    .bind(access_context.user_id.to_string())
+    .execute(pool)
+    .await
+    .map_err(|e| ApiError::BadRequest(format!("Failed to link data source: {}", e)))?;
+
+    let record = sqlx::query_as::<_, db::models::crm_deal::DealDataSource>(
+        "SELECT * FROM deal_data_sources WHERE id = ?",
+    )
+    .bind(&link_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| ApiError::BadRequest(format!("DB error: {}", e)))?;
+
+    Ok(Json(ApiResponse::success(record)))
+}
+
+// ── GET /crm/deals/:id/data-sources ──────────────────────────────────────────
+/// List data sources linked to a deal.
+
+pub async fn list_deal_data_sources(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<Vec<db::models::crm_deal::DealDataSource>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let deal_id = parse_db_uuid_param(&id, "deal ID")?;
+    require_deal_org_access(&access_context, pool, &deal_id).await?;
+
+    let sources = sqlx::query_as::<_, db::models::crm_deal::DealDataSource>(
+        "SELECT * FROM deal_data_sources WHERE deal_id = ? ORDER BY created_at ASC",
+    )
+    .bind(&deal_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| ApiError::BadRequest(format!("DB error: {}", e)))?;
+
+    Ok(Json(ApiResponse::success(sources)))
+}
+
 // ── POST /crm/deals/:id/generate-invite ──────────────────────────────────────
 /// Generate a token-based invite link for the deal's contact person.
 /// Returns the invite URL for clipboard copy.
