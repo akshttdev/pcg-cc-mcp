@@ -653,6 +653,8 @@ impl AgentFlowExecutor {
     /// 2. All agent flows for this deal in the current stage are completed
     /// 3. The review task (if any) is done
     async fn try_auto_advance_deal(&self, deal_id: &str) {
+        tracing::info!("[AgentFlowEngine] Checking auto-advance for deal {}", deal_id);
+
         // Load the deal
         let deal = match sqlx::query_as::<_, (String, Option<String>, Option<String>)>(
             "SELECT id, crm_stage_id, crm_pipeline_id FROM crm_deals WHERE id = ?1",
@@ -662,11 +664,19 @@ impl AgentFlowExecutor {
         .await
         {
             Ok(Some(d)) => d,
-            _ => return,
+            Ok(None) => {
+                tracing::warn!("[AgentFlowEngine] Auto-advance: deal {} not found in DB", deal_id);
+                return;
+            }
+            Err(e) => {
+                tracing::error!("[AgentFlowEngine] Auto-advance: failed to load deal {}: {}", deal_id, e);
+                return;
+            }
         };
 
         let (_, stage_id, pipeline_id) = deal;
         let (Some(stage_id), Some(pipeline_id)) = (stage_id, pipeline_id) else {
+            tracing::warn!("[AgentFlowEngine] Auto-advance: deal {} has no stage or pipeline", deal_id);
             return;
         };
 
@@ -683,11 +693,15 @@ impl AgentFlowExecutor {
         let is_agent_stage = stage_config
             .as_deref()
             .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
-            .map(|c| c.get("agent").and_then(|a| a.as_str()).is_some())
+            .map(|c| c.get("assigned_agent").and_then(|a| a.as_str()).is_some())
             .unwrap_or(false);
 
         if !is_agent_stage {
-            tracing::debug!("[AgentFlowEngine] Stage {} is not agent-owned, skipping auto-advance", stage_id);
+            tracing::info!(
+                "[AgentFlowEngine] Auto-advance: stage {} is not agent-owned (no assigned_agent in config), skipping. Config: {:?}",
+                stage_id,
+                stage_config.as_deref().unwrap_or("null")
+            );
             return;
         }
 
@@ -701,7 +715,7 @@ impl AgentFlowExecutor {
         .unwrap_or(0);
 
         if pending_flows > 0 {
-            tracing::info!("[AgentFlowEngine] Deal {} has {} pending flows, not advancing yet", deal_id, pending_flows);
+            tracing::info!("[AgentFlowEngine] Auto-advance: deal {} has {} pending flows, waiting", deal_id, pending_flows);
             return;
         }
 
@@ -715,7 +729,10 @@ impl AgentFlowExecutor {
         .ok()
         .flatten();
 
-        let Some(pos) = current_position else { return };
+        let Some(pos) = current_position else {
+            tracing::warn!("[AgentFlowEngine] Auto-advance: stage {} has no position", stage_id);
+            return;
+        };
 
         let next_stage: Option<(String, String)> = sqlx::query_as(
             "SELECT id, name FROM crm_pipeline_stages WHERE crm_pipeline_id = ?1 AND position > ?2 ORDER BY position ASC LIMIT 1",
@@ -728,7 +745,7 @@ impl AgentFlowExecutor {
         .flatten();
 
         let Some((next_stage_id, next_stage_name)) = next_stage else {
-            tracing::info!("[AgentFlowEngine] Deal {} is in the last stage, nothing to advance to", deal_id);
+            tracing::info!("[AgentFlowEngine] Auto-advance: deal {} is in the last stage (pos {}), nothing to advance to", deal_id, pos);
             return;
         };
 
