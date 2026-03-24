@@ -444,7 +444,11 @@ pub async fn manage_stage_review_tasks_with_config(
         }
 
         // Legacy hardcoded BA assignment (fallback if no config)
-        if stage_config.and_then(|c| c.review_assignee.as_ref()).is_none() && stage_name == "business analysis" {
+        if stage_config
+            .and_then(|c| c.review_assignee.as_ref())
+            .is_none()
+            && stage_name == "business analysis"
+        {
             if let Some(ref org_id) = deal.organization_id {
                 #[derive(sqlx::FromRow)]
                 struct OrgNameRow {
@@ -725,14 +729,13 @@ async fn resolve_review_assignee(
 
     // 2. Fallback: org owner
     if let Some(ref org_id) = deal.organization_id {
-        let owner_id: Option<String> = sqlx::query_scalar(
-            "SELECT owner_id FROM organizations WHERE id = ? LIMIT 1",
-        )
-        .bind(org_id)
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten();
+        let owner_id: Option<String> =
+            sqlx::query_scalar("SELECT owner_id FROM organizations WHERE id = ? LIMIT 1")
+                .bind(org_id)
+                .fetch_optional(pool)
+                .await
+                .ok()
+                .flatten();
 
         if let Some(oid) = owner_id {
             return Some(oid);

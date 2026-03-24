@@ -250,7 +250,14 @@ pub async fn process_transition(
             match action {
                 StageAction::CreateReviewTask { description } => {
                     let stage_name = to_stage.name.to_lowercase();
-                    manage_stage_review_tasks_with_config(pool, deal, description, &stage_name, to_config.as_ref()).await;
+                    manage_stage_review_tasks_with_config(
+                        pool,
+                        deal,
+                        description,
+                        &stage_name,
+                        to_config.as_ref(),
+                    )
+                    .await;
                     actions_taken.push("Created review task".to_string());
                 }
                 StageAction::CreateDeliveryDeal => {
@@ -275,8 +282,7 @@ pub async fn process_transition(
                 unreachable!()
             };
 
-            const KNOWN_AGENTS: &[&str] =
-                &["scout", "astra", "cash", "lux", "nora", "assistant"];
+            const KNOWN_AGENTS: &[&str] = &["scout", "astra", "cash", "lux", "nora", "assistant"];
             if KNOWN_AGENTS.contains(&agent.to_lowercase().as_str()) {
                 // Build chain_actions from remaining agent triggers
                 let chain_actions: Vec<serde_json::Value> = agent_actions[1..]
@@ -293,14 +299,8 @@ pub async fn process_transition(
                     })
                     .collect();
 
-                match schedule_agent_flow(
-                    pool,
-                    deal,
-                    agent,
-                    flow_type,
-                    config.cancel_window_secs,
-                )
-                .await
+                match schedule_agent_flow(pool, deal, agent, flow_type, config.cancel_window_secs)
+                    .await
                 {
                     Ok((flow_id, deadline)) => {
                         // Store chain_actions in the flow's config if there are queued agents
@@ -819,13 +819,11 @@ async fn count_pending_tasks(pool: &SqlitePool, deal: &CrmDeal) -> i64 {
 }
 
 async fn check_deal_has_transcript_or_source(pool: &SqlitePool, deal: &CrmDeal) -> bool {
-    let count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM deal_transcripts WHERE deal_id = ?",
-    )
-    .bind(deal.id.to_string())
-    .fetch_one(pool)
-    .await
-    .unwrap_or(0);
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM deal_transcripts WHERE deal_id = ?")
+        .bind(deal.id.to_string())
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
 
     count > 0
 }

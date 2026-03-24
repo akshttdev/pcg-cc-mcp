@@ -1256,7 +1256,10 @@ pub async fn provision_won_deal(
     // ── Create Project ───────────────────────────────────────────────────────
     // Check if project already linked (idempotent)
     if deal.project_id.is_some() {
-        tracing::info!("[provision_won_deal] Deal {} already has project, skipping creation", deal_id);
+        tracing::info!(
+            "[provision_won_deal] Deal {} already has project, skipping creation",
+            deal_id
+        );
     }
 
     let project_id = if let Some(ref existing_project_id) = deal.project_id {
@@ -1396,7 +1399,10 @@ pub async fn provision_won_deal(
 
     tracing::info!(
         "Deal {} provisioned as Won. Client '{}', Project '{}', {} tasks created",
-        deal_id, company_name, project_name, task_count
+        deal_id,
+        company_name,
+        project_name,
+        task_count
     );
 
     Ok(WonProvisionResult {
@@ -1435,10 +1441,16 @@ pub async fn mark_deal_won(
 
     // Move to Won stage
     if let Some(ref won_stage_id) = won_stage {
-        CrmDeal::move_to_stage(pool, &id, won_stage_id, 0).await.map_err(|e| {
-            tracing::error!("[mark_deal_won] Failed to move deal {} to Won stage: {}", id, e);
-            ApiError::InternalError(format!("Failed to move deal to Won stage: {}", e))
-        })?;
+        CrmDeal::move_to_stage(pool, &id, won_stage_id, 0)
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    "[mark_deal_won] Failed to move deal {} to Won stage: {}",
+                    id,
+                    e
+                );
+                ApiError::InternalError(format!("Failed to move deal to Won stage: {}", e))
+            })?;
     }
 
     // Set won_at and win_reason
@@ -1449,9 +1461,9 @@ pub async fn mark_deal_won(
         .map_err(|e| ApiError::BadRequest(format!("Failed to update deal: {}", e)))?;
 
     // Provision: client, project, deliverables→tasks, VIBE transaction, activity log
-    let result = provision_won_deal(pool, &deal).await.map_err(|e| {
-        ApiError::InternalError(format!("Won provisioning failed: {}", e))
-    })?;
+    let result = provision_won_deal(pool, &deal)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Won provisioning failed: {}", e)))?;
 
     Ok(Json(ApiResponse::success(serde_json::json!({
         "deal_id": id.to_string(),
@@ -1540,9 +1552,13 @@ pub async fn link_deal_data_source(
     let data_source_id = DbUuid::parse(&body.data_source_id)
         .map_err(|_| ApiError::BadRequest("Invalid data_source_id".to_string()))?;
 
-    let relevant_stages_json = body.relevant_stages.as_ref()
+    let relevant_stages_json = body
+        .relevant_stages
+        .as_ref()
         .and_then(|v| serde_json::to_string(v).ok());
-    let relevant_agents_json = body.relevant_agents.as_ref()
+    let relevant_agents_json = body
+        .relevant_agents
+        .as_ref()
         .and_then(|v| serde_json::to_string(v).ok());
 
     sqlx::query(
