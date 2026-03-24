@@ -629,7 +629,7 @@ async fn schedule_agent_flow(
     .bind(db_flow_type)
     .bind(flow_config.to_string())
     .bind(deal.id.to_string())
-    .bind(deadline.to_rfc3339())
+    .bind(deadline.format("%Y-%m-%d %H:%M:%S%.3f").to_string())
     .execute(pool)
     .await?;
 

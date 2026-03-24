@@ -61,6 +61,7 @@ impl AgentFlowExecutor {
 
     /// Process one tick: find actionable flows and dispatch them.
     async fn tick(&self) {
+        tracing::info!("[AgentFlowEngine] Tick — polling for pending flows...");
         // Use find_pending_flows which respects cancel_deadline
         let flows = match AgentFlow::find_pending_flows(
             &self.pool,
@@ -75,6 +76,7 @@ impl AgentFlowExecutor {
             }
         };
 
+        tracing::info!("[AgentFlowEngine] Found {} pending flows", flows.len());
         if !flows.is_empty() {
             tracing::info!("[AgentFlowEngine] Tick: {} actionable flow(s)", flows.len(),);
         }
