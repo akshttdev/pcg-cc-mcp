@@ -181,6 +181,7 @@ export function ResizableDrawer({
         <div
           onMouseDown={handleDragStart}
           className="absolute inset-y-0 -left-2 w-5 cursor-col-resize z-10 group flex items-center justify-center"
+          data-testid="deal-panel-resize-handle"
         >
           {/* Hover highlight stripe */}
           <div className="absolute inset-y-0 left-2 w-[3px] rounded-full transition-colors bg-transparent group-hover:bg-primary/30 group-active:bg-primary/50" />
