@@ -1,7 +1,7 @@
 /**
- * Pipeline E2E: Deal Detail Features (DD-1 to DD-4)
+ * Pipeline E2E: Deal Detail Features (DD-1 to DD-5)
  *
- * Gherkin specs: planning/BACKLOG--remaining-work.md → DD-1 to DD-4
+ * Gherkin specs: planning/BACKLOG--remaining-work.md → DD-1 to DD-5
  * Every "Then" line in the Gherkin is a test assertion.
  */
 import { test, expect } from "./fixtures";
@@ -13,7 +13,7 @@ let dealId: string;
 let dealName: string;
 let dealText: string;
 
-test.describe("Deal Detail Features (DD-1 to DD-4)", () => {
+test.describe("Deal Detail Features (DD-1 to DD-5)", () => {
   test.describe.configure({ mode: "serial" });
 
   test("setup: create deal and open detail panel", async ({ page, request }) => {
@@ -258,6 +258,21 @@ test.describe("Deal Detail Features (DD-1 to DD-4)", () => {
 
   test("DD-4: AR invoice dashboard", async () => {
     test.fixme(true, "Invoice generation works but no AR tracking dashboard");
+  });
+
+  // ── DD-5: Agent History tab ────────────────────────────────────────────
+  //
+  // Feature: Agent History tab shows completed flows
+  //   Scenario: View agent execution history
+  //     Given a deal has completed agent flows
+  //     When I click the Agent History tab
+  //     Then I see flow entries with status and agent name
+
+  test("DD-5: Agent History tab shows completed flows", async ({ page }) => {
+    // Open a deal that has completed agent flows
+    // Click Agent History tab
+    // Verify flow entries are visible with status, agent name
+    test.fixme(true, "Needs deal with completed flows — tested in pipeline-flow.spec.ts");
   });
 
   // ── Close and cleanup ──────────────────────────────────────────────────

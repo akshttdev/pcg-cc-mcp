@@ -1,7 +1,7 @@
 /**
- * Pipeline E2E: Agent Automations (AA-1 to AA-5)
+ * Pipeline E2E: Agent Automations (AA-1 to AA-7)
  *
- * Gherkin specs: planning/BACKLOG--remaining-work.md → AA-1 to AA-5
+ * Gherkin specs: planning/BACKLOG--remaining-work.md → AA-1 to AA-7
  * Every "Then" line in the Gherkin is a test assertion.
  */
 import { test, expect } from "./fixtures";
@@ -12,7 +12,7 @@ let dealId: string;
 let dealName: string;
 let dealText: string;
 
-test.describe("Agent Automations (AA-1 to AA-5)", () => {
+test.describe("Agent Automations (AA-1 to AA-7)", () => {
   test.describe.configure({ mode: "serial" });
 
   test("setup: create deal with linked contact", async ({ page, request }) => {
@@ -109,22 +109,18 @@ test.describe("Agent Automations (AA-1 to AA-5)", () => {
     await apiLogin(request);
 
     const flowsRes = await request.get(`/api/crm/deals/${dealId}/agent-flows`);
-    if (flowsRes.ok()) {
-      const flows = (await flowsRes.json()).data || [];
-      if (flows.length > 0) {
-        const scoutFlow = flows.find((f: { flow_type?: string }) => f.flow_type === "research");
-        expect(scoutFlow, "Should have a Scout research flow with flow_type='research'").toBeTruthy();
-      } else {
-        // Known architectural gap: hardcoded trigger path doesn't create agent_flow records
-        console.warn("[AA-1] No agent_flows found — Scout triggered via hardcoded path (no agent_flow record)");
-      }
-    }
+    expect(flowsRes.ok(), "agent-flows API should respond OK").toBeTruthy();
+    const flows = (await flowsRes.json()).data || [];
+    expect(flows.length, "Intel stage should create an agent flow for Scout").toBeGreaterThan(0);
+    const scoutFlow = flows.find((f: { flow_type?: string }) => f.flow_type === "research");
+    expect(scoutFlow, "Should have a Scout research flow").toBeTruthy();
   });
 
-  test("AA-1: 30-second cancel window", async () => {
-    // Spec: a 30-second cancel window is active
-    // The stage_config has cancel_window_secs: 30 but there's no UI to cancel yet
-    test.fixme(true, "Cancel window configured (30s) but no UI cancel button implemented");
+  test("AA-1: cancel window — Run Now button visible on agent toast", async ({ page }) => {
+    // After moving to Intel, a toast with "Run Now" should appear
+    // This is already verified implicitly by waitForDealStage helper clicking Run Now
+    // Just verify the approve-agent API works
+    test.fixme(true, "Cancel/Run Now tested via waitForDealStage helper — needs dedicated UI test");
   });
 
   // ── AA-2: Astra business analysis ───────────────────────────────────────
@@ -209,8 +205,11 @@ test.describe("Agent Automations (AA-1 to AA-5)", () => {
   //     And after Astra completes, Cash is chained automatically
   //     And Cash uses Astra's enhanced report to write the proposal
 
-  test("AA-4: Proposal triggers Astra Pass 2 then chains to Cash", async () => {
-    test.fixme(true, "Astra Pass 2 chaining not implemented — direct Cash trigger only");
+  test.fixme("AA-4: Proposal triggers Astra Pass 2 then chains to Cash", async () => {
+    // Feature: Astra Pass 2 chains into Cash proposal generation
+    // Currently: Proposal stage triggers Cash directly
+    // Desired: IF no proposal_text THEN Astra Pass 2 first, THEN Cash
+    // Blocked: conditional agent chaining not implemented
   });
 
   // ── AA-5: Lux deck generation ──────────────────────────────────────────
@@ -242,6 +241,45 @@ test.describe("Agent Automations (AA-1 to AA-5)", () => {
       (task.title || "").toLowerCase().includes("polish")
     );
     expect(polishReview, "Polish review task should exist (may be done if auto-completed)").toBeTruthy();
+  });
+
+  // ── AA-6: Auto-advance chain ──────────────────────────────────────────
+  //
+  // Feature: Agent auto-advance chain Intel → BA → Proposal → Polish
+  //   Scenario: Full chain auto-advance
+  //     Given a deal enters Intel with Scout agent
+  //     When each agent completes and auto-advances the deal
+  //     Then the deal reaches at least Proposal via Scout→Astra→Cash chain
+  //     And at least 3 completed agent flows exist
+
+  test("AA-6: auto-advance chain — Intel → BA → Proposal → Polish", async ({ page, request }) => {
+    test.setTimeout(180_000); // Chain takes ~3 min
+    await apiLogin(request);
+
+    // The deal should have auto-advanced through the chain from AA-1's Intel entry
+    // Wait for it to reach at least Proposal (Scout→Astra→Cash)
+    const reached = await waitForDealStage(page, request, dealId, "Proposal", 120_000);
+    expect(reached, "Deal should auto-advance to Proposal via Scout→Astra→Cash chain").toBe(true);
+
+    // Verify multiple completed flows
+    const flowsRes = await request.get(`/api/crm/deals/${dealId}/agent-flows`);
+    const flows = (await flowsRes.json()).data || [];
+    const completedFlows = flows.filter((f: { status: string }) => f.status === "completed");
+    expect(completedFlows.length, "Should have at least 3 completed flows (Scout, Astra, Cash)").toBeGreaterThanOrEqual(3);
+  });
+
+  // ── AA-7: Retrigger failed agent ────────────────────────────────────
+  //
+  // Feature: Retrigger a failed agent via API
+  //   Scenario: POST /crm/deals/:id/retrigger-agent re-triggers the stage's agent
+  //     Given a deal with a failed/cancelled agent flow
+  //     When I POST to retrigger-agent
+  //     Then a new agent flow is created for the current stage
+
+  test.fixme("AA-7: retrigger failed agent via API", async () => {
+    // Feature: POST /crm/deals/:id/retrigger-agent re-triggers the stage's agent
+    // Needs: a deal with a failed/cancelled flow to retrigger
+    // Blocked: need to set up a failed flow first (cancel then retrigger)
   });
 
   // ── Cleanup ────────────────────────────────────────────────────────────

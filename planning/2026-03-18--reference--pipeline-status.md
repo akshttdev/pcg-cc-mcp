@@ -486,3 +486,45 @@
 
   4         F9: E2E for F11+F3    30 min   After 1 + 2 above
 ```
+
+---
+
+## Status Updates (Post-Sloperation)
+
+This reference document captures the **original intended flow** from the sloperation317 branch. The pipeline was subsequently rebuilt into a 9-stage architecture. Below tracks resolution status.
+
+### Resolved Since This Document Was Written
+
+| Item | Resolution | Where |
+|------|-----------|-------|
+| **Blocker 3: Agent Orchestration Engine** | Fully built — background worker, cancel/Run Now, retry, agent history UI | `crates/server/src/agent_flow_executor.rs` |
+| **F11: Call scheduling input UI** | Full date/method/status editing with save mutation | `frontend/src/components/crm/deal-detail/tabs/OverviewCallSchedulingSection.tsx` |
+| **Agent auto-advance chain** | Intel(Scout)→BA(Astra)→Proposal(Cash)→Polish(Lux) verified working with SIMULATE_LLM | `crates/server/src/agent_flow_executor.rs:try_auto_advance_deal()` |
+| **Silent failure audit** | 39 `let _ =` patterns converted to proper error handling | `crates/server/src/routes/crm_deal_automations.rs` (tier1 commit cf9f8f95f) |
+
+### Still Outstanding (Audited 2026-03-24)
+
+| Item | Status | Notes |
+|------|--------|-------|
+| **Discovery stage** | ❌ Not ported | Stage removed in 9-stage rebuild. No analogue exists. See `docs/PIPELINE.md` gap analysis. |
+| **Astra Pass 2 (F12)** | ❌ Not ported | Depends on Discovery stage. AA-4 test marked `test.fixme`. |
+| **Astra→Cash chaining** | ❌ Not ported | Cash triggers directly on Proposal entry, no Pass 2 enrichment. |
+| **Present stage** | ❌ Replaced by Invoice | Different intent: Present = deck on live call, Invoice = payment confirmation. |
+| **F8: Org-specific review routing** | ⚠️ Partial | Tasks created but not assigned to org operator. |
+| **Won dual-path** | ⚠️ Bug | Stage transition only creates delivery deal; mark_deal_won does full provisioning. |
+| **F3: Person invite** | ⚠️ Stub | Log-only in mark_deal_won. |
+
+### Files That Built on This Plan
+
+The following files were created after this reference and implement or extend its intents:
+
+| File | Relationship |
+|------|-------------|
+| `docs/PIPELINE.md` | Canonical architecture doc for the rebuilt pipeline. Contains gap analysis mapping original intents. |
+| `crates/server/src/stage_transition.rs` | Config-driven StageTransitionProcessor replacing hardcoded stage logic |
+| `crates/server/src/agent_flow_executor.rs` | Resolves Blocker 3 (Agent Orchestration Engine) |
+| `crates/db/migrations/20260414000001_seed_stage_configs.sql` | stage_config JSON seeds for all pipeline stages |
+| `e2e/pipeline/agent-automations.spec.ts` | E2E tests for agent automation chain (AA-1 through AA-7) |
+| `planning/BACKLOG--remaining-work.md` | Pipeline specs section tracks remaining test coverage |
+| `frontend/src/components/crm/deal-detail/tabs/OverviewCallSchedulingSection.tsx` | Resolves F11 (call scheduling input UI) |
+| `crates/server/src/routes/crm_deal_automations.rs` | Contains mark_deal_won, approve_proposal, generate_proposal — all F-items |

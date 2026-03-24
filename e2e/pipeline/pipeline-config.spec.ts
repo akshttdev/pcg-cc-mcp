@@ -6,7 +6,7 @@
  * Default pipeline is Client Delivery (first alphabetically).
  * Sirak Studios Acquisition has 9 stages with Scout/Astra/Cash/Lux agents.
  *
- * Acceptance specs: planning/BACKLOG--remaining-work.md → PC-1 to PC-3
+ * Acceptance specs: planning/BACKLOG--remaining-work.md → PC-1 to PC-4
  */
 import { test, expect } from "./fixtures";
 import { t, demoPause, login } from "../helpers";
