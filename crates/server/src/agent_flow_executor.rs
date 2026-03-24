@@ -519,13 +519,14 @@ impl AgentFlowExecutor {
         };
 
         let artifact_id = DbUuid::new();
+        let artifact_id_str = artifact_id.to_string();
         match AgentFlowEvent::create(
             &self.pool,
             CreateFlowEvent {
                 agent_flow_id: flow_id.clone(),
                 event_type: FlowEventType::ArtifactCreated,
                 event_data: FlowEventPayload::ArtifactCreated {
-                    artifact_id: artifact_id.into(),
+                    artifact_id: artifact_id.clone().into(),
                     artifact_type: "text".to_string(),
                     title: title.to_string(),
                     phase: "execution".to_string(),
@@ -554,7 +555,7 @@ impl AgentFlowExecutor {
                         e
                     );
                 }
-                json!({"success": true, "artifact_id": artifact_id.to_string()}).to_string()
+                json!({"success": true, "artifact_id": artifact_id_str}).to_string()
             }
             Err(e) => json!({"error": e.to_string()}).to_string(),
         }
