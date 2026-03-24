@@ -62,7 +62,8 @@ export function useCrmKanban(pipelineId: string | undefined) {
     queryKey: crmQueryKeys.kanban(pipelineId || ''),
     queryFn: () => crmDealsApi.getKanbanData(pipelineId!),
     enabled: !!pipelineId,
-    staleTime: 30 * 1000, // 30 seconds - more frequent updates for kanban
+    staleTime: 15 * 1000,
+    refetchInterval: 15 * 1000, // Poll to pick up agent completions + auto-advance
     placeholderData: keepPreviousData,
   });
 }
@@ -107,7 +108,8 @@ export function useOrgCrmKanban(orgId: string, pipelineId: string | undefined) {
     queryKey: orgCrmQueryKeys.kanban(orgId, pipelineId || ''),
     queryFn: () => crmDealsApi.getOrgKanbanData(orgId, pipelineId!),
     enabled: !!orgId && !!pipelineId,
-    staleTime: 30 * 1000,
+    staleTime: 15 * 1000,
+    refetchInterval: 15 * 1000, // Poll to pick up agent completions + auto-advance
     placeholderData: keepPreviousData,
   });
 }
