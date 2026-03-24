@@ -108,7 +108,7 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
   //   Then the agent flow transitions from planning to executing
   //   And the deal card shows an agent-running indicator
   test("AA-2: click Run Now — agent flow starts executing", async ({ page, request }) => {
-    test.fixme(true, "Run Now interaction: need to verify agent flow status transition + card badge update");
+    test.fixme(true, "Toast with Run Now disappears before this serial test runs — merge Run Now click into AA-1 or add toast persistence");
     test.setTimeout(30_000);
     await apiLogin(request);
 
@@ -138,7 +138,6 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
   //   When I open the deal detail and click the Agent History tab
   //   Then I see the Scout flow with its status and events
   test("AA-3: Agent History tab shows Scout flow after execution", async ({ page }) => {
-    test.fixme(true, "Agent History tab: need to verify flow listing and event details");
     test.setTimeout(30_000);
 
     // Open deal detail
@@ -146,13 +145,14 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible({ timeout: t(10_000) });
 
-    // Click Agent History tab
+    // Click Agent History tab (MCP verified: testid "deal-detail-tabs-agents", role tab "Agent History")
     await page.getByRole("tab", { name: "Agent History" }).click();
     await page.waitForTimeout(demoPause.short);
 
-    // Should show at least one agent flow (Scout research)
-    await expect(dialog.getByText("Scout").first()).toBeVisible({ timeout: t(5_000) });
-    await expect(dialog.getByText("research").first()).toBeVisible({ timeout: t(5_000) });
+    // MCP verified: heading "Agent Execution History" visible, flow entries show agent name + status
+    await expect(dialog.getByRole("heading", { name: "Agent Execution History" })).toBeVisible({ timeout: t(5_000) });
+    await expect(dialog.getByText("scout").first()).toBeVisible({ timeout: t(5_000) });
+    await expect(dialog.getByText("Planning").first()).toBeVisible({ timeout: t(5_000) });
 
     // Close for next test
     await dialog.getByRole("button", { name: "Close" }).click();
