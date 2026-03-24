@@ -1157,7 +1157,10 @@ pub async fn mark_deal_won(
 
     // Move to Won stage
     if let Some(ref won_stage_id) = won_stage {
-        let _ = CrmDeal::move_to_stage(pool, &id, won_stage_id, 0).await;
+        CrmDeal::move_to_stage(pool, &id, won_stage_id, 0).await.map_err(|e| {
+            tracing::error!("[mark_deal_won] Failed to move deal {} to Won stage: {}", id, e);
+            ApiError::InternalError(format!("Failed to move deal to Won stage: {}", e))
+        })?;
     }
 
     // Set won_at and win_reason
@@ -1219,7 +1222,7 @@ pub async fn mark_deal_won(
                 .filter(|s| !s.is_empty())
                 .collect::<Vec<_>>()
                 .join("-");
-            let _ = sqlx::query(
+            sqlx::query(
                 "INSERT INTO clients (id, organization_id, name, slug, crm_contact_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, datetime('now','subsec'), datetime('now','subsec'))"
             )
             .bind(&cid)
@@ -1227,7 +1230,11 @@ pub async fn mark_deal_won(
             .bind(&company_name)
             .bind(&slug)
             .bind(&deal.crm_contact_id)
-            .execute(pool).await;
+            .execute(pool).await
+            .map_err(|e| {
+                tracing::error!("[mark_deal_won] Failed to create client for deal {}: {}", id, e);
+                ApiError::InternalError(format!("Failed to create client: {}", e))
+            })?;
             cid
         }
     };
@@ -1235,23 +1242,30 @@ pub async fn mark_deal_won(
     // ── Create Project ───────────────────────────────────────────────────────
     let project_id = DbUuid::new();
     let project_name = format!("{} — {}", deal.name, company_name);
-    let _ = sqlx::query(
+    sqlx::query(
         "INSERT INTO projects (id, name, git_repo_path, client_id, organization_id, created_at, updated_at) VALUES (?, ?, '', ?, ?, datetime('now','subsec'), datetime('now','subsec'))"
     )
     .bind(&project_id)
     .bind(&project_name)
     .bind(&client_id)
     .bind(&deal.organization_id)
-    .execute(pool).await;
+    .execute(pool).await
+    .map_err(|e| {
+        tracing::error!("[mark_deal_won] Failed to create project for deal {}: {}", id, e);
+        ApiError::InternalError(format!("Failed to create project: {}", e))
+    })?;
 
     // Link project to deal
-    let _ = sqlx::query(
+    if let Err(e) = sqlx::query(
         "UPDATE crm_deals SET project_id = ?, updated_at = datetime('now','subsec') WHERE id = ?",
     )
     .bind(&project_id)
     .bind(&id)
     .execute(pool)
-    .await;
+    .await
+    {
+        tracing::error!("[mark_deal_won] Failed to link project {} to deal {}: {}", project_id, id, e);
+    }
 
     // ── F3: Move deliverables to the new project ────────────────────────────
     let _ = sqlx::query(
