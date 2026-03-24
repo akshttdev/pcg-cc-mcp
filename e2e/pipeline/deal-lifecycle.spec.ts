@@ -90,9 +90,19 @@ test.describe("DL-1: Create and track a deal through the pipeline", () => {
     // Then: panel has deal name heading
     await expect(panel.getByRole("heading", { name: new RegExp(dealText) }).first()).toBeVisible();
 
-    // Then: all expected tabs present (spec: Overview, Intel, Transcripts, Proposal, Deck)
-    for (const tab of ["overview", "intel", "transcripts", "proposal", "deck"]) {
+    // Then: stage-relevant tabs visible (Lead stage shows Overview + Activity by default)
+    for (const tab of ["overview", "activity"]) {
       await expect(page.getByTestId(dealDetail.tab(tab)), `"${tab}" tab`).toBeVisible({ timeout: t(3_000) });
+    }
+    // Click "All tabs" toggle to reveal all tabs
+    const allTabsBtn = page.getByRole("button", { name: /all tabs/i });
+    if (await allTabsBtn.isVisible({ timeout: 1_000 }).catch(() => false)) {
+      await allTabsBtn.click();
+      await page.waitForTimeout(demoPause.short);
+    }
+    // After toggle: all tabs should be visible
+    for (const tab of ["overview", "intel", "transcripts", "proposal", "deck"]) {
+      await expect(page.getByTestId(dealDetail.tab(tab)), `"${tab}" tab after toggle`).toBeVisible({ timeout: t(3_000) });
     }
 
     // Then: Overview tab shows the deal amount we entered ($50,000)
