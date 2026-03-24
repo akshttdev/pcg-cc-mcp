@@ -1,3 +1,30 @@
+import { formatDistanceToNow } from 'date-fns';
+import {
+  AlertTriangle,
+  ArrowRight,
+  Bot,
+  Building2,
+  CheckCircle2,
+  CheckSquare,
+  CircleDot,
+  Clock,
+  Edit,
+  FileText,
+  Loader2,
+  MoreHorizontal,
+  Presentation,
+  Receipt,
+  RotateCcw,
+  Search,
+  ShieldCheck,
+  Trash2,
+  TrendingUp,
+  Trophy,
+  User,
+} from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { dealCard as tid } from 'shared/testids';
+
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -10,33 +37,9 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  ArrowRight,
-  MoreHorizontal,
-  Building2,
-  Trash2,
-  Edit,
-  CheckCircle2,
-  Loader2,
-  Search,
-  ShieldCheck,
-  CircleDot,
-  RotateCcw,
-  CheckSquare,
-  User,
-  TrendingUp,
-  Clock,
-  FileText,
-  Presentation,
-  Receipt,
-  Trophy,
-  Bot,
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { StatusBadge } from '@/components/ui/status-badge';
-import { Link } from 'react-router-dom';
+import { cn } from '@/lib/utils';
 import type { CrmDealWithContact } from '@/types/crm';
-import { formatDistanceToNow } from 'date-fns';
 
 interface BoardProgressInfo {
   boardName: string;
@@ -87,6 +90,8 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
   // Agent flow status
   const agentRunning = deal.active_agent_flow_status === 'executing';
   const agentPending = deal.active_agent_flow_status === 'planning';
+  const agentFailed = deal.active_agent_flow_status === 'failed';
+  const agentCancelled = deal.active_agent_flow_status === 'cancelled';
   const agentName = deal.active_agent_name;
 
   const intelStatus = deal.intelligence_status;
@@ -171,6 +176,7 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
                   variant="ghost"
                   size="sm"
                   className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 hover:bg-muted transition-opacity shrink-0"
+                  data-testid={tid.menu(deal.id)}
                 >
                   <MoreHorizontal className="h-3.5 w-3.5" />
                 </Button>
@@ -213,11 +219,13 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
         </div>
 
         {/* Row 2: Stage-aware status chips */}
-        {(agentRunning || agentPending || researchNeeded || researchReady || intelRunning || hasActiveReviewTask || reviewTaskDone ||
+        {(agentRunning || agentPending || agentFailed || agentCancelled || researchNeeded || researchReady || intelRunning || hasActiveReviewTask || reviewTaskDone ||
           deal.report_review_status === 'rejected' || hasProposal || hasDeck || hasInvoice || isWon) && (
           <div className="flex flex-wrap gap-1">
             {agentRunning && <StatusBadge status="info" icon={Bot} label={`${agentName ?? 'Agent'} running…`} pulse size="sm" />}
             {agentPending && <StatusBadge status="warning" icon={Clock} label={`${agentName ?? 'Agent'} pending`} pulse size="sm" />}
+            {agentFailed && <StatusBadge status="error" icon={AlertTriangle} label={`${agentName ?? 'Agent'} failed`} size="sm" />}
+            {agentCancelled && <StatusBadge status="warning" icon={RotateCcw} label={`${agentName ?? 'Agent'} cancelled`} size="sm" />}
             {researchNeeded && <StatusBadge status="warning" icon={Search} label="Research needed" size="sm" />}
             {intelRunning && <StatusBadge status="info" icon={Loader2} label="Researching…" pulse size="sm" />}
             {researchReady && !hasActiveReviewTask && <StatusBadge status="success" icon={ShieldCheck} label="Ready for review" size="sm" />}

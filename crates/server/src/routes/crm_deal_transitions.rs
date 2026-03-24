@@ -215,14 +215,17 @@ pub async fn advance_deal(
         )));
     }
 
-    // F7: Intel Completeness Gate — require operator context + person/company intel before advancing from Intel→BA
+    // F7: Intel Completeness Gate — collect ALL validation failures, return together
     if current_stage_name_lower == "intel" {
+        let mut warnings: Vec<serde_json::Value> = Vec::new();
+
         // Check deal.description is not empty (operator context)
         let desc = deal.description.as_deref().unwrap_or("");
         if desc.trim().is_empty() {
-            return Err(ApiError::BadRequest(
-                "Cannot advance from Intel: deal description (operator context) is required. Add notes about the lead before advancing.".to_string(),
-            ));
+            warnings.push(serde_json::json!({
+                "field": "description",
+                "message": "Deal description (operator context) is required. Add notes about the lead before advancing."
+            }));
         }
 
         // Check person intelligence_status via crm_contact_id (use CAST for BLOB/TEXT compat)
@@ -249,10 +252,10 @@ pub async fn advance_deal(
             person_intel_status.as_deref(),
             Some("done") | Some("complete")
         ) {
-            return Err(ApiError::BadRequest(format!(
-                "Cannot advance from Intel: person intelligence is '{}'. Wait for Scout research to finish.",
-                person_intel_status.as_deref().unwrap_or("missing")
-            )));
+            warnings.push(serde_json::json!({
+                "field": "person_intelligence",
+                "message": format!("Person intelligence is '{}'. Wait for Scout research to finish.", person_intel_status.as_deref().unwrap_or("missing"))
+            }));
         }
 
         // Check company intelligence_status via person.company_name (CAST for BLOB/TEXT compat)
@@ -279,10 +282,28 @@ pub async fn advance_deal(
             company_intel_status.as_deref(),
             Some("done") | Some("complete")
         ) {
-            return Err(ApiError::BadRequest(format!(
-                "Cannot advance from Intel: company intelligence is '{}'. Wait for company research to finish.",
-                company_intel_status.as_deref().unwrap_or("missing")
-            )));
+            warnings.push(serde_json::json!({
+                "field": "company_intelligence",
+                "message": format!("Company intelligence is '{}'. Wait for company research to finish.", company_intel_status.as_deref().unwrap_or("missing"))
+            }));
+        }
+
+        if !warnings.is_empty() {
+            let fields: Vec<String> = warnings
+                .iter()
+                .filter_map(|w| w["field"].as_str().map(String::from))
+                .collect();
+            let summary = format!(
+                "Cannot advance from Intel: {} validation(s) failed ({})",
+                warnings.len(),
+                fields.join(", ")
+            );
+            let body = serde_json::json!({
+                "success": false,
+                "message": summary,
+                "warnings": warnings,
+            });
+            return Err(ApiError::ValidationFailed(body));
         }
     }
 
@@ -329,13 +350,16 @@ pub async fn manage_stage_review_tasks(
 ) {
     // Cancel review tasks from previous stages
     let current_prefix = format!("Review & approve: {} —", stage_name);
-    let _ = sqlx::query(
+    if let Err(e) = sqlx::query(
         "UPDATE tasks SET status = 'cancelled', updated_at = datetime('now','subsec') WHERE crm_deal_id = ? AND title LIKE 'Review & approve:%' AND title NOT LIKE ? AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL",
     )
     .bind(&deal.id)
     .bind(format!("{}%", current_prefix))
     .execute(pool)
-    .await;
+    .await
+    {
+        tracing::error!("[manage_stage_review_tasks] Failed to cancel old review tasks: {}", e);
+    }
 
     // Check if a review task already exists for THIS stage
     let existing_count: i64 = sqlx::query_scalar(
@@ -373,7 +397,7 @@ pub async fn manage_stage_review_tasks(
                     ))
                 });
 
-        let _ = sqlx::query(
+        if let Err(e) = sqlx::query(
             r#"
             INSERT INTO tasks (id, title, description, status, crm_deal_id, project_id, assignee_id, created_at, updated_at)
             VALUES (?, ?, ?, 'todo', ?, ?, ?, datetime('now','subsec'), datetime('now','subsec'))
@@ -386,7 +410,11 @@ pub async fn manage_stage_review_tasks(
         .bind(&deal.project_id)
         .bind(&default_assignee)
         .execute(pool)
-        .await;
+        .await
+        {
+            tracing::error!("[manage_stage_review_tasks] Failed to create review task: {}", e);
+            return;
+        }
 
         // F8: BA Operator Assignment — assign review task to org-specific operator
         if stage_name == "business analysis" {
@@ -426,13 +454,16 @@ pub async fn manage_stage_review_tasks(
                     .ok()
                     .flatten()
                     {
-                        let _ = sqlx::query(
+                        if let Err(e) = sqlx::query(
                             "UPDATE tasks SET assignee_id = ?, updated_at = datetime('now','subsec') WHERE id = ?"
                         )
                         .bind(user.id.to_string())
                         .bind(&task_id)
                         .execute(pool)
-                        .await;
+                        .await
+                        {
+                            tracing::error!("[manage_stage_review_tasks] Failed to assign BA review task: {}", e);
+                        }
                         tracing::info!(
                             "BA review task assigned to {} for deal {}",
                             username,
@@ -509,6 +540,78 @@ pub async fn approve_deal_agent(
     }
 }
 
+/// POST /crm/deals/:id/retrigger-agent - Re-trigger the agent for the deal's current stage
+///
+/// Used after cancelling or when an agent flow failed. Creates a new agent flow
+/// for the current stage's configured agent, same as the initial stage transition.
+pub async fn retrigger_deal_agent(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let id = parse_db_uuid_param(&id, "deal ID")?;
+    let deal = require_deal_org_access(&access_context, pool, &id).await?;
+
+    // Get the current stage config to find the assigned agent
+    let stage_id = deal
+        .crm_stage_id
+        .as_ref()
+        .ok_or_else(|| ApiError::BadRequest("Deal has no stage assigned".into()))?;
+    let stage = db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, stage_id)
+        .await
+        .map_err(|_| ApiError::NotFound("Stage not found".into()))?;
+
+    let config: Option<crate::stage_transition::StageConfig> = stage
+        .stage_config
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok());
+
+    let config =
+        config.ok_or_else(|| ApiError::BadRequest("Current stage has no configuration".into()))?;
+
+    let agent = config
+        .assigned_agent
+        .as_deref()
+        .ok_or_else(|| ApiError::BadRequest("Current stage has no agent assigned".into()))?;
+
+    let flow_type = crate::stage_transition::agent_default_flow_type(agent);
+
+    // Check there's no already-running flow for this deal
+    let active_flows: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM agent_flows WHERE crm_deal_id = ?1 AND status IN ('planning', 'executing')",
+    )
+    .bind(id.as_str())
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0);
+
+    if active_flows > 0 {
+        return Err(ApiError::BadRequest(
+            "Deal already has an active agent flow — cancel it first".into(),
+        ));
+    }
+
+    // Schedule the new agent flow (same as stage_transition::schedule_agent_flow)
+    let (flow_id, deadline) = crate::stage_transition::schedule_agent_flow(
+        pool,
+        &deal,
+        agent,
+        &flow_type,
+        config.cancel_window_secs,
+    )
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to schedule agent: {}", e)))?;
+
+    Ok(Json(ApiResponse::success(serde_json::json!({
+        "retriggered": true,
+        "agent_flow_id": flow_id,
+        "agent": agent,
+        "cancel_deadline": deadline.to_rfc3339(),
+        "message": format!("Re-triggered {} agent for current stage", agent),
+    }))))
+}
+
 /// GET /crm/deals/:id/agent-flows - List agent flows for a deal with events
 pub async fn get_deal_agent_flows(
     Extension(access_context): Extension<AccessContext>,
@@ -525,7 +628,7 @@ pub async fn get_deal_agent_flows(
 
     let mut result = Vec::new();
     for flow in flows {
-        let events = db::models::agent_flow_event::AgentFlowEvent::find_by_flow(pool, flow.id)
+        let events = db::models::agent_flow_event::AgentFlowEvent::find_by_flow(pool, &flow.id)
             .await
             .unwrap_or_default();
 

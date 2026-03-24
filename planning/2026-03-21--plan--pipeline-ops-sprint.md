@@ -523,3 +523,19 @@ Replace hardcoded `getStageOwner()` (CrmPipelineBoard.tsx lines 38-66) with `sta
 5. Any-to-any FSM with configurable allowed_transitions per stage pair
 6. Webhook/notification actions on stage transitions
 7. Custom pipeline types created by users
+
+---
+
+## Sloperation Intent Compliance (Audited 2026-03-24)
+
+This sprint rebuilt the pipeline from the sloperation317 plan (`planning/2026-03-18--reference--pipeline-status.md`). A gap audit found 5 sloperation intents were not ported into the 9-stage architecture:
+
+1. **Discovery stage** — human call step between BA and Proposal (removed)
+2. **Astra Pass 2 (F12)** — enhanced research triggered on Discovery→Proposal (depends on #1)
+3. **Astra→Cash chaining** — Cash uses Pass 2 enriched report (depends on #2)
+4. **Present stage** — deck presentation on live call before invoicing (replaced by Invoice)
+5. **Transcript→Proposal pipeline** — discovery call transcripts feed into proposals (depends on #1)
+
+3 items partially covered: F8 (org-specific review routing), Won dual-path (stage transition vs mark_deal_won), F3 (person invite stub).
+
+Full analysis: `docs/PIPELINE.md` → "Sloperation Intent Gaps" section

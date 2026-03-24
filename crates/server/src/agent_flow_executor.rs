@@ -5,16 +5,18 @@
 //!
 //! Disabled by default. Enable with `ENABLE_AGENT_FLOW_ENGINE=1`.
 
-use db::models::{
-    agent_flow::{AgentFlow, AgentPhase, FlowStatus},
-    agent_flow_event::{AgentFlowEvent, CreateFlowEvent, FlowEventPayload, FlowEventType},
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        agent_flow::{AgentFlow, AgentPhase, FlowStatus},
+        agent_flow_event::{AgentFlowEvent, CreateFlowEvent, FlowEventPayload, FlowEventType},
+    },
 };
 use serde_json::{Value, json};
 use services::services::workflow_llm::{
     LLMResponse, ToolCallRequest, ToolDefinition, WorkflowLLMService,
 };
 use tokio_util::sync::CancellationToken;
-use uuid::Uuid;
 
 use crate::workers::BackgroundWorker;
 
@@ -61,6 +63,7 @@ impl AgentFlowExecutor {
 
     /// Process one tick: find actionable flows and dispatch them.
     async fn tick(&self) {
+        tracing::info!("[AgentFlowEngine] Tick — polling for pending flows...");
         // Use find_pending_flows which respects cancel_deadline
         let flows = match AgentFlow::find_pending_flows(
             &self.pool,
@@ -75,6 +78,7 @@ impl AgentFlowExecutor {
             }
         };
 
+        tracing::info!("[AgentFlowEngine] Found {} pending flows", flows.len());
         if !flows.is_empty() {
             tracing::info!("[AgentFlowEngine] Tick: {} actionable flow(s)", flows.len(),);
         }
@@ -108,7 +112,7 @@ impl AgentFlowExecutor {
         // Transition to Executing
         if let Err(e) = AgentFlow::transition_to_phase(
             &self.pool,
-            flow.id,
+            &flow.id,
             AgentPhase::Execution,
             Some("planning"),
         )
@@ -125,9 +129,9 @@ impl AgentFlowExecutor {
         // Emit phase started event
         if let Err(e) = AgentFlowEvent::emit_phase_started(
             &self.pool,
-            flow.id,
+            &flow.id,
             "execution",
-            flow.executor_agent_id,
+            flow.executor_agent_id.as_ref(),
         )
         .await
         {
@@ -182,11 +186,11 @@ impl AgentFlowExecutor {
         match result {
             Ok(output) => {
                 // Save artifact with the output
-                let artifact_id = Uuid::new_v4();
+                let artifact_id = DbUuid::new();
                 if let Err(e) = AgentFlowEvent::emit_artifact_created(
                     &self.pool,
-                    flow.id,
-                    artifact_id,
+                    &flow.id,
+                    artifact_id.into(),
                     "agent_output",
                     &format!("{} output", agent_name),
                     "execution",
@@ -205,11 +209,11 @@ impl AgentFlowExecutor {
                     "UPDATE agent_flows SET flow_config = json_set(COALESCE(flow_config, '{}'), '$.output', ?1), updated_at = datetime('now', 'subsec') WHERE id = ?2",
                 )
                 .bind(&output)
-                .bind(flow.id)
+                .bind(&flow.id)
                 .execute(&self.pool)
                 .await
                 {
-                    tracing::warn!("[AgentFlowEngine] Failed to store output for flow {}: {}", flow.id, e);
+                    tracing::error!("[AgentFlowEngine] Failed to store output for flow {}: {}", flow.id, e);
                 }
 
                 // Complete the flow (single-phase: skip verification)
@@ -220,6 +224,11 @@ impl AgentFlowExecutor {
                     flow.id,
                     agent_name
                 );
+
+                // Auto-advance: if the stage is agent-owned, move deal to next stage
+                if !deal_id.is_empty() {
+                    self.try_auto_advance_deal(deal_id).await;
+                }
             }
             Err(e) => {
                 self.fail_flow(flow, &e.to_string()).await;
@@ -246,11 +255,11 @@ impl AgentFlowExecutor {
                 "UPDATE agent_flows SET retry_count = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2",
             )
             .bind(attempt as i32)
-            .bind(flow.id)
+            .bind(&flow.id)
             .execute(&self.pool)
             .await
             {
-                tracing::warn!("[AgentFlowEngine] Failed to update retry count for flow {}: {}", flow.id, e);
+                tracing::error!("[AgentFlowEngine] Failed to update retry count for flow {}: {}", flow.id, e);
             }
 
             match self
@@ -272,11 +281,11 @@ impl AgentFlowExecutor {
                         "UPDATE agent_flows SET last_error = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2",
                     )
                     .bind(e.to_string())
-                    .bind(flow.id)
+                    .bind(&flow.id)
                     .execute(&self.pool)
                     .await
                     {
-                        tracing::warn!("[AgentFlowEngine] Failed to store error for flow {}: {}", flow.id, db_err);
+                        tracing::error!("[AgentFlowEngine] Failed to store error for flow {}: {}", flow.id, db_err);
                     }
 
                     if attempt == max_retries - 1 {
@@ -292,13 +301,20 @@ impl AgentFlowExecutor {
         anyhow::bail!("All retry attempts exhausted")
     }
 
-    /// Single LLM call with optional tool-call loop (max 5 turns)
+    /// Single LLM call with optional tool-call loop (max 5 turns).
+    /// When SIMULATE_LLM=1 is set, returns realistic simulated responses
+    /// instead of calling the actual LLM API (useful for testing without credits).
     async fn call_llm_once(
         &self,
         mut messages: Vec<Value>,
         tools: &[ToolDefinition],
         model_hint: Option<&str>,
     ) -> anyhow::Result<String> {
+        // Simulation mode: return realistic agent responses without calling LLM
+        if std::env::var("SIMULATE_LLM").unwrap_or_default() == "1" {
+            return self.simulate_llm_response(&messages).await;
+        }
+
         let max_turns = 5;
         let mut last_tool_sig: Option<String> = None;
 
@@ -490,7 +506,7 @@ impl AgentFlowExecutor {
             return json!({"error": format!("Content too large ({} > {} bytes)", content.len(), MAX_CONTENT_LEN)}).to_string();
         }
 
-        let flow_id = match Uuid::parse_str(flow_id_str) {
+        let flow_id = match DbUuid::parse(flow_id_str) {
             Ok(id) => id,
             Err(_) => {
                 tracing::debug!(
@@ -501,14 +517,15 @@ impl AgentFlowExecutor {
             }
         };
 
-        let artifact_id = Uuid::new_v4();
+        let artifact_id = DbUuid::new();
+        let artifact_id_str = artifact_id.to_string();
         match AgentFlowEvent::create(
             &self.pool,
             CreateFlowEvent {
-                agent_flow_id: flow_id,
+                agent_flow_id: flow_id.clone(),
                 event_type: FlowEventType::ArtifactCreated,
                 event_data: FlowEventPayload::ArtifactCreated {
-                    artifact_id,
+                    artifact_id: artifact_id.clone().into(),
                     artifact_type: "text".to_string(),
                     title: title.to_string(),
                     phase: "execution".to_string(),
@@ -519,19 +536,25 @@ impl AgentFlowExecutor {
         {
             Ok(_) => {
                 // Also store content in a separate event for retrieval
-                let _ = AgentFlowEvent::create(
+                if let Err(e) = AgentFlowEvent::create(
                     &self.pool,
                     CreateFlowEvent {
-                        agent_flow_id: flow_id,
+                        agent_flow_id: flow_id.clone(),
                         event_type: FlowEventType::ArtifactUpdated,
                         event_data: FlowEventPayload::ArtifactUpdated {
-                            artifact_id,
+                            artifact_id: artifact_id.into(),
                             changes: json!({"content": content}),
                         },
                     },
                 )
-                .await;
-                json!({"success": true, "artifact_id": artifact_id.to_string()}).to_string()
+                .await
+                {
+                    tracing::error!(
+                        "[AgentFlowEngine] Failed to store artifact content event: {}",
+                        e
+                    );
+                }
+                json!({"success": true, "artifact_id": artifact_id_str}).to_string()
             }
             Err(e) => json!({"error": e.to_string()}).to_string(),
         }
@@ -544,7 +567,7 @@ impl AgentFlowExecutor {
         if let Err(e) = AgentFlowEvent::create(
             &self.pool,
             CreateFlowEvent {
-                agent_flow_id: flow.id,
+                agent_flow_id: flow.id.clone(),
                 event_type: FlowEventType::FlowCompleted,
                 event_data: FlowEventPayload::FlowCompleted {
                     verification_score: None,
@@ -565,7 +588,7 @@ impl AgentFlowExecutor {
         if let Err(e) = sqlx::query(
             "UPDATE agent_flows SET status = 'completed', execution_completed_at = datetime('now', 'subsec'), updated_at = datetime('now', 'subsec') WHERE id = ?1",
         )
-        .bind(flow.id)
+        .bind(&flow.id)
         .execute(&self.pool)
         .await
         {
@@ -578,7 +601,7 @@ impl AgentFlowExecutor {
         if let Err(e) = AgentFlowEvent::create(
             &self.pool,
             CreateFlowEvent {
-                agent_flow_id: flow.id,
+                agent_flow_id: flow.id.clone(),
                 event_type: FlowEventType::FlowFailed,
                 event_data: FlowEventPayload::FlowFailed {
                     error: error.to_string(),
@@ -600,7 +623,7 @@ impl AgentFlowExecutor {
             "UPDATE agent_flows SET status = 'failed', last_error = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2",
         )
         .bind(error)
-        .bind(flow.id)
+        .bind(&flow.id)
         .execute(&self.pool)
         .await
         {
@@ -624,6 +647,365 @@ impl AgentFlowExecutor {
             .as_deref()
             .and_then(|s| serde_json::from_str(s).ok())
             .unwrap_or_else(|| json!({}))
+    }
+}
+
+// ── Auto-Advance ────────────────────────────────────────────────────────────
+
+impl AgentFlowExecutor {
+    /// After an agent flow completes, check if the deal should auto-advance
+    /// to the next pipeline stage. This happens when:
+    /// 1. The current stage has an agent assigned (agent-owned stage)
+    /// 2. All agent flows for this deal in the current stage are completed
+    /// 3. The review task (if any) is done
+    async fn try_auto_advance_deal(&self, deal_id: &str) {
+        tracing::info!(
+            "[AgentFlowEngine] Checking auto-advance for deal {}",
+            deal_id
+        );
+
+        // Load the deal
+        let deal = match sqlx::query_as::<_, (String, Option<String>, Option<String>)>(
+            "SELECT id, crm_stage_id, crm_pipeline_id FROM crm_deals WHERE id = ?1",
+        )
+        .bind(deal_id)
+        .fetch_optional(&self.pool)
+        .await
+        {
+            Ok(Some(d)) => d,
+            Ok(None) => {
+                tracing::warn!(
+                    "[AgentFlowEngine] Auto-advance: deal {} not found in DB",
+                    deal_id
+                );
+                return;
+            }
+            Err(e) => {
+                tracing::error!(
+                    "[AgentFlowEngine] Auto-advance: failed to load deal {}: {}",
+                    deal_id,
+                    e
+                );
+                return;
+            }
+        };
+
+        let (_, stage_id, pipeline_id) = deal;
+        let (Some(stage_id), Some(pipeline_id)) = (stage_id, pipeline_id) else {
+            tracing::warn!(
+                "[AgentFlowEngine] Auto-advance: deal {} has no stage or pipeline",
+                deal_id
+            );
+            return;
+        };
+
+        // Check if the current stage has an agent assigned (agent-owned)
+        let stage_config: Option<String> =
+            sqlx::query_scalar("SELECT stage_config FROM crm_pipeline_stages WHERE id = ?1")
+                .bind(&stage_id)
+                .fetch_optional(&self.pool)
+                .await
+                .ok()
+                .flatten();
+
+        let is_agent_stage = stage_config
+            .as_deref()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
+            .map(|c| c.get("assigned_agent").and_then(|a| a.as_str()).is_some())
+            .unwrap_or(false);
+
+        if !is_agent_stage {
+            tracing::info!(
+                "[AgentFlowEngine] Auto-advance: stage {} is not agent-owned (no assigned_agent in config), skipping. Config: {:?}",
+                stage_id,
+                stage_config.as_deref().unwrap_or("null")
+            );
+            return;
+        }
+
+        // Check if any pending agent flows remain for this deal
+        let pending_flows: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM agent_flows WHERE crm_deal_id = ?1 AND status IN ('planning', 'executing')",
+        )
+        .bind(deal_id)
+        .fetch_one(&self.pool)
+        .await
+        .unwrap_or(0);
+
+        if pending_flows > 0 {
+            tracing::info!(
+                "[AgentFlowEngine] Auto-advance: deal {} has {} pending flows, waiting",
+                deal_id,
+                pending_flows
+            );
+            return;
+        }
+
+        // Find next stage in the pipeline
+        let current_position: Option<i32> =
+            sqlx::query_scalar("SELECT position FROM crm_pipeline_stages WHERE id = ?1")
+                .bind(&stage_id)
+                .fetch_optional(&self.pool)
+                .await
+                .ok()
+                .flatten();
+
+        let Some(pos) = current_position else {
+            tracing::warn!(
+                "[AgentFlowEngine] Auto-advance: stage {} has no position",
+                stage_id
+            );
+            return;
+        };
+
+        let next_stage: Option<(String, String)> = sqlx::query_as(
+            "SELECT id, name FROM crm_pipeline_stages WHERE pipeline_id = ?1 AND position > ?2 ORDER BY position ASC LIMIT 1",
+        )
+        .bind(&pipeline_id)
+        .bind(pos)
+        .fetch_optional(&self.pool)
+        .await
+        .ok()
+        .flatten();
+
+        let Some((next_stage_id, next_stage_name)) = next_stage else {
+            tracing::info!(
+                "[AgentFlowEngine] Auto-advance: deal {} is in the last stage (pos {}), nothing to advance to",
+                deal_id,
+                pos
+            );
+            return;
+        };
+
+        // Auto-advance the deal
+        tracing::info!(
+            "[AgentFlowEngine] Auto-advancing deal {} to stage {} ({})",
+            deal_id,
+            next_stage_name,
+            next_stage_id
+        );
+
+        if let Err(e) = sqlx::query(
+            "UPDATE crm_deals SET crm_stage_id = ?1, stage = ?2, updated_at = datetime('now','subsec') WHERE id = ?3",
+        )
+        .bind(&next_stage_id)
+        .bind(&next_stage_name)
+        .bind(deal_id)
+        .execute(&self.pool)
+        .await
+        {
+            tracing::error!("[AgentFlowEngine] Failed to auto-advance deal {}: {}", deal_id, e);
+            return;
+        }
+
+        // Run transition processor for the new stage (triggers next agent, creates review tasks, etc.)
+        let deal_uuid = match db::db_uuid::DbUuid::parse(deal_id) {
+            Ok(u) => u,
+            Err(_) => return,
+        };
+        if let Ok(deal) = db::models::crm_deal::CrmDeal::find_by_id(&self.pool, &deal_uuid).await {
+            let next_stage_uuid = db::db_uuid::DbUuid::from_string(next_stage_id.clone());
+            if let Ok(to_stage) =
+                db::models::crm_pipeline::CrmPipelineStage::find_by_id(&self.pool, &next_stage_uuid)
+                    .await
+            {
+                let from_stage_uuid = db::db_uuid::DbUuid::from_string(stage_id);
+                let from_stage = db::models::crm_pipeline::CrmPipelineStage::find_by_id(
+                    &self.pool,
+                    &from_stage_uuid,
+                )
+                .await
+                .ok();
+                let result = crate::stage_transition::process_transition(
+                    &self.pool,
+                    &deal,
+                    from_stage.as_ref(),
+                    &to_stage,
+                )
+                .await;
+                tracing::info!(
+                    "[AgentFlowEngine] Transition result for deal {} → {}: {:?}",
+                    deal_id,
+                    next_stage_name,
+                    result.actions_taken
+                );
+            }
+        }
+    }
+}
+
+// ── LLM Simulation ──────────────────────────────────────────────────────────
+
+impl AgentFlowExecutor {
+    /// Simulate a realistic LLM response based on the agent name extracted from messages.
+    /// Executes real tool calls (get_deal_context, update_deal_field, save_artifact)
+    /// so the pipeline state actually advances — just skips the LLM API call.
+    async fn simulate_llm_response(&self, messages: &[Value]) -> anyhow::Result<String> {
+        // Extract agent name from system prompt
+        let system_text = messages
+            .first()
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_str())
+            .unwrap_or("");
+        let agent_name = if system_text.contains("Scout") {
+            "scout"
+        } else if system_text.contains("Astra") {
+            "astra"
+        } else if system_text.contains("Cash") {
+            "cash"
+        } else if system_text.contains("Lux") {
+            "lux"
+        } else {
+            "assistant"
+        };
+
+        // Extract deal_id from user message
+        let user_text = messages
+            .iter()
+            .find(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"))
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_str())
+            .unwrap_or("");
+
+        // Try to extract deal_id from context (look for UUID pattern)
+        let deal_id = user_text
+            .split_whitespace()
+            .find(|w| w.len() == 36 && w.contains('-'))
+            .or_else(|| {
+                // Fallback: look for deal_id in the message content
+                user_text.split("deal_id").nth(1).and_then(|s| {
+                    s.split_whitespace()
+                        .next()
+                        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric() && c != '-'))
+                })
+            })
+            .unwrap_or("");
+
+        tracing::info!(
+            "[AgentFlowEngine] SIMULATE_LLM: agent={}, deal_id={}",
+            agent_name,
+            deal_id
+        );
+
+        // Load real deal context for realistic output
+        let context = if !deal_id.is_empty() {
+            self.load_deal_context(deal_id).await
+        } else {
+            "No deal context available".to_string()
+        };
+
+        // Simulate a brief processing delay
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+        // Execute real tool calls based on agent role + return summary
+        match agent_name {
+            "scout" => {
+                // Scout: save research artifact
+                if !deal_id.is_empty() {
+                    let result = self
+                        .update_deal_field(
+                            deal_id,
+                            "description",
+                            &format!(
+                                "[Scout Research — Simulated]\n\n\
+                             Contact appears to be a decision-maker at a mid-size company. \
+                             Key talking points: digital transformation, operational efficiency, \
+                             and competitive positioning. Company is in a growth phase with \
+                             potential for strategic partnerships.\n\n\
+                             Original context: {}",
+                                context.chars().take(200).collect::<String>()
+                            ),
+                        )
+                        .await;
+                    if result.contains("error") {
+                        tracing::error!(
+                            "[AgentFlowEngine] Simulated scout: update_deal_field returned error: {}",
+                            result
+                        );
+                    }
+                }
+                Ok(format!(
+                    "[Simulated Scout Output]\n\n\
+                     ## Research Summary\n\
+                     - Contact profile analyzed\n\
+                     - Company overview compiled\n\
+                     - 4 key talking points identified\n\
+                     - 3 potential pain points flagged\n\n\
+                     Deal context updated with research findings."
+                ))
+            }
+            "astra" => Ok(format!(
+                "[Simulated Astra Output]\n\n\
+                     ## Business Analysis\n\
+                     - Pain point: manual processes causing bottlenecks\n\
+                     - Recommended: workflow automation + AI integration\n\
+                     - Scope: 3-6 month engagement\n\
+                     - Risk: low (proven approach, clear ROI)\n\n\
+                     Ready for proposal generation."
+            )),
+            "cash" => {
+                if !deal_id.is_empty() {
+                    let result = self
+                        .update_deal_field(
+                            deal_id,
+                            "proposal_text",
+                            "[Simulated Proposal — Cash]\n\n\
+                         ## Executive Summary\n\
+                         We propose a comprehensive digital transformation engagement.\n\n\
+                         ## Scope of Work\n\
+                         1. Process audit and optimization (Month 1)\n\
+                         2. Workflow automation implementation (Month 2-3)\n\
+                         3. AI agent integration (Month 3-4)\n\
+                         4. Training and handoff (Month 5)\n\n\
+                         ## Investment\n\
+                         Total: $45,000 over 5 months\n\n\
+                         ## Timeline\n\
+                         Start: 2 weeks from approval",
+                        )
+                        .await;
+                    if result.contains("error") {
+                        tracing::error!(
+                            "[AgentFlowEngine] Simulated cash: update_deal_field returned error: {}",
+                            result
+                        );
+                    }
+                }
+                Ok(format!(
+                    "[Simulated Cash Output]\n\n\
+                     Proposal generated and saved to deal.\n\
+                     - 4 work phases defined\n\
+                     - Pricing: $45,000\n\
+                     - Timeline: 5 months"
+                ))
+            }
+            "lux" => {
+                if !deal_id.is_empty() {
+                    let result = self
+                        .update_deal_field(deal_id, "deck_url", "/api/decks/simulated-deck.pdf")
+                        .await;
+                    if result.contains("error") {
+                        tracing::error!(
+                            "[AgentFlowEngine] Simulated lux: update_deal_field returned error: {}",
+                            result
+                        );
+                    }
+                }
+                Ok(format!(
+                    "[Simulated Lux Output]\n\n\
+                     Presentation deck outline created:\n\
+                     1. Title: Value proposition\n\
+                     2. Problem/Opportunity\n\
+                     3. Solution approach\n\
+                     4. Deliverables & timeline\n\
+                     5. Investment & ROI\n\n\
+                     Deck URL saved to deal."
+                ))
+            }
+            _ => Ok(format!(
+                "[Simulated Agent Output]\n\nAnalysis complete for deal. Context: {}",
+                context.chars().take(100).collect::<String>()
+            )),
+        }
     }
 }
 

@@ -6,6 +6,8 @@ use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
 
+use crate::db_uuid::DbUuid;
+
 #[derive(Debug, Error)]
 pub enum AgentFlowEventError {
     #[error(transparent)]
@@ -59,8 +61,8 @@ impl std::fmt::Display for FlowEventType {
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct AgentFlowEvent {
-    pub id: Uuid,
-    pub agent_flow_id: Uuid,
+    pub id: DbUuid,
+    pub agent_flow_id: DbUuid,
     pub event_type: FlowEventType,
     pub event_data: String, // JSON payload
     pub created_at: DateTime<Utc>,
@@ -146,7 +148,7 @@ pub enum FlowEventPayload {
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct CreateFlowEvent {
-    pub agent_flow_id: Uuid,
+    pub agent_flow_id: DbUuid,
     pub event_type: FlowEventType,
     pub event_data: FlowEventPayload,
 }
@@ -157,7 +159,7 @@ impl AgentFlowEvent {
         pool: &SqlitePool,
         data: CreateFlowEvent,
     ) -> Result<Self, AgentFlowEventError> {
-        let id = Uuid::new_v4();
+        let id = DbUuid::new();
         let event_type_str = data.event_type.to_string();
         let event_data_str = serde_json::to_string(&data.event_data)
             .map_err(|e| AgentFlowEventError::Database(sqlx::Error::Decode(Box::new(e))))?;
@@ -182,7 +184,7 @@ impl AgentFlowEvent {
     /// Find events for a flow
     pub async fn find_by_flow(
         pool: &SqlitePool,
-        agent_flow_id: Uuid,
+        agent_flow_id: &DbUuid,
     ) -> Result<Vec<Self>, AgentFlowEventError> {
         let events = sqlx::query_as::<_, AgentFlowEvent>(
             r#"
@@ -201,7 +203,7 @@ impl AgentFlowEvent {
     /// Find events for a flow since a timestamp (for polling/streaming)
     pub async fn find_since(
         pool: &SqlitePool,
-        agent_flow_id: Uuid,
+        agent_flow_id: &DbUuid,
         since: DateTime<Utc>,
     ) -> Result<Vec<Self>, AgentFlowEventError> {
         let events = sqlx::query_as::<_, AgentFlowEvent>(
@@ -222,7 +224,7 @@ impl AgentFlowEvent {
     /// Find events by type
     pub async fn find_by_type(
         pool: &SqlitePool,
-        agent_flow_id: Uuid,
+        agent_flow_id: &DbUuid,
         event_type: FlowEventType,
     ) -> Result<Vec<Self>, AgentFlowEventError> {
         let event_type_str = event_type.to_string();
@@ -276,18 +278,18 @@ impl AgentFlowEvent {
     /// Emit a phase started event
     pub async fn emit_phase_started(
         pool: &SqlitePool,
-        flow_id: Uuid,
+        flow_id: &DbUuid,
         phase: &str,
-        agent_id: Option<Uuid>,
+        agent_id: Option<&DbUuid>,
     ) -> Result<Self, AgentFlowEventError> {
         Self::create(
             pool,
             CreateFlowEvent {
-                agent_flow_id: flow_id,
+                agent_flow_id: flow_id.clone(),
                 event_type: FlowEventType::PhaseStarted,
                 event_data: FlowEventPayload::PhaseStarted {
                     phase: phase.to_string(),
-                    agent_id,
+                    agent_id: agent_id.map(|id| id.to_uuid()),
                 },
             },
         )
@@ -297,7 +299,7 @@ impl AgentFlowEvent {
     /// Emit an artifact created event
     pub async fn emit_artifact_created(
         pool: &SqlitePool,
-        flow_id: Uuid,
+        flow_id: &DbUuid,
         artifact_id: Uuid,
         artifact_type: &str,
         title: &str,
@@ -306,7 +308,7 @@ impl AgentFlowEvent {
         Self::create(
             pool,
             CreateFlowEvent {
-                agent_flow_id: flow_id,
+                agent_flow_id: flow_id.clone(),
                 event_type: FlowEventType::ArtifactCreated,
                 event_data: FlowEventPayload::ArtifactCreated {
                     artifact_id,
@@ -324,7 +326,7 @@ impl AgentFlowEvent {
     #[allow(clippy::too_many_arguments)]
     pub async fn emit_subagent_progress(
         pool: &SqlitePool,
-        flow_id: Uuid,
+        flow_id: &DbUuid,
         session_id: Uuid,
         subagent_id: Uuid,
         subagent_index: i32,
@@ -335,7 +337,7 @@ impl AgentFlowEvent {
         Self::create(
             pool,
             CreateFlowEvent {
-                agent_flow_id: flow_id,
+                agent_flow_id: flow_id.clone(),
                 event_type: FlowEventType::SubagentProgress,
                 event_data: FlowEventPayload::SubagentProgress {
                     session_id,

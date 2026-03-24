@@ -1,6 +1,7 @@
 import { useMutation } from '@tanstack/react-query';
 import { Phone, Video } from 'lucide-react';
 import { useState } from 'react';
+import { callScheduling as tid } from 'shared/testids';
 import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
@@ -73,6 +74,7 @@ export function CallSchedulingSection({
                   defaultValue={date || ''}
                   className="w-full h-8 px-2 text-sm border rounded bg-background"
                   id={`${type}-date`}
+                  data-testid={tid.date(type)}
                 />
               </div>
               <div>
@@ -81,6 +83,7 @@ export function CallSchedulingSection({
                   defaultValue={method}
                   className="w-full h-8 px-2 text-sm border rounded bg-background"
                   id={`${type}-method`}
+                  data-testid={tid.method(type)}
                 >
                   {CALL_METHODS.map((m) => (
                     <option key={m} value={m}>{m}</option>
@@ -94,6 +97,7 @@ export function CallSchedulingSection({
                 defaultValue={status}
                 className="w-full h-8 px-2 text-sm border rounded bg-background"
                 id={`${type}-status`}
+                data-testid={tid.status(type)}
               >
                 {CALL_STATUSES.map((s) => (
                   <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
@@ -104,6 +108,7 @@ export function CallSchedulingSection({
               <Button
                 size="sm"
                 className="h-7 text-xs"
+                data-testid={tid.save(type)}
                 disabled={saveMutation.isPending}
                 onClick={() => {
                   const dateEl = document.getElementById(`${type}-date`) as HTMLInputElement;
@@ -134,6 +139,7 @@ export function CallSchedulingSection({
         size="sm"
         onClick={() => setEditing(type)}
         className="-mx-2"
+        data-testid={tid.row(type)}
         actions={
           <div className="flex items-center gap-2">
             {method && date && (

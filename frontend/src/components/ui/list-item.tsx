@@ -1,4 +1,5 @@
 import * as React from 'react';
+
 import { cn } from '@/lib/utils';
 
 interface ListItemProps {
@@ -10,6 +11,7 @@ interface ListItemProps {
   onClick?: () => void;
   className?: string;
   size?: 'sm' | 'md' | 'lg';
+  'data-testid'?: string;
 }
 
 const sizeStyles = {
@@ -27,6 +29,7 @@ export function ListItem({
   onClick,
   className,
   size = 'md',
+  'data-testid': dataTestId,
 }: ListItemProps) {
   const Comp = onClick ? 'button' : 'div';
 
@@ -39,6 +42,7 @@ export function ListItem({
         className
       )}
       onClick={onClick}
+      data-testid={dataTestId}
     >
       <div className="flex items-center gap-2 min-w-0">
         {Icon && (

@@ -709,3 +709,122 @@ Inline stage-trigger agents (Scout, Astra, Cash, Lux) coexist with engine in Pha
 3. ~~ai-usage.tsx extraction~~ → Extract tab components during cost bridge work (PR #54)
 4. ~~Cost API location~~ → Dedicated `frontend/src/lib/api/costs.ts` module
 5. ~~Stash verification~~ → Confirmed correct, contents match expectations
+
+---
+
+## Pipeline E2E Test Audit (2026-03-24)
+
+### Summary
+37 passing, 12 fixme (unimplemented features), 0 failures.
+Audit against Gherkin specs in `planning/BACKLOG--remaining-work.md` revealed significant gaps.
+
+### Backend Fix Applied
+- `advance_deal` handler now collects ALL Intel exit validation failures (description, person_intel, company_intel) and returns structured `{ warnings: [{field, message}] }` response instead of early-returning on first failure.
+- Added `ValidationFailed` error variant to `ApiError` enum.
+
+### Test-vs-Spec Gap Analysis
+
+#### Existence Checks Disguised as Tests (6 issues)
+| Spec | Current Test | Gap |
+|------|-------------|-----|
+| DD-2: Fill date/method/status, click Save, verify persistence | Checks "Call Scheduling" text is visible | Does NOT fill form or save |
+| DD-3: Click "Generate Invite Link" on Won deal, get URL, copy | Checks invite NOT visible on non-Won deal | No happy path test |
+| DD-4: Click "Send Invoice", verify invoice_id stored | Checks button is enabled | Does NOT click Send Invoice |
+| PC-2: Save stage config → verify behavior changes | Toggles checkbox but doesn't save+reopen | No round-trip verification |
+| PC-3: Per-stage agent assignments match plan | Checks agent names visible | Doesn't verify per-stage mapping |
+| DL-1: Card shows contact name | Checks amount and probability | Contact name not verified |
+
+#### Spec/Code Mismatch — Soft vs Hard Gates (2 issues)
+| Spec | Says | Code Does |
+|------|------|-----------|
+| RG-1: Pending tasks | "advance succeeds (soft enforcement)" | Returns 400 (hard block) |
+| RG-2: Missing description | "move still succeeds (soft gate)" | Returns 400 (hard block) |
+
+**Decision needed**: Are gates soft (warn but allow) or hard (block)? Current code is hard. Spec says soft. Tests currently match code (400). Context menu moves ARE soft (allow with toast).
+
+#### Missing Happy Path Tests (3 issues)
+| Spec | Missing |
+|------|---------|
+| DD-1: Link transcript via API, verify it appears in tab | No transcript linking test |
+| DD-3: Generate invite link on Won deal | No Won-stage invite test |
+| DD-4: Click Send Invoice, verify invoice_id stored | No invoice sending test |
+
+#### Missing/Weak Assertions (5 issues)
+| Spec | Current | Gap |
+|------|---------|-----|
+| AA-1: Card shows "Scout running..." badge | Checks "Needs review" only | "Scout running" badge not tested |
+| AA-1: 30-second cancel window | Not tested | Cancel flow missing |
+| AA-2/3/5: Agent flow created with correct flow_type | Only checks review task count | No flow_type verification |
+| DL-2: Toast confirms transition | `hasToast \|\| true` always passes | Fake assertion |
+| AA-1: Agent flow for Scout | Allows missing flows, logs warning | Permissive — should assert |
+
+### Fix Plan
+1. Add Gherkin specs as comments in every test block
+2. Replace existence checks with real form interactions (DD-2, DD-4)
+3. Add RED failing tests for missing happy paths (DD-3 invite, DD-1 transcript linking)
+4. Fix DL-2 toast test — verify during the move, not after
+5. Strengthen AA-1/2/3/5 agent flow assertions
+6. Add PC-2 save+reopen round-trip test
+7. Document soft-vs-hard gate decision for RG-1/RG-2
+
+### Current Progress (2026-03-24 evening)
+
+**pipeline-flow.spec.ts** created — consolidated E2E flow (one deal, full lifecycle).
+Old spec files kept for now (agent-automations, deal-detail, deal-lifecycle).
+
+**AA-1 fix in progress**: `schedule_agent_flow` was binding UUIDs as TEXT to BLOB columns.
+Fixed to use `bind_uuid_blob()`. Rebuild pending. Still fails — need to verify the INSERT
+actually reaches the database. Added tracing logs to `schedule_agent_flow`.
+
+**AA-1 agent_flow fix VERIFIED via MCP** — flow created in DB with flow_type="research".
+Root cause: FK constraint failed because task_id bound as BLOB but tasks.id is TEXT.
+Fix: bind task_id as TEXT, find existing review task or create placeholder.
+
+**Remaining issue**: test still fails because `get_deal_agent_flows` API returns non-200.
+Likely cause: `apiLogin(request)` not called in AA-1 test (auth not shared via request fixture).
+Also: placeholder task creation needs to be replaced — should use the review task that
+CreateReviewTask creates. Reorder on_enter_actions so CreateReviewTask runs first.
+
+**User feedback**: "no that isn't fine for now. fix it" — referring to placeholder task hack.
+Need to properly wire the review task ID to the agent flow.
+
+### Session Progress (2026-03-24 continued)
+
+**Merged**: `feature/2026-03-23--continued` — agent flow UUID fixes, frontend componentization, DbUuid migration
+
+**Infrastructure built**:
+- Centralized testids in `shared/testids.ts` (single source for frontend + E2E)
+- BLOB→TEXT UUID migration across 13 tables
+- Rules split: 518→315 lines per conversation (with `paths:` scoping)
+- Area-specific TESTING.md docs (e2e/, pipeline/, demos/)
+- `/run-pipeline-tests` skill
+
+**Agent auto-advance implemented**:
+- Agent flow executor: after flow completes, auto-moves deal to next stage
+- Fixed: `assigned_agent` field name, `pipeline_id` column name, RFC3339 datetime format
+- Verbose logging on all auto-advance decision points
+- MCP-verified: Intel→BA auto-advance works (Scout completes → Astra triggers)
+
+**Deal detail UX**:
+- Resizable drawer (drag left edge) replacing Sheet
+- Close (X) button in header
+- Agent failed/cancelled badges on kanban cards
+- Retry Agent button in Agent History tab
+- Retrigger endpoint: `POST /crm/deals/:id/retrigger-agent`
+
+**Silent failure audit**: 39 issues found, ALL FIXED
+- Report: `planning/reviews/2026-03-24--review--silent-failure-audit.md`
+- 6 critical: won/lost state, client/project creation → propagate errors with `?`
+- 19 high: research tasks, deliverables, reports → propagate or log at error level
+- 14 medium: executor metadata, simulation logging → `tracing::error!`
+
+**E2E test state**: 46 pass, 15 fixme, 0 fail across 6 spec files
+- Tests use auto-advance (`waitForDealStage`) + Run Now click instead of manual moves
+- Tests use `dealCard.card(dealId)` and `dealDetail.panel` testids
+- AA-3 Agent History tab verified, auto-advance chain verified
+
+**PR #59**: `pr/59-pipeline-e2e-agent-autoadvance`
+- CI: 6/6 checks pass (fmt, clippy, tests, type-gen, frontend, security)
+- Audits: functionality (8/8 WORKING), experience (0 blockers), regression (MERGE)
+- Reports: `planning/reviews/2026-03-24--review--functionality-audit-pr59.md`,
+  `planning/reviews/2026-03-24--review--experience-audit-pr59.md`

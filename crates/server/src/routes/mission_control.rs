@@ -159,7 +159,7 @@ pub async fn get_dashboard(
 
     for flow in recent_flows {
         // Get associated task
-        if let Ok(Some(task)) = Task::find_by_id(pool, &flow.task_id.to_string()).await {
+        if let Ok(Some(task)) = Task::find_by_id(pool, flow.task_id.as_str()).await {
             // Get project info
             let (project_id, project_name) = if let Ok(Some(project)) =
                 db::models::project::Project::find_by_id(pool, &task.project_id).await
@@ -171,7 +171,7 @@ pub async fn get_dashboard(
 
             // Get events count
             let events_count =
-                db::models::agent_flow_event::AgentFlowEvent::find_by_flow(pool, flow.id)
+                db::models::agent_flow_event::AgentFlowEvent::find_by_flow(pool, &flow.id)
                     .await
                     .map(|e| e.len())
                     .unwrap_or(0);

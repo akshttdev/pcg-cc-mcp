@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useNavigate,useParams } from 'react-router-dom';
+
 import { CrmPipelineBoard } from '@/components/crm/CrmPipelineBoard';
 import { CrmPipelineSettings } from '@/components/crm/CrmPipelineSettings';
 import {
@@ -8,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { useOrgCrmPipelineByType } from '@/hooks/useCrmPipeline';
 
 export function CrmClientsPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -34,6 +36,7 @@ export function CrmClientsPage() {
 export function CrmAcquisitionPage() {
   const { orgId } = useParams<{ orgId: string }>();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const { data: salesPipeline } = useOrgCrmPipelineByType(orgId || '', 'sales');
 
   if (!orgId) {
     return (
@@ -56,7 +59,7 @@ export function CrmAcquisitionPage() {
           <DialogHeader>
             <DialogTitle>Pipeline Settings</DialogTitle>
           </DialogHeader>
-          <CrmPipelineSettings organizationId={orgId} />
+          <CrmPipelineSettings organizationId={orgId} initialPipelineId={salesPipeline?.id} />
         </DialogContent>
       </Dialog>
     </>
@@ -66,6 +69,7 @@ export function CrmAcquisitionPage() {
 export function CrmLifecyclePage() {
   const { orgId } = useParams<{ orgId: string }>();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const { data: deliveryPipeline } = useOrgCrmPipelineByType(orgId || '', 'delivery');
 
   if (!orgId) {
     return (
@@ -88,7 +92,7 @@ export function CrmLifecyclePage() {
           <DialogHeader>
             <DialogTitle>Pipeline Settings</DialogTitle>
           </DialogHeader>
-          <CrmPipelineSettings organizationId={orgId} />
+          <CrmPipelineSettings organizationId={orgId} initialPipelineId={deliveryPipeline?.id} />
         </DialogContent>
       </Dialog>
     </>

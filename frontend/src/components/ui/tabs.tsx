@@ -1,5 +1,5 @@
-import * as React from 'react';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
+import * as React from 'react';
 
 import { cn } from '@/lib/utils';
 
@@ -142,6 +142,7 @@ function TabPanel({
             value={tab.value}
             disabled={tab.disabled}
             className={cn('relative', triggerClassName)}
+            data-testid={`${testId}-${tab.value}`}
           >
             {tab.icon && <span className="mr-1.5">{tab.icon}</span>}
             {tab.label}
@@ -166,4 +167,4 @@ function TabPanel({
   );
 }
 
-export { Tabs, TabsList, TabsTrigger, TabsContent, TabPanel };
+export { TabPanel,Tabs, TabsContent, TabsList, TabsTrigger };

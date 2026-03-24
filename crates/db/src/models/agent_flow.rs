@@ -6,6 +6,8 @@ use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
 
+use crate::db_uuid::DbUuid;
+
 #[derive(Debug, Error)]
 pub enum AgentFlowError {
     #[error(transparent)]
@@ -141,15 +143,15 @@ impl std::fmt::Display for AgentPhase {
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct AgentFlow {
-    pub id: Uuid,
-    pub task_id: Uuid,
+    pub id: DbUuid,
+    pub task_id: DbUuid,
     pub flow_type: FlowType,
     pub status: FlowStatus,
 
     // Phase agents (Planner → Executor → Verifier)
-    pub planner_agent_id: Option<Uuid>,
-    pub executor_agent_id: Option<Uuid>,
-    pub verifier_agent_id: Option<Uuid>,
+    pub planner_agent_id: Option<DbUuid>,
+    pub executor_agent_id: Option<DbUuid>,
+    pub verifier_agent_id: Option<DbUuid>,
 
     pub current_phase: AgentPhase,
 
@@ -224,10 +226,14 @@ pub struct UpdateAgentFlow {
 impl AgentFlow {
     /// Create a new agent flow
     pub async fn create(pool: &SqlitePool, data: CreateAgentFlow) -> Result<Self, AgentFlowError> {
-        let id = Uuid::new_v4();
+        let id = DbUuid::new();
+        let task_id = DbUuid::from(data.task_id);
         let flow_type_str = data.flow_type.to_string();
         let flow_config_str = data.flow_config.map(|v| v.to_string());
         let human_approval = data.human_approval_required.unwrap_or(false);
+        let planner = data.planner_agent_id.map(DbUuid::from);
+        let executor = data.executor_agent_id.map(DbUuid::from);
+        let verifier = data.verifier_agent_id.map(DbUuid::from);
 
         let flow = sqlx::query_as::<_, AgentFlow>(
             r#"
@@ -240,12 +246,12 @@ impl AgentFlow {
             RETURNING *
             "#,
         )
-        .bind(id)
-        .bind(data.task_id)
+        .bind(&id)
+        .bind(&task_id)
         .bind(flow_type_str)
-        .bind(data.planner_agent_id)
-        .bind(data.executor_agent_id)
-        .bind(data.verifier_agent_id)
+        .bind(&planner)
+        .bind(&executor)
+        .bind(&verifier)
         .bind(flow_config_str)
         .bind(human_approval)
         .fetch_one(pool)
@@ -255,11 +261,16 @@ impl AgentFlow {
     }
 
     /// Find flow by ID
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, AgentFlowError> {
-        let flow = sqlx::query_as::<_, AgentFlow>(r#"SELECT * FROM agent_flows WHERE id = ?1"#)
-            .bind(id)
-            .fetch_optional(pool)
-            .await?;
+    pub async fn find_by_id(
+        pool: &SqlitePool,
+        id: &DbUuid,
+    ) -> Result<Option<Self>, AgentFlowError> {
+        let flow = sqlx::query_as::<_, AgentFlow>(
+            r#"SELECT * FROM agent_flows WHERE id = ?1 OR CAST(id AS TEXT) = ?1"#,
+        )
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
 
         Ok(flow)
     }
@@ -267,7 +278,7 @@ impl AgentFlow {
     /// Find all flows for a task
     pub async fn find_by_task(
         pool: &SqlitePool,
-        task_id: Uuid,
+        task_id: &DbUuid,
     ) -> Result<Vec<Self>, AgentFlowError> {
         let flows = sqlx::query_as::<_, AgentFlow>(
             r#"
@@ -338,7 +349,8 @@ impl AgentFlow {
         Ok(flows)
     }
 
-    /// Find flows ready for execution (past cancel window, in actionable state)
+    /// Find flows ready for execution (past cancel window, in actionable state).
+    /// DbUuid handles both BLOB and TEXT UUID formats transparently.
     pub async fn find_pending_flows(
         pool: &SqlitePool,
         limit: i32,
@@ -347,7 +359,8 @@ impl AgentFlow {
             r#"
             SELECT * FROM agent_flows
             WHERE status IN ('planning', 'executing')
-              AND (cancel_deadline IS NULL OR cancel_deadline < datetime('now', 'subsec'))
+              AND (cancel_deadline IS NULL
+                   OR REPLACE(REPLACE(cancel_deadline, 'T', ' '), '+00:00', '') < datetime('now', 'subsec'))
             ORDER BY created_at ASC
             LIMIT ?1
             "#,
@@ -379,7 +392,7 @@ impl AgentFlow {
     /// the UPDATE only succeeds if the flow is still in the expected status.
     pub async fn transition_to_phase(
         pool: &SqlitePool,
-        id: Uuid,
+        id: &DbUuid,
         phase: AgentPhase,
         expected_status: Option<&str>,
     ) -> Result<Self, AgentFlowError> {
@@ -441,7 +454,7 @@ impl AgentFlow {
     /// Complete the flow
     pub async fn complete(
         pool: &SqlitePool,
-        id: Uuid,
+        id: &DbUuid,
         verification_score: Option<f64>,
     ) -> Result<Self, AgentFlowError> {
         let flow = sqlx::query_as::<_, AgentFlow>(
@@ -464,7 +477,7 @@ impl AgentFlow {
     }
 
     /// Request approval
-    pub async fn request_approval(pool: &SqlitePool, id: Uuid) -> Result<Self, AgentFlowError> {
+    pub async fn request_approval(pool: &SqlitePool, id: &DbUuid) -> Result<Self, AgentFlowError> {
         let flow = sqlx::query_as::<_, AgentFlow>(
             r#"
             UPDATE agent_flows
@@ -484,7 +497,7 @@ impl AgentFlow {
     /// Approve the flow
     pub async fn approve(
         pool: &SqlitePool,
-        id: Uuid,
+        id: &DbUuid,
         approved_by: &str,
     ) -> Result<Self, AgentFlowError> {
         let flow = sqlx::query_as::<_, AgentFlow>(

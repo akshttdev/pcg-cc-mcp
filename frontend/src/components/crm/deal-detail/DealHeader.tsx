@@ -11,7 +11,9 @@ import {
   Minimize2,
   Trash2,
   TrendingUp,
+  X,
 } from 'lucide-react';
+import { dealDetail as tid } from 'shared/testids';
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -49,11 +51,12 @@ interface DealHeaderProps {
   stageColor: string;
   onEdit: (deal: CrmDealWithContact) => void;
   onDelete: (deal: CrmDealWithContact) => void;
+  onClose?: () => void;
   isExpanded?: boolean;
   onToggleExpand?: () => void;
 }
 
-export function DealHeader({ deal, stageColor, onEdit, onDelete, isExpanded, onToggleExpand }: DealHeaderProps) {
+export function DealHeader({ deal, stageColor, onEdit, onDelete, onClose, isExpanded, onToggleExpand }: DealHeaderProps) {
   const initials = getInitials(deal);
   const formattedAmount = formatAmount(deal.amount, deal.currency);
   const taskTotal = deal.task_total ?? 0;
@@ -95,7 +98,7 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete, isExpanded, onT
 
         <div className="flex items-center gap-1 shrink-0">
           {onToggleExpand && (
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onToggleExpand} title={isExpanded ? 'Minimize' : 'Expand'}>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onToggleExpand} title={isExpanded ? 'Minimize' : 'Expand'} data-testid={tid.expand}>
               {isExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
             </Button>
           )}
@@ -104,6 +107,7 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete, isExpanded, onT
             icon={Edit}
             label="Edit deal"
             iconClassName="h-3.5 w-3.5"
+            data-testid={tid.edit}
           />
           <IconButton
             variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive"
@@ -111,7 +115,18 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete, isExpanded, onT
             icon={Trash2}
             label="Delete deal"
             iconClassName="h-3.5 w-3.5"
+            data-testid={tid.delete}
           />
+          {onClose && (
+            <IconButton
+              variant="ghost" className="h-7 w-7"
+              onClick={onClose}
+              icon={X}
+              label="Close"
+              iconClassName="h-3.5 w-3.5"
+              data-testid={tid.close}
+            />
+          )}
         </div>
       </div>
 

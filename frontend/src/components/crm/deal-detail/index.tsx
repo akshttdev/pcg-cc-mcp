@@ -1,21 +1,24 @@
 import { useState } from 'react';
-import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { TabPanel, TabsContent } from '@/components/ui/tabs';
-import type { TabDefinition } from '@/components/ui/tabs';
+import { dealDetail as tid } from 'shared/testids';
+
+import { Dialog, DialogContent, DialogDescription,DialogTitle } from '@/components/ui/dialog';
+import { ResizableDrawer } from '@/components/ui/resizable-drawer';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { DealHeader, PipelineStepper } from './DealHeader';
-import { OverviewTab } from './tabs/OverviewTab';
-import { IntelTab } from './tabs/IntelTab';
-import { ReviewTab } from './tabs/ReviewTab';
-import { ProjectsTab } from './tabs/ProjectsTab';
-import { ActivityTab } from './tabs/ActivityTab';
-import { ProposalTab } from './tabs/ProposalTab';
-import { DeckTab } from './tabs/DeckTab';
-import { TranscriptsTab } from './tabs/TranscriptsTab';
-import { AgentHistoryTab } from './tabs/AgentHistoryTab';
-import { DealConvertDialog } from '../DealConvertDialog';
+import type { TabDefinition } from '@/components/ui/tabs';
+import { TabPanel, TabsContent } from '@/components/ui/tabs';
 import type { CrmDealWithContact, CrmPipelineStage } from '@/types/crm';
+
+import { DealConvertDialog } from '../DealConvertDialog';
+import { DealHeader, PipelineStepper } from './DealHeader';
+import { ActivityTab } from './tabs/ActivityTab';
+import { AgentHistoryTab } from './tabs/AgentHistoryTab';
+import { DeckTab } from './tabs/DeckTab';
+import { IntelTab } from './tabs/IntelTab';
+import { OverviewTab } from './tabs/OverviewTab';
+import { ProjectsTab } from './tabs/ProjectsTab';
+import { ProposalTab } from './tabs/ProposalTab';
+import { ReviewTab } from './tabs/ReviewTab';
+import { TranscriptsTab } from './tabs/TranscriptsTab';
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -48,7 +51,7 @@ export function CrmDealDetailPanel({
 }: CrmDealDetailPanelProps) {
   const [activeTab, setActiveTab] = useState('overview');
   const [convertOpen, setConvertOpen] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   if (!deal) return null;
 
@@ -66,8 +69,8 @@ export function CrmDealDetailPanel({
   const proposalDot = deal.won_at ? undefined : deal.proposal_status === 'approved' ? 'green' : deal.proposal_text ? 'amber' : undefined;
   const deckDot = deal.won_at ? 'green' : deal.deck_url ? 'amber' : undefined;
 
-  const panelContent = (
-    <div className="flex flex-col h-full overflow-hidden">
+  const panelContent = (isExpanded: boolean, toggleExpand: () => void) => (
+    <div className="flex flex-col h-full overflow-hidden bg-background" data-testid="deal-detail-panel">
       {/* Stage color top bar */}
       <div className="h-1 w-full shrink-0" style={{ backgroundColor: stageColor }} />
 
@@ -77,8 +80,9 @@ export function CrmDealDetailPanel({
         stageColor={stageColor}
         onEdit={onEdit}
         onDelete={onDelete}
+        onClose={onClose}
         isExpanded={isExpanded}
-        onToggleExpand={() => setIsExpanded(!isExpanded)}
+        onToggleExpand={toggleExpand}
       />
 
           {/* Pipeline Stage Stepper */}
@@ -173,26 +177,37 @@ export function CrmDealDetailPanel({
     </div>
   );
 
-  return (
-    <>
-      {isExpanded ? (
-        <Dialog open={isOpen} onOpenChange={(open) => { if (!open) { setIsExpanded(false); onClose(); } }}>
-          <DialogContent className="max-w-6xl h-[90vh] p-0 overflow-hidden flex flex-col">
+  // Fullscreen dialog mode
+  if (isFullscreen) {
+    return (
+      <>
+        <Dialog open={isOpen} onOpenChange={(open) => { if (!open) { setIsFullscreen(false); onClose(); } }}>
+          <DialogContent className="max-w-6xl h-[90vh] p-0 overflow-hidden flex flex-col" data-testid={tid.expanded}>
             <DialogTitle className="sr-only">{deal.name}</DialogTitle>
             <DialogDescription className="sr-only">Deal detail panel</DialogDescription>
-            {panelContent}
+            {panelContent(true, () => setIsFullscreen(false))}
           </DialogContent>
         </Dialog>
-      ) : (
-        <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-          <SheetContent className="w-full sm:max-w-xl overflow-hidden flex flex-col p-0">
-            <SheetTitle className="sr-only">{deal.name}</SheetTitle>
-            <SheetDescription className="sr-only">Deal detail panel</SheetDescription>
-            {panelContent}
-          </SheetContent>
-        </Sheet>
-      )}
+        <DealConvertDialog deal={deal} open={convertOpen} onOpenChange={setConvertOpen} orgId={orgId} />
+      </>
+    );
+  }
 
+  // Resizable drawer mode (default) — drag left edge to resize
+  return (
+    <>
+      <ResizableDrawer
+        open={isOpen}
+        onClose={onClose}
+        defaultWidth={560}
+        minWidth={400}
+        storageKey="orcha:deal-drawer-width"
+        className="border-l border-border bg-background"
+        data-testid={tid.drawer}
+        onExpand={() => setIsFullscreen(true)}
+      >
+        {() => panelContent(false, () => setIsFullscreen(true))}
+      </ResizableDrawer>
       <DealConvertDialog deal={deal} open={convertOpen} onOpenChange={setConvertOpen} orgId={orgId} />
     </>
   );

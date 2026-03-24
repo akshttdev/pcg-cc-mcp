@@ -1,8 +1,571 @@
 # Backlog — Remaining Work
 
-**Last updated:** 2026-03-23 (post componentization sprint — S0-13b partially resolved, typography/a11y/dark mode debt cleared)
+**Last updated:** 2026-03-24 (sloperation intent gap audit — 5 missing capabilities + 3 partial implementations identified)
 **Context:** Consolidated from all completed planning docs + 27 research reports + 45-item research-derived backlog. **Prioritized by ROI = (revenue impact × probability) / effort**, not legacy ordering.
 **Phase 0 Sprint Plan:** See [`2026-03-19--analysis--phase0-sprint-candidates.md`](2026-03-19--analysis--phase0-sprint-candidates.md) for full scoring and sprint schedule.
+
+---
+
+## Sloperation317 Feature Parity — Acceptance Specs
+
+**Purpose:** Track remaining work to reach full feature parity with the sloperation317 dealflow plan.
+Specs are written as user stories with Gherkin acceptance criteria so feature equivalence can be verified
+regardless of architectural changes. Each spec is tagged: PASSING, PARTIAL, or FAILING.
+
+**Source plans:**
+- `planning/2026-03-18--plan--sloperation317-integration.md`
+- `planning/2026-03-18--reference--pipeline-status.md`
+- `planning/2026-03-21--plan--pipeline-ops-sprint.md`
+- `planning/reviews/2026-03-23--review--functionality-audit-pipeline-ops.md`
+
+### Deal Lifecycle
+
+#### DL-1: Create and track a deal through the pipeline — PASSING
+```gherkin
+Feature: Deal creation and pipeline tracking
+  As a sales operator
+  I want to create deals and track them through pipeline stages
+  So that I can manage my sales funnel
+
+  Scenario: Create a deal via the pipeline board
+    Given I am on the CRM Pipeline page for an organization
+    When I click "Add Deal" and fill in name, amount, and description
+    Then the deal appears in the first stage column of the kanban board
+    And the deal card shows the contact name, amount, and stage color
+
+  Scenario: View deal details
+    Given a deal exists in the pipeline
+    When I click the deal card
+    Then a detail panel opens with tabs: Overview, Intel, Transcripts, Proposal, Deck
+    And I can expand the panel to full dialog mode
+```
+
+#### DL-2: Move deals between stages — PASSING
+```gherkin
+Feature: Deal stage transitions
+  As a sales operator
+  I want to move deals between pipeline stages
+  So that deals progress through the sales funnel
+
+  Scenario: Move via context menu
+    Given a deal exists in the "Lead" stage
+    When I right-click the deal card and select "Move to..." → "Intel"
+    Then the deal moves to the Intel column
+    And a toast confirms the transition
+
+  Scenario: Move via deal detail stage bar
+    Given I have the deal detail panel open
+    When I click a stage in the progress bar
+    Then the deal moves to that stage
+    And the kanban board updates
+
+  Scenario: Advance via API
+    Given a deal exists in a non-terminal stage
+    When I call POST /crm/deals/:id/advance
+    Then the deal moves to the next stage by position
+    And stage entry actions fire (agent triggers, review tasks)
+```
+
+#### DL-3: Won deal automation — PARTIAL
+```gherkin
+Feature: Won deal creates delivery pipeline entry
+  As a sales operator
+  I want won deals to automatically create delivery work
+  So that client onboarding begins immediately
+
+  Scenario: Deal reaches Won stage
+    Given a deal exists in the Negotiation stage
+    When the deal is moved to Won
+    Then a delivery pipeline deal is auto-created         # PASSING
+    And the delivery deal has the same contact and amount  # PASSING
+    And a Client record is created or found by company     # FAILING — not implemented
+    And a Project is created from the deal                 # FAILING — not implemented
+    And tasks are created from proposal deliverables        # FAILING — not implemented
+    And a VIBE transaction is recorded for the deal value   # FAILING — not implemented
+
+  Scenario: Deduplication
+    Given a contact already has a delivery deal
+    When another deal for the same contact reaches Won
+    Then no duplicate delivery deal is created              # PASSING
+```
+
+#### DL-4: Lost deal tracking — PASSING
+```gherkin
+Feature: Lost deal tracking
+  As a sales operator
+  I want to mark deals as lost with a reason
+  So that I can analyze why deals fail
+
+  Scenario: Move deal to Lost
+    Given a deal exists in any active stage
+    When I move the deal to Lost
+    Then the deal shows in the Lost column
+    And lost_at timestamp is recorded
+```
+
+### Agent Automations
+
+#### AA-1: Scout research on Intel stage entry — PASSING
+```gherkin
+Feature: Scout agent triggers on Intel stage
+  As a sales operator
+  I want Scout to automatically research a prospect when a deal enters Intel
+  So that I have intelligence before engaging
+
+  Scenario: Auto-trigger Scout
+    Given a deal with a linked contact
+    When the deal enters the Intel stage
+    Then an agent flow is created for Scout with flow_type "research"
+    And a 30-second cancel window is active
+    And the deal card shows "Scout running..." badge
+    And a review task is created: "Review Phase I intelligence"
+
+  Scenario: Cancel Scout
+    Given Scout is running on a deal within the cancel window
+    When I click "Cancel Agent"
+    Then the agent flow is cancelled
+    And the badge disappears
+
+  Scenario: Run Now bypasses cancel window
+    Given Scout is running on a deal within the cancel window
+    When I click "Run Now"
+    Then the cancel deadline is cleared
+    And the agent executes on the next poll cycle (within 15s)
+```
+
+#### AA-2: Astra business analysis — PASSING
+```gherkin
+Feature: Astra agent triggers on Business Analysis stage
+  As a sales operator
+  I want Astra to analyze the business when a deal enters Business Analysis
+  So that I understand pain points and opportunities
+
+  Scenario: Auto-trigger Astra
+    When the deal enters the Business Analysis stage
+    Then an agent flow is created for Astra with flow_type "business_analysis"
+    And a review task is created: "Review business report (Astra)"
+```
+
+#### AA-3: Cash proposal generation — PASSING
+```gherkin
+Feature: Cash agent generates proposals on Proposal stage
+  As a sales operator
+  I want Cash to generate a proposal when a deal enters the Proposal stage
+  So that I have a professional proposal to present
+
+  Scenario: Auto-trigger Cash
+    When the deal enters the Proposal stage
+    Then an agent flow is created for Cash with flow_type "proposal"
+    And a review task is created: "Review and approve proposal"
+
+  Scenario: Manual proposal generation
+    Given I am on the deal detail Proposal tab
+    When I click "Generate Proposal"
+    Then Cash generates a proposal
+    And the proposal text appears in the Proposal tab
+
+  Scenario: Approve proposal
+    Given a proposal exists with status "draft"
+    When I click "Approve Proposal"
+    Then proposal_status changes to "approved"
+```
+
+#### AA-4: Astra Pass 2 deep research chain — FAILING
+```gherkin
+Feature: Astra Pass 2 chains into Cash proposal generation
+  As a sales operator
+  I want enhanced research before proposal generation
+  So that proposals are informed by deep business analysis
+
+  Scenario: Proposal stage triggers Astra Pass 2 then Cash
+    When the deal enters the Proposal stage AND has no proposal_text
+    Then Astra Pass 2 runs first (enhanced business analysis)    # FAILING — direct Cash trigger only
+    And after Astra completes, Cash is chained automatically      # FAILING — no chaining
+    And Cash uses Astra's enhanced report to write the proposal   # FAILING — Cash runs independently
+```
+
+#### AA-5: Lux deck generation — PASSING
+```gherkin
+Feature: Lux agent generates decks on Polish stage
+  As a sales operator
+  I want Lux to generate a presentation deck when a deal enters Polish
+  So that I have a professional deck for client meetings
+
+  Scenario: Auto-trigger Lux
+    Given a deal has an approved proposal
+    When the deal enters the Polish stage
+    Then an agent flow is created for Lux with flow_type "deck"
+    And a review task is created: "Review and approve deck"
+    And proposal_text is required before entry (soft gate)
+```
+
+#### AA-6: Agent auto-advance chain — PASSING
+```gherkin
+Feature: Agents chain through pipeline via auto-advance
+  As a sales operator
+  I want agents to automatically advance deals through agent-owned stages
+  So that the pipeline progresses without manual intervention
+
+  Scenario: Agent completes and auto-advances
+    Given a deal is in the Intel stage with Scout executing
+    When Scout completes successfully
+    Then the deal auto-advances to Business Analysis
+    And Astra is automatically triggered on the new stage
+    And the chain continues: BA → Proposal → Polish
+
+  Scenario: Auto-advance stops at human-owned stages
+    Given a deal is in Polish with Lux executing
+    When Lux completes successfully
+    Then the deal auto-advances to Invoice
+    And no agent is triggered (Invoice is human-owned)
+    And the deal waits for manual progression
+```
+
+#### AA-7: Retrigger failed/cancelled agent — PASSING
+```gherkin
+Feature: Retrigger agent for failed or cancelled flows
+  As a sales operator
+  I want to retry an agent that failed or was cancelled
+  So that I can recover from errors without moving the deal
+
+  Scenario: Retrigger from Agent History tab
+    Given a deal has a failed or cancelled agent flow
+    When I click "Retry Agent" in the Agent History tab
+    Then a new agent flow is created for the same agent
+    And the new flow has a fresh cancel window
+
+  Scenario: Retrigger via API
+    When I POST to /crm/deals/:id/retrigger-agent
+    Then a new flow is scheduled with the stage's default agent
+```
+
+### Agent Observability
+
+#### DD-5: Agent History tab — PASSING
+```gherkin
+Feature: View agent execution history on deals
+  As a sales operator
+  I want to see what agents have done on a deal
+  So that I can review their work and track progress
+
+  Scenario: View completed agent flow
+    Given an agent has completed on a deal
+    When I open the deal detail and click Agent History tab
+    Then I see the agent name, status badge (Completed/Failed/etc.)
+    And the flow duration and time since completion
+    And I can expand to see individual events (phase_started, artifact_created)
+
+  Scenario: Empty state
+    Given no agents have run on a deal
+    When I click the Agent History tab
+    Then I see "No agent activity yet" with an explanation
+```
+
+### Deal Card & Board UX
+
+#### DL-5: Deal card agent status badges — PASSING
+```gherkin
+Feature: Deal cards show agent execution status
+  As a sales operator
+  I want to see agent status on deal cards at a glance
+  So that I know which deals have active or failed agents
+
+  Scenario: Agent running badge
+    Given an agent is executing on a deal
+    Then the deal card shows a pulsing "Scout running..." badge
+
+  Scenario: Agent pending badge
+    Given an agent is scheduled but within the cancel window
+    Then the deal card shows "Scout pending" badge
+
+  Scenario: Agent failed badge
+    Given an agent flow has failed
+    Then the deal card shows "Agent failed" badge
+```
+
+#### DL-6: Toast feedback on stage transitions — PASSING
+```gherkin
+Feature: Toast notifications confirm stage transitions
+  As a sales operator
+  I want clear feedback when deals move between stages
+  So that I know my actions succeeded
+
+  Scenario: Stage move confirmation
+    When I move a deal to a new stage
+    Then a toast appears: "Moved to {stage name}"
+
+  Scenario: Agent scheduling confirmation
+    When a deal enters an agent-owned stage
+    Then a toast appears: "Agent starting soon... Scheduled {agent} agent"
+    And the toast has Cancel and Run Now action buttons
+```
+
+#### PC-4: Stage owner badges on pipeline board — PASSING
+```gherkin
+Feature: Stage columns show ownership badges
+  As a sales operator
+  I want to see who owns each stage at a glance
+  So that I know whether a stage is automated or human-driven
+
+  Scenario: Agent-owned stage badge
+    Given the Intel stage has stage_owner = { label: "Scout", type: "agent" }
+    Then the Intel column header shows "Scout" with an AI agent icon
+
+  Scenario: Human-owned stage badge
+    Given the Invoice stage has stage_owner = { label: "Account Manager", type: "human" }
+    Then the Invoice column header shows "Account Manager" with a human icon
+
+  Scenario: Dynamic from stage_config
+    When a pipeline admin changes stage_owner via Pipeline Settings
+    Then the column header badge updates to reflect the change
+```
+
+### Review Gates
+
+#### RG-1: Review tasks block stage advancement — PASSING
+```gherkin
+Feature: Review tasks gate deal advancement
+  As a sales manager
+  I want review tasks to be completed before deals advance
+  So that quality is maintained at each stage
+
+  Scenario: Pending tasks generate warnings
+    Given a deal has an incomplete review task
+    When I try to advance the deal
+    Then the advance succeeds (soft enforcement)
+    And a warning is returned: "N pending task(s) should be completed"
+
+  Scenario: Review task created on stage entry
+    Given a stage has on_enter_actions with CreateReviewTask
+    When a deal enters that stage
+    Then a task is created with the configured description
+    And the task is linked to the deal via crm_deal_id
+```
+
+#### RG-2: Required field validation on stage exit — PASSING
+```gherkin
+Feature: Required fields validated on stage exit
+  As a pipeline administrator
+  I want to enforce that certain fields are filled before deals leave a stage
+  So that downstream stages have the data they need
+
+  Scenario: Exit validation warns on missing fields
+    Given the Intel stage requires "description" before exit
+    And a deal in Intel has no description
+    When the deal is moved to the next stage
+    Then a warning is returned: "Operator context (description) is required"
+    And the move still succeeds (soft gate)
+
+  Scenario: Intel stage validates intelligence status
+    Given the Intel stage requires person intel = "done"
+    And the linked person's intelligence_status is "running"
+    When the deal is moved to the next stage
+    Then a warning is returned: "person intelligence is not 'done' yet"
+```
+
+### Deal Detail Features
+
+#### DD-1: Call transcript linking — PARTIAL
+```gherkin
+Feature: Link call transcripts to deals
+  As a sales operator
+  I want to link call transcripts to deals
+  So that conversation context is preserved
+
+  Scenario: View transcripts tab
+    Given a deal has linked transcripts
+    When I click the Transcripts tab
+    Then I see a list of linked transcripts with summaries   # PASSING
+
+  Scenario: Link a transcript via API
+    When I POST to /crm/deals/:id/transcripts
+    Then the transcript is linked to the deal               # PASSING
+
+  Scenario: Auto-match transcripts from call intake
+    Given a call intake item mentions a known contact
+    When the call is processed
+    Then the transcript is auto-linked to the contact's deal # FAILING — no auto-matching
+```
+
+#### DD-2: Call scheduling — PASSING
+```gherkin
+Feature: Schedule calls with deal contacts
+  As a sales operator
+  I want to schedule calls from the deal detail
+  So that I can track meeting plans
+
+  Scenario: Schedule a call
+    Given I am on the deal detail Overview tab
+    When I set a date, method (Phone/Video/In-Person), and status
+    And I click Save
+    Then the call schedule is saved to the deal's custom_fields
+```
+
+#### DD-3: Person invitation — PASSING
+```gherkin
+Feature: Generate invitation link for won deals
+  As a sales operator
+  I want to invite clients to the platform after winning a deal
+  So that they can access their project
+
+  Scenario: Generate invite link
+    Given a deal is in the Won stage
+    When I click "Generate Invite Link" in the Deck tab
+    Then a token-based invite URL is generated
+    And I can copy it to clipboard
+```
+
+#### DD-4: Invoice generation — PARTIAL
+```gherkin
+Feature: Generate and track invoices
+  As a sales operator
+  I want to generate invoices from deals
+  So that I can track revenue
+
+  Scenario: Send invoice from deal detail
+    Given a deal has an approved proposal with amount
+    When I click "Send Invoice" in the Deck tab
+    Then an invoice is generated                    # PASSING — API exists
+    And the invoice_id is stored on the deal        # PASSING
+    And the invoice appears in AR tracking           # FAILING — no AR dashboard
+```
+
+### Pipeline Configuration
+
+#### PC-1: Pipeline settings accessible from board — PASSING
+```gherkin
+Feature: Pipeline settings accessible from the kanban board
+  As a pipeline administrator
+  I want to configure pipeline stages from the board
+  So that I can manage the pipeline without leaving the context
+
+  Scenario: Open pipeline settings
+    Given I am on the CRM Pipeline page
+    When I click the gear icon next to "Add Deal"
+    Then the Pipeline Settings dialog opens
+    And I can switch between pipelines via dropdown
+    And I see three tabs: Stages, Automations, Pipeline
+
+  Scenario: View automation overview
+    When I click the Automations tab
+    Then I see all stages with their agents, triggers, actions, and validations
+    In a single scrollable view
+```
+
+#### PC-2: Stage config controls pipeline behavior — PASSING
+```gherkin
+Feature: Stage configuration drives pipeline behavior
+  As a pipeline administrator
+  I want UI changes to stage config to affect pipeline behavior
+  So that I can customize the pipeline without SQL
+
+  Scenario: Assign agent via UI
+    Given I edit a stage and set Assigned Agent to "Scout" with auto-trigger on
+    When I save the stage
+    Then deals entering that stage will trigger a Scout agent flow
+
+  Scenario: Set required fields via UI
+    Given I edit a stage and check "Description" in Required Fields
+    When I save the stage
+    Then deals leaving that stage will get a warning if description is empty
+
+  Scenario: Enable approval gate via UI
+    Given I edit a stage and check "Require approval"
+    When I save the stage
+    Then deals entering that stage will get a review task created
+
+  Scenario: UI matches active rules
+    Given a stage has on_enter_actions and on_exit_validations from migration
+    When I open the Edit Stage dialog
+    Then the Automation tab checkboxes reflect the active rules
+    And the Active Rules tab shows the same information read-only
+```
+
+#### PC-3: All pipelines have correct stage configs — PASSING
+```gherkin
+Feature: Stage configs match the dealflow plan across all pipelines
+  As a pipeline administrator
+  I want all pipelines to have correct agent assignments and automations
+  So that the system operates as designed
+
+  Scenario Outline: Stage config matches plan
+    Given the "<pipeline>" pipeline exists
+    Then the "<stage>" stage has assigned_agent "<agent>"
+    And auto_trigger is <trigger>
+    And stage_owner label is "<owner>"
+
+    Examples:
+      | pipeline                  | stage              | agent | trigger | owner                  |
+      | Sirak Studios Acquisition | Lead               |       | false   | Sales Rep              |
+      | Sirak Studios Acquisition | Intel              | scout | true    | Scout                  |
+      | Sirak Studios Acquisition | Business Analysis  | astra | true    | Astra                  |
+      | Sirak Studios Acquisition | Proposal           | cash  | true    | Cash                   |
+      | Sirak Studios Acquisition | Polish             | lux   | true    | Lux                    |
+      | Sirak Studios Acquisition | Invoice            |       | false   | Account Manager        |
+      | Sirak Studios Acquisition | Negotiation        |       | false   | Nora + AM              |
+      | Sirak Studios Acquisition | Won                |       | false   | Team                   |
+      | Sirak Studios Acquisition | Lost               |       | false   | Account Manager        |
+      | Clients                   | Lead               |       | false   | Sales Rep              |
+      | Clients                   | Business Analysis  | astra | true    | Astra                  |
+      | Clients                   | Discovery          |       | false   | Account Manager + Nora |
+      | Clients                   | Build Proposal     | cash  | true    | Cash                   |
+      | Clients                   | Polish             | lux   | true    | Lux                    |
+      | Clients                   | Proposal Meeting   |       | false   | Account Manager        |
+      | Clients                   | Closed Won         |       | false   | Team                   |
+      | Clients                   | Closed Lost        |       | false   | Account Manager        |
+      | Client Delivery           | (all 7 stages)     |       | false   | PM                     |
+      | Conferences               | Researching        | scout | true    | Scout                  |
+```
+
+### Spec Coverage Summary (2026-03-24)
+
+**PASSING**: DL-1, DL-2, DL-4, AA-1 (+ Run Now), AA-2, AA-3, AA-5, AA-6 (auto-advance chain), AA-7 (retrigger), RG-1, RG-2, DD-2, DD-3, DD-5 (agent history), DL-5 (card badges), DL-6 (toasts), PC-1, PC-2, PC-3, PC-4 (stage owners)
+**PARTIAL**: DL-3, DD-1, DD-4
+**FAILING**: AA-4
+
+### Remaining Gaps (FAILING/PARTIAL specs)
+
+| Spec | Gap | Effort | Priority |
+|------|-----|--------|----------|
+| **DL-3** | Won dual-path: stage transition only creates delivery deal; mark_deal_won does full provisioning (client + project + tasks + VIBE). Two paths to Won = different results. | 1-2 days | HIGH — core revenue tracking |
+| **AA-4** | Astra Pass 2 → Cash chaining. Depends on Discovery stage (see sloperation gap below). | 1-2 days | MEDIUM — improves proposal quality |
+| **DD-1** | Auto-match transcripts from call intake | 1-2 days | LOW — manual linking works |
+| **DD-4** | AR invoice dashboard | 2-3 days | MEDIUM — invoice generation works, tracking doesn't |
+
+### Sloperation Intent Gaps (Audited 2026-03-24)
+
+5 sloperation317 intents have **no analogue** in the current 9-stage architecture. These are not bugs — they are missing business capabilities. Full analysis: `docs/PIPELINE.md` → "Sloperation Intent Gaps".
+
+| Gap | Sloperation Intent | Impact | Depends On |
+|-----|-------------------|--------|-----------|
+| **Discovery stage** | Human call step between BA and Proposal (position 3). AM conducts discovery call, logs transcript. | Proposals lack client-specific insights. Call scheduling UI exists but has no associated stage. | New stage + stage_config |
+| **Astra Pass 2 (F12)** | Enhanced research pass reading transcript + Phase 1 report on Discovery→Proposal transition | Proposals built from Phase 1 data only | Discovery stage |
+| **Astra→Cash chaining** | Pass 2 automatically chains to Cash with enriched report | Cash uses unenriched data | Astra Pass 2 |
+| **Present stage** | Deck presentation on live call BEFORE invoicing | Invoice stage is about payment, skips presentation | New stage or expanded Invoice |
+| **Transcript→Proposal pipeline** | deal_transcripts feed into Astra P2 → Cash | No mechanism to incorporate call insights | Discovery stage + Astra P2 |
+
+3 items are **partially covered** (exist but incomplete):
+
+| Gap | Issue | Resolution |
+|-----|-------|-----------|
+| **F8: Org-specific review routing** | Tasks created but not assigned to org operator | Add assignee routing in CreateReviewTask |
+| **F3: Person invite** | Stub — logs "wire invite system later" | Needs invite token + email send |
+| **Lead stage Scout label** | Lead shows "Scout" badge but no agent fires there | Either add light Scout trigger or remove Scout label |
+
+### Architectural Divergences (intentional, documented)
+
+These are places where the current implementation deliberately differs from the 317 plan:
+
+| 317 Plan | Current | Rationale | Still Valid? |
+|----------|---------|-----------|-------------|
+| Deals enter at Intel (no Lead stage) | Lead added as manual qualification buffer | Gives human a chance to qualify before agent triggers | ⚠️ May be unnecessary — original design had Scout fire on deal creation |
+| Discovery stage between BA and Proposal | Removed entirely | Simplified flow — but lost human input step + transcript feeding | ❌ **Should be restored** — see sloperation gaps |
+| Astra Pass 2 on Discovery→Proposal | Not ported | Depends on Discovery stage | ❌ **Should be restored** |
+| Present stage (deck on live call) | Replaced by Invoice (payment confirmation) | Different business intent | ⚠️ Review — may need both stages |
+| Hardcoded stage automations in route handlers | Data-driven `stage_config` JSON with `StageTransitionProcessor` | Enables UI-based configuration; hardcoded logic preserved as fallback | ✅ |
+| `call_llm()` direct HTTP in route handlers | `WorkflowLLMService` + `AgentFlowExecutor` with tool-calling loop | Richer agent capabilities (get_deal_context, update_deal_field, save_artifact) | ✅ |
+| No cancel window | 30s cancel window with frontend indicator | User control over agent execution | ✅ |
+| Blocking transitions (pending tasks = hard block) | Soft enforcement (warnings, allow move) | Prevents deadlocks; operators can override gates when needed | ✅ |
 
 ---
 
@@ -476,6 +1039,19 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 **Recommendation:** Either make the assertions unconditional (fail if element missing) or use `test.fixme()` to mark as known incomplete.
 **Status:** NOT STARTED — reduces test value
 
+### E2E: Testid Coverage Gaps in CRM Components
+**Source:** Testid audit (2026-03-24)
+**What:** `shared/testids.ts` is now the single source of truth for `data-testid` attributes, used by both frontend components and E2E tests. 22 of 53 interactive CRM elements have testids. The 31 missing are:
+- **PipelineSettingsStageDialog**: all tab triggers, Save Stage button, checkbox controls (7 elements)
+- **StageConfigEditor**: agent select, auto-trigger checkbox, cancel window input, 5 required-field checkboxes, approval gate (8 elements)
+- **DeckTab**: Regenerate, Share for Review, Cancel buttons, Copy/Regenerate invite (7 elements)
+- **CrmPipelineBoard**: empty state Add Deal, per-stage "+ Add deal" (3 elements — helpers exist: `tid.addDealEmpty`, `tid.addDealStage`)
+- **CrmPipelineSettings**: pipeline dropdown, Add Stage, New Pipeline buttons (3 elements)
+- **PipelineSettingsStagesTab**: Move up/down, Delete stage buttons (2 elements)
+- **DealHeader**: pipeline stage stepper clicks (1 element)
+**Recommendation:** Add testids as needed when writing tests that target these elements. Helpers exist in `shared/testids.ts` — add new ones there first, then import in both component and spec.
+**Status:** PARTIAL — primary interaction paths covered (PR #59), secondary/config controls pending. Close button and resize handle testids added.
+
 ### E2E: Fragile Title-Based Button Selectors
 **Source:** PR #49 e2e review (2026-03-18)
 **Files:** Workflow demo specs
@@ -563,6 +1139,30 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 **Rationale:** Financial data accuracy is critical for CRM. Mixing currencies in a sum is a data integrity issue.
 **Proposal:** Either: (a) normalize all values to pipeline's base currency with conversion, (b) show aggregate per currency, or (c) only show aggregate when all deals share the same currency — otherwise show "Mixed currencies".
 **Status:** NOT STARTED
+
+### 18. Pipeline Deal Cards — Show Invalid/Blocked State
+**Source:** E2E testing session (2026-03-24)
+**What:** When a deal has errors that prevent it from continuing through the pipeline (e.g., missing required fields, failed agent flows, validation errors), there is no visual indication on the kanban card. The deal looks normal, and the error only surfaces when attempting to move it — as a toast that disappears.
+**Rationale:** Users need to see at a glance which deals need attention. Silent failures mean deals get stuck without anyone noticing.
+**Proposal:** Add a visual state to deal cards for "blocked" or "needs attention":
+- Red/orange border or badge when the deal has blocking validation errors
+- "Agent failed" badge when the last agent flow errored
+- Tooltip showing what's blocking the deal from advancing
+- Consider preventing drag/move for deals that will definitely fail validation (show reason on hover)
+**Status:** PARTIAL (PR #59) — "Agent failed" and "Agent cancelled" badges now show on deal cards. Failed flows included in kanban query. Tooltip and drag-prevention still TODO.
+
+### 19. Agent Flow Interaction — Run Now / Cancel / View Results
+**Source:** E2E testing session (2026-03-24)
+**What:** When a deal moves to an agent stage (Intel, BA, Proposal, Polish), a toast shows "Scheduled scout agent" with Cancel/Run Now buttons, but:
+- Tests don't verify what happens when you click Run Now or Cancel
+- No E2E coverage of the Agent History tab after an agent completes
+- Agent failures (LLM errors, timeouts) have no UI feedback on the deal card
+**Rationale:** The agent notification is the user's only interaction point with the agent system. If they click Run Now, they should see the agent progress. If the agent fails, they should know.
+**Proposal:**
+1. E2E test: click Run Now → verify agent_flow status transitions → verify Agent History tab shows flow
+2. E2E test: click Cancel → verify agent_flow is cancelled → verify no agent work runs
+3. Agent failure: deal card shows "Agent failed" badge, Agent History tab shows error details with retry button
+**Status:** PARTIAL (PR #59) — Run Now tested in AA-1, Agent History tab tested in AA-3, Retry button implemented + retrigger API wired. Cancel test and re-trigger E2E still TODO.
 
 ---
 

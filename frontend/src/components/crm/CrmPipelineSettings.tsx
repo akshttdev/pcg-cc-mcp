@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import NiceModal from '@ebay/nice-modal-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useMutationWithToast } from '@/hooks/useMutationWithToast';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Plus } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   Select,
   SelectContent,
@@ -12,37 +13,39 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import NiceModal from '@ebay/nice-modal-react';
-import { crmPipelinesApi } from '@/lib/api';
-import { useCrmPipeline, useCrmPipelines, crmQueryKeys } from '@/hooks/useCrmPipeline';
-import type {
-  CrmPipeline,
-  CrmPipelineStage,
-  CreateCrmPipeline,
-  UpdateCrmPipeline,
-} from '@/types/crm';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from '@/components/ui/tabs';
-import { Plus } from 'lucide-react';
-import { StageDialog, parseStageConfig } from './PipelineSettingsStageDialog';
-import type { StageFormValues } from './PipelineSettingsStageDialog';
-import { PipelineDialog } from './PipelineSettingsPipelineDialog';
-import type { PipelineFormValues } from './PipelineSettingsPipelineDialog';
-import { PipelineSettingsStagesTab } from './PipelineSettingsStagesTab';
+import { crmQueryKeys,useCrmPipeline, useCrmPipelines } from '@/hooks/useCrmPipeline';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
+import { crmPipelinesApi } from '@/lib/api';
+import type {
+  CreateCrmPipeline,
+  CrmPipeline,
+  CrmPipelineStage,
+  UpdateCrmPipeline,
+} from '@/types/crm';
+
 import { PipelineSettingsAutomationsTab } from './PipelineSettingsAutomationsTab';
+import type { PipelineFormValues } from './PipelineSettingsPipelineDialog';
+import { PipelineDialog } from './PipelineSettingsPipelineDialog';
 import { PipelineSettingsPipelineTab } from './PipelineSettingsPipelineTab';
+import type { StageFormValues } from './PipelineSettingsStageDialog';
+import { parseStageConfig,StageDialog } from './PipelineSettingsStageDialog';
+import { PipelineSettingsStagesTab } from './PipelineSettingsStagesTab';
 
 // ── Component ───────────────────────────────────────────────────────────────
 
 interface CrmPipelineSettingsProps {
   organizationId: string;
+  initialPipelineId?: string;
 }
 
-export function CrmPipelineSettings({ organizationId }: CrmPipelineSettingsProps) {
+export function CrmPipelineSettings({ organizationId, initialPipelineId }: CrmPipelineSettingsProps) {
   const queryClient = useQueryClient();
   const { data: pipelines = [], isLoading: pipelinesLoading } = useCrmPipelines(organizationId);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
@@ -53,7 +56,10 @@ export function CrmPipelineSettings({ organizationId }: CrmPipelineSettingsProps
 
   useEffect(() => {
     if (!selectedPipelineId && pipelines.length > 0) {
-      setSelectedPipelineId(pipelines[0].id);
+      const preferred = initialPipelineId
+        ? pipelines.find((p) => p.id === initialPipelineId)
+        : undefined;
+      setSelectedPipelineId(preferred?.id ?? pipelines[0].id);
     } else if (
       selectedPipelineId &&
       pipelines.length > 0 &&
@@ -61,7 +67,7 @@ export function CrmPipelineSettings({ organizationId }: CrmPipelineSettingsProps
     ) {
       setSelectedPipelineId(pipelines[0].id);
     }
-  }, [pipelines, selectedPipelineId]);
+  }, [pipelines, selectedPipelineId, initialPipelineId]);
 
   const { data: pipelineData, isLoading: pipelineLoading } = useCrmPipeline(
     selectedPipelineId ?? undefined

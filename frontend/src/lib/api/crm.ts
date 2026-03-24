@@ -1,20 +1,21 @@
 import type {
+  CreateCrmDeal,
+  CreateCrmPipeline,
+  CreateCrmPipelineStage,
+  CrmDealRecord,
+  CrmDealWithContact,
   CrmPipeline,
   CrmPipelineStage,
   CrmPipelineWithStages,
-  CreateCrmPipeline,
-  UpdateCrmPipeline,
-  CreateCrmPipelineStage,
-  UpdateCrmPipelineStage,
   KanbanBoardData,
-  CrmDealRecord,
-  CrmDealWithContact,
-  CreateCrmDeal,
-  UpdateCrmDeal,
   MoveDealRequest,
   PipelineType,
+  UpdateCrmDeal,
+  UpdateCrmPipeline,
+  UpdateCrmPipelineStage,
 } from '@/types/crm';
-import { makeRequest, handleApiResponse } from './client';
+
+import { handleApiResponse,makeRequest } from './client';
 
 // =============================================================================
 // CRM Contact Records
@@ -302,19 +303,19 @@ export const crmApi = {
 // ============================================================================
 
 export type {
+  CreateCrmDeal,
+  CreateCrmPipeline,
+  CreateCrmPipelineStage,
+  CrmDealRecord,
   CrmPipeline,
   CrmPipelineStage,
   CrmPipelineWithStages,
-  CreateCrmPipeline,
-  UpdateCrmPipeline,
-  CreateCrmPipelineStage,
-  UpdateCrmPipelineStage,
   KanbanBoardData,
-  CrmDealRecord,
-  CreateCrmDeal,
-  UpdateCrmDeal,
   MoveDealRequest,
   PipelineType,
+  UpdateCrmDeal,
+  UpdateCrmPipeline,
+  UpdateCrmPipelineStage,
 };
 
 export const crmPipelinesApi = {
@@ -504,6 +505,11 @@ export const crmDealsApi = {
   approveDealAgent: async (dealId: string): Promise<{ approved: boolean; message: string }> => {
     const response = await makeRequest(`/api/crm/deals/${dealId}/approve-agent`, { method: 'POST' });
     return handleApiResponse<{ approved: boolean; message: string }>(response);
+  },
+
+  retriggerDealAgent: async (dealId: string): Promise<{ retriggered: boolean; agent_flow_id: string; agent: string; cancel_deadline?: string; message: string }> => {
+    const response = await makeRequest(`/api/crm/deals/${dealId}/retrigger-agent`, { method: 'POST' });
+    return handleApiResponse<{ retriggered: boolean; agent_flow_id: string; agent: string; message: string }>(response);
   },
 
   generateInvite: async (dealId: string): Promise<{ invite_url: string; token: string; contact_email?: string; status: string }> => {

@@ -96,12 +96,15 @@ pub async fn trigger_who_is_research(
                 person_id,
                 deal_id
             );
-            let _ = sqlx::query(
+            if let Err(e) = sqlx::query(
                 "UPDATE persons SET intelligence_status = 'queued', updated_at = datetime('now','subsec') WHERE id = ?",
             )
             .bind(&person_id)
             .execute(pool)
-            .await;
+            .await
+            {
+                tracing::error!("[trigger_who_is_research] Failed to queue person intelligence status: {}", e);
+            }
 
             // Convert DbUuid to Uuid for intelligence API
             let person_uuid = person_id.to_uuid();
@@ -160,7 +163,7 @@ pub async fn trigger_who_is_research(
                 if let Some(ref pd) = person_data {
                     if let Some(ref name) = pd.full_name {
                         let task_id = DbUuid::new();
-                        let _ = sqlx::query(
+                        if let Err(e) = sqlx::query(
                             "INSERT INTO tasks (id, title, description, status, crm_deal_id, project_id, created_at, updated_at) VALUES (?, ?, ?, 'inprogress', ?, ?, datetime('now','subsec'), datetime('now','subsec'))",
                         )
                         .bind(&task_id)
@@ -169,13 +172,16 @@ pub async fn trigger_who_is_research(
                         .bind(&deal_id)
                         .bind(project_id_ref)
                         .execute(pool)
-                        .await;
+                        .await
+                        {
+                            tracing::error!("[trigger_who_is_research] Failed to create Phase 1 research task (person): {}", e);
+                        }
                     }
                 }
 
                 if let Some(ref cn) = intel_company.as_ref().filter(|n| !n.is_empty()) {
                     let task_id = DbUuid::new();
-                    let _ = sqlx::query(
+                    if let Err(e) = sqlx::query(
                         "INSERT INTO tasks (id, title, description, status, crm_deal_id, project_id, created_at, updated_at) VALUES (?, ?, ?, 'inprogress', ?, ?, datetime('now','subsec'), datetime('now','subsec'))",
                     )
                     .bind(&task_id)
@@ -184,7 +190,10 @@ pub async fn trigger_who_is_research(
                     .bind(&deal_id)
                     .bind(project_id_ref)
                     .execute(pool)
-                    .await;
+                    .await
+                    {
+                        tracing::error!("[trigger_who_is_research] Failed to create Phase 1 research task (company): {}", e);
+                    }
                 }
             }
         }
@@ -443,12 +452,15 @@ pub async fn generate_phase1_business_report(
     }
 
     // Mark Phase 1 research tasks as done
-    let _ = sqlx::query(
+    if let Err(e) = sqlx::query(
         "UPDATE tasks SET status = 'done', updated_at = datetime('now','subsec') WHERE crm_deal_id = ? AND title LIKE 'Phase 1 Research:%' AND status = 'inprogress' AND deleted_at IS NULL",
     )
     .bind(&deal_id)
     .execute(pool)
-    .await;
+    .await
+    {
+        tracing::error!("[generate_phase1_business_report] Failed to mark Phase 1 tasks as done: {}", e);
+    }
 }
 
 // ── LLM helper: OpenAI-first with Anthropic fallback ─────────────────────────
@@ -675,14 +687,17 @@ pub async fn trigger_deep_research_pass2(pool: &sqlx::SqlitePool, deal_id: DbUui
             // Update existing report or create one
             if let Some(ref r) = report {
                 let new_depth = r.research_depth.unwrap_or(1) + 1;
-                let _ = sqlx::query(
+                if let Err(e) = sqlx::query(
                     "UPDATE business_reports SET executive_summary = ?, research_depth = ?, status = 'enhanced', updated_at = datetime('now','subsec') WHERE id = ?"
                 )
                 .bind(&enhanced_report)
                 .bind(new_depth)
                 .bind(&r.id)
                 .execute(pool)
-                .await;
+                .await
+                {
+                    tracing::error!("[trigger_deep_research_pass2] Failed to update Astra report: {}", e);
+                }
                 tracing::info!(
                     "Astra Pass 2 enhanced report {} for deal {} (depth {})",
                     r.id,
@@ -693,7 +708,7 @@ pub async fn trigger_deep_research_pass2(pool: &sqlx::SqlitePool, deal_id: DbUui
                 // No existing report — create one (BLOB columns: use .to_uuid() for binding)
                 let report_id = DbUuid::new().to_uuid();
                 let deal_uuid = DbUuid::parse(deal_id.as_str()).ok().map(|d| d.to_uuid());
-                let _ = sqlx::query(
+                if let Err(e) = sqlx::query(
                     r#"INSERT INTO business_reports
                        (id, crm_deal_id, report_type, title, status, executive_summary, research_depth,
                         company_overview, individual_profiles, pain_points, opportunities, recommended_services, next_steps,
@@ -705,7 +720,10 @@ pub async fn trigger_deep_research_pass2(pool: &sqlx::SqlitePool, deal_id: DbUui
                 .bind(format!("Phase 2 Business Analysis: {}", deal.name))
                 .bind(&enhanced_report)
                 .execute(pool)
-                .await;
+                .await
+                {
+                    tracing::error!("[trigger_deep_research_pass2] Failed to create business report: {}", e);
+                }
                 tracing::info!(
                     "Astra Pass 2 created new report {} for deal {}",
                     report_id,
@@ -855,13 +873,16 @@ async fn generate_proposal_core(pool: &sqlx::SqlitePool, id: &DbUuid) -> Result<
                     .filter_map(|item| item.get("estimated_value").and_then(|v| v.as_f64()))
                     .sum();
                 if total_value > 0.0 {
-                    let _ = sqlx::query(
+                    if let Err(e) = sqlx::query(
                         "UPDATE crm_deals SET amount = ?, updated_at = datetime('now','subsec') WHERE id = ?"
                     )
                     .bind(total_value)
                     .bind(id)
                     .execute(pool)
-                    .await;
+                    .await
+                    {
+                        tracing::error!("[generate_proposal_core] Failed to update deal amount from estimated_values: {}", e);
+                    }
                     tracing::info!(
                         "Cash set deal.amount to ${:.0} from deliverable estimated_values for deal {}",
                         total_value,
@@ -934,7 +955,7 @@ pub async fn approve_proposal(
                             .unwrap_or("Deliverable");
                         let desc = item["description"].as_str().unwrap_or("");
                         let deliverable_id = DbUuid::new();
-                        let _ = sqlx::query(
+                        sqlx::query(
                             "INSERT INTO deliverables (id, crm_deal_id, project_id, title, description, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'pending', datetime('now','subsec'), datetime('now','subsec'))"
                         )
                         .bind(&deliverable_id)
@@ -943,7 +964,11 @@ pub async fn approve_proposal(
                         .bind(title)
                         .bind(desc)
                         .execute(pool)
-                        .await;
+                        .await
+                        .map_err(|e| {
+                            tracing::error!("[approve_proposal] Failed to create deliverable from proposal: {}", e);
+                            ApiError::InternalError(format!("Failed to create deliverable from proposal: {}", e))
+                        })?;
                         deliverable_count += 1;
                     }
                 }
@@ -953,7 +978,7 @@ pub async fn approve_proposal(
 
     // Log activity
     if deliverable_count > 0 {
-        let _ = sqlx::query(
+        if let Err(e) = sqlx::query(
             "INSERT INTO crm_activities (id, organization_id, crm_contact_id, crm_deal_id, activity_type, subject, activity_at) VALUES (?, ?, ?, ?, 'deliverables_created', ?, datetime('now','subsec'))"
         )
         .bind(DbUuid::new())
@@ -962,7 +987,10 @@ pub async fn approve_proposal(
         .bind(&id)
         .bind(format!("Proposal approved: {} deliverables created", deliverable_count))
         .execute(pool)
-        .await;
+        .await
+        {
+            tracing::error!("[approve_proposal] Failed to log deliverables_created activity: {}", e);
+        }
         tracing::info!(
             "Proposal approved for deal {}: {} deliverables created",
             id,
@@ -1024,7 +1052,7 @@ async fn generate_deck_core(pool: &sqlx::SqlitePool, id: &DbUuid) -> Result<CrmD
     let deck_id = DbUuid::new();
     let deck_url = format!("/api/crm/deals/{}/deck/{}", id, deck_id);
 
-    let _ = sqlx::query(
+    if let Err(e) = sqlx::query(
         "INSERT OR IGNORE INTO project_knowledge_sources (id, owner_type, owner_id, source_type, source_id, source_title, source_summary, coverage_score, is_active, created_at, updated_at) VALUES (?, 'deal', ?, 'deck_script', ?, ?, ?, 0.8, 1, datetime('now','subsec'), datetime('now','subsec'))"
     )
     .bind(DbUuid::new().to_string())
@@ -1032,14 +1060,21 @@ async fn generate_deck_core(pool: &sqlx::SqlitePool, id: &DbUuid) -> Result<CrmD
     .bind(deck_id.to_string())
     .bind(format!("Sales Deck: {}", deal.name))
     .bind(deck_script.chars().take(500).collect::<String>())
-    .execute(pool).await;
+    .execute(pool).await
+    {
+        tracing::error!("[generate_deck_core] Failed to insert knowledge source: {}", e);
+    }
 
     let deck_data = serde_json::json!({ "deck_id": deck_id.to_string(), "script": deck_script });
-    let _ = sqlx::query("UPDATE crm_deals SET custom_fields = ?, deck_url = ?, updated_at = datetime('now','subsec') WHERE id = ?")
+    sqlx::query("UPDATE crm_deals SET custom_fields = ?, deck_url = ?, updated_at = datetime('now','subsec') WHERE id = ?")
         .bind(deck_data.to_string())
         .bind(&deck_url)
         .bind(id)
-        .execute(pool).await;
+        .execute(pool).await
+        .map_err(|e| {
+            tracing::error!("[generate_deck_core] Failed to save deck URL: {}", e);
+            ApiError::InternalError(format!("Failed to save deck URL: {}", e))
+        })?;
 
     let updated = CrmDeal::find_by_id(pool, id).await?;
     tracing::info!("Lux generated deck for deal {}", id);
@@ -1157,7 +1192,16 @@ pub async fn mark_deal_won(
 
     // Move to Won stage
     if let Some(ref won_stage_id) = won_stage {
-        let _ = CrmDeal::move_to_stage(pool, &id, won_stage_id, 0).await;
+        CrmDeal::move_to_stage(pool, &id, won_stage_id, 0)
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    "[mark_deal_won] Failed to move deal {} to Won stage: {}",
+                    id,
+                    e
+                );
+                ApiError::InternalError(format!("Failed to move deal to Won stage: {}", e))
+            })?;
     }
 
     // Set won_at and win_reason
@@ -1219,7 +1263,7 @@ pub async fn mark_deal_won(
                 .filter(|s| !s.is_empty())
                 .collect::<Vec<_>>()
                 .join("-");
-            let _ = sqlx::query(
+            sqlx::query(
                 "INSERT INTO clients (id, organization_id, name, slug, crm_contact_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, datetime('now','subsec'), datetime('now','subsec'))"
             )
             .bind(&cid)
@@ -1227,7 +1271,11 @@ pub async fn mark_deal_won(
             .bind(&company_name)
             .bind(&slug)
             .bind(&deal.crm_contact_id)
-            .execute(pool).await;
+            .execute(pool).await
+            .map_err(|e| {
+                tracing::error!("[mark_deal_won] Failed to create client for deal {}: {}", id, e);
+                ApiError::InternalError(format!("Failed to create client: {}", e))
+            })?;
             cid
         }
     };
@@ -1235,32 +1283,48 @@ pub async fn mark_deal_won(
     // ── Create Project ───────────────────────────────────────────────────────
     let project_id = DbUuid::new();
     let project_name = format!("{} — {}", deal.name, company_name);
-    let _ = sqlx::query(
+    sqlx::query(
         "INSERT INTO projects (id, name, git_repo_path, client_id, organization_id, created_at, updated_at) VALUES (?, ?, '', ?, ?, datetime('now','subsec'), datetime('now','subsec'))"
     )
     .bind(&project_id)
     .bind(&project_name)
     .bind(&client_id)
     .bind(&deal.organization_id)
-    .execute(pool).await;
+    .execute(pool).await
+    .map_err(|e| {
+        tracing::error!("[mark_deal_won] Failed to create project for deal {}: {}", id, e);
+        ApiError::InternalError(format!("Failed to create project: {}", e))
+    })?;
 
     // Link project to deal
-    let _ = sqlx::query(
+    if let Err(e) = sqlx::query(
         "UPDATE crm_deals SET project_id = ?, updated_at = datetime('now','subsec') WHERE id = ?",
     )
     .bind(&project_id)
     .bind(&id)
     .execute(pool)
-    .await;
+    .await
+    {
+        tracing::error!(
+            "[mark_deal_won] Failed to link project {} to deal {}: {}",
+            project_id,
+            id,
+            e
+        );
+    }
 
     // ── F3: Move deliverables to the new project ────────────────────────────
-    let _ = sqlx::query(
+    sqlx::query(
         "UPDATE deliverables SET project_id = ?, updated_at = datetime('now','subsec') WHERE crm_deal_id = ?"
     )
     .bind(&project_id)
     .bind(&id)
     .execute(pool)
-    .await;
+    .await
+    .map_err(|e| {
+        tracing::error!("[mark_deal_won] Failed to move deliverables to project: {}", e);
+        ApiError::InternalError(format!("Failed to move deliverables to project: {}", e))
+    })?;
 
     // ── F3: Create tasks from deliverables table (not JSON re-parsing) ──────
     #[derive(sqlx::FromRow)]
@@ -1281,24 +1345,32 @@ pub async fn mark_deal_won(
     let mut task_count = deliverables.len() as i32;
     for deliv in &deliverables {
         let task_id = DbUuid::new();
-        let _ = sqlx::query(
+        sqlx::query(
             "INSERT INTO tasks (id, project_id, crm_deal_id, title, description, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'todo', datetime('now','subsec'), datetime('now','subsec'))"
         )
         .bind(&task_id).bind(&project_id).bind(&id)
         .bind(&deliv.title).bind(&deliv.description)
-        .execute(pool).await;
+        .execute(pool).await
+        .map_err(|e| {
+            tracing::error!("[mark_deal_won] Failed to create task from deliverable: {}", e);
+            ApiError::InternalError(format!("Failed to create task from deliverable: {}", e))
+        })?;
     }
 
     // Fallback: if no deliverables exist, create a default setup task
     if task_count == 0 {
         let task_id = DbUuid::new();
-        let _ = sqlx::query(
+        sqlx::query(
             "INSERT INTO tasks (id, project_id, crm_deal_id, title, description, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'todo', datetime('now','subsec'), datetime('now','subsec'))"
         )
         .bind(&task_id).bind(&project_id).bind(&id)
         .bind("Project Setup & Kickoff")
         .bind(format!("Initial project setup for {}. Review proposal and create specific deliverables.", company_name))
-        .execute(pool).await;
+        .execute(pool).await
+        .map_err(|e| {
+            tracing::error!("[mark_deal_won] Failed to create default setup task: {}", e);
+            ApiError::InternalError(format!("Failed to create default setup task: {}", e))
+        })?;
         task_count = 1;
     }
 
@@ -1306,14 +1378,17 @@ pub async fn mark_deal_won(
     if let Some(amount) = deal.amount {
         let vibe_amount = amount * 100.0; // 1 USD = 100 VIBE
         let tx_id = DbUuid::new();
-        let _ = sqlx::query(
+        if let Err(e) = sqlx::query(
             "INSERT INTO vibe_transactions (id, amount, transaction_type, description, created_at) VALUES (?, ?, 'deal_won', ?, datetime('now','subsec'))"
         )
         .bind(&tx_id)
         .bind(vibe_amount)
         .bind(format!("Deal won: {} — ${:.2}", deal.name, amount))
         .execute(pool)
-        .await;
+        .await
+        {
+            tracing::error!("[mark_deal_won] Failed to create VIBE transaction: {}", e);
+        }
         tracing::info!(
             "VIBE transaction {} created: {} VIBE for deal {}",
             tx_id,
@@ -1333,7 +1408,7 @@ pub async fn mark_deal_won(
     }
 
     // Log Won activity
-    let _ = sqlx::query(
+    if let Err(e) = sqlx::query(
         "INSERT INTO crm_activities (id, organization_id, crm_contact_id, crm_deal_id, activity_type, subject, activity_at) VALUES (?, ?, ?, ?, 'deal_won', ?, datetime('now','subsec'))"
     )
     .bind(DbUuid::new())
@@ -1341,7 +1416,10 @@ pub async fn mark_deal_won(
     .bind(&deal.crm_contact_id)
     .bind(&id)
     .bind(format!("Deal won: {} — {} tasks created", deal.name, task_count))
-    .execute(pool).await;
+    .execute(pool).await
+    {
+        tracing::error!("[mark_deal_won] Failed to log Won activity: {}", e);
+    }
 
     tracing::info!(
         "Deal {} marked Won. Client '{}', Project '{}', {} tasks created",

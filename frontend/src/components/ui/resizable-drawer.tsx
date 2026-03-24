@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+
 import { cn } from '@/lib/utils';
 import { useViewStore } from '@/stores/useViewStore';
 
@@ -20,6 +21,9 @@ interface ResizableDrawerProps {
   minWidth?: number;
   storageKey?: string;
   className?: string;
+  'data-testid'?: string;
+  /** Called when the drawer's expand toggle is activated */
+  onExpand?: () => void;
 }
 
 export function ResizableDrawer({
@@ -30,6 +34,8 @@ export function ResizableDrawer({
   minWidth = DEFAULT_MIN_WIDTH,
   storageKey = 'orcha:drawer-width',
   className,
+  'data-testid': dataTestId,
+  onExpand,
 }: ResizableDrawerProps) {
   const { sidebarCollapsed } = useViewStore();
   const isDraggingRef = useRef(false);
@@ -68,6 +74,11 @@ export function ResizableDrawer({
   }, [sidebarCollapsed, width, minWidth, isExpanded, getMaxWidth]);
 
   const toggleExpand = useCallback(() => {
+    if (onExpand) {
+      // Delegate expand to parent (e.g., switch to fullscreen dialog)
+      onExpand();
+      return;
+    }
     setIsExpanded((prev) => {
       if (!prev) {
         // Expanding — save current width, go to max
@@ -81,7 +92,7 @@ export function ResizableDrawer({
         return false;
       }
     });
-  }, [width, defaultWidth, getMaxWidth]);
+  }, [width, defaultWidth, getMaxWidth, onExpand]);
 
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
@@ -164,11 +175,13 @@ export function ResizableDrawer({
           className
         )}
         style={{ width }}
+        data-testid={dataTestId}
       >
         {/* Resize handle — wider hit area, grippy dots indicator */}
         <div
           onMouseDown={handleDragStart}
           className="absolute inset-y-0 -left-2 w-5 cursor-col-resize z-10 group flex items-center justify-center"
+          data-testid="deal-panel-resize-handle"
         >
           {/* Hover highlight stripe */}
           <div className="absolute inset-y-0 left-2 w-[3px] rounded-full transition-colors bg-transparent group-hover:bg-primary/30 group-active:bg-primary/50" />

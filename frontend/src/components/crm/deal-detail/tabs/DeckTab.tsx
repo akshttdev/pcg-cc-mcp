@@ -1,6 +1,7 @@
 import { useMutation,useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Copy,Link2, Loader2, Presentation, Receipt, Share2, Trophy, Wand2 } from 'lucide-react';
 import { useState } from 'react';
+import { deck as tid } from 'shared/testids';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -79,7 +80,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
             icon={Presentation}
             title="No deck generated yet"
             description={`The deck agent will create a branded slide-by-slide deck script from your approved proposal.${!deal.proposal_text ? ' Generate and approve the proposal first.' : ''}`}
-            action={{ label: generateDeck.isPending ? 'Generating...' : 'Generate Deck', onClick: () => generateDeck.mutate() }}
+            action={{ label: generateDeck.isPending ? 'Generating...' : 'Generate Deck', onClick: () => generateDeck.mutate(), 'data-testid': tid.generate }}
           />
         ) : (
           <div className="space-y-3">
@@ -148,6 +149,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
                       className="gap-1.5 text-xs border-blue-500/40 text-blue-400 hover:bg-blue-950/30"
                       onClick={() => setInvoiceSending(true)}
                       disabled={!deal.amount || isTooEarly}
+                      data-testid={tid.sendInvoice}
                       title={isTooEarly ? 'Available after presenting to client' : undefined}
                     >
                       <Receipt className="h-3.5 w-3.5" />
@@ -165,6 +167,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
                   className="gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white"
                   onClick={() => sendInvoice.mutate()}
                   disabled={sendInvoice.isPending}
+                  data-testid={tid.confirmSendInvoice}
                 >
                   {sendInvoice.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Receipt className="h-3 w-3" />}
                   {sendInvoice.isPending ? 'Sending…' : 'Confirm Send'}
@@ -199,6 +202,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
                 size="sm"
                 className="gap-1.5 text-xs border-yellow-500/40 text-yellow-400 hover:bg-yellow-950/30"
                 onClick={() => setMarkingWon(true)}
+                data-testid={tid.markWon}
               >
                 <Trophy className="h-3.5 w-3.5" />
                 Mark Won
@@ -213,6 +217,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
                     className="gap-1.5 text-xs bg-yellow-500 hover:bg-yellow-600 text-black font-semibold"
                     onClick={() => markWon.mutate()}
                     disabled={markWon.isPending}
+                    data-testid={tid.confirmWon}
                   >
                     {markWon.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trophy className="h-3 w-3" />}
                     {markWon.isPending ? 'Closing…' : 'Confirm Won'}
@@ -314,6 +319,7 @@ function InviteLinkSection({ deal }: { deal: CrmDealWithContact }) {
             className="gap-1.5 text-xs border-emerald-500/40 text-emerald-400 hover:bg-emerald-950/30"
             onClick={() => generateInvite.mutate()}
             disabled={generateInvite.isPending}
+            data-testid={tid.generateInvite}
           >
             {generateInvite.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
             {generateInvite.isPending ? 'Generating...' : 'Generate Invite Link'}
