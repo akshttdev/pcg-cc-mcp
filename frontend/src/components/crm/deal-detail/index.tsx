@@ -121,6 +121,7 @@ export function CrmDealDetailPanel({
                     stageColor={stageColor}
                     onConvert={() => setConvertOpen(true)}
                     orgId={orgId}
+                    onSwitchTab={setActiveTab}
                   />
                 </ScrollArea>
               </TabsContent>

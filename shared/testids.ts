@@ -62,6 +62,15 @@ export const deck = {
   generateInvite: "deck-generate-invite",
 } as const;
 
+// ── Discovery Stage (OverviewTab.tsx) ─────────────────────────────────────────
+
+export const discovery = {
+  heroCard: "discovery-hero-card",
+  callStatus: "discovery-call-status",
+  scheduleCall: "discovery-schedule-call",
+  linkTranscript: "discovery-link-transcript",
+} as const;
+
 // ── Agent History (AgentHistoryTab.tsx) ───────────────────────────────────────
 
 export const agentHistory = {

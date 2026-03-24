@@ -67,6 +67,7 @@ pub enum StageValidation {
     RequireField { field: String, message: String },
     RequireIntel { entity: String, status: String },
     RequirePendingTasks { count: i32 },
+    RequireTranscriptOrSource { message: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -192,6 +193,15 @@ pub async fn process_transition(
                         warnings.push(ValidationWarning {
                             field: "pending_tasks".to_string(),
                             message: format!("{} pending task(s) should be completed", pending),
+                        });
+                    }
+                }
+                StageValidation::RequireTranscriptOrSource { message } => {
+                    let has_transcript = check_deal_has_transcript_or_source(pool, deal).await;
+                    if !has_transcript {
+                        warnings.push(ValidationWarning {
+                            field: "transcript_linked".to_string(),
+                            message: message.clone(),
                         });
                     }
                 }
@@ -740,6 +750,18 @@ async fn count_pending_tasks(pool: &SqlitePool, deal: &CrmDeal) -> i64 {
     .fetch_one(pool)
     .await
     .unwrap_or(0)
+}
+
+async fn check_deal_has_transcript_or_source(pool: &SqlitePool, deal: &CrmDeal) -> bool {
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM deal_transcripts WHERE deal_id = ?",
+    )
+    .bind(deal.id.to_string())
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0);
+
+    count > 0
 }
 
 /// Cancel a pending agent flow if within the cancel window.

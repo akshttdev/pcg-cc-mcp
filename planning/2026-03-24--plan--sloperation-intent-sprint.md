@@ -7,7 +7,19 @@
 **Duration**: 10 working days (2026-03-24 → 2026-04-07)
 **PR Strategy**: Single feature branch, one bundled PR
 **LLM Mode**: SIMULATE_LLM=1 throughout
-**Status**: IN PROGRESS
+**Status**: IN PROGRESS — W1 Day 1
+
+## Implementation Log
+
+### W1 Discovery (2026-03-24)
+**Key discovery**: Discovery stage already exists in `create_sales_pipeline()` (position 2) and has stage_config seed, STAGE_DESCRIPTIONS, and getStageOwner() entries. The gap is only for **existing pipelines** created before that code (e.g., Sirak Studios Acquisition with the 9-stage rebuild).
+
+**Changes made**:
+- `stage_transition.rs` — added `RequireTranscriptOrSource` variant to `StageValidation` enum + handler + `check_deal_has_transcript_or_source()` helper
+- `20260417000000_discovery_stage_and_transcript_validation.sql` — migration: inserts Discovery stage into Sales pipelines missing it (position 3, shifts others), updates all Discovery stage_configs with the new exit validation
+- `shared/testids.ts` — added `discovery` testid group
+- `OverviewTab.tsx` — added Discovery hero card (call status badge, Schedule Call, Link Transcript CTA), `onSwitchTab` prop for tab navigation, also added `present_&_invoice` to call scheduling stage check
+- `deal-detail/index.tsx` — wired `onSwitchTab={setActiveTab}` to OverviewTab
 
 ---
 
