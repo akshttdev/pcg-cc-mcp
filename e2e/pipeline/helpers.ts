@@ -180,14 +180,43 @@ export async function waitForDealStage(
       }
     } catch { /* toast may not be visible */ }
 
-    // Try to complete review task via UI: open deal → Review tab → Mark Complete
+    // Complete review tasks via UI: open deal detail → Review tab → Mark Complete → close
     try {
-      const markComplete = page.getByTestId("review-mark-complete");
-      if (await markComplete.isVisible({ timeout: 500 })) {
-        await markComplete.click();
-        await page.waitForTimeout(1_000);
+      // Find and click the deal card to open detail panel
+      const dealCard = page.locator(`[data-testid^="deal-card-"]`).filter({
+        has: page.locator(`[data-testid="deal-card-${dealId}"], :text("${dealId.slice(0, 8)}")`)
+      }).first();
+      // Simpler: just check if panel is already open, or open via card click
+      const panel = page.getByTestId("deal-detail-panel");
+      if (!(await panel.isVisible({ timeout: 500 }).catch(() => false))) {
+        // Try clicking any card that might be our deal
+        const anyCard = page.locator(`[data-testid="deal-card-${dealId}"]`);
+        if (await anyCard.isVisible({ timeout: 500 }).catch(() => false)) {
+          await anyCard.click();
+          await page.waitForTimeout(500);
+        }
       }
-    } catch { /* button may not be visible */ }
+
+      // If panel is open, try Review tab → Mark Complete
+      if (await panel.isVisible({ timeout: 500 }).catch(() => false)) {
+        const reviewTab = page.getByTestId("deal-detail-tabs-review");
+        if (await reviewTab.isVisible({ timeout: 500 }).catch(() => false)) {
+          await reviewTab.click();
+          await page.waitForTimeout(300);
+          const markComplete = page.getByTestId("review-mark-complete");
+          if (await markComplete.isVisible({ timeout: 500 }).catch(() => false)) {
+            await markComplete.click();
+            await page.waitForTimeout(1_000);
+          }
+        }
+        // Close panel
+        const closeBtn = panel.getByTestId("deal-detail-close");
+        if (await closeBtn.isVisible({ timeout: 300 }).catch(() => false)) {
+          await closeBtn.click();
+          await page.waitForTimeout(300);
+        }
+      }
+    } catch { /* UI interaction may fail if deal not visible */ }
 
     // Check deal's current stage via API (read-only check, not a shortcut)
     const dealRes = await request.get(`/api/crm/deals/${dealId}`);

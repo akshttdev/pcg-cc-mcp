@@ -279,23 +279,22 @@ test.describe("DL-2: Move deals between stages", () => {
       }
     }
 
-    // When: advance via API (BA → Discovery, since Discovery is now between BA and Proposal)
+    // When: advance via API (BA → Discovery)
     const advanceRes = await request.post(`/api/crm/deals/${dl2DealId}/advance`);
     expect(advanceRes.ok(), `Advance should succeed: ${advanceRes.status()}`).toBeTruthy();
 
-    // Then: deal is now in Proposal stage
+    // Then: deal is now in Discovery stage (next after BA)
     const afterRes = await request.get(`/api/crm/deals/${dl2DealId}`);
     const afterDeal = (await afterRes.json()).data || (await afterRes.json());
-    // Verify stage changed (check stage name from the stage_id)
-    expect(afterDeal.crm_stage_id, "Deal should have a stage").toBeTruthy();
+    expect(afterDeal.stage?.toLowerCase(), "Deal should advance to Discovery").toBe("discovery");
 
-    // And: a review task was created (Proposal stage entry action)
+    // And: a review task was created (Discovery stage entry action)
     const newTasksRes = await request.get(`/api/tasks?crm_deal_id=${dl2DealId}`);
     const tasks = (await newTasksRes.json()).data || [];
     const pendingTasks = tasks.filter((task: { status: string }) =>
       task.status !== "done" && task.status !== "cancelled"
     );
-    expect(pendingTasks.length, "Advance should create a new review task").toBeGreaterThan(0);
+    expect(pendingTasks.length, "Advance should create a review task").toBeGreaterThan(0);
   });
 });
 
