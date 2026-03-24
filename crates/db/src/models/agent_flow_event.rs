@@ -5,6 +5,7 @@ use sqlx::{FromRow, SqlitePool, Type};
 use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
+
 use crate::db_uuid::DbUuid;
 
 #[derive(Debug, Error)]

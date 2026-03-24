@@ -1,20 +1,21 @@
 import type {
+  CreateCrmDeal,
+  CreateCrmPipeline,
+  CreateCrmPipelineStage,
+  CrmDealRecord,
+  CrmDealWithContact,
   CrmPipeline,
   CrmPipelineStage,
   CrmPipelineWithStages,
-  CreateCrmPipeline,
-  UpdateCrmPipeline,
-  CreateCrmPipelineStage,
-  UpdateCrmPipelineStage,
   KanbanBoardData,
-  CrmDealRecord,
-  CrmDealWithContact,
-  CreateCrmDeal,
-  UpdateCrmDeal,
   MoveDealRequest,
   PipelineType,
+  UpdateCrmDeal,
+  UpdateCrmPipeline,
+  UpdateCrmPipelineStage,
 } from '@/types/crm';
-import { makeRequest, handleApiResponse } from './client';
+
+import { handleApiResponse,makeRequest } from './client';
 
 // =============================================================================
 // CRM Contact Records
@@ -302,19 +303,19 @@ export const crmApi = {
 // ============================================================================
 
 export type {
+  CreateCrmDeal,
+  CreateCrmPipeline,
+  CreateCrmPipelineStage,
+  CrmDealRecord,
   CrmPipeline,
   CrmPipelineStage,
   CrmPipelineWithStages,
-  CreateCrmPipeline,
-  UpdateCrmPipeline,
-  CreateCrmPipelineStage,
-  UpdateCrmPipelineStage,
   KanbanBoardData,
-  CrmDealRecord,
-  CreateCrmDeal,
-  UpdateCrmDeal,
   MoveDealRequest,
   PipelineType,
+  UpdateCrmDeal,
+  UpdateCrmPipeline,
+  UpdateCrmPipelineStage,
 };
 
 export const crmPipelinesApi = {

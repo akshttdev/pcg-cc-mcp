@@ -125,6 +125,12 @@ Feature: Scout agent triggers on Intel stage
     When I click "Cancel Agent"
     Then the agent flow is cancelled
     And the badge disappears
+
+  Scenario: Run Now bypasses cancel window
+    Given Scout is running on a deal within the cancel window
+    When I click "Run Now"
+    Then the cancel deadline is cleared
+    And the agent executes on the next poll cycle (within 15s)
 ```
 
 #### AA-2: Astra business analysis — PASSING
@@ -191,6 +197,127 @@ Feature: Lux agent generates decks on Polish stage
     Then an agent flow is created for Lux with flow_type "deck"
     And a review task is created: "Review and approve deck"
     And proposal_text is required before entry (soft gate)
+```
+
+#### AA-6: Agent auto-advance chain — PASSING
+```gherkin
+Feature: Agents chain through pipeline via auto-advance
+  As a sales operator
+  I want agents to automatically advance deals through agent-owned stages
+  So that the pipeline progresses without manual intervention
+
+  Scenario: Agent completes and auto-advances
+    Given a deal is in the Intel stage with Scout executing
+    When Scout completes successfully
+    Then the deal auto-advances to Business Analysis
+    And Astra is automatically triggered on the new stage
+    And the chain continues: BA → Proposal → Polish
+
+  Scenario: Auto-advance stops at human-owned stages
+    Given a deal is in Polish with Lux executing
+    When Lux completes successfully
+    Then the deal auto-advances to Invoice
+    And no agent is triggered (Invoice is human-owned)
+    And the deal waits for manual progression
+```
+
+#### AA-7: Retrigger failed/cancelled agent — PASSING
+```gherkin
+Feature: Retrigger agent for failed or cancelled flows
+  As a sales operator
+  I want to retry an agent that failed or was cancelled
+  So that I can recover from errors without moving the deal
+
+  Scenario: Retrigger from Agent History tab
+    Given a deal has a failed or cancelled agent flow
+    When I click "Retry Agent" in the Agent History tab
+    Then a new agent flow is created for the same agent
+    And the new flow has a fresh cancel window
+
+  Scenario: Retrigger via API
+    When I POST to /crm/deals/:id/retrigger-agent
+    Then a new flow is scheduled with the stage's default agent
+```
+
+### Agent Observability
+
+#### DD-5: Agent History tab — PASSING
+```gherkin
+Feature: View agent execution history on deals
+  As a sales operator
+  I want to see what agents have done on a deal
+  So that I can review their work and track progress
+
+  Scenario: View completed agent flow
+    Given an agent has completed on a deal
+    When I open the deal detail and click Agent History tab
+    Then I see the agent name, status badge (Completed/Failed/etc.)
+    And the flow duration and time since completion
+    And I can expand to see individual events (phase_started, artifact_created)
+
+  Scenario: Empty state
+    Given no agents have run on a deal
+    When I click the Agent History tab
+    Then I see "No agent activity yet" with an explanation
+```
+
+### Deal Card & Board UX
+
+#### DL-5: Deal card agent status badges — PASSING
+```gherkin
+Feature: Deal cards show agent execution status
+  As a sales operator
+  I want to see agent status on deal cards at a glance
+  So that I know which deals have active or failed agents
+
+  Scenario: Agent running badge
+    Given an agent is executing on a deal
+    Then the deal card shows a pulsing "Scout running..." badge
+
+  Scenario: Agent pending badge
+    Given an agent is scheduled but within the cancel window
+    Then the deal card shows "Scout pending" badge
+
+  Scenario: Agent failed badge
+    Given an agent flow has failed
+    Then the deal card shows "Agent failed" badge
+```
+
+#### DL-6: Toast feedback on stage transitions — PASSING
+```gherkin
+Feature: Toast notifications confirm stage transitions
+  As a sales operator
+  I want clear feedback when deals move between stages
+  So that I know my actions succeeded
+
+  Scenario: Stage move confirmation
+    When I move a deal to a new stage
+    Then a toast appears: "Moved to {stage name}"
+
+  Scenario: Agent scheduling confirmation
+    When a deal enters an agent-owned stage
+    Then a toast appears: "Agent starting soon... Scheduled {agent} agent"
+    And the toast has Cancel and Run Now action buttons
+```
+
+#### PC-4: Stage owner badges on pipeline board — PASSING
+```gherkin
+Feature: Stage columns show ownership badges
+  As a sales operator
+  I want to see who owns each stage at a glance
+  So that I know whether a stage is automated or human-driven
+
+  Scenario: Agent-owned stage badge
+    Given the Intel stage has stage_owner = { label: "Scout", type: "agent" }
+    Then the Intel column header shows "Scout" with an AI agent icon
+
+  Scenario: Human-owned stage badge
+    Given the Invoice stage has stage_owner = { label: "Account Manager", type: "human" }
+    Then the Invoice column header shows "Account Manager" with a human icon
+
+  Scenario: Dynamic from stage_config
+    When a pipeline admin changes stage_owner via Pipeline Settings
+    Then the column header badge updates to reflect the change
 ```
 
 ### Review Gates
@@ -390,7 +517,13 @@ Feature: Stage configs match the dealflow plan across all pipelines
       | Conferences               | Researching        | scout | true    | Scout                  |
 ```
 
-### Remaining Gaps (FAILING specs)
+### Spec Coverage Summary (2026-03-24)
+
+**PASSING**: DL-1, DL-2, DL-4, AA-1 (+ Run Now), AA-2, AA-3, AA-5, AA-6 (auto-advance chain), AA-7 (retrigger), RG-1, RG-2, DD-2, DD-3, DD-5 (agent history), DL-5 (card badges), DL-6 (toasts), PC-1, PC-2, PC-3, PC-4 (stage owners)
+**PARTIAL**: DL-3, DD-1, DD-4
+**FAILING**: AA-4
+
+### Remaining Gaps (FAILING/PARTIAL specs)
 
 | Spec | Gap | Effort | Priority |
 |------|-----|--------|----------|

@@ -1,5 +1,5 @@
-import * as React from 'react';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
+import * as React from 'react';
 
 import { cn } from '@/lib/utils';
 
@@ -167,4 +167,4 @@ function TabPanel({
   );
 }
 
-export { Tabs, TabsList, TabsTrigger, TabsContent, TabPanel };
+export { TabPanel,Tabs, TabsContent, TabsList, TabsTrigger };

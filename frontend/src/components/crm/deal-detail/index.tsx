@@ -1,22 +1,24 @@
 import { useState } from 'react';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { TabPanel, TabsContent } from '@/components/ui/tabs';
-import type { TabDefinition } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { ResizableDrawer } from '@/components/ui/resizable-drawer';
 import { dealDetail as tid } from 'shared/testids';
-import { DealHeader, PipelineStepper } from './DealHeader';
-import { OverviewTab } from './tabs/OverviewTab';
-import { IntelTab } from './tabs/IntelTab';
-import { ReviewTab } from './tabs/ReviewTab';
-import { ProjectsTab } from './tabs/ProjectsTab';
-import { ActivityTab } from './tabs/ActivityTab';
-import { ProposalTab } from './tabs/ProposalTab';
-import { DeckTab } from './tabs/DeckTab';
-import { TranscriptsTab } from './tabs/TranscriptsTab';
-import { AgentHistoryTab } from './tabs/AgentHistoryTab';
-import { DealConvertDialog } from '../DealConvertDialog';
+
+import { Dialog, DialogContent, DialogDescription,DialogTitle } from '@/components/ui/dialog';
+import { ResizableDrawer } from '@/components/ui/resizable-drawer';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import type { TabDefinition } from '@/components/ui/tabs';
+import { TabPanel, TabsContent } from '@/components/ui/tabs';
 import type { CrmDealWithContact, CrmPipelineStage } from '@/types/crm';
+
+import { DealConvertDialog } from '../DealConvertDialog';
+import { DealHeader, PipelineStepper } from './DealHeader';
+import { ActivityTab } from './tabs/ActivityTab';
+import { AgentHistoryTab } from './tabs/AgentHistoryTab';
+import { DeckTab } from './tabs/DeckTab';
+import { IntelTab } from './tabs/IntelTab';
+import { OverviewTab } from './tabs/OverviewTab';
+import { ProjectsTab } from './tabs/ProjectsTab';
+import { ProposalTab } from './tabs/ProposalTab';
+import { ReviewTab } from './tabs/ReviewTab';
+import { TranscriptsTab } from './tabs/TranscriptsTab';
 
 // ── Props ────────────────────────────────────────────────────────────────────
 

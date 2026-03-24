@@ -289,8 +289,15 @@ pub async fn advance_deal(
         }
 
         if !warnings.is_empty() {
-            let fields: Vec<String> = warnings.iter().filter_map(|w| w["field"].as_str().map(String::from)).collect();
-            let summary = format!("Cannot advance from Intel: {} validation(s) failed ({})", warnings.len(), fields.join(", "));
+            let fields: Vec<String> = warnings
+                .iter()
+                .filter_map(|w| w["field"].as_str().map(String::from))
+                .collect();
+            let summary = format!(
+                "Cannot advance from Intel: {} validation(s) failed ({})",
+                warnings.len(),
+                fields.join(", ")
+            );
             let body = serde_json::json!({
                 "success": false,
                 "message": summary,
@@ -547,20 +554,25 @@ pub async fn retrigger_deal_agent(
     let deal = require_deal_org_access(&access_context, pool, &id).await?;
 
     // Get the current stage config to find the assigned agent
-    let stage_id = deal.crm_stage_id.as_ref()
+    let stage_id = deal
+        .crm_stage_id
+        .as_ref()
         .ok_or_else(|| ApiError::BadRequest("Deal has no stage assigned".into()))?;
     let stage = db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, stage_id)
         .await
         .map_err(|_| ApiError::NotFound("Stage not found".into()))?;
 
-    let config: Option<crate::stage_transition::StageConfig> = stage.stage_config
+    let config: Option<crate::stage_transition::StageConfig> = stage
+        .stage_config
         .as_deref()
         .and_then(|s| serde_json::from_str(s).ok());
 
-    let config = config
-        .ok_or_else(|| ApiError::BadRequest("Current stage has no configuration".into()))?;
+    let config =
+        config.ok_or_else(|| ApiError::BadRequest("Current stage has no configuration".into()))?;
 
-    let agent = config.assigned_agent.as_deref()
+    let agent = config
+        .assigned_agent
+        .as_deref()
         .ok_or_else(|| ApiError::BadRequest("Current stage has no agent assigned".into()))?;
 
     let flow_type = crate::stage_transition::agent_default_flow_type(agent);
@@ -582,7 +594,11 @@ pub async fn retrigger_deal_agent(
 
     // Schedule the new agent flow (same as stage_transition::schedule_agent_flow)
     let (flow_id, deadline) = crate::stage_transition::schedule_agent_flow(
-        pool, &deal, agent, &flow_type, config.cancel_window_secs,
+        pool,
+        &deal,
+        agent,
+        &flow_type,
+        config.cancel_window_secs,
     )
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to schedule agent: {}", e)))?;

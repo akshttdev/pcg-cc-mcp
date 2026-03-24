@@ -1,6 +1,7 @@
 import { useMutation } from '@tanstack/react-query';
 import { Phone, Video } from 'lucide-react';
 import { useState } from 'react';
+import { callScheduling as tid } from 'shared/testids';
 import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
@@ -11,7 +12,6 @@ import { SectionHeader } from '@/components/ui/section-header';
 import { crmDealsApi } from '@/lib/api/crm';
 import { cn } from '@/lib/utils';
 import type { CrmDealWithContact } from '@/types/crm';
-import { callScheduling as tid } from 'shared/testids';
 
 const CALL_METHODS = ['Phone', 'Video', 'In-Person'] as const;
 const CALL_STATUSES = ['scheduled', 'completed', 'cancelled'] as const;

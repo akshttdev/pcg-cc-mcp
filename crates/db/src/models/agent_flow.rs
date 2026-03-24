@@ -5,6 +5,7 @@ use sqlx::{FromRow, SqlitePool, Type};
 use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
+
 use crate::db_uuid::DbUuid;
 
 #[derive(Debug, Error)]
@@ -260,7 +261,10 @@ impl AgentFlow {
     }
 
     /// Find flow by ID
-    pub async fn find_by_id(pool: &SqlitePool, id: &DbUuid) -> Result<Option<Self>, AgentFlowError> {
+    pub async fn find_by_id(
+        pool: &SqlitePool,
+        id: &DbUuid,
+    ) -> Result<Option<Self>, AgentFlowError> {
         let flow = sqlx::query_as::<_, AgentFlow>(
             r#"SELECT * FROM agent_flows WHERE id = ?1 OR CAST(id AS TEXT) = ?1"#,
         )

@@ -13,13 +13,13 @@ import {
   TrendingUp,
   X,
 } from 'lucide-react';
+import { dealDetail as tid } from 'shared/testids';
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
 import type { CrmDealWithContact, CrmPipelineStage } from '@/types/crm';
-import { dealDetail as tid } from 'shared/testids';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

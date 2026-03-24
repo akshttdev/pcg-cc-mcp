@@ -1,3 +1,30 @@
+import { formatDistanceToNow } from 'date-fns';
+import {
+  AlertTriangle,
+  ArrowRight,
+  Bot,
+  Building2,
+  CheckCircle2,
+  CheckSquare,
+  CircleDot,
+  Clock,
+  Edit,
+  FileText,
+  Loader2,
+  MoreHorizontal,
+  Presentation,
+  Receipt,
+  RotateCcw,
+  Search,
+  ShieldCheck,
+  Trash2,
+  TrendingUp,
+  Trophy,
+  User,
+} from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { dealCard as tid } from 'shared/testids';
+
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -10,35 +37,9 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  AlertTriangle,
-  ArrowRight,
-  MoreHorizontal,
-  Building2,
-  Trash2,
-  Edit,
-  CheckCircle2,
-  Loader2,
-  Search,
-  ShieldCheck,
-  CircleDot,
-  RotateCcw,
-  CheckSquare,
-  User,
-  TrendingUp,
-  Clock,
-  FileText,
-  Presentation,
-  Receipt,
-  Trophy,
-  Bot,
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { StatusBadge } from '@/components/ui/status-badge';
-import { Link } from 'react-router-dom';
+import { cn } from '@/lib/utils';
 import type { CrmDealWithContact } from '@/types/crm';
-import { dealCard as tid } from 'shared/testids';
-import { formatDistanceToNow } from 'date-fns';
 
 interface BoardProgressInfo {
   boardName: string;
