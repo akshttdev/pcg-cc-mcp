@@ -864,7 +864,7 @@ impl CrmDeal {
             flow_config: Option<String>,
         }
         if let Ok(Some(row)) = sqlx::query_as::<_, AgentFlowRow>(
-            "SELECT CAST(id AS TEXT) as id, status, cancel_deadline, flow_config FROM agent_flows WHERE crm_deal_id = ?1 AND status NOT IN ('completed', 'failed') ORDER BY created_at DESC LIMIT 1",
+            "SELECT CAST(id AS TEXT) as id, status, cancel_deadline, flow_config FROM agent_flows WHERE crm_deal_id = ?1 AND status != 'completed' ORDER BY created_at DESC LIMIT 1",
         )
         .bind(deal_id.to_string())
         .fetch_optional(pool)

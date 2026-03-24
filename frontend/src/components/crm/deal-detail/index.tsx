@@ -223,14 +223,9 @@ export function CrmDealDetailPanel({
         storageKey="orcha:deal-drawer-width"
         className="border-l border-border bg-background"
         data-testid={tid.drawer}
+        onExpand={() => setIsFullscreen(true)}
       >
-        {({ isExpanded }) => {
-          // If user clicks expand in the drawer, switch to fullscreen dialog
-          if (isExpanded) {
-            setTimeout(() => setIsFullscreen(true), 0);
-          }
-          return panelContent(false, () => setIsFullscreen(true));
-        }}
+        {() => panelContent(false, () => setIsFullscreen(true))}
       </ResizableDrawer>
       <DealConvertDialog deal={deal} open={convertOpen} onOpenChange={setConvertOpen} orgId={orgId} />
     </>

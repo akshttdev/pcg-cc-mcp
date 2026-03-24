@@ -198,11 +198,11 @@ impl AgentFlowExecutor {
         match result {
             Ok(output) => {
                 // Save artifact with the output
-                let artifact_id = DbUuid::new().to_uuid();
+                let artifact_id = DbUuid::new();
                 if let Err(e) = AgentFlowEvent::emit_artifact_created(
                     &self.pool,
                     &flow.id,
-                    artifact_id,
+                    artifact_id.into(),
                     "agent_output",
                     &format!("{} output", agent_name),
                     "execution",
@@ -600,14 +600,15 @@ impl AgentFlowExecutor {
             }
         };
 
-        let artifact_id = DbUuid::new().to_uuid();
+        let artifact_id = DbUuid::new();
+        let artifact_id_str = artifact_id.to_string();
         match AgentFlowEvent::create(
             &self.pool,
             CreateFlowEvent {
                 agent_flow_id: flow_id.clone(),
                 event_type: FlowEventType::ArtifactCreated,
                 event_data: FlowEventPayload::ArtifactCreated {
-                    artifact_id,
+                    artifact_id: artifact_id.clone().into(),
                     artifact_type: "text".to_string(),
                     title: title.to_string(),
                     phase: "execution".to_string(),
@@ -624,7 +625,7 @@ impl AgentFlowExecutor {
                         agent_flow_id: flow_id.clone(),
                         event_type: FlowEventType::ArtifactUpdated,
                         event_data: FlowEventPayload::ArtifactUpdated {
-                            artifact_id,
+                            artifact_id: artifact_id.into(),
                             changes: json!({"content": content}),
                         },
                     },
@@ -636,7 +637,7 @@ impl AgentFlowExecutor {
                         e
                     );
                 }
-                json!({"success": true, "artifact_id": artifact_id.to_string()}).to_string()
+                json!({"success": true, "artifact_id": artifact_id_str}).to_string()
             }
             Err(e) => json!({"error": e.to_string()}).to_string(),
         }

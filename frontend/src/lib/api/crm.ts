@@ -507,7 +507,7 @@ export const crmDealsApi = {
     return handleApiResponse<{ approved: boolean; message: string }>(response);
   },
 
-  retriggerDealAgent: async (dealId: string): Promise<{ retriggered: boolean; agent_flow_id: string; agent: string; message: string }> => {
+  retriggerDealAgent: async (dealId: string): Promise<{ retriggered: boolean; agent_flow_id: string; agent: string; cancel_deadline?: string; message: string }> => {
     const response = await makeRequest(`/api/crm/deals/${dealId}/retrigger-agent`, { method: 'POST' });
     return handleApiResponse<{ retriggered: boolean; agent_flow_id: string; agent: string; message: string }>(response);
   },

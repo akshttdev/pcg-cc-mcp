@@ -36,6 +36,7 @@ export const dealDetail = {
   drawer: "deal-detail-drawer",
   expanded: "deal-detail-expanded",
   expand: "deal-detail-expand",
+  close: "deal-detail-close",
   edit: "deal-detail-edit",
   delete: "deal-detail-delete",
   tab: (name: string) => `deal-detail-tabs-${name}`,
