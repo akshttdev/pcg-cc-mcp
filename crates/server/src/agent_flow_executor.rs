@@ -682,7 +682,7 @@ impl AgentFlowExecutor {
         let is_agent_stage = stage_config
             .as_deref()
             .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
-            .map(|c| c.get("agent").and_then(|a| a.as_str()).is_some())
+            .map(|c| c.get("assigned_agent").and_then(|a| a.as_str()).is_some())
             .unwrap_or(false);
 
         if !is_agent_stage {
@@ -723,7 +723,7 @@ impl AgentFlowExecutor {
         let Some(pos) = current_position else { return };
 
         let next_stage: Option<(String, String)> = sqlx::query_as(
-            "SELECT id, name FROM crm_pipeline_stages WHERE crm_pipeline_id = ?1 AND position > ?2 ORDER BY position ASC LIMIT 1",
+            "SELECT id, name FROM crm_pipeline_stages WHERE pipeline_id = ?1 AND position > ?2 ORDER BY position ASC LIMIT 1",
         )
         .bind(&pipeline_id)
         .bind(pos)

@@ -175,6 +175,15 @@ INSERT INTO crm_pipeline_stages (id, pipeline_id, name, stage_type, color, posit
 
 SQL
 
+# 2b. Re-apply stage config seed data.
+#     The seed migration (20260414000001) is marked as applied in _sqlx_migrations
+#     but its data was wiped when we cleared entity tables. Re-apply it so that
+#     pipeline tests have agent triggers configured.
+echo "  Applying stage config seed..."
+sqlite3 "$TEMP_DB" < "$PROJECT_ROOT/crates/db/migrations/20260414000001_seed_stage_configs.sql" 2>/dev/null || true
+CONFIGURED=$(sqlite3 "$TEMP_DB" "SELECT COUNT(*) FROM crm_pipeline_stages WHERE stage_config IS NOT NULL")
+echo "  Stages with config: $CONFIGURED"
+
 echo "  Verifying fixtures..."
 USERS=$(sqlite3 "$TEMP_DB" "SELECT COUNT(*) FROM users")
 ORGS=$(sqlite3 "$TEMP_DB" "SELECT COUNT(*) FROM organizations")
