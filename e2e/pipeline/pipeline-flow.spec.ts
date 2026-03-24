@@ -13,7 +13,7 @@
 import { test, expect } from "./fixtures";
 import { t, demoPause, login, apiLogin, TEST_DATA_PREFIX } from "../helpers";
 import { ORG_ID, PIPELINE_URL, moveDealViaContextMenu } from "./helpers";
-import { pipeline, dealDetail, callScheduling, deck } from "./testids";
+import { pipeline, dealCard, dealDetail, callScheduling, deck } from "./testids";
 
 let dealId: string;
 let dealName: string;
@@ -142,20 +142,15 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
   //   Given the Scout agent has run (or is running) for this deal
   //   When I open the deal detail and click the Agent History tab
   //   Then I see the Scout flow with its status and events
-  test("AA-3: Agent History tab shows Scout flow after execution", async ({ page, request }) => {
-    test.fixme(true, "Deal auto-advances after Run Now — card may be in a different column. Need to use deal card testid or navigate via deal ID URL");
+  test("AA-3: Agent History tab shows Scout flow after execution", async ({ page }) => {
     test.setTimeout(45_000);
-    await apiLogin(request);
 
-    // Deal may have auto-advanced after AA-1's Run Now — refresh to see current state
+    // Refresh to see current kanban state (deal may have auto-advanced)
     await page.reload();
     await expect(page.getByText("Acquisition Pipeline")).toBeVisible({ timeout: t(15_000) });
 
-    // Open deal detail via API to find the deal regardless of stage
-    // The deal card text may be truncated or in a scrolled column
-    const dealCardLocator = page.getByText(dealText, { exact: false }).first();
-    await expect(dealCardLocator).toBeVisible({ timeout: t(15_000) });
-    await dealCardLocator.click();
+    // Open deal detail using card testid (works regardless of which column the deal is in)
+    await page.getByTestId(dealCard.card(dealId)).click();
     const panel = page.getByTestId(dealDetail.panel);
     await expect(panel).toBeVisible({ timeout: t(10_000) });
 

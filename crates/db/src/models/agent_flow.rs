@@ -355,7 +355,8 @@ impl AgentFlow {
             r#"
             SELECT * FROM agent_flows
             WHERE status IN ('planning', 'executing')
-              AND (cancel_deadline IS NULL OR cancel_deadline < datetime('now', 'subsec'))
+              AND (cancel_deadline IS NULL
+                   OR REPLACE(REPLACE(cancel_deadline, 'T', ' '), '+00:00', '') < datetime('now', 'subsec'))
             ORDER BY created_at ASC
             LIMIT ?1
             "#,
