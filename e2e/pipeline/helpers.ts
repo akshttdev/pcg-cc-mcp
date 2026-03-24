@@ -180,31 +180,30 @@ export async function waitForDealStage(
   stageName: string,
   timeoutMs = 30_000,
 ) {
+  // Open deal detail panel once and keep it open for the duration
+  const panel = page.getByTestId(dealDetail.panel);
+  if (!(await panel.isVisible({ timeout: 500 }).catch(() => false))) {
+    try {
+      const card = page.getByTestId(dealCard.card(dealId));
+      if (await card.isVisible({ timeout: 2_000 })) {
+        await card.click();
+        await page.waitForTimeout(500);
+      }
+    } catch { /* card may not be visible */ }
+  }
+
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     // 1. Click Run Now on toast if visible
     try {
       const runNow = page.getByRole("button", { name: "Run Now" });
-      if (await runNow.isVisible({ timeout: 1_000 })) {
+      if (await runNow.isVisible({ timeout: 500 })) {
         await runNow.click();
         await page.waitForTimeout(500);
       }
     } catch { /* toast may not be visible */ }
 
-    // 2. Open deal detail panel via card testid
-    const panel = page.getByTestId(dealDetail.panel);
-    const panelOpen = await panel.isVisible({ timeout: 300 }).catch(() => false);
-    if (!panelOpen) {
-      try {
-        const card = page.getByTestId(dealCard.card(dealId));
-        if (await card.isVisible({ timeout: 500 })) {
-          await card.click();
-          await page.waitForTimeout(500);
-        }
-      } catch { /* card may not be visible on current board view */ }
-    }
-
-    // 3-4. Review tab → Mark Review Complete
+    // 2. Click Mark Review Complete if visible (panel stays open)
     try {
       const reviewTab = page.getByTestId(dealDetail.tab("review"));
       if (await reviewTab.isVisible({ timeout: 300 })) {
@@ -213,26 +212,30 @@ export async function waitForDealStage(
         const markComplete = page.getByTestId("review-mark-complete");
         if (await markComplete.isVisible({ timeout: 500 })) {
           await markComplete.click();
-          await page.waitForTimeout(1_000);
+          await page.waitForTimeout(500);
         }
       }
     } catch { /* review tab or button not available */ }
 
-    // 5. Close panel
-    try {
-      const closeBtn = page.getByTestId(dealDetail.close);
-      if (await closeBtn.isVisible({ timeout: 300 })) {
-        await closeBtn.click();
-        await page.waitForTimeout(300);
-      }
-    } catch { /* panel may already be closed */ }
-
-    // 6. Read-only API check for current stage
+    // 3. Read-only API check for current stage
     const dealRes = await request.get(`/api/crm/deals/${dealId}`);
     const deal = (await dealRes.json()).data || (await dealRes.json());
-    if (deal.stage?.toLowerCase() === stageName.toLowerCase()) return true;
+    if (deal.stage?.toLowerCase() === stageName.toLowerCase()) {
+      // Close panel before returning
+      try {
+        const closeBtn = page.getByTestId(dealDetail.close);
+        if (await closeBtn.isVisible({ timeout: 300 })) await closeBtn.click();
+      } catch { /* ok */ }
+      return true;
+    }
     await page.waitForTimeout(2_000);
   }
+
+  // Close panel on timeout too
+  try {
+    const closeBtn = page.getByTestId(dealDetail.close);
+    if (await closeBtn.isVisible({ timeout: 300 })) await closeBtn.click();
+  } catch { /* ok */ }
   return false;
 }
 
