@@ -205,11 +205,35 @@ test.describe("Agent Automations (AA-1 to AA-7)", () => {
   //     And after Astra completes, Cash is chained automatically
   //     And Cash uses Astra's enhanced report to write the proposal
 
-  test.fixme("AA-4: Proposal triggers Astra Pass 2 then chains to Cash", async () => {
-    // Feature: Astra Pass 2 chains into Cash proposal generation
-    // Currently: Proposal stage triggers Cash directly
-    // Desired: IF no proposal_text THEN Astra Pass 2 first, THEN Cash
-    // Blocked: conditional agent chaining not implemented
+  test("AA-4: Proposal triggers Astra Pass 2 then chains to Cash", async ({ page, request }) => {
+    test.setTimeout(120_000);
+    await apiLogin(request);
+
+    // Move deal through Discovery to Proposal (sequential: Astra P2 → Cash)
+    // Discovery is human-owned — deal must be there first, then advance
+    const reachedDiscovery = await waitForDealStage(page, request, dealId, "Discovery", 60_000);
+    expect(reachedDiscovery, "Deal should reach Discovery after BA completes").toBe(true);
+
+    // Manually advance from Discovery to Proposal (human stage — no auto-advance)
+    await moveDealViaContextMenu(page, dealText, "Proposal");
+    await page.waitForTimeout(3_000);
+
+    // Proposal entry should trigger Astra deep_research first, then chain to Cash
+    // Wait for deal to be in Proposal with both flows completing
+    const reachedProposal = await waitForDealStage(page, request, dealId, "Proposal", 90_000);
+    expect(reachedProposal, "Deal should be in Proposal stage").toBe(true);
+
+    // Verify both Astra P2 and Cash flows exist
+    const flowsRes = await request.get(`/api/crm/deals/${dealId}/agent-flows`);
+    const flows = (await flowsRes.json()).data || [];
+    const astraFlows = flows.filter((f: { agent_name?: string; flow_type?: string }) =>
+      f.agent_name?.toLowerCase() === "astra" || f.flow_type === "deep_research" || f.flow_type === "analysis"
+    );
+    const cashFlows = flows.filter((f: { agent_name?: string; flow_type?: string }) =>
+      f.agent_name?.toLowerCase() === "cash" || f.flow_type === "proposal" || f.flow_type === "content_creation"
+    );
+    expect(astraFlows.length, "Should have at least one Astra flow (Pass 2)").toBeGreaterThanOrEqual(1);
+    expect(cashFlows.length, "Should have at least one Cash flow (proposal)").toBeGreaterThanOrEqual(1);
   });
 
   // ── AA-5: Lux deck generation ──────────────────────────────────────────
@@ -276,49 +300,24 @@ test.describe("Agent Automations (AA-1 to AA-7)", () => {
   //     When I POST to retrigger-agent
   //     Then a new agent flow is created for the current stage
 
-  test.fixme("AA-7: retrigger failed agent via API", async () => {
-    // Feature: POST /crm/deals/:id/retrigger-agent re-triggers the stage's agent
-    // Needs: a deal with a failed/cancelled flow to retrigger
-    // Blocked: need to set up a failed flow first (cancel then retrigger)
-  });
-
-  // ── AA-6: Auto-advance chain ──────────────────────────────────────────
-  //
-  // Feature: Agent auto-advance chain Intel → BA → Proposal → Polish
-  //   Scenario: Full chain auto-advance
-  //     Given a deal enters Intel with Scout agent
-  //     When each agent completes and auto-advances the deal
-  //     Then the deal reaches at least Proposal via Scout→Astra→Cash chain
-  //     And at least 3 completed agent flows exist
-
-  test("AA-6: auto-advance chain — Intel → BA → Proposal → Polish", async ({ page, request }) => {
-    test.setTimeout(180_000); // Chain takes ~3 min
+  test("AA-7: retrigger agent via API after cancel", async ({ request }) => {
+    test.setTimeout(60_000);
     await apiLogin(request);
 
-    // The deal should have auto-advanced through the chain from AA-1's Intel entry
-    // Wait for it to reach at least Proposal (Scout→Astra→Cash)
-    const reached = await waitForDealStage(page, request, dealId, "Proposal", 120_000);
-    expect(reached, "Deal should auto-advance to Proposal via Scout→Astra→Cash chain").toBe(true);
+    // Cancel any active agent on the deal
+    const cancelRes = await request.post(`/api/crm/deals/${dealId}/cancel-agent`);
+    // May fail if no pending agent — that's ok
+    const cancelled = cancelRes.ok();
 
-    // Verify multiple completed flows
+    // Retrigger the agent
+    const retriggerRes = await request.post(`/api/crm/deals/${dealId}/retrigger-agent`);
+    expect(retriggerRes.ok(), "Retrigger should succeed").toBe(true);
+
+    // Verify a new flow was created
     const flowsRes = await request.get(`/api/crm/deals/${dealId}/agent-flows`);
     const flows = (await flowsRes.json()).data || [];
-    const completedFlows = flows.filter((f: { status: string }) => f.status === "completed");
-    expect(completedFlows.length, "Should have at least 3 completed flows (Scout, Astra, Cash)").toBeGreaterThanOrEqual(3);
-  });
-
-  // ── AA-7: Retrigger failed agent ────────────────────────────────────
-  //
-  // Feature: Retrigger a failed agent via API
-  //   Scenario: POST /crm/deals/:id/retrigger-agent re-triggers the stage's agent
-  //     Given a deal with a failed/cancelled agent flow
-  //     When I POST to retrigger-agent
-  //     Then a new agent flow is created for the current stage
-
-  test.fixme("AA-7: retrigger failed agent via API", async () => {
-    // Feature: POST /crm/deals/:id/retrigger-agent re-triggers the stage's agent
-    // Needs: a deal with a failed/cancelled flow to retrigger
-    // Blocked: need to set up a failed flow first (cancel then retrigger)
+    const planningFlows = flows.filter((f: { status: string }) => f.status === "planning");
+    expect(planningFlows.length, "Should have at least one planning flow after retrigger").toBeGreaterThanOrEqual(1);
   });
 
   // ── Cleanup ────────────────────────────────────────────────────────────
