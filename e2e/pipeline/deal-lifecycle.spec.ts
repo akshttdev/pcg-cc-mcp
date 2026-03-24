@@ -1,7 +1,7 @@
 /**
- * Pipeline E2E: Deal Lifecycle (DL-1 to DL-4)
+ * Pipeline E2E: Deal Lifecycle (DL-1 to DL-6)
  *
- * Gherkin specs: planning/BACKLOG--remaining-work.md → DL-1 to DL-4
+ * Gherkin specs: planning/BACKLOG--remaining-work.md → DL-1 to DL-6
  * Every "Then" line in the Gherkin is a test assertion.
  */
 import { test, expect } from "./fixtures";

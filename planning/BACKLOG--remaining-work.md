@@ -1,6 +1,6 @@
 # Backlog — Remaining Work
 
-**Last updated:** 2026-03-23 (post componentization sprint — S0-13b partially resolved, typography/a11y/dark mode debt cleared)
+**Last updated:** 2026-03-24 (sloperation intent gap audit — 5 missing capabilities + 3 partial implementations identified)
 **Context:** Consolidated from all completed planning docs + 27 research reports + 45-item research-derived backlog. **Prioritized by ROI = (revenue impact × probability) / effort**, not legacy ordering.
 **Phase 0 Sprint Plan:** See [`2026-03-19--analysis--phase0-sprint-candidates.md`](2026-03-19--analysis--phase0-sprint-candidates.md) for full scoring and sprint schedule.
 
@@ -527,22 +527,45 @@ Feature: Stage configs match the dealflow plan across all pipelines
 
 | Spec | Gap | Effort | Priority |
 |------|-----|--------|----------|
-| **DL-3** | Won chain: Client + Project + Tasks + VIBE creation | 2-3 days | HIGH — core revenue tracking |
-| **AA-4** | Astra Pass 2 → Cash chaining | 1-2 days | MEDIUM — improves proposal quality |
+| **DL-3** | Won dual-path: stage transition only creates delivery deal; mark_deal_won does full provisioning (client + project + tasks + VIBE). Two paths to Won = different results. | 1-2 days | HIGH — core revenue tracking |
+| **AA-4** | Astra Pass 2 → Cash chaining. Depends on Discovery stage (see sloperation gap below). | 1-2 days | MEDIUM — improves proposal quality |
 | **DD-1** | Auto-match transcripts from call intake | 1-2 days | LOW — manual linking works |
 | **DD-4** | AR invoice dashboard | 2-3 days | MEDIUM — invoice generation works, tracking doesn't |
+
+### Sloperation Intent Gaps (Audited 2026-03-24)
+
+5 sloperation317 intents have **no analogue** in the current 9-stage architecture. These are not bugs — they are missing business capabilities. Full analysis: `docs/PIPELINE.md` → "Sloperation Intent Gaps".
+
+| Gap | Sloperation Intent | Impact | Depends On |
+|-----|-------------------|--------|-----------|
+| **Discovery stage** | Human call step between BA and Proposal (position 3). AM conducts discovery call, logs transcript. | Proposals lack client-specific insights. Call scheduling UI exists but has no associated stage. | New stage + stage_config |
+| **Astra Pass 2 (F12)** | Enhanced research pass reading transcript + Phase 1 report on Discovery→Proposal transition | Proposals built from Phase 1 data only | Discovery stage |
+| **Astra→Cash chaining** | Pass 2 automatically chains to Cash with enriched report | Cash uses unenriched data | Astra Pass 2 |
+| **Present stage** | Deck presentation on live call BEFORE invoicing | Invoice stage is about payment, skips presentation | New stage or expanded Invoice |
+| **Transcript→Proposal pipeline** | deal_transcripts feed into Astra P2 → Cash | No mechanism to incorporate call insights | Discovery stage + Astra P2 |
+
+3 items are **partially covered** (exist but incomplete):
+
+| Gap | Issue | Resolution |
+|-----|-------|-----------|
+| **F8: Org-specific review routing** | Tasks created but not assigned to org operator | Add assignee routing in CreateReviewTask |
+| **F3: Person invite** | Stub — logs "wire invite system later" | Needs invite token + email send |
+| **Lead stage Scout label** | Lead shows "Scout" badge but no agent fires there | Either add light Scout trigger or remove Scout label |
 
 ### Architectural Divergences (intentional, documented)
 
 These are places where the current implementation deliberately differs from the 317 plan:
 
-| 317 Plan | Current | Rationale |
-|----------|---------|-----------|
-| 9 stages: Intel → BA → Discovery → Proposal → Polish → Present → Follow Up → Won → Lost | 9 stages: Lead → Intel → BA → Proposal → Polish → Invoice → Negotiation → Won → Lost | Added Lead as landing stage; renamed Present/Follow Up to business-standard Invoice/Negotiation; dropped Discovery (transcript review folded into BA) |
-| Hardcoded stage automations in route handlers | Data-driven `stage_config` JSON with `StageTransitionProcessor` | Enables UI-based configuration; hardcoded logic preserved as fallback |
-| `call_llm()` direct HTTP in route handlers | `WorkflowLLMService` + `AgentFlowExecutor` with tool-calling loop | Richer agent capabilities (get_deal_context, update_deal_field, save_artifact) |
-| No cancel window | 30s cancel window with frontend indicator | User control over agent execution |
-| Blocking transitions (pending tasks = hard block) | Soft enforcement (warnings, allow move) | Prevents deadlocks; operators can override gates when needed |
+| 317 Plan | Current | Rationale | Still Valid? |
+|----------|---------|-----------|-------------|
+| Deals enter at Intel (no Lead stage) | Lead added as manual qualification buffer | Gives human a chance to qualify before agent triggers | ⚠️ May be unnecessary — original design had Scout fire on deal creation |
+| Discovery stage between BA and Proposal | Removed entirely | Simplified flow — but lost human input step + transcript feeding | ❌ **Should be restored** — see sloperation gaps |
+| Astra Pass 2 on Discovery→Proposal | Not ported | Depends on Discovery stage | ❌ **Should be restored** |
+| Present stage (deck on live call) | Replaced by Invoice (payment confirmation) | Different business intent | ⚠️ Review — may need both stages |
+| Hardcoded stage automations in route handlers | Data-driven `stage_config` JSON with `StageTransitionProcessor` | Enables UI-based configuration; hardcoded logic preserved as fallback | ✅ |
+| `call_llm()` direct HTTP in route handlers | `WorkflowLLMService` + `AgentFlowExecutor` with tool-calling loop | Richer agent capabilities (get_deal_context, update_deal_field, save_artifact) | ✅ |
+| No cancel window | 30s cancel window with frontend indicator | User control over agent execution | ✅ |
+| Blocking transitions (pending tasks = hard block) | Soft enforcement (warnings, allow move) | Prevents deadlocks; operators can override gates when needed | ✅ |
 
 ---
 
