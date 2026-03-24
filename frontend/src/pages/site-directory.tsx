@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { CardGrid } from '@/components/ui/card-grid';
 import { useOrganization } from '@/contexts/organization-context';
 import { useQuery } from '@tanstack/react-query';
 import { projectsApi } from '@/lib/api';
@@ -293,7 +294,7 @@ function DirectoryLinkList({ links }: { links: DirectoryLink[] }) {
             {link.admin && (
               <Badge
                 variant="secondary"
-                className="ml-auto text-[10px] px-1.5 py-0"
+                className="ml-auto text-xs px-1.5 py-0"
               >
                 ADMIN
               </Badge>
@@ -364,7 +365,7 @@ export function SiteDirectoryPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <CardGrid columns={{ md: 2, lg: 3 }} gap={6}>
         {categories.map((category) =>
           category.isProjectCategory ? (
             <ProjectLinksCard
@@ -387,7 +388,7 @@ export function SiteDirectoryPage() {
             </Card>
           ),
         )}
-      </div>
+      </CardGrid>
     </div>
   );
 }

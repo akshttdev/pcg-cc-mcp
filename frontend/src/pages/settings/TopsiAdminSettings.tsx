@@ -117,7 +117,7 @@ export function TopsiAdminSettings() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold flex items-center gap-2">
+        <h2 className="text-2xl font-semibold flex items-center gap-2">
           <Network className="h-6 w-6 text-cyan-600" />
           Topsi Configuration
         </h2>
@@ -149,7 +149,7 @@ export function TopsiAdminSettings() {
               >
                 <div>{opt.label}</div>
                 <div className={cn(
-                  'text-[10px] mt-0.5',
+                  'text-xs mt-0.5',
                   data.autonomy_level === opt.value
                     ? 'text-primary-foreground/70'
                     : 'text-muted-foreground/70'

@@ -1,4 +1,5 @@
-import { Button } from '@/components/ui/button';
+import { Copy, Edit, ExternalLink, MoreHorizontal, Star,Trash2 } from 'lucide-react';
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -6,8 +7,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Edit, Trash2, Copy, ExternalLink, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+import { IconButton } from './icon-button';
 
 export interface HoverAction {
   id: string;
@@ -48,18 +50,17 @@ export function HoverCardActions({
       {quickActions.map((action) => {
         const Icon = action.icon;
         return (
-          <Button
+          <IconButton
             key={action.id}
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
+            variant="ghost" className="h-7 w-7"
             onClick={(e) => {
               e.stopPropagation();
               action.onClick();
             }}
-          >
-            <Icon className="h-3.5 w-3.5" />
-          </Button>
+            icon={Icon}
+            label={action.label}
+            iconClassName="h-3.5 w-3.5"
+          />
         );
       })}
 
@@ -67,14 +68,13 @@ export function HoverCardActions({
       {menuActions.length > 0 && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn('h-7 w-7', triggerClassName)}
+            <IconButton
+              variant="ghost" className={cn('h-7 w-7', triggerClassName)}
               onClick={(e) => e.stopPropagation()}
-            >
-              <MoreHorizontal className="h-3.5 w-3.5" />
-            </Button>
+              icon={MoreHorizontal}
+              label="More options"
+              iconClassName="h-3.5 w-3.5"
+            />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {menuActions.map((action) => {

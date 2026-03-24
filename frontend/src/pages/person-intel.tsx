@@ -369,7 +369,7 @@ export function PersonIntelPage({ personId: propPersonId, embedded = false }: { 
                 return (
                   <div key={pass.id} className="flex gap-4 p-4 rounded-xl bg-slate-800/50 border border-slate-700/50">
                     <div className="w-8 h-8 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center shrink-0">
-                      <span className="text-xs font-bold text-indigo-300">{pass.pass_number}</span>
+                      <span className="text-xs font-semibold text-indigo-300">{pass.pass_number}</span>
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between mb-1">
@@ -433,7 +433,7 @@ export function PersonIntelPage({ personId: propPersonId, embedded = false }: { 
                     <div className="flex items-center gap-2 min-w-0">
                       <FileText className="w-4 h-4 text-slate-600 shrink-0" />
                       <span className="text-sm text-slate-300 group-hover:text-white transition-colors truncate">{r.title}</span>
-                      <Badge variant="outline" className={`text-[10px] shrink-0 ${r.status === 'ready' ? 'border-emerald-700 text-emerald-400' : 'border-amber-700 text-amber-400'}`}>
+                      <Badge variant="outline" className={`text-xs shrink-0 ${r.status === 'ready' ? 'border-emerald-700 text-emerald-400' : 'border-amber-700 text-amber-400'}`}>
                         {r.status}
                       </Badge>
                     </div>

@@ -134,7 +134,7 @@ export function KnowledgeTab({
             <div className="flex items-center gap-2 mb-4">
               <Network className="h-5 w-5 text-muted-foreground" />
               <h2 className="text-lg font-semibold">Pipeline Blueprints</h2>
-              <Badge variant="secondary" className="text-[10px]">Legacy</Badge>
+              <Badge variant="secondary" className="text-xs">Legacy</Badge>
             </div>
             <p className="text-sm text-muted-foreground mb-4">
               Agent-based pipeline templates for client engagements and production workflows. These are read-only blueprints — use the workflow editor above to build custom pipelines.
@@ -227,7 +227,7 @@ export function KnowledgeTab({
           <CardContent>
             <div className="flex items-center gap-3">
               <Progress value={aggregated.avgCompleteness} className="flex-1 h-2" />
-              <span className="text-2xl font-bold">{aggregated.avgCompleteness}%</span>
+              <span className="text-2xl font-semibold">{aggregated.avgCompleteness}%</span>
             </div>
           </CardContent>
         </Card>
@@ -237,7 +237,7 @@ export function KnowledgeTab({
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold">{aggregated.totalSources}</span>
+              <span className="text-2xl font-semibold">{aggregated.totalSources}</span>
               <span className="text-sm text-muted-foreground">across {projectEntries.length} projects</span>
             </div>
           </CardContent>
@@ -247,7 +247,7 @@ export function KnowledgeTab({
             <CardTitle className="text-sm font-medium text-muted-foreground">Stale Sources</CardTitle>
           </CardHeader>
           <CardContent>
-            <span className={`text-2xl font-bold ${aggregated.staleSources > 0 ? 'text-yellow-600' : ''}`}>
+            <span className={`text-2xl font-semibold ${aggregated.staleSources > 0 ? 'text-yellow-600' : ''}`}>
               {aggregated.staleSources}
             </span>
           </CardContent>

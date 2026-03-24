@@ -148,7 +148,7 @@ export function DealConvertDialog({
                         <div className="h-2 w-2 rounded-full bg-primary" />
                         <span className="text-sm font-medium">{phase.name}</span>
                         {phase.is_recurring && (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                          <Badge variant="outline" className="text-xs px-1.5 py-0">
                             recurring
                           </Badge>
                         )}
@@ -255,7 +255,7 @@ function TemplateCard({
             <div className="flex items-center gap-2">
               <p className="text-sm font-medium">{template.name}</p>
               {template.is_recurring && (
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                <Badge variant="outline" className="text-xs px-1.5 py-0">
                   retainer
                 </Badge>
               )}

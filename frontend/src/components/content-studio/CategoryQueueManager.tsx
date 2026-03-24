@@ -1,10 +1,20 @@
-import { useState, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import {
+  Calendar,
+  Clock,
+  Layers,
+  Plus,
+  RefreshCw,
+  Settings2,
+  Trash2,
+} from 'lucide-react';
+import { useCallback,useState } from 'react';
+
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -12,15 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Layers,
-  Plus,
-  Settings2,
-  Clock,
-  Calendar,
-  RefreshCw,
-  Trash2,
-} from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import type { CategoryQueue, ContentCategory, SocialAccount } from '@/types/social';
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '@/types/social';
@@ -101,22 +103,18 @@ function QueueCard({
               checked={queue.is_active}
               onCheckedChange={(is_active) => onUpdate?.({ is_active })}
             />
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsEditing(!isEditing)}
-            >
-              <Settings2 className="h-4 w-4" />
-            </Button>
+            <IconButton
+              variant="ghost" onClick={() => setIsEditing(!isEditing)}
+              icon={Settings2}
+              label="Queue settings"
+            />
             {onDelete && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-destructive hover:text-destructive"
+              <IconButton
+                variant="ghost" className="text-destructive hover:text-destructive"
                 onClick={onDelete}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+                icon={Trash2}
+                label="Delete queue"
+              />
             )}
           </div>
         </div>

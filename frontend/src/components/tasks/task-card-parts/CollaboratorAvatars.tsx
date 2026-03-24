@@ -78,7 +78,7 @@ function AgentNameLabels({
   if (names.length === 0) return null;
 
   return (
-    <span className="text-[10px] text-blue-600 dark:text-blue-400 truncate max-w-[80px]">
+    <span className="text-xs text-blue-600 dark:text-blue-400 truncate max-w-[80px]">
       {names.join(', ')}
     </span>
   );

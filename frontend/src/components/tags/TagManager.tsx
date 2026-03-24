@@ -1,7 +1,11 @@
+import { Edit2, Plus, Trash2 } from 'lucide-react';
+import { nanoid } from 'nanoid';
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { HexColorPicker } from 'react-colorful';
+import { toast } from 'sonner';
+
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -10,16 +14,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { IconButton } from '@/components/ui/icon-button';
+import { Input } from '@/components/ui/input';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Plus, Edit2, Trash2 } from 'lucide-react';
-import { HexColorPicker } from 'react-colorful';
 import { useTagStore } from '@/stores/useTagStore';
-import { nanoid } from 'nanoid';
-import { toast } from 'sonner';
 
 interface TagManagerProps {
   projectId: string;
@@ -211,22 +213,20 @@ export function TagManager({ projectId }: TagManagerProps) {
                       {tag.name}
                     </Badge>
                     <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
+                      <IconButton
+                        variant="ghost" className="h-7 w-7"
                         onClick={() => startEditingTag(tag)}
-                      >
-                        <Edit2 className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-destructive"
+                        icon={Edit2}
+                        label="Edit tag"
+                        iconClassName="h-3 w-3"
+                      />
+                      <IconButton
+                        variant="ghost" className="h-7 w-7 text-destructive"
                         onClick={() => handleDeleteTag(tag.id, tag.name)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                        icon={Trash2}
+                        label="Delete tag"
+                        iconClassName="h-3 w-3"
+                      />
                     </div>
                   </div>
                 ))}

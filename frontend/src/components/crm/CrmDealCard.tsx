@@ -33,8 +33,10 @@ import {
   Bot,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { StatusBadge } from '@/components/ui/status-badge';
 import { Link } from 'react-router-dom';
 import type { CrmDealWithContact } from '@/types/crm';
+import { dealCard as tid } from 'shared/testids';
 import { formatDistanceToNow } from 'date-fns';
 
 interface BoardProgressInfo {
@@ -60,35 +62,6 @@ interface CrmDealCardProps {
   boardProgress?: BoardProgressInfo;
 }
 
-function StatusChip({
-  icon: Icon,
-  label,
-  variant,
-  pulse,
-}: {
-  icon: React.ElementType;
-  label: string;
-  variant: 'amber' | 'green' | 'blue' | 'red' | 'muted';
-  pulse?: boolean;
-}) {
-  const colors = {
-    amber: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800',
-    green: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-950/50 dark:text-green-400 dark:border-green-800',
-    blue:  'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-800',
-    red:   'bg-red-100 text-red-700 border-red-200 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800',
-    muted: 'bg-muted text-muted-foreground border-border',
-  };
-  return (
-    <span className={cn(
-      'inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] font-medium border',
-      colors[variant],
-      pulse && 'animate-pulse',
-    )}>
-      <Icon className="h-2.5 w-2.5" />
-      {label}
-    </span>
-  );
-}
 
 export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onMoveTo, stages, boardProgress }: CrmDealCardProps) {
   const currentStage = (stageName || '').toLowerCase();
@@ -160,7 +133,7 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
             {deal.contact_avatar_url && (
               <AvatarImage src={deal.contact_avatar_url} alt={deal.contact_name || deal.name} />
             )}
-            <AvatarFallback className="text-[10px] font-semibold" style={{
+            <AvatarFallback className="text-xs font-semibold" style={{
               backgroundColor: `${accentColor}22`,
               color: accentColor,
             }}>
@@ -171,7 +144,7 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
           <div className="min-w-0 flex-1">
             <p className="font-medium text-sm leading-tight line-clamp-2">{deal.name}</p>
             {deal.contact_company && (
-              <p className="text-[11px] text-muted-foreground truncate flex items-center gap-1 mt-0.5">
+              <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5">
                 <Building2 className="h-2.5 w-2.5 shrink-0" />
                 {deal.company_id ? (
                   <Link
@@ -199,7 +172,7 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
                   variant="ghost"
                   size="sm"
                   className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 hover:bg-muted transition-opacity shrink-0"
-                  data-testid={`deal-menu-${deal.id}`}
+                  data-testid={tid.menu(deal.id)}
                 >
                   <MoreHorizontal className="h-3.5 w-3.5" />
                 </Button>
@@ -245,25 +218,25 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
         {(agentRunning || agentPending || researchNeeded || researchReady || intelRunning || hasActiveReviewTask || reviewTaskDone ||
           deal.report_review_status === 'rejected' || hasProposal || hasDeck || hasInvoice || isWon) && (
           <div className="flex flex-wrap gap-1">
-            {agentRunning && <StatusChip icon={Bot} label={`${agentName ?? 'Agent'} running…`} variant="blue" pulse />}
-            {agentPending && <StatusChip icon={Clock} label={`${agentName ?? 'Agent'} pending`} variant="amber" pulse />}
-            {researchNeeded && <StatusChip icon={Search} label="Research needed" variant="amber" />}
-            {intelRunning && <StatusChip icon={Loader2} label="Researching…" variant="blue" pulse />}
-            {researchReady && !hasActiveReviewTask && <StatusChip icon={ShieldCheck} label="Ready for review" variant="green" />}
-            {hasActiveReviewTask && <StatusChip icon={CircleDot} label="Needs review" variant="blue" pulse />}
-            {reviewTaskDone && <StatusChip icon={CheckCircle2} label="Review done" variant="green" />}
-            {deal.report_review_status === 'rejected' && <StatusChip icon={RotateCcw} label="Revision needed" variant="red" />}
-            {hasProposal && !proposalApproved && <StatusChip icon={FileText} label="Proposal draft" variant="amber" />}
-            {proposalApproved && <StatusChip icon={FileText} label="Proposal ✓" variant="green" />}
-            {hasDeck && <StatusChip icon={Presentation} label="Deck ready" variant="green" />}
-            {hasInvoice && <StatusChip icon={Receipt} label="Invoice sent" variant="blue" />}
-            {isWon && <StatusChip icon={Trophy} label="Won!" variant="green" />}
+            {agentRunning && <StatusBadge status="info" icon={Bot} label={`${agentName ?? 'Agent'} running…`} pulse size="sm" />}
+            {agentPending && <StatusBadge status="warning" icon={Clock} label={`${agentName ?? 'Agent'} pending`} pulse size="sm" />}
+            {researchNeeded && <StatusBadge status="warning" icon={Search} label="Research needed" size="sm" />}
+            {intelRunning && <StatusBadge status="info" icon={Loader2} label="Researching…" pulse size="sm" />}
+            {researchReady && !hasActiveReviewTask && <StatusBadge status="success" icon={ShieldCheck} label="Ready for review" size="sm" />}
+            {hasActiveReviewTask && <StatusBadge status="info" icon={CircleDot} label="Needs review" pulse size="sm" />}
+            {reviewTaskDone && <StatusBadge status="success" icon={CheckCircle2} label="Review done" size="sm" />}
+            {deal.report_review_status === 'rejected' && <StatusBadge status="error" icon={RotateCcw} label="Revision needed" size="sm" />}
+            {hasProposal && !proposalApproved && <StatusBadge status="warning" icon={FileText} label="Proposal draft" size="sm" />}
+            {proposalApproved && <StatusBadge status="success" icon={FileText} label="Proposal ✓" size="sm" />}
+            {hasDeck && <StatusBadge status="success" icon={Presentation} label="Deck ready" size="sm" />}
+            {hasInvoice && <StatusBadge status="info" icon={Receipt} label="Invoice sent" size="sm" />}
+            {isWon && <StatusBadge status="success" icon={Trophy} label="Won!" size="sm" />}
           </div>
         )}
 
         {/* Row 3: Intel summary snippet */}
         {intelDone && deal.intelligence_summary && (
-          <p className="text-[11px] text-muted-foreground leading-relaxed italic border-l-2 pl-2 line-clamp-2"
+          <p className="text-xs text-muted-foreground leading-relaxed italic border-l-2 pl-2 line-clamp-2"
             style={{ borderColor: `${accentColor}60` }}>
             {deal.intelligence_summary}
           </p>
@@ -271,12 +244,12 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
 
         {/* Row 4: Review task assignee */}
         {deal.review_task_id && deal.review_task_assignee && (
-          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <User className="h-3 w-3 shrink-0" />
             <span className="truncate">{deal.review_task_assignee}</span>
             {deal.review_task_status && (
               <span className={cn(
-                'text-[10px] font-medium',
+                'text-xs font-medium',
                 deal.review_task_status === 'done' ? 'text-green-600' :
                 deal.review_task_status === 'inprogress' ? 'text-blue-600' : 'text-muted-foreground/60'
               )}>
@@ -290,7 +263,7 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
         {/* Row 5: Task progress */}
         {hasTasks && (
           <div className="space-y-1">
-            <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span className="flex items-center gap-1">
                 <CheckSquare className="h-3 w-3" />
                 <span className={cn(allTasksDone && 'text-green-600 font-medium')}>
@@ -311,7 +284,7 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
         {/* Row 6: Board progress (delivery pipeline) */}
         {boardProgress && boardProgress.totalAssets > 0 && (
           <div className="space-y-1">
-            <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>{boardProgress.boardName}</span>
               <span>{boardProgress.completedAssets}/{boardProgress.totalAssets}</span>
             </div>
@@ -328,12 +301,12 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
         {tags.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {tags.slice(0, 2).map((tag) => (
-              <span key={tag} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-muted text-muted-foreground border border-border/50">
+              <span key={tag} className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-muted text-muted-foreground border border-border/50">
                 {tag}
               </span>
             ))}
             {tags.length > 2 && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-muted text-muted-foreground border border-border/50">
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-muted text-muted-foreground border border-border/50">
                 +{tags.length - 2}
               </span>
             )}
@@ -348,7 +321,7 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
             </span>
           )}
           {deal.probability > 0 && (
-            <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground">
+            <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground">
               <TrendingUp className="h-2.5 w-2.5" />
               {deal.probability}%
             </span>
@@ -356,7 +329,7 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
         </div>
         {/* Row 9: Timestamp */}
         {lastActivity && (
-          <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/60">
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground/60">
             <Clock className="h-2.5 w-2.5 shrink-0" />
             {lastActivity}
           </span>

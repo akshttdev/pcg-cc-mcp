@@ -246,23 +246,23 @@ export function NoraCoordinationPanel({ className }: NoraCoordinationPanelProps)
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600">{stats.totalAgents}</div>
+                <div className="text-2xl font-semibold text-blue-600">{stats.totalAgents}</div>
                 <div className="text-sm text-gray-600">Total Agents</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-green-600">{stats.activeAgents}</div>
+                <div className="text-2xl font-semibold text-green-600">{stats.activeAgents}</div>
                 <div className="text-sm text-gray-600">Active</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-yellow-600">{stats.pendingApprovals}</div>
+                <div className="text-2xl font-semibold text-yellow-600">{stats.pendingApprovals}</div>
                 <div className="text-sm text-gray-600">Pending Approvals</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-red-600">{stats.activeConflicts}</div>
+                <div className="text-2xl font-semibold text-red-600">{stats.activeConflicts}</div>
                 <div className="text-sm text-gray-600">Active Conflicts</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-purple-600">
+                <div className="text-2xl font-semibold text-purple-600">
                   {formatResponseTime(stats.averageResponseTime)}
                 </div>
                 <div className="text-sm text-gray-600">Avg Response</div>

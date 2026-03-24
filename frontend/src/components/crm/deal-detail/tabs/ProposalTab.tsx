@@ -1,24 +1,20 @@
+import { useMutation,useQueryClient } from '@tanstack/react-query';
+import { CheckCircle2, Edit3, FileText, Loader2, Save, Wand2, X } from 'lucide-react';
 import { useState } from 'react';
-import { useQueryClient, useMutation } from '@tanstack/react-query';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
-import { Loader2, FileText, Wand2, CheckCircle2, Edit3, Save, X } from 'lucide-react';
 import { toast } from 'sonner';
+
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { StatusBadge } from '@/components/ui/status-badge';
+import { Textarea } from '@/components/ui/textarea';
 import { crmDealsApi } from '@/lib/api/crm';
 import { crmKeys } from '@/lib/query-keys';
+import { getStatusInfo } from '@/lib/status-utils';
 import type { CrmDealWithContact } from '@/types/crm';
-import { cn } from '@/lib/utils';
 
 interface ProposalTabProps {
   deal: CrmDealWithContact;
 }
-
-const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  draft:    { label: 'Draft',    color: 'bg-amber-500/15 text-amber-500 border-amber-500/30' },
-  approved: { label: 'Approved', color: 'bg-green-500/15 text-green-500 border-green-500/30' },
-  sent:     { label: 'Sent',     color: 'bg-blue-500/15 text-blue-500 border-blue-500/30' },
-};
 
 export function ProposalTab({ deal }: ProposalTabProps) {
   const qc = useQueryClient();
@@ -26,7 +22,7 @@ export function ProposalTab({ deal }: ProposalTabProps) {
   const [editText, setEditText] = useState(deal.proposal_text ?? '');
 
   const status = deal.proposal_status ?? 'draft';
-  const statusInfo = STATUS_LABELS[status] ?? STATUS_LABELS.draft;
+  const statusInfo = getStatusInfo(status, 'proposal');
 
   const generate = useMutation({
     mutationFn: () => crmDealsApi.generateProposal(deal.id),
@@ -113,9 +109,12 @@ export function ProposalTab({ deal }: ProposalTabProps) {
         <div className="flex items-center gap-2">
           <FileText className="h-4 w-4 text-amber-400" />
           <h3 className="font-semibold text-sm">Proposal</h3>
-          <Badge variant="outline" className={cn('text-[10px] px-1.5 py-0.5 border', statusInfo.color)}>
-            {statusInfo.label}
-          </Badge>
+          <StatusBadge
+            status={statusInfo.variant}
+            label={statusInfo.label}
+            icon={statusInfo.icon}
+            size="sm"
+          />
         </div>
         <div className="flex items-center gap-1.5">
           {deal.proposal_text && !editing && (
@@ -138,24 +137,15 @@ export function ProposalTab({ deal }: ProposalTabProps) {
 
       {/* No proposal yet */}
       {!deal.proposal_text && !editing && (
-        <div className="rounded-xl border border-dashed border-amber-500/30 bg-amber-500/5 p-6 text-center space-y-3">
-          <FileText className="h-8 w-8 mx-auto text-amber-400/60" />
-          <div>
-            <p className="text-sm font-medium">No proposal yet</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              The proposal agent will synthesize a proposal from the business report, discovery transcript, and intel wikis.
-            </p>
-          </div>
-          <Button
-            size="sm"
-            className="gap-1.5 bg-amber-500 hover:bg-amber-600 text-white"
-            onClick={() => generate.mutate()}
-            disabled={generate.isPending}
-          >
-            {generate.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
-            {generate.isPending ? 'Generating…' : 'Generate Proposal'}
-          </Button>
-        </div>
+        <EmptyState
+          variant="branded"
+          borderColor="amber-500"
+          bgTint="amber-500"
+          icon={FileText}
+          title="No proposal yet"
+          description="The proposal agent will synthesize a proposal from the business report, discovery transcript, and intel wikis."
+          action={{ label: generate.isPending ? 'Generating...' : 'Generate Proposal', onClick: () => generate.mutate() }}
+        />
       )}
 
       {/* Proposal text — view mode */}

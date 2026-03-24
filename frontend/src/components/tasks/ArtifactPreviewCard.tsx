@@ -1,29 +1,30 @@
-import { useState, useMemo } from 'react';
-import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
+import {
+  Bot,
+  Clapperboard,
+  Download,
+  FileText,
+  Image,
+  Play,
+  RotateCw,
+  User,
+  X,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react';
+import { useMemo,useState } from 'react';
+import type { ArtifactPhase,ArtifactType, ExecutionArtifact } from 'shared/types';
+
+import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { IconButton } from '@/components/ui/icon-button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Badge } from '@/components/ui/badge';
-import {
-  FileText,
-  Image,
-  Play,
-  X,
-  Download,
-  ZoomIn,
-  ZoomOut,
-  RotateCw,
-  Bot,
-  User,
-  Clapperboard,
-} from 'lucide-react';
-import type { ExecutionArtifact, ArtifactType, ArtifactPhase } from 'shared/types';
 import { artifactContentApi } from '@/lib/api';
+import { cn } from '@/lib/utils';
 
 const VIDEO_EDIT_TYPES: ArtifactType[] = ['video_edit_session', 'render_deliverable'];
 
@@ -81,21 +82,29 @@ function ImageLightbox({
             {alt}
           </DialogTitle>
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" onClick={handleZoomOut} className="h-8 w-8">
-              <ZoomOut className="h-4 w-4" />
-            </Button>
+            <IconButton
+              variant="ghost" onClick={handleZoomOut} className="h-8 w-8"
+              icon={ZoomOut}
+              label="Zoom out"
+            />
             <span className="text-xs text-muted-foreground w-12 text-center">
               {Math.round(zoom * 100)}%
             </span>
-            <Button variant="ghost" size="icon" onClick={handleZoomIn} className="h-8 w-8">
-              <ZoomIn className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" onClick={handleRotate} className="h-8 w-8">
-              <RotateCw className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8">
-              <X className="h-4 w-4" />
-            </Button>
+            <IconButton
+              variant="ghost" onClick={handleZoomIn} className="h-8 w-8"
+              icon={ZoomIn}
+              label="Zoom in"
+            />
+            <IconButton
+              variant="ghost" onClick={handleRotate} className="h-8 w-8"
+              icon={RotateCw}
+              label="Rotate"
+            />
+            <IconButton
+              variant="ghost" onClick={onClose} className="h-8 w-8"
+              icon={X}
+              label="Close"
+            />
           </div>
         </DialogHeader>
         <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-black/5 dark:bg-black/20 min-h-[60vh]">
@@ -386,7 +395,7 @@ export function ArtifactPreviewCard({
                 }
               } catch { /* ignore */ }
             }}
-            className="absolute top-2 left-2 flex items-center gap-1 bg-amber-500/90 hover:bg-amber-400 text-white rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors opacity-0 group-hover:opacity-100"
+            className="absolute top-2 left-2 flex items-center gap-1 bg-amber-500/90 hover:bg-amber-400 text-white rounded px-1.5 py-0.5 text-xs font-medium transition-colors opacity-0 group-hover:opacity-100"
           >
             <Clapperboard className="h-2.5 w-2.5" />
             Review
@@ -395,17 +404,16 @@ export function ArtifactPreviewCard({
 
         {/* Download button on hover */}
         {onDownload && (artifact.file_path || artifact.content) && (
-          <Button
-            variant="secondary"
-            size="icon"
-            className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+          <IconButton
+            variant="secondary" className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
             onClick={(e) => {
               e.stopPropagation();
               onDownload();
             }}
-          >
-            <Download className="h-3 w-3" />
-          </Button>
+            icon={Download}
+            label="Download"
+            iconClassName="h-3 w-3"
+          />
         )}
       </div>
 
@@ -441,4 +449,4 @@ export function ArtifactPreviewCard({
   );
 }
 
-export { ImageLightbox, DocumentPreview, VideoPreview };
+export { DocumentPreview, ImageLightbox, VideoPreview };

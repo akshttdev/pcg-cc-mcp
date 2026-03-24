@@ -1,28 +1,30 @@
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  Download,
+  Eye,
+  File,
   FileText,
   Image,
-  Video,
-  File,
-  Clock,
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  Eye,
-  Download,
   Pin,
+  Video,
+  XCircle,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import type {
-  ExecutionArtifact,
-  ArtifactType,
   ArtifactPhase,
   ArtifactReviewStatus,
+  ArtifactType,
+  ExecutionArtifact,
 } from 'shared/types';
-import { parseArtifactMetadata, formatArtifactPhase } from './utils';
+
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
 import { formatDate } from '@/lib/formatters';
+import { cn } from '@/lib/utils';
+
+import { formatArtifactPhase,parseArtifactMetadata } from './utils';
 
 interface ArtifactCardProps {
   artifact: ExecutionArtifact;
@@ -125,7 +127,7 @@ export function ArtifactCard({
           <div className="absolute top-2 left-2">
             <Badge
               className={cn(
-                'text-[10px] uppercase tracking-wide',
+                'text-xs uppercase tracking-wide',
                 phaseColors[artifactPhase]
               )}
             >
@@ -136,7 +138,7 @@ export function ArtifactCard({
 
         <div className="absolute top-2 right-2 flex gap-1">
           {reviewStatus !== 'none' && reviewStatusIcons[reviewStatus] && (
-            <div className="bg-white rounded-full p-1 shadow">
+            <div className="bg-background rounded-full p-1 shadow">
               {reviewStatusIcons[reviewStatus]}
             </div>
           )}
@@ -150,40 +152,37 @@ export function ArtifactCard({
         {/* Action buttons on hover */}
         <div className="absolute inset-0 bg-black/50 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
           {onPreview && (
-            <Button
-              size="icon"
+            <IconButton
               variant="secondary"
               onClick={(e) => {
                 e.stopPropagation();
                 onPreview();
               }}
-            >
-              <Eye className="h-4 w-4" />
-            </Button>
+              icon={Eye}
+              label="Preview"
+            />
           )}
           {onDownload && artifact.file_path && (
-            <Button
-              size="icon"
+            <IconButton
               variant="secondary"
               onClick={(e) => {
                 e.stopPropagation();
                 onDownload();
               }}
-            >
-              <Download className="h-4 w-4" />
-            </Button>
+              icon={Download}
+              label="Download"
+            />
           )}
           {onPin && (
-            <Button
-              size="icon"
+            <IconButton
               variant={isPinned ? 'default' : 'secondary'}
               onClick={(e) => {
                 e.stopPropagation();
                 onPin();
               }}
-            >
-              <Pin className="h-4 w-4" />
-            </Button>
+              icon={Pin}
+              label={isPinned ? 'Unpin' : 'Pin'}
+            />
           )}
         </div>
       </div>

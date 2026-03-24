@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CardGrid } from '@/components/ui/card-grid';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   DollarSign,
@@ -31,11 +32,11 @@ export function CrmPipelineMetrics({
 
   if (isLoading) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+      <CardGrid columns={{ sm: 2, md: 3, lg: 5 }} gap={4}>
         {[1, 2, 3, 4, 5].map((i) => (
           <Skeleton key={i} className="h-24" />
         ))}
-      </div>
+      </CardGrid>
     );
   }
 
@@ -44,7 +45,7 @@ export function CrmPipelineMetrics({
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+      <CardGrid columns={{ sm: 2, md: 3, lg: 5 }} gap={4}>
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
@@ -53,7 +54,7 @@ export function CrmPipelineMetrics({
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Total Deals</p>
-                <p className="text-2xl font-bold">{metrics.total_deals}</p>
+                <p className="text-2xl font-semibold">{metrics.total_deals}</p>
               </div>
             </div>
           </CardContent>
@@ -67,7 +68,7 @@ export function CrmPipelineMetrics({
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Pipeline Value</p>
-                <p className="text-2xl font-bold">
+                <p className="text-2xl font-semibold">
                   {formatCurrencyFull(metrics.total_value)}
                 </p>
               </div>
@@ -83,7 +84,7 @@ export function CrmPipelineMetrics({
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Weighted Value</p>
-                <p className="text-2xl font-bold">
+                <p className="text-2xl font-semibold">
                   {formatCurrencyFull(metrics.weighted_value)}
                 </p>
               </div>
@@ -99,7 +100,7 @@ export function CrmPipelineMetrics({
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Avg Deal Size</p>
-                <p className="text-2xl font-bold">
+                <p className="text-2xl font-semibold">
                   {formatCurrencyFull(metrics.avg_deal_size)}
                 </p>
               </div>
@@ -115,14 +116,14 @@ export function CrmPipelineMetrics({
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Win Rate</p>
-                <p className="text-2xl font-bold">
+                <p className="text-2xl font-semibold">
                   {Math.round(metrics.win_rate * 100)}%
                 </p>
               </div>
             </div>
           </CardContent>
         </Card>
-      </div>
+      </CardGrid>
 
       {/* Pipeline Funnel */}
       {metrics.deals_by_stage.length > 0 && (

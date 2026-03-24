@@ -1,11 +1,15 @@
+import { useMutation,useQueryClient } from '@tanstack/react-query';
+import { CheckCircle2, Copy,Link2, Loader2, Presentation, Receipt, Share2, Trophy, Wand2 } from 'lucide-react';
 import { useState } from 'react';
-import { useQueryClient, useMutation } from '@tanstack/react-query';
-import { Button } from '@/components/ui/button';
-import { Loader2, Presentation, Wand2, Receipt, Trophy, Share2, CheckCircle2, Link2, Copy } from 'lucide-react';
 import { toast } from 'sonner';
+
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { SectionHeader } from '@/components/ui/section-header';
 import { crmDealsApi } from '@/lib/api/crm';
 import { crmKeys } from '@/lib/query-keys';
 import type { CrmDealWithContact } from '@/types/crm';
+import { deck as tid } from 'shared/testids';
 
 interface DeckTabProps {
   deal: CrmDealWithContact;
@@ -66,34 +70,18 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
     <div className="p-5 space-y-5">
       {/* Deck Section */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Presentation className="h-4 w-4 text-pink-400" />
-          <h3 className="font-semibold text-sm">Sales Deck</h3>
-        </div>
+        <SectionHeader icon={Presentation} title="Sales Deck" />
 
         {!deal.deck_url ? (
-          <div className="rounded-xl border border-dashed border-pink-500/30 bg-pink-500/5 p-6 text-center space-y-3">
-            <Presentation className="h-8 w-8 mx-auto text-pink-400/60" />
-            <div>
-              <p className="text-sm font-medium">No deck generated yet</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                The deck agent will create a branded slide-by-slide deck script from your approved proposal.
-                {!deal.proposal_text && (
-                  <span className="block mt-1 text-amber-400">Generate and approve the proposal first.</span>
-                )}
-              </p>
-            </div>
-            <Button
-              size="sm"
-              className="gap-1.5 bg-pink-600 hover:bg-pink-700 text-white"
-              data-testid="deck-generate"
-              onClick={() => generateDeck.mutate()}
-              disabled={generateDeck.isPending || !deal.proposal_text}
-            >
-              {generateDeck.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
-              {generateDeck.isPending ? 'Generating…' : 'Generate Deck'}
-            </Button>
-          </div>
+          <EmptyState
+            variant="branded"
+            borderColor="pink-500"
+            bgTint="pink-500"
+            icon={Presentation}
+            title="No deck generated yet"
+            description={`The deck agent will create a branded slide-by-slide deck script from your approved proposal.${!deal.proposal_text ? ' Generate and approve the proposal first.' : ''}`}
+            action={{ label: generateDeck.isPending ? 'Generating...' : 'Generate Deck', onClick: () => generateDeck.mutate(), 'data-testid': tid.generate }}
+          />
         ) : (
           <div className="space-y-3">
             <div className="flex items-center gap-2">
@@ -126,7 +114,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
                 {reviewLinkCopied ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Share2 className="h-3.5 w-3.5" />}
                 {reviewLinkCopied ? 'Copied!' : 'Share for Review'}
               </Button>
-              <span className="text-[10px] text-muted-foreground">Internal team review only</span>
+              <span className="text-xs text-muted-foreground">Internal team review only</span>
             </div>
           </div>
         )}
@@ -137,10 +125,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
 
       {/* Invoice Section — Present stage action */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Receipt className="h-4 w-4 text-blue-400" />
-          <h3 className="font-semibold text-sm">Invoice</h3>
-        </div>
+        <SectionHeader icon={Receipt} title="Invoice" />
 
         {deal.invoice_id ? (
           <div className="flex items-center gap-2 text-xs text-green-500">
@@ -162,16 +147,16 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
                       variant="outline"
                       size="sm"
                       className="gap-1.5 text-xs border-blue-500/40 text-blue-400 hover:bg-blue-950/30"
-                      data-testid="deck-send-invoice"
                       onClick={() => setInvoiceSending(true)}
                       disabled={!deal.amount || isTooEarly}
+                      data-testid={tid.sendInvoice}
                       title={isTooEarly ? 'Available after presenting to client' : undefined}
                     >
                       <Receipt className="h-3.5 w-3.5" />
                       Send Invoice
                     </Button>
                     {isTooEarly && (
-                      <p className="text-[10px] text-muted-foreground mt-1">Available after presenting to client</p>
+                      <p className="text-xs text-muted-foreground mt-1">Available after presenting to client</p>
                     )}
                   </div>
                 );
@@ -182,6 +167,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
                   className="gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white"
                   onClick={() => sendInvoice.mutate()}
                   disabled={sendInvoice.isPending}
+                  data-testid={tid.confirmSendInvoice}
                 >
                   {sendInvoice.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Receipt className="h-3 w-3" />}
                   {sendInvoice.isPending ? 'Sending…' : 'Confirm Send'}
@@ -198,10 +184,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
 
       {/* Won Section */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Trophy className="h-4 w-4 text-yellow-400" />
-          <h3 className="font-semibold text-sm">Close Deal</h3>
-        </div>
+        <SectionHeader icon={Trophy} title="Close Deal" />
 
         {deal.won_at ? (
           <div className="flex items-center gap-2 text-xs text-yellow-400">
@@ -218,8 +201,8 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
                 variant="outline"
                 size="sm"
                 className="gap-1.5 text-xs border-yellow-500/40 text-yellow-400 hover:bg-yellow-950/30"
-                data-testid="deck-mark-won"
                 onClick={() => setMarkingWon(true)}
+                data-testid={tid.markWon}
               >
                 <Trophy className="h-3.5 w-3.5" />
                 Mark Won
@@ -227,13 +210,14 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
             ) : (
               <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-3 space-y-2">
                 <p className="text-xs font-medium text-yellow-400">Confirm deal is won?</p>
-                <p className="text-[11px] text-muted-foreground">This will create a client, project, and all tasks from the proposal.</p>
+                <p className="text-xs text-muted-foreground">This will create a client, project, and all tasks from the proposal.</p>
                 <div className="flex gap-2">
                   <Button
                     size="sm"
                     className="gap-1.5 text-xs bg-yellow-500 hover:bg-yellow-600 text-black font-semibold"
                     onClick={() => markWon.mutate()}
                     disabled={markWon.isPending}
+                    data-testid={tid.confirmWon}
                   >
                     {markWon.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trophy className="h-3 w-3" />}
                     {markWon.isPending ? 'Closing…' : 'Confirm Won'}
@@ -288,10 +272,7 @@ function InviteLinkSection({ deal }: { deal: CrmDealWithContact }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <Link2 className="h-4 w-4 text-emerald-400" />
-        <h3 className="font-semibold text-sm">Client Invitation</h3>
-      </div>
+      <SectionHeader icon={Link2} title="Client Invitation" />
 
       {existingToken ? (
         <div className="space-y-2">
@@ -336,9 +317,9 @@ function InviteLinkSection({ deal }: { deal: CrmDealWithContact }) {
             variant="outline"
             size="sm"
             className="gap-1.5 text-xs border-emerald-500/40 text-emerald-400 hover:bg-emerald-950/30"
-            data-testid="deck-generate-invite"
             onClick={() => generateInvite.mutate()}
             disabled={generateInvite.isPending}
+            data-testid={tid.generateInvite}
           >
             {generateInvite.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
             {generateInvite.isPending ? 'Generating...' : 'Generate Invite Link'}

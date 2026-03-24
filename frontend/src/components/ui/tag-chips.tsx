@@ -32,7 +32,7 @@ export function TagChips({ tags, maxVisible = 2, size = 'xs' }: TagChipsProps) {
 
   const visible = parsed.slice(0, maxVisible);
   const overflow = parsed.length - maxVisible;
-  const sizeClass = size === 'xs' ? 'text-[10px] px-1.5 py-0' : 'text-xs px-2 py-0.5';
+  const sizeClass = size === 'xs' ? 'text-xs px-1.5 py-0' : 'text-xs px-2 py-0.5';
 
   return (
     <span className="inline-flex items-center gap-1 flex-wrap">
@@ -46,7 +46,7 @@ export function TagChips({ tags, maxVisible = 2, size = 'xs' }: TagChipsProps) {
         </Badge>
       ))}
       {overflow > 0 && (
-        <span className={`text-muted-foreground ${size === 'xs' ? 'text-[10px]' : 'text-xs'}`}>
+        <span className={`text-muted-foreground ${size === 'xs' ? 'text-xs' : 'text-xs'}`}>
           +{overflow}
         </span>
       )}

@@ -1,36 +1,39 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { formatDistanceToNow } from 'date-fns';
+import {
+  AlertTriangle,
+  Bot,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  ExternalLink,
+  Eye,
+  Loader2,
+  Package,
+  Plus,
+  RefreshCw,
+  Trash2,
+} from 'lucide-react';
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Package,
-  RefreshCw,
-  Plus,
-  ChevronDown,
-  ChevronRight,
-  ExternalLink,
-  Bot,
-  Clock,
-  AlertTriangle,
-  CheckCircle2,
-  Loader2,
-  Trash2,
-  Eye,
-} from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
 import { apiClient } from '@/lib/api';
 import { ossKeys } from '@/lib/query-keys';
-import { formatDistanceToNow } from 'date-fns';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -263,26 +266,22 @@ function LibraryCard({ lib }: { lib: OssLibrary }) {
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
+          <IconButton
+            variant="ghost" className="h-7 w-7"
             onClick={() => checkNow.mutate()}
             disabled={checkNow.isPending}
-            title="Check now"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${checkNow.isPending ? 'animate-spin' : ''}`} />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+            icon={RefreshCw}
+            label="Check now"
+            iconClassName={`h-3.5 w-3.5 ${checkNow.isPending ? 'animate-spin' : ''}`}
+          />
+          <IconButton
+            variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive"
             onClick={() => deleteLib.mutate()}
             disabled={deleteLib.isPending}
-            title="Remove"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+            icon={Trash2}
+            label="Remove"
+            iconClassName="h-3.5 w-3.5"
+          />
         </div>
       </div>
 
@@ -358,7 +357,7 @@ function AddLibraryDialog() {
             <Input id="lib-notes" placeholder="e.g. Web framework" value={form.notes}
               onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
           </div>
-          <div className="flex justify-end gap-2 pt-1">
+          <DialogFooter className="pt-1">
             <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
             <Button
               onClick={() => create.mutate()}
@@ -366,7 +365,7 @@ function AddLibraryDialog() {
             >
               {create.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add'}
             </Button>
-          </div>
+          </DialogFooter>
         </div>
       </DialogContent>
     </Dialog>
@@ -404,7 +403,7 @@ export function OssLibraryListenerPage() {
         <div className="flex items-center gap-3">
           <Package className="h-6 w-6 text-muted-foreground" />
           <div>
-            <h1 className="text-2xl font-semibold">Library Listener</h1>
+            <h1 className="text-2xl font-bold">Library Listener</h1>
             <p className="text-sm text-muted-foreground">
               {pendingCount > 0
                 ? `${pendingCount} librar${pendingCount === 1 ? 'y has' : 'ies have'} new releases`

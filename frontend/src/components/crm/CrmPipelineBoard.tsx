@@ -1,26 +1,30 @@
-import { useState, useMemo, useEffect } from 'react';
+import NiceModal from '@ebay/nice-modal-react';
+import { Bot, DollarSign, Loader2, Plus,Settings, Target, User, Users } from 'lucide-react';
+import { useEffect,useMemo, useState } from 'react';
+import { toast } from 'sonner';
+
+import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import {
+  type DragEndEvent,
   KanbanBoard,
+  KanbanCard,
   KanbanCards,
   KanbanHeader,
   KanbanProvider,
-  KanbanCard,
-  type DragEndEvent,
 } from '@/components/ui/shadcn-io/kanban';
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { DollarSign, Settings, Loader2, Bot, User, Users, Target, Plus } from 'lucide-react';
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
-import { toast } from 'sonner';
-import NiceModal from '@ebay/nice-modal-react';
-import { useCrmKanban, useCrmPipelineByType, useOrgCrmPipelineByType, useOrgCrmKanban, useMoveDeal, useCreateDeal, useUpdateDeal, useDeleteDeal } from '@/hooks/useCrmPipeline';
+import { Tooltip, TooltipContent, TooltipProvider,TooltipTrigger } from '@/components/ui/tooltip';
+import { useCreateDeal, useCrmKanban, useCrmPipelineByType, useDeleteDeal,useMoveDeal, useOrgCrmKanban, useOrgCrmPipelineByType, useUpdateDeal } from '@/hooks/useCrmPipeline';
 import { useProjectBoardProgress } from '@/hooks/useProjectBoardProgress';
-import { CrmDealCard } from './CrmDealCard';
-import { CrmDealForm } from './CrmDealForm';
-import { CrmDealDetailPanel } from './CrmDealDetailPanel';
-import type { PipelineType, CrmDealWithContact, CreateCrmDeal, UpdateCrmDeal } from '@/types/crm';
 import { formatCurrencyFull } from '@/lib/formatters';
+import type { CreateCrmDeal, CrmDealWithContact, PipelineType, UpdateCrmDeal } from '@/types/crm';
+import { pipeline as tid, dealCard as dealTid } from 'shared/testids';
+
+import { CrmDealCard } from './CrmDealCard';
+import { CrmDealDetailPanel } from './CrmDealDetailPanel';
+import { CrmDealForm } from './CrmDealForm';
 
 interface CrmPipelineBoardProps {
   projectId?: string;
@@ -79,7 +83,7 @@ function StageOwnerBadge({ owner }: { owner: StageOwner }) {
   const typeLabel = owner.type === 'agent' ? 'AI agent' : owner.type === 'team' ? 'Team' : 'Human';
   return (
     <span
-      className="inline-flex items-center gap-1 text-[10px] text-muted-foreground font-normal cursor-default"
+      className="inline-flex items-center gap-1 text-xs text-muted-foreground font-normal cursor-default"
       title={`${owner.label} — ${typeLabel}`}
     >
       <Icon className="h-2.5 w-2.5" />
@@ -274,7 +278,7 @@ export function CrmPipelineBoard({
             <DollarSign className="h-4 w-4" />
           </div>
           <div>
-            <h1 className="text-lg sm:text-xl font-semibold">{title || kanbanData.pipeline_name}</h1>
+            <h1 className="text-lg sm:text-xl font-bold">{title || kanbanData.pipeline_name}</h1>
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
               <span>{totalDeals} deals</span>
               <span className="flex items-center gap-1">
@@ -286,13 +290,16 @@ export function CrmPipelineBoard({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={() => handleAddDeal()} size="sm" data-testid="pipeline-add-deal">
+          <Button onClick={() => handleAddDeal()} size="sm" data-testid={tid.addDeal}>
             Add Deal
           </Button>
           {onSettingsClick && (
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={onSettingsClick} data-testid="pipeline-settings">
-              <Settings className="h-4 w-4" />
-            </Button>
+            <IconButton
+              variant="outline" className="h-8 w-8" onClick={onSettingsClick}
+              icon={Settings}
+              label="Pipeline settings"
+              data-testid={tid.settings}
+            />
           )}
         </div>
       </div>
@@ -309,7 +316,7 @@ export function CrmPipelineBoard({
               : undefined;
 
             return (
-              <KanbanBoard key={stage.id} id={stage.id} data-testid={`stage-column-${stage.name.toLowerCase().replace(/\s+/g, '-')}`}>
+              <KanbanBoard key={stage.id} id={stage.id} data-testid={tid.stageColumn(stage.name)}>
                 <KanbanHeader>
                   <div
                     className="sticky top-0 z-20 flex shrink-0 flex-col gap-1 p-3 border-b border-dashed bg-background"
@@ -349,7 +356,7 @@ export function CrmPipelineBoard({
                     <div className="flex items-center justify-between pl-4">
                       {owner ? <StageOwnerBadge owner={owner} /> : <span />}
                       {stageData.total_amount > 0 && (
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="text-xs text-muted-foreground">
                           {formatCurrencyFull(stageData.total_amount)}
                         </span>
                       )}
@@ -374,10 +381,10 @@ export function CrmPipelineBoard({
                         name={deal.name}
                         index={index}
                         parent={stage.id}
+                        data-testid={dealTid.card(deal.id)}
                         onClick={() => { setSelectedDeal(deal); setSelectedDealStage(stage.name); }}
                         isOpen={selectedDeal?.id === deal.id}
                         className="mx-2 my-1.5 p-0 rounded-lg border border-border/60 hover:border-border hover:shadow-sm transition-all"
-                        data-testid={`deal-card-${deal.id}`}
                       >
                         <CrmDealCard
                           deal={deal}
@@ -402,7 +409,7 @@ export function CrmPipelineBoard({
                       <p className="text-xs text-muted-foreground">
                         Add your first deal to start tracking prospects through your sales process.
                       </p>
-                      <Button size="sm" variant="default" onClick={() => handleAddDeal(stageData.stage.id)} data-testid="pipeline-add-deal-empty">
+                      <Button size="sm" variant="default" onClick={() => handleAddDeal(stageData.stage.id)}>
                         <Plus className="h-3.5 w-3.5 mr-1" /> Add Deal
                       </Button>
                     </div>
@@ -417,7 +424,6 @@ export function CrmPipelineBoard({
                       size="sm"
                       className="w-full h-7 text-xs text-muted-foreground hover:text-foreground justify-start gap-1.5"
                       onClick={() => handleAddDeal(stage.id)}
-                      data-testid={`pipeline-add-deal-${stage.name.toLowerCase().replace(/\s+/g, '-')}`}
                     >
                       + Add deal
                     </Button>

@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
+import { CardGrid } from '@/components/ui/card-grid';
 import { Input } from '@/components/ui/input';
 import {
   Search, FileText, Table2, Music, Image, Film, Layers,
@@ -111,7 +112,7 @@ function FolderTreeNode({
       <button
         className={`flex items-center gap-1.5 w-full text-left px-2 py-1 rounded-md text-sm transition-colors hover:bg-muted/60
           ${isSelected ? 'bg-primary/10 text-primary font-medium' : ''}
-          ${depth === 0 ? 'font-semibold text-[11px] tracking-wide uppercase mt-2 text-muted-foreground' : ''}
+          ${depth === 0 ? 'font-semibold text-xs tracking-wide uppercase mt-2 text-muted-foreground' : ''}
         `}
         style={{ paddingLeft: `${8 + depth * 12}px` }}
         onClick={() => {
@@ -129,7 +130,7 @@ function FolderTreeNode({
           : <Folder className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         }
         <span className="truncate">{node.name}</span>
-        <span className="ml-auto text-[10px] text-muted-foreground shrink-0">{node.count}</span>
+        <span className="ml-auto text-xs text-muted-foreground shrink-0">{node.count}</span>
       </button>
       {(open || isAncestor) && hasChildren && (
         <div>
@@ -230,7 +231,7 @@ export default function IntelligencePage() {
         >
           <Folder className="h-3.5 w-3.5" />
           <span>All Files</span>
-          <span className="ml-auto text-[10px] text-muted-foreground">{personalSources.length}</span>
+          <span className="ml-auto text-xs text-muted-foreground">{personalSources.length}</span>
         </button>
         {Object.values(tree.children)
           .sort((a, b) => b.count - a.count)
@@ -251,7 +252,7 @@ export default function IntelligencePage() {
         <div className="border-b px-4 py-3">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h1 className="text-lg font-semibold">Personal Intelligence</h1>
+              <h1 className="text-lg font-bold">Personal Intelligence</h1>
               <p className="text-xs text-muted-foreground">
                 {displayName}&apos;s personal files from Sovereign Stack
               </p>
@@ -336,7 +337,7 @@ export default function IntelligencePage() {
                           {fileIcon(source)}
                           <span className="truncate">{source.title}</span>
                           {source.file_type && (
-                            <Badge variant="outline" className="text-[10px] uppercase shrink-0">
+                            <Badge variant="outline" className="text-xs uppercase shrink-0">
                               {source.file_type}
                             </Badge>
                           )}
@@ -358,7 +359,7 @@ export default function IntelligencePage() {
               </tbody>
             </table>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 p-4">
+            <CardGrid columns={{ sm: 2, md: 4, lg: 5 }} gap={3} className="p-4">
               {filtered.map(source => (
                 <div
                   key={source.id}
@@ -368,12 +369,12 @@ export default function IntelligencePage() {
                     {fileIcon(source, 'lg')}
                   </div>
                   <p className="text-xs font-medium truncate">{source.title}</p>
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     {formatSize(source.file_size_bytes)}
                   </p>
                 </div>
               ))}
-            </div>
+            </CardGrid>
           )}
         </div>
       </div>

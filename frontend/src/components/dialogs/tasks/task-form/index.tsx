@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -48,7 +49,7 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
             </DialogHeader>
             <FormDialogBody
               footer={
-                <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 w-full">
+                <>
                   <Button
                     variant="outline"
                     onClick={state.handleCancel}
@@ -87,7 +88,7 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
                       </Button>
                     </>
                   )}
-                </div>
+                </>
               }
             >
             <div className="space-y-4">
@@ -170,7 +171,7 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
                 You have unsaved changes. Are you sure you want to discard them?
               </p>
             </div>
-            <div className="flex justify-end gap-2">
+            <DialogFooter>
               <Button
                 variant="outline"
                 onClick={() => state.setShowDiscardWarning(false)}
@@ -180,7 +181,7 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
               <Button variant="destructive" onClick={state.handleDiscardChanges}>
                 Discard Changes
               </Button>
-            </div>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </>

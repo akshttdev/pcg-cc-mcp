@@ -1,6 +1,6 @@
 # Backlog — Remaining Work
 
-**Last updated:** 2026-03-23 (post pipeline-ops sprint — S0-03/04/05/06/12 completed)
+**Last updated:** 2026-03-23 (post componentization sprint — S0-13b partially resolved, typography/a11y/dark mode debt cleared)
 **Context:** Consolidated from all completed planning docs + 27 research reports + 45-item research-derived backlog. **Prioritized by ROI = (revenue impact × probability) / effort**, not legacy ordering.
 **Phase 0 Sprint Plan:** See [`2026-03-19--analysis--phase0-sprint-candidates.md`](2026-03-19--analysis--phase0-sprint-candidates.md) for full scoring and sprint schedule.
 
@@ -489,6 +489,24 @@ These are places where the current implementation deliberately differs from the 
 **Source:** [`roadmap/research/08-legal--compliance-security.md`](roadmap/research/08-legal--compliance-security.md)
 **What:** `validator` crate with `#[derive(Validate)]` on high-risk endpoints. OWASP baseline.
 **Effort:** 1.5 days | **Sprint:** 0.2 | **Status:** NOT STARTED
+
+### S0-13b. Fix `any` Type Warnings Across Frontend [ROI: 3.5] ✅ DONE (componentization sprint)
+**What:** Replaced `any` with proper types in 50 files. Zero `no-explicit-any` warnings remaining.
+**Approach:** SSE hooks → typed payloads, rjsf → typed extensions, API responses → specific interfaces, catch blocks → `unknown`.
+
+### S0-13c. ESLint `--max-warnings` Reduction [ROI: 3.0]
+**Source:** Frontend componentization sprint — current: 684 warnings (down from 807, mostly `simple-import-sort`)
+**What:** Run `eslint --fix` across remaining untouched files to auto-fix import sorting. Then reduce `--max-warnings` to ~100.
+**Effort:** 0.5 days | **Sprint:** 0.1 | **Status:** PARTIALLY DONE (componentization sprint reduced 807→684)
+
+### S0-13d. Extract Remaining Large Pages [ROI: 2.5]
+**Source:** Frontend componentization sprint — 3 pages still over 700 lines
+**What:** Extract sub-components from:
+- `pages/organization-profile/index.tsx` (766 lines) → OrgHeader, TabRouter, BrandSection
+- `pages/workflows/index.tsx` (661 lines) → WorkflowGrid, RunsPanel, StagingPanel
+- `pages/project-tasks/index.tsx` (660 lines) → TaskBoard, TaskFilters, TaskDetail
+**Pattern:** Directory-per-parent, parent under 400 lines, index.tsx re-exports.
+**Effort:** 2-3 days | **Sprint:** 0.2 | **Status:** NOT STARTED
 
 ### S0-14. Webhook Retry Worker [ROI: 3.5]
 **Source:** BACKLOG P2 "Webhook Retry Logic is Dead Code"

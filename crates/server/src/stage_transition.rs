@@ -6,7 +6,7 @@
 
 use chrono::{DateTime, Utc};
 use db::{
-    db_uuid::{bind_uuid_blob, DbUuid},
+    db_uuid::DbUuid,
     models::{
         crm_deal::{CreateCrmDeal, CrmDeal},
         crm_pipeline::{CrmPipeline, CrmPipelineStage, PipelineType},
@@ -230,12 +230,9 @@ pub async fn process_transition(
     }
 
     // ── 3. Entry actions (explicit on_enter_actions + derived from UI fields) ──
-    // Run in two passes: review tasks + delivery deals first, then agent triggers.
-    // This ensures the review task exists before schedule_agent_flow needs a task_id FK.
     if let Some(ref config) = to_config {
         let effective_actions = build_effective_entry_actions(config);
 
-        // Pass 1: non-agent actions (review tasks, delivery deals)
         for action in &effective_actions {
             match action {
                 StageAction::CreateReviewTask { description } => {
@@ -599,37 +596,42 @@ async fn schedule_agent_flow(
     let flow_id = flow_uuid.to_string();
     let deadline = Utc::now() + chrono::Duration::seconds(clamped_window as i64);
 
-    // agent_flows.task_id has FK to tasks(id). The review task should already exist
-    // (CreateReviewTask runs before TriggerAgent in the two-pass entry action loop).
-    let task_id_str = {
-        #[derive(sqlx::FromRow)]
-        struct TaskIdRow { id: String }
-        let existing = sqlx::query_as::<_, TaskIdRow>(
-            "SELECT CAST(id AS TEXT) as id FROM tasks WHERE crm_deal_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1"
-        )
-        .bind(deal.id.to_string())
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten();
+    // Map pipeline flow types to agent_flows CHECK constraint values.
+    // The original flow_type is preserved in flow_config for the executor.
+    let db_flow_type = match flow_type {
+        "research" => "research",
+        "business_analysis" | "analysis" => "analysis",
+        "proposal" | "deck" => "content_creation",
+        _ => "custom",
+    };
 
-        match existing {
-            Some(row) => row.id,
-            None => {
-                // No review task found — create one so the FK is satisfied
-                let task_id = DbUuid::new();
-                let _ = sqlx::query(
-                    "INSERT INTO tasks (id, title, status, crm_deal_id) VALUES (?, ?, 'todo', ?)"
-                )
-                .bind(task_id.to_string())
-                .bind(format!("Review: {} agent ({})", agent_name, flow_type))
-                .bind(deal.id.to_string())
-                .execute(pool)
-                .await;
-                task_id.to_string()
-            }
+    // We need a task_id for the agent_flows table (FK to tasks.id BLOB).
+    // Find an existing task linked to this deal, or create a minimal one.
+    // Then convert to BLOB format for the FK.
+    let task_id_text: String = match sqlx::query_scalar::<_, String>(
+        "SELECT id FROM tasks WHERE crm_deal_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(deal.id.to_string())
+    .fetch_optional(pool)
+    .await
+    {
+        Ok(Some(id)) => id,
+        _ => {
+            // Create a minimal agent task for the FK reference
+            let new_id = DbUuid::new().to_string();
+            sqlx::query(
+                "INSERT INTO tasks (id, title, status, project_id, crm_deal_id, created_by, created_at, updated_at) \
+                 VALUES (?1, ?2, 'inprogress', '', ?3, 'system', datetime('now','subsec'), datetime('now','subsec'))",
+            )
+            .bind(&new_id)
+            .bind(format!("{} agent task — {}", agent_name, &deal.name))
+            .bind(deal.id.to_string())
+            .execute(pool)
+            .await?;
+            new_id
         }
     };
+    let task_id = task_id_text;
 
     let flow_config = serde_json::json!({
         "agent_name": agent_name,
@@ -639,11 +641,9 @@ async fn schedule_agent_flow(
         "contact_id": deal.crm_contact_id,
     });
 
-    // agent_flows.id is BLOB, task_id is BLOB but FK references tasks(id) which is TEXT.
-    // Bind id as BLOB, task_id as TEXT to satisfy the FK constraint.
-    let flow_blob = bind_uuid_blob(&flow_uuid)
-        .map_err(|e| anyhow::anyhow!("Invalid flow UUID: {}", e))?;
-
+    // Insert as TEXT UUIDs — DbUuid reads both BLOB and TEXT transparently.
+    // The agent_flows schema has BLOB columns but SQLite is type-flexible;
+    // TEXT UUIDs work and DbUuid handles the decode on read.
     sqlx::query(
         r#"
         INSERT INTO agent_flows (
@@ -654,12 +654,12 @@ async fn schedule_agent_flow(
         VALUES (?1, ?2, ?3, 'planning', 'planning', ?4, 0, datetime('now', 'subsec'), ?5, ?6)
         "#,
     )
-    .bind(flow_blob)
-    .bind(&task_id_str)
-    .bind(flow_type)
+    .bind(&flow_id)
+    .bind(&task_id)
+    .bind(db_flow_type)
     .bind(flow_config.to_string())
     .bind(deal.id.to_string())
-    .bind(deadline.to_rfc3339())
+    .bind(deadline.format("%Y-%m-%d %H:%M:%S%.3f").to_string())
     .execute(pool)
     .await?;
 

@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -146,14 +147,14 @@ export function ProposalCreateModal({
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-2">
+          <DialogFooter className="pt-2">
             <Button type="button" variant="ghost" onClick={handleClose} disabled={saving}>
               Cancel
             </Button>
             <Button type="submit" disabled={saving}>
               {saving ? 'Creating…' : 'Create Proposal'}
             </Button>
-          </div>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

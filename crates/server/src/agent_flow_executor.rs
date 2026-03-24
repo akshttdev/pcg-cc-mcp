@@ -61,6 +61,7 @@ impl AgentFlowExecutor {
 
     /// Process one tick: find actionable flows and dispatch them.
     async fn tick(&self) {
+        tracing::info!("[AgentFlowEngine] Tick — polling for pending flows...");
         // Use find_pending_flows which respects cancel_deadline
         let flows = match AgentFlow::find_pending_flows(
             &self.pool,
@@ -75,6 +76,7 @@ impl AgentFlowExecutor {
             }
         };
 
+        tracing::info!("[AgentFlowEngine] Found {} pending flows", flows.len());
         if !flows.is_empty() {
             tracing::info!("[AgentFlowEngine] Tick: {} actionable flow(s)", flows.len(),);
         }
@@ -292,13 +294,20 @@ impl AgentFlowExecutor {
         anyhow::bail!("All retry attempts exhausted")
     }
 
-    /// Single LLM call with optional tool-call loop (max 5 turns)
+    /// Single LLM call with optional tool-call loop (max 5 turns).
+    /// When SIMULATE_LLM=1 is set, returns realistic simulated responses
+    /// instead of calling the actual LLM API (useful for testing without credits).
     async fn call_llm_once(
         &self,
         mut messages: Vec<Value>,
         tools: &[ToolDefinition],
         model_hint: Option<&str>,
     ) -> anyhow::Result<String> {
+        // Simulation mode: return realistic agent responses without calling LLM
+        if std::env::var("SIMULATE_LLM").unwrap_or_default() == "1" {
+            return self.simulate_llm_response(&messages).await;
+        }
+
         let max_turns = 5;
         let mut last_tool_sig: Option<String> = None;
 
@@ -624,6 +633,164 @@ impl AgentFlowExecutor {
             .as_deref()
             .and_then(|s| serde_json::from_str(s).ok())
             .unwrap_or_else(|| json!({}))
+    }
+}
+
+// ── LLM Simulation ──────────────────────────────────────────────────────────
+
+impl AgentFlowExecutor {
+    /// Simulate a realistic LLM response based on the agent name extracted from messages.
+    /// Executes real tool calls (get_deal_context, update_deal_field, save_artifact)
+    /// so the pipeline state actually advances — just skips the LLM API call.
+    async fn simulate_llm_response(&self, messages: &[Value]) -> anyhow::Result<String> {
+        // Extract agent name from system prompt
+        let system_text = messages
+            .first()
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_str())
+            .unwrap_or("");
+        let agent_name = if system_text.contains("Scout") {
+            "scout"
+        } else if system_text.contains("Astra") {
+            "astra"
+        } else if system_text.contains("Cash") {
+            "cash"
+        } else if system_text.contains("Lux") {
+            "lux"
+        } else {
+            "assistant"
+        };
+
+        // Extract deal_id from user message
+        let user_text = messages
+            .iter()
+            .find(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"))
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_str())
+            .unwrap_or("");
+
+        // Try to extract deal_id from context (look for UUID pattern)
+        let deal_id = user_text
+            .split_whitespace()
+            .find(|w| w.len() == 36 && w.contains('-'))
+            .or_else(|| {
+                // Fallback: look for deal_id in the message content
+                user_text.split("deal_id").nth(1).and_then(|s| {
+                    s.split_whitespace().next().map(|w| w.trim_matches(|c: char| !c.is_alphanumeric() && c != '-'))
+                })
+            })
+            .unwrap_or("");
+
+        tracing::info!(
+            "[AgentFlowEngine] SIMULATE_LLM: agent={}, deal_id={}",
+            agent_name,
+            deal_id
+        );
+
+        // Load real deal context for realistic output
+        let context = if !deal_id.is_empty() {
+            self.load_deal_context(deal_id).await
+        } else {
+            "No deal context available".to_string()
+        };
+
+        // Simulate a brief processing delay
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+        // Execute real tool calls based on agent role + return summary
+        match agent_name {
+            "scout" => {
+                // Scout: save research artifact
+                if !deal_id.is_empty() {
+                    let _ = self.update_deal_field(
+                        deal_id,
+                        "description",
+                        &format!(
+                            "[Scout Research — Simulated]\n\n\
+                             Contact appears to be a decision-maker at a mid-size company. \
+                             Key talking points: digital transformation, operational efficiency, \
+                             and competitive positioning. Company is in a growth phase with \
+                             potential for strategic partnerships.\n\n\
+                             Original context: {}",
+                            context.chars().take(200).collect::<String>()
+                        ),
+                    )
+                    .await;
+                }
+                Ok(format!(
+                    "[Simulated Scout Output]\n\n\
+                     ## Research Summary\n\
+                     - Contact profile analyzed\n\
+                     - Company overview compiled\n\
+                     - 4 key talking points identified\n\
+                     - 3 potential pain points flagged\n\n\
+                     Deal context updated with research findings."
+                ))
+            }
+            "astra" => {
+                Ok(format!(
+                    "[Simulated Astra Output]\n\n\
+                     ## Business Analysis\n\
+                     - Pain point: manual processes causing bottlenecks\n\
+                     - Recommended: workflow automation + AI integration\n\
+                     - Scope: 3-6 month engagement\n\
+                     - Risk: low (proven approach, clear ROI)\n\n\
+                     Ready for proposal generation."
+                ))
+            }
+            "cash" => {
+                if !deal_id.is_empty() {
+                    let _ = self.update_deal_field(
+                        deal_id,
+                        "proposal_text",
+                        "[Simulated Proposal — Cash]\n\n\
+                         ## Executive Summary\n\
+                         We propose a comprehensive digital transformation engagement.\n\n\
+                         ## Scope of Work\n\
+                         1. Process audit and optimization (Month 1)\n\
+                         2. Workflow automation implementation (Month 2-3)\n\
+                         3. AI agent integration (Month 3-4)\n\
+                         4. Training and handoff (Month 5)\n\n\
+                         ## Investment\n\
+                         Total: $45,000 over 5 months\n\n\
+                         ## Timeline\n\
+                         Start: 2 weeks from approval",
+                    )
+                    .await;
+                }
+                Ok(format!(
+                    "[Simulated Cash Output]\n\n\
+                     Proposal generated and saved to deal.\n\
+                     - 4 work phases defined\n\
+                     - Pricing: $45,000\n\
+                     - Timeline: 5 months"
+                ))
+            }
+            "lux" => {
+                if !deal_id.is_empty() {
+                    let _ = self.update_deal_field(
+                        deal_id,
+                        "deck_url",
+                        "/api/decks/simulated-deck.pdf",
+                    )
+                    .await;
+                }
+                Ok(format!(
+                    "[Simulated Lux Output]\n\n\
+                     Presentation deck outline created:\n\
+                     1. Title: Value proposition\n\
+                     2. Problem/Opportunity\n\
+                     3. Solution approach\n\
+                     4. Deliverables & timeline\n\
+                     5. Investment & ROI\n\n\
+                     Deck URL saved to deal."
+                ))
+            }
+            _ => Ok(format!(
+                "[Simulated Agent Output]\n\nAnalysis complete for deal. Context: {}",
+                context.chars().take(100).collect::<String>()
+            )),
+        }
     }
 }
 

@@ -1,6 +1,47 @@
 import { makeRequest, handleApiResponse } from './client';
 import type { PersonOrgContact, OrgBrandProfile, OrgKnowledgeSource } from './communication';
 
+// ── Member & share types ────────────────────────────────────────────────────
+
+export interface OrgMemberRecord {
+  id: string;
+  user_id: string;
+  role: string;
+  joined_at: string;
+  user?: { username: string; full_name: string; email: string; avatar_url?: string };
+}
+
+export interface OrgInvitationRecord {
+  id: string;
+  organization_id: string;
+  code: string;
+  role: string;
+  max_uses: number;
+  use_count: number;
+  expires_at: string | null;
+  invite_url?: string;
+  created_at: string;
+}
+
+export interface BoardShareRecord {
+  id: string;
+  board_id: string;
+  source_organization_id: string;
+  target_organization_id: string;
+  permission: string;
+  share_type: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MemberAssignmentRecord {
+  projects: Array<{ project_id: string; project_name: string; role: string }>;
+  clients: Array<{ client_id: string; client_name: string; role: string }>;
+  tasks: Array<{ task_id: string; title: string; project_name: string }>;
+  watched_tasks: Array<{ task_id: string; title: string; project_name: string }>;
+}
+
 // ============================================================================
 // Sidebar Tree Types
 // ============================================================================
@@ -150,17 +191,17 @@ export const organizationsApi = {
   },
 
   // Members
-  getMembers: async (orgId: string): Promise<any[]> => {
+  getMembers: async (orgId: string): Promise<OrgMemberRecord[]> => {
     const response = await makeRequest(`/api/organizations/${orgId}/members`);
-    return handleApiResponse<any[]>(response);
+    return handleApiResponse<OrgMemberRecord[]>(response);
   },
 
-  addMember: async (orgId: string, userId: string, role?: string): Promise<any> => {
+  addMember: async (orgId: string, userId: string, role?: string): Promise<OrgMemberRecord> => {
     const response = await makeRequest(`/api/organizations/${orgId}/members`, {
       method: 'POST',
       body: JSON.stringify({ user_id: userId, role }),
     });
-    return handleApiResponse<any>(response);
+    return handleApiResponse<OrgMemberRecord>(response);
   },
 
   removeMember: async (orgId: string, userId: string): Promise<void> => {
@@ -170,34 +211,34 @@ export const organizationsApi = {
     return handleApiResponse<void>(response);
   },
 
-  changeMemberRole: async (orgId: string, userId: string, role: string): Promise<any> => {
+  changeMemberRole: async (orgId: string, userId: string, role: string): Promise<OrgMemberRecord> => {
     const response = await makeRequest(`/api/organizations/${orgId}/members/${userId}/role`, {
       method: 'PUT',
       body: JSON.stringify({ role }),
     });
-    return handleApiResponse<any>(response);
+    return handleApiResponse<OrgMemberRecord>(response);
   },
 
   // Member assignments
-  getMemberAssignments: async (orgId: string, userId: string): Promise<any> => {
+  getMemberAssignments: async (orgId: string, userId: string): Promise<MemberAssignmentRecord> => {
     const response = await makeRequest(`/api/organizations/${orgId}/members/${userId}/assignments`);
-    return handleApiResponse<any>(response);
+    return handleApiResponse<MemberAssignmentRecord>(response);
   },
 
-  assignMember: async (orgId: string, userId: string, type: string, targetId: string, role?: string): Promise<any> => {
+  assignMember: async (orgId: string, userId: string, type: string, targetId: string, role?: string): Promise<{ success: boolean }> => {
     const response = await makeRequest(`/api/organizations/${orgId}/members/${userId}/assign`, {
       method: 'POST',
       body: JSON.stringify({ type, target_id: targetId, role }),
     });
-    return handleApiResponse<any>(response);
+    return handleApiResponse<{ success: boolean }>(response);
   },
 
-  watchTaskForMember: async (orgId: string, userId: string, taskId: string): Promise<any> => {
+  watchTaskForMember: async (orgId: string, userId: string, taskId: string): Promise<{ success: boolean }> => {
     const response = await makeRequest(`/api/organizations/${orgId}/members/${userId}/watch`, {
       method: 'POST',
       body: JSON.stringify({ task_id: taskId }),
     });
-    return handleApiResponse<any>(response);
+    return handleApiResponse<{ success: boolean }>(response);
   },
 
   unassignProject: async (orgId: string, userId: string, projectId: string): Promise<void> => {
@@ -215,17 +256,17 @@ export const organizationsApi = {
   },
 
   // Org invitations
-  createInvitation: async (orgId: string, role?: string, maxUses?: number, expiresInHours?: number): Promise<any> => {
+  createInvitation: async (orgId: string, role?: string, maxUses?: number, expiresInHours?: number): Promise<OrgInvitationRecord> => {
     const response = await makeRequest(`/api/organizations/${orgId}/invitations`, {
       method: 'POST',
       body: JSON.stringify({ role, max_uses: maxUses, expires_in_hours: expiresInHours }),
     });
-    return handleApiResponse<any>(response);
+    return handleApiResponse<OrgInvitationRecord>(response);
   },
 
-  listInvitations: async (orgId: string): Promise<any[]> => {
+  listInvitations: async (orgId: string): Promise<OrgInvitationRecord[]> => {
     const response = await makeRequest(`/api/organizations/${orgId}/invitations`);
-    return handleApiResponse<any[]>(response);
+    return handleApiResponse<OrgInvitationRecord[]>(response);
   },
 
   // Clients
@@ -258,30 +299,30 @@ export const organizationsApi = {
   },
 
   // Board Shares
-  getBoardShares: async (orgId: string): Promise<any[]> => {
+  getBoardShares: async (orgId: string): Promise<BoardShareRecord[]> => {
     const response = await makeRequest(`/api/organizations/${orgId}/board-shares`);
-    return handleApiResponse<any[]>(response);
+    return handleApiResponse<BoardShareRecord[]>(response);
   },
 
-  getSharedBoards: async (orgId: string): Promise<any[]> => {
+  getSharedBoards: async (orgId: string): Promise<BoardShareRecord[]> => {
     const response = await makeRequest(`/api/organizations/${orgId}/shared-boards`);
-    return handleApiResponse<any[]>(response);
+    return handleApiResponse<BoardShareRecord[]>(response);
   },
 
-  createBoardShare: async (orgId: string, data: { board_id: string; target_organization_id: string; permission?: string; share_type?: string }): Promise<any> => {
+  createBoardShare: async (orgId: string, data: { board_id: string; target_organization_id: string; permission?: string; share_type?: string }): Promise<BoardShareRecord> => {
     const response = await makeRequest(`/api/organizations/${orgId}/board-shares`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
-    return handleApiResponse<any>(response);
+    return handleApiResponse<BoardShareRecord>(response);
   },
 
-  updateBoardShare: async (shareId: string, data: { permission?: string; share_type?: string; is_active?: boolean }): Promise<any> => {
+  updateBoardShare: async (shareId: string, data: { permission?: string; share_type?: string; is_active?: boolean }): Promise<BoardShareRecord> => {
     const response = await makeRequest(`/api/board-shares/${shareId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
-    return handleApiResponse<any>(response);
+    return handleApiResponse<BoardShareRecord>(response);
   },
 
   deleteBoardShare: async (shareId: string): Promise<void> => {
@@ -320,12 +361,12 @@ export const organizationsApi = {
     const r = await makeRequest(`/api/organizations/${orgId}/brand-research`, { method: 'POST' });
     return handleApiResponse(r);
   },
-  seedBrandProject: async (orgId: string) => {
+  seedBrandProject: async (orgId: string): Promise<{ project_id: string; message: string }> => {
     const r = await fetch(`/api/organizations/${orgId}/seed-brand-project`, {
       method: 'POST',
       credentials: 'include',
     });
-    return r.json();
+    return r.json() as Promise<{ project_id: string; message: string }>;
   },
   getBrandResearchStatus: async (orgId: string): Promise<{ orgId: string; status: string; summary?: string; ranAt?: string }> => {
     const r = await makeRequest(`/api/organizations/${orgId}/brand-research/status`);

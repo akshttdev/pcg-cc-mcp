@@ -270,7 +270,7 @@ export function CompaniesPage() {
       <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
         <div className="flex items-center gap-2">
           <Building2 className="h-5 w-5 text-muted-foreground" />
-          <h1 className="text-xl font-semibold">Companies</h1>
+          <h1 className="text-xl font-bold">Companies</h1>
           <Badge variant="outline" className="text-xs">
             {companies.length}
           </Badge>

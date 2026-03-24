@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { TodoItem } from 'shared/types';
+import type { TodoItem, NormalizedEntry } from 'shared/types';
 import type { PatchTypeWithKey } from '@/hooks/useConversationHistory';
 
 interface UsePinnedTodosResult {
@@ -20,13 +20,14 @@ export const usePinnedTodos = (
 
     for (const entry of entries) {
       if (entry.type === 'NORMALIZED_ENTRY' && entry.content) {
-        const normalizedEntry = entry.content as any;
+        const normalizedEntry = entry.content as NormalizedEntry;
+        const entryType = normalizedEntry.entry_type;
 
         if (
-          normalizedEntry.entry_type?.type === 'tool_use' &&
-          normalizedEntry.entry_type?.action_type?.action === 'todo_management'
+          entryType.type === 'tool_use' &&
+          entryType.action_type.action === 'todo_management'
         ) {
-          const actionType = normalizedEntry.entry_type.action_type;
+          const actionType = entryType.action_type;
           const partialTodos = actionType.todos || [];
           const currentTimestamp =
             normalizedEntry.timestamp || new Date().toISOString();

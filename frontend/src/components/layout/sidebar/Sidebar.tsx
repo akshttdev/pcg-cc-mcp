@@ -211,7 +211,7 @@ export function Sidebar({ className }: SidebarProps) {
           <Icon className={cn("h-4 w-4", adminIconColor)} />
           <span className="flex-1">{item.label}</span>
           {isAdminTool && (
-            <span className={cn("text-[10px] text-white px-1.5 py-0.5 rounded", adminBadgeBg)}>
+            <span className={cn("text-xs text-white px-1.5 py-0.5 rounded", adminBadgeBg)}>
               ADMIN
             </span>
           )}
@@ -259,7 +259,7 @@ export function Sidebar({ className }: SidebarProps) {
                       <Crown className="h-4 w-4 text-primary" />
                       <span>Admin Platforms</span>
                       {!adminPlatformsExpanded && filteredAdminNav.length > 0 && (
-                        <span className="text-[10px] text-muted-foreground/70 font-medium">{filteredAdminNav.length}</span>
+                        <span className="text-xs text-muted-foreground/70 font-medium">{filteredAdminNav.length}</span>
                       )}
                     </div>
                     {adminPlatformsExpanded ? (
@@ -287,7 +287,7 @@ export function Sidebar({ className }: SidebarProps) {
                     <UserCircle className="h-4 w-4" />
                     <span>My Workspace</span>
                     {!myWorkspaceExpanded && filteredPrimaryNav.length > 0 && (
-                      <span className="text-[10px] text-muted-foreground/70 font-medium">{filteredPrimaryNav.length}</span>
+                      <span className="text-xs text-muted-foreground/70 font-medium">{filteredPrimaryNav.length}</span>
                     )}
                   </div>
                   {myWorkspaceExpanded ? (
@@ -334,7 +334,7 @@ export function Sidebar({ className }: SidebarProps) {
                               return (
                                 <Link key={sub.tab} to={`/workflows?tab=${sub.tab}`}>
                                   <div className={cn(
-                                    "text-[11px] px-2 py-0.5 rounded-sm hover:bg-accent/60 transition-colors flex items-center justify-between",
+                                    "text-xs px-2 py-0.5 rounded-sm hover:bg-accent/60 transition-colors flex items-center justify-between",
                                     isSubActive && "bg-primary/10 text-foreground font-medium"
                                   )}>
                                     <span>{sub.label}</span>
@@ -370,7 +370,7 @@ export function Sidebar({ className }: SidebarProps) {
                       <LayoutDashboard className="h-4 w-4" />
                       <span>Views & Management</span>
                       {!managementExpanded && (
-                        <span className="text-[10px] text-muted-foreground/70 font-medium">{BUSINESS_NAV_ITEMS.length + PLATFORM_NAV_ITEMS.length + GLOBAL_VIEW_ITEMS.length}</span>
+                        <span className="text-xs text-muted-foreground/70 font-medium">{BUSINESS_NAV_ITEMS.length + PLATFORM_NAV_ITEMS.length + GLOBAL_VIEW_ITEMS.length}</span>
                       )}
                     </div>
                     {managementExpanded ? (
@@ -601,7 +601,7 @@ export function Sidebar({ className }: SidebarProps) {
                     variant="ghost"
                     className="w-full justify-center p-2 h-auto"
                   >
-                    <div className="h-6 w-6 rounded bg-primary/15 text-primary flex items-center justify-center text-xs font-bold">
+                    <div className="h-6 w-6 rounded bg-primary/15 text-primary flex items-center justify-center text-xs font-semibold">
                       {initial}
                     </div>
                   </Button>
@@ -716,7 +716,7 @@ export function Sidebar({ className }: SidebarProps) {
                   <PanelLeftOpen className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="right">Expand sidebar <kbd className="ml-1 text-[10px] opacity-60">&#8984;B</kbd></TooltipContent>
+              <TooltipContent side="right">Expand sidebar <kbd className="ml-1 text-xs opacity-60">&#8984;B</kbd></TooltipContent>
             </Tooltip>
           ) : (
             <Button
@@ -726,7 +726,7 @@ export function Sidebar({ className }: SidebarProps) {
             >
               <PanelLeftClose className="h-4 w-4 mr-3" />
               <span className="text-sm">Collapse</span>
-              <kbd className="ml-auto text-[10px] text-muted-foreground/60 font-sans">&#8984;B</kbd>
+              <kbd className="ml-auto text-xs text-muted-foreground/60 font-sans">&#8984;B</kbd>
             </Button>
           )}
         </div>

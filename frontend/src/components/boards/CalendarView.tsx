@@ -1,10 +1,13 @@
-import { useState, useMemo, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { useCallback,useMemo, useState } from 'react';
 import type { TaskWithAttemptStatus } from 'shared/types';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
+import { cn } from '@/lib/utils';
+
 import { CalendarCell } from './CalendarCell';
 
 interface CalendarViewProps {
@@ -148,7 +151,7 @@ export function CalendarView({
   const categoryStats = useMemo(() => {
     const stats: Record<string, number> = {};
     tasks.forEach((task) => {
-      const category = (task.custom_properties as any)?.category || 'other';
+      const category = (task.custom_properties as Record<string, unknown> | null)?.category as string || 'other';
       stats[category] = (stats[category] || 0) + 1;
     });
     return stats;
@@ -159,15 +162,19 @@ export function CalendarView({
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" onClick={goToPreviousMonth}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
+            <IconButton
+              variant="outline" onClick={goToPreviousMonth}
+              icon={ChevronLeft}
+              label="Previous month"
+            />
             <CardTitle className="text-lg font-semibold min-w-[160px] text-center">
               {MONTHS[month]} {year}
             </CardTitle>
-            <Button variant="outline" size="icon" onClick={goToNextMonth}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+            <IconButton
+              variant="outline" onClick={goToNextMonth}
+              icon={ChevronRight}
+              label="Next month"
+            />
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={goToToday}>

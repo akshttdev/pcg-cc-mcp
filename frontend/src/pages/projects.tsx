@@ -23,9 +23,8 @@ function ProjectDetailOrRedirect({ projectId }: { projectId: string }) {
   useEffect(() => {
     if (!project) return;
     // If this project belongs to a client, redirect to the client overview page
-    const p = project as any;
-    if (p.client_id && p.organization_id) {
-      navigate(`/organizations/${p.organization_id}/clients/${p.client_id}`, { replace: true });
+    if (project.client_id && project.organization_id) {
+      navigate(`/organizations/${project.organization_id}/clients/${project.client_id}`, { replace: true });
     }
   }, [project, navigate]);
 
@@ -38,8 +37,7 @@ function ProjectDetailOrRedirect({ projectId }: { projectId: string }) {
   }
 
   // Non-client project — show normal detail view
-  const p = project as any;
-  if (!p || (p.client_id && p.organization_id)) {
+  if (!project || (project.client_id && project.organization_id)) {
     // Still redirecting or no project; show nothing
     return null;
   }

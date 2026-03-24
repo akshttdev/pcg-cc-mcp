@@ -49,7 +49,7 @@ export function VibeBudgetTab({
               <Coins className="h-3.5 w-3.5" />
               VIBE Spent (Task)
             </div>
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-semibold">
               {task.vibe_cost ? Number(task.vibe_cost).toLocaleString() : '0'}
             </div>
             <div className="text-xs text-muted-foreground">
@@ -85,14 +85,14 @@ export function VibeBudgetTab({
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-lg border bg-card p-3 space-y-1">
                 <div className="text-xs text-muted-foreground">Available Balance</div>
-                <div className={cn('text-xl font-bold', vibeBalance.available_balance < 0 && 'text-destructive')}>
+                <div className={cn('text-xl font-semibold', vibeBalance.available_balance < 0 && 'text-destructive')}>
                   {vibeBalance.available_balance.toLocaleString()}
                 </div>
                 <div className="text-xs text-muted-foreground">VIBE</div>
               </div>
               <div className="rounded-lg border bg-card p-3 space-y-1">
                 <div className="text-xs text-muted-foreground">Total Spent (Project)</div>
-                <div className="text-xl font-bold">
+                <div className="text-xl font-semibold">
                   {vibeBalance.total_spent.toLocaleString()}
                 </div>
                 <div className="text-xs text-muted-foreground">VIBE</div>

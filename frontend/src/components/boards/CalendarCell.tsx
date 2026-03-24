@@ -23,13 +23,13 @@ interface TaskPillProps {
 }
 
 function TaskPill({ task, getCategoryColor, onClick, onDragStart }: TaskPillProps) {
-  const category = (task.custom_properties as any)?.category;
-  const platforms = (task.custom_properties as any)?.platforms as string[] | undefined;
+  const category = (task.custom_properties as Record<string, unknown> | null)?.category as string | undefined;
+  const platforms = (task.custom_properties as Record<string, unknown> | null)?.platforms as string[] | undefined;
 
   return (
     <div
       className={cn(
-        'group flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] cursor-pointer',
+        'group flex items-center gap-1 px-1.5 py-0.5 rounded text-xs cursor-pointer',
         'bg-muted hover:bg-muted/80 transition-colors',
         'truncate max-w-full'
       )}
@@ -151,7 +151,7 @@ export function CalendarCell({
         {tasks.length > maxVisibleTasks && (
           <button
             onClick={() => onDateClick?.(date)}
-            className="text-[10px] text-muted-foreground hover:text-foreground px-1.5"
+            className="text-xs text-muted-foreground hover:text-foreground px-1.5"
           >
             +{tasks.length - maxVisibleTasks} more
           </button>

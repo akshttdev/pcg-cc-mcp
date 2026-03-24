@@ -1,13 +1,15 @@
-import { useState } from 'react';
 import { Bot, Send } from 'lucide-react';
+import { useState } from 'react';
+
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { useAgentChatStore, type AgentContext } from '@/stores/useAgentChatStore';
+import { type AgentContext,useAgentChatStore } from '@/stores/useAgentChatStore';
 
 type EntityType = AgentContext['entityType'];
 
@@ -106,14 +108,14 @@ export function AskTopsiButton({
             onKeyDown={(e) => e.key === 'Enter' && handleSend(freeText)}
             className="text-sm h-8"
           />
-          <Button
-            size="icon"
+          <IconButton
             className="h-8 w-8 shrink-0"
             onClick={() => handleSend(freeText)}
             disabled={!freeText.trim()}
-          >
-            <Send className="h-3.5 w-3.5" />
-          </Button>
+            icon={Send}
+            label="Send"
+            iconClassName="h-3.5 w-3.5"
+          />
         </div>
       </PopoverContent>
     </Popover>

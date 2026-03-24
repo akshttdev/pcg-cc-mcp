@@ -175,7 +175,7 @@ function ArtifactPreview({
             </div>
           )}
           <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-1">
-            <span className="text-[10px] text-white font-medium truncate block">
+            <span className="text-xs text-white font-medium truncate block">
               {artifact.title}
             </span>
           </div>
@@ -185,7 +185,7 @@ function ArtifactPreview({
     case 'document':
       return (
         <div className="bg-gray-50 dark:bg-gray-900 rounded-md p-2 max-h-20 overflow-hidden">
-          <div className="text-[10px] font-medium text-gray-700 dark:text-gray-300 mb-1 truncate">
+          <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 truncate">
             {artifact.title}
           </div>
           {content && (
@@ -209,7 +209,7 @@ function ArtifactPreview({
             <Video className="h-8 w-8 text-gray-400" />
           )}
           <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-1">
-            <span className="text-[10px] text-white font-medium truncate block">
+            <span className="text-xs text-white font-medium truncate block">
               {artifact.title}
             </span>
             {metadata.duration_seconds && (
@@ -243,7 +243,7 @@ function ArtifactPreview({
                   /* ignore */
                 }
               }}
-              className="absolute top-1.5 right-1.5 flex items-center gap-1 bg-amber-500/90 hover:bg-amber-400 text-white rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors"
+              className="absolute top-1.5 right-1.5 flex items-center gap-1 bg-amber-500/90 hover:bg-amber-400 text-white rounded px-1.5 py-0.5 text-xs font-medium transition-colors"
             >
               <Clapperboard className="h-2.5 w-2.5" />
               Review
@@ -383,7 +383,7 @@ export function EnhancedTaskCard({
           {assignee && (
             <div className="flex items-center gap-1.5 shrink-0">
               <div
-                className="h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300 border border-violet-200 dark:border-violet-800"
+                className="h-5 w-5 rounded-full flex items-center justify-center text-xs font-medium bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300 border border-violet-200 dark:border-violet-800"
                 title={assignee.displayName}
               >
                 {assignee.initials}

@@ -1,5 +1,7 @@
 import { X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+
+import { IconButton } from '@/components/ui/icon-button';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -7,8 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
-import type { FilterCondition, FilterableField, FilterOperator } from '@/types/filters';
+import type { FilterableField, FilterCondition, FilterOperator } from '@/types/filters';
 
 interface FilterConditionRowProps {
   condition: FilterCondition;
@@ -219,14 +220,12 @@ export function FilterConditionRow({
       {renderValueInput()}
 
       {/* Remove Button */}
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={onRemove}
+      <IconButton
+        variant="ghost" onClick={onRemove}
         className="shrink-0"
-      >
-        <X className="h-4 w-4" />
-      </Button>
+        icon={X}
+        label="Remove condition"
+      />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { CardGrid } from '@/components/ui/card-grid';
 import {
   FileText,
   Database,
@@ -116,7 +117,7 @@ export function ArtifactsView({ orgId }: { orgId: string }) {
                     <div className="min-w-0">
                       <p className="text-sm font-medium truncate">{artifact.title || 'Untitled Artifact'}</p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <Badge variant="outline" className="text-[10px]">{artifact.artifact_type}</Badge>
+                        <Badge variant="outline" className="text-xs">{artifact.artifact_type}</Badge>
                         {meta.step_id && <span className="text-xs text-muted-foreground">{meta.step_id.replace(/_/g, ' ')}</span>}
                       </div>
                     </div>
@@ -217,22 +218,22 @@ export function DataSourcesIntelView({ orgId, projectEntries }: { orgId: string;
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <CardGrid columns={{ sm: 2, md: 4 }} gap={3}>
           {Object.entries(typeCount).map(([type, count]) => (
             <Card key={type} className="bg-card/80 border-border/50">
               <CardContent className="pt-4 pb-4">
                 <p className="text-xs text-muted-foreground capitalize">{type.replace(/_/g, ' ')}</p>
-                <p className="text-2xl font-bold mt-1">{count as number}</p>
+                <p className="text-2xl font-semibold mt-1">{count as number}</p>
               </CardContent>
             </Card>
           ))}
           <Card className="bg-primary/5 border-primary/20">
             <CardContent className="pt-4 pb-4">
               <p className="text-xs text-muted-foreground">Total Files</p>
-              <p className="text-2xl font-bold mt-1 text-primary">{sources.length}</p>
+              <p className="text-2xl font-semibold mt-1 text-primary">{sources.length}</p>
             </CardContent>
           </Card>
-        </div>
+        </CardGrid>
       )}
     </div>
   );
@@ -284,7 +285,7 @@ export function ArtifactsIntelView({ projectEntries }: { projectEntries: { id: s
     <div className="space-y-3">
       <h3 className="text-sm font-medium text-muted-foreground">Knowledge Graph Artifacts</h3>
       <p className="text-xs text-muted-foreground">{artifacts.length} artifact{artifacts.length !== 1 ? 's' : ''} across {new Set(artifacts.map(a => a.projectId)).size} project{new Set(artifacts.map(a => a.projectId)).size !== 1 ? 's' : ''}</p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <CardGrid columns={{ md: 2 }} gap={3}>
         {artifacts.map((a, i) => (
           <Card key={i} className="bg-card/80 border-border/50">
             <CardContent className="pt-4 pb-4">
@@ -293,13 +294,13 @@ export function ArtifactsIntelView({ projectEntries }: { projectEntries: { id: s
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate">{a.title}</p>
                   {a.summary && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{a.summary}</p>}
-                  <Link to={`/projects/${a.projectId}`} className="text-[10px] text-muted-foreground hover:text-foreground mt-1 block">{a.projectName}</Link>
+                  <Link to={`/projects/${a.projectId}`} className="text-xs text-muted-foreground hover:text-foreground mt-1 block">{a.projectName}</Link>
                 </div>
               </div>
             </CardContent>
           </Card>
         ))}
-      </div>
+      </CardGrid>
     </div>
   );
 }

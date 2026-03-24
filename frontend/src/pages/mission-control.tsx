@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { CardGrid } from '@/components/ui/card-grid';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -393,7 +394,7 @@ export default function MissionControlPage() {
               </TabsContent>
 
               <TabsContent value="grid" className="flex-1 mt-4 overflow-hidden">
-                <div className="grid grid-cols-2 gap-4 h-full overflow-auto animate-stagger">
+                <CardGrid columns={{ sm: 2 }} gap={4} className="h-full overflow-auto animate-stagger">
                   {dashboard?.by_project.map((project) => (
                     <Card key={project.project_id}>
                       <CardHeader className="pb-2">
@@ -435,7 +436,7 @@ export default function MissionControlPage() {
                       </CardContent>
                     </Card>
                   ))}
-                </div>
+                </CardGrid>
               </TabsContent>
             </Tabs>
           </div>

@@ -77,8 +77,8 @@ export function SocialAnalyticsView({ projectEntries }: { projectEntries: { id: 
           <Card key={label} className="bg-card/80 backdrop-blur-sm border-border/50">
             <CardContent className="pt-5">
               <p className="text-xs text-muted-foreground mb-1">{label}</p>
-              <p className="text-2xl font-bold">{value}</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>
+              <p className="text-2xl font-semibold">{value}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>
             </CardContent>
           </Card>
         ))}
@@ -142,7 +142,7 @@ export function SocialAnalyticsView({ projectEntries }: { projectEntries: { id: 
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="text-xs line-clamp-2">{post.caption || '(no caption)'}</p>
-                        <div className="flex gap-2 mt-0.5 text-[10px] text-muted-foreground">
+                        <div className="flex gap-2 mt-0.5 text-xs text-muted-foreground">
                           <span>&#128065; {fmt(post.impressions)}</span>
                           {post.likes > 0 && <span>&#9829; {post.likes}</span>}
                           {post.engagement_rate > 0 && <span>{(post.engagement_rate * 100).toFixed(1)}%</span>}

@@ -81,7 +81,7 @@ export function ProjectOverview({ project, tasks, members }: ProjectOverviewProp
                 <ListTodo className="h-4 w-4 text-blue-600 dark:text-blue-400" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{stats.todo}</p>
+                <p className="text-2xl font-semibold">{stats.todo}</p>
                 <p className="text-xs text-muted-foreground">To Do</p>
               </div>
             </div>
@@ -94,7 +94,7 @@ export function ProjectOverview({ project, tasks, members }: ProjectOverviewProp
                 <Clock className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{stats.inProgress + stats.inReview}</p>
+                <p className="text-2xl font-semibold">{stats.inProgress + stats.inReview}</p>
                 <p className="text-xs text-muted-foreground">Active</p>
               </div>
             </div>
@@ -107,7 +107,7 @@ export function ProjectOverview({ project, tasks, members }: ProjectOverviewProp
                 <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{stats.done}</p>
+                <p className="text-2xl font-semibold">{stats.done}</p>
                 <p className="text-xs text-muted-foreground">Done</p>
               </div>
             </div>
@@ -120,7 +120,7 @@ export function ProjectOverview({ project, tasks, members }: ProjectOverviewProp
                 <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{stats.overdue}</p>
+                <p className="text-2xl font-semibold">{stats.overdue}</p>
                 <p className="text-xs text-muted-foreground">Overdue</p>
               </div>
             </div>

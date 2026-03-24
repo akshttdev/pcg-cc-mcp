@@ -1,27 +1,30 @@
-import { useState, useEffect } from 'react';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   AlertCircle,
+  ArrowLeft,
   Folder,
-  Search,
   FolderGit,
   FolderPlus,
-  ArrowLeft,
+  Search,
 } from 'lucide-react';
+import { useEffect,useState } from 'react';
+import { DirectoryEntry } from 'shared/types';
+
+import { useUserSystem } from '@/components/config-provider';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+// Removed collapsible sections for simplicity; show fields always in edit mode
+import { fileSystemApi } from '@/lib/api';
+import { showFolderPicker } from '@/lib/modals';
 import {
   createScriptPlaceholderStrategy,
   ScriptPlaceholderContext,
 } from '@/utils/script-placeholders';
-import { useUserSystem } from '@/components/config-provider';
-import { CopyFilesField } from './copy-files-field';
-// Removed collapsible sections for simplicity; show fields always in edit mode
-import { fileSystemApi } from '@/lib/api';
-import { showFolderPicker } from '@/lib/modals';
-import { DirectoryEntry } from 'shared/types';
 import { generateProjectNameFromPath } from '@/utils/string';
+
+import { CopyFilesField } from './copy-files-field';
 
 interface ProjectFormFieldsProps {
   isEditing: boolean;
@@ -352,23 +355,21 @@ export function ProjectFormFields({
                   placeholder="Current Directory"
                   className="flex-1 placeholder:text-secondary-foreground placeholder:opacity-100"
                 />
-                <Button
+                <IconButton
                   type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={async () => {
+                  variant="ghost" onClick={async () => {
                     const selectedPath = await showFolderPicker({
-                      title: 'Select Parent Directory',
-                      description: 'Choose where to create the new repository',
-                      value: parentPath,
+                    title: 'Select Parent Directory',
+                    description: 'Choose where to create the new repository',
+                    value: parentPath,
                     });
                     if (selectedPath) {
-                      setParentPath(selectedPath);
+                    setParentPath(selectedPath);
                     }
                   }}
-                >
-                  <Folder className="h-4 w-4" />
-                </Button>
+                  icon={Folder}
+                  label="Browse folders"
+                />
               </div>
               <p className="text-xs text-muted-foreground">
                 Leave empty to use your current working directory, or specify a

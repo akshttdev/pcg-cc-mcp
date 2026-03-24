@@ -1,20 +1,17 @@
-import { useState, useMemo, lazy, Suspense } from 'react';
+import { lazy, Suspense,useMemo, useState } from 'react';
 const ProposalCreateModal = lazy(() =>
   import('@/components/dialogs/ProposalCreateModal').then((m) => ({ default: m.ProposalCreateModal }))
 );
-import { useQuery } from '@tanstack/react-query';
-import { useMutationWithToast } from '@/hooks/useMutationWithToast';
-import { businessKeys } from '@/lib/query-keys';
 import {
-  DndContext,
-  DragOverlay,
   closestCorners,
+  DndContext,
+  type DragEndEvent,
+  DragOverlay,
+  type DragStartEvent,
   PointerSensor,
+  useDroppable,
   useSensor,
   useSensors,
-  useDroppable,
-  type DragEndEvent,
-  type DragStartEvent,
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -22,25 +19,30 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
+import { useQuery } from '@tanstack/react-query';
+import {
+  Coins,
+  ExternalLink,
+  FileText,
+  GripVertical,
+  Plus,
+  Users,
+} from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useNavigate } from 'react-router-dom';
+import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import {
-  FileText,
-  Plus,
-  GripVertical,
-  Coins,
-  Users,
-  ExternalLink,
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
-import {
-  proposalsApi,
   type ProposalRecord,
+  proposalsApi,
   type ProposalStatus,
 } from '@/lib/api';
+import { businessKeys } from '@/lib/query-keys';
+import { cn } from '@/lib/utils';
 
 // ── Pipeline stages ───────────────────────────────────────────────────────────
 
@@ -279,7 +281,7 @@ export function ProposalsPage() {
         <div>
           <div className="flex items-center gap-2">
             <FileText className="h-5 w-5 text-muted-foreground" />
-            <h1 className="text-xl font-semibold">Proposals</h1>
+            <h1 className="text-xl font-bold">Proposals</h1>
             <Badge variant="outline" className="text-xs">{proposals.length}</Badge>
           </div>
           <p className="text-sm text-muted-foreground mt-0.5">
@@ -307,19 +309,13 @@ export function ProposalsPage() {
           ))}
         </div>
       ) : proposals.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center py-16 text-center">
-          <div className="rounded-full bg-muted p-4 mb-4">
-            <FileText className="h-8 w-8 text-muted-foreground" />
-          </div>
-          <h3 className="text-base font-medium mb-1">No proposals yet</h3>
-          <p className="text-sm text-muted-foreground mb-4 max-w-xs">
-            Create your first proposal to start tracking your pipeline.
-          </p>
-          <Button size="sm" onClick={() => setShowCreateModal(true)}>
-            <Plus className="h-4 w-4 mr-1" />
-            New Proposal
-          </Button>
-        </div>
+        <EmptyState
+          icon={FileText}
+          title="No proposals yet"
+          description="Create your first proposal to start tracking your pipeline."
+          action={{ label: 'New Proposal', onClick: () => setShowCreateModal(true) }}
+          className="flex-1 py-16"
+        />
       ) : (
         <ScrollArea className="flex-1">
           <DndContext

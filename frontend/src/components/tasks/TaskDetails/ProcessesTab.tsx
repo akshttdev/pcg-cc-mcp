@@ -180,7 +180,7 @@ function ProcessesTab({ attemptId }: ProcessesTabProps) {
                         </p>
                         {process.dropped && (
                           <span
-                            className="inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200"
+                            className="inline-block mt-1 text-xs px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200"
                             title="Deleted by restore: timeline was restored to a checkpoint and later executions were removed"
                           >
                             Deleted

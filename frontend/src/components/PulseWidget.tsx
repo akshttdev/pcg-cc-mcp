@@ -94,14 +94,14 @@ function ContentRow({ item }: { item: PulseContentItem }) {
           <ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground" />
         </a>
         <div className="flex items-center gap-2 mt-0.5">
-          <Badge className={cn('text-[10px] px-1.5 py-0', sourceColor(item.source_id))}>
+          <Badge className={cn('text-xs px-1.5 py-0', sourceColor(item.source_id))}>
             {item.source_id}
           </Badge>
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             {item.collected_at ? timeAgo(item.collected_at) : ''}
           </span>
           {item.relevance_score != null && (
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               rel: {(item.relevance_score * 100).toFixed(0)}%
             </span>
           )}
@@ -301,7 +301,7 @@ export function PulseWidget({ className, projectId }: PulseWidgetProps) {
                   ))}
                 </div>
                 {contentItems.length > 5 && (
-                  <p className="text-[10px] text-muted-foreground text-center mt-2">
+                  <p className="text-xs text-muted-foreground text-center mt-2">
                     +{contentItems.length - 5} more items
                   </p>
                 )}

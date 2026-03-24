@@ -1,30 +1,32 @@
-import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
-import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Input } from '@/components/ui/input';
-import {
-  Coins,
-  TrendingUp,
-  ArrowUpRight,
-  ArrowDownLeft,
-  RefreshCw,
-  Clock,
-  Zap,
-  Target,
-  Bot,
-  FileText,
-  CheckCircle,
-  Copy,
-  PlusCircle,
-  ExternalLink,
-} from 'lucide-react';
-import { MobileLayout } from '@/components/mobile';
-import { useMobile } from '@/hooks/useMobile';
-import { useProjectList } from '@/hooks/api/useProjectList';
 import { format } from 'date-fns';
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  Bot,
+  CheckCircle,
+  Clock,
+  Coins,
+  Copy,
+  ExternalLink,
+  FileText,
+  PlusCircle,
+  RefreshCw,
+  Target,
+  TrendingUp,
+  Zap,
+} from 'lucide-react';
+import { useEffect,useState } from 'react';
+
+import { MobileLayout } from '@/components/mobile';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
+import { Input } from '@/components/ui/input';
+import { Progress } from '@/components/ui/progress';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { useProjectList } from '@/hooks/api/useProjectList';
+import { useMobile } from '@/hooks/useMobile';
 import { resolveApiUrl, vibeApi } from '@/lib/api';
 
 interface VibeStats {
@@ -167,7 +169,7 @@ export default function VibePage() {
           <div className="text-center">
             <Coins className="h-12 w-12 mx-auto mb-2 text-yellow-500" />
             <p className="text-sm text-muted-foreground mb-1">Available Balance</p>
-            <p className="text-4xl font-bold text-yellow-500">
+            <p className="text-4xl font-semibold text-yellow-500">
               {(stats.budget_limit > 0 ? stats.budget_limit - stats.total_spent : stats.balance).toFixed(0)}
             </p>
             <p className="text-sm text-muted-foreground mt-1">VIBE</p>
@@ -238,18 +240,17 @@ export default function VibePage() {
                     <code className="text-xs flex-1 truncate">
                       {vibeConfig?.revenue_address || 'Loading...'}
                     </code>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 shrink-0"
+                    <IconButton
+                      variant="ghost" className="h-7 w-7 shrink-0"
                       onClick={() => {
                         if (vibeConfig?.revenue_address) {
-                          navigator.clipboard.writeText(vibeConfig.revenue_address);
-                        }
+                        navigator.clipboard.writeText(vibeConfig.revenue_address);
+                      }
                       }}
-                    >
-                      <Copy className="h-3.5 w-3.5" />
-                    </Button>
+                      icon={Copy}
+                      label="Copy address"
+                      iconClassName="h-3.5 w-3.5"
+                    />
                   </div>
                   <p className="text-xs text-muted-foreground">Aptos Testnet · VIBE token</p>
                 </div>
@@ -390,12 +391,12 @@ export default function VibePage() {
                         </div>
                         <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                           {tx.model && (
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                            <Badge variant="secondary" className="text-xs px-1.5 py-0">
                               {tx.model}
                             </Badge>
                           )}
                           {meta.phase && (
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                            <Badge variant="secondary" className="text-xs px-1.5 py-0">
                               {meta.phase}
                             </Badge>
                           )}
@@ -459,7 +460,7 @@ export default function VibePage() {
           <Coins className="h-5 w-5 text-yellow-500" />
         </div>
         <div>
-          <h1 className="text-xl font-semibold">VIBE Treasury</h1>
+          <h1 className="text-xl font-bold">VIBE Treasury</h1>
           <p className="text-sm text-muted-foreground">Token balances, deposits, and transaction history</p>
         </div>
       </div>

@@ -1,17 +1,36 @@
-import { useState, useCallback, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  Brain,
+  Briefcase,
+  Building2,
+  CheckCircle2,
+  Contact2,
+  ExternalLink,
+  Globe,
+  Loader2,
+  MapPin,
+  Plus,
+  Search,
+  User,
+  Users,
+} from 'lucide-react';
+import { useCallback, useMemo,useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
+
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { CardGrid } from '@/components/ui/card-grid';
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@/components/ui/dialog';
+import { FormField } from '@/components/ui/form-field';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -19,34 +38,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
+import { crmContactsQueryKey,useCrmContacts } from '@/hooks/queries';
 import {
-  Building2,
-  MapPin,
-  Globe,
-  Contact2,
-  Search,
-  Plus,
-  Users,
-  Briefcase,
-  CheckCircle2,
-  Loader2,
-  ExternalLink,
-  Brain,
-  User,
-} from 'lucide-react';
-import {
-  crmApi,
   companiesApi,
+  type CompanyRecord,
   // organizationsApi,
   type CreateCrmContactRequest,
+  crmApi,
   type CrmContactRecord,
-  type CompanyRecord,
 } from '@/lib/api';
-import { useCrmContacts, crmContactsQueryKey } from '@/hooks/queries';
 import { entityKeys, organizationKeys } from '@/lib/query-keys';
-import { LIFECYCLE_STAGE_INFO } from '@/types/crm';
 import type { CrmDealWithContact } from '@/types/crm';
+import { LIFECYCLE_STAGE_INFO } from '@/types/crm';
+
 import { ContactDetailModal } from '../components/ContactDetailModal';
 
 type PeopleView = 'people' | 'companies' | 'pipeline';
@@ -363,7 +367,7 @@ export function ContactsTab({ orgId }: { orgId: string }) {
             <p>{contactsLoading ? 'Loading contacts…' : 'No contacts found'}</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <CardGrid columns={{ md: 2, lg: 3 }} gap={3}>
             {filteredContacts.map((contact) => {
               const personInfo = dealPersonMap.get(contact.id);
               const personId = personInfo?.person_id;
@@ -426,7 +430,7 @@ export function ContactsTab({ orgId }: { orgId: string }) {
                 </div>
               );
             })}
-          </div>
+          </CardGrid>
         )
       )}
 
@@ -444,7 +448,7 @@ export function ContactsTab({ orgId }: { orgId: string }) {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <CardGrid columns={{ md: 2, lg: 3 }} gap={3}>
             {filteredCompanies.map((company) => {
               // const personId = companyPersonMap.get(company.id);
               return (
@@ -508,7 +512,7 @@ export function ContactsTab({ orgId }: { orgId: string }) {
                 </div>
               );
             })}
-          </div>
+          </CardGrid>
         )
       )}
 
@@ -529,7 +533,7 @@ export function ContactsTab({ orgId }: { orgId: string }) {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <CardGrid columns={{ md: 2, lg: 3 }} gap={3}>
             {filteredPipeline.map((deal) => (
               <div key={deal.person_id} className="p-4 rounded-lg border bg-card hover:border-primary/40 transition-all">
                 {/* Person row */}
@@ -576,11 +580,11 @@ export function ContactsTab({ orgId }: { orgId: string }) {
 
                 {/* Stage + analysis badges */}
                 <div className="mt-2 flex items-center gap-1.5">
-                  <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+                  <Badge variant="outline" className="text-xs h-4 px-1.5">
                     {deal.stage || 'Pipeline'}
                   </Badge>
                   {deal.report_id && (
-                    <Badge variant="secondary" className="text-[10px] h-4 px-1.5 gap-1">
+                    <Badge variant="secondary" className="text-xs h-4 px-1.5 gap-1">
                       <Contact2 className="h-2.5 w-2.5" />
                       Analysis
                     </Badge>
@@ -588,7 +592,7 @@ export function ContactsTab({ orgId }: { orgId: string }) {
                 </div>
               </div>
             ))}
-          </div>
+          </CardGrid>
         )
       )}
 
@@ -598,31 +602,25 @@ export function ContactsTab({ orgId }: { orgId: string }) {
           <DialogHeader><DialogTitle>Add Contact</DialogTitle></DialogHeader>
           <form onSubmit={handleCreateContact} className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>First Name</Label>
+              <FormField label="First Name">
                 <Input value={contactForm.first_name} onChange={e => setContactForm(f => ({ ...f, first_name: e.target.value }))} placeholder="Jane" />
-              </div>
-              <div>
-                <Label>Last Name</Label>
+              </FormField>
+              <FormField label="Last Name">
                 <Input value={contactForm.last_name} onChange={e => setContactForm(f => ({ ...f, last_name: e.target.value }))} placeholder="Doe" />
-              </div>
+              </FormField>
             </div>
-            <div>
-              <Label>Email</Label>
+            <FormField label="Email">
               <Input type="email" value={contactForm.email} onChange={e => setContactForm(f => ({ ...f, email: e.target.value }))} placeholder="jane@example.com" />
-            </div>
-            <div>
-              <Label>Phone</Label>
+            </FormField>
+            <FormField label="Phone">
               <Input value={contactForm.phone} onChange={e => setContactForm(f => ({ ...f, phone: e.target.value }))} placeholder="+1 555-0123" />
-            </div>
-            <div>
-              <Label>Company</Label>
+            </FormField>
+            <FormField label="Company">
               <Input value={contactForm.company_name} onChange={e => setContactForm(f => ({ ...f, company_name: e.target.value }))} placeholder="Acme Corp" />
-            </div>
-            <div>
-              <Label>Job Title</Label>
+            </FormField>
+            <FormField label="Job Title">
               <Input value={contactForm.job_title} onChange={e => setContactForm(f => ({ ...f, job_title: e.target.value }))} placeholder="CTO" />
-            </div>
+            </FormField>
             <div>
               <Label>Lifecycle Stage</Label>
               <Select value={contactForm.lifecycle_stage} onValueChange={v => setContactForm(f => ({ ...f, lifecycle_stage: v }))}>
@@ -649,18 +647,15 @@ export function ContactsTab({ orgId }: { orgId: string }) {
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Add Company</DialogTitle></DialogHeader>
           <form onSubmit={handleCreateCompany} className="space-y-3">
-            <div>
-              <Label>Company Name *</Label>
+            <FormField label="Company Name" required>
               <Input value={companyForm.name} onChange={e => setCompanyForm(f => ({ ...f, name: e.target.value }))} placeholder="Acme Corp" />
-            </div>
-            <div>
-              <Label>Website</Label>
+            </FormField>
+            <FormField label="Website">
               <Input value={companyForm.website} onChange={e => setCompanyForm(f => ({ ...f, website: e.target.value }))} placeholder="https://acme.com" />
-            </div>
-            <div>
-              <Label>Industry</Label>
+            </FormField>
+            <FormField label="Industry">
               <Input value={companyForm.industry} onChange={e => setCompanyForm(f => ({ ...f, industry: e.target.value }))} placeholder="Technology" />
-            </div>
+            </FormField>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setShowAddCompany(false)}>Cancel</Button>
               <Button type="submit" disabled={createCompanyMutation.isPending || !companyForm.name.trim()}>

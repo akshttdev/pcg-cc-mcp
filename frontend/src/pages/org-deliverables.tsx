@@ -1,18 +1,21 @@
-import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
-  Package,
-  FileText,
-  Code,
-  Music,
-  Video,
-  Image,
-  BookOpen,
   ArrowRight,
+  BookOpen,
+  Code,
+  FileText,
+  Image,
+  Music,
+  Package,
+  Video,
 } from 'lucide-react';
-import { deliverablesApi, projectsApi, type DeliverableRecord } from '@/lib/api';
+import { useNavigate,useParams } from 'react-router-dom';
+
+import { Badge } from '@/components/ui/badge';
+import { CardGrid } from '@/components/ui/card-grid';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Skeleton } from '@/components/ui/skeleton';
+import { type DeliverableRecord,deliverablesApi, projectsApi } from '@/lib/api';
 import { organizationKeys } from '@/lib/query-keys';
 
 const TYPE_ICONS: Record<string, React.ElementType> = {
@@ -54,7 +57,7 @@ export function OrgDeliverablesPage() {
   });
 
   const orgProjects = projects.filter(
-    (p) => (p as any).organization_id === orgId,
+    (p) => p.organization_id === orgId,
   );
 
   const { data: allDeliverables = [], isLoading } = useQuery({
@@ -102,7 +105,7 @@ export function OrgDeliverablesPage() {
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
       <div>
-        <h1 className="text-2xl font-semibold flex items-center gap-2">
+        <h1 className="text-2xl font-bold flex items-center gap-2">
           <Package className="h-6 w-6 text-muted-foreground" />
           Deliverables
         </h1>
@@ -115,7 +118,7 @@ export function OrgDeliverablesPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <CardGrid columns={{ sm: 2, md: 3, lg: 6 }} gap={3}>
         {Object.entries(STATUS_LABELS).map(([key, label]) => (
           <div
             key={key}
@@ -127,22 +130,20 @@ export function OrgDeliverablesPage() {
             </p>
           </div>
         ))}
-      </div>
+      </CardGrid>
 
       {/* List */}
       {allDeliverables.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <Package className="h-10 w-10 mx-auto mb-3 opacity-40" />
-          <p>No deliverables yet</p>
-          <p className="text-xs mt-1">
-            Create deliverables from individual project pages
-          </p>
-        </div>
+        <EmptyState
+          icon={Package}
+          title="No deliverables yet"
+          description="Create deliverables from individual project pages"
+        />
       ) : (
         <div className="border rounded-xl overflow-hidden divide-y">
           {allDeliverables.map((d: DeliverableRecord) => {
             const Icon =
-              TYPE_ICONS[(d as any).deliverable_type || 'other'] || Package;
+              TYPE_ICONS[d.deliverable_type || 'other'] || Package;
             const statusCls =
               STATUS_COLORS[d.status || 'working'] || STATUS_COLORS.working;
             return (

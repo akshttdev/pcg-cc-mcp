@@ -1,18 +1,19 @@
-import { useMemo, useState } from 'react';
-import type { TaskWithAttemptStatus } from 'shared/types';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { addMonths, eachDayOfInterval, endOfMonth, format, isSameDay, parseISO,startOfMonth, subMonths } from 'date-fns';
 import {
+  Calendar,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Calendar,
-  Clock,
   Circle,
-  CheckCircle2
-} from 'lucide-react';
+  Clock} from 'lucide-react';
+import { useMemo, useState } from 'react';
+import type { TaskWithAttemptStatus } from 'shared/types';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, parseISO } from 'date-fns';
 
 interface TimelineViewProps {
   tasks: TaskWithAttemptStatus[];
@@ -110,17 +111,21 @@ export function TimelineView({ tasks, onTaskClick }: TimelineViewProps) {
           <Button variant="outline" size="sm" onClick={handleToday}>
             Today
           </Button>
-          <Button variant="ghost" size="icon" onClick={handlePreviousMonth}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
+          <IconButton
+            variant="ghost" onClick={handlePreviousMonth}
+            icon={ChevronLeft}
+            label="Previous month"
+          />
           <div className="min-w-[140px] text-center">
             <span className="text-sm font-medium">
               {format(currentMonth, 'MMMM yyyy')}
             </span>
           </div>
-          <Button variant="ghost" size="icon" onClick={handleNextMonth}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
+          <IconButton
+            variant="ghost" onClick={handleNextMonth}
+            icon={ChevronRight}
+            label="Next month"
+          />
         </div>
       </div>
 
@@ -158,7 +163,7 @@ export function TimelineView({ tasks, onTaskClick }: TimelineViewProps) {
                         {format(day, 'EEE')}
                       </span>
                       <span className={cn(
-                        'text-2xl font-bold',
+                        'text-2xl font-semibold',
                         isToday ? 'text-accent-foreground' : 'text-foreground'
                       )}>
                         {format(day, 'd')}

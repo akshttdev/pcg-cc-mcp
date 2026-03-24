@@ -83,7 +83,7 @@ export function RichTextEditor({
               Markdown Editor
             </span>
           </div>
-          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as any)}>
+          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'edit' | 'preview' | 'split')}>
             <TabsList>
               <TabsTrigger value="edit" className="gap-1">
                 <Code className="h-3 w-3" />

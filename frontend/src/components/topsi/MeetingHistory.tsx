@@ -348,23 +348,23 @@ export function MeetingHistory({ projectId, className }: MeetingHistoryProps) {
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0 ml-2 mt-0.5 flex-wrap justify-end">
                       {dur && (
-                        <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground">
+                        <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
                           <Clock className="h-3 w-3" />{dur}
                         </span>
                       )}
                       {hasTranscript && (
-                        <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground">
+                        <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
                           <MessageSquare className="h-3 w-3" />{meeting.segmentCount}
                         </span>
                       )}
                       {(meeting.participantCount ?? 0) > 0 && (
-                        <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground">
+                        <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
                           <Users className="h-3 w-3" />{meeting.participantCount}
                         </span>
                       )}
                       <Badge
                         variant={meeting.status === 'ended' ? 'secondary' : 'default'}
-                        className="text-[10px] h-4 px-1"
+                        className="text-xs h-4 px-1"
                       >
                         {isNora(meeting) ? '🤖 ' : ''}{meeting.status}
                       </Badge>
@@ -467,7 +467,7 @@ export function MeetingHistory({ projectId, className }: MeetingHistoryProps) {
                                           <span className="text-cyan-500 shrink-0">→</span>
                                           <span>{item.description}</span>
                                           {item.assignee && (
-                                            <Badge variant="outline" className="text-[10px] ml-auto shrink-0">{item.assignee}</Badge>
+                                            <Badge variant="outline" className="text-xs ml-auto shrink-0">{item.assignee}</Badge>
                                           )}
                                         </li>
                                       ))}
@@ -539,7 +539,7 @@ export function MeetingHistory({ projectId, className }: MeetingHistoryProps) {
                                         style={{ width: `${(playSegmentIdx / segs.length) * 100}%` }}
                                       />
                                     </div>
-                                    <span className="text-[10px] text-muted-foreground">{playSegmentIdx}/{segs.length}</span>
+                                    <span className="text-xs text-muted-foreground">{playSegmentIdx}/{segs.length}</span>
                                     <Button
                                       variant="ghost"
                                       size="sm"

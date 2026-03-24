@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Loader } from '@/components/ui/loader';
+import { CardGrid } from '@/components/ui/card-grid';
 import { Upload, Search, Trash2, Image as ImageIcon } from 'lucide-react';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -23,7 +24,7 @@ function ShotTypeBadge({ type }: { type?: string }) {
   };
   const cls = colors[type] ?? 'bg-muted text-muted-foreground';
   return (
-    <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded font-medium ${cls}`}>
+    <span className={`inline-block text-xs px-1.5 py-0.5 rounded font-medium ${cls}`}>
       {type.replace('_', ' ')}
     </span>
   );
@@ -37,7 +38,7 @@ function EnergyBar({ value }: { value: number }) {
       <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
         <div style={{ width: `${pct}%`, background: color }} className="h-full rounded-full" />
       </div>
-      <span className="text-[10px] text-muted-foreground w-6 text-right">{pct}%</span>
+      <span className="text-xs text-muted-foreground w-6 text-right">{pct}%</span>
     </div>
   );
 }
@@ -70,7 +71,7 @@ function AssetCard({
         )}
         {asset.analysis_status === 'pending' && (
           <div className="absolute top-2 right-2">
-            <Badge variant="outline" className="text-[10px]">pending</Badge>
+            <Badge variant="outline" className="text-xs">pending</Badge>
           </div>
         )}
       </div>
@@ -91,7 +92,7 @@ function AssetCard({
         <div className="flex items-center gap-1 flex-wrap">
           <ShotTypeBadge type={asset.shot_type ?? undefined} />
           {asset.analysis_status === 'done' && (
-            <span className="text-[10px] text-muted-foreground ml-auto">
+            <span className="text-xs text-muted-foreground ml-auto">
               {Math.round(asset.ai_confidence * 100)}% confidence
             </span>
           )}
@@ -104,12 +105,12 @@ function AssetCard({
         {tags.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {tags.slice(0, 3).map((tag) => (
-              <span key={tag} className="text-[10px] bg-muted px-1 rounded text-muted-foreground">
+              <span key={tag} className="text-xs bg-muted px-1 rounded text-muted-foreground">
                 {tag}
               </span>
             ))}
             {tags.length > 3 && (
-              <span className="text-[10px] text-muted-foreground">+{tags.length - 3}</span>
+              <span className="text-xs text-muted-foreground">+{tags.length - 3}</span>
             )}
           </div>
         )}
@@ -178,7 +179,7 @@ function AssetDetailPanel({ asset, onClose }: { asset: MediaAsset; onClose: () =
           </p>
           <div className="flex flex-wrap gap-1">
             {tags.map((tag) => (
-              <Badge key={tag} variant="secondary" className="text-[10px]">
+              <Badge key={tag} variant="secondary" className="text-xs">
                 {tag}
               </Badge>
             ))}
@@ -284,7 +285,7 @@ export function MediaLibraryPage() {
               className="h-48"
             />
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+            <CardGrid columns={{ sm: 2, md: 3, lg: 4, xl: 5 }} gap={3}>
               {assets.map((asset) => (
                 <AssetCard
                   key={asset.id}
@@ -293,7 +294,7 @@ export function MediaLibraryPage() {
                   onDelete={() => deleteMutation.mutate(asset.id)}
                 />
               ))}
-            </div>
+            </CardGrid>
           )}
         </div>
 

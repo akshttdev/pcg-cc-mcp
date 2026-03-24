@@ -1,4 +1,11 @@
+import NiceModal, { useModal } from '@ebay/nice-modal-react';
+import { ChevronDown, Code, HandMetal,Sparkles } from 'lucide-react';
 import { useState } from 'react';
+import type { ExecutorProfileId } from 'shared/types';
+import { BaseCodingAgent, EditorType } from 'shared/types';
+
+import { useUserSystem } from '@/components/config-provider';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -7,7 +14,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { FormField } from '@/components/ui/form-field';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -15,21 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Sparkles, Code, ChevronDown, HandMetal } from 'lucide-react';
-import { BaseCodingAgent, EditorType } from 'shared/types';
-import type { ExecutorProfileId } from 'shared/types';
-import { useUserSystem } from '@/components/config-provider';
-
 import { toPrettyCase } from '@/utils/string';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
 
 export type OnboardingResult = {
   profile: ExecutorProfileId;
@@ -194,19 +195,18 @@ const OnboardingDialog = NiceModal.create(() => {
             </p>
 
             {editorType === EditorType.CUSTOM && (
-              <div className="space-y-2">
-                <Label htmlFor="custom-command">Custom Command</Label>
+              <FormField
+                label="Custom Command"
+                htmlFor="custom-command"
+                description='Enter the command to run your custom editor. Use spaces for arguments (e.g., "code --wait").'
+              >
                 <Input
                   id="custom-command"
                   placeholder="e.g., code, subl, vim"
                   value={customCommand}
                   onChange={(e) => setCustomCommand(e.target.value)}
                 />
-                <p className="text-sm text-muted-foreground">
-                  Enter the command to run your custom editor. Use spaces for
-                  arguments (e.g., "code --wait").
-                </p>
-              </div>
+              </FormField>
             )}
           </div>
         </div>

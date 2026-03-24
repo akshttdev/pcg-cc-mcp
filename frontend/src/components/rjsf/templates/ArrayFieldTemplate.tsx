@@ -51,22 +51,29 @@ interface ArrayItemProps {
 
 const ArrayItem = ({ element, disabled, readonly }: ArrayItemProps) => {
   const { children } = element;
-  const elementAny = element as any; // Type assertion needed for RJSF v6 beta properties
+  const elementExt = element as ArrayFieldTemplateItemType & {
+    buttonsProps?: {
+      hasRemove?: boolean;
+      index: number;
+      disabled?: boolean;
+      onDropIndexClick: (index: number) => (e: React.MouseEvent) => void;
+    };
+  };
 
   return (
     <div className="flex items-center gap-2">
       <div className="flex-1">{children}</div>
 
       {/* Remove button */}
-      {elementAny.buttonsProps?.hasRemove && (
+      {elementExt.buttonsProps?.hasRemove && (
         <Button
           type="button"
           variant="ghost"
           size="sm"
-          onClick={elementAny.buttonsProps.onDropIndexClick(
-            elementAny.buttonsProps.index
+          onClick={elementExt.buttonsProps.onDropIndexClick(
+            elementExt.buttonsProps.index
           )}
-          disabled={disabled || readonly || elementAny.buttonsProps.disabled}
+          disabled={disabled || readonly || elementExt.buttonsProps.disabled}
           className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all duration-200 shrink-0"
           title="Remove item"
         >

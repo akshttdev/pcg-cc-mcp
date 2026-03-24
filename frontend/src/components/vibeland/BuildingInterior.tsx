@@ -150,7 +150,7 @@ export function BuildingInterior({ project, onExit, playerColor }: BuildingInter
             setIsChatActive((prev) => !prev);
             setChatFocusToken((t) => t + 1);
           }}
-          className="mb-2 rounded-lg border border-cyan-400/40 bg-black/60 px-3 py-1.5 text-[10px] uppercase tracking-[0.3em] text-cyan-200 transition hover:bg-cyan-500/10"
+          className="mb-2 rounded-lg border border-cyan-400/40 bg-black/60 px-3 py-1.5 text-xs uppercase tracking-[0.3em] text-cyan-200 transition hover:bg-cyan-500/10"
         >
           {isChatActive ? 'Close Console' : 'Open Console'}
         </button>

@@ -176,7 +176,7 @@ function IntegrationsTab({ orgId }: { orgId: string }) {
                   </button>
                 )
               }
-              extra={account?.last_sync_at ? <p className="text-[11px] text-muted-foreground">Last sync {new Date(account.last_sync_at).toLocaleString()}</p> : undefined}
+              extra={account?.last_sync_at ? <p className="text-xs text-muted-foreground">Last sync {new Date(account.last_sync_at).toLocaleString()}</p> : undefined}
             />
           );
         })}
@@ -214,7 +214,7 @@ function IntegrationsTab({ orgId }: { orgId: string }) {
             )
           }
           extra={qbConnected && qbStatus?.account?.last_sync_at
-            ? <p className="text-[11px] text-muted-foreground">Last sync {new Date(qbStatus.account.last_sync_at).toLocaleString()}</p>
+            ? <p className="text-xs text-muted-foreground">Last sync {new Date(qbStatus.account.last_sync_at).toLocaleString()}</p>
             : undefined
           }
         />
@@ -258,8 +258,8 @@ function IntegrationsTab({ orgId }: { orgId: string }) {
                     Verify & Save
                   </button>
                 </div>
-                {airtableError && <p className="text-[11px] text-destructive">{airtableError}</p>}
-                <p className="text-[11px] text-muted-foreground">
+                {airtableError && <p className="text-xs text-destructive">{airtableError}</p>}
+                <p className="text-xs text-muted-foreground">
                   Create a token at <span className="text-primary">airtable.com/create/tokens</span> with <code className="bg-muted px-1 rounded">data.records:read</code> + <code className="bg-muted px-1 rounded">schema.bases:read</code> scopes.
                 </p>
               </div>
@@ -276,7 +276,7 @@ function IntegrationsTab({ orgId }: { orgId: string }) {
           status="disconnected"
           statusLabel="Coming soon"
           actions={
-            <span className="text-[11px] text-muted-foreground italic">Configure per-project</span>
+            <span className="text-xs text-muted-foreground italic">Configure per-project</span>
           }
         />
 
@@ -289,7 +289,7 @@ function IntegrationsTab({ orgId }: { orgId: string }) {
           status="disconnected"
           statusLabel="Coming soon"
           actions={
-            <span className="text-[11px] text-muted-foreground italic">Not yet configured</span>
+            <span className="text-xs text-muted-foreground italic">Not yet configured</span>
           }
         />
 
@@ -302,7 +302,7 @@ function IntegrationsTab({ orgId }: { orgId: string }) {
           status="disconnected"
           statusLabel="Coming soon"
           actions={
-            <span className="text-[11px] text-muted-foreground italic">Configure per-project</span>
+            <span className="text-xs text-muted-foreground italic">Configure per-project</span>
           }
         />
       </section>
@@ -323,7 +323,7 @@ function IntegrationsTab({ orgId }: { orgId: string }) {
           description="Sync payments, subscriptions, and invoices. Enable Stripe billing for clients."
           status="disconnected"
           statusLabel="Coming soon"
-          actions={<span className="text-[11px] text-muted-foreground italic">Not yet configured</span>}
+          actions={<span className="text-xs text-muted-foreground italic">Not yet configured</span>}
         />
         <IntegrationCard
           accent="#96BF48"
@@ -332,7 +332,7 @@ function IntegrationsTab({ orgId }: { orgId: string }) {
           description="Connect your Shopify store for order and product data access by agents."
           status="disconnected"
           statusLabel="Coming soon"
-          actions={<span className="text-[11px] text-muted-foreground italic">Not yet configured</span>}
+          actions={<span className="text-xs text-muted-foreground italic">Not yet configured</span>}
         />
         <IntegrationCard
           accent="#7C3AED"

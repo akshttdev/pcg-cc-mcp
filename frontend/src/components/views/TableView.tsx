@@ -1,24 +1,28 @@
+import {
+  createColumnHelper,
+  flexRender,
+  getCoreRowModel,
+  getFilteredRowModel,
+  getSortedRowModel,
+  type SortingState,
+  useReactTable,
+} from '@tanstack/react-table';
+import { format } from 'date-fns';
+import { Bot, Calendar,ChevronDown, ChevronsUpDown, ChevronUp, Copy, Edit, ExternalLink, MoreHorizontal, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  useReactTable,
-  getCoreRowModel,
-  getSortedRowModel,
-  getFilteredRowModel,
-  flexRender,
-  createColumnHelper,
-  type SortingState,
-} from '@tanstack/react-table';
-import { ChevronDown, ChevronUp, ChevronsUpDown, ExternalLink, MoreHorizontal, Edit, Copy, Trash2, Bot, Calendar } from 'lucide-react';
+import type { TaskWithAttemptStatus } from 'shared/types';
+
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { format } from 'date-fns';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   Table,
   TableBody,
@@ -27,8 +31,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import type { TaskWithAttemptStatus } from 'shared/types';
 import { cn } from '@/lib/utils';
 import { useBulkSelectionStore } from '@/stores/useBulkSelectionStore';
 
@@ -137,17 +139,16 @@ export function TableView({ tasks, projectId, onEditTask, onDeleteTask, onDuplic
         cell: (info) => (
           <div className="flex items-center gap-2">
             <span className="font-medium truncate max-w-md">{info.getValue()}</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+            <IconButton
+              variant="ghost" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
               onClick={(e) => {
                 e.stopPropagation();
                 navigate(`/projects/${projectId}/tasks/${info.row.original.id}`);
               }}
-            >
-              <ExternalLink className="h-3 w-3" />
-            </Button>
+              icon={ExternalLink}
+              label="Open task"
+              iconClassName="h-3 w-3"
+            />
           </div>
         ),
         size: 400,
@@ -203,12 +204,12 @@ export function TableView({ tasks, projectId, onEditTask, onDeleteTask, onDuplic
           return (
             <div className="flex flex-wrap gap-1">
               {mcpList.slice(0, 2).map((mcp: string) => (
-                <Badge key={mcp} variant="outline" className="text-[10px] bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                <Badge key={mcp} variant="outline" className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
                   {mcp}
                 </Badge>
               ))}
               {mcpList.length > 2 && (
-                <Badge variant="secondary" className="text-[10px]">+{mcpList.length - 2}</Badge>
+                <Badge variant="secondary" className="text-xs">+{mcpList.length - 2}</Badge>
               )}
             </div>
           );
@@ -225,12 +226,12 @@ export function TableView({ tasks, projectId, onEditTask, onDeleteTask, onDuplic
           return (
             <div className="flex flex-wrap gap-1">
               {tagList.slice(0, 2).map((tag: string) => (
-                <Badge key={tag} variant="secondary" className="text-[10px]">
+                <Badge key={tag} variant="secondary" className="text-xs">
                   {tag}
                 </Badge>
               ))}
               {tagList.length > 2 && (
-                <Badge variant="secondary" className="text-[10px]">+{tagList.length - 2}</Badge>
+                <Badge variant="secondary" className="text-xs">+{tagList.length - 2}</Badge>
               )}
             </div>
           );

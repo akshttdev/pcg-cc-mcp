@@ -2,6 +2,7 @@ import { useEquipmentStore } from '@/stores/useEquipmentStore';
 import { ITEM_DEFINITIONS, type ItemId } from '@/types/equipment';
 import { Crown, Cigarette, Rocket, Flame, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { CardGrid } from '@/components/ui/card-grid';
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Crown,
@@ -29,7 +30,7 @@ export function InventoryPanel() {
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+    <CardGrid columns={{ sm: 2, md: 3 }} gap={3}>
       {inventory.map((itemId) => {
         const item = ITEM_DEFINITIONS[itemId];
         const ItemIcon = ICON_MAP[item.icon] || Crown;
@@ -55,13 +56,13 @@ export function InventoryPanel() {
             )}
             <ItemIcon className="h-8 w-8 mb-2 text-amber-300" />
             <p className="text-sm font-semibold text-white">{item.name}</p>
-            <p className="text-[10px] text-amber-200/70 mt-1 line-clamp-2">{item.description}</p>
-            <p className="text-[10px] uppercase tracking-wide text-amber-400/60 mt-2">
+            <p className="text-xs text-amber-200/70 mt-1 line-clamp-2">{item.description}</p>
+            <p className="text-xs uppercase tracking-wide text-amber-400/60 mt-2">
               Slot: {item.slot.replace(/([A-Z])/g, ' $1').trim()}
             </p>
           </button>
         );
       })}
-    </div>
+    </CardGrid>
   );
 }

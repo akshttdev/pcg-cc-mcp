@@ -2,7 +2,10 @@ import { useMemo } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { MetricCard } from '@/components/ui/metric-card';
 import { Badge } from '@/components/ui/badge';
+import { CardGrid } from '@/components/ui/card-grid';
 import {
   Activity,
   Target,
@@ -32,9 +35,9 @@ import { OnboardingCarousel, type OnboardingSegment } from '@/components/onboard
 import { formatDate, formatCurrency } from '../helpers';
 
 function TrendIndicator({ value }: { value: number }) {
-  if (value === 0) return <span className="text-[10px] text-muted-foreground">No data</span>;
+  if (value === 0) return <span className="text-xs text-muted-foreground">No data</span>;
   return (
-    <span className="text-[10px] text-green-600 dark:text-green-400 flex items-center gap-0.5">
+    <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-0.5">
       <TrendingUp className="h-3 w-3" /> Active
     </span>
   );
@@ -122,56 +125,11 @@ export function OverviewTab({
     <div className="space-y-6">
       {/* Stat cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 animate-stagger">
-        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-          <CardContent className="pt-4 pb-3">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Activity className="h-4 w-4" />
-              <span className="text-xs font-medium">Total Tasks</span>
-            </div>
-            <p className="text-2xl font-bold mt-1">{totalTasks}</p>
-            <TrendIndicator value={totalTasks} />
-          </CardContent>
-        </Card>
-        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-          <CardContent className="pt-4 pb-3">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Target className="h-4 w-4" />
-              <span className="text-xs font-medium">Total Deals</span>
-            </div>
-            <p className="text-2xl font-bold mt-1">{totalDeals}</p>
-            <TrendIndicator value={totalDeals} />
-          </CardContent>
-        </Card>
-        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-          <CardContent className="pt-4 pb-3">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <DollarSign className="h-4 w-4" />
-              <span className="text-xs font-medium">Pipeline Value</span>
-            </div>
-            <p className="text-2xl font-bold mt-1">{formatCurrency(totalDealValue)}</p>
-            <TrendIndicator value={totalDealValue} />
-          </CardContent>
-        </Card>
-        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-          <CardContent className="pt-4 pb-3">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Contact2 className="h-4 w-4" />
-              <span className="text-xs font-medium">Contacts</span>
-            </div>
-            <p className="text-2xl font-bold mt-1">{contactCount}</p>
-            <TrendIndicator value={contactCount} />
-          </CardContent>
-        </Card>
-        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-          <CardContent className="pt-4 pb-3">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <FolderOpen className="h-4 w-4" />
-              <span className="text-xs font-medium">Active Projects</span>
-            </div>
-            <p className="text-2xl font-bold mt-1">{projectCount}</p>
-            <TrendIndicator value={projectCount} />
-          </CardContent>
-        </Card>
+        <MetricCard label="Total Tasks" value={totalTasks} icon={Activity} sub={<TrendIndicator value={totalTasks} />} className="bg-card/80 backdrop-blur-sm border-border/50" />
+        <MetricCard label="Total Deals" value={totalDeals} icon={Target} sub={<TrendIndicator value={totalDeals} />} className="bg-card/80 backdrop-blur-sm border-border/50" />
+        <MetricCard label="Pipeline Value" value={formatCurrency(totalDealValue)} icon={DollarSign} sub={<TrendIndicator value={totalDealValue} />} className="bg-card/80 backdrop-blur-sm border-border/50" />
+        <MetricCard label="Contacts" value={contactCount} icon={Contact2} sub={<TrendIndicator value={contactCount} />} className="bg-card/80 backdrop-blur-sm border-border/50" />
+        <MetricCard label="Active Projects" value={projectCount} icon={FolderOpen} sub={<TrendIndicator value={projectCount} />} className="bg-card/80 backdrop-blur-sm border-border/50" />
       </div>
 
       {/* Org Onboarding Carousel */}
@@ -227,7 +185,7 @@ export function OverviewTab({
       )}
 
       {/* Quick links */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      <CardGrid columns={{ sm: 2, lg: 3 }} gap={3}>
         {[
           { label: 'Pipelines', icon: Target, path: 'crm/pipeline', color: 'text-amber-500', summary: `${totalDeals} deals · ${formatCurrency(totalDealValue)}` },
           { label: 'Contacts', icon: Contact2, path: 'crm/contacts', color: 'text-blue-500', summary: `${contactCount} contacts` },
@@ -249,7 +207,7 @@ export function OverviewTab({
             <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
           </Link>
         ))}
-      </div>
+      </CardGrid>
 
       {/* Recent activity - workflow runs + CRM activities */}
       <Card className="bg-card/80 backdrop-blur-sm border-border/50">
@@ -262,11 +220,12 @@ export function OverviewTab({
         </CardHeader>
         <CardContent>
           {recentWorkflowRuns.length === 0 && recentActivities.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Activity className="h-8 w-8 mx-auto mb-2 opacity-40" />
-              <p>No recent activity</p>
-              <p className="text-xs mt-1">Activity from tasks, deals, and contacts will appear here.</p>
-            </div>
+            <EmptyState
+              icon={Activity}
+              title="No recent activity"
+              description="Activity from tasks, deals, and contacts will appear here."
+              className="py-8"
+            />
           ) : (
             <div className="space-y-3">
               {/* Workflow runs */}
@@ -280,8 +239,8 @@ export function OverviewTab({
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant="outline" className="text-[10px]">workflow run</Badge>
-                        <Badge variant="secondary" className={`text-[10px] ${statusColor}`}>
+                        <Badge variant="outline" className="text-xs">workflow run</Badge>
+                        <Badge variant="secondary" className={`text-xs ${statusColor}`}>
                           {run.status}
                         </Badge>
                       </div>
@@ -300,7 +259,7 @@ export function OverviewTab({
                           <span>{run.model_used}</span>
                         )}
                       </div>
-                      <p className="text-[10px] text-muted-foreground mt-1">
+                      <p className="text-xs text-muted-foreground mt-1">
                         {formatDate(run.created_at)}
                       </p>
                     </div>
@@ -315,10 +274,10 @@ export function OverviewTab({
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <Badge variant="outline" className="text-[10px]">
+                      <Badge variant="outline" className="text-xs">
                         {activity.activity_type.replace(/_/g, ' ')}
                       </Badge>
-                      <Badge variant="secondary" className="text-[10px]">
+                      <Badge variant="secondary" className="text-xs">
                         {activity._projectName}
                       </Badge>
                     </div>
@@ -328,7 +287,7 @@ export function OverviewTab({
                     {activity.description && (
                       <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{activity.description}</p>
                     )}
-                    <p className="text-[10px] text-muted-foreground mt-1">
+                    <p className="text-xs text-muted-foreground mt-1">
                       {formatDate(activity.created_at)}
                     </p>
                   </div>

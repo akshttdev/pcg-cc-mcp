@@ -37,15 +37,15 @@ export function IntegrationCard({
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold">{name}</span>
                   {status === 'connected' ? (
-                    <Badge className="text-[10px] px-1.5 py-0 bg-emerald-100 text-emerald-700 border-emerald-200">
+                    <Badge className="text-xs px-1.5 py-0 bg-emerald-100 text-emerald-700 border-emerald-200">
                       <CheckCircle2 className="h-3 w-3 mr-1" />{statusLabel ?? 'Connected'}
                     </Badge>
                   ) : status === 'warning' ? (
-                    <Badge className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700 border-amber-200">
+                    <Badge className="text-xs px-1.5 py-0 bg-amber-100 text-amber-700 border-amber-200">
                       <AlertCircle className="h-3 w-3 mr-1" />{statusLabel ?? 'Reauthorize'}
                     </Badge>
                   ) : (
-                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Not connected</Badge>
+                    <Badge variant="secondary" className="text-xs px-1.5 py-0">Not connected</Badge>
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">{description}</p>

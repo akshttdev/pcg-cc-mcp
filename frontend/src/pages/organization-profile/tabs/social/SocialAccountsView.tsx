@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { CardGrid } from '@/components/ui/card-grid';
 import { Share2, CheckCircle, Globe, ExternalLink, Trash2 } from 'lucide-react';
 import {
   organizationsApi,
@@ -71,11 +72,11 @@ export function SocialAccountsView({
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <Share2 className="h-4 w-4 text-pink-500" />
               Brand Profile Handles
-              <Badge variant="outline" className="text-[10px] ml-1">From brand research</Badge>
+              <Badge variant="outline" className="text-xs ml-1">From brand research</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <CardGrid columns={{ sm: 2, lg: 3 }} gap={3}>
               {brandHandles.map(({ platform, handle }) => {
                 const Icon = PLATFORM_ICONS[platform] || Globe;
                 const isConnected = allAccounts.some(a => a.platform === platform);
@@ -86,7 +87,7 @@ export function SocialAccountsView({
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-medium truncate">{handle}</p>
-                      <p className="text-[10px] text-muted-foreground capitalize">{platform}</p>
+                      <p className="text-xs text-muted-foreground capitalize">{platform}</p>
                     </div>
                     {isConnected
                       ? <Badge variant="outline" className="text-[9px] text-green-600 border-green-300">connected</Badge>
@@ -95,7 +96,7 @@ export function SocialAccountsView({
                   </div>
                 );
               })}
-            </div>
+            </CardGrid>
           </CardContent>
         </Card>
       )}
@@ -107,7 +108,7 @@ export function SocialAccountsView({
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-green-500" />
               Connected Accounts
-              <Badge variant="secondary" className="text-[10px]">{allAccounts.length}</Badge>
+              <Badge variant="secondary" className="text-xs">{allAccounts.length}</Badge>
             </CardTitle>
           </div>
         </CardHeader>
@@ -133,7 +134,7 @@ export function SocialAccountsView({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-medium truncate">{account.display_name || account.username || account.platform}</p>
-                        <Badge variant={account.status === 'active' ? 'default' : account.status === 'error' ? 'destructive' : 'secondary'} className="text-[10px]">
+                        <Badge variant={account.status === 'active' ? 'default' : account.status === 'error' ? 'destructive' : 'secondary'} className="text-xs">
                           {account.status}
                         </Badge>
                       </div>

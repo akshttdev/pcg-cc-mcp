@@ -22,7 +22,7 @@ import {
 import '@/styles/diff-style-overrides.css';
 import { attemptsApi } from '@/lib/api';
 import type { TaskAttempt } from 'shared/types';
-import { useReview, type ReviewDraft } from '@/contexts/ReviewProvider';
+import { useReview, type ReviewComment, type ReviewDraft } from '@/contexts/ReviewProvider';
 import { CommentWidgetLine } from '@/components/diff/CommentWidgetLine';
 import { ReviewCommentRenderer } from '@/components/diff/ReviewCommentRenderer';
 import { useDiffViewMode } from '@/stores/useDiffViewStore';
@@ -138,9 +138,8 @@ export default function DiffCard({
 
   // Transform comments to git-diff-view extendData format
   const extendData = useMemo(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const oldFileData: Record<string, { data: any }> = {};
-    const newFileData: Record<string, { data: any }> = {};
+    const oldFileData: Record<string, { data: unknown }> = {};
+    const newFileData: Record<string, { data: unknown }> = {};
 
     commentsForFile.forEach((comment) => {
       const lineKey = String(comment.lineNumber);
@@ -170,7 +169,12 @@ export default function DiffCard({
     setDraft(widgetKey, draft);
   };
 
-  const renderWidgetLine = (props: any) => {
+  const renderWidgetLine = (props: {
+    lineNumber: number;
+    side: SplitSide;
+    diffFile: DiffFile;
+    onClose: () => void;
+  }) => {
     const widgetKey = `${filePath}-${props.side}-${props.lineNumber}`;
     const draft = drafts[widgetKey];
     if (!draft) return null;
@@ -186,9 +190,15 @@ export default function DiffCard({
     );
   };
 
-  const renderExtendLine = (lineData: any) => {
+  const renderExtendLine = (lineData: {
+    lineNumber: number;
+    side: SplitSide;
+    data: unknown;
+    diffFile: DiffFile;
+    onUpdate: () => void;
+  }) => {
     return (
-      <ReviewCommentRenderer comment={lineData.data} projectId={projectId} />
+      <ReviewCommentRenderer comment={lineData.data as ReviewComment} projectId={projectId} />
     );
   };
 

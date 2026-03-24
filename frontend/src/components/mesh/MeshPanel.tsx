@@ -122,44 +122,45 @@ const useMeshStats = () => {
       }
 
       // Normalize the API response to match our interface
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const apiData = result.data as any;
+      const apiData = result.data as unknown as Record<string, unknown>;
+      const apiBandwidth = apiData.bandwidth as Record<string, unknown> | undefined;
+      const apiResources = apiData.resources as Record<string, unknown> | undefined;
       const normalized: MeshStats = {
-        node_id: apiData.node_id || 'unknown',
-        status: (apiData.status || 'offline') as 'online' | 'offline' | 'connecting',
-        peers_connected: apiData.peers_connected || 0,
-        peers: (apiData.peers || []).map((p: any) => ({
-          peer_id: p.peerId || p.peer_id || 'unknown',
-          address: p.address || '',
-          capabilities: p.capabilities || [],
+        node_id: (apiData.node_id as string) || 'unknown',
+        status: ((apiData.status as string) || 'offline') as 'online' | 'offline' | 'connecting',
+        peers_connected: (apiData.peers_connected as number) || 0,
+        peers: ((apiData.peers as Record<string, unknown>[] | undefined) || []).map((p) => ({
+          peer_id: (p.peerId as string) || (p.peer_id as string) || 'unknown',
+          address: (p.address as string) || '',
+          capabilities: (p.capabilities as string[]) || [],
         })),
         bandwidth: {
-          available: apiData.bandwidth?.available || 100,
-          contributing: apiData.bandwidth?.uploadRate || apiData.bandwidth?.upload_rate || apiData.bandwidth?.contributing || 0,
-          consuming: apiData.bandwidth?.downloadRate || apiData.bandwidth?.download_rate || apiData.bandwidth?.consuming || 0,
+          available: (apiBandwidth?.available as number) || 100,
+          contributing: (apiBandwidth?.uploadRate as number) || (apiBandwidth?.upload_rate as number) || (apiBandwidth?.contributing as number) || 0,
+          consuming: (apiBandwidth?.downloadRate as number) || (apiBandwidth?.download_rate as number) || (apiBandwidth?.consuming as number) || 0,
         },
         resources: {
-          cpu_cores: apiData.resources?.cpuCores || apiData.resources?.cpu_cores || 0,
-          cpu_usage: apiData.resources?.cpuPercent || apiData.resources?.cpu_percent || apiData.resources?.cpu_usage || 0,
-          memory_total: apiData.resources?.memoryTotal || apiData.resources?.memory_total || 0,
-          memory_used: apiData.resources?.memoryUsed || apiData.resources?.memory_used ||
-            (apiData.resources?.memoryPercent || apiData.resources?.memory_percent || 0) * (apiData.resources?.memoryTotal || apiData.resources?.memory_total || 0) / 100,
-          storage_available: apiData.resources?.storageAvailable || apiData.resources?.storage_available ||
-            100 - (apiData.resources?.diskPercent || apiData.resources?.disk_percent || 0),
+          cpu_cores: (apiResources?.cpuCores as number) || (apiResources?.cpu_cores as number) || 0,
+          cpu_usage: (apiResources?.cpuPercent as number) || (apiResources?.cpu_percent as number) || (apiResources?.cpu_usage as number) || 0,
+          memory_total: (apiResources?.memoryTotal as number) || (apiResources?.memory_total as number) || 0,
+          memory_used: (apiResources?.memoryUsed as number) || (apiResources?.memory_used as number) ||
+            ((apiResources?.memoryPercent as number) || (apiResources?.memory_percent as number) || 0) * ((apiResources?.memoryTotal as number) || (apiResources?.memory_total as number) || 0) / 100,
+          storage_available: (apiResources?.storageAvailable as number) || (apiResources?.storage_available as number) ||
+            100 - ((apiResources?.diskPercent as number) || (apiResources?.disk_percent as number) || 0),
         },
-        relay_connected: apiData.relayConnected ?? apiData.relay_connected ?? false,
-        uptime: apiData.uptime || 0,
-        vibe_balance: apiData.vibeBalance ?? apiData.vibe_balance ?? 0,
-        transactions: (apiData.transactions || []).map((tx: any) => ({
-          id: tx.id,
-          timestamp: tx.timestamp,
-          tx_type: tx.txType || tx.tx_type || 'task_received',
-          description: tx.description || '',
-          vibe_amount: tx.vibeAmount ?? tx.vibe_amount,
-          peer_node: tx.peerNode || tx.peer_node,
+        relay_connected: (apiData.relayConnected as boolean) ?? (apiData.relay_connected as boolean) ?? false,
+        uptime: (apiData.uptime as number) || 0,
+        vibe_balance: (apiData.vibeBalance as number) ?? (apiData.vibe_balance as number) ?? 0,
+        transactions: ((apiData.transactions as Record<string, unknown>[] | undefined) || []).map((tx) => ({
+          id: tx.id as string,
+          timestamp: tx.timestamp as string,
+          tx_type: ((tx.txType as string) || (tx.tx_type as string) || 'task_received') as TransactionLog['tx_type'],
+          description: (tx.description as string) || '',
+          vibe_amount: (tx.vibeAmount as number | undefined) ?? (tx.vibe_amount as number | undefined),
+          peer_node: (tx.peerNode as string | undefined) || (tx.peer_node as string | undefined),
         })),
-        active_tasks: apiData.activeTasks ?? apiData.active_tasks ?? 0,
-        completed_tasks_today: apiData.completedTasksToday ?? apiData.completed_tasks_today ?? 0,
+        active_tasks: (apiData.activeTasks as number) ?? (apiData.active_tasks as number) ?? 0,
+        completed_tasks_today: (apiData.completedTasksToday as number) ?? (apiData.completed_tasks_today as number) ?? 0,
       };
 
       setStats(normalized);

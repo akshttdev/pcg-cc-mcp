@@ -6,7 +6,7 @@ export function useActivityLogger(taskId?: string) {
   const { logActivity } = useActivityStore();
 
   const log = useCallback(
-    (type: ActivityType, description: string, metadata?: Record<string, any>) => {
+    (type: ActivityType, description: string, metadata?: Record<string, unknown>) => {
       if (taskId) {
         logActivity(taskId, type, description, metadata);
       }
@@ -62,7 +62,7 @@ export function useActivityLogger(taskId?: string) {
     logFileAttached: (fileName: string) =>
       log('file_attached', `File attached: ${fileName}`, { fileName }),
 
-    logCustomActivity: (type: ActivityType, description: string, metadata?: Record<string, any>) =>
+    logCustomActivity: (type: ActivityType, description: string, metadata?: Record<string, unknown>) =>
       log(type, description, metadata),
   };
 }

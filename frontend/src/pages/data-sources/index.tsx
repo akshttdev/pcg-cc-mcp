@@ -118,7 +118,7 @@ export function DataSourcesPage() {
       <div className="border-b px-6 py-3 flex items-center gap-4 bg-card shrink-0">
         <Database className="h-5 w-5 text-primary" />
         <div>
-          <h1 className="text-base font-semibold">Data Sources</h1>
+          <h1 className="text-base font-bold">Data Sources</h1>
           <p className="text-xs text-muted-foreground">
             {sources.length.toLocaleString()} files · {formatSize(totalSize)} · {localFiles} local
           </p>
@@ -184,7 +184,7 @@ export function DataSourcesPage() {
           >
             <Database className="h-3.5 w-3.5 shrink-0" />
             <span>All Files</span>
-            <span className="ml-auto text-[10px] text-muted-foreground">{sources.length}</span>
+            <span className="ml-auto text-xs text-muted-foreground">{sources.length}</span>
           </button>
 
           {Object.values(tree.children)
@@ -229,7 +229,7 @@ export function DataSourcesPage() {
                 <button
                   key={t}
                   onClick={() => setTypeFilter(t)}
-                  className={`px-2 py-0.5 rounded-full text-[11px] capitalize transition-colors border ${typeFilter === t ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/30'}`}
+                  className={`px-2 py-0.5 rounded-full text-xs capitalize transition-colors border ${typeFilter === t ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/30'}`}
                 >
                   {t}
                 </button>
@@ -292,12 +292,12 @@ export function DataSourcesPage() {
                             {fileIcon(source)}
                             <span className="truncate font-medium text-sm">{source.title}</span>
                             {!downloadable && (
-                              <span className="text-[10px] text-muted-foreground/50 shrink-0">(cloud only)</span>
+                              <span className="text-xs text-muted-foreground/50 shrink-0">(cloud only)</span>
                             )}
                           </div>
                         </td>
                         <td className="px-2 py-2">
-                          <Badge variant="outline" className="text-[10px] capitalize">{source.data_type}</Badge>
+                          <Badge variant="outline" className="text-xs capitalize">{source.data_type}</Badge>
                         </td>
                         <td className="px-2 py-2 text-right font-mono text-xs text-muted-foreground">
                           {formatSize(source.file_size_bytes)}
@@ -377,7 +377,7 @@ export function DataSourcesPage() {
                         ) : fileIcon(source, 'lg')}
                       </div>
                       <p className="text-xs font-medium truncate">{source.title}</p>
-                      <p className="text-[10px] text-muted-foreground capitalize mt-0.5">{source.data_type} · {formatSize(source.file_size_bytes)}</p>
+                      <p className="text-xs text-muted-foreground capitalize mt-0.5">{source.data_type} · {formatSize(source.file_size_bytes)}</p>
 
                       <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         {downloadable && (

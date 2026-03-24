@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -123,10 +124,11 @@ export function CrmActivityTimeline({
       </div>
 
       {activities.length === 0 ? (
-        <div className="text-center py-8 text-sm text-muted-foreground">
-          <Clock className="h-8 w-8 mx-auto mb-2 opacity-50" />
-          <p>No activity recorded yet</p>
-        </div>
+        <EmptyState
+          icon={Clock}
+          title="No activity recorded yet"
+          className="py-8"
+        />
       ) : (
         <div className="space-y-6">
           {Array.from(grouped.entries()).map(([date, dateActivities]) => (
@@ -176,7 +178,7 @@ function ActivityItem({ activity }: { activity: CrmActivityRecord }) {
           <span className="text-sm font-medium truncate">
             {activity.subject || formatType(activity.activity_type)}
           </span>
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">
+          <Badge variant="outline" className="text-xs px-1.5 py-0 shrink-0">
             {formatDistanceToNow(new Date(activity.activity_at), { addSuffix: true })}
           </Badge>
         </div>
@@ -191,7 +193,7 @@ function ActivityItem({ activity }: { activity: CrmActivityRecord }) {
           </p>
         )}
         {activity.duration_minutes && (
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             {activity.duration_minutes} min
           </span>
         )}

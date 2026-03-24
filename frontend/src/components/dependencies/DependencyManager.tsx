@@ -1,7 +1,12 @@
+import { AlertCircle,Link2, X } from 'lucide-react';
 import { useState } from 'react';
-import { Link2, X, AlertCircle } from 'lucide-react';
+import type { TaskWithAttemptStatus } from 'shared/types';
+import { toast } from 'sonner';
+
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   Select,
   SelectContent,
@@ -9,11 +14,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 import { useDependencyStore } from '@/stores/useDependencyStore';
 import type { DependencyType } from '@/types/dependencies';
-import type { TaskWithAttemptStatus } from 'shared/types';
-import { toast } from 'sonner';
 
 interface DependencyManagerProps {
   taskId: string;
@@ -158,14 +160,13 @@ export function DependencyManager({
                     >
                       {getTaskTitle(dep.targetTaskId)}
                     </button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
+                    <IconButton
+                      variant="ghost" className="h-6 w-6"
                       onClick={() => handleRemove(dep.id)}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
+                      icon={X}
+                      label="Remove dependency"
+                      iconClassName="h-3 w-3"
+                    />
                   </div>
                 ))}
               </div>
@@ -186,14 +187,13 @@ export function DependencyManager({
                     >
                       {getTaskTitle(dep.sourceTaskId)}
                     </button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
+                    <IconButton
+                      variant="ghost" className="h-6 w-6"
                       onClick={() => handleRemove(dep.id)}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
+                      icon={X}
+                      label="Remove dependency"
+                      iconClassName="h-3 w-3"
+                    />
                   </div>
                 ))}
               </div>
@@ -217,14 +217,13 @@ export function DependencyManager({
                       >
                         {getTaskTitle(relatedTaskId)}
                       </button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
+                      <IconButton
+                        variant="ghost" className="h-6 w-6"
                         onClick={() => handleRemove(dep.id)}
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
+                        icon={X}
+                        label="Remove dependency"
+                        iconClassName="h-3 w-3"
+                      />
                     </div>
                   );
                 })}

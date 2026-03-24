@@ -113,7 +113,7 @@ export function ActivityNotificationItem({ item, onClick, isRead }: ActivityNoti
               {actorStyle.label}
             </span>
           </div>
-          <p className="text-[10px] text-muted-foreground mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5">
             {timeAgo(item.timestamp)}
           </p>
           {item.action === 'status_change' && item.new_state && (

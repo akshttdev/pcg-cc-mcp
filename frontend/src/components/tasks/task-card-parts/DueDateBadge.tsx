@@ -24,7 +24,7 @@ export function DueDateBadge({ dueDate }: { dueDate: string }) {
 
   return (
     <span
-      className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] font-medium border ${colorClasses}`}
+      className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-xs font-medium border ${colorClasses}`}
       title={`Due: ${due.toLocaleDateString()}`}
     >
       <Calendar className="h-2.5 w-2.5" />

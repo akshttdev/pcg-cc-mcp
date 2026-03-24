@@ -751,7 +751,7 @@ ORDER BY t.created_at DESC"#,
                    completion_criteria = $22,
                    output_format = $23,
                    updated_at = datetime('now', 'subsec')
-               WHERE id = $1 AND (project_id = $2 OR (project_id IS NULL AND ($2 IS NULL OR $2 = '')) OR (project_id = '' AND ($2 IS NULL OR $2 = ''))) AND deleted_at IS NULL
+               WHERE id = $1 AND (project_id = $2 OR project_id IS NULL OR project_id = '') AND deleted_at IS NULL
                RETURNING {TASK_SELECT_SQL}"#
         );
 

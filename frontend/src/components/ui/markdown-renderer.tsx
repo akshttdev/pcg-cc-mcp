@@ -226,7 +226,7 @@ function MarkdownRenderer({
                     </Button>
                     {copied && (
                       <div
-                        className="absolute -right-1 mt-1 translate-y-1.5 select-none text-[11px] leading-none px-2 py-1 rounded bg-green-600 text-white shadow pointer-events-none"
+                        className="absolute -right-1 mt-1 translate-y-1.5 select-none text-xs leading-none px-2 py-1 rounded bg-green-600 text-white shadow pointer-events-none"
                         role="status"
                         aria-live="polite"
                       >

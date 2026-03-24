@@ -152,7 +152,7 @@ export function WideResearchGrid({
                     )}
                     onClick={() => onSubagentClick?.(subagent)}
                   >
-                    <span className="text-[8px] text-white font-bold">
+                    <span className="text-[8px] text-white font-semibold">
                       {subagent.subagent_index + 1}
                     </span>
                   </button>
@@ -197,19 +197,19 @@ export function WideResearchGrid({
         {/* Session Stats */}
         <div className="mt-4 pt-4 border-t grid grid-cols-3 gap-4 text-center">
           <div>
-            <div className="text-2xl font-bold text-green-600">
+            <div className="text-2xl font-semibold text-green-600">
               {completedCount}
             </div>
             <div className="text-xs text-muted-foreground">Completed</div>
           </div>
             <div>
-              <div className="text-2xl font-bold text-red-600">
+              <div className="text-2xl font-semibold text-red-600">
                 {failedCount}
               </div>
               <div className="text-xs text-muted-foreground">Failed</div>
             </div>
             <div>
-              <div className="text-2xl font-bold text-blue-600">
+              <div className="text-2xl font-semibold text-blue-600">
                 {statusCounts.running}
               </div>
               <div className="text-xs text-muted-foreground">Running</div>

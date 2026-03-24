@@ -195,7 +195,7 @@ function ProjectCard({
                   <Badge
                     key={type}
                     variant={present ? 'secondary' : 'outline'}
-                    className="text-[10px] uppercase tracking-wide"
+                    className="text-xs uppercase tracking-wide"
                   >
                     {CORE_BOARD_LABELS[type]}
                     {present && tasks > 0 ? ` · ${tasks}` : ''}
@@ -205,7 +205,7 @@ function ProjectCard({
               {boardSummary.customCount > 0 && (
                 <Badge
                   variant="outline"
-                  className="text-[10px] uppercase tracking-wide"
+                  className="text-xs uppercase tracking-wide"
                 >
                   {CORE_BOARD_LABELS.custom} ×{boardSummary.customCount}
                   {boardSummary.tasksByType.custom > 0
@@ -216,7 +216,7 @@ function ProjectCard({
               {boardSummary.unassignedTasks > 0 && (
                 <Badge
                   variant="destructive"
-                  className="text-[10px] uppercase tracking-wide"
+                  className="text-xs uppercase tracking-wide"
                 >
                   Unassigned · {boardSummary.unassignedTasks}
                 </Badge>

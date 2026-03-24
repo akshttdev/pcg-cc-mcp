@@ -34,7 +34,7 @@ export function VoicePersonalityPage({ profile, primary, secondary, accent, head
             {profile.brandArchetype[0]}
           </div>
           <div>
-            <p className="text-[10px] uppercase tracking-[0.3em] mb-2" style={{ color: `${accent}80` }}>Brand Archetype</p>
+            <p className="text-xs uppercase tracking-[0.3em] mb-2" style={{ color: `${accent}80` }}>Brand Archetype</p>
             <h3
               className="heading-font text-3xl font-black mb-1"
               style={{ color: secondary }}
@@ -50,7 +50,7 @@ export function VoicePersonalityPage({ profile, primary, secondary, accent, head
 
       {/* Voice attributes */}
       <div className="mb-10">
-        <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-gray-400 mb-5">Voice Attributes</p>
+        <p className="text-xs uppercase tracking-[0.25em] font-semibold text-gray-400 mb-5">Voice Attributes</p>
         <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
           {VOICE_ATTRIBUTES.map((attr, i) => (
             <div
@@ -77,7 +77,7 @@ export function VoicePersonalityPage({ profile, primary, secondary, accent, head
             style={{ background: accent }}
           />
           <div className="pl-8">
-            <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-gray-400 mb-3">Brand Voice in Action</p>
+            <p className="text-xs uppercase tracking-[0.25em] font-semibold text-gray-400 mb-3">Brand Voice in Action</p>
             <p
               className="heading-font text-3xl font-bold text-gray-900 leading-relaxed italic"
             >
@@ -90,7 +90,7 @@ export function VoicePersonalityPage({ profile, primary, secondary, accent, head
       {/* Content pillars */}
       {pillars.length > 0 && (
         <div>
-          <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-gray-400 mb-5">Content Pillars</p>
+          <p className="text-xs uppercase tracking-[0.25em] font-semibold text-gray-400 mb-5">Content Pillars</p>
           <div className="flex gap-3 flex-wrap">
             {pillars.map((p, i) => (
               <div

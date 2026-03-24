@@ -1,24 +1,27 @@
-import { useState, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import {
-  Linkedin,
-  Instagram,
-  Twitter,
-  Facebook,
-  Youtube,
-  Link2,
-  Unlink,
-  RefreshCw,
-  CheckCircle2,
   AlertCircle,
+  CheckCircle2,
   Clock,
+  Facebook,
+  Instagram,
+  Link2,
+  Linkedin,
+  RefreshCw,
+  Twitter,
+  Unlink,
   Users,
+  Youtube,
 } from 'lucide-react';
+import { useCallback,useState } from 'react';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription,CardHeader, CardTitle } from '@/components/ui/card';
+import { CardGrid } from '@/components/ui/card-grid';
+import { IconButton } from '@/components/ui/icon-button';
+import { formatDate } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { SocialAccount, SocialPlatform } from '@/types/social';
-import { formatDate } from '@/lib/formatters';
 
 interface SocialAccountConnectProps {
   accounts: SocialAccount[];
@@ -53,7 +56,7 @@ const platformConfig: Record<SocialPlatform, {
   twitter: {
     name: 'X (Twitter)',
     icon: <Twitter className="h-5 w-5" />,
-    color: 'text-black',
+    color: 'text-foreground',
     bgColor: 'bg-black',
     description: 'Real-time updates & engagement',
   },
@@ -66,8 +69,8 @@ const platformConfig: Record<SocialPlatform, {
   },
   tiktok: {
     name: 'TikTok',
-    icon: <span className="text-lg font-bold">TT</span>,
-    color: 'text-black',
+    icon: <span className="text-lg font-semibold">TT</span>,
+    color: 'text-foreground',
     bgColor: 'bg-black',
     description: 'Short-form video content',
   },
@@ -80,22 +83,22 @@ const platformConfig: Record<SocialPlatform, {
   },
   bluesky: {
     name: 'Bluesky',
-    icon: <span className="text-lg font-bold">🦋</span>,
+    icon: <span className="text-lg font-semibold">🦋</span>,
     color: 'text-[#0085FF]',
     bgColor: 'bg-[#0085FF]',
     description: 'Decentralized social',
   },
   pinterest: {
     name: 'Pinterest',
-    icon: <span className="text-lg font-bold">P</span>,
+    icon: <span className="text-lg font-semibold">P</span>,
     color: 'text-[#E60023]',
     bgColor: 'bg-[#E60023]',
     description: 'Visual discovery & pins',
   },
   threads: {
     name: 'Threads',
-    icon: <span className="text-lg font-bold">@</span>,
-    color: 'text-black',
+    icon: <span className="text-lg font-semibold">@</span>,
+    color: 'text-foreground',
     bgColor: 'bg-black',
     description: 'Text-based conversations',
   },
@@ -212,26 +215,21 @@ function ConnectedAccountCard({
           {/* Actions */}
           <div className="flex items-center gap-1">
             {onRefresh && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleRefresh}
+              <IconButton
+                variant="ghost" onClick={handleRefresh}
                 disabled={isRefreshing}
-              >
-                <RefreshCw
-                  className={cn('h-4 w-4', isRefreshing && 'animate-spin')}
-                />
-              </Button>
+                icon={RefreshCw}
+                label="Refresh"
+                iconClassName={cn('h-4 w-4', isRefreshing && 'animate-spin')}
+              />
             )}
             {onDisconnect && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-destructive hover:text-destructive"
+              <IconButton
+                variant="ghost" className="text-destructive hover:text-destructive"
                 onClick={onDisconnect}
-              >
-                <Unlink className="h-4 w-4" />
-              </Button>
+                icon={Unlink}
+                label="Disconnect"
+              />
             )}
           </div>
         </div>
@@ -331,7 +329,7 @@ export function SocialAccountConnect({
         <CardContent>
           <div className="space-y-4">
             {/* Primary platforms */}
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+            <CardGrid columns={{ sm: 3, md: 6 }} gap={2}>
               {priorityPlatforms.map((platform) => (
                 <PlatformConnectButton
                   key={platform}
@@ -341,12 +339,12 @@ export function SocialAccountConnect({
                   onConnect={() => onConnect?.(platform)}
                 />
               ))}
-            </div>
+            </CardGrid>
 
             {/* Other platforms */}
             <div className="pt-2 border-t">
               <p className="text-xs text-muted-foreground mb-2">More platforms</p>
-              <div className="grid grid-cols-3 gap-2">
+              <CardGrid columns={{ sm: 3 }} gap={2}>
                 {otherPlatforms.map((platform) => (
                   <PlatformConnectButton
                     key={platform}
@@ -356,7 +354,7 @@ export function SocialAccountConnect({
                     onConnect={() => onConnect?.(platform)}
                   />
                 ))}
-              </div>
+              </CardGrid>
             </div>
           </div>
         </CardContent>

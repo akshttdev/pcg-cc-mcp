@@ -1,31 +1,32 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { resolveApiUrl } from '@/lib/api';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Loader } from '@/components/ui/loader';
 import {
+  Crown,
   Mic,
   MicOff,
   Send,
+  Settings,
   Volume2,
-  VolumeX,
-  Crown,
-  Settings
-} from 'lucide-react';
+  VolumeX} from 'lucide-react';
+import React, { useEffect, useRef,useState } from 'react';
 import { toast } from 'sonner';
 
-import type {
-  NoraAssistantProps,
-  NoraResponse,
-  NoraRequestType,
-  RequestPriority,
-  ConversationEntry,
-  CinematicFormState,
-  SpeechRecognition,
-} from './types';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
+import { Loader } from '@/components/ui/loader';
+import { Textarea } from '@/components/ui/textarea';
+import { resolveApiUrl } from '@/lib/api';
+
 import { CinematicBriefForm } from './CinematicBriefForm';
 import { ConversationHistory } from './ConversationHistory';
+import type {
+  CinematicFormState,
+  ConversationEntry,
+  NoraAssistantProps,
+  NoraRequestType,
+  NoraResponse,
+  RequestPriority,
+  SpeechRecognition,
+} from './types';
 import { VoiceControls } from './VoiceControls';
 
 export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProps) {
@@ -589,13 +590,12 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
                     </span>
                   )}
                 </Button>
-                <Button
+                <IconButton
                   onClick={handleSend}
                   disabled={!canSend || isLoading}
-                  size="icon"
-                >
-                  <Send className="w-4 h-4" />
-                </Button>
+                  icon={Send}
+                  label="Send message"
+                />
               </div>
             </div>
 

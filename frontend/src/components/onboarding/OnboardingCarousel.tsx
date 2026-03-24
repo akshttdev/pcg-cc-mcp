@@ -1,25 +1,27 @@
-import { useState, useCallback, useMemo } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import {
+  Brain,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Search,
-  Palette,
+  Clock,
   Globe,
+  Loader2,
   Mail,
+  Palette,
+  Play,
+  Plug,
   Scale,
+  Search,
   Share2,
   Target,
-  Brain,
-  Plug,
-  CheckCircle2,
-  Clock,
-  Play,
-  Loader2,
 } from 'lucide-react';
+import { useCallback, useMemo,useState } from 'react';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
+import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 
 // Segment types matching the backend
@@ -218,28 +220,24 @@ export function OnboardingCarousel({
         onClick={() => onSegmentClick?.(activeSegment)}
       >
         {/* Navigation Arrows */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="absolute left-2 top-1/2 -translate-y-1/2 z-10 h-8 w-8 rounded-full bg-background/80 hover:bg-background"
+        <IconButton
+          variant="ghost" className="absolute left-2 top-1/2 -translate-y-1/2 z-10 h-8 w-8 rounded-full bg-background/80 hover:bg-background"
           onClick={(e) => {
             e.stopPropagation();
             handlePrev();
           }}
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="absolute right-2 top-1/2 -translate-y-1/2 z-10 h-8 w-8 rounded-full bg-background/80 hover:bg-background"
+          icon={ChevronLeft}
+          label="Previous"
+        />
+        <IconButton
+          variant="ghost" className="absolute right-2 top-1/2 -translate-y-1/2 z-10 h-8 w-8 rounded-full bg-background/80 hover:bg-background"
           onClick={(e) => {
             e.stopPropagation();
             handleNext();
           }}
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
+          icon={ChevronRight}
+          label="Next"
+        />
 
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between">
@@ -339,7 +337,7 @@ export function OnboardingCarousel({
               >
                 <SegIcon className="h-4 w-4" />
               </div>
-              <span className="text-[10px] text-muted-foreground truncate w-full text-center">
+              <span className="text-xs text-muted-foreground truncate w-full text-center">
                 {segment.segment_type.charAt(0).toUpperCase() + segment.segment_type.slice(1)}
               </span>
             </button>
