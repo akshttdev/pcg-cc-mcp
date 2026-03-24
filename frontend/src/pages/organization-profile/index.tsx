@@ -455,7 +455,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
               </div>
             </div>
 
-            <div className="flex items-center gap-3 mt-4 flex-wrap">
+            <div className="hidden sm:flex items-center gap-3 mt-4 flex-wrap">
               <StatPill icon={FolderOpen} label="Projects" value={allProjects.length} />
               <StatPill icon={Briefcase} label="Clients" value={clients.length} />
               <StatPill icon={Users} label="Members" value={members.length} />
