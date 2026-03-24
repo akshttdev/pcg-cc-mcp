@@ -1,10 +1,11 @@
-import { IconButton } from '@/components/ui/icon-button';
+import { ArrowDown, ArrowUp, Pencil, Trash2 } from 'lucide-react';
+import { pipelineSettings as tid } from 'shared/testids';
+
 import { Badge } from '@/components/ui/badge';
+import { IconButton } from '@/components/ui/icon-button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { ArrowDown, ArrowUp, Pencil, Trash2 } from 'lucide-react';
 import type { CrmPipelineStage } from '@/types/crm';
-import { pipelineSettings as tid } from 'shared/testids';
 
 interface PipelineSettingsStagesTabProps {
   stages: CrmPipelineStage[];

@@ -1,6 +1,7 @@
 import NiceModal from '@ebay/nice-modal-react';
 import { Bot, DollarSign, Loader2, Plus,Settings, Target, User, Users } from 'lucide-react';
 import { useEffect,useMemo, useState } from 'react';
+import { dealCard as dealTid,pipeline as tid } from 'shared/testids';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -20,7 +21,6 @@ import { useCreateDeal, useCrmKanban, useCrmPipelineByType, useDeleteDeal,useMov
 import { useProjectBoardProgress } from '@/hooks/useProjectBoardProgress';
 import { formatCurrencyFull } from '@/lib/formatters';
 import type { CreateCrmDeal, CrmDealWithContact, PipelineType, UpdateCrmDeal } from '@/types/crm';
-import { pipeline as tid, dealCard as dealTid } from 'shared/testids';
 
 import { CrmDealCard } from './CrmDealCard';
 import { CrmDealDetailPanel } from './CrmDealDetailPanel';

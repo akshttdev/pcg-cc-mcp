@@ -1,14 +1,15 @@
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useNavigate,useParams } from 'react-router-dom';
+
 import { CrmPipelineBoard } from '@/components/crm/CrmPipelineBoard';
 import { CrmPipelineSettings } from '@/components/crm/CrmPipelineSettings';
-import { useOrgCrmPipelineByType } from '@/hooks/useCrmPipeline';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { useOrgCrmPipelineByType } from '@/hooks/useCrmPipeline';
 
 export function CrmClientsPage() {
   const { projectId } = useParams<{ projectId: string }>();

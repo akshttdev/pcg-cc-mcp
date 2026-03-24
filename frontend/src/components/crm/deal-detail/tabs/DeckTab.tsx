@@ -1,6 +1,7 @@
 import { useMutation,useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Copy,Link2, Loader2, Presentation, Receipt, Share2, Trophy, Wand2 } from 'lucide-react';
 import { useState } from 'react';
+import { deck as tid } from 'shared/testids';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -9,7 +10,6 @@ import { SectionHeader } from '@/components/ui/section-header';
 import { crmDealsApi } from '@/lib/api/crm';
 import { crmKeys } from '@/lib/query-keys';
 import type { CrmDealWithContact } from '@/types/crm';
-import { deck as tid } from 'shared/testids';
 
 interface DeckTabProps {
   deal: CrmDealWithContact;

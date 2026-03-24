@@ -1,20 +1,46 @@
-import { lazy, Suspense, useMemo, useState } from 'react';
-import { useParams, useSearchParams, useNavigate, Link } from 'react-router-dom';
-import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  ArrowLeft,
+  BookOpen,
+  Brain,
+  Briefcase,
+  Building2,
+  CheckCircle2,
+  Contact2,
+  Crosshair,
+  Database,
+  DollarSign,
+  FolderOpen,
+  LayoutGrid,
+  Lightbulb,
+  Link as LinkIcon,
+  Loader2,
+  MapPin,
+  Megaphone,
+  Palette,
+  Pencil,
+  Plug,
+  RefreshCw,
+  Share2,
+  Target,
+  Users,
+  Zap,
+} from 'lucide-react';
+import { lazy, Suspense, useMemo, useState } from 'react';
+import { Link,useNavigate, useParams, useSearchParams } from 'react-router-dom';
+
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -22,53 +48,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
+import { useCrmContacts,useOrganizationById } from '@/hooks/queries';
 import {
-  Building2,
-  MapPin,
-  Users,
-  FolderOpen,
-  Briefcase,
-  Target,
-  ArrowLeft,
-  Contact2,
-  DollarSign,
-  Brain,
-  Share2,
-  BookOpen,
-  Database,
-  Pencil,
-  Plug,
-  RefreshCw,
-  Loader2,
-  Palette,
-  Lightbulb,
-  Crosshair,
-  Zap,
-  Megaphone,
-  Link as LinkIcon,
-  CheckCircle2,
-  LayoutGrid,
-} from 'lucide-react';
-import {
-  organizationsApi,
-  crmDealsApi,
-  resolveApiUrl,
   type ClientData,
+  crmDealsApi,
+  organizationsApi,
   type OrgBrandProfile,
-  type SidebarProject,
+  resolveApiUrl,
   type SidebarClient,
+  type SidebarProject,
 } from '@/lib/api';
 import { organizationKeys, sidebarKeys } from '@/lib/query-keys';
-import { useOrganizationById, useCrmContacts } from '@/hooks/queries';
-import type { OrganizationProfilePageProps, OrgMember } from './types';
-import { formatCurrency, parseJsonArray } from './helpers';
-import {
-  BRAND_VOICE_OPTIONS,
-  BRAND_ARCHETYPE_OPTIONS,
-  MARKET_POSITION_OPTIONS,
-  ICP_COMPANY_SIZE_OPTIONS,
-} from './constants';
+
 import { StatPill } from './components/StatPill';
+import {
+  BRAND_ARCHETYPE_OPTIONS,
+  BRAND_VOICE_OPTIONS,
+  ICP_COMPANY_SIZE_OPTIONS,
+  MARKET_POSITION_OPTIONS,
+} from './constants';
+import { formatCurrency, parseJsonArray } from './helpers';
+import type { OrganizationProfilePageProps, OrgMember } from './types';
 
 // Re-export BrandIdentityCard for external consumers
 export { BrandIdentityCard } from './components/BrandIdentityCard';

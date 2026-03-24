@@ -18,8 +18,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { StatusBadge } from '@/components/ui/status-badge';
-import { crmDealsApi } from '@/lib/api/crm';
 import { handleApiResponse, makeRequest } from '@/lib/api/client';
+import { crmDealsApi } from '@/lib/api/crm';
 import { crmKeys } from '@/lib/query-keys';
 import { getStatusInfo } from '@/lib/status-utils';
 
