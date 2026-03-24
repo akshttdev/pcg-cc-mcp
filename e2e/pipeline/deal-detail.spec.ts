@@ -80,10 +80,9 @@ test.describe("Deal Detail Features (DD-1 to DD-4)", () => {
 
   test("DD-1: Transcripts tab shows empty state with Link button", async ({ page }) => {
     test.setTimeout(30_000);
-    await page.getByRole("tab", { name: "Transcripts" }).click();
-    await page.waitForTimeout(demoPause.short);
-
     const panel = page.getByTestId(dealDetail.panel);
+    await panel.getByRole("tab", { name: "Transcripts" }).click();
+    await page.waitForTimeout(demoPause.short);
     // MCP verified: empty state has heading, "No transcripts linked" text, and "Link" button
     await expect(panel.getByRole("heading", { name: "Discovery Transcripts" })).toBeVisible({ timeout: t(5_000) });
     await expect(panel.getByText("No transcripts linked")).toBeVisible();
@@ -141,7 +140,7 @@ test.describe("Deal Detail Features (DD-1 to DD-4)", () => {
     const panel = page.getByTestId(dealDetail.panel);
 
     // Given: on the Overview tab
-    await page.getByRole("tab", { name: "Overview" }).click();
+    await panel.getByRole("tab", { name: "Overview" }).click();
     await page.waitForTimeout(demoPause.short);
 
     // Verify Call Scheduling section is visible on Proposal stage
@@ -178,10 +177,9 @@ test.describe("Deal Detail Features (DD-1 to DD-4)", () => {
 
   test("DD-3: Deck & Close tab sections visible with testid buttons", async ({ page }) => {
     test.setTimeout(30_000);
-    await page.getByRole("tab", { name: "Deck & Close" }).click();
-    await page.waitForTimeout(demoPause.short);
-
     const panel = page.getByTestId(dealDetail.panel);
+    await panel.getByRole("tab", { name: "Deck & Close" }).click();
+    await page.waitForTimeout(demoPause.short);
 
     // MCP verified: three sections with headings
     await expect(panel.getByRole("heading", { name: "Sales Deck" })).toBeVisible({ timeout: t(5_000) });

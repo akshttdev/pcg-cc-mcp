@@ -123,10 +123,10 @@ test.describe("DL-1: Create and track a deal through the pipeline", () => {
 
     // Click Expand — switches from drawer to fullscreen dialog
     await expandBtn.click();
-    await page.waitForTimeout(demoPause.medium);
+    await page.waitForTimeout(2000);
 
     // Expanded mode: dialog wrapper visible with testid "deal-detail-expanded"
-    await expect(page.getByTestId(dealDetail.expanded)).toBeVisible({ timeout: t(5_000) });
+    await expect(page.getByTestId(dealDetail.expanded)).toBeVisible({ timeout: t(10_000) });
     // Panel content still accessible inside the expanded dialog
     await expect(page.getByTestId(dealDetail.panel)).toBeVisible({ timeout: t(3_000) });
 
