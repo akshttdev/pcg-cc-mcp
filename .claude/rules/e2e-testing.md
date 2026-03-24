@@ -27,7 +27,10 @@
 - Prefer one end-to-end flow over many isolated slices — a single entity flowing through its lifecycle tests more realistically than separate files each creating their own data
 - Separate specs only when setup is fundamentally different (e.g., testing validation requires data that conflicts with the happy-path flow)
 - Reference acceptance specs from the backlog in comments
-- Centralize testid constants in a `testids.ts` file — never inline testid strings in spec files
+- **Testid helpers live in `shared/testids.ts`** — the single source of truth for both frontend components and E2E tests
+- Feature-area E2E files re-export from shared: `export { pipeline, deck } from '../../shared/testids'`
+- **NEVER hardcode testid strings** in spec files — always import from the helpers
+- When a test needs a new testid: add the helper to `shared/testids.ts`, add `data-testid={tid.foo}` in the component, import in the spec
 - Feature-area helpers go in `helpers.ts` next to specs; reuse `e2e/helpers/` for auth, timing, cleanup, seed
 
 ## Test Design Rules

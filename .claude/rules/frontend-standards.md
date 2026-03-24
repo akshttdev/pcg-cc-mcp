@@ -106,8 +106,12 @@ paths:
 ## Testability
 
 - Every interactive element MUST have a `data-testid` attribute — buttons, menu triggers, cards, form containers
+- **Testid helpers are centralized in `shared/testids.ts`** — this is the single source of truth used by both frontend components and E2E tests
+- Components import helpers: `import { deck as tid } from 'shared/testids'` then use `data-testid={tid.sendInvoice}`
+- **NEVER hardcode testid strings** in components or specs — always use the helpers from `shared/testids.ts`
 - Naming convention: `{feature}-{element}` or `{feature}-{element}-{qualifier}` (e.g., `pipeline-add-deal`, `deal-card-{id}`, `deal-menu-{id}`)
-- Custom wrapper components (KanbanCard, etc.) MUST accept and forward `data-testid` as a prop
+- When adding a new testid: add the helper to `shared/testids.ts` first, then import it in both the component and the spec
+- Custom wrapper components (KanbanCard, ListItem, EmptyState, etc.) MUST accept and forward `data-testid` as a prop
 - If a test needs a fragile CSS/positional selector to reach an element, that's a component bug — add a testid
 - Add testids when building components, not retroactively when writing tests
 
