@@ -282,6 +282,45 @@ test.describe("Agent Automations (AA-1 to AA-7)", () => {
     // Blocked: need to set up a failed flow first (cancel then retrigger)
   });
 
+  // ── AA-6: Auto-advance chain ──────────────────────────────────────────
+  //
+  // Feature: Agent auto-advance chain Intel → BA → Proposal → Polish
+  //   Scenario: Full chain auto-advance
+  //     Given a deal enters Intel with Scout agent
+  //     When each agent completes and auto-advances the deal
+  //     Then the deal reaches at least Proposal via Scout→Astra→Cash chain
+  //     And at least 3 completed agent flows exist
+
+  test("AA-6: auto-advance chain — Intel → BA → Proposal → Polish", async ({ page, request }) => {
+    test.setTimeout(180_000); // Chain takes ~3 min
+    await apiLogin(request);
+
+    // The deal should have auto-advanced through the chain from AA-1's Intel entry
+    // Wait for it to reach at least Proposal (Scout→Astra→Cash)
+    const reached = await waitForDealStage(page, request, dealId, "Proposal", 120_000);
+    expect(reached, "Deal should auto-advance to Proposal via Scout→Astra→Cash chain").toBe(true);
+
+    // Verify multiple completed flows
+    const flowsRes = await request.get(`/api/crm/deals/${dealId}/agent-flows`);
+    const flows = (await flowsRes.json()).data || [];
+    const completedFlows = flows.filter((f: { status: string }) => f.status === "completed");
+    expect(completedFlows.length, "Should have at least 3 completed flows (Scout, Astra, Cash)").toBeGreaterThanOrEqual(3);
+  });
+
+  // ── AA-7: Retrigger failed agent ────────────────────────────────────
+  //
+  // Feature: Retrigger a failed agent via API
+  //   Scenario: POST /crm/deals/:id/retrigger-agent re-triggers the stage's agent
+  //     Given a deal with a failed/cancelled agent flow
+  //     When I POST to retrigger-agent
+  //     Then a new agent flow is created for the current stage
+
+  test.fixme("AA-7: retrigger failed agent via API", async () => {
+    // Feature: POST /crm/deals/:id/retrigger-agent re-triggers the stage's agent
+    // Needs: a deal with a failed/cancelled flow to retrigger
+    // Blocked: need to set up a failed flow first (cancel then retrigger)
+  });
+
   // ── Cleanup ────────────────────────────────────────────────────────────
 
   test.afterAll(async ({ request }) => {
