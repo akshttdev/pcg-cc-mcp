@@ -788,9 +788,35 @@ CreateReviewTask creates. Reorder on_enter_actions so CreateReviewTask runs firs
 **User feedback**: "no that isn't fine for now. fix it" — referring to placeholder task hack.
 Need to properly wire the review task ID to the agent flow.
 
-**Next steps**:
-1. Add `apiLogin(request)` to AA-1 test
-2. Reorder entry actions: CreateReviewTask first, TriggerAgent second
-3. Pass the created task ID to schedule_agent_flow
-4. Run test, confirm GREEN
-5. Move to next RED test (DL-3/DD-3)
+### Session Progress (2026-03-24 continued)
+
+**Merged**: `feature/2026-03-23--continued` — agent flow UUID fixes, frontend componentization, DbUuid migration
+
+**Infrastructure built**:
+- Centralized testids in `shared/testids.ts` (single source for frontend + E2E)
+- BLOB→TEXT UUID migration across 13 tables
+- Rules split: 518→315 lines per conversation (with `paths:` scoping)
+- Area-specific TESTING.md docs (e2e/, pipeline/, demos/)
+- `/run-pipeline-tests` skill
+
+**Agent auto-advance implemented**:
+- Agent flow executor: after flow completes, auto-moves deal to next stage
+- Fixed: `assigned_agent` field name, `pipeline_id` column name, RFC3339 datetime format
+- Verbose logging on all auto-advance decision points
+- MCP-verified: Intel→BA auto-advance works (Scout completes → Astra triggers)
+
+**Deal detail UX**:
+- Resizable drawer (drag left edge) replacing Sheet
+- Close (X) button in header
+- Agent failed/cancelled badges on kanban cards
+- Retry Agent button in Agent History tab
+- Retrigger endpoint: `POST /crm/deals/:id/retrigger-agent`
+
+**Silent failure audit**: 39 issues found (6 critical, 19 high, 14 medium)
+- Report: `planning/reviews/2026-03-24--review--silent-failure-audit.md`
+- Critical: `let _ =` on won/lost state, client/project creation, deal linking
+- Fixing critical issues next
+
+**E2E test state**: 42 pass, 16 fixme, 0 fail across 6 spec files
+- Tests updated to use auto-advance (waitForDealStage) instead of manual moves
+- Tests use dealCard.card(dealId) and dealDetail.panel testids
