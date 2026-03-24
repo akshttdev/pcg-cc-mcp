@@ -7,10 +7,13 @@
 - The test MUST exercise the UI — never substitute API calls for user interactions
 - Run the test — it should FAIL. If it passes immediately, make it more specific
 - Tag known-unimplemented features with `test.fixme(true, "reason")` **inside** a test function body
+- When restructuring or adding tests: write ALL new tests first, run them, confirm they fail for the right reasons. Do NOT write implementation alongside the test.
+- If you have an implementation in mind, add it **commented out** — the test must fail when run
+- Commit failing tests before making them green. This proves the tests actually test something.
 
 ### Green (Make it pass with minimum changes)
-- Fix the app, test infrastructure, or selectors to make the test pass
-- If a test fails because of missing UI or missing `data-testid`, fix the component (see frontend-standards.md)
+- Fix the app, test infrastructure, or selectors — one test at a time
+- If a test fails because of missing `data-testid`, fix the component (see frontend-standards.md)
 - Don't refactor yet — get green first
 
 ### Refactor (Clean up without changing behavior)
@@ -20,9 +23,11 @@
 
 ## Test Organization
 
-- Group specs by **feature area**, not by page or component
-- Each spec file maps to acceptance specs from the backlog
-- Spec IDs in test names match backlog IDs: `"DL-1: create a deal via the pipeline board"`
+- Group specs by **user journey**, not by spec ID or component
+- Prefer one end-to-end flow over many isolated slices — a single entity flowing through its lifecycle tests more realistically than separate files each creating their own data
+- Separate specs only when setup is fundamentally different (e.g., testing validation requires data that conflicts with the happy-path flow)
+- Reference acceptance specs from the backlog in comments
+- Centralize testid constants in a `testids.ts` file — never inline testid strings in spec files
 - Feature-area helpers go in `helpers.ts` next to specs; reuse `e2e/helpers/` for auth, timing, cleanup, seed
 
 ## Test Design Rules
@@ -33,15 +38,19 @@
 - If a feature has no UI path, that's a finding — document it, don't work around it
 
 ### Selectors (priority order)
-1. `getByTestId()` — interactive elements with testids (buttons, menus, cards)
+1. `getByTestId()` — interactive elements with testids (buttons, menus, cards, form fields)
 2. `getByRole()` — standard elements with accessible names (links, headings, tabs, textboxes)
-3. `getByText()` — content verification
-4. `locator()` with CSS — last resort; if needed, add a `data-testid` to the component instead
+3. `getByTitle()` — elements with title attributes
+4. `getByText()` — content verification
+5. `locator()` with CSS — last resort; if needed, add a `data-testid` to the component instead
 
 **Never use:** `.nth(N)`, `div > div > button`, `[class*="..."]`, `xpath=ancestor::`, parent-then-child chains
 
-### Assertions
-- `toBeVisible()` over `toBeInTheDocument()` — assert what the user sees
+### Assertions — test behavior, not existence
+- Every assertion must verify a **user-visible outcome**, not just that an element exists
+- `toBeVisible()` alone is an existence check — pair it with interaction and a behavioral outcome (toast appears, data persists, item moves)
+- After filling a form and clicking Save: verify toast, then verify persistence (reload or API check)
+- After moving/creating/deleting: verify the change is reflected in the correct location
 - `t()` timeout helper for all waits — never hardcode timeouts
 - Check console errors after key actions
 
@@ -51,13 +60,14 @@
 
 ### Serial execution
 - `test.describe.configure({ mode: "serial" })` for multi-step flows
-- `test.beforeEach` with `login()` + `navigate()` — each test gets a fresh page
 - Share state via module-level variables, not fixtures
 - `test.fixme()` MUST be inside a test function body — at describe level it skips the entire block
 
-### Imports
-- Use `import { test, expect } from "@playwright/test"` — not custom fixtures
-- The `chromium` project provides auth via `storageState`
+### Acceptance specs as comments
+- Every test block must include the acceptance scenario it implements as a comment (Given/When/Then format)
+- Source the scenario from: (1) Gherkin specs in the backlog if they exist, (2) planning files or feature instructions, (3) generate your own from the feature description — ask the user if unclear
+- Every "Then" line MUST be a real assertion in the test
+- If a "Then" line can't be tested yet, add a `test.fixme()` test for it
 
 ## Writing Tests: Inspect First, Then Write
 
@@ -67,13 +77,13 @@
 3. Note the actual element names, roles, and structure from the snapshot
 4. Write the test to match what you observed — not what you assume
 
-**Never guess selectors.** The snapshot shows exact button names (`"Expand"` not `"expand"`), exact roles (`dialog` vs `generic`), exact text content. Use those.
+**Never guess selectors.** The snapshot shows exact button names, exact roles, exact text content. Use those.
 
 **Verify with the app, not with theories.** If a test fails, reproduce the steps via MCP before debugging code. Most "bugs" are wrong selectors or missing waits.
 
 **Button text changes are state assertions.** `"Expand"` → `"Minimize"` proves the transition happened. Checking for a container role does not.
 
-**Wait for transitions.** Sheet→Dialog, tab switches, modal opens need `demoPause` waits.
+**Wait for transitions.** Panel open/close, tab switches, modal transitions need `demoPause` waits.
 
 ## When Tests Fail
 
