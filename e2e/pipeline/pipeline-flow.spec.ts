@@ -102,6 +102,63 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
     await expect(page.getByRole("button", { name: "Run Now" })).toBeVisible({ timeout: t(3_000) });
   });
 
+  // Scenario: Click "Run Now" to trigger the agent immediately (AA-2)
+  //   Given the "Scheduled scout agent" toast is visible with Run Now button
+  //   When I click "Run Now"
+  //   Then the agent flow transitions from planning to executing
+  //   And the deal card shows an agent-running indicator
+  test("AA-2: click Run Now — agent flow starts executing", async ({ page, request }) => {
+    test.fixme(true, "Run Now interaction: need to verify agent flow status transition + card badge update");
+    test.setTimeout(30_000);
+    await apiLogin(request);
+
+    // Click Run Now on the agent toast
+    await page.getByRole("button", { name: "Run Now" }).click();
+    await page.waitForTimeout(demoPause.medium);
+
+    // Verify agent is running — deal card should show agent badge
+    // (e.g., "Scout running…" or agent spinner)
+    await expect(page.getByText("Scout running").first()).toBeVisible({ timeout: t(10_000) });
+
+    // Verify via API that agent_flow status transitioned
+    const flowsRes = await request.get(`/api/crm/deals/${dealId}/agent-flows`);
+    const flows = (await flowsRes.json()).data || (await flowsRes.json());
+    const scoutFlow = flows.find((f: { flow_config?: string }) =>
+      f.flow_config?.includes("scout")
+    );
+    expect(scoutFlow, "Scout agent flow should exist").toBeTruthy();
+    expect(
+      ["executing", "completed"].includes(scoutFlow.status),
+      `Agent flow should be executing or completed, got: ${scoutFlow?.status}`
+    ).toBe(true);
+  });
+
+  // Scenario: View agent results in Agent History tab (AA-3)
+  //   Given the Scout agent has run (or is running) for this deal
+  //   When I open the deal detail and click the Agent History tab
+  //   Then I see the Scout flow with its status and events
+  test("AA-3: Agent History tab shows Scout flow after execution", async ({ page }) => {
+    test.fixme(true, "Agent History tab: need to verify flow listing and event details");
+    test.setTimeout(30_000);
+
+    // Open deal detail
+    await page.getByText(dealText).first().click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible({ timeout: t(10_000) });
+
+    // Click Agent History tab
+    await page.getByRole("tab", { name: "Agent History" }).click();
+    await page.waitForTimeout(demoPause.short);
+
+    // Should show at least one agent flow (Scout research)
+    await expect(dialog.getByText("Scout").first()).toBeVisible({ timeout: t(5_000) });
+    await expect(dialog.getByText("research").first()).toBeVisible({ timeout: t(5_000) });
+
+    // Close for next test
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await page.waitForTimeout(demoPause.short);
+  });
+
   // ═══════════════════════════════════════════════════════════════════════
   // INTEL → BA → PROPOSAL: Move through stages
   // ═══════════════════════════════════════════════════════════════════════
