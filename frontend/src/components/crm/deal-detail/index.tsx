@@ -78,6 +78,7 @@ export function CrmDealDetailPanel({
         stageColor={stageColor}
         onEdit={onEdit}
         onDelete={onDelete}
+        onClose={onClose}
         isExpanded={isExpanded}
         onToggleExpand={toggleExpand}
       />
