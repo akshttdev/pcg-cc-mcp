@@ -20,6 +20,7 @@ interface ResizableDrawerProps {
   minWidth?: number;
   storageKey?: string;
   className?: string;
+  'data-testid'?: string;
 }
 
 export function ResizableDrawer({
@@ -30,6 +31,7 @@ export function ResizableDrawer({
   minWidth = DEFAULT_MIN_WIDTH,
   storageKey = 'orcha:drawer-width',
   className,
+  'data-testid': dataTestId,
 }: ResizableDrawerProps) {
   const { sidebarCollapsed } = useViewStore();
   const isDraggingRef = useRef(false);
@@ -164,6 +166,7 @@ export function ResizableDrawer({
           className
         )}
         style={{ width }}
+        data-testid={dataTestId}
       >
         {/* Resize handle — wider hit area, grippy dots indicator */}
         <div

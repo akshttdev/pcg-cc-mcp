@@ -147,20 +147,20 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
 
     // Open deal detail
     await page.getByText(dealText).first().click();
-    const dialog = page.getByRole("dialog");
-    await expect(dialog).toBeVisible({ timeout: t(10_000) });
+    const panel = page.getByTestId(dealDetail.panel);
+    await expect(panel).toBeVisible({ timeout: t(10_000) });
 
     // Click Agent History tab (MCP verified: testid "deal-detail-tabs-agents", role tab "Agent History")
     await page.getByRole("tab", { name: "Agent History" }).click();
     await page.waitForTimeout(demoPause.short);
 
     // MCP verified: heading "Agent Execution History" visible, flow entries show agent name + status
-    await expect(dialog.getByRole("heading", { name: "Agent Execution History" })).toBeVisible({ timeout: t(5_000) });
-    await expect(dialog.getByText("scout").first()).toBeVisible({ timeout: t(5_000) });
-    await expect(dialog.getByText("Planning").first()).toBeVisible({ timeout: t(5_000) });
+    await expect(panel.getByRole("heading", { name: "Agent Execution History" })).toBeVisible({ timeout: t(5_000) });
+    await expect(panel.getByText("scout").first()).toBeVisible({ timeout: t(5_000) });
+    await expect(panel.getByText("Planning").first()).toBeVisible({ timeout: t(5_000) });
 
     // Close for next test
-    await dialog.getByRole("button", { name: "Close" }).click();
+    await panel.getByRole("button", { name: "Close" }).click();
     await page.waitForTimeout(demoPause.short);
   });
 
@@ -263,13 +263,13 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
 
     // Open deal detail
     await page.getByText(dealText).first().click();
-    const dialog = page.getByRole("dialog");
-    await expect(dialog).toBeVisible({ timeout: t(10_000) });
+    const panel = page.getByTestId(dealDetail.panel);
+    await expect(panel).toBeVisible({ timeout: t(10_000) });
 
     // Overview tab → Call Scheduling
     await page.getByRole("tab", { name: "Overview" }).click();
     await page.waitForTimeout(demoPause.short);
-    await expect(dialog.getByText("Call Scheduling")).toBeVisible({ timeout: t(5_000) });
+    await expect(panel.getByText("Call Scheduling")).toBeVisible({ timeout: t(5_000) });
 
     // Fill form
     await page.getByTestId(callScheduling.row("discovery")).click();
@@ -284,19 +284,19 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
     await expect(page.getByText("Call schedule updated")).toBeVisible({ timeout: t(5_000) });
 
     // IMPROVEMENT: close panel, reopen, verify "Phone" persists
-    await dialog.getByRole("button", { name: "Close" }).click();
+    await panel.getByRole("button", { name: "Close" }).click();
     await page.waitForTimeout(demoPause.short);
 
     await page.getByText(dealText).first().click();
-    await expect(page.getByRole("dialog")).toBeVisible({ timeout: t(10_000) });
+    await expect(page.getByTestId(dealDetail.panel)).toBeVisible({ timeout: t(10_000) });
     await page.getByRole("tab", { name: "Overview" }).click();
     await page.waitForTimeout(demoPause.short);
 
     // This is the key assertion — does the saved method survive a panel close+reopen?
-    await expect(page.getByRole("dialog").getByText("Phone")).toBeVisible({ timeout: t(5_000) });
+    await expect(page.getByTestId(dealDetail.panel).getByText("Phone")).toBeVisible({ timeout: t(5_000) });
 
     // Close panel for next test
-    await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
+    await page.getByTestId(dealDetail.panel).getByRole("button", { name: "Close" }).click();
     await page.waitForTimeout(demoPause.short);
   });
 
@@ -319,8 +319,8 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
 
     // Open deal, go to Deck tab
     await page.getByText(dealText).first().click();
-    const dialog = page.getByRole("dialog");
-    await expect(dialog).toBeVisible({ timeout: t(10_000) });
+    const panel = page.getByTestId(dealDetail.panel);
+    await expect(panel).toBeVisible({ timeout: t(10_000) });
     await page.getByRole("tab", { name: "Deck & Close" }).click();
     await page.waitForTimeout(demoPause.short);
 
@@ -336,9 +336,9 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
     expect(deal.invoice_id, "invoice_id should be set after sending invoice").toBeTruthy();
 
     // IMPROVEMENT: UI should reflect invoice sent status
-    await expect(dialog.getByText("Invoice sent")).toBeVisible({ timeout: t(5_000) });
+    await expect(panel.getByText("Invoice sent")).toBeVisible({ timeout: t(5_000) });
 
-    await dialog.getByRole("button", { name: "Close" }).click();
+    await panel.getByRole("button", { name: "Close" }).click();
     await page.waitForTimeout(demoPause.short);
   });
 

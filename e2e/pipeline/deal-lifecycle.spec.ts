@@ -84,7 +84,7 @@ test.describe("DL-1: Create and track a deal through the pipeline", () => {
 
     // When: click the deal card
     await page.getByText(dealText).first().click();
-    const panel = page.getByRole("dialog");
+    const panel = page.getByTestId(dealDetail.panel);
     await expect(panel).toBeVisible({ timeout: t(10_000) });
 
     // Then: panel has deal name heading
@@ -112,23 +112,26 @@ test.describe("DL-1: Create and track a deal through the pipeline", () => {
     test.setTimeout(30_000);
     const dealText = DEAL_NAME.replace(`${TEST_DATA_PREFIX} `, "");
 
-    // Open the deal detail dialog
+    // Open the deal detail drawer
     await page.getByText(dealText).first().click();
-    const dialog = page.getByRole("dialog");
-    await expect(dialog).toBeVisible({ timeout: t(10_000) });
+    const panel = page.getByTestId(dealDetail.panel);
+    await expect(panel).toBeVisible({ timeout: t(10_000) });
 
-    // MCP verified: Expand button at data-testid="deal-detail-expand", text "Expand"
+    // Drawer mode: Expand button visible with text "Expand"
     const expandBtn = page.getByTestId(dealDetail.expand);
     await expect(expandBtn).toBeVisible({ timeout: t(5_000) });
-    await expect(expandBtn).toHaveText("Expand", { timeout: t(3_000) });
 
-    // Click Expand — button text should change to "Minimize" (proves expansion happened)
+    // Click Expand — switches from drawer to fullscreen dialog
     await expandBtn.click();
-    await page.waitForTimeout(demoPause.short);
-    await expect(expandBtn).toHaveText("Minimize", { timeout: t(5_000) });
+    await page.waitForTimeout(demoPause.medium);
 
-    // Close dialog for next test
-    await dialog.getByRole("button", { name: "Close" }).click();
+    // Expanded mode: dialog wrapper visible with testid "deal-detail-expanded"
+    await expect(page.getByTestId(dealDetail.expanded)).toBeVisible({ timeout: t(5_000) });
+    // Panel content still accessible inside the expanded dialog
+    await expect(page.getByTestId(dealDetail.panel)).toBeVisible({ timeout: t(3_000) });
+
+    // Close expanded dialog
+    await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
     await page.waitForTimeout(demoPause.short);
   });
 });
@@ -220,13 +223,13 @@ test.describe("DL-2: Move deals between stages", () => {
     await expect(intelColumn.getByText(dl2DealText)).toBeVisible({ timeout: t(10_000) });
     await intelColumn.getByText(dl2DealText).click();
 
-    const dialog = page.getByRole("dialog");
-    await expect(dialog).toBeVisible({ timeout: t(10_000) });
+    const panel = page.getByTestId(dealDetail.panel);
+    await expect(panel).toBeVisible({ timeout: t(10_000) });
     await page.waitForTimeout(demoPause.short);
 
     // MCP verified: stage bar items have title="Move to {stage}" attribute
     // The visible text is just the stage name, but title gives the clickable action
-    const moveTarget = dialog.getByTitle("Move to Business Analysis");
+    const moveTarget = panel.getByTitle("Move to Business Analysis");
     await expect(moveTarget).toBeVisible({ timeout: t(5_000) });
     await moveTarget.click();
     await page.waitForTimeout(demoPause.long);
@@ -235,7 +238,7 @@ test.describe("DL-2: Move deals between stages", () => {
     await expect(page.getByText("Moved to Business Analysis")).toBeVisible({ timeout: t(5_000) });
 
     // Close the detail panel
-    await dialog.getByRole("button", { name: "Close" }).click();
+    await panel.getByRole("button", { name: "Close" }).click();
     await page.waitForTimeout(demoPause.short);
 
     // And: kanban board shows deal in BA column

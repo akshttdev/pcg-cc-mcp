@@ -32,8 +32,9 @@ export const dealCard = {
 // ── Deal Detail Panel (deal-detail/) ─────────────────────────────────────────
 
 export const dealDetail = {
-  sheet: "deal-detail-sheet",
-  dialog: "deal-detail-dialog",
+  panel: "deal-detail-panel",
+  drawer: "deal-detail-drawer",
+  expanded: "deal-detail-expanded",
   expand: "deal-detail-expand",
   edit: "deal-detail-edit",
   delete: "deal-detail-delete",

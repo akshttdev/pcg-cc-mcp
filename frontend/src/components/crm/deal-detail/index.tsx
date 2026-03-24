@@ -1,9 +1,10 @@
-import { useState, useRef } from 'react';
-import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { useState } from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { TabPanel, TabsContent } from '@/components/ui/tabs';
 import type { TabDefinition } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { ResizableDrawer } from '@/components/ui/resizable-drawer';
+import { dealDetail as tid } from 'shared/testids';
 import { DealHeader, PipelineStepper } from './DealHeader';
 import { OverviewTab } from './tabs/OverviewTab';
 import { IntelTab } from './tabs/IntelTab';
@@ -48,10 +49,7 @@ export function CrmDealDetailPanel({
 }: CrmDealDetailPanelProps) {
   const [activeTab, setActiveTab] = useState('overview');
   const [convertOpen, setConvertOpen] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
-  // Ref tracks expand intent so Sheet's onOpenChange callback can distinguish
-  // "user closed the sheet" from "sheet closing because we're switching to dialog"
-  const expandIntentRef = useRef(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   if (!deal) return null;
 
@@ -69,8 +67,8 @@ export function CrmDealDetailPanel({
   const proposalDot = deal.won_at ? undefined : deal.proposal_status === 'approved' ? 'green' : deal.proposal_text ? 'amber' : undefined;
   const deckDot = deal.won_at ? 'green' : deal.deck_url ? 'amber' : undefined;
 
-  const panelContent = (
-    <div className="flex flex-col h-full overflow-hidden">
+  const panelContent = (isExpanded: boolean, toggleExpand: () => void) => (
+    <div className="flex flex-col h-full overflow-hidden bg-background" data-testid="deal-detail-panel">
       {/* Stage color top bar */}
       <div className="h-1 w-full shrink-0" style={{ backgroundColor: stageColor }} />
 
@@ -81,11 +79,7 @@ export function CrmDealDetailPanel({
         onEdit={onEdit}
         onDelete={onDelete}
         isExpanded={isExpanded}
-        onToggleExpand={() => {
-          console.log(`[DealDetail] toggleExpand: isExpanded=${isExpanded} → ${!isExpanded}`);
-          expandIntentRef.current = !isExpanded;
-          setIsExpanded(!isExpanded);
-        }}
+        onToggleExpand={toggleExpand}
       />
 
           {/* Pipeline Stage Stepper */}
@@ -180,33 +174,42 @@ export function CrmDealDetailPanel({
     </div>
   );
 
+  // Fullscreen dialog mode
+  if (isFullscreen) {
+    return (
+      <>
+        <Dialog open={isOpen} onOpenChange={(open) => { if (!open) { setIsFullscreen(false); onClose(); } }}>
+          <DialogContent className="max-w-6xl h-[90vh] p-0 overflow-hidden flex flex-col" data-testid={tid.expanded}>
+            <DialogTitle className="sr-only">{deal.name}</DialogTitle>
+            <DialogDescription className="sr-only">Deal detail panel</DialogDescription>
+            {panelContent(true, () => setIsFullscreen(false))}
+          </DialogContent>
+        </Dialog>
+        <DealConvertDialog deal={deal} open={convertOpen} onOpenChange={setConvertOpen} orgId={orgId} />
+      </>
+    );
+  }
+
+  // Resizable drawer mode (default) — drag left edge to resize
   return (
     <>
-      {/* Render both Sheet and Dialog — only one is open at a time.
-          This avoids the unmount race where Sheet's onOpenChange(false)
-          fires during conditional rendering and closes the panel. */}
-      <Sheet open={isOpen && !isExpanded} onOpenChange={(open) => {
-        console.log(`[DealDetail] Sheet.onOpenChange: open=${open}, expandIntent=${expandIntentRef.current}, isExpanded=${isExpanded}`);
-        if (!open && !expandIntentRef.current) {
-          console.log(`[DealDetail] Sheet.onOpenChange → calling onClose()`);
-          onClose();
-        }
-        if (expandIntentRef.current) expandIntentRef.current = false;
-      }}>
-        <SheetContent className="w-full sm:max-w-xl overflow-hidden flex flex-col p-0" data-testid="deal-detail-sheet">
-          <SheetTitle className="sr-only">{deal.name}</SheetTitle>
-          <SheetDescription className="sr-only">Deal detail panel</SheetDescription>
-          {!isExpanded && panelContent}
-        </SheetContent>
-      </Sheet>
-      <Dialog open={isOpen && isExpanded} onOpenChange={(open) => { if (!open) { setIsExpanded(false); onClose(); } }}>
-        <DialogContent className="max-w-6xl h-[90vh] p-0 overflow-hidden flex flex-col" data-testid="deal-detail-dialog">
-          <DialogTitle className="sr-only">{deal.name}</DialogTitle>
-          <DialogDescription className="sr-only">Deal detail panel</DialogDescription>
-          {isExpanded && panelContent}
-        </DialogContent>
-      </Dialog>
-
+      <ResizableDrawer
+        open={isOpen}
+        onClose={onClose}
+        defaultWidth={560}
+        minWidth={400}
+        storageKey="orcha:deal-drawer-width"
+        className="border-l border-border bg-background"
+        data-testid={tid.drawer}
+      >
+        {({ isExpanded }) => {
+          // If user clicks expand in the drawer, switch to fullscreen dialog
+          if (isExpanded) {
+            setTimeout(() => setIsFullscreen(true), 0);
+          }
+          return panelContent(false, () => setIsFullscreen(true));
+        }}
+      </ResizableDrawer>
       <DealConvertDialog deal={deal} open={convertOpen} onOpenChange={setConvertOpen} orgId={orgId} />
     </>
   );
