@@ -735,7 +735,7 @@ impl AgentFlowExecutor {
         };
 
         let next_stage: Option<(String, String)> = sqlx::query_as(
-            "SELECT id, name FROM crm_pipeline_stages WHERE crm_pipeline_id = ?1 AND position > ?2 ORDER BY position ASC LIMIT 1",
+            "SELECT id, name FROM crm_pipeline_stages WHERE pipeline_id = ?1 AND position > ?2 ORDER BY position ASC LIMIT 1",
         )
         .bind(&pipeline_id)
         .bind(pos)
