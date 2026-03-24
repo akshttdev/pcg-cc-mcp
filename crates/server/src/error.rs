@@ -86,6 +86,8 @@ pub enum ApiError {
     InternalError(String),
     #[error("Payment Required: {0}")]
     PaymentRequired(String),
+    #[error("Validation Failed")]
+    ValidationFailed(serde_json::Value),
 }
 
 impl From<Git2Error> for ApiError {
@@ -262,6 +264,7 @@ impl IntoResponse for ApiError {
             ApiError::TooManyRequests(_) => (StatusCode::TOO_MANY_REQUESTS, "TooManyRequests"),
             ApiError::InternalError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "InternalError"),
             ApiError::PaymentRequired(_) => (StatusCode::PAYMENT_REQUIRED, "PaymentRequired"),
+            ApiError::ValidationFailed(_) => (StatusCode::BAD_REQUEST, "ValidationFailed"),
             ApiError::EmailAccount(e) => match e {
                 EmailAccountError::NotFound => (StatusCode::NOT_FOUND, "EmailAccountNotFound"),
                 _ => (StatusCode::INTERNAL_SERVER_ERROR, "EmailAccountError"),
@@ -329,8 +332,13 @@ impl IntoResponse for ApiError {
             ApiError::TooManyRequests(msg) => msg.clone(),
             ApiError::InternalError(msg) => msg.clone(),
             ApiError::PaymentRequired(msg) => msg.clone(),
+            ApiError::ValidationFailed(_) => "Validation failed".to_string(),
             _ => format!("{}: {}", error_type, self),
         };
+        // ValidationFailed returns its own JSON body with warnings array
+        if let ApiError::ValidationFailed(body) = &self {
+            return (status_code, Json(body.clone())).into_response();
+        }
         let response = ApiResponse::<()>::error(&error_message);
         (status_code, Json(response)).into_response()
     }

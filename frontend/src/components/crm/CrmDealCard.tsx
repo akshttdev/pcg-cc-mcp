@@ -36,6 +36,7 @@ import { cn } from '@/lib/utils';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Link } from 'react-router-dom';
 import type { CrmDealWithContact } from '@/types/crm';
+import { dealCard as tid } from 'shared/testids';
 import { formatDistanceToNow } from 'date-fns';
 
 interface BoardProgressInfo {
@@ -171,6 +172,7 @@ export function CrmDealCard({ deal, stageName, stageColor, onEdit, onDelete, onM
                   variant="ghost"
                   size="sm"
                   className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 hover:bg-muted transition-opacity shrink-0"
+                  data-testid={tid.menu(deal.id)}
                 >
                   <MoreHorizontal className="h-3.5 w-3.5" />
                 </Button>

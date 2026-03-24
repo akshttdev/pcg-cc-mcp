@@ -4,6 +4,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { ArrowDown, ArrowUp, Pencil, Trash2 } from 'lucide-react';
 import type { CrmPipelineStage } from '@/types/crm';
+import { pipelineSettings as tid } from 'shared/testids';
 
 interface PipelineSettingsStagesTabProps {
   stages: CrmPipelineStage[];
@@ -24,7 +25,7 @@ export function PipelineSettingsStagesTab({
     <ScrollArea className="h-[480px]">
       <div className="space-y-3 p-4">
         {stages.map((stage, index) => (
-          <div key={stage.id} className="rounded-lg border bg-card px-4 py-3">
+          <div key={stage.id} className="rounded-lg border bg-card px-4 py-3" data-testid={tid.stageRow(stage.name)}>
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2">
@@ -40,7 +41,7 @@ export function PipelineSettingsStagesTab({
               <div className="flex items-center gap-2">
                 <IconButton icon={ArrowUp} label="Move up" variant="ghost" className="h-8 w-8" onClick={() => onMoveStage(stage.id, 'up')} disabled={index === 0 || isReordering} />
                 <IconButton icon={ArrowDown} label="Move down" variant="ghost" className="h-8 w-8" onClick={() => onMoveStage(stage.id, 'down')} disabled={index === stages.length - 1 || isReordering} />
-                <IconButton icon={Pencil} label="Edit stage" variant="ghost" className="h-8 w-8" onClick={() => onEditStage(stage)} />
+                <IconButton icon={Pencil} label="Edit stage" variant="ghost" className="h-8 w-8" onClick={() => onEditStage(stage)} data-testid={tid.stageEdit(stage.name)} />
                 <IconButton icon={Trash2} label="Delete stage" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => onDeleteStage(stage)} />
               </div>
             </div>

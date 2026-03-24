@@ -215,14 +215,17 @@ pub async fn advance_deal(
         )));
     }
 
-    // F7: Intel Completeness Gate — require operator context + person/company intel before advancing from Intel→BA
+    // F7: Intel Completeness Gate — collect ALL validation failures, return together
     if current_stage_name_lower == "intel" {
+        let mut warnings: Vec<serde_json::Value> = Vec::new();
+
         // Check deal.description is not empty (operator context)
         let desc = deal.description.as_deref().unwrap_or("");
         if desc.trim().is_empty() {
-            return Err(ApiError::BadRequest(
-                "Cannot advance from Intel: deal description (operator context) is required. Add notes about the lead before advancing.".to_string(),
-            ));
+            warnings.push(serde_json::json!({
+                "field": "description",
+                "message": "Deal description (operator context) is required. Add notes about the lead before advancing."
+            }));
         }
 
         // Check person intelligence_status via crm_contact_id (use CAST for BLOB/TEXT compat)
@@ -249,10 +252,10 @@ pub async fn advance_deal(
             person_intel_status.as_deref(),
             Some("done") | Some("complete")
         ) {
-            return Err(ApiError::BadRequest(format!(
-                "Cannot advance from Intel: person intelligence is '{}'. Wait for Scout research to finish.",
-                person_intel_status.as_deref().unwrap_or("missing")
-            )));
+            warnings.push(serde_json::json!({
+                "field": "person_intelligence",
+                "message": format!("Person intelligence is '{}'. Wait for Scout research to finish.", person_intel_status.as_deref().unwrap_or("missing"))
+            }));
         }
 
         // Check company intelligence_status via person.company_name (CAST for BLOB/TEXT compat)
@@ -279,10 +282,21 @@ pub async fn advance_deal(
             company_intel_status.as_deref(),
             Some("done") | Some("complete")
         ) {
-            return Err(ApiError::BadRequest(format!(
-                "Cannot advance from Intel: company intelligence is '{}'. Wait for company research to finish.",
-                company_intel_status.as_deref().unwrap_or("missing")
-            )));
+            warnings.push(serde_json::json!({
+                "field": "company_intelligence",
+                "message": format!("Company intelligence is '{}'. Wait for company research to finish.", company_intel_status.as_deref().unwrap_or("missing"))
+            }));
+        }
+
+        if !warnings.is_empty() {
+            let fields: Vec<String> = warnings.iter().filter_map(|w| w["field"].as_str().map(String::from)).collect();
+            let summary = format!("Cannot advance from Intel: {} validation(s) failed ({})", warnings.len(), fields.join(", "));
+            let body = serde_json::json!({
+                "success": false,
+                "message": summary,
+                "warnings": warnings,
+            });
+            return Err(ApiError::ValidationFailed(body));
         }
     }
 

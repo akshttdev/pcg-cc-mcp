@@ -11,10 +11,12 @@ interface EmptyStateProps {
   action?: {
     label: string;
     onClick: () => void;
+    'data-testid'?: string;
   };
   secondaryAction?: {
     label: string;
     onClick: () => void;
+    'data-testid'?: string;
   };
   className?: string;
   /** Visual variant: 'default' uses the standard layout; 'branded' adds a dashed border and tinted background */
@@ -106,10 +108,10 @@ export function EmptyState({
       {(action || secondaryAction) && (
         <div className="flex gap-3">
           {action && (
-            <Button onClick={action.onClick}>{action.label}</Button>
+            <Button onClick={action.onClick} data-testid={action['data-testid']}>{action.label}</Button>
           )}
           {secondaryAction && (
-            <Button variant="outline" onClick={secondaryAction.onClick}>
+            <Button variant="outline" onClick={secondaryAction.onClick} data-testid={secondaryAction['data-testid']}>
               {secondaryAction.label}
             </Button>
           )}

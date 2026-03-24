@@ -87,10 +87,19 @@ export default defineConfig({
     {
       name: browser,
       dependencies: ["setup"],
-      testIgnore: /demos\/|quarantine\//,
+      testIgnore: /demos\/|quarantine\/|pipeline\//,
       use: {
         ...devices[browserDeviceMap[browser] || "Desktop Chrome"],
         storageState: authFile,
+      },
+    },
+
+    // Pipeline specs — shared page, login in first test, no auth setup
+    {
+      name: "pipeline",
+      testMatch: /pipeline\/.+\.spec\.ts/,
+      use: {
+        ...devices[browserDeviceMap[browser] || "Desktop Chrome"],
       },
     },
 

@@ -82,7 +82,7 @@ export async function openDealDetail(page: Page, dealNameFragment: string) {
   await card.first().click();
 
   // Wait for detail panel
-  const dialog = page.locator('[role="dialog"]');
+  const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible({ timeout: t(10_000) });
   await page.waitForTimeout(demoPause.short);
   return dialog;
@@ -100,7 +100,7 @@ export async function clickDetailTab(page: Page, tabName: string) {
 /** Close the deal detail panel. */
 export async function closeDealDetail(page: Page) {
   const closeBtn = page
-    .locator('[role="dialog"]')
+    .getByRole("dialog")
     .getByRole("button", { name: /close/i })
     .first();
   if (await closeBtn.isVisible().catch(() => false)) {
@@ -111,58 +111,54 @@ export async function closeDealDetail(page: Page) {
 
 // ── Stage Transitions via UI ─────────────────────────────────────────────────
 
-/** Move a deal to a target stage via the context menu "Move to..." submenu. */
+/** Move a deal to a target stage via the context menu "Move to..." submenu.
+ *  Requires data-testid="deal-menu-{dealId}" on the three-dot button. */
 export async function moveDealViaContextMenu(
   page: Page,
   dealNameFragment: string,
   targetStage: string
 ) {
-  // Find and right-click (or click the "..." menu) on the deal card
-  const card = page
-    .getByRole("button", { name: new RegExp(dealNameFragment, "i") })
-    .first();
-  await expect(card).toBeVisible({ timeout: t(10_000) });
+  // Find the deal card by text content
+  const dealCard = page.getByText(dealNameFragment, { exact: false }).first();
+  await expect(dealCard).toBeVisible({ timeout: t(10_000) });
 
-  // Hover to reveal the "..." menu button
-  await card.hover();
+  // Hover the card to reveal the hidden menu button
+  await dealCard.hover();
   await page.waitForTimeout(demoPause.short);
 
-  // Click the three-dot menu
-  const menuBtn = card.locator('button:has(svg)').last();
-  await menuBtn.click();
+  // Click the three-dot menu — scoped to the specific deal card
+  // Strategy: find the deal-card-{id} wrapper that contains our deal text,
+  // then find the deal-menu-{id} inside it
+  const cardWrapper = page.locator('[data-testid^="deal-card-"]').filter({
+    hasText: new RegExp(dealNameFragment, "i"),
+  }).first();
+  const menuBtn = cardWrapper.locator('[data-testid^="deal-menu-"]');
+  await menuBtn.click({ force: true });
+  await page.waitForTimeout(demoPause.short);
 
-  // Click "Move to..."
-  await page.getByText("Move to...").click();
+  // Hover "Move to..." to open the submenu (radix sub-menus open on hover)
+  const moveToTrigger = page.getByText("Move to...");
+  await expect(moveToTrigger).toBeVisible({ timeout: t(3_000) });
+  await moveToTrigger.hover();
+  await page.waitForTimeout(demoPause.short);
 
-  // Click the target stage
-  await page.getByRole("menuitem", { name: targetStage }).click();
+  // Click the target stage in the submenu
+  const stageItem = page.getByRole("menuitem", { name: targetStage, exact: true });
+  await expect(stageItem).toBeVisible({ timeout: t(3_000) });
+  await stageItem.click();
 
-  await page.waitForTimeout(demoPause.medium);
+  // Wait for the move to complete
+  await page.waitForTimeout(demoPause.long);
 }
 
 // ── Pipeline Settings UI ─────────────────────────────────────────────────────
 
-/** Open pipeline settings from the gear icon on the pipeline board. */
+/** Open pipeline settings from the gear icon on the pipeline board.
+ *  Requires data-testid="pipeline-settings" on the gear button. */
 export async function openPipelineSettings(page: Page) {
-  // The gear icon is an icon-only button next to "Add Deal"
-  const settingsBtn = page
-    .locator('.inline-flex.items-center.justify-center.whitespace-nowrap')
-    .filter({ has: page.locator('svg') })
-    .last();
-
-  // Simpler: it's the button right after "Add Deal" in the header
-  const addDeal = page.getByRole("button", { name: "Add Deal", exact: true }).first();
-  const gearBtn = addDeal.locator('~ button').first();
-
-  if (await gearBtn.isVisible().catch(() => false)) {
-    await gearBtn.click();
-  } else {
-    // Fallback: click by position relative to "Add Deal"
-    const addDealBox = await addDeal.boundingBox();
-    if (addDealBox) {
-      await page.mouse.click(addDealBox.x + addDealBox.width + 30, addDealBox.y + addDealBox.height / 2);
-    }
-  }
+  const gearBtn = page.getByTestId("pipeline-settings");
+  await expect(gearBtn).toBeVisible({ timeout: t(10_000) });
+  await gearBtn.click();
 
   await expect(
     page.getByRole("heading", { name: "Pipeline Settings" })

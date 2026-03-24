@@ -20,6 +20,7 @@ import { useCreateDeal, useCrmKanban, useCrmPipelineByType, useDeleteDeal,useMov
 import { useProjectBoardProgress } from '@/hooks/useProjectBoardProgress';
 import { formatCurrencyFull } from '@/lib/formatters';
 import type { CreateCrmDeal, CrmDealWithContact, PipelineType, UpdateCrmDeal } from '@/types/crm';
+import { pipeline as tid, dealCard as dealTid } from 'shared/testids';
 
 import { CrmDealCard } from './CrmDealCard';
 import { CrmDealDetailPanel } from './CrmDealDetailPanel';
@@ -289,7 +290,7 @@ export function CrmPipelineBoard({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={() => handleAddDeal()} size="sm">
+          <Button onClick={() => handleAddDeal()} size="sm" data-testid={tid.addDeal}>
             Add Deal
           </Button>
           {onSettingsClick && (
@@ -297,6 +298,7 @@ export function CrmPipelineBoard({
               variant="outline" className="h-8 w-8" onClick={onSettingsClick}
               icon={Settings}
               label="Pipeline settings"
+              data-testid={tid.settings}
             />
           )}
         </div>
@@ -314,7 +316,7 @@ export function CrmPipelineBoard({
               : undefined;
 
             return (
-              <KanbanBoard key={stage.id} id={stage.id}>
+              <KanbanBoard key={stage.id} id={stage.id} data-testid={tid.stageColumn(stage.name)}>
                 <KanbanHeader>
                   <div
                     className="sticky top-0 z-20 flex shrink-0 flex-col gap-1 p-3 border-b border-dashed bg-background"
@@ -379,6 +381,7 @@ export function CrmPipelineBoard({
                         name={deal.name}
                         index={index}
                         parent={stage.id}
+                        data-testid={dealTid.card(deal.id)}
                         onClick={() => { setSelectedDeal(deal); setSelectedDealStage(stage.name); }}
                         isOpen={selectedDeal?.id === deal.id}
                         className="mx-2 my-1.5 p-0 rounded-lg border border-border/60 hover:border-border hover:shadow-sm transition-all"

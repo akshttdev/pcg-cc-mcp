@@ -199,11 +199,33 @@ pub async fn process_transition(
         }
     }
 
-    // ── 2. Won transition (deduplicated, uses contact_id dedup) ─────────
+    // ── 2. Won/Lost timestamps ──────────────────────────────────────────
     let is_won = to_stage.is_won.unwrap_or(0) == 1;
+    let is_closed = to_stage.is_closed.unwrap_or(0) == 1;
+    let is_lost = is_closed && !is_won;
+
     if is_won {
+        // Set won_at and trigger delivery deal creation
+        if let Err(e) = sqlx::query(
+            "UPDATE crm_deals SET won_at = datetime('now','subsec'), updated_at = datetime('now','subsec') WHERE id = ?1 AND won_at IS NULL"
+        ).bind(deal.id.to_string()).execute(pool).await {
+            tracing::warn!("[StageTransition] Failed to set won_at for deal {}: {}", deal.id, e);
+        } else {
+            actions_taken.push("Set won_at".to_string());
+        }
         if let Some(action) = handle_won_transition(pool, deal).await {
             actions_taken.push(action);
+        }
+    }
+
+    if is_lost {
+        // Set lost_at when deal enters a closed-but-not-won stage
+        if let Err(e) = sqlx::query(
+            "UPDATE crm_deals SET lost_at = datetime('now','subsec'), updated_at = datetime('now','subsec') WHERE id = ?1 AND lost_at IS NULL"
+        ).bind(deal.id.to_string()).execute(pool).await {
+            tracing::warn!("[StageTransition] Failed to set lost_at for deal {}: {}", deal.id, e);
+        } else {
+            actions_taken.push("Set lost_at".to_string());
         }
     }
 
@@ -213,41 +235,6 @@ pub async fn process_transition(
 
         for action in &effective_actions {
             match action {
-                StageAction::TriggerAgent { agent, flow_type } => {
-                    const KNOWN_AGENTS: &[&str] =
-                        &["scout", "astra", "cash", "lux", "nora", "assistant"];
-                    if !KNOWN_AGENTS.contains(&agent.to_lowercase().as_str()) {
-                        tracing::warn!(
-                            "[StageTransition] Unknown agent '{}' in stage config — skipping",
-                            agent
-                        );
-                        continue;
-                    }
-                    if config.auto_trigger {
-                        match schedule_agent_flow(
-                            pool,
-                            deal,
-                            agent,
-                            flow_type,
-                            config.cancel_window_secs,
-                        )
-                        .await
-                        {
-                            Ok((flow_id, deadline)) => {
-                                agent_flow_id = Some(flow_id);
-                                cancel_deadline = Some(deadline);
-                                actions_taken.push(format!("Scheduled {} agent", agent));
-                            }
-                            Err(e) => {
-                                tracing::error!(
-                                    "Failed to schedule agent flow for deal {}: {}",
-                                    deal.id,
-                                    e
-                                );
-                            }
-                        }
-                    }
-                }
                 StageAction::CreateReviewTask { description } => {
                     let stage_name = to_stage.name.to_lowercase();
                     manage_stage_review_tasks(pool, deal, description, &stage_name).await;
@@ -256,6 +243,46 @@ pub async fn process_transition(
                 StageAction::CreateDeliveryDeal => {
                     if let Some(action) = handle_won_transition(pool, deal).await {
                         actions_taken.push(action);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // Pass 2: agent triggers (can now find the review task for FK)
+        for action in &effective_actions {
+            if let StageAction::TriggerAgent { agent, flow_type } = action {
+                const KNOWN_AGENTS: &[&str] =
+                    &["scout", "astra", "cash", "lux", "nora", "assistant"];
+                if !KNOWN_AGENTS.contains(&agent.to_lowercase().as_str()) {
+                    tracing::warn!(
+                        "[StageTransition] Unknown agent '{}' in stage config — skipping",
+                        agent
+                    );
+                    continue;
+                }
+                if config.auto_trigger {
+                    match schedule_agent_flow(
+                        pool,
+                        deal,
+                        agent,
+                        flow_type,
+                        config.cancel_window_secs,
+                    )
+                    .await
+                    {
+                        Ok((flow_id, deadline)) => {
+                            agent_flow_id = Some(flow_id);
+                            cancel_deadline = Some(deadline);
+                            actions_taken.push(format!("Scheduled {} agent", agent));
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                "Failed to schedule agent flow for deal {}: {}",
+                                deal.id,
+                                e
+                            );
+                        }
                     }
                 }
             }
@@ -561,9 +588,12 @@ async fn schedule_agent_flow(
     flow_type: &str,
     cancel_window_secs: u32,
 ) -> anyhow::Result<(String, DateTime<Utc>)> {
+    tracing::info!("[schedule_agent_flow] Creating flow for deal {} agent={} flow_type={}", deal.id, agent_name, flow_type);
+
     // Clamp cancel window to reasonable bounds (0 = immediate, max 1 hour)
     let clamped_window = cancel_window_secs.min(3600);
-    let flow_id = DbUuid::new().to_string();
+    let flow_uuid = DbUuid::new();
+    let flow_id = flow_uuid.to_string();
     let deadline = Utc::now() + chrono::Duration::seconds(clamped_window as i64);
 
     // Map pipeline flow types to agent_flows CHECK constraint values.
@@ -633,6 +663,7 @@ async fn schedule_agent_flow(
     .execute(pool)
     .await?;
 
+    tracing::info!("[schedule_agent_flow] Created flow {} for deal {}", flow_id, deal.id);
     Ok((flow_id, deadline))
 }
 
