@@ -86,6 +86,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
             <Button
               size="sm"
               className="gap-1.5 bg-pink-600 hover:bg-pink-700 text-white"
+              data-testid="deck-generate"
               onClick={() => generateDeck.mutate()}
               disabled={generateDeck.isPending || !deal.proposal_text}
             >
@@ -161,6 +162,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
                       variant="outline"
                       size="sm"
                       className="gap-1.5 text-xs border-blue-500/40 text-blue-400 hover:bg-blue-950/30"
+                      data-testid="deck-send-invoice"
                       onClick={() => setInvoiceSending(true)}
                       disabled={!deal.amount || isTooEarly}
                       title={isTooEarly ? 'Available after presenting to client' : undefined}
@@ -216,6 +218,7 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
                 variant="outline"
                 size="sm"
                 className="gap-1.5 text-xs border-yellow-500/40 text-yellow-400 hover:bg-yellow-950/30"
+                data-testid="deck-mark-won"
                 onClick={() => setMarkingWon(true)}
               >
                 <Trophy className="h-3.5 w-3.5" />
@@ -333,6 +336,7 @@ function InviteLinkSection({ deal }: { deal: CrmDealWithContact }) {
             variant="outline"
             size="sm"
             className="gap-1.5 text-xs border-emerald-500/40 text-emerald-400 hover:bg-emerald-950/30"
+            data-testid="deck-generate-invite"
             onClick={() => generateInvite.mutate()}
             disabled={generateInvite.isPending}
           >

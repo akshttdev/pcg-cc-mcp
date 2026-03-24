@@ -709,3 +709,60 @@ Inline stage-trigger agents (Scout, Astra, Cash, Lux) coexist with engine in Pha
 3. ~~ai-usage.tsx extraction~~ → Extract tab components during cost bridge work (PR #54)
 4. ~~Cost API location~~ → Dedicated `frontend/src/lib/api/costs.ts` module
 5. ~~Stash verification~~ → Confirmed correct, contents match expectations
+
+---
+
+## Pipeline E2E Test Audit (2026-03-24)
+
+### Summary
+37 passing, 12 fixme (unimplemented features), 0 failures.
+Audit against Gherkin specs in `planning/BACKLOG--remaining-work.md` revealed significant gaps.
+
+### Backend Fix Applied
+- `advance_deal` handler now collects ALL Intel exit validation failures (description, person_intel, company_intel) and returns structured `{ warnings: [{field, message}] }` response instead of early-returning on first failure.
+- Added `ValidationFailed` error variant to `ApiError` enum.
+
+### Test-vs-Spec Gap Analysis
+
+#### Existence Checks Disguised as Tests (6 issues)
+| Spec | Current Test | Gap |
+|------|-------------|-----|
+| DD-2: Fill date/method/status, click Save, verify persistence | Checks "Call Scheduling" text is visible | Does NOT fill form or save |
+| DD-3: Click "Generate Invite Link" on Won deal, get URL, copy | Checks invite NOT visible on non-Won deal | No happy path test |
+| DD-4: Click "Send Invoice", verify invoice_id stored | Checks button is enabled | Does NOT click Send Invoice |
+| PC-2: Save stage config → verify behavior changes | Toggles checkbox but doesn't save+reopen | No round-trip verification |
+| PC-3: Per-stage agent assignments match plan | Checks agent names visible | Doesn't verify per-stage mapping |
+| DL-1: Card shows contact name | Checks amount and probability | Contact name not verified |
+
+#### Spec/Code Mismatch — Soft vs Hard Gates (2 issues)
+| Spec | Says | Code Does |
+|------|------|-----------|
+| RG-1: Pending tasks | "advance succeeds (soft enforcement)" | Returns 400 (hard block) |
+| RG-2: Missing description | "move still succeeds (soft gate)" | Returns 400 (hard block) |
+
+**Decision needed**: Are gates soft (warn but allow) or hard (block)? Current code is hard. Spec says soft. Tests currently match code (400). Context menu moves ARE soft (allow with toast).
+
+#### Missing Happy Path Tests (3 issues)
+| Spec | Missing |
+|------|---------|
+| DD-1: Link transcript via API, verify it appears in tab | No transcript linking test |
+| DD-3: Generate invite link on Won deal | No Won-stage invite test |
+| DD-4: Click Send Invoice, verify invoice_id stored | No invoice sending test |
+
+#### Missing/Weak Assertions (5 issues)
+| Spec | Current | Gap |
+|------|---------|-----|
+| AA-1: Card shows "Scout running..." badge | Checks "Needs review" only | "Scout running" badge not tested |
+| AA-1: 30-second cancel window | Not tested | Cancel flow missing |
+| AA-2/3/5: Agent flow created with correct flow_type | Only checks review task count | No flow_type verification |
+| DL-2: Toast confirms transition | `hasToast \|\| true` always passes | Fake assertion |
+| AA-1: Agent flow for Scout | Allows missing flows, logs warning | Permissive — should assert |
+
+### Fix Plan
+1. Add Gherkin specs as comments in every test block
+2. Replace existence checks with real form interactions (DD-2, DD-4)
+3. Add RED failing tests for missing happy paths (DD-3 invite, DD-1 transcript linking)
+4. Fix DL-2 toast test — verify during the move, not after
+5. Strengthen AA-1/2/3/5 agent flow assertions
+6. Add PC-2 save+reopen round-trip test
+7. Document soft-vs-hard gate decision for RG-1/RG-2

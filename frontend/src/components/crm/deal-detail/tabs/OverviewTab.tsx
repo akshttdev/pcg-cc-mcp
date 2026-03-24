@@ -132,6 +132,7 @@ function CallSchedulingSection({
                   defaultValue={date || ''}
                   className="w-full h-8 px-2 text-sm border rounded bg-background"
                   id={`${type}-date`}
+                  data-testid={`call-${type}-date`}
                 />
               </div>
               <div>
@@ -140,6 +141,7 @@ function CallSchedulingSection({
                   defaultValue={method}
                   className="w-full h-8 px-2 text-sm border rounded bg-background"
                   id={`${type}-method`}
+                  data-testid={`call-${type}-method`}
                 >
                   {CALL_METHODS.map((m) => (
                     <option key={m} value={m}>{m}</option>
@@ -153,6 +155,7 @@ function CallSchedulingSection({
                 defaultValue={status}
                 className="w-full h-8 px-2 text-sm border rounded bg-background"
                 id={`${type}-status`}
+                data-testid={`call-${type}-status`}
               >
                 {CALL_STATUSES.map((s) => (
                   <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
@@ -163,6 +166,7 @@ function CallSchedulingSection({
               <Button
                 size="sm"
                 className="h-7 text-xs"
+                data-testid={`call-${type}-save`}
                 disabled={saveMutation.isPending}
                 onClick={() => {
                   const dateEl = document.getElementById(`${type}-date`) as HTMLInputElement;
@@ -189,6 +193,7 @@ function CallSchedulingSection({
     return (
       <div
         className="flex items-center justify-between text-sm cursor-pointer hover:bg-muted/50 rounded px-2 py-1.5 -mx-2 transition-colors"
+        data-testid={`call-${type}-row`}
         onClick={() => setEditing(type)}
       >
         <div className="flex items-center gap-2">

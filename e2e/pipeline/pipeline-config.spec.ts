@@ -11,6 +11,7 @@
 import { test, expect } from "./fixtures";
 import { t, demoPause, login } from "../helpers";
 import { PIPELINE_URL } from "./helpers";
+import { pipeline, pipelineSettings, tabs } from "./testids";
 
 test.describe("Pipeline Configuration (PC-1 to PC-3)", () => {
   test.describe.configure({ mode: "serial" });
@@ -24,7 +25,7 @@ test.describe("Pipeline Configuration (PC-1 to PC-3)", () => {
     await expect(page.getByText("Acquisition Pipeline")).toBeVisible({ timeout: t(15_000) });
 
     // Click gear icon — MCP verified: data-testid="pipeline-settings"
-    await page.getByTestId("pipeline-settings").click();
+    await page.getByTestId(pipeline.settings).click();
     await page.waitForTimeout(demoPause.medium);
 
     // Then: dialog opens with "Pipeline Settings" heading
@@ -38,7 +39,7 @@ test.describe("Pipeline Configuration (PC-1 to PC-3)", () => {
     // Use testid to avoid collision with org-level "Pipelines" tab
     await expect(page.getByRole("tab", { name: "Stages" })).toBeVisible();
     await expect(page.getByRole("tab", { name: "Automations" })).toBeVisible();
-    await expect(page.getByTestId("tab-settings")).toBeVisible();
+    await expect(page.getByTestId(tabs.trigger("settings"))).toBeVisible();
   });
 
   test("PC-1: can switch pipelines via dropdown", async ({ page }) => {
@@ -87,26 +88,26 @@ test.describe("Pipeline Configuration (PC-1 to PC-3)", () => {
     await page.waitForTimeout(demoPause.short);
 
     // Click the edit button for Intel stage — uses data-testid="stage-edit-intel"
-    await page.getByTestId("stage-edit-intel").click();
+    await page.getByTestId(pipelineSettings.stageEdit("intel")).click();
     await page.waitForTimeout(demoPause.short);
 
     // Edit Stage dialog should open with Stage/Automation/Active Rules tabs
     // Use testids to avoid collision with pipeline settings "Stages" tab
     await expect(page.getByRole("heading", { name: "Edit Stage" })).toBeVisible({ timeout: t(5_000) });
-    await expect(page.getByTestId("tab-stage")).toBeVisible();
-    await expect(page.getByTestId("tab-automation")).toBeVisible();
-    await expect(page.getByTestId("tab-rules")).toBeVisible();
+    await expect(page.getByTestId(tabs.trigger("stage"))).toBeVisible();
+    await expect(page.getByTestId(tabs.trigger("automation"))).toBeVisible();
+    await expect(page.getByTestId(tabs.trigger("rules"))).toBeVisible();
   });
 
   test("PC-2: Automation tab — verify and toggle agent controls", async ({ page }) => {
     test.setTimeout(30_000);
 
     // Switch to Automation tab in the Edit Stage dialog
-    await page.getByTestId("tab-automation").click();
+    await page.getByTestId(tabs.trigger("automation")).click();
     await page.waitForTimeout(demoPause.short);
 
     // Verify agent dropdown shows Scout — use combobox role to avoid strict mode
-    const agentSelect = page.getByTestId("tab-content-automation").getByRole("combobox");
+    const agentSelect = page.getByTestId(tabs.content("automation")).getByRole("combobox");
     await expect(agentSelect).toBeVisible({ timeout: t(5_000) });
 
     // Auto-trigger checkbox should be checked — verify then toggle OFF and back ON
@@ -139,13 +140,13 @@ test.describe("Pipeline Configuration (PC-1 to PC-3)", () => {
     await expect(page.getByRole("heading", { name: "Edit Stage" })).toBeVisible({ timeout: t(5_000) });
 
     // Click Active Rules tab
-    const rulesTabTrigger = page.getByTestId("tab-rules");
+    const rulesTabTrigger = page.getByTestId(tabs.trigger("rules"));
     await expect(rulesTabTrigger).toBeVisible({ timeout: t(3_000) });
     await rulesTabTrigger.click();
     await page.waitForTimeout(demoPause.short);
 
     // Active Rules tab panel should be visible with rule content
-    const rulesPanel = page.getByTestId("tab-content-rules");
+    const rulesPanel = page.getByTestId(tabs.content("rules"));
     await expect(rulesPanel).toBeVisible({ timeout: t(5_000) });
 
     // Verify there is content in the rules panel (not empty)
