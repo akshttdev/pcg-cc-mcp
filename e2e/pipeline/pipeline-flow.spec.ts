@@ -227,20 +227,36 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
     // Click Run Now on Scout toast (from AA-1) to trigger immediate execution
     await clickRunNowIfVisible();
 
-    // Wait for agent chain to advance deal to Proposal
-    // Intel(Scout) → BA(Astra) → Proposal(Cash)
+    // Wait for agent chain: Intel(Scout) → BA(Astra) → Discovery (human stop)
     // Each agent: ~2s simulation + auto-advance triggers next
-    // Click Run Now on each subsequent agent toast as they appear
     for (let i = 0; i < 10; i++) {
       await clickRunNowIfVisible();
       const dealRes = await request.get(`/api/crm/deals/${dealId}`);
       const deal = (await dealRes.json()).data || (await dealRes.json());
-      if (deal.stage?.toLowerCase() === "proposal") break;
+      if (deal.stage?.toLowerCase() === "discovery") break;
       await page.waitForTimeout(3_000);
     }
 
+    // Discovery is human-owned — manually advance to Proposal
+    const reachedDiscovery = await waitForStage("Discovery", 60_000);
+    if (reachedDiscovery) {
+      // Advance from Discovery to Proposal via API
+      const dealInfoRes = await request.get(`/api/crm/deals/${dealId}`);
+      const dealInfo = (await dealInfoRes.json()).data || (await dealInfoRes.json());
+      const stagesRes = await request.get(`/api/crm/pipelines/${dealInfo.crm_pipeline_id}/stages`);
+      const stages = (await stagesRes.json()).data || [];
+      const proposalStage = stages.find((s: { name: string }) =>
+        s.name === "Proposal" || s.name === "Build Proposal"
+      );
+      if (proposalStage) {
+        await request.patch(`/api/crm/deals/${dealId}/stage`, {
+          data: { stage_id: proposalStage.id, position: 0 },
+        });
+      }
+    }
+
     const reachedProposal = await waitForStage("Proposal", 60_000);
-    expect(reachedProposal, "Deal should auto-advance to Proposal via agent chain").toBe(true);
+    expect(reachedProposal, "Deal should reach Proposal after Discovery advance").toBe(true);
 
     // Refresh the kanban to see updated positions
     await page.reload();

@@ -48,6 +48,10 @@ pub struct StageConfig {
     /// User ID or username to assign review tasks to. Falls back to org owner if not set.
     #[serde(default)]
     pub review_assignee: Option<String>,
+    /// If true, deals entering this stage immediately auto-advance to the next stage.
+    /// Useful for optional stages (e.g., Lead) that some pipelines want to skip.
+    #[serde(default)]
+    pub auto_skip: bool,
 }
 
 fn default_cancel_window() -> u32 {
@@ -350,6 +354,67 @@ pub async fn process_transition(
     } else {
         // ── Hardcoded fallback for stages without config ────────────────
         run_hardcoded_entry_actions(pool, deal, to_stage, &mut actions_taken).await;
+    }
+
+    // ── 4. Auto-skip: immediately advance to next stage if configured ───
+    if to_config.as_ref().map_or(false, |c| c.auto_skip) {
+        actions_taken.push(format!("Auto-skipping {} stage", to_stage.name));
+        tracing::info!(
+            "[StageTransition] Auto-skip enabled for stage '{}' — advancing deal {} to next stage",
+            to_stage.name,
+            deal.id
+        );
+
+        // Find next stage by position
+        if let Some(ref pipeline_id) = deal.crm_pipeline_id {
+            let next_stage = sqlx::query_as::<_, CrmPipelineStage>(
+                "SELECT * FROM crm_pipeline_stages WHERE pipeline_id = ?1 AND position > ?2 ORDER BY position ASC LIMIT 1",
+            )
+            .bind(pipeline_id)
+            .bind(to_stage.position)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
+
+            if let Some(ref next) = next_stage {
+                // Move the deal
+                if let Err(e) = CrmDeal::move_to_stage(pool, &deal.id, &next.id, 0).await {
+                    tracing::error!(
+                        "[StageTransition] Auto-skip move failed for deal {}: {}",
+                        deal.id,
+                        e
+                    );
+                } else {
+                    // Re-read deal and recursively process the next stage's transition
+                    if let Ok(updated_deal) = CrmDeal::find_by_id(pool, &deal.id).await {
+                        let next_result = Box::pin(process_transition(
+                            pool,
+                            &updated_deal,
+                            Some(to_stage),
+                            next,
+                        ))
+                        .await;
+
+                        // Merge results
+                        warnings.extend(next_result.warnings);
+                        actions_taken.extend(next_result.actions_taken);
+                        if next_result.agent_flow_id.is_some() {
+                            agent_flow_id = next_result.agent_flow_id;
+                            cancel_deadline = next_result.cancel_deadline;
+                        }
+
+                        return TransitionResult {
+                            deal: next_result.deal,
+                            warnings,
+                            agent_flow_id,
+                            cancel_deadline,
+                            actions_taken,
+                        };
+                    }
+                }
+            }
+        }
     }
 
     TransitionResult {
