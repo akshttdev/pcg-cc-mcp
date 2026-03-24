@@ -13,7 +13,7 @@
 import { test, expect } from "./fixtures";
 import { t, demoPause, login, apiLogin, TEST_DATA_PREFIX } from "../helpers";
 import { ORG_ID, PIPELINE_URL, moveDealViaContextMenu } from "./helpers";
-import { pipeline, dealDetail, callScheduling, deck } from "./testids";
+import { pipeline, dealCard, dealDetail, callScheduling, deck } from "./testids";
 
 let dealId: string;
 let dealName: string;
@@ -145,12 +145,12 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
   test("AA-3: Agent History tab shows Scout flow after execution", async ({ page }) => {
     test.setTimeout(45_000);
 
-    // Deal may have auto-advanced after AA-1's Run Now — refresh to see current state
+    // Refresh to see current kanban state (deal may have auto-advanced)
     await page.reload();
     await expect(page.getByText("Acquisition Pipeline")).toBeVisible({ timeout: t(15_000) });
 
-    // Open deal detail (deal may now be in BA or later stage)
-    await page.getByText(dealText).first().click();
+    // Open deal detail using card testid (works regardless of which column the deal is in)
+    await page.getByTestId(dealCard.card(dealId)).click();
     const panel = page.getByTestId(dealDetail.panel);
     await expect(panel).toBeVisible({ timeout: t(10_000) });
 

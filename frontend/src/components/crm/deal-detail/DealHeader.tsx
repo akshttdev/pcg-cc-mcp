@@ -11,6 +11,7 @@ import {
   Minimize2,
   Trash2,
   TrendingUp,
+  X,
 } from 'lucide-react';
 import { dealDetail as tid } from 'shared/testids';
 
@@ -50,11 +51,12 @@ interface DealHeaderProps {
   stageColor: string;
   onEdit: (deal: CrmDealWithContact) => void;
   onDelete: (deal: CrmDealWithContact) => void;
+  onClose?: () => void;
   isExpanded?: boolean;
   onToggleExpand?: () => void;
 }
 
-export function DealHeader({ deal, stageColor, onEdit, onDelete, isExpanded, onToggleExpand }: DealHeaderProps) {
+export function DealHeader({ deal, stageColor, onEdit, onDelete, onClose, isExpanded, onToggleExpand }: DealHeaderProps) {
   const initials = getInitials(deal);
   const formattedAmount = formatAmount(deal.amount, deal.currency);
   const taskTotal = deal.task_total ?? 0;
@@ -115,6 +117,15 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete, isExpanded, onT
             iconClassName="h-3.5 w-3.5"
             data-testid={tid.delete}
           />
+          {onClose && (
+            <IconButton
+              variant="ghost" className="h-7 w-7"
+              onClick={onClose}
+              icon={X}
+              label="Close"
+              iconClassName="h-3.5 w-3.5"
+            />
+          )}
         </div>
       </div>
 

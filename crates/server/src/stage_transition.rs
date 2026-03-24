@@ -209,7 +209,7 @@ pub async fn process_transition(
         if let Err(e) = sqlx::query(
             "UPDATE crm_deals SET won_at = datetime('now','subsec'), updated_at = datetime('now','subsec') WHERE id = ?1 AND won_at IS NULL"
         ).bind(deal.id.to_string()).execute(pool).await {
-            tracing::warn!("[StageTransition] Failed to set won_at for deal {}: {}", deal.id, e);
+            tracing::error!("[StageTransition] Failed to set won_at for deal {}: {}", deal.id, e);
         } else {
             actions_taken.push("Set won_at".to_string());
         }
@@ -223,7 +223,7 @@ pub async fn process_transition(
         if let Err(e) = sqlx::query(
             "UPDATE crm_deals SET lost_at = datetime('now','subsec'), updated_at = datetime('now','subsec') WHERE id = ?1 AND lost_at IS NULL"
         ).bind(deal.id.to_string()).execute(pool).await {
-            tracing::warn!("[StageTransition] Failed to set lost_at for deal {}: {}", deal.id, e);
+            tracing::error!("[StageTransition] Failed to set lost_at for deal {}: {}", deal.id, e);
         } else {
             actions_taken.push("Set lost_at".to_string());
         }
