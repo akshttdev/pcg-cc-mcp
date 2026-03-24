@@ -568,6 +568,26 @@ async fn handle_won_transition(pool: &SqlitePool, deal: &CrmDeal) -> Option<Stri
         return None;
     }
 
+    let mut actions = Vec::new();
+
+    // ── Full Won provisioning (client, project, tasks, VIBE) ─────────────────
+    match crate::routes::crm_deal_automations::provision_won_deal(pool, deal).await {
+        Ok(result) => {
+            actions.push(format!(
+                "Won provisioning: client '{}', project '{}', {} tasks",
+                result.client_name, result.project_name, result.tasks_created
+            ));
+        }
+        Err(e) => {
+            tracing::error!(
+                "[StageTransition] Won provisioning failed for deal {}: {}",
+                deal.id,
+                e
+            );
+        }
+    }
+
+    // ── Create delivery pipeline deal (dedup by contact) ─────────────────────
     let deal_org_id = deal.organization_id.as_ref()?;
     let delivery_pipeline =
         CrmPipeline::find_by_type_for_org(pool, deal_org_id, PipelineType::Delivery)
@@ -576,7 +596,6 @@ async fn handle_won_transition(pool: &SqlitePool, deal: &CrmDeal) -> Option<Stri
             .ok()
             .flatten()?;
 
-    // Dedup: check if delivery deal already exists for this contact
     let has_delivery_deal = if let Some(ref contact_id) = deal.crm_contact_id {
         let contact_deals = CrmDeal::find_by_contact(pool, contact_id)
             .await
@@ -588,50 +607,47 @@ async fn handle_won_transition(pool: &SqlitePool, deal: &CrmDeal) -> Option<Stri
         false
     };
 
-    if has_delivery_deal {
-        tracing::warn!(
-            "Skipping delivery deal creation: contact already has a deal in delivery pipeline {}",
-            delivery_pipeline.id
-        );
-        return None;
-    }
-
-    let delivery_stages = CrmPipelineStage::find_by_pipeline(pool, &delivery_pipeline.id)
-        .await
-        .unwrap_or_default();
-    let first_stage = delivery_stages.first()?;
-
-    match CrmDeal::create(
-        pool,
-        CreateCrmDeal {
-            organization_id: deal_org_id.clone(),
-            client_id: deal.client_id.clone(),
-            crm_contact_id: deal.crm_contact_id.clone(),
-            crm_pipeline_id: Some(delivery_pipeline.id.clone()),
-            crm_stage_id: Some(first_stage.id.clone()),
-            name: format!("{} - Delivery", deal.name),
-            description: Some(format!("Auto-created from won deal: {}", deal.name)),
-            amount: deal.amount,
-            currency: Some(deal.currency.clone()),
-            expected_close_date: None,
-            tags: None,
-            custom_fields: None,
-        },
-    )
-    .await
-    {
-        Ok(_) => {}
-        Err(e) => {
-            tracing::error!(
-                "[StageTransition] Failed to create delivery deal for {}: {}",
-                deal.id,
-                e
-            );
-            return None;
+    if !has_delivery_deal {
+        let delivery_stages = CrmPipelineStage::find_by_pipeline(pool, &delivery_pipeline.id)
+            .await
+            .unwrap_or_default();
+        if let Some(first_stage) = delivery_stages.first() {
+            match CrmDeal::create(
+                pool,
+                CreateCrmDeal {
+                    organization_id: deal_org_id.clone(),
+                    client_id: deal.client_id.clone(),
+                    crm_contact_id: deal.crm_contact_id.clone(),
+                    crm_pipeline_id: Some(delivery_pipeline.id.clone()),
+                    crm_stage_id: Some(first_stage.id.clone()),
+                    name: format!("{} - Delivery", deal.name),
+                    description: Some(format!("Auto-created from won deal: {}", deal.name)),
+                    amount: deal.amount,
+                    currency: Some(deal.currency.clone()),
+                    expected_close_date: None,
+                    tags: None,
+                    custom_fields: None,
+                },
+            )
+            .await
+            {
+                Ok(_) => actions.push("Created delivery pipeline deal".to_string()),
+                Err(e) => {
+                    tracing::error!(
+                        "[StageTransition] Failed to create delivery deal for {}: {}",
+                        deal.id,
+                        e
+                    );
+                }
+            }
         }
     }
 
-    Some("Created delivery pipeline deal".to_string())
+    if actions.is_empty() {
+        None
+    } else {
+        Some(actions.join("; "))
+    }
 }
 
 // ── Agent Flow Scheduling ────────────────────────────────────────────────────
