@@ -120,6 +120,51 @@ test.describe("Review Gates (RG-1 to RG-2)", () => {
     ).toBeTruthy();
   });
 
+  // ── RG-2b: Intel validation requires person + company intelligence ────
+
+  test("RG-2b: advance from Intel blocked by person/company intelligence not done", async ({ request }) => {
+    test.setTimeout(30_000);
+    await apiLogin(request);
+
+    // Fix the description gate — add description to the deal (PATCH endpoint)
+    const updateRes = await request.patch(`/api/crm/deals/${dealId}`, {
+      data: { description: "Now has operator context for gate testing." },
+    });
+    expect(updateRes.ok(), "Deal update should succeed").toBeTruthy();
+
+    // Try to advance — should fail with 400, and the response should include
+    // a warnings array with person_intelligence and company_intelligence fields.
+    // The backend now collects ALL validation failures instead of early-returning.
+    const advanceRes = await request.post(`/api/crm/deals/${dealId}/advance`);
+    expect(advanceRes.status()).toBe(400);
+
+    const body = await advanceRes.json();
+    const warnings = body.warnings || [];
+    const message = (body.message || "").toLowerCase();
+
+    // Should have structured warnings with field-level detail
+    expect(warnings.length, `Expected warnings array, got message: "${body.message}"`).toBeGreaterThan(0);
+
+    // Verify warnings include intelligence fields
+    const intelWarnings = warnings.filter((w: { field?: string }) =>
+      (w.field || "").includes("intelligence")
+    );
+    expect(
+      intelWarnings.length,
+      `Should have person or company intelligence warnings. Got warnings: ${JSON.stringify(warnings)}`
+    ).toBeGreaterThan(0);
+
+    // Each warning should have field + message structure
+    for (const w of warnings) {
+      expect(w.field, "Each warning should have a field name").toBeTruthy();
+      expect(w.message, "Each warning should have a message").toBeTruthy();
+    }
+
+    // Message should mention the count and field names
+    expect(message).toContain("validation");
+    expect(message).toContain("intelligence");
+  });
+
   // ── Cleanup ────────────────────────────────────────────────────────────
 
   test.afterAll(async ({ request }) => {

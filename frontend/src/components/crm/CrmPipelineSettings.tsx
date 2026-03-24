@@ -662,7 +662,7 @@ export function CrmPipelineSettings({ organizationId }: CrmPipelineSettingsProps
                 <ScrollArea className="h-[480px]">
                   <div className="space-y-3 p-4">
                     {pipelineData.stages.map((stage, index) => (
-                      <div key={stage.id} className="rounded-lg border bg-card px-4 py-3">
+                      <div key={stage.id} className="rounded-lg border bg-card px-4 py-3" data-testid={`stage-row-${stage.name.toLowerCase().replace(/\s+/g, '-')}`}>
                         <div className="flex items-center justify-between gap-4">
                           <div>
                             <div className="flex items-center gap-2">
@@ -682,7 +682,7 @@ export function CrmPipelineSettings({ organizationId }: CrmPipelineSettingsProps
                             <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleMoveStage(stage.id, 'down')} disabled={index === pipelineData.stages.length - 1 || reorderMutation.isPending}>
                               <ArrowDown className="h-4 w-4" />
                             </Button>
-                            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setEditingStage(stage); setIsStageDialogOpen(true); }}>
+                            <Button size="icon" variant="ghost" className="h-8 w-8" data-testid={`stage-edit-${stage.name.toLowerCase().replace(/\s+/g, '-')}`} onClick={() => { setEditingStage(stage); setIsStageDialogOpen(true); }}>
                               <Pencil className="h-4 w-4" />
                             </Button>
                             <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => handleDeleteStage(stage)}>
