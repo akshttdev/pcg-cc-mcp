@@ -21,7 +21,7 @@ use crate::routes::{
         generate_deck_background, generate_phase1_business_report, trigger_deep_research_pass2,
         trigger_who_is_research,
     },
-    crm_deal_transitions::manage_stage_review_tasks,
+    crm_deal_transitions::manage_stage_review_tasks_with_config,
 };
 
 // ── Stage Config Schema ─────────────────────────────────────────────────────
@@ -45,6 +45,9 @@ pub struct StageConfig {
     pub on_exit_validations: Vec<StageValidation>,
     #[serde(default)]
     pub stage_owner: Option<StageOwner>,
+    /// User ID or username to assign review tasks to. Falls back to org owner if not set.
+    #[serde(default)]
+    pub review_assignee: Option<String>,
 }
 
 fn default_cancel_window() -> u32 {
@@ -247,7 +250,7 @@ pub async fn process_transition(
             match action {
                 StageAction::CreateReviewTask { description } => {
                     let stage_name = to_stage.name.to_lowercase();
-                    manage_stage_review_tasks(pool, deal, description, &stage_name).await;
+                    manage_stage_review_tasks_with_config(pool, deal, description, &stage_name, to_config.as_ref()).await;
                     actions_taken.push("Created review task".to_string());
                 }
                 StageAction::CreateDeliveryDeal => {
@@ -544,7 +547,7 @@ async fn run_hardcoded_entry_actions(
 
     for (stage_key, task_desc) in &review_stages {
         if stage_name_lower == *stage_key || stage_type_lower == *stage_key {
-            manage_stage_review_tasks(pool, deal, task_desc, stage_key).await;
+            manage_stage_review_tasks_with_config(pool, deal, task_desc, stage_key, None).await;
             actions_taken.push("Created review task".to_string());
             break;
         }
