@@ -214,7 +214,7 @@ impl AgentFlowExecutor {
                 .execute(&self.pool)
                 .await
                 {
-                    tracing::warn!("[AgentFlowEngine] Failed to store output for flow {}: {}", flow.id, e);
+                    tracing::error!("[AgentFlowEngine] Failed to store output for flow {}: {}", flow.id, e);
                 }
 
                 // Complete the flow (single-phase: skip verification)
@@ -260,7 +260,7 @@ impl AgentFlowExecutor {
             .execute(&self.pool)
             .await
             {
-                tracing::warn!("[AgentFlowEngine] Failed to update retry count for flow {}: {}", flow.id, e);
+                tracing::error!("[AgentFlowEngine] Failed to update retry count for flow {}: {}", flow.id, e);
             }
 
             match self
@@ -286,7 +286,7 @@ impl AgentFlowExecutor {
                     .execute(&self.pool)
                     .await
                     {
-                        tracing::warn!("[AgentFlowEngine] Failed to store error for flow {}: {}", flow.id, db_err);
+                        tracing::error!("[AgentFlowEngine] Failed to store error for flow {}: {}", flow.id, db_err);
                     }
 
                     if attempt == max_retries - 1 {
@@ -536,7 +536,7 @@ impl AgentFlowExecutor {
         {
             Ok(_) => {
                 // Also store content in a separate event for retrieval
-                let _ = AgentFlowEvent::create(
+                if let Err(e) = AgentFlowEvent::create(
                     &self.pool,
                     CreateFlowEvent {
                         agent_flow_id: flow_id.clone(),
@@ -547,7 +547,9 @@ impl AgentFlowExecutor {
                         },
                     },
                 )
-                .await;
+                .await {
+                    tracing::error!("[AgentFlowEngine] Failed to store artifact content event: {}", e);
+                }
                 json!({"success": true, "artifact_id": artifact_id.to_string()}).to_string()
             }
             Err(e) => json!({"error": e.to_string()}).to_string(),
@@ -859,7 +861,7 @@ impl AgentFlowExecutor {
             "scout" => {
                 // Scout: save research artifact
                 if !deal_id.is_empty() {
-                    let _ = self.update_deal_field(
+                    let result = self.update_deal_field(
                         deal_id,
                         "description",
                         &format!(
@@ -873,6 +875,9 @@ impl AgentFlowExecutor {
                         ),
                     )
                     .await;
+                    if result.contains("error") {
+                        tracing::error!("[AgentFlowEngine] Simulated scout: update_deal_field returned error: {}", result);
+                    }
                 }
                 Ok(format!(
                     "[Simulated Scout Output]\n\n\
@@ -897,7 +902,7 @@ impl AgentFlowExecutor {
             }
             "cash" => {
                 if !deal_id.is_empty() {
-                    let _ = self.update_deal_field(
+                    let result = self.update_deal_field(
                         deal_id,
                         "proposal_text",
                         "[Simulated Proposal — Cash]\n\n\
@@ -914,6 +919,9 @@ impl AgentFlowExecutor {
                          Start: 2 weeks from approval",
                     )
                     .await;
+                    if result.contains("error") {
+                        tracing::error!("[AgentFlowEngine] Simulated cash: update_deal_field returned error: {}", result);
+                    }
                 }
                 Ok(format!(
                     "[Simulated Cash Output]\n\n\
@@ -925,12 +933,15 @@ impl AgentFlowExecutor {
             }
             "lux" => {
                 if !deal_id.is_empty() {
-                    let _ = self.update_deal_field(
+                    let result = self.update_deal_field(
                         deal_id,
                         "deck_url",
                         "/api/decks/simulated-deck.pdf",
                     )
                     .await;
+                    if result.contains("error") {
+                        tracing::error!("[AgentFlowEngine] Simulated lux: update_deal_field returned error: {}", result);
+                    }
                 }
                 Ok(format!(
                     "[Simulated Lux Output]\n\n\

@@ -350,13 +350,16 @@ pub async fn manage_stage_review_tasks(
 ) {
     // Cancel review tasks from previous stages
     let current_prefix = format!("Review & approve: {} —", stage_name);
-    let _ = sqlx::query(
+    if let Err(e) = sqlx::query(
         "UPDATE tasks SET status = 'cancelled', updated_at = datetime('now','subsec') WHERE crm_deal_id = ? AND title LIKE 'Review & approve:%' AND title NOT LIKE ? AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL",
     )
     .bind(&deal.id)
     .bind(format!("{}%", current_prefix))
     .execute(pool)
-    .await;
+    .await
+    {
+        tracing::error!("[manage_stage_review_tasks] Failed to cancel old review tasks: {}", e);
+    }
 
     // Check if a review task already exists for THIS stage
     let existing_count: i64 = sqlx::query_scalar(
@@ -394,7 +397,7 @@ pub async fn manage_stage_review_tasks(
                     ))
                 });
 
-        let _ = sqlx::query(
+        if let Err(e) = sqlx::query(
             r#"
             INSERT INTO tasks (id, title, description, status, crm_deal_id, project_id, assignee_id, created_at, updated_at)
             VALUES (?, ?, ?, 'todo', ?, ?, ?, datetime('now','subsec'), datetime('now','subsec'))
@@ -407,7 +410,11 @@ pub async fn manage_stage_review_tasks(
         .bind(&deal.project_id)
         .bind(&default_assignee)
         .execute(pool)
-        .await;
+        .await
+        {
+            tracing::error!("[manage_stage_review_tasks] Failed to create review task: {}", e);
+            return;
+        }
 
         // F8: BA Operator Assignment — assign review task to org-specific operator
         if stage_name == "business analysis" {
@@ -447,13 +454,16 @@ pub async fn manage_stage_review_tasks(
                     .ok()
                     .flatten()
                     {
-                        let _ = sqlx::query(
+                        if let Err(e) = sqlx::query(
                             "UPDATE tasks SET assignee_id = ?, updated_at = datetime('now','subsec') WHERE id = ?"
                         )
                         .bind(user.id.to_string())
                         .bind(&task_id)
                         .execute(pool)
-                        .await;
+                        .await
+                        {
+                            tracing::error!("[manage_stage_review_tasks] Failed to assign BA review task: {}", e);
+                        }
                         tracing::info!(
                             "BA review task assigned to {} for deal {}",
                             username,
