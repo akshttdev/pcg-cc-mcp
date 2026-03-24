@@ -188,7 +188,8 @@ export async function waitForDealStage(
 }
 
 /**
- * Complete all pending tasks for a deal (so review gates don't block advance).
+ * Complete all pending tasks for a deal via API.
+ * NOTE: Use completeDealTasksViaUI for demo-quality tests.
  */
 export async function completeDealTasks(request: APIRequestContext, dealId: string) {
   const res = await request.get(`/api/tasks?crm_deal_id=${dealId}`);
@@ -199,6 +200,19 @@ export async function completeDealTasks(request: APIRequestContext, dealId: stri
       }
     }
   }
+}
+
+/**
+ * Advance a deal from a human-owned stage to the next stage via context menu.
+ * Use this when the auto-advance chain stops at a human stage (e.g., Discovery).
+ */
+export async function advanceDealViaUI(
+  page: Page,
+  dealNameFragment: string,
+  targetStage: string,
+) {
+  await moveDealViaContextMenu(page, dealNameFragment, targetStage);
+  await page.waitForTimeout(demoPause.long);
 }
 
 // ── Pipeline Settings UI ─────────────────────────────────────────────────────

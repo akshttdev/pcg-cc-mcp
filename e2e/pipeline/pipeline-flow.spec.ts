@@ -237,30 +237,17 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
       await page.waitForTimeout(3_000);
     }
 
-    // Discovery is human-owned — manually advance to Proposal
+    // Discovery is human-owned — advance to Proposal via context menu (UI)
     const reachedDiscovery = await waitForStage("Discovery", 30_000);
-    if (reachedDiscovery) {
-      // Advance from Discovery to Proposal via API
-      const dealInfoRes = await request.get(`/api/crm/deals/${dealId}`);
-      const dealInfo = (await dealInfoRes.json()).data || (await dealInfoRes.json());
-      const stagesRes = await request.get(`/api/crm/pipelines/${dealInfo.crm_pipeline_id}/stages`);
-      const stages = (await stagesRes.json()).data || [];
-      const proposalStage = stages.find((s: { name: string }) =>
-        s.name === "Proposal" || s.name === "Build Proposal"
-      );
-      if (proposalStage) {
-        await request.patch(`/api/crm/deals/${dealId}/stage`, {
-          data: { stage_id: proposalStage.id, position: 0 },
-        });
-      }
-    }
+    expect(reachedDiscovery, "Deal should reach Discovery via auto-advance chain").toBe(true);
+
+    // Reload to see deal in Discovery column, then advance via context menu
+    await page.reload();
+    await expect(page.getByText("Acquisition Pipeline")).toBeVisible({ timeout: t(15_000) });
+    await moveDealViaContextMenu(page, dealText, "Proposal");
 
     const reachedProposal = await waitForStage("Proposal", 30_000);
     expect(reachedProposal, "Deal should reach Proposal after Discovery advance").toBe(true);
-
-    // Refresh the kanban to see updated positions
-    await page.reload();
-    await expect(page.getByText("Acquisition Pipeline")).toBeVisible({ timeout: t(15_000) });
 
     // Verify deal is visible in Proposal column
     const proposalColumn = page.getByTestId(pipeline.stageColumn("proposal"));
