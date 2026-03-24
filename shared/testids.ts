@@ -55,6 +55,9 @@ export const callScheduling = {
 
 export const deck = {
   generate: "deck-generate",
+  presentationStatus: "deck-presentation-status",
+  presentationDate: "deck-presentation-date",
+  presentationSave: "deck-presentation-save",
   sendInvoice: "deck-send-invoice",
   confirmSendInvoice: "deck-confirm-send-invoice",
   markWon: "deck-mark-won",
