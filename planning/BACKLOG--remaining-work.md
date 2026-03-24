@@ -6,6 +6,413 @@
 
 ---
 
+## Sloperation317 Feature Parity — Acceptance Specs
+
+**Purpose:** Track remaining work to reach full feature parity with the sloperation317 dealflow plan.
+Specs are written as user stories with Gherkin acceptance criteria so feature equivalence can be verified
+regardless of architectural changes. Each spec is tagged: PASSING, PARTIAL, or FAILING.
+
+**Source plans:**
+- `planning/2026-03-18--plan--sloperation317-integration.md`
+- `planning/2026-03-18--reference--pipeline-status.md`
+- `planning/2026-03-21--plan--pipeline-ops-sprint.md`
+- `planning/reviews/2026-03-23--review--functionality-audit-pipeline-ops.md`
+
+### Deal Lifecycle
+
+#### DL-1: Create and track a deal through the pipeline — PASSING
+```gherkin
+Feature: Deal creation and pipeline tracking
+  As a sales operator
+  I want to create deals and track them through pipeline stages
+  So that I can manage my sales funnel
+
+  Scenario: Create a deal via the pipeline board
+    Given I am on the CRM Pipeline page for an organization
+    When I click "Add Deal" and fill in name, amount, and description
+    Then the deal appears in the first stage column of the kanban board
+    And the deal card shows the contact name, amount, and stage color
+
+  Scenario: View deal details
+    Given a deal exists in the pipeline
+    When I click the deal card
+    Then a detail panel opens with tabs: Overview, Intel, Transcripts, Proposal, Deck
+    And I can expand the panel to full dialog mode
+```
+
+#### DL-2: Move deals between stages — PASSING
+```gherkin
+Feature: Deal stage transitions
+  As a sales operator
+  I want to move deals between pipeline stages
+  So that deals progress through the sales funnel
+
+  Scenario: Move via context menu
+    Given a deal exists in the "Lead" stage
+    When I right-click the deal card and select "Move to..." → "Intel"
+    Then the deal moves to the Intel column
+    And a toast confirms the transition
+
+  Scenario: Move via deal detail stage bar
+    Given I have the deal detail panel open
+    When I click a stage in the progress bar
+    Then the deal moves to that stage
+    And the kanban board updates
+
+  Scenario: Advance via API
+    Given a deal exists in a non-terminal stage
+    When I call POST /crm/deals/:id/advance
+    Then the deal moves to the next stage by position
+    And stage entry actions fire (agent triggers, review tasks)
+```
+
+#### DL-3: Won deal automation — PARTIAL
+```gherkin
+Feature: Won deal creates delivery pipeline entry
+  As a sales operator
+  I want won deals to automatically create delivery work
+  So that client onboarding begins immediately
+
+  Scenario: Deal reaches Won stage
+    Given a deal exists in the Negotiation stage
+    When the deal is moved to Won
+    Then a delivery pipeline deal is auto-created         # PASSING
+    And the delivery deal has the same contact and amount  # PASSING
+    And a Client record is created or found by company     # FAILING — not implemented
+    And a Project is created from the deal                 # FAILING — not implemented
+    And tasks are created from proposal deliverables        # FAILING — not implemented
+    And a VIBE transaction is recorded for the deal value   # FAILING — not implemented
+
+  Scenario: Deduplication
+    Given a contact already has a delivery deal
+    When another deal for the same contact reaches Won
+    Then no duplicate delivery deal is created              # PASSING
+```
+
+#### DL-4: Lost deal tracking — PASSING
+```gherkin
+Feature: Lost deal tracking
+  As a sales operator
+  I want to mark deals as lost with a reason
+  So that I can analyze why deals fail
+
+  Scenario: Move deal to Lost
+    Given a deal exists in any active stage
+    When I move the deal to Lost
+    Then the deal shows in the Lost column
+    And lost_at timestamp is recorded
+```
+
+### Agent Automations
+
+#### AA-1: Scout research on Intel stage entry — PASSING
+```gherkin
+Feature: Scout agent triggers on Intel stage
+  As a sales operator
+  I want Scout to automatically research a prospect when a deal enters Intel
+  So that I have intelligence before engaging
+
+  Scenario: Auto-trigger Scout
+    Given a deal with a linked contact
+    When the deal enters the Intel stage
+    Then an agent flow is created for Scout with flow_type "research"
+    And a 30-second cancel window is active
+    And the deal card shows "Scout running..." badge
+    And a review task is created: "Review Phase I intelligence"
+
+  Scenario: Cancel Scout
+    Given Scout is running on a deal within the cancel window
+    When I click "Cancel Agent"
+    Then the agent flow is cancelled
+    And the badge disappears
+```
+
+#### AA-2: Astra business analysis — PASSING
+```gherkin
+Feature: Astra agent triggers on Business Analysis stage
+  As a sales operator
+  I want Astra to analyze the business when a deal enters Business Analysis
+  So that I understand pain points and opportunities
+
+  Scenario: Auto-trigger Astra
+    When the deal enters the Business Analysis stage
+    Then an agent flow is created for Astra with flow_type "business_analysis"
+    And a review task is created: "Review business report (Astra)"
+```
+
+#### AA-3: Cash proposal generation — PASSING
+```gherkin
+Feature: Cash agent generates proposals on Proposal stage
+  As a sales operator
+  I want Cash to generate a proposal when a deal enters the Proposal stage
+  So that I have a professional proposal to present
+
+  Scenario: Auto-trigger Cash
+    When the deal enters the Proposal stage
+    Then an agent flow is created for Cash with flow_type "proposal"
+    And a review task is created: "Review and approve proposal"
+
+  Scenario: Manual proposal generation
+    Given I am on the deal detail Proposal tab
+    When I click "Generate Proposal"
+    Then Cash generates a proposal
+    And the proposal text appears in the Proposal tab
+
+  Scenario: Approve proposal
+    Given a proposal exists with status "draft"
+    When I click "Approve Proposal"
+    Then proposal_status changes to "approved"
+```
+
+#### AA-4: Astra Pass 2 deep research chain — FAILING
+```gherkin
+Feature: Astra Pass 2 chains into Cash proposal generation
+  As a sales operator
+  I want enhanced research before proposal generation
+  So that proposals are informed by deep business analysis
+
+  Scenario: Proposal stage triggers Astra Pass 2 then Cash
+    When the deal enters the Proposal stage AND has no proposal_text
+    Then Astra Pass 2 runs first (enhanced business analysis)    # FAILING — direct Cash trigger only
+    And after Astra completes, Cash is chained automatically      # FAILING — no chaining
+    And Cash uses Astra's enhanced report to write the proposal   # FAILING — Cash runs independently
+```
+
+#### AA-5: Lux deck generation — PASSING
+```gherkin
+Feature: Lux agent generates decks on Polish stage
+  As a sales operator
+  I want Lux to generate a presentation deck when a deal enters Polish
+  So that I have a professional deck for client meetings
+
+  Scenario: Auto-trigger Lux
+    Given a deal has an approved proposal
+    When the deal enters the Polish stage
+    Then an agent flow is created for Lux with flow_type "deck"
+    And a review task is created: "Review and approve deck"
+    And proposal_text is required before entry (soft gate)
+```
+
+### Review Gates
+
+#### RG-1: Review tasks block stage advancement — PASSING
+```gherkin
+Feature: Review tasks gate deal advancement
+  As a sales manager
+  I want review tasks to be completed before deals advance
+  So that quality is maintained at each stage
+
+  Scenario: Pending tasks generate warnings
+    Given a deal has an incomplete review task
+    When I try to advance the deal
+    Then the advance succeeds (soft enforcement)
+    And a warning is returned: "N pending task(s) should be completed"
+
+  Scenario: Review task created on stage entry
+    Given a stage has on_enter_actions with CreateReviewTask
+    When a deal enters that stage
+    Then a task is created with the configured description
+    And the task is linked to the deal via crm_deal_id
+```
+
+#### RG-2: Required field validation on stage exit — PASSING
+```gherkin
+Feature: Required fields validated on stage exit
+  As a pipeline administrator
+  I want to enforce that certain fields are filled before deals leave a stage
+  So that downstream stages have the data they need
+
+  Scenario: Exit validation warns on missing fields
+    Given the Intel stage requires "description" before exit
+    And a deal in Intel has no description
+    When the deal is moved to the next stage
+    Then a warning is returned: "Operator context (description) is required"
+    And the move still succeeds (soft gate)
+
+  Scenario: Intel stage validates intelligence status
+    Given the Intel stage requires person intel = "done"
+    And the linked person's intelligence_status is "running"
+    When the deal is moved to the next stage
+    Then a warning is returned: "person intelligence is not 'done' yet"
+```
+
+### Deal Detail Features
+
+#### DD-1: Call transcript linking — PARTIAL
+```gherkin
+Feature: Link call transcripts to deals
+  As a sales operator
+  I want to link call transcripts to deals
+  So that conversation context is preserved
+
+  Scenario: View transcripts tab
+    Given a deal has linked transcripts
+    When I click the Transcripts tab
+    Then I see a list of linked transcripts with summaries   # PASSING
+
+  Scenario: Link a transcript via API
+    When I POST to /crm/deals/:id/transcripts
+    Then the transcript is linked to the deal               # PASSING
+
+  Scenario: Auto-match transcripts from call intake
+    Given a call intake item mentions a known contact
+    When the call is processed
+    Then the transcript is auto-linked to the contact's deal # FAILING — no auto-matching
+```
+
+#### DD-2: Call scheduling — PASSING
+```gherkin
+Feature: Schedule calls with deal contacts
+  As a sales operator
+  I want to schedule calls from the deal detail
+  So that I can track meeting plans
+
+  Scenario: Schedule a call
+    Given I am on the deal detail Overview tab
+    When I set a date, method (Phone/Video/In-Person), and status
+    And I click Save
+    Then the call schedule is saved to the deal's custom_fields
+```
+
+#### DD-3: Person invitation — PASSING
+```gherkin
+Feature: Generate invitation link for won deals
+  As a sales operator
+  I want to invite clients to the platform after winning a deal
+  So that they can access their project
+
+  Scenario: Generate invite link
+    Given a deal is in the Won stage
+    When I click "Generate Invite Link" in the Deck tab
+    Then a token-based invite URL is generated
+    And I can copy it to clipboard
+```
+
+#### DD-4: Invoice generation — PARTIAL
+```gherkin
+Feature: Generate and track invoices
+  As a sales operator
+  I want to generate invoices from deals
+  So that I can track revenue
+
+  Scenario: Send invoice from deal detail
+    Given a deal has an approved proposal with amount
+    When I click "Send Invoice" in the Deck tab
+    Then an invoice is generated                    # PASSING — API exists
+    And the invoice_id is stored on the deal        # PASSING
+    And the invoice appears in AR tracking           # FAILING — no AR dashboard
+```
+
+### Pipeline Configuration
+
+#### PC-1: Pipeline settings accessible from board — PASSING
+```gherkin
+Feature: Pipeline settings accessible from the kanban board
+  As a pipeline administrator
+  I want to configure pipeline stages from the board
+  So that I can manage the pipeline without leaving the context
+
+  Scenario: Open pipeline settings
+    Given I am on the CRM Pipeline page
+    When I click the gear icon next to "Add Deal"
+    Then the Pipeline Settings dialog opens
+    And I can switch between pipelines via dropdown
+    And I see three tabs: Stages, Automations, Pipeline
+
+  Scenario: View automation overview
+    When I click the Automations tab
+    Then I see all stages with their agents, triggers, actions, and validations
+    In a single scrollable view
+```
+
+#### PC-2: Stage config controls pipeline behavior — PASSING
+```gherkin
+Feature: Stage configuration drives pipeline behavior
+  As a pipeline administrator
+  I want UI changes to stage config to affect pipeline behavior
+  So that I can customize the pipeline without SQL
+
+  Scenario: Assign agent via UI
+    Given I edit a stage and set Assigned Agent to "Scout" with auto-trigger on
+    When I save the stage
+    Then deals entering that stage will trigger a Scout agent flow
+
+  Scenario: Set required fields via UI
+    Given I edit a stage and check "Description" in Required Fields
+    When I save the stage
+    Then deals leaving that stage will get a warning if description is empty
+
+  Scenario: Enable approval gate via UI
+    Given I edit a stage and check "Require approval"
+    When I save the stage
+    Then deals entering that stage will get a review task created
+
+  Scenario: UI matches active rules
+    Given a stage has on_enter_actions and on_exit_validations from migration
+    When I open the Edit Stage dialog
+    Then the Automation tab checkboxes reflect the active rules
+    And the Active Rules tab shows the same information read-only
+```
+
+#### PC-3: All pipelines have correct stage configs — PASSING
+```gherkin
+Feature: Stage configs match the dealflow plan across all pipelines
+  As a pipeline administrator
+  I want all pipelines to have correct agent assignments and automations
+  So that the system operates as designed
+
+  Scenario Outline: Stage config matches plan
+    Given the "<pipeline>" pipeline exists
+    Then the "<stage>" stage has assigned_agent "<agent>"
+    And auto_trigger is <trigger>
+    And stage_owner label is "<owner>"
+
+    Examples:
+      | pipeline                  | stage              | agent | trigger | owner                  |
+      | Sirak Studios Acquisition | Lead               |       | false   | Sales Rep              |
+      | Sirak Studios Acquisition | Intel              | scout | true    | Scout                  |
+      | Sirak Studios Acquisition | Business Analysis  | astra | true    | Astra                  |
+      | Sirak Studios Acquisition | Proposal           | cash  | true    | Cash                   |
+      | Sirak Studios Acquisition | Polish             | lux   | true    | Lux                    |
+      | Sirak Studios Acquisition | Invoice            |       | false   | Account Manager        |
+      | Sirak Studios Acquisition | Negotiation        |       | false   | Nora + AM              |
+      | Sirak Studios Acquisition | Won                |       | false   | Team                   |
+      | Sirak Studios Acquisition | Lost               |       | false   | Account Manager        |
+      | Clients                   | Lead               |       | false   | Sales Rep              |
+      | Clients                   | Business Analysis  | astra | true    | Astra                  |
+      | Clients                   | Discovery          |       | false   | Account Manager + Nora |
+      | Clients                   | Build Proposal     | cash  | true    | Cash                   |
+      | Clients                   | Polish             | lux   | true    | Lux                    |
+      | Clients                   | Proposal Meeting   |       | false   | Account Manager        |
+      | Clients                   | Closed Won         |       | false   | Team                   |
+      | Clients                   | Closed Lost        |       | false   | Account Manager        |
+      | Client Delivery           | (all 7 stages)     |       | false   | PM                     |
+      | Conferences               | Researching        | scout | true    | Scout                  |
+```
+
+### Remaining Gaps (FAILING specs)
+
+| Spec | Gap | Effort | Priority |
+|------|-----|--------|----------|
+| **DL-3** | Won chain: Client + Project + Tasks + VIBE creation | 2-3 days | HIGH — core revenue tracking |
+| **AA-4** | Astra Pass 2 → Cash chaining | 1-2 days | MEDIUM — improves proposal quality |
+| **DD-1** | Auto-match transcripts from call intake | 1-2 days | LOW — manual linking works |
+| **DD-4** | AR invoice dashboard | 2-3 days | MEDIUM — invoice generation works, tracking doesn't |
+
+### Architectural Divergences (intentional, documented)
+
+These are places where the current implementation deliberately differs from the 317 plan:
+
+| 317 Plan | Current | Rationale |
+|----------|---------|-----------|
+| 9 stages: Intel → BA → Discovery → Proposal → Polish → Present → Follow Up → Won → Lost | 9 stages: Lead → Intel → BA → Proposal → Polish → Invoice → Negotiation → Won → Lost | Added Lead as landing stage; renamed Present/Follow Up to business-standard Invoice/Negotiation; dropped Discovery (transcript review folded into BA) |
+| Hardcoded stage automations in route handlers | Data-driven `stage_config` JSON with `StageTransitionProcessor` | Enables UI-based configuration; hardcoded logic preserved as fallback |
+| `call_llm()` direct HTTP in route handlers | `WorkflowLLMService` + `AgentFlowExecutor` with tool-calling loop | Richer agent capabilities (get_deal_context, update_deal_field, save_artifact) |
+| No cancel window | 30s cancel window with frontend indicator | User control over agent execution |
+| Blocking transitions (pending tasks = hard block) | Soft enforcement (warnings, allow move) | Prevents deadlocks; operators can override gates when needed |
+
+---
+
 ## Phase 0 — ROI-Ordered Sprint Backlog (Q2 2026)
 
 > These items are ordered by ROI score. See the analysis doc for scoring methodology.
