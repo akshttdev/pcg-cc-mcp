@@ -58,8 +58,8 @@ test.describe("Pipeline Configuration (PC-1 to PC-3)", () => {
     await page.getByRole("option", { name: /Sirak Studios Acquisition/i }).click();
     await page.waitForTimeout(demoPause.short);
 
-    // MCP verified: Sirak Studios Acquisition has 9 stages
-    await expect(page.getByText("9 stages")).toBeVisible({ timeout: t(5_000) });
+    // 10 stages after sloperation sprint: Lead, Intel, BA, Discovery, Proposal, Polish, Present & Invoice, Negotiation, Won, Lost
+    await expect(page.getByText("10 stages")).toBeVisible({ timeout: t(5_000) });
   });
 
   test("PC-1: Automations tab shows agents and triggers", async ({ page }) => {

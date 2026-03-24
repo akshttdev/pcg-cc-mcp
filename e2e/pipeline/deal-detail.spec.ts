@@ -38,7 +38,9 @@ test.describe("Deal Detail Features (DD-1 to DD-5)", () => {
     const salesPipeline = pipelines.find((p: { pipeline_type: string }) => p.pipeline_type === "sales");
     const stagesRes = await request.get(`/api/crm/pipelines/${salesPipeline.id}/stages`);
     const stages = (await stagesRes.json()).data || [];
-    const leadStage = stages.find((s: { name: string }) => s.name === "Lead");
+    // Create deal at Intel (not Lead) so stage-aware tabs include Transcripts, Intel, etc.
+    const intelStage = stages.find((s: { name: string }) => s.name === "Intel")
+      || stages.find((s: { name: string }) => s.name === "Lead");
 
     dealName = `${TEST_DATA_PREFIX} Detail ${Date.now()}`;
     dealText = dealName.replace(`${TEST_DATA_PREFIX} `, "");
@@ -46,7 +48,7 @@ test.describe("Deal Detail Features (DD-1 to DD-5)", () => {
       data: {
         organization_id: ORG_ID,
         crm_pipeline_id: salesPipeline.id,
-        crm_stage_id: leadStage.id,
+        crm_stage_id: intelStage!.id,
         crm_contact_id: contact.id,
         name: dealName,
         description: "Detail feature test — operator context.",
