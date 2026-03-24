@@ -10,6 +10,7 @@ import { SectionHeader } from '@/components/ui/section-header';
 import { Textarea } from '@/components/ui/textarea';
 import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import { crmDealsApi } from '@/lib/api/crm';
+import { dataSourcesApi } from '@/lib/api/intelligence';
 import { crmKeys } from '@/lib/query-keys';
 import type { CrmDealWithContact } from '@/types/crm';
 
@@ -203,7 +204,9 @@ export function TranscriptsTab({ deal }: TranscriptsTabProps) {
 
 function LinkedDataSourcesSection({ deal }: { deal: CrmDealWithContact }) {
   const [linking, setLinking] = useState(false);
-  const [sourceId, setSourceId] = useState('');
+  const [selectedSourceId, setSelectedSourceId] = useState('');
+
+  const orgId = deal.organization_id;
 
   const { data: sources, isLoading } = useQuery({
     queryKey: crmKeys.dealDataSources(deal.id),
@@ -211,17 +214,31 @@ function LinkedDataSourcesSection({ deal }: { deal: CrmDealWithContact }) {
     staleTime: 30000,
   });
 
+  // Fetch org's available data sources for the picker
+  const { data: availableSources } = useQuery({
+    queryKey: ['org-data-sources', orgId],
+    queryFn: () => orgId ? dataSourcesApi.listForOrg(orgId) : Promise.resolve([]),
+    enabled: linking && !!orgId,
+    staleTime: 60000,
+  });
+
   const linkSource = useMutationWithToast({
     mutationFn: () =>
-      crmDealsApi.linkDataSource(deal.id, { data_source_id: sourceId }),
+      crmDealsApi.linkDataSource(deal.id, { data_source_id: selectedSourceId }),
     successMessage: 'Data source linked',
     errorMessage: 'Failed to link data source',
     invalidateKeys: [crmKeys.dealDataSources(deal.id)],
     onSuccess: () => {
       setLinking(false);
-      setSourceId('');
+      setSelectedSourceId('');
     },
   });
+
+  // Filter out already-linked sources
+  const linkedIds = new Set(sources?.map(s => s.data_source_id) ?? []);
+  const unlinkedSources = (availableSources ?? []).filter(
+    (s: { id: string }) => !linkedIds.has(s.id)
+  );
 
   return (
     <div className="space-y-3">
@@ -239,22 +256,31 @@ function LinkedDataSourcesSection({ deal }: { deal: CrmDealWithContact }) {
 
       {linking && (
         <div className="rounded-lg border p-3 space-y-3 bg-muted/20">
-          <p className="text-xs font-medium">Link Data Source by ID</p>
+          <p className="text-xs font-medium">Link Data Source</p>
           <div className="space-y-1.5">
-            <Label className="text-xs">Data Source ID</Label>
-            <Input
-              className="h-7 text-xs"
-              placeholder="Paste data source UUID…"
-              value={sourceId}
-              onChange={(e) => setSourceId(e.target.value)}
-            />
+            <Label className="text-xs">Select source from data library</Label>
+            <select
+              className="w-full h-8 rounded border border-border bg-background px-2 text-xs"
+              value={selectedSourceId}
+              onChange={(e) => setSelectedSourceId(e.target.value)}
+            >
+              <option value="">Choose a data source…</option>
+              {unlinkedSources.map((s: { id: string; title?: string; name?: string }) => (
+                <option key={s.id} value={s.id}>
+                  {s.title || s.name || s.id}
+                </option>
+              ))}
+            </select>
+            {unlinkedSources.length === 0 && availableSources && (
+              <p className="text-xs text-muted-foreground">No unlinked sources available in this organization.</p>
+            )}
           </div>
           <div className="flex gap-2">
             <Button
               size="sm"
               className="h-7 gap-1 text-xs"
               onClick={() => linkSource.mutate()}
-              disabled={linkSource.isPending || !sourceId.trim()}
+              disabled={linkSource.isPending || !selectedSourceId}
             >
               {linkSource.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Link2 className="h-3 w-3" />}
               Link

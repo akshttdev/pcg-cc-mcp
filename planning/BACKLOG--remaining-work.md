@@ -517,40 +517,49 @@ Feature: Stage configs match the dealflow plan across all pipelines
       | Conferences               | Researching        | scout | true    | Scout                  |
 ```
 
-### Spec Coverage Summary (2026-03-24)
+### Spec Coverage Summary (2026-03-24, updated post-sloperation sprint)
 
-**PASSING**: DL-1, DL-2, DL-4, AA-1 (+ Run Now), AA-2, AA-3, AA-5, AA-6 (auto-advance chain), AA-7 (retrigger), RG-1, RG-2, DD-2, DD-3, DD-5 (agent history), DL-5 (card badges), DL-6 (toasts), PC-1, PC-2, PC-3, PC-4 (stage owners)
-**PARTIAL**: DL-3, DD-1, DD-4
-**FAILING**: AA-4
+**PASSING**: DL-1, DL-2, DL-3 (Won unified), DL-4, AA-1 (+ Run Now), AA-2, AA-3, AA-4 (Pass 2 chain), AA-5, AA-6 (auto-advance chain), AA-7 (retrigger), RG-1, RG-2, DD-2, DD-3, DD-5 (agent history), DL-5 (card badges), DL-6 (toasts), PC-1, PC-2, PC-3, PC-4 (stage owners)
+**PARTIAL**: DD-1, DD-4
+**FAILING**: (none)
 
-### Remaining Gaps (FAILING/PARTIAL specs)
+### Remaining Gaps (PARTIAL specs)
 
 | Spec | Gap | Effort | Priority |
 |------|-----|--------|----------|
-| **DL-3** | Won dual-path: stage transition only creates delivery deal; mark_deal_won does full provisioning (client + project + tasks + VIBE). Two paths to Won = different results. | 1-2 days | HIGH — core revenue tracking |
-| **AA-4** | Astra Pass 2 → Cash chaining. Depends on Discovery stage (see sloperation gap below). | 1-2 days | MEDIUM — improves proposal quality |
 | **DD-1** | Auto-match transcripts from call intake | 1-2 days | LOW — manual linking works |
 | **DD-4** | AR invoice dashboard | 2-3 days | MEDIUM — invoice generation works, tracking doesn't |
 
 ### Sloperation Intent Gaps (Audited 2026-03-24)
 
-5 sloperation317 intents have **no analogue** in the current 9-stage architecture. These are not bugs — they are missing business capabilities. Full analysis: `docs/PIPELINE.md` → "Sloperation Intent Gaps".
+**Sloperation sprint (2026-03-24)** resolved all 5 missing intents and 3 partial items. See `planning/2026-03-24--plan--sloperation-intent-sprint.md`.
 
-| Gap | Sloperation Intent | Impact | Depends On |
-|-----|-------------------|--------|-----------|
-| **Discovery stage** | Human call step between BA and Proposal (position 3). AM conducts discovery call, logs transcript. | Proposals lack client-specific insights. Call scheduling UI exists but has no associated stage. | New stage + stage_config |
-| **Astra Pass 2 (F12)** | Enhanced research pass reading transcript + Phase 1 report on Discovery→Proposal transition | Proposals built from Phase 1 data only | Discovery stage |
-| **Astra→Cash chaining** | Pass 2 automatically chains to Cash with enriched report | Cash uses unenriched data | Astra Pass 2 |
-| **Present stage** | Deck presentation on live call BEFORE invoicing | Invoice stage is about payment, skips presentation | New stage or expanded Invoice |
-| **Transcript→Proposal pipeline** | deal_transcripts feed into Astra P2 → Cash | No mechanism to incorporate call insights | Discovery stage + Astra P2 |
+| Gap | Status | Resolution |
+|-----|--------|-----------|
+| **Discovery stage** | ✅ RESOLVED | Restored at position 3. Hero card in OverviewTab. Soft exit gate for transcript/source. |
+| **Astra Pass 2 (F12)** | ✅ RESOLVED | Sequential agent queue: Astra deep_research fires first on Proposal entry, chains to Cash. |
+| **Astra→Cash chaining** | ✅ RESOLVED | chain_actions in flow_config. Executor chains next agent before auto-advance. |
+| **Present stage** | ✅ RESOLVED | Invoice renamed to "Present & Invoice". Presentation tracking in DeckTab. Invoice gated on presentation. |
+| **Transcript→Proposal pipeline** | ✅ RESOLVED | deal_data_sources join table with dual agent/stage scoping. Agent context loads linked sources. |
+| **F8: Org-specific review routing** | ✅ RESOLVED | stage_config.review_assignee with org owner fallback via resolve_review_assignee(). |
+| **Won dual-path** | ✅ RESOLVED | provision_won_deal() extracted. Stage transition to Won triggers full provisioning. |
+| **F3: Person invite** | ⚠️ STUB | Still logs only. Token generation + copy link deferred. Backlog: Resend email integration. |
+| **Lead stage Scout label** | ⚠️ OPEN | Lead shows "Scout" badge but no agent fires there | Either add light Scout trigger or remove Scout label |
 
-3 items are **partially covered** (exist but incomplete):
+### Remaining Items from Sloperation Sprint
 
-| Gap | Issue | Resolution |
-|-----|-------|-----------|
-| **F8: Org-specific review routing** | Tasks created but not assigned to org operator | Add assignee routing in CreateReviewTask |
-| **F3: Person invite** | Stub — logs "wire invite system later" | Needs invite token + email send |
-| **Lead stage Scout label** | Lead shows "Scout" badge but no agent fires there | Either add light Scout trigger or remove Scout label |
+| Item | Effort | Priority |
+|------|--------|----------|
+| **W8: Cost bridge** — agent flows record token usage, cost dashboard shows real VIBE data | 0.5 day | MEDIUM |
+| **Data source picker dialog** — browse org's data library instead of paste UUID | 1 day | MEDIUM |
+| **Data source file upload** — upload creates data_source + links to deal | 0.5 day | LOW |
+| **Full E2E refresh** — update all 5 pipeline specs for 11-stage pipeline | 2 days | MEDIUM |
+| **chain_to vs dependency graph** — research alternative agent chaining approaches | research | LOW |
+| **stage_config.visible_tabs** — drive tab visibility from backend config | 1 day | LOW |
+| **Progressive tab unlock** — tabs accumulate as deal advances, never hide | 0.5 day | LOW |
+| **Resend email integration** — person invite via email on Won | 1 day | MEDIUM |
+| **Auto-match transcripts** from call intake (DD-1) | 1-2 days | LOW |
+| **crm_deal_automations.rs split** — 1400+ lines, split into won_provisioning + research_triggers + invoice_transcripts | 0.5 day | LOW |
 
 ### Architectural Divergences (intentional, documented)
 
@@ -559,9 +568,9 @@ These are places where the current implementation deliberately differs from the 
 | 317 Plan | Current | Rationale | Still Valid? |
 |----------|---------|-----------|-------------|
 | Deals enter at Intel (no Lead stage) | Lead added as manual qualification buffer | Gives human a chance to qualify before agent triggers | ⚠️ May be unnecessary — original design had Scout fire on deal creation |
-| Discovery stage between BA and Proposal | Removed entirely | Simplified flow — but lost human input step + transcript feeding | ❌ **Should be restored** — see sloperation gaps |
-| Astra Pass 2 on Discovery→Proposal | Not ported | Depends on Discovery stage | ❌ **Should be restored** |
-| Present stage (deck on live call) | Replaced by Invoice (payment confirmation) | Different business intent | ⚠️ Review — may need both stages |
+| Discovery stage between BA and Proposal | ✅ Restored (sloperation sprint) | Discovery stage at position 3 with hero card + exit gates | ✅ |
+| Astra Pass 2 on Discovery→Proposal | ✅ Restored (sloperation sprint) | Sequential agent queue with chain_actions | ✅ |
+| Present stage (deck on live call) | ✅ Consolidated into "Present & Invoice" | Invoice renamed, presentation tracking added | ✅ |
 | Hardcoded stage automations in route handlers | Data-driven `stage_config` JSON with `StageTransitionProcessor` | Enables UI-based configuration; hardcoded logic preserved as fallback | ✅ |
 | `call_llm()` direct HTTP in route handlers | `WorkflowLLMService` + `AgentFlowExecutor` with tool-calling loop | Richer agent capabilities (get_deal_context, update_deal_field, save_artifact) | ✅ |
 | No cancel window | 30s cancel window with frontend indicator | User control over agent execution | ✅ |

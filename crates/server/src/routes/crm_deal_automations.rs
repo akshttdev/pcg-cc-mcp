@@ -1644,11 +1644,11 @@ pub async fn generate_deal_invite(
         None
     };
 
-    // Generate invite token
+    // Generate invite token (64 hex chars from two UUIDs)
     let token = format!(
         "{}{}",
-        uuid::Uuid::new_v4().to_string().replace('-', ""),
-        uuid::Uuid::new_v4().to_string().replace('-', "")
+        DbUuid::new().to_string().replace('-', ""),
+        DbUuid::new().to_string().replace('-', "")
     );
 
     // Store in deal's custom_fields

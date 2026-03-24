@@ -205,48 +205,37 @@ Stages without `stage_config` (NULL) fall back to hardcoded behavior in `run_har
 - Dark mode fully themed
 - Zero console errors across all interactions
 
-## Sloperation Intent Gaps (Audited 2026-03-24)
+## Sloperation Intent Gaps — RESOLVED (2026-03-24)
 
-The current 9-stage pipeline was rebuilt from the original sloperation317 flow (8 stages). Several intended capabilities were lost or simplified during the migration. These represent key business intents that must be restored.
+All 5 missing intents and 3 partial implementations resolved in the sloperation sprint (`feature/2026-03-24--sloperation-sprint`). See `planning/2026-03-24--plan--sloperation-intent-sprint.md`.
 
-**Source**: `planning/2026-03-18--reference--pipeline-status.md` (canonical sloperation intent)
+| Gap | Status | Resolution |
+|-----|--------|-----------|
+| **Discovery stage** | ✅ Restored | Position 3 between BA and Proposal. Hero card, call scheduling, transcript exit gate. |
+| **Astra Pass 2** | ✅ Implemented | Sequential agent queue. Proposal entry triggers Astra deep_research first, chains to Cash. |
+| **Astra→Cash chaining** | ✅ Implemented | chain_actions in flow_config. Executor chains next agent before auto-advance. |
+| **Present stage** | ✅ Consolidated | Invoice renamed to "Present & Invoice". Presentation tracking in DeckTab gates invoice. |
+| **Transcript→Proposal** | ✅ Implemented | deal_data_sources join table with dual agent/stage scoping. Agent context includes linked sources. |
+| **F8: Review routing** | ✅ Implemented | stage_config.review_assignee with org owner fallback. |
+| **Won dual-path** | ✅ Fixed | provision_won_deal() extracted. All Won arrivals trigger full provisioning. |
+| **F3: Person invite** | ⚠️ Stub | Token + email deferred. Backlog: Resend integration. |
 
-### Missing Stages / Capabilities
-
-| Gap | Sloperation Intent | Impact | Effort |
-|-----|-------------------|--------|--------|
-| **Discovery stage removed** | Dedicated human stage (position 3) between BA and Proposal where AM conducts discovery call with client | No client conversation feeds into proposal. AM has no pipeline prompt to do the call. Call scheduling UI exists but has no associated stage. | Add stage + stage_config, shift positions |
-| **Astra Pass 2 (F12)** | Enhanced research pass triggered on Discovery→Proposal transition, reading transcript + Phase 1 report + all accumulated context | Proposals built from Phase 1 data only — less context, weaker proposals | Add transition hook + Astra P2 agent config |
-| **Astra→Cash chaining** | Pass 2 automatically chains to Cash proposal generation with enriched report | Cash uses unenriched data | Wire chain trigger after Astra P2 completes |
-| **Present stage** | Dedicated stage for AM to present deck on live call BEFORE invoicing | Current Invoice stage is about payment, skips the deck presentation step | Add Present stage or expand Invoice to include presentation |
-| **Transcript→Proposal pipeline** | deal_transcripts from discovery calls feed into Astra P2 → Cash | No mechanism to incorporate call insights into proposal content | Depends on Discovery stage + Astra P2 |
-
-### Partial Implementations
-
-| Gap | Issue | Resolution |
-|-----|-------|-----------|
-| **F8: Org-specific review task routing** | Review tasks created but NOT assigned to org-specific operator (Sirak→Sirak op, PCG→Bodhi) | Add `assigned_to` field to CreateReviewTask based on org config |
-| **Won dual-path problem** | DnD/context menu to Won only creates delivery deal. `POST /crm/deals/:id/mark-won` does full provisioning (client + project + tasks + VIBE). Two paths = different results. | Unify: stage transition to Won should call full mark_deal_won chain |
-| **F3: Person invite** | Still stub — logs "wire invite system later" in mark_deal_won | Needs invite token generation + email send |
-
-### Original vs Current Stage Mapping
+### Current Stage Mapping (Post-Sprint)
 
 ```
-SLOPERATION (8 stages)          CURRENT (9 stages)          STATUS
-═════════════════════           ══════════════════           ══════
-                                Lead (manual)               ADDED (not in original)
+SLOPERATION (8 stages)          CURRENT (11 stages)         STATUS
+═════════════════════           ═══════════════════         ══════
+                                Lead (manual)               ADDED
 Intel (Scout)                   Intel (Scout)               MATCH
 Business Analysis (Astra)       Business Analysis (Astra)   MATCH
-Discovery (Human call)          — MISSING —                 REMOVED
-  → Astra Pass 2 transition    — MISSING —                 NOT PORTED
-Proposal (Cash, from Pass 2)    Proposal (Cash, direct)     SIMPLIFIED
+Discovery (Human call)          Discovery (AM + Nora)       ✅ RESTORED
+  → Astra Pass 2 transition    → Sequential queue on entry  ✅ IMPLEMENTED
+Proposal (Cash, from Pass 2)    Proposal (Astra P2→Cash)    ✅ CHAINED
 Polish (Lux)                    Polish (Lux)                MATCH
-Present (deck on live call)     Invoice (payment confirm)   REPLACED
-Follow Up (human)               Negotiation (human)         RENAMED
-Won (full provisioning)         Won (delivery deal only*)   REDUCED*
+Present (deck on live call)     Present & Invoice (AM)      ✅ CONSOLIDATED
+Follow Up (human)               Negotiation (Nora + AM)     RENAMED
+Won (full provisioning)         Won (full provisioning)     ✅ UNIFIED
                                 Lost (terminal)             MATCH
-
-* mark_deal_won endpoint has full provisioning but isn't triggered by stage transition
 ```
 
 ## Other Known Gaps
@@ -257,6 +246,8 @@ Won (full provisioning)         Won (delivery deal only*)   REDUCED*
 | AR invoice dashboard | No revenue tracking view | 2-3 days |
 | Real LLM execution | Requires funded API credits | 0 (just add credits) |
 | Per-org stage_config overrides | Global defaults only | 1 day |
+| Cost bridge (W8) | Agent flows don't record token usage | 0.5 day |
+| Data source picker dialog | Currently paste UUID only | 1 day |
 
 ---
 
