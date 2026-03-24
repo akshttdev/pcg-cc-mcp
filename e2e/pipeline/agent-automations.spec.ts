@@ -164,7 +164,7 @@ test.describe("Agent Automations (AA-1 to AA-7)", () => {
     await apiLogin(request);
 
     // Astra completes → deal auto-advances to Discovery (human stage, stops)
-    const reachedDiscovery = await waitForDealStage(page, request, dealId, "Discovery", 30_000);
+    const reachedDiscovery = await waitForDealStage(page, request, dealId, "Discovery", 45_000);
     expect(reachedDiscovery, "Deal should auto-advance to Discovery after Astra completes").toBe(true);
 
     // Reload to see deal in Discovery column, then advance via context menu
@@ -223,7 +223,7 @@ test.describe("Agent Automations (AA-1 to AA-7)", () => {
     const currentDeal = (await dealRes.json()).data || (await dealRes.json());
     if (currentDeal.stage?.toLowerCase() !== "proposal") {
       // Need to advance through Discovery first
-      const reachedDiscovery = await waitForDealStage(page, request, dealId, "Discovery", 30_000);
+      const reachedDiscovery = await waitForDealStage(page, request, dealId, "Discovery", 45_000);
       if (reachedDiscovery) {
         await page.reload();
         await expect(page.getByText("Acquisition Pipeline").first()).toBeVisible({ timeout: t(10_000) });

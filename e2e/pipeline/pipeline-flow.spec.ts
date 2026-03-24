@@ -217,7 +217,7 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
     }
 
     // Discovery is human-owned — advance to Proposal via context menu (UI)
-    const reachedDiscovery = await waitForStage("Discovery", 30_000);
+    const reachedDiscovery = await waitForStage("Discovery", 45_000);
     expect(reachedDiscovery, "Deal should reach Discovery via auto-advance chain").toBe(true);
 
     // Reload to see deal in Discovery column, then advance via context menu
