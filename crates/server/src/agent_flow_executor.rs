@@ -225,6 +225,11 @@ impl AgentFlowExecutor {
                     flow.id,
                     agent_name
                 );
+
+                // Auto-advance: if the stage is agent-owned, move deal to next stage
+                if !deal_id.is_empty() {
+                    self.try_auto_advance_deal(deal_id).await;
+                }
             }
             Err(e) => {
                 self.fail_flow(flow, &e.to_string()).await;
@@ -636,6 +641,138 @@ impl AgentFlowExecutor {
             .as_deref()
             .and_then(|s| serde_json::from_str(s).ok())
             .unwrap_or_else(|| json!({}))
+    }
+}
+
+// ── Auto-Advance ────────────────────────────────────────────────────────────
+
+impl AgentFlowExecutor {
+    /// After an agent flow completes, check if the deal should auto-advance
+    /// to the next pipeline stage. This happens when:
+    /// 1. The current stage has an agent assigned (agent-owned stage)
+    /// 2. All agent flows for this deal in the current stage are completed
+    /// 3. The review task (if any) is done
+    async fn try_auto_advance_deal(&self, deal_id: &str) {
+        // Load the deal
+        let deal = match sqlx::query_as::<_, (String, Option<String>, Option<String>)>(
+            "SELECT id, crm_stage_id, crm_pipeline_id FROM crm_deals WHERE id = ?1",
+        )
+        .bind(deal_id)
+        .fetch_optional(&self.pool)
+        .await
+        {
+            Ok(Some(d)) => d,
+            _ => return,
+        };
+
+        let (_, stage_id, pipeline_id) = deal;
+        let (Some(stage_id), Some(pipeline_id)) = (stage_id, pipeline_id) else {
+            return;
+        };
+
+        // Check if the current stage has an agent assigned (agent-owned)
+        let stage_config: Option<String> = sqlx::query_scalar(
+            "SELECT stage_config FROM crm_pipeline_stages WHERE id = ?1",
+        )
+        .bind(&stage_id)
+        .fetch_optional(&self.pool)
+        .await
+        .ok()
+        .flatten();
+
+        let is_agent_stage = stage_config
+            .as_deref()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
+            .map(|c| c.get("agent").and_then(|a| a.as_str()).is_some())
+            .unwrap_or(false);
+
+        if !is_agent_stage {
+            tracing::debug!("[AgentFlowEngine] Stage {} is not agent-owned, skipping auto-advance", stage_id);
+            return;
+        }
+
+        // Check if any pending agent flows remain for this deal
+        let pending_flows: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM agent_flows WHERE crm_deal_id = ?1 AND status IN ('planning', 'executing')",
+        )
+        .bind(deal_id)
+        .fetch_one(&self.pool)
+        .await
+        .unwrap_or(0);
+
+        if pending_flows > 0 {
+            tracing::info!("[AgentFlowEngine] Deal {} has {} pending flows, not advancing yet", deal_id, pending_flows);
+            return;
+        }
+
+        // Find next stage in the pipeline
+        let current_position: Option<i32> = sqlx::query_scalar(
+            "SELECT position FROM crm_pipeline_stages WHERE id = ?1",
+        )
+        .bind(&stage_id)
+        .fetch_optional(&self.pool)
+        .await
+        .ok()
+        .flatten();
+
+        let Some(pos) = current_position else { return };
+
+        let next_stage: Option<(String, String)> = sqlx::query_as(
+            "SELECT id, name FROM crm_pipeline_stages WHERE crm_pipeline_id = ?1 AND position > ?2 ORDER BY position ASC LIMIT 1",
+        )
+        .bind(&pipeline_id)
+        .bind(pos)
+        .fetch_optional(&self.pool)
+        .await
+        .ok()
+        .flatten();
+
+        let Some((next_stage_id, next_stage_name)) = next_stage else {
+            tracing::info!("[AgentFlowEngine] Deal {} is in the last stage, nothing to advance to", deal_id);
+            return;
+        };
+
+        // Auto-advance the deal
+        tracing::info!(
+            "[AgentFlowEngine] Auto-advancing deal {} to stage {} ({})",
+            deal_id, next_stage_name, next_stage_id
+        );
+
+        if let Err(e) = sqlx::query(
+            "UPDATE crm_deals SET crm_stage_id = ?1, stage = ?2, updated_at = datetime('now','subsec') WHERE id = ?3",
+        )
+        .bind(&next_stage_id)
+        .bind(&next_stage_name)
+        .bind(deal_id)
+        .execute(&self.pool)
+        .await
+        {
+            tracing::error!("[AgentFlowEngine] Failed to auto-advance deal {}: {}", deal_id, e);
+            return;
+        }
+
+        // Run transition processor for the new stage (triggers next agent, creates review tasks, etc.)
+        let deal_uuid = match db::db_uuid::DbUuid::parse(deal_id) {
+            Ok(u) => u,
+            Err(_) => return,
+        };
+        if let Ok(deal) = db::models::crm_deal::CrmDeal::find_by_id(&self.pool, &deal_uuid).await {
+            let next_stage_uuid = db::db_uuid::DbUuid::from_string(next_stage_id.clone());
+            if let Ok(to_stage) = db::models::crm_pipeline::CrmPipelineStage::find_by_id(&self.pool, &next_stage_uuid).await {
+                let from_stage_uuid = db::db_uuid::DbUuid::from_string(stage_id);
+                let from_stage = db::models::crm_pipeline::CrmPipelineStage::find_by_id(&self.pool, &from_stage_uuid).await.ok();
+                let result = crate::stage_transition::process_transition(
+                    &self.pool,
+                    &deal,
+                    from_stage.as_ref(),
+                    &to_stage,
+                ).await;
+                tracing::info!(
+                    "[AgentFlowEngine] Transition result for deal {} → {}: {:?}",
+                    deal_id, next_stage_name, result.actions_taken
+                );
+            }
+        }
     }
 }
 

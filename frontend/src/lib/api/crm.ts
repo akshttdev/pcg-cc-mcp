@@ -506,6 +506,11 @@ export const crmDealsApi = {
     return handleApiResponse<{ approved: boolean; message: string }>(response);
   },
 
+  retriggerDealAgent: async (dealId: string): Promise<{ retriggered: boolean; agent_flow_id: string; agent: string; message: string }> => {
+    const response = await makeRequest(`/api/crm/deals/${dealId}/retrigger-agent`, { method: 'POST' });
+    return handleApiResponse<{ retriggered: boolean; agent_flow_id: string; agent: string; message: string }>(response);
+  },
+
   generateInvite: async (dealId: string): Promise<{ invite_url: string; token: string; contact_email?: string; status: string }> => {
     const response = await makeRequest(`/api/crm/deals/${dealId}/generate-invite`, { method: 'POST' });
     return handleApiResponse<{ invite_url: string; token: string; contact_email?: string; status: string }>(response);

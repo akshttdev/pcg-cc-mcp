@@ -61,6 +61,12 @@ export const deck = {
   generateInvite: "deck-generate-invite",
 } as const;
 
+// ── Agent History (AgentHistoryTab.tsx) ───────────────────────────────────────
+
+export const agentHistory = {
+  retrigger: "agent-retrigger",
+} as const;
+
 // ── Pipeline Settings (CrmPipelineSettings.tsx) ──────────────────────────────
 
 export const pipelineSettings = {

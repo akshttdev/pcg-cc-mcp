@@ -883,6 +883,19 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 **Recommendation:** Either make the assertions unconditional (fail if element missing) or use `test.fixme()` to mark as known incomplete.
 **Status:** NOT STARTED — reduces test value
 
+### E2E: Testid Coverage Gaps in CRM Components
+**Source:** Testid audit (2026-03-24)
+**What:** `shared/testids.ts` is now the single source of truth for `data-testid` attributes, used by both frontend components and E2E tests. 22 of 53 interactive CRM elements have testids. The 31 missing are:
+- **PipelineSettingsStageDialog**: all tab triggers, Save Stage button, checkbox controls (7 elements)
+- **StageConfigEditor**: agent select, auto-trigger checkbox, cancel window input, 5 required-field checkboxes, approval gate (8 elements)
+- **DeckTab**: Regenerate, Share for Review, Cancel buttons, Copy/Regenerate invite (7 elements)
+- **CrmPipelineBoard**: empty state Add Deal, per-stage "+ Add deal" (3 elements — helpers exist: `tid.addDealEmpty`, `tid.addDealStage`)
+- **CrmPipelineSettings**: pipeline dropdown, Add Stage, New Pipeline buttons (3 elements)
+- **PipelineSettingsStagesTab**: Move up/down, Delete stage buttons (2 elements)
+- **DealHeader**: pipeline stage stepper clicks (1 element)
+**Recommendation:** Add testids as needed when writing tests that target these elements. Helpers exist in `shared/testids.ts` — add new ones there first, then import in both component and spec.
+**Status:** PARTIAL — primary interaction paths covered, secondary/config controls pending
+
 ### E2E: Fragile Title-Based Button Selectors
 **Source:** PR #49 e2e review (2026-03-18)
 **Files:** Workflow demo specs
@@ -970,6 +983,30 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 **Rationale:** Financial data accuracy is critical for CRM. Mixing currencies in a sum is a data integrity issue.
 **Proposal:** Either: (a) normalize all values to pipeline's base currency with conversion, (b) show aggregate per currency, or (c) only show aggregate when all deals share the same currency — otherwise show "Mixed currencies".
 **Status:** NOT STARTED
+
+### 18. Pipeline Deal Cards — Show Invalid/Blocked State
+**Source:** E2E testing session (2026-03-24)
+**What:** When a deal has errors that prevent it from continuing through the pipeline (e.g., missing required fields, failed agent flows, validation errors), there is no visual indication on the kanban card. The deal looks normal, and the error only surfaces when attempting to move it — as a toast that disappears.
+**Rationale:** Users need to see at a glance which deals need attention. Silent failures mean deals get stuck without anyone noticing.
+**Proposal:** Add a visual state to deal cards for "blocked" or "needs attention":
+- Red/orange border or badge when the deal has blocking validation errors
+- "Agent failed" badge when the last agent flow errored
+- Tooltip showing what's blocking the deal from advancing
+- Consider preventing drag/move for deals that will definitely fail validation (show reason on hover)
+**Status:** NOT STARTED — high impact for pipeline usability
+
+### 19. Agent Flow Interaction — Run Now / Cancel / View Results
+**Source:** E2E testing session (2026-03-24)
+**What:** When a deal moves to an agent stage (Intel, BA, Proposal, Polish), a toast shows "Scheduled scout agent" with Cancel/Run Now buttons, but:
+- Tests don't verify what happens when you click Run Now or Cancel
+- No E2E coverage of the Agent History tab after an agent completes
+- Agent failures (LLM errors, timeouts) have no UI feedback on the deal card
+**Rationale:** The agent notification is the user's only interaction point with the agent system. If they click Run Now, they should see the agent progress. If the agent fails, they should know.
+**Proposal:**
+1. E2E test: click Run Now → verify agent_flow status transitions → verify Agent History tab shows flow
+2. E2E test: click Cancel → verify agent_flow is cancelled → verify no agent work runs
+3. Agent failure: deal card shows "Agent failed" badge, Agent History tab shows error details with retry button
+**Status:** NOT STARTED — needed for agent automation confidence
 
 ---
 

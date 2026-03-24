@@ -109,10 +109,27 @@ test.describe("DL-1: Create and track a deal through the pipeline", () => {
   });
 
   test("view details — And: can expand to full dialog mode", async ({ page }) => {
-    // Spec: "I can expand the panel to full dialog mode"
-    // MCP verified: Expand button at data-testid="deal-detail-expand"
-    // Clicking toggles Sheet→Dialog, button text changes Expand→Minimize
-    test.fixme(true, "Expand flow confirmed via MCP — test needs Sheet→Dialog transition timing fix");
+    test.setTimeout(30_000);
+    const dealText = DEAL_NAME.replace(`${TEST_DATA_PREFIX} `, "");
+
+    // Open the deal detail dialog
+    await page.getByText(dealText).first().click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible({ timeout: t(10_000) });
+
+    // MCP verified: Expand button at data-testid="deal-detail-expand", text "Expand"
+    const expandBtn = page.getByTestId(dealDetail.expand);
+    await expect(expandBtn).toBeVisible({ timeout: t(5_000) });
+    await expect(expandBtn).toHaveText("Expand", { timeout: t(3_000) });
+
+    // Click Expand — button text should change to "Minimize" (proves expansion happened)
+    await expandBtn.click();
+    await page.waitForTimeout(demoPause.short);
+    await expect(expandBtn).toHaveText("Minimize", { timeout: t(5_000) });
+
+    // Close dialog for next test
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await page.waitForTimeout(demoPause.short);
   });
 });
 

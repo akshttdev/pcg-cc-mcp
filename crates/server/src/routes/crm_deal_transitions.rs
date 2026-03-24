@@ -530,6 +530,69 @@ pub async fn approve_deal_agent(
     }
 }
 
+/// POST /crm/deals/:id/retrigger-agent - Re-trigger the agent for the deal's current stage
+///
+/// Used after cancelling or when an agent flow failed. Creates a new agent flow
+/// for the current stage's configured agent, same as the initial stage transition.
+pub async fn retrigger_deal_agent(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let id = parse_db_uuid_param(&id, "deal ID")?;
+    let deal = require_deal_org_access(&access_context, pool, &id).await?;
+
+    // Get the current stage config to find the assigned agent
+    let stage_id = deal.crm_stage_id.as_ref()
+        .ok_or_else(|| ApiError::BadRequest("Deal has no stage assigned".into()))?;
+    let stage = db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, stage_id)
+        .await
+        .map_err(|_| ApiError::NotFound("Stage not found".into()))?;
+
+    let config: Option<crate::stage_transition::StageConfig> = stage.stage_config
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok());
+
+    let config = config
+        .ok_or_else(|| ApiError::BadRequest("Current stage has no configuration".into()))?;
+
+    let agent = config.assigned_agent.as_deref()
+        .ok_or_else(|| ApiError::BadRequest("Current stage has no agent assigned".into()))?;
+
+    let flow_type = crate::stage_transition::agent_default_flow_type(agent);
+
+    // Check there's no already-running flow for this deal
+    let active_flows: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM agent_flows WHERE crm_deal_id = ?1 AND status IN ('planning', 'executing')",
+    )
+    .bind(id.as_str())
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0);
+
+    if active_flows > 0 {
+        return Err(ApiError::BadRequest(
+            "Deal already has an active agent flow — cancel it first".into(),
+        ));
+    }
+
+    // Schedule the new agent flow (same as stage_transition::schedule_agent_flow)
+    let (flow_id, deadline) = crate::stage_transition::schedule_agent_flow(
+        pool, &deal, agent, &flow_type, config.cancel_window_secs,
+    )
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to schedule agent: {}", e)))?;
+
+    Ok(Json(ApiResponse::success(serde_json::json!({
+        "retriggered": true,
+        "agent_flow_id": flow_id,
+        "agent": agent,
+        "cancel_deadline": deadline.to_rfc3339(),
+        "message": format!("Re-triggered {} agent for current stage", agent),
+    }))))
+}
+
 /// GET /crm/deals/:id/agent-flows - List agent flows for a deal with events
 pub async fn get_deal_agent_flows(
     Extension(access_context): Extension<AccessContext>,

@@ -1,3 +1,9 @@
+---
+name: demo-walkthrough
+description: Walk through an E2E demo test step-by-step via Playwright MCP, verifying every interaction and fixing errors
+user-invocable: true
+---
+
 # Manual Demo Walkthrough
 
 Walk through an E2E demo test step-by-step using Playwright MCP, verifying every interaction succeeds and fixing any errors found.

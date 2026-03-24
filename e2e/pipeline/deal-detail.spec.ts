@@ -93,11 +93,11 @@ test.describe("Deal Detail Features (DD-1 to DD-4)", () => {
   test("DD-1: link transcript via API and verify it appears", async () => {
     // Spec: "When I POST to /crm/deals/:id/transcripts, Then the transcript is linked"
     // RED: This test needs the transcript linking API endpoint to be verified
-    test.fixme(true, "Transcript linking API needs MCP walkthrough to verify endpoint and response");
+    test.fixme(true, "Transcript linking API: POST /crm/deals/:id/transcripts endpoint needs backend verification — UI tab works");
   });
 
   test("DD-1: auto-match transcripts from call intake", async () => {
-    test.fixme(true, "Auto-match not implemented — manual linking works");
+    test.fixme(true, "Auto-match not implemented — requires call intake webhook to auto-link transcripts to deals by contact");
   });
 
   // ── DD-2: Call scheduling ──────────────────────────────────────────────
@@ -228,7 +228,7 @@ test.describe("Deal Detail Features (DD-1 to DD-4)", () => {
     // Spec: "Given a deal is in Won stage, When I click 'Generate Invite Link',
     //        Then a token-based invite URL is generated, And I can copy it to clipboard"
     // RED: requires moving deal to Won stage first, then testing the invite flow
-    test.fixme(true, "Requires moving deal to Won → clicking Generate Invite Link → verifying URL");
+    test.fixme(true, "Requires Won state: move deal through all stages to Won (won_at must be set), then deck-generate-invite button appears — covered in pipeline-flow.spec.ts DL-3/DD-3");
   });
 
   // ── DD-4: Invoice generation ───────────────────────────────────────────
