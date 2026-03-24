@@ -187,7 +187,7 @@ impl AgentFlowExecutor {
         match result {
             Ok(output) => {
                 // Save artifact with the output
-                let artifact_id = Uuid::new_v4();
+                let artifact_id = DbUuid::new();
                 if let Err(e) = AgentFlowEvent::emit_artifact_created(
                     &self.pool,
                     &flow.id,
@@ -518,7 +518,7 @@ impl AgentFlowExecutor {
             }
         };
 
-        let artifact_id = Uuid::new_v4();
+        let artifact_id = DbUuid::new();
         match AgentFlowEvent::create(
             &self.pool,
             CreateFlowEvent {
