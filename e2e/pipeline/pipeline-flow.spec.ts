@@ -155,7 +155,7 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
     await expect(panel).toBeVisible({ timeout: t(10_000) });
 
     // Click Agent History tab (MCP verified: testid "deal-detail-tabs-agents", role tab "Agent History")
-    await page.getByRole("tab", { name: "Agent History" }).click();
+    await panel.getByRole("tab", { name: "Agent History" }).click();
     await page.waitForTimeout(demoPause.short);
 
     // MCP verified: heading "Agent Execution History" visible, flow entries show agent name + status
@@ -273,7 +273,7 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
     await expect(panel).toBeVisible({ timeout: t(10_000) });
 
     // Overview tab → Call Scheduling
-    await page.getByRole("tab", { name: "Overview" }).click();
+    await panel.getByRole("tab", { name: "Overview" }).click();
     await page.waitForTimeout(demoPause.short);
     await expect(panel.getByText("Call Scheduling")).toBeVisible({ timeout: t(5_000) });
 
@@ -295,7 +295,7 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
 
     await page.getByText(dealText).first().click();
     await expect(page.getByTestId(dealDetail.panel)).toBeVisible({ timeout: t(10_000) });
-    await page.getByRole("tab", { name: "Overview" }).click();
+    await panel.getByRole("tab", { name: "Overview" }).click();
     await page.waitForTimeout(demoPause.short);
 
     // This is the key assertion — does the saved method survive a panel close+reopen?
@@ -327,7 +327,7 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
     await page.getByText(dealText).first().click();
     const panel = page.getByTestId(dealDetail.panel);
     await expect(panel).toBeVisible({ timeout: t(10_000) });
-    await page.getByRole("tab", { name: "Deck & Close" }).click();
+    await panel.getByRole("tab", { name: "Deck & Close" }).click();
     await page.waitForTimeout(demoPause.short);
 
     // Send Invoice
@@ -429,7 +429,7 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
     await page.getByText(dealText).first().click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible({ timeout: t(10_000) });
-    await page.getByRole("tab", { name: "Deck & Close" }).click();
+    await panel.getByRole("tab", { name: "Deck & Close" }).click();
     await page.waitForTimeout(demoPause.short);
 
     await expect(page.getByTestId(deck.generateInvite)).toBeVisible({ timeout: t(5_000) });
