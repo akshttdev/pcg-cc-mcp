@@ -6,8 +6,8 @@
  */
 import { test, expect } from "./fixtures";
 import { t, demoPause, login, apiLogin, TEST_DATA_PREFIX } from "../helpers";
-import { ORG_ID, PIPELINE_URL, moveDealViaContextMenu } from "./helpers";
-import { callScheduling, deck } from "./testids";
+import { ORG_ID, PIPELINE_URL, moveDealViaContextMenu, waitForDealStage } from "./helpers";
+import { dealDetail, callScheduling, deck } from "./testids";
 
 let dealId: string;
 let dealName: string;
@@ -60,7 +60,7 @@ test.describe("Deal Detail Features (DD-1 to DD-4)", () => {
     await page.goto(PIPELINE_URL);
     await expect(page.getByText("Acquisition Pipeline")).toBeVisible({ timeout: t(15_000) });
     await page.getByText(dealText).first().click();
-    await expect(page.getByRole("dialog")).toBeVisible({ timeout: t(10_000) });
+    await expect(page.getByTestId(dealDetail.panel)).toBeVisible({ timeout: t(10_000) });
     await page.waitForTimeout(demoPause.short);
   });
 
@@ -83,11 +83,11 @@ test.describe("Deal Detail Features (DD-1 to DD-4)", () => {
     await page.getByRole("tab", { name: "Transcripts" }).click();
     await page.waitForTimeout(demoPause.short);
 
-    const dialog = page.getByRole("dialog");
+    const panel = page.getByTestId(dealDetail.panel);
     // MCP verified: empty state has heading, "No transcripts linked" text, and "Link" button
-    await expect(dialog.getByRole("heading", { name: "Discovery Transcripts" })).toBeVisible({ timeout: t(5_000) });
-    await expect(dialog.getByText("No transcripts linked")).toBeVisible();
-    await expect(dialog.getByRole("button", { name: "Link" })).toBeVisible();
+    await expect(panel.getByRole("heading", { name: "Discovery Transcripts" })).toBeVisible({ timeout: t(5_000) });
+    await expect(panel.getByText("No transcripts linked")).toBeVisible();
+    await expect(panel.getByRole("button", { name: "Link" })).toBeVisible();
   });
 
   test("DD-1: link transcript via API and verify it appears", async () => {
@@ -112,57 +112,40 @@ test.describe("Deal Detail Features (DD-1 to DD-4)", () => {
   // Call scheduling section only appears on discovery/proposal/present stages.
   // Must move deal to Proposal first.
 
-  test("DD-2: move deal to Proposal for call scheduling", async ({ page, request }) => {
-    test.setTimeout(60_000);
+  test("DD-2: move deal to Proposal for call scheduling (via agent auto-advance)", async ({ page, request }) => {
+    test.setTimeout(120_000);
     await apiLogin(request);
 
     // Close the detail panel first
-    await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
+    await page.getByTestId(dealDetail.panel).getByRole("button", { name: "Close" }).click();
     await page.waitForTimeout(demoPause.short);
 
-    // Complete pending review tasks at each stage
-    const completeTasks = async () => {
-      const tasksRes = await request.get(`/api/tasks?crm_deal_id=${dealId}`);
-      if (tasksRes.ok()) {
-        for (const task of ((await tasksRes.json()).data || [])) {
-          if (task.status !== "done" && task.status !== "cancelled") {
-            await request.put(`/api/tasks/${task.id}`, { data: { status: "done" } });
-          }
-        }
-      }
-    };
-
-    // Move Lead → Intel → BA → Proposal (adjacent moves only)
+    // Move to Intel (user action) — agents auto-advance through BA → Proposal
     await moveDealViaContextMenu(page, dealText, "Intel");
     await expect(page.getByText("Moved to Intel")).toBeVisible({ timeout: t(5_000) });
-    await page.waitForTimeout(demoPause.medium);
-    await completeTasks();
 
-    await moveDealViaContextMenu(page, dealText, "Business Analysis");
-    await expect(page.getByText("Moved to Business Analysis")).toBeVisible({ timeout: t(5_000) });
-    await page.waitForTimeout(demoPause.medium);
-    await completeTasks();
+    // Wait for agent chain: Intel(Scout) → BA(Astra) → Proposal(Cash)
+    const reached = await waitForDealStage(page, request, dealId, "Proposal", 90_000);
+    expect(reached, "Deal should auto-advance to Proposal via agent chain").toBe(true);
 
-    await moveDealViaContextMenu(page, dealText, "Proposal");
-    await expect(page.getByText("Moved to Proposal")).toBeVisible({ timeout: t(5_000) });
-    await page.waitForTimeout(demoPause.medium);
-
-    // Re-open the deal detail panel
+    // Refresh and re-open the deal detail panel
+    await page.reload();
+    await expect(page.getByText("Acquisition Pipeline")).toBeVisible({ timeout: t(15_000) });
     await page.getByText(dealText).first().click();
-    await expect(page.getByRole("dialog")).toBeVisible({ timeout: t(10_000) });
+    await expect(page.getByTestId(dealDetail.panel)).toBeVisible({ timeout: t(10_000) });
     await page.waitForTimeout(demoPause.short);
   });
 
   test("DD-2: schedule a call — fill date, method, status, click Save", async ({ page }) => {
     test.setTimeout(30_000);
-    const dialog = page.getByRole("dialog");
+    const panel = page.getByTestId(dealDetail.panel);
 
     // Given: on the Overview tab
     await page.getByRole("tab", { name: "Overview" }).click();
     await page.waitForTimeout(demoPause.short);
 
     // Verify Call Scheduling section is visible on Proposal stage
-    await expect(dialog.getByText("Call Scheduling")).toBeVisible({ timeout: t(5_000) });
+    await expect(panel.getByText("Call Scheduling")).toBeVisible({ timeout: t(5_000) });
 
     // When: click the discovery call row to open the edit form
     await page.getByTestId(callScheduling.row("discovery")).click();
@@ -181,7 +164,7 @@ test.describe("Deal Detail Features (DD-1 to DD-4)", () => {
     await expect(page.getByText("Call schedule updated")).toBeVisible({ timeout: t(5_000) });
 
     // Then: the row should now show the saved values (date, method)
-    await expect(dialog.getByText("Phone")).toBeVisible({ timeout: t(3_000) });
+    await expect(panel.getByText("Phone")).toBeVisible({ timeout: t(3_000) });
   });
 
   // ── DD-3: Person invitation ────────────────────────────────────────────
@@ -198,12 +181,12 @@ test.describe("Deal Detail Features (DD-1 to DD-4)", () => {
     await page.getByRole("tab", { name: "Deck & Close" }).click();
     await page.waitForTimeout(demoPause.short);
 
-    const dialog = page.getByRole("dialog");
+    const panel = page.getByTestId(dealDetail.panel);
 
     // MCP verified: three sections with headings
-    await expect(dialog.getByRole("heading", { name: "Sales Deck" })).toBeVisible({ timeout: t(5_000) });
-    await expect(dialog.getByRole("heading", { name: "Invoice" })).toBeVisible();
-    await expect(dialog.getByRole("heading", { name: "Close Deal" })).toBeVisible();
+    await expect(panel.getByRole("heading", { name: "Sales Deck" })).toBeVisible({ timeout: t(5_000) });
+    await expect(panel.getByRole("heading", { name: "Invoice" })).toBeVisible();
+    await expect(panel.getByRole("heading", { name: "Close Deal" })).toBeVisible();
 
     // Buttons accessible via testids
     await expect(page.getByTestId(deck.markWon)).toBeVisible();
@@ -211,7 +194,7 @@ test.describe("Deal Detail Features (DD-1 to DD-4)", () => {
 
   test("DD-3: invite link not visible on non-Won deal", async ({ page }) => {
     test.setTimeout(30_000);
-    const dialog = page.getByRole("dialog");
+    const panel = page.getByTestId(dealDetail.panel);
 
     // Spec: invite link only available on Won deals
     // Deal is in Proposal — "Generate Invite Link" should NOT be visible
@@ -221,7 +204,7 @@ test.describe("Deal Detail Features (DD-1 to DD-4)", () => {
     });
 
     // Positive check: Close Deal section IS visible
-    await expect(dialog.getByRole("heading", { name: "Close Deal" })).toBeVisible();
+    await expect(panel.getByRole("heading", { name: "Close Deal" })).toBeVisible();
   });
 
   test("DD-3: generate invite link on Won deal", async () => {
@@ -283,9 +266,9 @@ test.describe("Deal Detail Features (DD-1 to DD-4)", () => {
 
   test("close detail panel", async ({ page }) => {
     // If dialog is still open, close it
-    const dialog = page.getByRole("dialog");
-    if (await dialog.isVisible().catch(() => false)) {
-      await dialog.getByRole("button", { name: "Close" }).click();
+    const panel = page.getByTestId(dealDetail.panel);
+    if (await panel.isVisible().catch(() => false)) {
+      await panel.getByRole("button", { name: "Close" }).click();
       await page.waitForTimeout(demoPause.short);
     }
   });

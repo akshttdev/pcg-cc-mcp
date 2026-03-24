@@ -4,9 +4,10 @@
  * UI interaction helpers for CRM pipeline tests.
  * All interactions go through the UI — no API shortcuts for user actions.
  */
-import type { Page } from "@playwright/test";
+import type { Page, APIRequestContext } from "@playwright/test";
 import { expect } from "./fixtures";
 import { t, demoPause } from "../helpers";
+import { dealDetail } from "./testids";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -81,11 +82,11 @@ export async function openDealDetail(page: Page, dealNameFragment: string) {
   await expect(card.first()).toBeVisible({ timeout: t(10_000) });
   await card.first().click();
 
-  // Wait for detail panel
-  const dialog = page.getByRole("dialog");
-  await expect(dialog).toBeVisible({ timeout: t(10_000) });
+  // Wait for detail panel (resizable drawer, not a dialog role)
+  const panel = page.getByTestId(dealDetail.panel);
+  await expect(panel).toBeVisible({ timeout: t(10_000) });
   await page.waitForTimeout(demoPause.short);
-  return dialog;
+  return panel;
 }
 
 /** Click a tab in the deal detail panel. */
@@ -99,10 +100,8 @@ export async function clickDetailTab(page: Page, tabName: string) {
 
 /** Close the deal detail panel. */
 export async function closeDealDetail(page: Page) {
-  const closeBtn = page
-    .getByRole("dialog")
-    .getByRole("button", { name: /close/i })
-    .first();
+  const panel = page.getByTestId(dealDetail.panel);
+  const closeBtn = panel.getByRole("button", { name: /close/i }).first();
   if (await closeBtn.isVisible().catch(() => false)) {
     await closeBtn.click();
     await page.waitForTimeout(demoPause.short);
@@ -149,6 +148,57 @@ export async function moveDealViaContextMenu(
 
   // Wait for the move to complete
   await page.waitForTimeout(demoPause.long);
+}
+
+// ── Agent Auto-Advance Helpers ───────────────────────────────────────────────
+
+/**
+ * Wait for a deal to reach a target stage via agent auto-advance.
+ * Polls the API every 3s, completing review tasks that might block advance.
+ * Returns true if the deal reached the stage, false on timeout.
+ */
+export async function waitForDealStage(
+  page: Page,
+  request: APIRequestContext,
+  dealId: string,
+  stageName: string,
+  timeoutMs = 90_000,
+) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    // Complete any review tasks that might block advance
+    await completeDealTasks(request, dealId);
+
+    // Click Run Now if visible (speeds up agent execution)
+    try {
+      const runNow = page.getByRole("button", { name: "Run Now" });
+      if (await runNow.isVisible({ timeout: 1_000 })) {
+        await runNow.click();
+        await page.waitForTimeout(500);
+      }
+    } catch { /* toast may not be visible */ }
+
+    // Check deal's current stage via API
+    const dealRes = await request.get(`/api/crm/deals/${dealId}`);
+    const deal = (await dealRes.json()).data || (await dealRes.json());
+    if (deal.stage?.toLowerCase() === stageName.toLowerCase()) return true;
+    await page.waitForTimeout(3_000);
+  }
+  return false;
+}
+
+/**
+ * Complete all pending tasks for a deal (so review gates don't block advance).
+ */
+export async function completeDealTasks(request: APIRequestContext, dealId: string) {
+  const res = await request.get(`/api/tasks?crm_deal_id=${dealId}`);
+  if (res.ok()) {
+    for (const task of ((await res.json()).data || [])) {
+      if (task.status !== "done" && task.status !== "cancelled") {
+        await request.put(`/api/tasks/${task.id}`, { data: { status: "done" } });
+      }
+    }
+  }
 }
 
 // ── Pipeline Settings UI ─────────────────────────────────────────────────────
