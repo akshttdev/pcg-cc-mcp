@@ -804,6 +804,25 @@ impl AgentFlowExecutor {
             return;
         }
 
+        // Check if deal-linked tasks are completed
+        // Review tasks are created on stage entry — operator must complete them before auto-advance
+        let pending_deal_tasks: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM tasks WHERE crm_deal_id = ?1 AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL",
+        )
+        .bind(deal_id)
+        .fetch_one(&self.pool)
+        .await
+        .unwrap_or(0);
+
+        if pending_deal_tasks > 0 {
+            tracing::info!(
+                "[AgentFlowEngine] Auto-advance: deal {} has {} pending task(s) — operator must complete before advancing",
+                deal_id,
+                pending_deal_tasks
+            );
+            return;
+        }
+
         // Find next stage in the pipeline
         let current_position: Option<i32> = sqlx::query_scalar(
             "SELECT position FROM crm_pipeline_stages WHERE id = ?1",
