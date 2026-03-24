@@ -17,8 +17,6 @@ use services::services::workflow_llm::{
     LLMResponse, ToolCallRequest, ToolDefinition, WorkflowLLMService,
 };
 use tokio_util::sync::CancellationToken;
-use uuid::Uuid;
-
 use crate::workers::BackgroundWorker;
 
 /// Runtime configuration for the agent flow executor.
