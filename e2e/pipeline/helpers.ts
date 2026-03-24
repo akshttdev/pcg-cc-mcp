@@ -154,7 +154,12 @@ export async function moveDealViaContextMenu(
 
 /**
  * Wait for a deal to reach a target stage via agent auto-advance.
- * Polls the API every 3s, completing review tasks that might block advance.
+ *
+ * Uses UI interactions:
+ * - Clicks "Run Now" on agent toast to bypass cancel window
+ * - Opens deal detail → Review tab → "Mark Review Complete" to unblock advance
+ * - Polls API to check stage (read-only, not a shortcut)
+ *
  * Returns true if the deal reached the stage, false on timeout.
  */
 export async function waitForDealStage(
@@ -162,14 +167,11 @@ export async function waitForDealStage(
   request: APIRequestContext,
   dealId: string,
   stageName: string,
-  timeoutMs = 90_000,
+  timeoutMs = 30_000,
 ) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    // Complete any review tasks that might block advance
-    await completeDealTasks(request, dealId);
-
-    // Click Run Now if visible (speeds up agent execution)
+    // Click Run Now if visible (speeds up agent execution past cancel window)
     try {
       const runNow = page.getByRole("button", { name: "Run Now" });
       if (await runNow.isVisible({ timeout: 1_000 })) {
@@ -178,11 +180,20 @@ export async function waitForDealStage(
       }
     } catch { /* toast may not be visible */ }
 
-    // Check deal's current stage via API
+    // Try to complete review task via UI: open deal → Review tab → Mark Complete
+    try {
+      const markComplete = page.getByTestId("review-mark-complete");
+      if (await markComplete.isVisible({ timeout: 500 })) {
+        await markComplete.click();
+        await page.waitForTimeout(1_000);
+      }
+    } catch { /* button may not be visible */ }
+
+    // Check deal's current stage via API (read-only check, not a shortcut)
     const dealRes = await request.get(`/api/crm/deals/${dealId}`);
     const deal = (await dealRes.json()).data || (await dealRes.json());
     if (deal.stage?.toLowerCase() === stageName.toLowerCase()) return true;
-    await page.waitForTimeout(3_000);
+    await page.waitForTimeout(2_000);
   }
   return false;
 }

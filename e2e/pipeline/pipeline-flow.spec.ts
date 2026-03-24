@@ -12,7 +12,7 @@
  */
 import { test, expect } from "./fixtures";
 import { t, demoPause, login, apiLogin, TEST_DATA_PREFIX } from "../helpers";
-import { ORG_ID, PIPELINE_URL, moveDealViaContextMenu } from "./helpers";
+import { ORG_ID, PIPELINE_URL, moveDealViaContextMenu, waitForDealStage } from "./helpers";
 import { pipeline, dealCard, dealDetail, callScheduling, deck } from "./testids";
 
 let dealId: string;
@@ -188,30 +188,9 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
     test.setTimeout(45_000);
     await apiLogin(request);
 
-    // Helper to complete pending review tasks (so advance isn't blocked)
-    const completeTasks = async () => {
-      const res = await request.get(`/api/tasks?crm_deal_id=${dealId}`);
-      if (res.ok()) {
-        for (const task of ((await res.json()).data || [])) {
-          if (task.status !== "done" && task.status !== "cancelled") {
-            await request.put(`/api/tasks/${task.id}`, { data: { status: "done" } });
-          }
-        }
-      }
-    };
-
-    // Helper to wait for deal to reach a stage via API polling
-    const waitForStage = async (stageName: string, timeoutMs: number) => {
-      const start = Date.now();
-      while (Date.now() - start < timeoutMs) {
-        await completeTasks();
-        const dealRes = await request.get(`/api/crm/deals/${dealId}`);
-        const deal = (await dealRes.json()).data || (await dealRes.json());
-        if (deal.stage?.toLowerCase() === stageName.toLowerCase()) return true;
-        await page.waitForTimeout(3_000);
-      }
-      return false;
-    };
+    // Use shared helper that interacts via UI (Run Now + Mark Review Complete)
+    const waitForStage = (stageName: string, timeoutMs: number) =>
+      waitForDealStage(page, request, dealId, stageName, timeoutMs);
 
     // Helper to click "Run Now" on agent toast if visible
     const clickRunNowIfVisible = async () => {
@@ -367,27 +346,32 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
     test.setTimeout(180_000);
     await apiLogin(request);
 
-    // Helper to complete pending review tasks
-    const completeTasks = async () => {
-      const res = await request.get(`/api/tasks?crm_deal_id=${dealId}`);
-      if (res.ok()) {
-        for (const task of ((await res.json()).data || [])) {
-          if (task.status !== "done" && task.status !== "cancelled") {
-            await request.put(`/api/tasks/${task.id}`, { data: { status: "done" } });
-          }
-        }
-      }
-    };
-
-    // Helper to wait for deal to reach a stage via agent auto-advance
+    // Use shared helper that interacts via UI (Run Now + Mark Review Complete)
     const waitForStage = async (stageName: string, timeoutMs: number) => {
       const start = Date.now();
       while (Date.now() - start < timeoutMs) {
-        await completeTasks();
+        // Click Run Now if visible
+        try {
+          const runNow = page.getByRole("button", { name: "Run Now" });
+          if (await runNow.isVisible({ timeout: 1_000 })) {
+            await runNow.click();
+            await page.waitForTimeout(500);
+          }
+        } catch { /* toast may not be visible */ }
+
+        // Click Mark Review Complete if visible
+        try {
+          const markComplete = page.getByTestId("review-mark-complete");
+          if (await markComplete.isVisible({ timeout: 500 })) {
+            await markComplete.click();
+            await page.waitForTimeout(1_000);
+          }
+        } catch { /* button may not be visible */ }
+
         const dealRes = await request.get(`/api/crm/deals/${dealId}`);
         const deal = (await dealRes.json()).data || (await dealRes.json());
         if (deal.stage?.toLowerCase() === stageName.toLowerCase()) return true;
-        await page.waitForTimeout(5_000);
+        await page.waitForTimeout(2_000);
       }
       return false;
     };

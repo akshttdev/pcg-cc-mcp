@@ -66,6 +66,13 @@ export const deck = {
   generateInvite: "deck-generate-invite",
 } as const;
 
+// ── Review Tab (ReviewTab.tsx) ────────────────────────────────────────────────
+
+export const review = {
+  markComplete: "review-mark-complete",
+  approveAdvance: "review-approve-advance",
+} as const;
+
 // ── Discovery Stage (OverviewTab.tsx) ─────────────────────────────────────────
 
 export const discovery = {

@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { review as tid } from 'shared/testids';
+
 import { useDealActions } from '../hooks/useDealActions';
 import type { CrmDealWithContact } from '@/types/crm';
 
@@ -134,13 +136,16 @@ interface ReviewTabProps {
 
 export function ReviewTab({ deal, stageName }: ReviewTabProps) {
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
-  const { advanceDeal, advanceLoading, triggerResearch, researchLoading } = useDealActions();
+  const { advanceDeal, advanceLoading, triggerResearch, researchLoading, completeReviewTask, completeLoading } = useDealActions();
 
   const hasReviewTask = !!deal.review_task_id;
   const taskDone = deal.review_task_status === 'done';
   const effectiveStage = (stageName || deal.stage || '').toLowerCase();
 
   const handleAdvance = () => advanceDeal(deal.id, deal.name);
+  const handleComplete = () => {
+    if (deal.review_task_id) completeReviewTask(deal.review_task_id);
+  };
 
   const handleTriggerResearch = () => {
     if (deal.person_id) triggerResearch(deal.person_id);
@@ -185,12 +190,30 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
                 Status: {deal.review_task_status.replace(/_/g, ' ')}
               </p>
             )}
+            {!taskDone && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full gap-1.5"
+                onClick={handleComplete}
+                disabled={completeLoading}
+                data-testid={tid.markComplete}
+              >
+                {completeLoading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                )}
+                Mark Review Complete
+              </Button>
+            )}
             {taskDone && (
               <Button
                 size="sm"
                 className="w-full gap-1.5"
                 onClick={handleAdvance}
                 disabled={advanceLoading}
+                data-testid={tid.approveAdvance}
               >
                 {advanceLoading ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
