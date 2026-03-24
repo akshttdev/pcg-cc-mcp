@@ -588,7 +588,12 @@ async fn schedule_agent_flow(
     flow_type: &str,
     cancel_window_secs: u32,
 ) -> anyhow::Result<(String, DateTime<Utc>)> {
-    tracing::info!("[schedule_agent_flow] Creating flow for deal {} agent={} flow_type={}", deal.id, agent_name, flow_type);
+    tracing::info!(
+        "[schedule_agent_flow] Creating flow for deal {} agent={} flow_type={}",
+        deal.id,
+        agent_name,
+        flow_type
+    );
 
     // Clamp cancel window to reasonable bounds (0 = immediate, max 1 hour)
     let clamped_window = cancel_window_secs.min(3600);
@@ -663,7 +668,11 @@ async fn schedule_agent_flow(
     .execute(pool)
     .await?;
 
-    tracing::info!("[schedule_agent_flow] Created flow {} for deal {}", flow_id, deal.id);
+    tracing::info!(
+        "[schedule_agent_flow] Created flow {} for deal {}",
+        flow_id,
+        deal.id
+    );
     Ok((flow_id, deadline))
 }
 

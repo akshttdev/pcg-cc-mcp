@@ -40,9 +40,10 @@ import { PipelineSettingsPipelineTab } from './PipelineSettingsPipelineTab';
 
 interface CrmPipelineSettingsProps {
   organizationId: string;
+  initialPipelineId?: string;
 }
 
-export function CrmPipelineSettings({ organizationId }: CrmPipelineSettingsProps) {
+export function CrmPipelineSettings({ organizationId, initialPipelineId }: CrmPipelineSettingsProps) {
   const queryClient = useQueryClient();
   const { data: pipelines = [], isLoading: pipelinesLoading } = useCrmPipelines(organizationId);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
@@ -53,7 +54,10 @@ export function CrmPipelineSettings({ organizationId }: CrmPipelineSettingsProps
 
   useEffect(() => {
     if (!selectedPipelineId && pipelines.length > 0) {
-      setSelectedPipelineId(pipelines[0].id);
+      const preferred = initialPipelineId
+        ? pipelines.find((p) => p.id === initialPipelineId)
+        : undefined;
+      setSelectedPipelineId(preferred?.id ?? pipelines[0].id);
     } else if (
       selectedPipelineId &&
       pipelines.length > 0 &&
@@ -61,7 +65,7 @@ export function CrmPipelineSettings({ organizationId }: CrmPipelineSettingsProps
     ) {
       setSelectedPipelineId(pipelines[0].id);
     }
-  }, [pipelines, selectedPipelineId]);
+  }, [pipelines, selectedPipelineId, initialPipelineId]);
 
   const { data: pipelineData, isLoading: pipelineLoading } = useCrmPipeline(
     selectedPipelineId ?? undefined

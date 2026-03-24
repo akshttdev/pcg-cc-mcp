@@ -6,9 +6,7 @@ use axum::{
 };
 use db::{
     db_uuid::DbUuid,
-    models::agent_flow_event::{
-        AgentFlowEvent, CreateFlowEvent, FlowEventPayload, FlowEventType,
-    },
+    models::agent_flow_event::{AgentFlowEvent, CreateFlowEvent, FlowEventPayload, FlowEventType},
 };
 use deployment::Deployment;
 use serde::Deserialize;
@@ -46,8 +44,8 @@ async fn list_events(
     Query(query): Query<ListEventsQuery>,
 ) -> Result<Json<ApiResponse<Vec<AgentFlowEvent>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let flow_id = DbUuid::parse(&flow_id)
-        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let flow_id =
+        DbUuid::parse(&flow_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
 
     let events = if let Some(since) = query.since {
         AgentFlowEvent::find_since(pool, &flow_id, since).await?
@@ -65,8 +63,8 @@ async fn create_event(
     Path(flow_id): Path<String>,
     Json(payload): Json<CreateEventPayload>,
 ) -> Result<(StatusCode, Json<ApiResponse<AgentFlowEvent>>), ApiError> {
-    let flow_id = DbUuid::parse(&flow_id)
-        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let flow_id =
+        DbUuid::parse(&flow_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
     let event = AgentFlowEvent::create(
         &deployment.db().pool,
         CreateFlowEvent {

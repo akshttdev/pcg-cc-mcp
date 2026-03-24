@@ -2193,12 +2193,7 @@ impl LocalContainerService {
             None => {
                 // Fallback: try to find by task_id
                 let task_id = db::db_uuid::DbUuid::from_string(&ctx.task.id);
-                match AgentFlow::find_by_task(
-                    &self.db.pool,
-                    &task_id,
-                )
-                .await
-                {
+                match AgentFlow::find_by_task(&self.db.pool, &task_id).await {
                     Ok(flows) => {
                         if let Some(flow) = flows.into_iter().find(|f| {
                             f.status != db::models::agent_flow::FlowStatus::Completed

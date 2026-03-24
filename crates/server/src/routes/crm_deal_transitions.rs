@@ -289,8 +289,15 @@ pub async fn advance_deal(
         }
 
         if !warnings.is_empty() {
-            let fields: Vec<String> = warnings.iter().filter_map(|w| w["field"].as_str().map(String::from)).collect();
-            let summary = format!("Cannot advance from Intel: {} validation(s) failed ({})", warnings.len(), fields.join(", "));
+            let fields: Vec<String> = warnings
+                .iter()
+                .filter_map(|w| w["field"].as_str().map(String::from))
+                .collect();
+            let summary = format!(
+                "Cannot advance from Intel: {} validation(s) failed ({})",
+                warnings.len(),
+                fields.join(", ")
+            );
             let body = serde_json::json!({
                 "success": false,
                 "message": summary,

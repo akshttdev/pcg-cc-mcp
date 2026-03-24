@@ -679,7 +679,9 @@ impl AgentFlowExecutor {
             .or_else(|| {
                 // Fallback: look for deal_id in the message content
                 user_text.split("deal_id").nth(1).and_then(|s| {
-                    s.split_whitespace().next().map(|w| w.trim_matches(|c: char| !c.is_alphanumeric() && c != '-'))
+                    s.split_whitespace()
+                        .next()
+                        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric() && c != '-'))
                 })
             })
             .unwrap_or("");
@@ -705,20 +707,21 @@ impl AgentFlowExecutor {
             "scout" => {
                 // Scout: save research artifact
                 if !deal_id.is_empty() {
-                    let _ = self.update_deal_field(
-                        deal_id,
-                        "description",
-                        &format!(
-                            "[Scout Research — Simulated]\n\n\
+                    let _ = self
+                        .update_deal_field(
+                            deal_id,
+                            "description",
+                            &format!(
+                                "[Scout Research — Simulated]\n\n\
                              Contact appears to be a decision-maker at a mid-size company. \
                              Key talking points: digital transformation, operational efficiency, \
                              and competitive positioning. Company is in a growth phase with \
                              potential for strategic partnerships.\n\n\
                              Original context: {}",
-                            context.chars().take(200).collect::<String>()
-                        ),
-                    )
-                    .await;
+                                context.chars().take(200).collect::<String>()
+                            ),
+                        )
+                        .await;
                 }
                 Ok(format!(
                     "[Simulated Scout Output]\n\n\
@@ -730,23 +733,22 @@ impl AgentFlowExecutor {
                      Deal context updated with research findings."
                 ))
             }
-            "astra" => {
-                Ok(format!(
-                    "[Simulated Astra Output]\n\n\
+            "astra" => Ok(format!(
+                "[Simulated Astra Output]\n\n\
                      ## Business Analysis\n\
                      - Pain point: manual processes causing bottlenecks\n\
                      - Recommended: workflow automation + AI integration\n\
                      - Scope: 3-6 month engagement\n\
                      - Risk: low (proven approach, clear ROI)\n\n\
                      Ready for proposal generation."
-                ))
-            }
+            )),
             "cash" => {
                 if !deal_id.is_empty() {
-                    let _ = self.update_deal_field(
-                        deal_id,
-                        "proposal_text",
-                        "[Simulated Proposal — Cash]\n\n\
+                    let _ = self
+                        .update_deal_field(
+                            deal_id,
+                            "proposal_text",
+                            "[Simulated Proposal — Cash]\n\n\
                          ## Executive Summary\n\
                          We propose a comprehensive digital transformation engagement.\n\n\
                          ## Scope of Work\n\
@@ -758,8 +760,8 @@ impl AgentFlowExecutor {
                          Total: $45,000 over 5 months\n\n\
                          ## Timeline\n\
                          Start: 2 weeks from approval",
-                    )
-                    .await;
+                        )
+                        .await;
                 }
                 Ok(format!(
                     "[Simulated Cash Output]\n\n\
@@ -771,12 +773,9 @@ impl AgentFlowExecutor {
             }
             "lux" => {
                 if !deal_id.is_empty() {
-                    let _ = self.update_deal_field(
-                        deal_id,
-                        "deck_url",
-                        "/api/decks/simulated-deck.pdf",
-                    )
-                    .await;
+                    let _ = self
+                        .update_deal_field(deal_id, "deck_url", "/api/decks/simulated-deck.pdf")
+                        .await;
                 }
                 Ok(format!(
                     "[Simulated Lux Output]\n\n\
