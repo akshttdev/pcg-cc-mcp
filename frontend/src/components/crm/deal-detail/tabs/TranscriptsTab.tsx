@@ -217,7 +217,7 @@ function LinkedDataSourcesSection({ deal }: { deal: CrmDealWithContact }) {
   // Fetch org's available data sources for the picker
   const { data: availableSources } = useQuery({
     queryKey: ['org-data-sources', orgId],
-    queryFn: () => orgId ? dataSourcesApi.listForOrg(orgId) : Promise.resolve([]),
+    queryFn: () => orgId ? dataSourcesApi.listByOrganization(orgId) : Promise.resolve([]),
     enabled: linking && !!orgId,
     staleTime: 60000,
   });

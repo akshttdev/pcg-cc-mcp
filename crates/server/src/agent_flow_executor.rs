@@ -18,7 +18,6 @@ use services::services::workflow_llm::{
     LLMResponse, ToolCallRequest, ToolDefinition, WorkflowLLMService,
 };
 use tokio_util::sync::CancellationToken;
-use uuid::Uuid;
 
 use crate::workers::BackgroundWorker;
 
@@ -199,7 +198,7 @@ impl AgentFlowExecutor {
         match result {
             Ok(output) => {
                 // Save artifact with the output
-                let artifact_id = Uuid::new_v4();
+                let artifact_id = DbUuid::new().to_uuid();
                 if let Err(e) = AgentFlowEvent::emit_artifact_created(
                     &self.pool,
                     &flow.id,
