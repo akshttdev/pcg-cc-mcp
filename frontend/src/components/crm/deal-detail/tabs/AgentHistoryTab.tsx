@@ -20,6 +20,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { handleApiResponse, makeRequest } from '@/lib/api/client';
 import { crmDealsApi } from '@/lib/api/crm';
+import { agentHistory as agentTid } from 'shared/testids';
 import { crmKeys } from '@/lib/query-keys';
 import { getStatusInfo } from '@/lib/status-utils';
 
@@ -115,7 +116,7 @@ export function AgentHistoryTab({ dealId }: AgentHistoryTabProps) {
             className="h-7 text-xs gap-1"
             onClick={() => retrigger.mutate()}
             disabled={retrigger.isPending}
-            data-testid="agent-retrigger"
+            data-testid={agentTid.retrigger}
           >
             {retrigger.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
             Retry Agent

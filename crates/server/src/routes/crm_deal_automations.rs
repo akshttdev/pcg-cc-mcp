@@ -1192,10 +1192,16 @@ pub async fn mark_deal_won(
 
     // Move to Won stage
     if let Some(ref won_stage_id) = won_stage {
-        CrmDeal::move_to_stage(pool, &id, won_stage_id, 0).await.map_err(|e| {
-            tracing::error!("[mark_deal_won] Failed to move deal {} to Won stage: {}", id, e);
-            ApiError::InternalError(format!("Failed to move deal to Won stage: {}", e))
-        })?;
+        CrmDeal::move_to_stage(pool, &id, won_stage_id, 0)
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    "[mark_deal_won] Failed to move deal {} to Won stage: {}",
+                    id,
+                    e
+                );
+                ApiError::InternalError(format!("Failed to move deal to Won stage: {}", e))
+            })?;
     }
 
     // Set won_at and win_reason
@@ -1299,7 +1305,12 @@ pub async fn mark_deal_won(
     .execute(pool)
     .await
     {
-        tracing::error!("[mark_deal_won] Failed to link project {} to deal {}: {}", project_id, id, e);
+        tracing::error!(
+            "[mark_deal_won] Failed to link project {} to deal {}: {}",
+            project_id,
+            id,
+            e
+        );
     }
 
     // ── F3: Move deliverables to the new project ────────────────────────────

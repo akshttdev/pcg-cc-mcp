@@ -812,11 +812,19 @@ Need to properly wire the review task ID to the agent flow.
 - Retry Agent button in Agent History tab
 - Retrigger endpoint: `POST /crm/deals/:id/retrigger-agent`
 
-**Silent failure audit**: 39 issues found (6 critical, 19 high, 14 medium)
+**Silent failure audit**: 39 issues found, ALL FIXED
 - Report: `planning/reviews/2026-03-24--review--silent-failure-audit.md`
-- Critical: `let _ =` on won/lost state, client/project creation, deal linking
-- Fixing critical issues next
+- 6 critical: won/lost state, client/project creation → propagate errors with `?`
+- 19 high: research tasks, deliverables, reports → propagate or log at error level
+- 14 medium: executor metadata, simulation logging → `tracing::error!`
 
-**E2E test state**: 42 pass, 16 fixme, 0 fail across 6 spec files
-- Tests updated to use auto-advance (waitForDealStage) instead of manual moves
-- Tests use dealCard.card(dealId) and dealDetail.panel testids
+**E2E test state**: 46 pass, 15 fixme, 0 fail across 6 spec files
+- Tests use auto-advance (`waitForDealStage`) + Run Now click instead of manual moves
+- Tests use `dealCard.card(dealId)` and `dealDetail.panel` testids
+- AA-3 Agent History tab verified, auto-advance chain verified
+
+**PR #59**: `pr/59-pipeline-e2e-agent-autoadvance`
+- CI: 6/6 checks pass (fmt, clippy, tests, type-gen, frontend, security)
+- Audits: functionality (8/8 WORKING), experience (0 blockers), regression (MERGE)
+- Reports: `planning/reviews/2026-03-24--review--functionality-audit-pr59.md`,
+  `planning/reviews/2026-03-24--review--experience-audit-pr59.md`

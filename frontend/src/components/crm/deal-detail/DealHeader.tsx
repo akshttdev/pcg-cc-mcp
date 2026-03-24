@@ -124,6 +124,7 @@ export function DealHeader({ deal, stageColor, onEdit, onDelete, onClose, isExpa
               icon={X}
               label="Close"
               iconClassName="h-3.5 w-3.5"
+              data-testid={tid.close}
             />
           )}
         </div>

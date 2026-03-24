@@ -17,7 +17,6 @@ use services::services::workflow_llm::{
     LLMResponse, ToolCallRequest, ToolDefinition, WorkflowLLMService,
 };
 use tokio_util::sync::CancellationToken;
-use uuid::Uuid;
 
 use crate::workers::BackgroundWorker;
 
@@ -187,11 +186,11 @@ impl AgentFlowExecutor {
         match result {
             Ok(output) => {
                 // Save artifact with the output
-                let artifact_id = Uuid::new_v4();
+                let artifact_id = DbUuid::new();
                 if let Err(e) = AgentFlowEvent::emit_artifact_created(
                     &self.pool,
                     &flow.id,
-                    artifact_id,
+                    artifact_id.into(),
                     "agent_output",
                     &format!("{} output", agent_name),
                     "execution",
@@ -518,14 +517,15 @@ impl AgentFlowExecutor {
             }
         };
 
-        let artifact_id = Uuid::new_v4();
+        let artifact_id = DbUuid::new();
+        let artifact_id_str = artifact_id.to_string();
         match AgentFlowEvent::create(
             &self.pool,
             CreateFlowEvent {
                 agent_flow_id: flow_id.clone(),
                 event_type: FlowEventType::ArtifactCreated,
                 event_data: FlowEventPayload::ArtifactCreated {
-                    artifact_id,
+                    artifact_id: artifact_id.clone().into(),
                     artifact_type: "text".to_string(),
                     title: title.to_string(),
                     phase: "execution".to_string(),
@@ -542,15 +542,19 @@ impl AgentFlowExecutor {
                         agent_flow_id: flow_id.clone(),
                         event_type: FlowEventType::ArtifactUpdated,
                         event_data: FlowEventPayload::ArtifactUpdated {
-                            artifact_id,
+                            artifact_id: artifact_id.into(),
                             changes: json!({"content": content}),
                         },
                     },
                 )
-                .await {
-                    tracing::error!("[AgentFlowEngine] Failed to store artifact content event: {}", e);
+                .await
+                {
+                    tracing::error!(
+                        "[AgentFlowEngine] Failed to store artifact content event: {}",
+                        e
+                    );
                 }
-                json!({"success": true, "artifact_id": artifact_id.to_string()}).to_string()
+                json!({"success": true, "artifact_id": artifact_id_str}).to_string()
             }
             Err(e) => json!({"error": e.to_string()}).to_string(),
         }
@@ -655,7 +659,10 @@ impl AgentFlowExecutor {
     /// 2. All agent flows for this deal in the current stage are completed
     /// 3. The review task (if any) is done
     async fn try_auto_advance_deal(&self, deal_id: &str) {
-        tracing::info!("[AgentFlowEngine] Checking auto-advance for deal {}", deal_id);
+        tracing::info!(
+            "[AgentFlowEngine] Checking auto-advance for deal {}",
+            deal_id
+        );
 
         // Load the deal
         let deal = match sqlx::query_as::<_, (String, Option<String>, Option<String>)>(
@@ -667,30 +674,39 @@ impl AgentFlowExecutor {
         {
             Ok(Some(d)) => d,
             Ok(None) => {
-                tracing::warn!("[AgentFlowEngine] Auto-advance: deal {} not found in DB", deal_id);
+                tracing::warn!(
+                    "[AgentFlowEngine] Auto-advance: deal {} not found in DB",
+                    deal_id
+                );
                 return;
             }
             Err(e) => {
-                tracing::error!("[AgentFlowEngine] Auto-advance: failed to load deal {}: {}", deal_id, e);
+                tracing::error!(
+                    "[AgentFlowEngine] Auto-advance: failed to load deal {}: {}",
+                    deal_id,
+                    e
+                );
                 return;
             }
         };
 
         let (_, stage_id, pipeline_id) = deal;
         let (Some(stage_id), Some(pipeline_id)) = (stage_id, pipeline_id) else {
-            tracing::warn!("[AgentFlowEngine] Auto-advance: deal {} has no stage or pipeline", deal_id);
+            tracing::warn!(
+                "[AgentFlowEngine] Auto-advance: deal {} has no stage or pipeline",
+                deal_id
+            );
             return;
         };
 
         // Check if the current stage has an agent assigned (agent-owned)
-        let stage_config: Option<String> = sqlx::query_scalar(
-            "SELECT stage_config FROM crm_pipeline_stages WHERE id = ?1",
-        )
-        .bind(&stage_id)
-        .fetch_optional(&self.pool)
-        .await
-        .ok()
-        .flatten();
+        let stage_config: Option<String> =
+            sqlx::query_scalar("SELECT stage_config FROM crm_pipeline_stages WHERE id = ?1")
+                .bind(&stage_id)
+                .fetch_optional(&self.pool)
+                .await
+                .ok()
+                .flatten();
 
         let is_agent_stage = stage_config
             .as_deref()
@@ -717,22 +733,28 @@ impl AgentFlowExecutor {
         .unwrap_or(0);
 
         if pending_flows > 0 {
-            tracing::info!("[AgentFlowEngine] Auto-advance: deal {} has {} pending flows, waiting", deal_id, pending_flows);
+            tracing::info!(
+                "[AgentFlowEngine] Auto-advance: deal {} has {} pending flows, waiting",
+                deal_id,
+                pending_flows
+            );
             return;
         }
 
         // Find next stage in the pipeline
-        let current_position: Option<i32> = sqlx::query_scalar(
-            "SELECT position FROM crm_pipeline_stages WHERE id = ?1",
-        )
-        .bind(&stage_id)
-        .fetch_optional(&self.pool)
-        .await
-        .ok()
-        .flatten();
+        let current_position: Option<i32> =
+            sqlx::query_scalar("SELECT position FROM crm_pipeline_stages WHERE id = ?1")
+                .bind(&stage_id)
+                .fetch_optional(&self.pool)
+                .await
+                .ok()
+                .flatten();
 
         let Some(pos) = current_position else {
-            tracing::warn!("[AgentFlowEngine] Auto-advance: stage {} has no position", stage_id);
+            tracing::warn!(
+                "[AgentFlowEngine] Auto-advance: stage {} has no position",
+                stage_id
+            );
             return;
         };
 
@@ -747,14 +769,20 @@ impl AgentFlowExecutor {
         .flatten();
 
         let Some((next_stage_id, next_stage_name)) = next_stage else {
-            tracing::info!("[AgentFlowEngine] Auto-advance: deal {} is in the last stage (pos {}), nothing to advance to", deal_id, pos);
+            tracing::info!(
+                "[AgentFlowEngine] Auto-advance: deal {} is in the last stage (pos {}), nothing to advance to",
+                deal_id,
+                pos
+            );
             return;
         };
 
         // Auto-advance the deal
         tracing::info!(
             "[AgentFlowEngine] Auto-advancing deal {} to stage {} ({})",
-            deal_id, next_stage_name, next_stage_id
+            deal_id,
+            next_stage_name,
+            next_stage_id
         );
 
         if let Err(e) = sqlx::query(
@@ -777,18 +805,29 @@ impl AgentFlowExecutor {
         };
         if let Ok(deal) = db::models::crm_deal::CrmDeal::find_by_id(&self.pool, &deal_uuid).await {
             let next_stage_uuid = db::db_uuid::DbUuid::from_string(next_stage_id.clone());
-            if let Ok(to_stage) = db::models::crm_pipeline::CrmPipelineStage::find_by_id(&self.pool, &next_stage_uuid).await {
+            if let Ok(to_stage) =
+                db::models::crm_pipeline::CrmPipelineStage::find_by_id(&self.pool, &next_stage_uuid)
+                    .await
+            {
                 let from_stage_uuid = db::db_uuid::DbUuid::from_string(stage_id);
-                let from_stage = db::models::crm_pipeline::CrmPipelineStage::find_by_id(&self.pool, &from_stage_uuid).await.ok();
+                let from_stage = db::models::crm_pipeline::CrmPipelineStage::find_by_id(
+                    &self.pool,
+                    &from_stage_uuid,
+                )
+                .await
+                .ok();
                 let result = crate::stage_transition::process_transition(
                     &self.pool,
                     &deal,
                     from_stage.as_ref(),
                     &to_stage,
-                ).await;
+                )
+                .await;
                 tracing::info!(
                     "[AgentFlowEngine] Transition result for deal {} → {}: {:?}",
-                    deal_id, next_stage_name, result.actions_taken
+                    deal_id,
+                    next_stage_name,
+                    result.actions_taken
                 );
             }
         }
@@ -835,7 +874,9 @@ impl AgentFlowExecutor {
             .or_else(|| {
                 // Fallback: look for deal_id in the message content
                 user_text.split("deal_id").nth(1).and_then(|s| {
-                    s.split_whitespace().next().map(|w| w.trim_matches(|c: char| !c.is_alphanumeric() && c != '-'))
+                    s.split_whitespace()
+                        .next()
+                        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric() && c != '-'))
                 })
             })
             .unwrap_or("");
@@ -861,22 +902,26 @@ impl AgentFlowExecutor {
             "scout" => {
                 // Scout: save research artifact
                 if !deal_id.is_empty() {
-                    let result = self.update_deal_field(
-                        deal_id,
-                        "description",
-                        &format!(
-                            "[Scout Research — Simulated]\n\n\
+                    let result = self
+                        .update_deal_field(
+                            deal_id,
+                            "description",
+                            &format!(
+                                "[Scout Research — Simulated]\n\n\
                              Contact appears to be a decision-maker at a mid-size company. \
                              Key talking points: digital transformation, operational efficiency, \
                              and competitive positioning. Company is in a growth phase with \
                              potential for strategic partnerships.\n\n\
                              Original context: {}",
-                            context.chars().take(200).collect::<String>()
-                        ),
-                    )
-                    .await;
+                                context.chars().take(200).collect::<String>()
+                            ),
+                        )
+                        .await;
                     if result.contains("error") {
-                        tracing::error!("[AgentFlowEngine] Simulated scout: update_deal_field returned error: {}", result);
+                        tracing::error!(
+                            "[AgentFlowEngine] Simulated scout: update_deal_field returned error: {}",
+                            result
+                        );
                     }
                 }
                 Ok(format!(
@@ -889,23 +934,22 @@ impl AgentFlowExecutor {
                      Deal context updated with research findings."
                 ))
             }
-            "astra" => {
-                Ok(format!(
-                    "[Simulated Astra Output]\n\n\
+            "astra" => Ok(format!(
+                "[Simulated Astra Output]\n\n\
                      ## Business Analysis\n\
                      - Pain point: manual processes causing bottlenecks\n\
                      - Recommended: workflow automation + AI integration\n\
                      - Scope: 3-6 month engagement\n\
                      - Risk: low (proven approach, clear ROI)\n\n\
                      Ready for proposal generation."
-                ))
-            }
+            )),
             "cash" => {
                 if !deal_id.is_empty() {
-                    let result = self.update_deal_field(
-                        deal_id,
-                        "proposal_text",
-                        "[Simulated Proposal — Cash]\n\n\
+                    let result = self
+                        .update_deal_field(
+                            deal_id,
+                            "proposal_text",
+                            "[Simulated Proposal — Cash]\n\n\
                          ## Executive Summary\n\
                          We propose a comprehensive digital transformation engagement.\n\n\
                          ## Scope of Work\n\
@@ -917,10 +961,13 @@ impl AgentFlowExecutor {
                          Total: $45,000 over 5 months\n\n\
                          ## Timeline\n\
                          Start: 2 weeks from approval",
-                    )
-                    .await;
+                        )
+                        .await;
                     if result.contains("error") {
-                        tracing::error!("[AgentFlowEngine] Simulated cash: update_deal_field returned error: {}", result);
+                        tracing::error!(
+                            "[AgentFlowEngine] Simulated cash: update_deal_field returned error: {}",
+                            result
+                        );
                     }
                 }
                 Ok(format!(
@@ -933,14 +980,14 @@ impl AgentFlowExecutor {
             }
             "lux" => {
                 if !deal_id.is_empty() {
-                    let result = self.update_deal_field(
-                        deal_id,
-                        "deck_url",
-                        "/api/decks/simulated-deck.pdf",
-                    )
-                    .await;
+                    let result = self
+                        .update_deal_field(deal_id, "deck_url", "/api/decks/simulated-deck.pdf")
+                        .await;
                     if result.contains("error") {
-                        tracing::error!("[AgentFlowEngine] Simulated lux: update_deal_field returned error: {}", result);
+                        tracing::error!(
+                            "[AgentFlowEngine] Simulated lux: update_deal_field returned error: {}",
+                            result
+                        );
                     }
                 }
                 Ok(format!(
