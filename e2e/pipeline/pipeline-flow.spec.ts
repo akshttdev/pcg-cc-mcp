@@ -143,9 +143,13 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
   //   When I open the deal detail and click the Agent History tab
   //   Then I see the Scout flow with its status and events
   test("AA-3: Agent History tab shows Scout flow after execution", async ({ page }) => {
-    test.setTimeout(30_000);
+    test.setTimeout(45_000);
 
-    // Open deal detail
+    // Deal may have auto-advanced after AA-1's Run Now — refresh to see current state
+    await page.reload();
+    await expect(page.getByText("Acquisition Pipeline")).toBeVisible({ timeout: t(15_000) });
+
+    // Open deal detail (deal may now be in BA or later stage)
     await page.getByText(dealText).first().click();
     const panel = page.getByTestId(dealDetail.panel);
     await expect(panel).toBeVisible({ timeout: t(10_000) });
