@@ -479,7 +479,7 @@ impl AgentFlow {
                 SET current_phase = ?2, status = ?3,
                     planning_started_at = datetime('now', 'subsec'),
                     updated_at = datetime('now', 'subsec')
-                WHERE id = ?1 AND (?4 IS NULL OR status = ?4)
+                WHERE (id = ?1 OR CAST(id AS TEXT) = ?1) AND (?4 IS NULL OR status = ?4)
                 RETURNING *
                 "#
             }
@@ -490,7 +490,7 @@ impl AgentFlow {
                     planning_completed_at = datetime('now', 'subsec'),
                     execution_started_at = datetime('now', 'subsec'),
                     updated_at = datetime('now', 'subsec')
-                WHERE id = ?1 AND (?4 IS NULL OR status = ?4)
+                WHERE (id = ?1 OR CAST(id AS TEXT) = ?1) AND (?4 IS NULL OR status = ?4)
                 RETURNING *
                 "#
             }
@@ -501,7 +501,7 @@ impl AgentFlow {
                     execution_completed_at = datetime('now', 'subsec'),
                     verification_started_at = datetime('now', 'subsec'),
                     updated_at = datetime('now', 'subsec')
-                WHERE id = ?1 AND (?4 IS NULL OR status = ?4)
+                WHERE (id = ?1 OR CAST(id AS TEXT) = ?1) AND (?4 IS NULL OR status = ?4)
                 RETURNING *
                 "#
             }
