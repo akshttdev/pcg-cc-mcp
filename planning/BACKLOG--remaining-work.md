@@ -1050,7 +1050,7 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 - **PipelineSettingsStagesTab**: Move up/down, Delete stage buttons (2 elements)
 - **DealHeader**: pipeline stage stepper clicks (1 element)
 **Recommendation:** Add testids as needed when writing tests that target these elements. Helpers exist in `shared/testids.ts` — add new ones there first, then import in both component and spec.
-**Status:** PARTIAL — primary interaction paths covered, secondary/config controls pending
+**Status:** PARTIAL — primary interaction paths covered (PR #59), secondary/config controls pending. Close button and resize handle testids added.
 
 ### E2E: Fragile Title-Based Button Selectors
 **Source:** PR #49 e2e review (2026-03-18)
@@ -1149,7 +1149,7 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 - "Agent failed" badge when the last agent flow errored
 - Tooltip showing what's blocking the deal from advancing
 - Consider preventing drag/move for deals that will definitely fail validation (show reason on hover)
-**Status:** NOT STARTED — high impact for pipeline usability
+**Status:** PARTIAL (PR #59) — "Agent failed" and "Agent cancelled" badges now show on deal cards. Failed flows included in kanban query. Tooltip and drag-prevention still TODO.
 
 ### 19. Agent Flow Interaction — Run Now / Cancel / View Results
 **Source:** E2E testing session (2026-03-24)
@@ -1162,7 +1162,7 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 1. E2E test: click Run Now → verify agent_flow status transitions → verify Agent History tab shows flow
 2. E2E test: click Cancel → verify agent_flow is cancelled → verify no agent work runs
 3. Agent failure: deal card shows "Agent failed" badge, Agent History tab shows error details with retry button
-**Status:** NOT STARTED — needed for agent automation confidence
+**Status:** PARTIAL (PR #59) — Run Now tested in AA-1, Agent History tab tested in AA-3, Retry button implemented + retrigger API wired. Cancel test and re-trigger E2E still TODO.
 
 ---
 
