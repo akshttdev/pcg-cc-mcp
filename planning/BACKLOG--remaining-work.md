@@ -550,10 +550,11 @@ Feature: Stage configs match the dealflow plan across all pipelines
 
 | Item | Effort | Priority |
 |------|--------|----------|
+| **SSE events for pipeline refresh** — replace 15s polling with SSE events from agent executor. Emit on flow completion, auto-advance, chaining. Frontend subscribes via useEventSourceManager. | 1 day | HIGH |
 | **W8: Cost bridge** — agent flows record token usage, cost dashboard shows real VIBE data | 0.5 day | MEDIUM |
 | **Data source picker dialog** — browse org's data library instead of paste UUID | 1 day | MEDIUM |
 | **Data source file upload** — upload creates data_source + links to deal | 0.5 day | LOW |
-| **Full E2E refresh** — update all 5 pipeline specs for 11-stage pipeline | 2 days | MEDIUM |
+| **Full E2E refresh** — update all 5 pipeline specs for 10-stage pipeline | 2 days | MEDIUM |
 | **chain_to vs dependency graph** — research alternative agent chaining approaches | research | LOW |
 | **stage_config.visible_tabs** — drive tab visibility from backend config | 1 day | LOW |
 | **Progressive tab unlock** — tabs accumulate as deal advances, never hide | 0.5 day | LOW |
@@ -567,7 +568,7 @@ These are places where the current implementation deliberately differs from the 
 
 | 317 Plan | Current | Rationale | Still Valid? |
 |----------|---------|-----------|-------------|
-| Deals enter at Intel (no Lead stage) | Lead added as manual qualification buffer | Gives human a chance to qualify before agent triggers | ⚠️ May be unnecessary — original design had Scout fire on deal creation |
+| Deals enter at Intel (no Lead stage) | Lead with auto_skip: true (sloperation sprint) | Deals auto-skip Lead to Intel. Orgs can disable auto_skip for manual qualification. | ✅ |
 | Discovery stage between BA and Proposal | ✅ Restored (sloperation sprint) | Discovery stage at position 3 with hero card + exit gates | ✅ |
 | Astra Pass 2 on Discovery→Proposal | ✅ Restored (sloperation sprint) | Sequential agent queue with chain_actions | ✅ |
 | Present stage (deck on live call) | ✅ Consolidated into "Present & Invoice" | Invoice renamed, presentation tracking added | ✅ |
