@@ -671,14 +671,13 @@ impl AgentFlowExecutor {
         };
 
         // Check if the current stage has an agent assigned (agent-owned)
-        let stage_config: Option<String> = sqlx::query_scalar(
-            "SELECT stage_config FROM crm_pipeline_stages WHERE id = ?1",
-        )
-        .bind(&stage_id)
-        .fetch_optional(&self.pool)
-        .await
-        .ok()
-        .flatten();
+        let stage_config: Option<String> =
+            sqlx::query_scalar("SELECT stage_config FROM crm_pipeline_stages WHERE id = ?1")
+                .bind(&stage_id)
+                .fetch_optional(&self.pool)
+                .await
+                .ok()
+                .flatten();
 
         let is_agent_stage = stage_config
             .as_deref()
@@ -687,7 +686,10 @@ impl AgentFlowExecutor {
             .unwrap_or(false);
 
         if !is_agent_stage {
-            tracing::debug!("[AgentFlowEngine] Stage {} is not agent-owned, skipping auto-advance", stage_id);
+            tracing::debug!(
+                "[AgentFlowEngine] Stage {} is not agent-owned, skipping auto-advance",
+                stage_id
+            );
             return;
         }
 
@@ -701,19 +703,22 @@ impl AgentFlowExecutor {
         .unwrap_or(0);
 
         if pending_flows > 0 {
-            tracing::info!("[AgentFlowEngine] Deal {} has {} pending flows, not advancing yet", deal_id, pending_flows);
+            tracing::info!(
+                "[AgentFlowEngine] Deal {} has {} pending flows, not advancing yet",
+                deal_id,
+                pending_flows
+            );
             return;
         }
 
         // Find next stage in the pipeline
-        let current_position: Option<i32> = sqlx::query_scalar(
-            "SELECT position FROM crm_pipeline_stages WHERE id = ?1",
-        )
-        .bind(&stage_id)
-        .fetch_optional(&self.pool)
-        .await
-        .ok()
-        .flatten();
+        let current_position: Option<i32> =
+            sqlx::query_scalar("SELECT position FROM crm_pipeline_stages WHERE id = ?1")
+                .bind(&stage_id)
+                .fetch_optional(&self.pool)
+                .await
+                .ok()
+                .flatten();
 
         let Some(pos) = current_position else { return };
 
@@ -728,14 +733,19 @@ impl AgentFlowExecutor {
         .flatten();
 
         let Some((next_stage_id, next_stage_name)) = next_stage else {
-            tracing::info!("[AgentFlowEngine] Deal {} is in the last stage, nothing to advance to", deal_id);
+            tracing::info!(
+                "[AgentFlowEngine] Deal {} is in the last stage, nothing to advance to",
+                deal_id
+            );
             return;
         };
 
         // Auto-advance the deal
         tracing::info!(
             "[AgentFlowEngine] Auto-advancing deal {} to stage {} ({})",
-            deal_id, next_stage_name, next_stage_id
+            deal_id,
+            next_stage_name,
+            next_stage_id
         );
 
         if let Err(e) = sqlx::query(
@@ -758,18 +768,29 @@ impl AgentFlowExecutor {
         };
         if let Ok(deal) = db::models::crm_deal::CrmDeal::find_by_id(&self.pool, &deal_uuid).await {
             let next_stage_uuid = db::db_uuid::DbUuid::from_string(next_stage_id.clone());
-            if let Ok(to_stage) = db::models::crm_pipeline::CrmPipelineStage::find_by_id(&self.pool, &next_stage_uuid).await {
+            if let Ok(to_stage) =
+                db::models::crm_pipeline::CrmPipelineStage::find_by_id(&self.pool, &next_stage_uuid)
+                    .await
+            {
                 let from_stage_uuid = db::db_uuid::DbUuid::from_string(stage_id);
-                let from_stage = db::models::crm_pipeline::CrmPipelineStage::find_by_id(&self.pool, &from_stage_uuid).await.ok();
+                let from_stage = db::models::crm_pipeline::CrmPipelineStage::find_by_id(
+                    &self.pool,
+                    &from_stage_uuid,
+                )
+                .await
+                .ok();
                 let result = crate::stage_transition::process_transition(
                     &self.pool,
                     &deal,
                     from_stage.as_ref(),
                     &to_stage,
-                ).await;
+                )
+                .await;
                 tracing::info!(
                     "[AgentFlowEngine] Transition result for deal {} → {}: {:?}",
-                    deal_id, next_stage_name, result.actions_taken
+                    deal_id,
+                    next_stage_name,
+                    result.actions_taken
                 );
             }
         }
