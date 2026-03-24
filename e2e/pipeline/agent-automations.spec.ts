@@ -159,13 +159,20 @@ test.describe("Agent Automations (AA-1 to AA-7)", () => {
   //     Then an agent flow is created for Cash with flow_type "proposal"
   //     And a review task is created: "Review and approve proposal"
 
-  test("AA-3: auto-advance to Proposal — Cash triggers + review task created", async ({ page, request }) => {
-    test.setTimeout(90_000);
+  test("AA-3: advance through Discovery to Proposal — Cash triggers + review task created", async ({ page, request }) => {
+    test.setTimeout(120_000);
     await apiLogin(request);
 
-    // Astra completes → deal auto-advances to Proposal → Cash triggers
+    // Astra completes → deal auto-advances to Discovery (human stage, stops)
+    const reachedDiscovery = await waitForDealStage(page, request, dealId, "Discovery", 60_000);
+    expect(reachedDiscovery, "Deal should auto-advance to Discovery after Astra completes").toBe(true);
+
+    // Manually advance from Discovery to Proposal
+    await moveDealViaContextMenu(page, dealText, "Proposal");
+    await page.waitForTimeout(3_000);
+
     const reached = await waitForDealStage(page, request, dealId, "Proposal", 60_000);
-    expect(reached, "Deal should auto-advance to Proposal after Astra completes").toBe(true);
+    expect(reached, "Deal should reach Proposal after Discovery advance").toBe(true);
 
     // Then: review task created mentioning "proposal" or "Cash"
     // Note: waitForDealStage completes tasks to unblock advance, so check ALL tasks
@@ -209,18 +216,20 @@ test.describe("Agent Automations (AA-1 to AA-7)", () => {
     test.setTimeout(120_000);
     await apiLogin(request);
 
-    // Move deal through Discovery to Proposal (sequential: Astra P2 → Cash)
-    // Discovery is human-owned — deal must be there first, then advance
-    const reachedDiscovery = await waitForDealStage(page, request, dealId, "Discovery", 60_000);
-    expect(reachedDiscovery, "Deal should reach Discovery after BA completes").toBe(true);
+    // AA-3 already moved the deal to Proposal — verify it's there
+    // (If running standalone, the deal may still be in Discovery)
+    const dealRes = await request.get(`/api/crm/deals/${dealId}`);
+    const currentDeal = (await dealRes.json()).data || (await dealRes.json());
+    if (currentDeal.stage?.toLowerCase() !== "proposal") {
+      // Need to advance through Discovery first
+      const reachedDiscovery = await waitForDealStage(page, request, dealId, "Discovery", 60_000);
+      if (reachedDiscovery) {
+        await moveDealViaContextMenu(page, dealText, "Proposal");
+        await page.waitForTimeout(3_000);
+      }
+    }
 
-    // Manually advance from Discovery to Proposal (human stage — no auto-advance)
-    await moveDealViaContextMenu(page, dealText, "Proposal");
-    await page.waitForTimeout(3_000);
-
-    // Proposal entry should trigger Astra deep_research first, then chain to Cash
-    // Wait for deal to be in Proposal with both flows completing
-    const reachedProposal = await waitForDealStage(page, request, dealId, "Proposal", 90_000);
+    const reachedProposal = await waitForDealStage(page, request, dealId, "Proposal", 60_000);
     expect(reachedProposal, "Deal should be in Proposal stage").toBe(true);
 
     // Verify both Astra P2 and Cash flows exist

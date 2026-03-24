@@ -184,8 +184,8 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
   //   And each agent completes and auto-advances the deal to the next stage
   //   Then the deal reaches Proposal stage
 
-  test("agent auto-advance: Intel → BA → Proposal (setup for DD-2)", async ({ page, request }) => {
-    test.setTimeout(120_000);
+  test("agent auto-advance: Intel → BA → Discovery → Proposal (setup for DD-2)", async ({ page, request }) => {
+    test.setTimeout(180_000);
     await apiLogin(request);
 
     // Helper to complete pending review tasks (so advance isn't blocked)
