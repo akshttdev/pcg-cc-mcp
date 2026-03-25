@@ -195,23 +195,17 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
     const salesPipeline = pipelines.find((p: { pipeline_type: string }) => p.pipeline_type === "sales");
     const pipelineStagesRes = await request.get(`/api/crm/pipelines/${salesPipeline.id}/stages`);
     const stages = (await pipelineStagesRes.json()).data || [];
-    const proposalStage = stages.find((s: { name: string }) =>
-      s.name === "Proposal" || s.name === "Build Proposal"
-    );
+    const proposalStage = stages.find((s: { stage_type?: string }) => s.stage_type === "proposal");
+    expect(proposalStage, "Sales pipeline should have a proposal stage").toBeTruthy();
 
-    if (proposalStage) {
-      await request.patch(`/api/crm/deals/${dealId}/stage`, {
-        data: { stage_id: proposalStage.id, position: 0 },
-      });
-    }
+    await request.patch(`/api/crm/deals/${dealId}/stage`, {
+      data: { stage_id: proposalStage.id, position: 0 },
+    });
 
     // Verify via API
     const dealRes = await request.get(`/api/crm/deals/${dealId}`);
     const deal = (await dealRes.json()).data || (await dealRes.json());
-    expect(
-      ["proposal", "build proposal"].includes((deal.stage || "").toLowerCase()),
-      "Deal should be in Proposal stage"
-    ).toBe(true);
+    expect(deal.crm_stage_id, "Deal should have a stage").toBe(proposalStage.id);
 
     // Verify deal is visible in Proposal column
     const proposalColumn = page.getByTestId(pipeline.stageColumn("proposal"));
