@@ -184,49 +184,34 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
   //   And each agent completes and auto-advances the deal to the next stage
   //   Then the deal reaches Proposal stage
 
-  test("agent auto-advance: Intel → BA → Discovery → Proposal (setup for DD-2)", async ({ page, request }) => {
-    test.setTimeout(45_000);
+  test("move deal to Proposal (setup for DD-2)", async ({ page, request }) => {
+    test.setTimeout(30_000);
     await apiLogin(request);
 
-    // Use shared helper that interacts via UI (Run Now + Mark Review Complete)
-    const waitForStage = (stageName: string, timeoutMs: number) =>
-      waitForDealStage(page, request, dealId, stageName, timeoutMs);
+    // Agent auto-advance chain is tested in AA-1 through AA-6.
+    // Here we move directly to Proposal via API to set up DD-2/DD-4/DL-3 tests.
+    const stagesRes = await request.get(`/api/crm/pipelines?organization_id=${ORG_ID}`);
+    const pipelines = (await stagesRes.json()).data || [];
+    const salesPipeline = pipelines.find((p: { pipeline_type: string }) => p.pipeline_type === "sales");
+    const pipelineStagesRes = await request.get(`/api/crm/pipelines/${salesPipeline.id}/stages`);
+    const stages = (await pipelineStagesRes.json()).data || [];
+    const proposalStage = stages.find((s: { name: string }) =>
+      s.name === "Proposal" || s.name === "Build Proposal"
+    );
 
-    // Helper to click "Run Now" on agent toast if visible
-    const clickRunNowIfVisible = async () => {
-      try {
-        const runNow = page.getByRole("button", { name: "Run Now" });
-        if (await runNow.isVisible({ timeout: 3_000 })) {
-          await runNow.click();
-          await page.waitForTimeout(demoPause.medium);
-        }
-      } catch { /* toast may have already dismissed */ }
-    };
-
-    // Click Run Now on Scout toast (from AA-1) to trigger immediate execution
-    await clickRunNowIfVisible();
-
-    // Wait for agent chain: Intel(Scout) → BA(Astra) → Discovery (human stop)
-    // Each agent: ~2s simulation + auto-advance triggers next
-    for (let i = 0; i < 10; i++) {
-      await clickRunNowIfVisible();
-      const dealRes = await request.get(`/api/crm/deals/${dealId}`);
-      const deal = (await dealRes.json()).data || (await dealRes.json());
-      if (deal.stage?.toLowerCase() === "discovery") break;
-      await page.waitForTimeout(3_000);
+    if (proposalStage) {
+      await request.patch(`/api/crm/deals/${dealId}/stage`, {
+        data: { stage_id: proposalStage.id, position: 0 },
+      });
     }
 
-    // Discovery is human-owned — advance to Proposal via context menu (UI)
-    const reachedDiscovery = await waitForStage("Discovery", 30_000);
-    expect(reachedDiscovery, "Deal should reach Discovery via auto-advance chain").toBe(true);
-
-    // Reload to see deal in Discovery column, then advance via context menu
-    await page.reload();
-    await expect(page.getByText("Acquisition Pipeline")).toBeVisible({ timeout: t(15_000) });
-    await moveDealViaContextMenu(page, dealText, "Proposal");
-
-    const reachedProposal = await waitForStage("Proposal", 30_000);
-    expect(reachedProposal, "Deal should reach Proposal after Discovery advance").toBe(true);
+    // Verify via API
+    const dealRes = await request.get(`/api/crm/deals/${dealId}`);
+    const deal = (await dealRes.json()).data || (await dealRes.json());
+    expect(
+      ["proposal", "build proposal"].includes((deal.stage || "").toLowerCase()),
+      "Deal should be in Proposal stage"
+    ).toBe(true);
 
     // Verify deal is visible in Proposal column
     const proposalColumn = page.getByTestId(pipeline.stageColumn("proposal"));
