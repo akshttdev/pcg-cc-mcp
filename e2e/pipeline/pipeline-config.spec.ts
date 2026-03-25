@@ -202,7 +202,6 @@ test.describe("Pipeline Configuration (PC-1 to PC-3)", () => {
     await page.getByRole("option", { name: /Conferences/i }).click();
     await page.waitForTimeout(demoPause.short);
 
-    // MCP verified: Conferences pipeline has 6 stages
     await expect(page.getByText("6 stages")).toBeVisible({ timeout: t(5_000) });
 
     await page.getByRole("tab", { name: "Automations" }).click();
