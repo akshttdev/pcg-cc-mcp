@@ -7,11 +7,13 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
+  ExternalLink,
   FileText,
   Loader2,
   RotateCcw,
 } from 'lucide-react';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -28,6 +30,7 @@ import { getStatusInfo } from '@/lib/status-utils';
 
 interface AgentFlowSummary {
   id: string;
+  task_id?: string;
   status: string;
   flow_type: string;
   flow_config?: string;
@@ -181,6 +184,27 @@ function FlowCard({ flow }: { flow: AgentFlowSummary }) {
           )}
         </div>
 
+        {/* Artifact links for completed flows */}
+        {flow.status === 'completed' && (
+          <div className="flex items-center gap-2 mt-1.5 ml-7">
+            {flow.task_id && (
+              <Link
+                to="/my-tasks"
+                className="text-xs text-blue-500 hover:text-blue-400 flex items-center gap-1"
+              >
+                <ExternalLink className="h-2.5 w-2.5" />
+                View Task
+              </Link>
+            )}
+            {artifactEvents(flow.events).map((artifact, i) => (
+              <span key={i} className="text-xs text-muted-foreground flex items-center gap-1">
+                <FileText className="h-2.5 w-2.5 text-amber-500" />
+                {artifact.label}
+              </span>
+            ))}
+          </div>
+        )}
+
         {flow.retry_count > 0 && (
           <p className="text-xs text-amber-500 mt-1 ml-7">
             {flow.retry_count} retry attempt(s)
@@ -248,6 +272,19 @@ function getEventIcon(eventType: string) {
     default:
       return <Clock className="h-3 w-3 text-muted-foreground" />;
   }
+}
+
+function artifactEvents(events: AgentFlowEventSummary[]): { label: string }[] {
+  return events
+    .filter(e => e.event_type === 'artifact_created' || e.event_type === 'artifact_updated')
+    .map(e => {
+      try {
+        const data = JSON.parse(e.event_data);
+        return { label: data.name || data.artifact_type || 'Artifact' };
+      } catch {
+        return { label: 'Artifact' };
+      }
+    });
 }
 
 function formatDuration(start: string, end: string): string {

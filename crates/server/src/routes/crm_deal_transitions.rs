@@ -676,6 +676,7 @@ pub async fn get_deal_agent_flows(
 
         result.push(serde_json::json!({
             "id": flow.id.to_string(),
+            "task_id": flow.task_id,
             "status": flow.status.to_string(),
             "flow_type": flow.flow_type.to_string(),
             "flow_config": flow.flow_config,
