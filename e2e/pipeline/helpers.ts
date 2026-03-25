@@ -203,7 +203,7 @@ export async function waitForDealStage(
       }
     } catch { /* toast may not be visible */ }
 
-    // 2. Click Mark Review Complete if visible (panel stays open)
+    // 2. Click Mark Review Complete if visible
     try {
       const reviewTab = page.getByTestId(dealDetail.tab("review"));
       if (await reviewTab.isVisible({ timeout: 300 })) {
@@ -213,6 +213,20 @@ export async function waitForDealStage(
         if (await markComplete.isVisible({ timeout: 500 })) {
           await markComplete.click();
           await page.waitForTimeout(500);
+        } else {
+          // Panel data may be stale — close and reopen to refetch
+          try {
+            const closeBtn = page.getByTestId(dealDetail.close);
+            if (await closeBtn.isVisible({ timeout: 300 })) {
+              await closeBtn.click();
+              await page.waitForTimeout(300);
+              const card = page.getByTestId(dealCard.card(dealId));
+              if (await card.isVisible({ timeout: 500 })) {
+                await card.click();
+                await page.waitForTimeout(500);
+              }
+            }
+          } catch { /* ok */ }
         }
       }
     } catch { /* review tab or button not available */ }
