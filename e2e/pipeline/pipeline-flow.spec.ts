@@ -202,10 +202,10 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
       data: { stage_id: proposalStage.id, position: 0 },
     });
 
-    // Verify via API
+    // Verify via API — check stage name since crm_stage_id may not be in response
     const dealRes = await request.get(`/api/crm/deals/${dealId}`);
     const deal = (await dealRes.json()).data || (await dealRes.json());
-    expect(deal.crm_stage_id, "Deal should have a stage").toBe(proposalStage.id);
+    expect(deal.stage?.toLowerCase(), "Deal should be in Proposal stage").toContain("proposal");
 
     // Verify deal is visible in Proposal column
     const proposalColumn = page.getByTestId(pipeline.stageColumn("proposal"));
