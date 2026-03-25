@@ -88,7 +88,7 @@ test.describe("Deal Detail Features (DD-1 to DD-5)", () => {
     // Ensure Transcripts tab is visible — click "All tabs" toggle if needed
     const transcriptsTab = panel.getByRole("tab", { name: "Transcripts" });
     if (!(await transcriptsTab.isVisible({ timeout: 1_000 }).catch(() => false))) {
-      const allTabsBtn = page.getByRole("button", { name: /all tabs/i });
+      const allTabsBtn = page.getByTestId(dealDetail.allTabsToggle);
       if (await allTabsBtn.isVisible({ timeout: 1_000 }).catch(() => false)) {
         await allTabsBtn.click();
         await page.waitForTimeout(demoPause.short);

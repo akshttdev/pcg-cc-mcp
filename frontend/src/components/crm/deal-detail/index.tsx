@@ -104,6 +104,7 @@ export function CrmDealDetailPanel({
               size="sm"
               className="h-6 px-2 text-[10px] text-muted-foreground hover:text-foreground gap-1"
               onClick={() => setShowAllTabs(!showAllTabs)}
+              data-testid={tid.allTabsToggle}
             >
               {showAllTabs ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
               {showAllTabs ? 'Stage tabs' : 'All tabs'}

@@ -40,6 +40,7 @@ export const dealDetail = {
   edit: "deal-detail-edit",
   delete: "deal-detail-delete",
   tab: (name: string) => `deal-detail-tabs-${name}`,
+  allTabsToggle: "deal-detail-all-tabs",
 } as const;
 
 // ── Call Scheduling (OverviewCallSchedulingSection.tsx) ───────────────────────
