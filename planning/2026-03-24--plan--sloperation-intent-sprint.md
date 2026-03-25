@@ -7,7 +7,57 @@
 **Duration**: 10 working days (2026-03-24 → 2026-04-07)
 **PR Strategy**: Single feature branch, one bundled PR
 **LLM Mode**: SIMULATE_LLM=1 throughout
-**Status**: IMPLEMENTATION COMPLETE — W1-W7 + W9 done, W8 deferred, pending E2E verification
+**Status**: FEATURES COMPLETE — 37/40 E2E pass, 3 remaining (SSE timing + tab context)
+
+## Sprint Summary (2026-03-25)
+
+### Completed
+- **W1**: Discovery stage restored (migration + hero card + transcript exit gate)
+- **W2**: Sequential agent queue (chain_actions + Astra P2→Cash)
+- **W3**: Won unification (provision_won_deal, org-level project, delivery deal)
+- **W4**: Present & Invoice consolidation (rename + presentation tracking)
+- **W5**: Stage-aware tab visibility (STAGE_TAB_MAP + toggle) — **MCP verified working**
+- **W6**: Data source linking (dual agent/stage scoping, org picker)
+- **W7**: Review task routing (config-driven + org owner fallback)
+- **Auto-skip**: Lead stage auto-skips to Intel (configurable)
+- **Review gate**: Auto-advance blocked until review tasks completed
+- **Mark Review Complete**: New button in ReviewTab for UI-driven task completion
+- **SSE endpoint**: GET /api/events/pipeline for real-time kanban updates (deployed)
+- **Kanban SSE**: Board subscribes to SSE, no more polling
+- **Conferences**: Scout stage_config added to Researching stage
+
+### E2E Results: 37 pass, 3 fail, 3 skip
+| Test | Status | Issue |
+|------|--------|-------|
+| AA-3 | FAIL | Agent chain timing — waitForDealStage times out reaching Discovery. SSE delivers events but the deal panel review task UI interaction adds latency per poll cycle. |
+| DD-1 | FAIL | Transcripts tab not visible — panel opened via text click doesn't set stageName. allTabsToggle fallback added but test still fails. Root cause: setup test should open via card testid. |
+| DD-4 | FAIL | Cascade — pipeline-flow setup moved to API stage move but deal.stage response may be stale. |
+
+### Remaining Work (next session)
+
+**HIGH — blocks E2E green:**
+1. **Fix DD-1 setup**: Open deal via `dealCard.card(dealId)` testid in the DD setup test (not text click). This sets `selectedDealStage` which drives tab visibility.
+2. **Fix AA-3 timing**: The `waitForDealStage` helper opens/closes the drawer to click Mark Review Complete each cycle. With SSE keeping the board fresh, the helper should watch for the card moving between columns instead of polling the API. Use `waitForCardInColumn` (already implemented in helpers.ts).
+3. **Fix DD-4 cascade**: Depends on pipeline-flow setup passing. The setup now uses API stage move — verify `deal.stage` field is populated in the GET response.
+
+**MEDIUM — polish:**
+4. **Add missing testids**: Interactive elements in CrmPipelineSettings, TranscriptsTab link form, CrmDealCard menu buttons need testids per frontend standards.
+5. **Demo-quality test refactor**: Tests should look like a user demo — watch kanban board, open drawer to verify data at key stages, close and watch next action. Current helpers still mix API checks with UI.
+6. **SSE content-type**: Console shows `EventSource MIME type` error — the SSE endpoint may need explicit `text/event-stream` content type header.
+
+**LOW — deferred:**
+7. **W8 Cost bridge**: Agent flows record token usage for cost dashboard
+8. **Broadcast channel SSE**: Replace DB polling with tokio::sync::watch for true push
+9. **Person invite (F3)**: Token generation + email via Resend
+
+### Key Decisions Made During Sprint
+- **Data source scoping**: Dual `relevant_stages` + `relevant_agents` fields (both JSON arrays, both nullable = all)
+- **Lead stage**: `auto_skip: true` by default — deals fly through to Intel
+- **Review task gate**: Auto-advance requires all deal-linked tasks completed (not just agent flows)
+- **Project on Won**: Org-level project (no client_id), unique git_repo_path per deal
+- **Agent poll interval**: `AGENT_FLOW_POLL_INTERVAL=3` for dev/test (default 15s production)
+- **No API shortcuts in E2E**: Pipeline actions must go through UI — setup data via API is fine
+- **SSE over polling**: Kanban board subscribes to /api/events/pipeline SSE endpoint
 
 ## Implementation Log
 
