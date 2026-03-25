@@ -85,17 +85,21 @@ test.describe("Deal Detail Features (DD-1 to DD-5)", () => {
   test("DD-1: Transcripts tab shows empty state with Link button", async ({ page }) => {
     test.setTimeout(30_000);
     const panel = page.getByTestId(dealDetail.panel);
-    // Ensure Transcripts tab is visible — click "All tabs" toggle if needed
+
+    // Transcripts tab is in the Intel stage tab map — should be directly visible.
+    // Use allTabsToggle as fallback if stage-aware filtering hides it.
     const transcriptsTab = panel.getByRole("tab", { name: "Transcripts" });
-    if (!(await transcriptsTab.isVisible({ timeout: 1_000 }).catch(() => false))) {
+    if (!(await transcriptsTab.isVisible({ timeout: 3_000 }).catch(() => false))) {
       const allTabsBtn = page.getByTestId(dealDetail.allTabsToggle);
-      if (await allTabsBtn.isVisible({ timeout: 1_000 }).catch(() => false)) {
+      if (await allTabsBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
         await allTabsBtn.click();
         await page.waitForTimeout(demoPause.short);
       }
     }
+    await expect(transcriptsTab).toBeVisible({ timeout: t(5_000) });
     await transcriptsTab.click();
     await page.waitForTimeout(demoPause.short);
+
     // MCP verified: empty state has heading, "No transcripts linked" text, and "Link" button
     await expect(panel.getByRole("heading", { name: "Discovery Transcripts" })).toBeVisible({ timeout: t(5_000) });
     await expect(panel.getByText("No transcripts linked")).toBeVisible();
@@ -140,10 +144,11 @@ test.describe("Deal Detail Features (DD-1 to DD-5)", () => {
     const reached = await waitForDealStage(page, request, dealId, "Proposal", 90_000);
     expect(reached, "Deal should auto-advance to Proposal via agent chain").toBe(true);
 
-    // Refresh and re-open the deal detail panel
+    // Refresh and re-open the deal detail panel via card testid (sets stageName for tab visibility)
     await page.reload();
     await expect(page.getByText("Acquisition Pipeline")).toBeVisible({ timeout: t(15_000) });
-    await page.getByText(dealText).first().click();
+    await expect(page.getByTestId(dealCard.card(dealId))).toBeVisible({ timeout: t(15_000) });
+    await page.getByTestId(dealCard.card(dealId)).click();
     await expect(page.getByTestId(dealDetail.panel)).toBeVisible({ timeout: t(10_000) });
     await page.waitForTimeout(demoPause.short);
   });
@@ -236,10 +241,41 @@ test.describe("Deal Detail Features (DD-1 to DD-5)", () => {
   //     And the invoice appears in AR tracking (FAILING — no AR dashboard)
 
   test("DD-4: click Send Invoice — invoice created and stored on deal", async ({ page, request }) => {
-    test.setTimeout(30_000);
+    test.setTimeout(45_000);
     await apiLogin(request);
 
-    // Send Invoice button should be enabled (deal has amount, stage is past early stages)
+    // Send Invoice is gated on: (1) stage past Proposal, (2) presentation_status === 'presented'.
+    // Close the panel, move deal to Present & Invoice via context menu, re-open.
+    const panel = page.getByTestId(dealDetail.panel);
+    await panel.getByRole("button", { name: "Close" }).click();
+    await page.waitForTimeout(demoPause.short);
+
+    await moveDealViaContextMenu(page, dealText, "Present & Invoice");
+    await page.waitForTimeout(demoPause.short);
+
+    // Re-open deal panel via card testid
+    await expect(page.getByTestId(dealCard.card(dealId))).toBeVisible({ timeout: t(10_000) });
+    await page.getByTestId(dealCard.card(dealId)).click();
+    await expect(page.getByTestId(dealDetail.panel)).toBeVisible({ timeout: t(10_000) });
+
+    // Navigate to Deck & Close tab
+    const panel2 = page.getByTestId(dealDetail.panel);
+    await panel2.getByRole("tab", { name: "Deck & Close" }).click();
+    await page.waitForTimeout(demoPause.short);
+
+    // Set presentation status to 'presented' and save
+    const presentedBtn = panel2.getByText("presented", { exact: true });
+    if (await presentedBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      await presentedBtn.click();
+      await page.waitForTimeout(demoPause.short);
+      const saveBtn = page.getByTestId(deck.presentationSave);
+      if (await saveBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
+        await saveBtn.click();
+        await page.waitForTimeout(demoPause.medium);
+      }
+    }
+
+    // Send Invoice button should now be enabled (past proposal + presented)
     const sendInvoiceBtn = page.getByTestId(deck.sendInvoice);
     await expect(sendInvoiceBtn).toBeVisible({ timeout: t(5_000) });
     await expect(sendInvoiceBtn).toBeEnabled();

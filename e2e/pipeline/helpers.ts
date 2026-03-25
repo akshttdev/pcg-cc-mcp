@@ -202,44 +202,63 @@ export async function waitForDealStage(
   } catch { /* not open */ }
 
   const start = Date.now();
+  let lastStage = '';
+  let drawerAttempts = 0;
+
   while (Date.now() - start < timeoutMs) {
     // Click Run Now on toast if visible (bypasses cancel window)
     try {
       const runNow = page.getByRole("button", { name: "Run Now" });
-      if (await runNow.isVisible({ timeout: 1_000 })) {
+      if (await runNow.isVisible({ timeout: 500 })) {
         await runNow.click();
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(300);
       }
     } catch { /* no toast */ }
 
-    // Check if card is in target column (SSE keeps board fresh)
+    // Check current stage via API (read-only, not a shortcut)
     const dealRes = await request.get(`/api/crm/deals/${dealId}`);
     const deal = (await dealRes.json()).data || (await dealRes.json());
-    if (deal.stage?.toLowerCase() === stageName.toLowerCase()) return true;
+    const currentStage = deal.stage?.toLowerCase() || '';
 
-    // If stuck, try completing review task via drawer
-    try {
-      const card = page.getByTestId(dealCard.card(dealId));
-      if (await card.isVisible({ timeout: 500 })) {
-        await card.click();
-        await page.waitForTimeout(300);
-        const reviewTab = page.getByTestId(dealDetail.tab("review"));
-        if (await reviewTab.isVisible({ timeout: 300 })) {
-          await reviewTab.click();
+    if (currentStage === stageName.toLowerCase()) return true;
+
+    // Detect if we're stuck at the same stage (needs review task completion)
+    const stageChanged = currentStage !== lastStage;
+    lastStage = currentStage;
+
+    if (stageChanged) {
+      // Stage just changed — give agents time to start, skip drawer interaction
+      drawerAttempts = 0;
+      await page.waitForTimeout(1_500);
+      continue;
+    }
+
+    // Only open drawer for review completion every other iteration to reduce overhead
+    drawerAttempts++;
+    if (drawerAttempts % 2 === 0) {
+      try {
+        const card = page.getByTestId(dealCard.card(dealId));
+        if (await card.isVisible({ timeout: 500 })) {
+          await card.click();
           await page.waitForTimeout(300);
-          const markComplete = page.getByTestId("review-mark-complete");
-          if (await markComplete.isVisible({ timeout: 500 })) {
-            await markComplete.click();
-            await page.waitForTimeout(500);
+          const reviewTab = page.getByTestId(dealDetail.tab("review"));
+          if (await reviewTab.isVisible({ timeout: 300 })) {
+            await reviewTab.click();
+            await page.waitForTimeout(300);
+            const markComplete = page.getByTestId("review-mark-complete");
+            if (await markComplete.isVisible({ timeout: 500 })) {
+              await markComplete.click();
+              await page.waitForTimeout(500);
+            }
           }
+          // Close drawer to watch board again
+          const closeBtn = page.getByTestId(dealDetail.close);
+          if (await closeBtn.isVisible({ timeout: 300 })) await closeBtn.click();
         }
-        // Close drawer to watch board again
-        const closeBtn = page.getByTestId(dealDetail.close);
-        if (await closeBtn.isVisible({ timeout: 300 })) await closeBtn.click();
-      }
-    } catch { /* deal card not visible or drawer interaction failed */ }
+      } catch { /* deal card not visible or drawer interaction failed */ }
+    }
 
-    await page.waitForTimeout(2_000);
+    await page.waitForTimeout(1_500);
   }
   return false;
 }
