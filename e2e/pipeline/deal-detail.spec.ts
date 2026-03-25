@@ -103,7 +103,7 @@ test.describe("Deal Detail Features (DD-1 to DD-5)", () => {
     // MCP verified: empty state has heading, "No transcripts linked" text, and "Link" button
     await expect(panel.getByRole("heading", { name: "Discovery Transcripts" })).toBeVisible({ timeout: t(5_000) });
     await expect(panel.getByText("No transcripts linked")).toBeVisible();
-    await expect(panel.getByRole("button", { name: "Link" })).toBeVisible();
+    await expect(panel.getByRole("button", { name: "Link", exact: true })).toBeVisible();
   });
 
   test("DD-1: link transcript via API and verify it appears", async () => {

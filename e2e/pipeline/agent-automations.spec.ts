@@ -132,11 +132,12 @@ test.describe("Agent Automations (AA-1 to AA-7)", () => {
   //     And a review task is created: "Review business report (Astra)"
 
   test("AA-2: auto-advance to BA — Astra triggers + review task created", async ({ page, request }) => {
-    test.setTimeout(45_000);
+    test.setTimeout(90_000);
     await apiLogin(request);
 
     // Scout completes → deal auto-advances to BA → Astra triggers
-    const reached = await waitForDealStage(page, request, dealId, "Business Analysis", 30_000);
+    // Give extra time: Intel→BA requires Scout completion + review task completion
+    const reached = await waitForDealStage(page, request, dealId, "Business Analysis", 60_000);
     expect(reached, "Deal should auto-advance to BA after Scout completes").toBe(true);
 
     // Then: review task created with title mentioning "business report" or "Astra"

@@ -281,15 +281,32 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
   //   And the Deck tab shows "Invoice sent" status
 
   test("DD-4 improved: send invoice — strict invoice_id + UI status", async ({ page, request }) => {
-    test.setTimeout(30_000);
+    test.setTimeout(45_000);
     await apiLogin(request);
 
-    // Open deal, go to Deck tab
-    await page.getByText(dealText).first().click();
+    // Move deal to Present & Invoice first (Send Invoice is gated on PRE_INVOICE_STAGES)
+    await moveDealViaContextMenu(page, dealText, "Present & Invoice");
+    await page.waitForTimeout(demoPause.short);
+
+    // Open deal via card testid to set stageName for tab visibility
+    await expect(page.getByTestId(dealCard.card(dealId))).toBeVisible({ timeout: t(10_000) });
+    await page.getByTestId(dealCard.card(dealId)).click();
     const panel = page.getByTestId(dealDetail.panel);
     await expect(panel).toBeVisible({ timeout: t(10_000) });
     await panel.getByRole("tab", { name: "Deck & Close" }).click();
     await page.waitForTimeout(demoPause.short);
+
+    // Set presentation status to 'presented' (required for Send Invoice)
+    const presentedBtn = panel.getByText("presented", { exact: true });
+    if (await presentedBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      await presentedBtn.click();
+      await page.waitForTimeout(demoPause.short);
+      const saveBtn = page.getByTestId(deck.presentationSave);
+      if (await saveBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
+        await saveBtn.click();
+        await page.waitForTimeout(demoPause.medium);
+      }
+    }
 
     // Send Invoice
     await page.getByTestId(deck.sendInvoice).click();
