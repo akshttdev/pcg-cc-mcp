@@ -55,6 +55,7 @@ pub mod email_accounts;
 pub mod entity_conversion;
 pub mod event_stream;
 pub mod events;
+pub mod pipeline_events;
 pub mod execution_processes;
 pub mod execution_summaries;
 pub mod feedback;
@@ -259,6 +260,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(token_usage::router(&deployment))
         .merge(system_metrics::router(&deployment))
         .merge(event_stream::router(&deployment))
+        .merge(pipeline_events::router())
         .merge(multiplayer::router(&deployment))
         .merge(cms::router(&deployment))
         .merge(tasks::global_router(&deployment))

@@ -62,8 +62,7 @@ export function useCrmKanban(pipelineId: string | undefined) {
     queryKey: crmQueryKeys.kanban(pipelineId || ''),
     queryFn: () => crmDealsApi.getKanbanData(pipelineId!),
     enabled: !!pipelineId,
-    staleTime: 15 * 1000,
-    refetchInterval: 15 * 1000, // Poll to pick up agent completions + auto-advance
+    staleTime: 5 * 1000, // SSE events trigger invalidation — staleTime just prevents duplicate fetches
     placeholderData: keepPreviousData,
   });
 }
@@ -108,8 +107,7 @@ export function useOrgCrmKanban(orgId: string, pipelineId: string | undefined) {
     queryKey: orgCrmQueryKeys.kanban(orgId, pipelineId || ''),
     queryFn: () => crmDealsApi.getOrgKanbanData(orgId, pipelineId!),
     enabled: !!orgId && !!pipelineId,
-    staleTime: 15 * 1000,
-    refetchInterval: 15 * 1000, // Poll to pick up agent completions + auto-advance
+    staleTime: 5 * 1000, // SSE events trigger invalidation
     placeholderData: keepPreviousData,
   });
 }

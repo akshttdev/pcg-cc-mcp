@@ -1,6 +1,6 @@
 import NiceModal from '@ebay/nice-modal-react';
 import { Bot, DollarSign, Loader2, Plus,Settings, Target, User, Users } from 'lucide-react';
-import { useEffect,useMemo, useState } from 'react';
+import { useCallback,useEffect,useMemo, useRef, useState } from 'react';
 import { dealCard as dealTid,pipeline as tid } from 'shared/testids';
 import { toast } from 'sonner';
 
@@ -17,7 +17,11 @@ import {
 } from '@/components/ui/shadcn-io/kanban';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider,TooltipTrigger } from '@/components/ui/tooltip';
+import { useQueryClient } from '@tanstack/react-query';
+
 import { useCreateDeal, useCrmKanban, useCrmPipelineByType, useDeleteDeal,useMoveDeal, useOrgCrmKanban, useOrgCrmPipelineByType, useUpdateDeal } from '@/hooks/useCrmPipeline';
+import { resolveApiUrl } from '@/lib/api';
+import { crmKeys } from '@/lib/query-keys';
 import { useProjectBoardProgress } from '@/hooks/useProjectBoardProgress';
 import { formatCurrencyFull } from '@/lib/formatters';
 import type { CreateCrmDeal, CrmDealWithContact, PipelineType, UpdateCrmDeal } from '@/types/crm';
@@ -134,6 +138,25 @@ export function CrmPipelineBoard({
   const [initialStageId, setInitialStageId] = useState<string | undefined>();
 
   const isOrgMode = !!orgId;
+  const queryClient = useQueryClient();
+
+  // SSE subscription for real-time pipeline updates
+  const eventSourceRef = useRef<EventSource | null>(null);
+  useEffect(() => {
+    const url = resolveApiUrl(`/api/events/pipeline?org_id=${orgId || ''}`);
+    const es = new EventSource(url);
+    eventSourceRef.current = es;
+
+    es.addEventListener('pipeline_changed', () => {
+      queryClient.invalidateQueries({ queryKey: crmKeys.kanbanAll() });
+      queryClient.invalidateQueries({ queryKey: crmKeys.orgKanbanAll() });
+    });
+
+    return () => {
+      es.close();
+      eventSourceRef.current = null;
+    };
+  }, [orgId, queryClient]);
 
   const projectPipeline = useCrmPipelineByType(projectId || '', pipelineType);
   const orgPipeline = useOrgCrmPipelineByType(orgId || '', pipelineType);

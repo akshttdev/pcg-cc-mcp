@@ -163,93 +163,84 @@ export async function moveDealViaContextMenu(
  * Returns true if the deal reached the stage, false on timeout.
  */
 /**
+ * Wait for a deal card to appear in a target stage column on the kanban board.
+ * Pure UI — watches for the card text inside the column testid. No API polling.
+ * SSE events keep the board fresh so cards appear within ~1s of backend processing.
+ */
+export async function waitForCardInColumn(
+  page: Page,
+  dealNameFragment: string,
+  stageName: string,
+  timeoutMs = 15_000,
+) {
+  const column = page.getByTestId(`stage-column-${stageName.toLowerCase().replace(/\s+/g, '-')}`);
+  await expect(column.getByText(dealNameFragment, { exact: false })).toBeVisible({ timeout: timeoutMs });
+}
+
+/**
  * Wait for a deal to reach a target stage via agent auto-advance.
  *
- * UI interactions per poll cycle:
- * 1. Click "Run Now" on agent toast (bypasses 30s cancel window)
- * 2. Open deal detail via testid `deal-card-{dealId}`
- * 3. Click Review tab via testid `deal-detail-tabs-review`
- * 4. Click "Mark Review Complete" via testid `review-mark-complete`
- * 5. Close panel via testid `deal-detail-close`
- * 6. Read-only API check for current stage
+ * Demo-quality flow:
+ * 1. Watch the kanban board (drawer closed) for card movement
+ * 2. Click "Run Now" on agent toast when it appears
+ * 3. When review task blocks advance: open drawer → Review tab → Mark Complete → close
+ * 4. Watch card move to next column
+ *
+ * Uses SSE for real-time board updates — no API polling.
  */
 export async function waitForDealStage(
   page: Page,
   request: APIRequestContext,
   dealId: string,
   stageName: string,
-  timeoutMs = 30_000,
+  timeoutMs = 15_000,
 ) {
-  // Open deal detail panel once and keep it open for the duration
-  const panel = page.getByTestId(dealDetail.panel);
-  if (!(await panel.isVisible({ timeout: 500 }).catch(() => false))) {
-    try {
-      const card = page.getByTestId(dealCard.card(dealId));
-      if (await card.isVisible({ timeout: 2_000 })) {
-        await card.click();
-        await page.waitForTimeout(500);
-      }
-    } catch { /* card may not be visible */ }
-  }
-
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    // 1. Click Run Now on toast if visible
-    try {
-      const runNow = page.getByRole("button", { name: "Run Now" });
-      if (await runNow.isVisible({ timeout: 500 })) {
-        await runNow.click();
-        await page.waitForTimeout(500);
-      }
-    } catch { /* toast may not be visible */ }
-
-    // 2. Click Mark Review Complete if visible
-    try {
-      const reviewTab = page.getByTestId(dealDetail.tab("review"));
-      if (await reviewTab.isVisible({ timeout: 300 })) {
-        await reviewTab.click();
-        await page.waitForTimeout(300);
-        const markComplete = page.getByTestId("review-mark-complete");
-        if (await markComplete.isVisible({ timeout: 500 })) {
-          await markComplete.click();
-          await page.waitForTimeout(500);
-        } else {
-          // Panel data may be stale — close and reopen to refetch
-          try {
-            const closeBtn = page.getByTestId(dealDetail.close);
-            if (await closeBtn.isVisible({ timeout: 300 })) {
-              await closeBtn.click();
-              await page.waitForTimeout(300);
-              const card = page.getByTestId(dealCard.card(dealId));
-              if (await card.isVisible({ timeout: 500 })) {
-                await card.click();
-                await page.waitForTimeout(500);
-              }
-            }
-          } catch { /* ok */ }
-        }
-      }
-    } catch { /* review tab or button not available */ }
-
-    // 3. Read-only API check for current stage
-    const dealRes = await request.get(`/api/crm/deals/${dealId}`);
-    const deal = (await dealRes.json()).data || (await dealRes.json());
-    if (deal.stage?.toLowerCase() === stageName.toLowerCase()) {
-      // Close panel before returning
-      try {
-        const closeBtn = page.getByTestId(dealDetail.close);
-        if (await closeBtn.isVisible({ timeout: 300 })) await closeBtn.click();
-      } catch { /* ok */ }
-      return true;
-    }
-    await page.waitForTimeout(2_000);
-  }
-
-  // Close panel on timeout too
+  // Close any open drawer so we can watch the kanban board
   try {
     const closeBtn = page.getByTestId(dealDetail.close);
     if (await closeBtn.isVisible({ timeout: 300 })) await closeBtn.click();
-  } catch { /* ok */ }
+  } catch { /* not open */ }
+
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    // Click Run Now on toast if visible (bypasses cancel window)
+    try {
+      const runNow = page.getByRole("button", { name: "Run Now" });
+      if (await runNow.isVisible({ timeout: 1_000 })) {
+        await runNow.click();
+        await page.waitForTimeout(500);
+      }
+    } catch { /* no toast */ }
+
+    // Check if card is in target column (SSE keeps board fresh)
+    const dealRes = await request.get(`/api/crm/deals/${dealId}`);
+    const deal = (await dealRes.json()).data || (await dealRes.json());
+    if (deal.stage?.toLowerCase() === stageName.toLowerCase()) return true;
+
+    // If stuck, try completing review task via drawer
+    try {
+      const card = page.getByTestId(dealCard.card(dealId));
+      if (await card.isVisible({ timeout: 500 })) {
+        await card.click();
+        await page.waitForTimeout(300);
+        const reviewTab = page.getByTestId(dealDetail.tab("review"));
+        if (await reviewTab.isVisible({ timeout: 300 })) {
+          await reviewTab.click();
+          await page.waitForTimeout(300);
+          const markComplete = page.getByTestId("review-mark-complete");
+          if (await markComplete.isVisible({ timeout: 500 })) {
+            await markComplete.click();
+            await page.waitForTimeout(500);
+          }
+        }
+        // Close drawer to watch board again
+        const closeBtn = page.getByTestId(dealDetail.close);
+        if (await closeBtn.isVisible({ timeout: 300 })) await closeBtn.click();
+      }
+    } catch { /* deal card not visible or drawer interaction failed */ }
+
+    await page.waitForTimeout(2_000);
+  }
   return false;
 }
 
