@@ -578,6 +578,55 @@ impl AgentFlowExecutor {
         }
     }
 
+    /// Update person intelligence fields via the deal's linked contact.
+    /// The Intel tab reads from `persons.intelligence_summary` and `persons.intelligence_status`,
+    /// so Scout must write there for results to be visible.
+    async fn update_deal_person_intelligence(
+        &self,
+        deal_id: &str,
+        summary: &str,
+    ) -> Result<(), anyhow::Error> {
+        // Look up person_id via deal → contact → person
+        let person_id: Option<String> = sqlx::query_scalar(
+            r#"SELECT p.id FROM persons p
+               JOIN crm_contacts c ON c.person_id = p.id
+               JOIN crm_deals d ON d.crm_contact_id = c.id
+               WHERE d.id = ?1"#,
+        )
+        .bind(deal_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(pid) = person_id {
+            sqlx::query(
+                r#"UPDATE persons
+                   SET intelligence_summary = ?1,
+                       intelligence_status = 'done',
+                       intelligence_confidence = 0.75,
+                       research_pass_count = COALESCE(research_pass_count, 0) + 1,
+                       updated_at = datetime('now', 'subsec')
+                   WHERE id = ?2"#,
+            )
+            .bind(summary)
+            .bind(&pid)
+            .execute(&self.pool)
+            .await?;
+
+            tracing::info!(
+                "[AgentFlowEngine] Updated person intelligence for deal={} person={}",
+                deal_id,
+                pid
+            );
+        } else {
+            tracing::warn!(
+                "[AgentFlowEngine] No person linked to deal {} — cannot update intelligence",
+                deal_id
+            );
+        }
+
+        Ok(())
+    }
+
     async fn save_artifact(&self, flow_id_str: &str, title: &str, content: &str) -> String {
         // Input size limits
         const MAX_TITLE_LEN: usize = 500;
@@ -1078,27 +1127,37 @@ impl AgentFlowExecutor {
         // Execute real tool calls based on agent role + return summary
         match agent_name {
             "scout" => {
-                // Scout: save research artifact
+                // Scout: save research to deal description + person intelligence fields
                 if !deal_id.is_empty() {
+                    let summary = format!(
+                        "Contact appears to be a decision-maker at a mid-size company. \
+                         Key talking points: digital transformation, operational efficiency, \
+                         and competitive positioning. Company is in a growth phase with \
+                         potential for strategic partnerships.\n\n\
+                         Original context: {}",
+                        context.chars().take(200).collect::<String>()
+                    );
+
+                    // Update deal description
                     let result = self
                         .update_deal_field(
                             deal_id,
                             "description",
-                            &format!(
-                                "[Scout Research — Simulated]\n\n\
-                             Contact appears to be a decision-maker at a mid-size company. \
-                             Key talking points: digital transformation, operational efficiency, \
-                             and competitive positioning. Company is in a growth phase with \
-                             potential for strategic partnerships.\n\n\
-                             Original context: {}",
-                                context.chars().take(200).collect::<String>()
-                            ),
+                            &format!("[Scout Research — Simulated]\n\n{}", summary),
                         )
                         .await;
                     if result.contains("error") {
                         tracing::error!(
                             "[AgentFlowEngine] Simulated scout: update_deal_field returned error: {}",
                             result
+                        );
+                    }
+
+                    // Update person intelligence so Intel tab shows results
+                    if let Err(e) = self.update_deal_person_intelligence(deal_id, &summary).await {
+                        tracing::error!(
+                            "[AgentFlowEngine] Simulated scout: update_deal_person_intelligence error: {}",
+                            e
                         );
                     }
                 }

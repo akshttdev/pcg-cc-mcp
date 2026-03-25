@@ -184,9 +184,9 @@ function FlowCard({ flow }: { flow: AgentFlowSummary }) {
           )}
         </div>
 
-        {/* Artifact links for completed flows */}
+        {/* Artifact + task links for completed flows */}
         {flow.status === 'completed' && (
-          <div className="flex items-center gap-2 mt-1.5 ml-7">
+          <div className="flex items-center gap-2 mt-1.5 ml-7 flex-wrap">
             {flow.task_id && (
               <Link
                 to="/my-tasks"
