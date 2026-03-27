@@ -1502,6 +1502,12 @@ Dealflow pipeline v2, company profiles, brand guides, Dockerfile fixes, VIBE tok
 **Effort:** 50 min + migration
 **Status:** NOT STARTED
 
+### Kanban Deal Enrichment Dedup
+**Source:** Contacts unification Phase 1 (2026-03-27)
+**What:** `crm_deal.rs` has the same deal enrichment logic duplicated between `get_kanban_data()` (~line 900) and `find_by_id_with_contact()` (~line 1075). Both do: contact lookup → person_id resolution → report_id → fetch_intel_data → company intel → active agent flow. Extract to a shared `enrich_deal_with_contact(pool, deal, contact_info) → CrmDealWithContact` helper.
+**Effort:** 30 min
+**Status:** NOT STARTED
+
 ### Large Backend File Splits
 **What:** Files beyond `crm_deals.rs` that exceed 1,000 lines:
 - `sovereign_storage.rs` (2,699L) — extract conflict resolution

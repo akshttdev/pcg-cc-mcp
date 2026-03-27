@@ -2,6 +2,10 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
+// NOTE: This file uses uuid::Uuid for backward compatibility with callers.
+// Will be converted to DbUuid in Phase 2 (contacts unification) when
+// intelligence.rs and persons.rs are rewritten.
+
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct PersonResearchPass {
     pub id: Uuid,
