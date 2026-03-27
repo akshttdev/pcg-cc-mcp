@@ -18,7 +18,9 @@ Add intelligence fields to `crm_contacts` and rewire Scout to write there direct
 
 ## W1: Migration — Add intelligence columns to crm_contacts
 
-**Migration `20260327000000_contacts_intelligence.sql`**:
+**Migration `20260418000000_contacts_intelligence.sql`** (actual timestamp may differ — see `crates/db/migrations/`):
+
+> **Note**: The canonical SQL is in the migration file. This planning doc shows the intended schema for review; the actual migration may differ (e.g., CAST-based backfill for BLOB/TEXT compat). Always reference the migration file as source of truth.
 
 ```sql
 -- Add intelligence fields (mirroring persons table)

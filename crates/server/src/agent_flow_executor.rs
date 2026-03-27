@@ -602,7 +602,7 @@ impl AgentFlowExecutor {
                 r#"UPDATE persons
                    SET intelligence_summary = ?1,
                        intelligence_status = 'done',
-                       intelligence_confidence = 0.75,
+                       intelligence_confidence = 0.75, -- simulated confidence; replace with real scoring when LLM evaluation is wired
                        research_pass_count = COALESCE(research_pass_count, 0) + 1,
                        updated_at = datetime('now', 'subsec')
                    WHERE id = ?2"#,
