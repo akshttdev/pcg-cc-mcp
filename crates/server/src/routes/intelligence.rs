@@ -512,7 +512,6 @@ fn extract_summary_from_response(text: &str) -> String {
     clean.chars().take(300).collect()
 }
 
-
 fn extract_confidence_from_response(text: &str) -> f64 {
     // Try to parse JSON and extract confidence field
     let json_str = if let (Some(start), Some(end)) = (text.find('{'), text.rfind('}')) {

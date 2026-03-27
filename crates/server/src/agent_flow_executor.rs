@@ -266,7 +266,7 @@ impl AgentFlowExecutor {
         tools: &[ToolDefinition],
     ) -> anyhow::Result<String> {
         let max_retries = 3;
-        let models = [None, None, Some("claude-sonnet-4-6-20250514")]; // last attempt uses cheaper model
+        let models = [None, None, Some("claude-sonnet-4-6")]; // last attempt uses cheaper model
 
         // Extract deal_id from flow config for simulated mode
         let flow_deal_id = flow

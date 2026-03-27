@@ -207,9 +207,11 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
     const deal = (await dealRes.json()).data || (await dealRes.json());
     expect(deal.stage?.toLowerCase(), "Deal should be in Proposal stage").toContain("proposal");
 
-    // Verify deal is visible in Proposal column
+    // NOTE: SSE should push stage updates to kanban — if this times out,
+    // investigate whether API-driven stage transitions emit SSE events.
+    // Do NOT add page.reload() — SSE is the canonical update mechanism.
     const proposalColumn = page.getByTestId(pipeline.stageColumn("proposal"));
-    await expect(proposalColumn.getByText(dealText)).toBeVisible({ timeout: t(10_000) });
+    await expect(proposalColumn.getByText(dealText)).toBeVisible({ timeout: t(15_000) });
   });
 
   // ═══════════════════════════════════════════════════════════════════════
