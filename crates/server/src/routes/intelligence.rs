@@ -217,7 +217,7 @@ async fn run_research_via_nora(
         };
 
         let nora_request = NoraRequest {
-            request_id: Uuid::new_v4().to_string(),
+            request_id: DbUuid::new().to_string(),
             session_id: format!("research-{}", person_id),
             request_type: NoraRequestType::TextInteraction,
             content: prompt,
@@ -1452,7 +1452,7 @@ async fn run_research_pass(
                   coverage_score, auto_registered, is_active, created_at, updated_at)
                  VALUES (?, 'organization', ?, 'entity', ?, ?, ?, ?, 1, 1, datetime('now','subsec'), datetime('now','subsec'))",
             )
-            .bind(Uuid::new_v4())
+            .bind(DbUuid::new().to_string())
             .bind(org_id.to_string())
             .bind(pass_id.to_string())
             .bind(&title)

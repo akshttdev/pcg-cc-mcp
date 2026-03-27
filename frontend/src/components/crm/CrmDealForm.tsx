@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Dialog,
@@ -69,6 +69,7 @@ export function CrmDealForm({
   useEffect(() => {
     if (open) {
       setFormData(getInitialFormData());
+      setContactSearch('');
     }
   }, [open, deal?.id, getInitialFormData]);
 
@@ -78,6 +79,17 @@ export function CrmDealForm({
     queryFn: () => crmApi.listContacts(organizationId, { limit: 100 }),
     enabled: open && !!organizationId,
   });
+
+  const [contactSearch, setContactSearch] = useState('');
+  const filteredContacts = useMemo(() => {
+    if (!contactSearch) return contacts;
+    const q = contactSearch.toLowerCase();
+    return contacts.filter((c) =>
+      c.full_name?.toLowerCase().includes(q) ||
+      c.email?.toLowerCase().includes(q) ||
+      c.company_name?.toLowerCase().includes(q)
+    );
+  }, [contacts, contactSearch]);
 
   const handleFieldChange = useCallback(
     (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -250,8 +262,17 @@ export function CrmDealForm({
                 <SelectValue placeholder="Select contact (optional)" />
               </SelectTrigger>
               <SelectContent>
+                <div className="px-2 pb-2">
+                  <Input
+                    placeholder="Search contacts..."
+                    value={contactSearch}
+                    onChange={(e) => setContactSearch(e.target.value)}
+                    className="h-8"
+                    onKeyDown={(e) => e.stopPropagation()}
+                  />
+                </div>
                 <SelectItem value="__none__">No contact</SelectItem>
-                {contacts.map((contact) => (
+                {filteredContacts.map((contact) => (
                   <SelectItem key={contact.id} value={contact.id}>
                     {contact.full_name || contact.email || 'Unknown'}
                     {contact.company_name ? ` (${contact.company_name})` : ''}
