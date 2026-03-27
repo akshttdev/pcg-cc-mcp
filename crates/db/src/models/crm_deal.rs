@@ -657,8 +657,12 @@ impl CrmDeal {
         (project_name, task_total, task_done, deliverable_count)
     }
 
-    /// Get Kanban board data for a pipeline
-    /// Look up the business_report id for a given person (latest report)
+    /// Look up the business_report id for a deal (latest report by crm_deal_id)
+    pub async fn report_id_for_deal_pub(pool: &SqlitePool, deal_id: &DbUuid) -> Option<DbUuid> {
+        Self::report_id_for_deal(pool, deal_id).await
+    }
+
+    /// Legacy: look up report by person_id (kept for kanban backward compat)
     pub async fn report_id_for_person_pub(pool: &SqlitePool, person_id: &DbUuid) -> Option<DbUuid> {
         Self::report_id_for_person(pool, person_id).await
     }
@@ -687,6 +691,22 @@ impl CrmDeal {
         Option<String>,
     ) {
         Self::fetch_intel_data(pool, deal_id, contact_id).await
+    }
+
+    async fn report_id_for_deal(pool: &SqlitePool, deal_id: &DbUuid) -> Option<DbUuid> {
+        #[derive(sqlx::FromRow)]
+        struct Row {
+            id: DbUuid,
+        }
+        sqlx::query_as::<_, Row>(
+            "SELECT id FROM business_reports WHERE crm_deal_id = ? ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(deal_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .map(|r| r.id)
     }
 
     async fn report_id_for_person(pool: &SqlitePool, person_id: &DbUuid) -> Option<DbUuid> {
@@ -915,10 +935,12 @@ impl CrmDeal {
                     .and_then(|c| c.person_id.as_ref())
                     .and_then(|pid| DbUuid::parse(pid).ok());
 
-                let report_id = if let Some(ref pid) = person_id {
-                    Self::report_id_for_person(pool, pid).await
-                } else {
-                    None
+                let report_id = match Self::report_id_for_deal(pool, &deal.id).await {
+                    Some(id) => Some(id),
+                    None => match person_id.as_ref() {
+                        Some(pid) => Self::report_id_for_person(pool, pid).await,
+                        None => None,
+                    },
                 };
 
                 let (project_name, task_total, task_done, deliverable_count) =
@@ -1087,10 +1109,12 @@ impl CrmDeal {
                     .and_then(|c| c.person_id.as_ref())
                     .and_then(|pid| DbUuid::parse(pid).ok());
 
-                let report_id = if let Some(ref pid) = person_id {
-                    Self::report_id_for_person(pool, pid).await
-                } else {
-                    None
+                let report_id = match Self::report_id_for_deal(pool, &deal.id).await {
+                    Some(id) => Some(id),
+                    None => match person_id.as_ref() {
+                        Some(pid) => Self::report_id_for_person(pool, pid).await,
+                        None => None,
+                    },
                 };
 
                 let (project_name, task_total, task_done, deliverable_count) =

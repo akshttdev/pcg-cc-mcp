@@ -115,39 +115,21 @@ pub async fn get_advance_requirements(
     .flatten()
     .map(|r| r.name);
 
-    // Get intel status for the linked person (if any)
+    // Get intel status directly from crm_contacts (no persons table)
     let intel_status: Option<String> = if let Some(ref contact_id) = deal.crm_contact_id {
         #[derive(sqlx::FromRow)]
         struct IntelRow {
             intelligence_status: Option<String>,
         }
-        // Try crm_contacts.person_id → persons
-        let status = sqlx::query_as::<_, IntelRow>(
-            "SELECT p.intelligence_status FROM persons p
-             JOIN crm_contacts c ON c.person_id = p.id
-             WHERE c.id = ? LIMIT 1",
+        sqlx::query_as::<_, IntelRow>(
+            "SELECT intelligence_status FROM crm_contacts WHERE id = ? LIMIT 1",
         )
         .bind(contact_id)
         .fetch_optional(pool)
         .await
         .ok()
         .flatten()
-        .and_then(|r| r.intelligence_status);
-
-        if status.is_some() {
-            status
-        } else {
-            // Fallback: persons.crm_contact_id
-            sqlx::query_as::<_, IntelRow>(
-                "SELECT intelligence_status FROM persons WHERE crm_contact_id = ? LIMIT 1",
-            )
-            .bind(contact_id)
-            .fetch_optional(pool)
-            .await
-            .ok()
-            .flatten()
-            .and_then(|r| r.intelligence_status)
-        }
+        .and_then(|r| r.intelligence_status)
     } else {
         None
     };
@@ -228,17 +210,16 @@ pub async fn advance_deal(
             }));
         }
 
-        // Check person intelligence_status via crm_contact_id (use CAST for BLOB/TEXT compat)
+        // Check contact intelligence_status directly (no persons table)
         let person_intel_status: Option<String> = if let Some(ref cid) = deal.crm_contact_id {
             #[derive(sqlx::FromRow)]
-            struct PersonIntelStatus {
+            struct ContactIntelStatus {
                 intelligence_status: Option<String>,
             }
-            sqlx::query_as::<_, PersonIntelStatus>(
-                "SELECT intelligence_status FROM persons WHERE crm_contact_id = ? OR CAST(crm_contact_id AS TEXT) = ? LIMIT 1"
+            sqlx::query_as::<_, ContactIntelStatus>(
+                "SELECT intelligence_status FROM crm_contacts WHERE id = ? LIMIT 1",
             )
             .bind(cid)
-            .bind(cid.to_string())
             .fetch_optional(pool)
             .await
             .ok()
@@ -258,17 +239,16 @@ pub async fn advance_deal(
             }));
         }
 
-        // Check company intelligence_status via person.company_name (CAST for BLOB/TEXT compat)
+        // Check company intelligence_status via crm_contacts.company_name → companies (no persons table)
         let company_intel_status: Option<String> = if let Some(ref cid) = deal.crm_contact_id {
             #[derive(sqlx::FromRow)]
             struct CompanyIntelStatus {
                 intelligence_status: Option<String>,
             }
             sqlx::query_as::<_, CompanyIntelStatus>(
-                "SELECT co.intelligence_status FROM companies co JOIN persons p ON lower(p.company_name) = lower(co.name) WHERE p.crm_contact_id = ? OR CAST(p.crm_contact_id AS TEXT) = ? LIMIT 1"
+                "SELECT co.intelligence_status FROM companies co JOIN crm_contacts c ON lower(c.company_name) = lower(co.name) WHERE c.id = ? LIMIT 1",
             )
             .bind(cid)
-            .bind(cid.to_string())
             .fetch_optional(pool)
             .await
             .ok()
