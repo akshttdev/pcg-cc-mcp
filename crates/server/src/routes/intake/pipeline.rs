@@ -900,24 +900,33 @@ async fn ensure_crm_deal_for_person(
 
     let stage_id = stage.and_then(|s| Uuid::from_slice(&s.id).ok())?;
 
-    // Look up person name + contact for dedup check
+    // Look up person name + company for dedup check
     #[derive(sqlx::FromRow)]
     struct PersonRow {
         full_name: String,
+        company_name: Option<String>,
     }
 
-    let person_name = sqlx::query_as::<_, PersonRow>("SELECT full_name FROM persons WHERE id = ?")
-        .bind(person_id)
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten()
-        .map(|r| r.full_name)
-        .unwrap_or_else(|| "Unknown".to_string());
+    let person = sqlx::query_as::<_, PersonRow>(
+        "SELECT full_name, company_name FROM persons WHERE id = ?",
+    )
+    .bind(person_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
 
-    let deal_name = format!("{} — Discovery Lead", person_name);
+    let person_name = person.as_ref().map(|r| r.full_name.as_str()).unwrap_or("Unknown");
+    let company_name = person.as_ref().and_then(|r| r.company_name.as_deref());
 
-    // Check for existing deal with same name in this org (dedup)
+    // Deal name: use company name if available (prevents one deal per person at same company)
+    let deal_name = if let Some(co) = company_name {
+        format!("{} — Discovery Lead", co)
+    } else {
+        format!("{} — Discovery Lead", person_name)
+    };
+
+    // Check for existing deal with same company/name in this org (dedup)
     let org_db_id = DbUuid::from(org_id);
     if let Ok(Some(existing)) = CrmDeal::find_by_name_and_org(pool, &deal_name, &org_db_id).await {
         // Link intake item to existing deal
@@ -1426,16 +1435,19 @@ pub(super) async fn upsert_prospect_client(
 ) {
     let client_id = Uuid::new_v4();
     // INSERT OR IGNORE: won't overwrite if a client with the same name+org already exists
+    // slug = lowercased name with spaces replaced by hyphens
+    let slug = company_name.to_lowercase().replace(|c: char| !c.is_alphanumeric(), "-");
     let _ = sqlx::query(
         "INSERT OR IGNORE INTO clients
-         (id, organization_id, name, company_id, primary_person_id, prospect_at,
+         (id, organization_id, name, slug, company_id, primary_person_id, prospect_at,
           is_active, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, datetime('now','subsec'), 1,
+         VALUES (?, ?, ?, ?, ?, ?, datetime('now','subsec'), 1,
          datetime('now','subsec'), datetime('now','subsec'))",
     )
     .bind(client_id)
     .bind(organization_id)
     .bind(company_name)
+    .bind(&slug)
     .bind(company_id.to_string())
     .bind(primary_person_id)
     .execute(pool)
@@ -1455,6 +1467,38 @@ pub(super) async fn upsert_prospect_client(
     .bind(company_name)
     .execute(pool)
     .await;
+
+    // Get the resolved client id (either the one we just inserted or an existing one)
+    #[derive(sqlx::FromRow)]
+    struct ClientIdRow { id: String }
+    let resolved_client = sqlx::query_as::<_, ClientIdRow>(
+        "SELECT id FROM clients WHERE organization_id = ? AND lower(name) = lower(?) AND deleted_at IS NULL LIMIT 1"
+    )
+    .bind(organization_id)
+    .bind(company_name)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    // Link any unlinked deals for this company/person to this client
+    if let Some(cl) = resolved_client {
+        let _ = sqlx::query(
+            "UPDATE crm_deals SET client_id = ?, updated_at = datetime('now','subsec')
+             WHERE client_id IS NULL
+               AND (name LIKE ? OR crm_contact_id IN (
+                   SELECT id FROM crm_contacts
+                   WHERE organization_id = ? AND (full_name LIKE ? OR full_name LIKE ?)
+               ))"
+        )
+        .bind(&cl.id)
+        .bind(format!("%{}%", company_name))
+        .bind(organization_id)
+        .bind(format!("%{}%", company_name))
+        .bind(primary_person_id.map(|p| format!("%{}%", p)).unwrap_or_default())
+        .execute(pool)
+        .await;
+    }
 
     info!("Upserted prospect client '{}' (company_id: {})", company_name, company_id);
 }
