@@ -441,8 +441,8 @@ pub async fn run_report_generation(
     let report = BusinessReport::create(
         &pool,
         CreateBusinessReport {
-            person_id: Some(person_id),
-            company_id,
+            person_id: Some(person_id.into()),
+            company_id: company_id.map(|u| u.into()),
             report_type: Some(report_type.clone()),
             title: generated.title.clone(),
             executive_summary: Some(generated.executive_summary),
@@ -493,11 +493,7 @@ pub async fn run_report_generation(
     }
 
     let report_id_str = report.id.to_string();
-    BusinessReport::mark_ready(
-        &pool,
-        uuid::Uuid::parse_str(&report_id_str).unwrap_or_default(),
-    )
-    .await?;
+    BusinessReport::mark_ready(&pool, &report_id_str).await?;
 
     // Link report back to intake items
     for intake_id in &intake_ids {

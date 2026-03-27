@@ -110,3 +110,33 @@ Fix `uuid::Uuid` → `DbUuid` violations in files we're modifying:
 4. Move deal to Intel → Scout triggers → Run Now
 5. Open Intel tab → should show intelligence summary (not "No intelligence data yet")
 6. MCP walkthrough to verify
+
+---
+
+## Status: COMPLETE (2026-03-27)
+
+All work items implemented and verified:
+- W1: Migration applied, intelligence columns on crm_contacts ✅
+- W2: CrmContact struct updated, persons JOIN removed ✅
+- W3: Scout writes intelligence to contacts directly ✅
+- W4: DbUuid fixes applied ✅
+- All static checks pass (fmt, clippy, tsc, eslint, generate-types:check) ✅
+- Regression audit: 7 issues found, all fixed ✅
+- Functionality audit: 13/13 features WORKING/PARTIAL ✅
+- Experience audit: 1 BLOCKER (review task links), 2 PAIN POINTS, 4 FRICTION items
+
+## Experience Audit (2026-03-27)
+
+**Report**: `planning/reviews/2026-03-27--review--experience-audit.md`
+**Blockers**: 1 | **Pain Points**: 2 | **Friction**: 4 | **Polish**: 3
+**Quick Wins**: 5 identified (all fixed) | **Investments**: 1 identified
+**Journey Grades**: A (5), B (3), C (1), F→B (1 — task link fix applied)
+
+## Quick Wins Applied (2026-03-27)
+
+1. IntelTab.tsx TypeScript error — `deal.deal` → `deal.crm_contact_id` ✅
+2. cargo fmt — intelligence.rs import grouping ✅
+3. BusinessReport model — added crm_contact_id, list_by_contact(), migrated Uuid→&str ✅
+4. Task link blank page — guarded empty project_id in my-tasks + global-tasks ✅
+5. Raw JSON in intelligence — fixed root cause in agent_flow_executor.rs ✅
+6. Duplicate toasts — removed redundant "Deal added to pipeline" toast ✅

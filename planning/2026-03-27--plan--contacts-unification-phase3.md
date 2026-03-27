@@ -93,3 +93,10 @@ Update the intake pipeline to create contacts (not persons) and merge the person
 3. Open contact in deal detail → verify social profiles, research passes visible
 4. Navigate to `/people/:id` → verify redirect to contact view
 5. MCP walkthrough: full pipeline from intake → deal → Intel tab → research
+
+
+---
+
+## Status: IMPLEMENTED (2026-03-27)
+
+Commits: `800de2fe0` (W1), `8bf10a2cb` (W2). Functionality audit pending.

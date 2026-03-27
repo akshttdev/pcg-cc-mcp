@@ -12,12 +12,25 @@
 **Decision**: Keep `crm_contacts` as canonical. Merge `persons` intelligence fields into contacts. Retire `persons` table.
 **Why high priority**: Scout agent research is invisible in the Intel tab because intelligence lives on `persons` but the CRM pipeline operates through `crm_contacts`. Every new deal created via the CRM UI has no person record, so agent research has nowhere to land.
 
-### PC-1: Add intelligence fields to crm_contacts — BLOCKING
-- **Effort**: 0.5 day | **Impact**: Unblocks Scout → Intel tab visibility
-- Migration: add `intelligence_summary`, `intelligence_status`, `intelligence_raw`, `intelligence_confidence`, `intelligence_last_run_at`, `research_pass_count`, `research_depth`, `company_id`, `person_id` to `crm_contacts`
-- Backfill from linked persons
-- Update `CrmDealWithContact` query to read intel from contacts instead of persons JOIN
-- Scout executor writes directly to `crm_contacts` (no person lookup)
+### PC-1: Add intelligence fields to crm_contacts — ✅ DONE (Phase 1)
+- Completed 2026-03-27 on `feature/contacts-unification-phase1`
+- Migration, model updates, Scout rewiring, DbUuid fixes all done
+- Experience audit: 1 BLOCKER (review task links), 2 pain points, 4 friction items
+
+### PC-1a: Review task links — BLOCKER (from experience audit)
+- **Effort**: 2 hours | **Impact**: Unblocks review task workflow from My Tasks
+- CRM review tasks have `project_id=""`, link goes to `/projects/tasks/:id` which matches no route → blank page
+- Fix: add `/my-tasks/:taskId` route OR give review tasks a valid `project_id`
+
+### PC-1b: Strip raw JSON from intelligence summaries — QUICK WIN
+- **Effort**: 30 min | **Impact**: Removes raw JSON visible across 4 views (deal cards, Intel tab, Review tab, Operator Context)
+- Simulated Scout appends `Original context: {"name":"..."}` to summary
+- Fix: sanitize on write in `agent_flow_executor.rs` or strip at render time
+
+### PC-1c: Surface intelligence on contact detail panel — INVESTMENT
+- **Effort**: 4 hours | **Impact**: Completes contacts unification UX story
+- Contact detail panel (from Contacts page) shows no intelligence data despite it being stored
+- Add intelligence status, summary, confidence to contact detail view
 
 ### PC-2: Add research endpoint for contacts
 - **Effort**: 0.5 day | **Impact**: Enables "Trigger Research" from Intel tab

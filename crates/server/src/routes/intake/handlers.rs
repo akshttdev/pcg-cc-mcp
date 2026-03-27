@@ -278,10 +278,8 @@ pub async fn get_report(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<BusinessReport>>, ApiError> {
     use deployment::Deployment;
-    let id = DbUuid::parse(&id)
-        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
-        .to_uuid();
-    let report = BusinessReport::find_by_id(&d.db().pool, id)
+    DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let report = BusinessReport::find_by_id(&d.db().pool, &id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Report not found".into()))?;
     Ok(Json(ApiResponse::success(report)))
@@ -294,10 +292,8 @@ pub async fn patch_report(
     Json(body): Json<PatchBusinessReport>,
 ) -> Result<Json<ApiResponse<BusinessReport>>, ApiError> {
     use deployment::Deployment;
-    let id = DbUuid::parse(&id)
-        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
-        .to_uuid();
-    let report = BusinessReport::patch(&d.db().pool, id, body)
+    DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let report = BusinessReport::patch(&d.db().pool, &id, body)
         .await?
         .ok_or_else(|| ApiError::NotFound("Report not found".into()))?;
     Ok(Json(ApiResponse::success(report)))
@@ -310,9 +306,7 @@ pub async fn approve_business_report(
     Extension(access_context): Extension<AccessContext>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
-    let id = DbUuid::parse(&id)
-        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
-        .to_uuid();
+    DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
     use deployment::Deployment;
     let pool = &d.db().pool;
     let user_id = &access_context.user_id;
@@ -320,7 +314,7 @@ pub async fn approve_business_report(
         .map_err(|e| ApiError::InternalError(format!("Invalid user UUID: {e}")))?
         .to_uuid();
 
-    let report = BusinessReport::find_by_id(pool, id)
+    let report = BusinessReport::find_by_id(pool, &id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Report not found".into()))?;
 
@@ -331,7 +325,7 @@ pub async fn approve_business_report(
          WHERE id = ?",
     )
     .bind(user_id.as_str())
-    .bind(id)
+    .bind(&id)
     .execute(pool)
     .await?;
 
@@ -457,7 +451,7 @@ pub async fn approve_business_report(
         }
     }
 
-    let updated = BusinessReport::find_by_id(pool, id).await?.unwrap();
+    let updated = BusinessReport::find_by_id(pool, &id).await?.unwrap();
     Ok(Json(ApiResponse::success(serde_json::json!({
         "report": updated,
         "deal": deal_json,
@@ -472,14 +466,12 @@ pub async fn request_revision(
     Path(id): Path<String>,
     Json(body): Json<RevisionRequest>,
 ) -> Result<Json<ApiResponse<BusinessReport>>, ApiError> {
-    let id = DbUuid::parse(&id)
-        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
-        .to_uuid();
+    DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
     use deployment::Deployment;
     let pool = &d.db().pool;
     let user_id = &access_context.user_id;
 
-    let report = BusinessReport::find_by_id(pool, id)
+    let report = BusinessReport::find_by_id(pool, &id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Report not found".into()))?;
 
@@ -492,7 +484,7 @@ pub async fn request_revision(
     )
     .bind(user_id.as_str())
     .bind(&body.notes)
-    .bind(id)
+    .bind(&id)
     .execute(pool)
     .await?;
 
@@ -517,7 +509,7 @@ pub async fn request_revision(
         }
     }
 
-    let updated = BusinessReport::find_by_id(pool, id)
+    let updated = BusinessReport::find_by_id(pool, &id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Report not found after update".into()))?;
 

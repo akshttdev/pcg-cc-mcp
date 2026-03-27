@@ -31,7 +31,10 @@ use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext, routes::nora::get_nora_instance};
+use crate::{
+    DeploymentImpl, error::ApiError, middleware::access_control::AccessContext,
+    routes::nora::get_nora_instance,
+};
 
 // ── Request / Response types ──────────────────────────────────────────────────
 
@@ -1201,10 +1204,8 @@ pub async fn list_person_reports(
     State(d): State<DeploymentImpl>,
     Path(person_id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<BusinessReport>>>, ApiError> {
-    let person_id = DbUuid::parse(&person_id)
-        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
-        .to_uuid();
-    let reports = BusinessReport::list_by_person(&d.db().pool, person_id).await?;
+    DbUuid::parse(&person_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let reports = BusinessReport::list_by_person(&d.db().pool, &person_id).await?;
     Ok(Json(ApiResponse::success(reports)))
 }
 
