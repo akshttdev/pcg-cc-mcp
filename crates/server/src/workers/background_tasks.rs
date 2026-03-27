@@ -376,6 +376,21 @@ impl BackgroundWorker for NoraInboxPoller {
                         Ok(messages) => {
                             for msg in messages {
                                 let msg_id = msg.message_id.clone();
+
+                                // Only process emails from trusted intake senders.
+                                // Currently: sirakstudios.com — Sirak shares discovery calls with Nora
+                                // as a PCG client service. Other senders (marketing, notifications)
+                                // are not discovery leads.
+                                let sender_domain = msg.from_address
+                                    .split('@')
+                                    .nth(1)
+                                    .unwrap_or("")
+                                    .to_lowercase();
+                                let is_trusted = sender_domain == "sirakstudios.com";
+                                if !is_trusted {
+                                    continue;
+                                }
+
                                 if seen.contains(&msg_id) {
                                     continue;
                                 }
@@ -395,9 +410,22 @@ impl BackgroundWorker for NoraInboxPoller {
                                 }
 
                                 tracing::info!(
-                                    "[NORA_INBOX] New email from {} — subject: {:?}",
+                                    "[NORA_INBOX] New lead email from {} — subject: {:?}",
                                     msg.from_address, msg.subject
                                 );
+
+                                // Fetch full message body (inbox API returns summary only)
+                                let full_body = match svc.fetch_message_body(&owner, &msg_id).await {
+                                    Ok(b) if !b.trim().is_empty() => b,
+                                    Ok(_) => {
+                                        tracing::warn!("[NORA_INBOX] Empty body for message {}, using summary", msg_id);
+                                        msg.summary.clone()
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!("[NORA_INBOX] Could not fetch body for {}: {} — using summary", msg_id, e);
+                                        msg.summary.clone()
+                                    }
+                                };
 
                                 // Resolve org/assignee from sender
                                 let (org_id, assigned) = crate::routes::intake::resolve_org_and_assignee(
@@ -415,7 +443,7 @@ impl BackgroundWorker for NoraInboxPoller {
                                     CreateCallIntakeItem {
                                         source_type: "email".into(),
                                         source_ref: Some(msg_id.clone()),
-                                        raw_content: Some(msg.summary.clone()),
+                                        raw_content: Some(full_body),
                                         subject: Some(msg.subject.clone()),
                                         from_email: Some(msg.from_address.clone()),
                                         from_name: None,

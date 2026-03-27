@@ -270,6 +270,50 @@ impl AgentChannelService {
         Ok(messages)
     }
 
+    /// Fetch the full plain-text body of a single Zoho message.
+    pub async fn fetch_message_body(
+        &self,
+        owner: &ChannelOwner,
+        message_id: &str,
+    ) -> Result<String, ChannelError> {
+        let account = self.get_email_account(owner).await?;
+        let token = self.valid_access_token(&account).await?;
+        let zoho_domain = self.zoho_domain_from_account(&account);
+        let account_id = self.zoho_account_id_from_account(&account)?;
+
+        let resp = self
+            .http
+            .get(format!(
+                "https://mail.zoho.{}/api/accounts/{}/messages/{}/content",
+                zoho_domain, account_id, message_id
+            ))
+            .header("Authorization", format!("Zoho-oauthtoken {}", token))
+            .send()
+            .await
+            .map_err(|e| ChannelError::Api(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let err = resp.text().await.unwrap_or_default();
+            return Err(ChannelError::Api(format!(
+                "Zoho message fetch failed: {}",
+                err
+            )));
+        }
+
+        let body: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| ChannelError::Api(format!("Failed to parse message body: {}", e)))?;
+
+        // Zoho returns { data: { content: "...", ... } }
+        let content = body["data"]["content"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+
+        Ok(content)
+    }
+
     /// Send an outbound SMS from Nora's Twilio number.
     /// Uses TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_PHONE_NUMBER env vars.
     pub async fn send_sms(&self, to: &str, message: &str) -> Result<String, ChannelError> {
