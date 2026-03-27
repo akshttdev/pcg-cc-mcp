@@ -250,19 +250,30 @@ pub async fn process_transition(
     if let Some(ref config) = to_config {
         let effective_actions = build_effective_entry_actions(config);
 
+        // Check if an agent will also be triggered (review task should start as "waiting")
+        let has_agent_trigger = effective_actions
+            .iter()
+            .any(|a| matches!(a, StageAction::TriggerAgent { .. }))
+            || config
+                .assigned_agent
+                .as_deref()
+                .is_some_and(|a| !a.is_empty() && config.auto_trigger);
+
         for action in &effective_actions {
             match action {
                 StageAction::CreateReviewTask { description } => {
                     let stage_name = to_stage.name.to_lowercase();
-                    manage_stage_review_tasks_with_config(
+                    let initial_status = if has_agent_trigger { "waiting" } else { "todo" };
+                    crate::routes::crm_deal_transitions::manage_stage_review_tasks_full(
                         pool,
                         deal,
                         description,
                         &stage_name,
                         to_config.as_ref(),
+                        initial_status,
                     )
                     .await;
-                    actions_taken.push("Created review task".to_string());
+                    actions_taken.push(format!("Created review task ({})", initial_status));
                 }
                 StageAction::CreateDeliveryDeal => {
                     if let Some(action) = handle_won_transition(pool, deal).await {

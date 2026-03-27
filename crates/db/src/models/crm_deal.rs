@@ -807,7 +807,7 @@ impl CrmDeal {
                 FROM tasks t
                 LEFT JOIN users u ON CAST(u.id AS TEXT) = t.assignee_id
                 WHERE t.crm_deal_id = ?
-                  AND t.status NOT IN ('cancelled', 'done')
+                  AND t.status NOT IN ('cancelled', 'done', 'waiting')
                   AND t.deleted_at IS NULL
                 ORDER BY t.created_at ASC
                 LIMIT 1

@@ -332,12 +332,25 @@ pub async fn manage_stage_review_tasks(
 }
 
 /// Create review tasks with optional stage_config for assignee routing.
+/// `initial_status` controls task status: "todo" (default) or "waiting" (agent still running).
 pub async fn manage_stage_review_tasks_with_config(
     pool: &sqlx::SqlitePool,
     deal: &CrmDeal,
     description: &str,
     stage_name: &str,
     stage_config: Option<&crate::stage_transition::StageConfig>,
+) {
+    manage_stage_review_tasks_full(pool, deal, description, stage_name, stage_config, "todo").await;
+}
+
+/// Inner implementation with explicit initial_status.
+pub async fn manage_stage_review_tasks_full(
+    pool: &sqlx::SqlitePool,
+    deal: &CrmDeal,
+    description: &str,
+    stage_name: &str,
+    stage_config: Option<&crate::stage_transition::StageConfig>,
+    initial_status: &str,
 ) {
     // Cancel review tasks from previous stages
     let current_prefix = format!("Review & approve: {} —", stage_name);
@@ -391,12 +404,13 @@ pub async fn manage_stage_review_tasks_with_config(
         if let Err(e) = sqlx::query(
             r#"
             INSERT INTO tasks (id, title, description, status, crm_deal_id, project_id, assignee_id, created_at, updated_at)
-            VALUES (?, ?, ?, 'todo', ?, ?, ?, datetime('now','subsec'), datetime('now','subsec'))
+            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','subsec'), datetime('now','subsec'))
             "#,
         )
         .bind(&task_id)
         .bind(&task_title)
         .bind(description)
+        .bind(initial_status)
         .bind(&deal.id)
         .bind(&deal.project_id)
         .bind(&default_assignee)

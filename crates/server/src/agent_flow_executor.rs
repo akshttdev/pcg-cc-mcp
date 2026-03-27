@@ -729,6 +729,38 @@ impl AgentFlowExecutor {
         {
             tracing::error!("[AgentFlowEngine] Failed to mark flow {} as completed: {}", flow.id, e);
         }
+
+        // Promote "waiting" review tasks to "todo" now that the agent is done
+        let deal_id = flow
+            .crm_deal_id
+            .as_deref()
+            .unwrap_or("");
+        if !deal_id.is_empty() {
+            let promoted = sqlx::query(
+                "UPDATE tasks SET status = 'todo', updated_at = datetime('now','subsec') WHERE crm_deal_id = ?1 AND status = 'waiting' AND deleted_at IS NULL",
+            )
+            .bind(deal_id)
+            .execute(&self.pool)
+            .await;
+
+            match promoted {
+                Ok(r) if r.rows_affected() > 0 => {
+                    tracing::info!(
+                        "[AgentFlowEngine] Promoted {} waiting review task(s) to todo for deal {}",
+                        r.rows_affected(),
+                        deal_id
+                    );
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "[AgentFlowEngine] Failed to promote waiting tasks for deal {}: {}",
+                        deal_id,
+                        e
+                    );
+                }
+                _ => {}
+            }
+        }
     }
 
     async fn fail_flow(&self, flow: &AgentFlow, error: &str) {
