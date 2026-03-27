@@ -448,7 +448,7 @@ pub struct UnifiedSearchRequest {
     )]
     pub query: String,
     #[schemars(
-        description = "Entity types to search: 'projects', 'tasks', 'knowledge', 'persons'. Default: all"
+        description = "Entity types to search: 'projects', 'tasks', 'knowledge', 'contacts'. Default: all"
     )]
     pub entity_types: Option<Vec<String>>,
     #[schemars(description = "Optional project UUID to scope task/knowledge search")]

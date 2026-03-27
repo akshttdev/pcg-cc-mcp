@@ -817,9 +817,9 @@ async fn detect_and_link_attendees(
             id: Vec<u8>,
         }
 
-        // Try persons table first
+        // Try crm_contacts table first
         let person_bytes: Option<Vec<u8>> = sqlx::query_scalar(
-            "SELECT id FROM persons WHERE lower(full_name) LIKE lower('%' || ? || '%') LIMIT 1",
+            "SELECT id FROM crm_contacts WHERE lower(full_name) LIKE lower('%' || ? || '%') LIMIT 1",
         )
         .bind(name)
         .fetch_optional(pool)

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-AlertCircle,   ArrowLeft, BookOpen, Building2, CheckCircle2, ChevronRight, Clock, DollarSign, ExternalLink,
+AlertCircle,   ArrowLeft, BookOpen, Building2, CheckCircle2, ChevronRight, Clock, ExternalLink,
 Facebook,   FileText, Github, Globe, Hash, Instagram,
 Layers, Linkedin, Loader2, Mail, MessageCircle, Pencil, Phone,   Plus, Star, StickyNote,
   Target, Trash2, TrendingUp,
@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Textarea } from '@/components/ui/textarea';
-import { intelligenceApi, type PersonCompanyRole,type PersonRecord, personsApi, type PersonSocialProfile, reportsApi } from '@/lib/api';
+import { intelligenceApi, type PersonCompanyRole, type CrmContactRecord, crmApi, personsApi, type PersonSocialProfile, reportsApi } from '@/lib/api';
 import { entityKeys } from '@/lib/query-keys';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -90,13 +90,13 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
 
 // ── Overview Tab ──────────────────────────────────────────────────────────────
 
-function OverviewTab({ person, companyRoles }: { person: PersonRecord; companyRoles: PersonCompanyRole[] }) {
-  const emails = parseJson<{value: string; label: string}[]>(person.emails, []);
-  const phones = parseJson<{value: string; label: string}[]>(person.phones, []);
+function OverviewTab({ person, companyRoles }: { person: CrmContactRecord & Record<string, unknown>; companyRoles: PersonCompanyRole[] }) {
+  const emails = parseJson<{value: string; label: string}[]>(person.emails as string | undefined, []);
+  const phones = parseJson<{value: string; label: string}[]>(person.phones as string | undefined, []);
   const tags = parseJson<string[]>(person.tags, []);
 
   // Parse intelligence raw for key findings
-  const intelRaw = parseJson<Record<string, unknown>>(person.intelligence_raw, {});
+  const intelRaw = parseJson<Record<string, unknown>>(person.intelligence_raw as string | undefined, {});
   const keyFacts = [
     intelRaw.positioning,
     intelRaw.specialization,
@@ -149,16 +149,10 @@ function OverviewTab({ person, companyRoles }: { person: PersonRecord; companyRo
           </div>
         )}
 
-        {person.onboarding_channel && (
+        {person.source && (
           <div className="flex items-center gap-3 text-sm">
             <MessageCircle className="w-4 h-4 text-muted-foreground shrink-0" />
-            <span className="text-muted-foreground">via <span className="capitalize text-foreground">{person.onboarding_channel.replace(/_/g, ' ')}</span></span>
-          </div>
-        )}
-        {person.preferred_contact && (
-          <div className="flex items-center gap-3 text-sm">
-            <Star className="w-4 h-4 text-amber-500 shrink-0" />
-            <span className="text-muted-foreground">Preferred: <span className="capitalize text-foreground">{person.preferred_contact.replace(/_/g, ' ')}</span></span>
+            <span className="text-muted-foreground">Source: <span className="capitalize text-foreground">{person.source.replace(/_/g, ' ')}</span></span>
           </div>
         )}
       </div>
@@ -186,24 +180,10 @@ function OverviewTab({ person, companyRoles }: { person: PersonRecord; companyRo
             </div>
           </div>
         )}
-        {person.financial_role && person.financial_role !== 'neutral' && (
+        {person.department && (
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Financial Role</span>
-            <Badge variant="outline" className="text-xs border-border text-muted-foreground">
-              <DollarSign className="w-3 h-3 mr-0.5" />{person.financial_role}
-            </Badge>
-          </div>
-        )}
-        {person.business_stage && (
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Business Stage</span>
-            <span className="text-xs text-foreground capitalize">{person.business_stage.replace(/_/g, ' ')}</span>
-          </div>
-        )}
-        {person.client_profile && (
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Client Type</span>
-            <span className="text-xs text-foreground capitalize">{person.client_profile}</span>
+            <span className="text-muted-foreground">Department</span>
+            <span className="text-xs text-foreground capitalize">{person.department}</span>
           </div>
         )}
 
@@ -580,7 +560,7 @@ function ResearchTab({ personId }: { personId: string }) {
 function ReportsTab({ personId }: { personId: string }) {
   const { data: reports = [], isLoading } = useQuery({
     queryKey: entityKeys.personReports(personId),
-    queryFn: () => intelligenceApi.listPersonReports(personId),
+    queryFn: () => intelligenceApi.listContactReports(personId),
   });
 
   const generateMut = useMutation({
@@ -644,7 +624,7 @@ export function PersonProfilePage() {
 
   const { data: person, isLoading } = useQuery({
     queryKey: entityKeys.person(personId!),
-    queryFn: () => personsApi.get(personId!),
+    queryFn: () => crmApi.getContact(personId!),
     enabled: !!personId,
   });
 
@@ -660,10 +640,13 @@ export function PersonProfilePage() {
     </div>
   );
 
-  if (!person) return <div className="p-8 text-muted-foreground">Person not found.</div>;
+  if (!person) return <div className="p-8 text-muted-foreground">Contact not found.</div>;
 
-  const initials = person.full_name.split(' ').slice(0, 2).map((w: string) => w[0]?.toUpperCase() ?? '').join('');
-  const primaryCompany = person.company_roles?.find(r => r.is_primary === 1) ?? person.company_roles?.[0];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- transitional: person record may have legacy fields
+  const personAny = person as any;
+  const displayName = person.full_name ?? person.email ?? 'Unnamed';
+  const initials = displayName.split(' ').slice(0, 2).map((w: string) => w[0]?.toUpperCase() ?? '').join('');
+  const primaryCompany = personAny.company_roles?.find((r: PersonCompanyRole) => r.is_primary === 1) ?? personAny.company_roles?.[0];
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
@@ -678,12 +661,12 @@ export function PersonProfilePage() {
           {/* Avatar */}
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xl font-semibold shrink-0 shadow-lg">
             {person.avatar_url
-              ? <img src={person.avatar_url} alt={person.full_name} className="w-full h-full object-cover rounded-2xl" />
+              ? <img src={person.avatar_url} alt={displayName} className="w-full h-full object-cover rounded-2xl" />
               : initials}
           </div>
 
           <div className="min-w-0 flex-1">
-            <h1 className="text-2xl font-bold text-foreground mb-0.5">{person.full_name}</h1>
+            <h1 className="text-2xl font-bold text-foreground mb-0.5">{displayName}</h1>
             <div className="flex items-center gap-2 flex-wrap text-sm text-muted-foreground">
               {person.job_title && <span>{person.job_title}</span>}
               {person.job_title && (person.company_name || primaryCompany) && <span className="text-muted-foreground/70">@</span>}
@@ -698,11 +681,11 @@ export function PersonProfilePage() {
 
             <div className="flex items-center gap-2 mt-3 flex-wrap">
               <Badge variant="outline" className={`text-xs ${
-                person.person_type === 'lead'   ? 'border-amber-700 text-amber-400' :
-                person.person_type === 'client' ? 'border-emerald-700 text-emerald-400' :
+                person.lifecycle_stage === 'lead'   ? 'border-amber-700 text-amber-400' :
+                person.lifecycle_stage === 'customer' ? 'border-emerald-700 text-emerald-400' :
                 'border-border text-muted-foreground'
               }`}>
-                <User className="w-3 h-3 mr-1" />{person.person_type}
+                <User className="w-3 h-3 mr-1" />{person.lifecycle_stage}
               </Badge>
               <Badge variant="outline" className={`text-xs ${lifecycleColor(person.lifecycle_stage)}`}>
                 <Target className="w-3 h-3 mr-1" />{person.lifecycle_stage}
@@ -711,8 +694,8 @@ export function PersonProfilePage() {
                 <Layers className="w-3 h-3 mr-1" />
                 {person.research_pass_count ?? 0} passes · {person.research_depth ?? 'shallow'}
               </Badge>
-              {person.company_id && (
-                <Link to={`/companies/${person.company_id}`}>
+              {personAny.company_id && (
+                <Link to={`/companies/${personAny.company_id}`}>
                   <Badge variant="outline" className="text-xs border-border text-muted-foreground hover:border-indigo-700 hover:text-indigo-400 cursor-pointer">
                     <BookOpen className="w-3 h-3 mr-1" />Company Wiki
                   </Badge>
@@ -734,7 +717,7 @@ export function PersonProfilePage() {
               Research
             </Button>
             <Button size="sm" variant="outline" className="gap-2 text-muted-foreground border-border"
-              onClick={() => navigate(`/people/${personId}/intel`)}>
+              onClick={() => navigate(`/contacts/${personId}/intel`)}>
               <FileText className="w-4 h-4" /> Intel
             </Button>
           </div>
@@ -745,7 +728,7 @@ export function PersonProfilePage() {
       <div className="flex gap-2 flex-wrap">
         <TabBtn active={tab === 'overview'} onClick={() => setTab('overview')}>Overview</TabBtn>
         <TabBtn active={tab === 'social'} onClick={() => setTab('social')}>
-          Social {(person.social_profiles?.length ?? 0) > 0 && `(${person.social_profiles!.length})`}
+          Social {(personAny.social_profiles?.length ?? 0) > 0 && `(${personAny.social_profiles.length})`}
         </TabBtn>
         <TabBtn active={tab === 'notes'} onClick={() => setTab('notes')}>Notes</TabBtn>
         <TabBtn active={tab === 'research'} onClick={() => setTab('research')}>
@@ -755,8 +738,8 @@ export function PersonProfilePage() {
       </div>
 
       {/* Tab content */}
-      {tab === 'overview'  && <OverviewTab person={person} companyRoles={person.company_roles ?? []} />}
-      {tab === 'social'    && <SocialTab profiles={person.social_profiles ?? []} />}
+      {tab === 'overview'  && <OverviewTab person={person as CrmContactRecord & Record<string, unknown>} companyRoles={personAny.company_roles ?? []} />}
+      {tab === 'social'    && <SocialTab profiles={personAny.social_profiles ?? []} />}
       {tab === 'notes'     && <NotesTab personId={personId!} />}
       {tab === 'research'  && <ResearchTab personId={personId!} />}
       {tab === 'reports'   && <ReportsTab personId={personId!} />}

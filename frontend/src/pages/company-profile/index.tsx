@@ -69,7 +69,7 @@ export function CompanyProfilePage() {
 
   const { data: contacts = [] } = useQuery({
     queryKey: entityKeys.companyContacts(companyId!),
-    queryFn: () => companiesApi.listPersons(companyId!),
+    queryFn: () => companiesApi.listContacts(companyId!),
     enabled: !!companyId,
   });
 

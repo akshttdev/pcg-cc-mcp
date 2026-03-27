@@ -4,7 +4,7 @@ import type { ExecutionArtifact } from './artifacts';
 // ── Intelligence ──────────────────────────────────────────────────────────────
 
 export interface IntelligenceStatus {
-  person_id: string;
+  contact_id: string;
   status: 'idle' | 'queued' | 'running' | 'done' | 'failed';
   summary?: string;
   confidence: number;
@@ -21,17 +21,7 @@ export const automationsApi = {
 };
 
 export const intelligenceApi = {
-  triggerResearch: async (personId: string, opts?: { project_id?: string; agent_preference?: string }): Promise<{ person_id: string; status: string; message: string }> => {
-    const response = await makeRequest(`/api/persons/${personId}/research`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(opts ?? {}),
-    });
-    return handleApiResponse(response);
-  },
-
-  /** Trigger research for a CRM contact (canonical — no person bridge needed) */
-  triggerContactResearch: async (contactId: string, opts?: { project_id?: string; agent_preference?: string }): Promise<{ contact_id: string; status: string; message: string }> => {
+  triggerResearch: async (contactId: string, opts?: { project_id?: string; agent_preference?: string }): Promise<{ contact_id: string; status: string; message: string }> => {
     const response = await makeRequest(`/api/crm/contacts/${contactId}/research`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -40,24 +30,18 @@ export const intelligenceApi = {
     return handleApiResponse(response);
   },
 
-  getStatus: async (personId: string): Promise<IntelligenceStatus> => {
-    const response = await makeRequest(`/api/persons/${personId}/intelligence-status`);
-    return handleApiResponse<IntelligenceStatus>(response);
-  },
-
-  /** Get intelligence status from CRM contact (canonical) */
-  getContactStatus: async (contactId: string): Promise<IntelligenceStatus> => {
+  getStatus: async (contactId: string): Promise<IntelligenceStatus> => {
     const response = await makeRequest(`/api/crm/contacts/${contactId}/intelligence-status`);
     return handleApiResponse<IntelligenceStatus>(response);
   },
 
-  listResearchPasses: async (personId: string): Promise<ResearchPass[]> => {
-    const response = await makeRequest(`/api/persons/${personId}/research-passes`);
+  listResearchPasses: async (contactId: string): Promise<ResearchPass[]> => {
+    const response = await makeRequest(`/api/crm/contacts/${contactId}/research-passes`);
     return handleApiResponse<ResearchPass[]>(response);
   },
 
-  triggerNextPass: async (personId: string, opts?: { focus?: string; project_id?: string }): Promise<{ pass_id: string; pass_number: number; focus: string; status: string }> => {
-    const response = await makeRequest(`/api/persons/${personId}/research-passes/next`, {
+  triggerNextPass: async (contactId: string, opts?: { focus?: string; project_id?: string }): Promise<{ pass_id: string; pass_number: number; focus: string; status: string }> => {
+    const response = await makeRequest(`/api/crm/contacts/${contactId}/research-passes/next`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(opts ?? {}),
@@ -65,8 +49,8 @@ export const intelligenceApi = {
     return handleApiResponse(response);
   },
 
-  listPersonReports: async (personId: string): Promise<BusinessReportRecord[]> => {
-    const response = await makeRequest(`/api/persons/${personId}/reports`);
+  listContactReports: async (contactId: string): Promise<BusinessReportRecord[]> => {
+    const response = await makeRequest(`/api/crm/contacts/${contactId}/reports`);
     return handleApiResponse<BusinessReportRecord[]>(response);
   },
 };
@@ -119,7 +103,7 @@ export const reportsApi = {
 
 export interface ResearchPass {
   id: string;
-  person_id: string;
+  contact_id: string;
   pass_number: number;
   research_focus: string;
   status: string;

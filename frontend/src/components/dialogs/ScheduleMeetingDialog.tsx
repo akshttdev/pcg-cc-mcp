@@ -20,11 +20,11 @@ import {
 } from '@/components/ui/select';
 import { X, Calendar, Clock } from 'lucide-react';
 import { toast } from 'sonner';
-import { proposalsApi, type PersonRecord } from '@/lib/api';
+import { proposalsApi, type CrmContactRecord } from '@/lib/api';
 import { businessKeys } from '@/lib/query-keys';
 
 interface InviteeEntry {
-  person: PersonRecord;
+  person: CrmContactRecord;
   channel: string;
   address: string;
 }
@@ -34,7 +34,7 @@ interface Props {
   onClose: () => void;
   proposalId: string;
   /** Pre-populated invitees (e.g. lead contact + org contacts) */
-  defaultInvitees?: PersonRecord[];
+  defaultInvitees?: CrmContactRecord[];
 }
 
 const CHANNEL_OPTIONS = [
@@ -48,11 +48,11 @@ const CHANNEL_OPTIONS = [
   { value: 'in_person', label: 'In person' },
 ];
 
-function defaultChannelFor(person: PersonRecord): string {
-  return person.preferred_contact ?? person.onboarding_channel ?? 'email';
+function defaultChannelFor(person: CrmContactRecord): string {
+  return person.source ?? 'email';
 }
 
-function defaultAddressFor(person: PersonRecord, channel: string): string {
+function defaultAddressFor(person: CrmContactRecord, channel: string): string {
   if (channel === 'email') return person.email ?? '';
   if (channel === 'sms' || channel === 'phone') return person.phone ?? '';
   return '';

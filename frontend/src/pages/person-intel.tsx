@@ -1,6 +1,6 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { personsApi, intelligenceApi, reportsApi } from '@/lib/api';
+import { crmApi, intelligenceApi, reportsApi } from '@/lib/api';
 import { entityKeys } from '@/lib/query-keys';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -113,44 +113,44 @@ const focusColors: Record<string, string> = {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-export function PersonIntelPage({ personId: propPersonId, embedded = false }: { personId?: string; embedded?: boolean } = {}) {
+export function PersonIntelPage({ personId: propContactId, embedded = false }: { personId?: string; embedded?: boolean } = {}) {
   const params = useParams<{ personId: string }>();
-  const personId = propPersonId ?? params.personId;
+  const contactId = propContactId ?? params.personId;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const { data: person, isLoading } = useQuery({
-    queryKey: entityKeys.person(personId!),
-    queryFn: () => personsApi.get(personId!),
-    enabled: !!personId,
+    queryKey: entityKeys.person(contactId!),
+    queryFn: () => crmApi.getContact(contactId!),
+    enabled: !!contactId,
   });
 
   const { data: passes = [] } = useQuery({
-    queryKey: entityKeys.researchPasses(personId!),
-    queryFn: () => intelligenceApi.listResearchPasses(personId!),
-    enabled: !!personId,
+    queryKey: entityKeys.researchPasses(contactId!),
+    queryFn: () => intelligenceApi.listResearchPasses(contactId!),
+    enabled: !!contactId,
   });
 
   const { data: reports = [] } = useQuery({
-    queryKey: entityKeys.personReports(personId!),
-    queryFn: () => intelligenceApi.listPersonReports(personId!),
-    enabled: !!personId,
+    queryKey: entityKeys.personReports(contactId!),
+    queryFn: () => intelligenceApi.listContactReports(contactId!),
+    enabled: !!contactId,
   });
 
   const triggerMut = useMutation({
-    mutationFn: () => intelligenceApi.triggerNextPass(personId!),
+    mutationFn: () => intelligenceApi.triggerNextPass(contactId!),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: entityKeys.researchPasses(personId!) });
-      queryClient.invalidateQueries({ queryKey: entityKeys.person(personId!) });
+      queryClient.invalidateQueries({ queryKey: entityKeys.researchPasses(contactId!) });
+      queryClient.invalidateQueries({ queryKey: entityKeys.person(contactId!) });
       toast.success('Intel pass queued');
     },
     onError: () => toast.error('Failed to trigger intel pass'),
   });
 
   const generateReportMut = useMutation({
-    mutationFn: () => reportsApi.generate(personId!, 'business_audit'),
+    mutationFn: () => reportsApi.generate(contactId!, 'business_audit'),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: entityKeys.personReports(personId!) });
+      queryClient.invalidateQueries({ queryKey: entityKeys.personReports(contactId!) });
       toast.success('Report generation started');
     },
     onError: () => toast.error('Failed to generate report'),
@@ -172,7 +172,7 @@ export function PersonIntelPage({ personId: propPersonId, embedded = false }: { 
     );
   }
 
-  const intelRaw = parseJson<Record<string, unknown>>(person.intelligence_raw, {});
+  const intelRaw = parseJson<Record<string, unknown>>((person as unknown as Record<string, unknown>).intelligence_raw as string | undefined, {});
 
   const execSummary    = person.intelligence_summary;
   const background     = intelRaw.background     as string | undefined;
@@ -204,7 +204,7 @@ export function PersonIntelPage({ personId: propPersonId, embedded = false }: { 
                 variant="ghost"
                 size="sm"
                 className="gap-2 text-slate-400"
-                onClick={() => navigate(`/people/${personId}`)}
+                onClick={() => navigate(`/contacts/${contactId}`)}
               >
                 <ArrowLeft className="w-4 h-4" /> Profile
               </Button>
@@ -257,7 +257,7 @@ export function PersonIntelPage({ personId: propPersonId, embedded = false }: { 
           <p className="text-xs font-medium uppercase tracking-[0.2em] text-indigo-400 mb-2">
             Intelligence Profile · {fmtDate(person.updated_at ?? person.created_at)}
           </p>
-          <h1 className="text-3xl font-bold text-white tracking-tight">{person.full_name}</h1>
+          <h1 className="text-3xl font-bold text-white tracking-tight">{person.full_name ?? person.email ?? 'Unnamed'}</h1>
           {person.job_title && (
             <p className="text-slate-400 mt-1">{person.job_title}{person.company_name ? ` · ${person.company_name}` : ''}</p>
           )}
@@ -461,7 +461,7 @@ export function PersonIntelPage({ personId: propPersonId, embedded = false }: { 
         {/* View full profile link */}
         <div className="flex items-center gap-4 pt-4 border-t border-slate-800/50 print:hidden">
           <Link
-            to={`/people/${personId}`}
+            to={`/contacts/${contactId}`}
             className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-300 transition-colors"
           >
             <User className="w-4 h-4" /> Full Profile

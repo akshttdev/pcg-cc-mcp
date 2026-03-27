@@ -9,8 +9,14 @@ use axum::{
 };
 use db::{
     db_uuid::DbUuid,
-    models::crm_contact::{
-        ContactSearchParams, CreateCrmContact, CrmContact, LifecycleStage, UpdateCrmContact,
+    models::{
+        contact_association::{ContactCompanyRole, ContactOrgLink},
+        contact_note::{ContactNote, CreateContactNote, UpdateContactNote},
+        contact_social_profile::ContactSocialProfile,
+        crm_contact::{
+            ContactSearchParams, CreateCrmContact, CrmContact, LifecycleStage, UpdateCrmContact,
+        },
+        invoice::Invoice,
     },
 };
 use deployment::Deployment;
@@ -337,6 +343,161 @@ async fn delete_contact(
     Ok(Json(ApiResponse::success(())))
 }
 
+// ---------------------------------------------------------------------------
+// Sub-resources: Notes
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct ListNotesQuery {
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateNoteRequest {
+    pub text: String,
+    pub status: Option<String>,
+}
+
+/// GET /crm/contacts/:id/notes - List notes for a contact
+async fn list_contact_notes(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<String>,
+    Query(query): Query<ListNotesQuery>,
+) -> Result<Json<ApiResponse<Vec<ContactNote>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let id = DbUuid::from(id);
+    require_contact_org_access(&access_context, pool, &id).await?;
+    let notes = ContactNote::list_for_contact(pool, id.as_str(), query.status.as_deref()).await?;
+    Ok(Json(ApiResponse::success(notes)))
+}
+
+/// POST /crm/contacts/:id/notes - Create a note for a contact
+async fn create_contact_note(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<String>,
+    Json(body): Json<CreateNoteRequest>,
+) -> Result<Json<ApiResponse<ContactNote>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let id = DbUuid::from(id);
+    require_contact_org_access(&access_context, pool, &id).await?;
+
+    let input = CreateContactNote {
+        crm_contact_id: id.to_string(),
+        author_id: access_context.user_id.map(|u| *u.as_uuid()),
+        text: body.text,
+        status: body.status,
+        proposal_id: None,
+    };
+    let note = ContactNote::create(pool, input).await?;
+    Ok(Json(ApiResponse::success(note)))
+}
+
+/// PATCH /crm/contact-notes/:note_id - Update a note
+async fn update_contact_note(
+    Extension(_access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(note_id): Path<String>,
+    Json(body): Json<UpdateContactNote>,
+) -> Result<Json<ApiResponse<ContactNote>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let note_uuid = Uuid::parse_str(&note_id)
+        .map_err(|_| ApiError::BadRequest(format!("Invalid note ID: {}", note_id)))?;
+    let note = ContactNote::update(pool, note_uuid, body)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("Note {} not found", note_id)))?;
+    Ok(Json(ApiResponse::success(note)))
+}
+
+/// DELETE /crm/contact-notes/:note_id - Delete a note
+async fn delete_contact_note(
+    Extension(_access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(note_id): Path<String>,
+) -> Result<Json<ApiResponse<()>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let note_uuid = Uuid::parse_str(&note_id)
+        .map_err(|_| ApiError::BadRequest(format!("Invalid note ID: {}", note_id)))?;
+    let deleted = ContactNote::delete(pool, note_uuid).await?;
+    if !deleted {
+        return Err(ApiError::NotFound(format!("Note {} not found", note_id)));
+    }
+    Ok(Json(ApiResponse::success(())))
+}
+
+// ---------------------------------------------------------------------------
+// Sub-resources: Social Profiles
+// ---------------------------------------------------------------------------
+
+/// GET /crm/contacts/:id/social-profiles - List social profiles for a contact
+async fn list_contact_social_profiles(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<Vec<ContactSocialProfile>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let id = DbUuid::from(id);
+    require_contact_org_access(&access_context, pool, &id).await?;
+    let profiles = ContactSocialProfile::list_for_contact(pool, &id).await?;
+    Ok(Json(ApiResponse::success(profiles)))
+}
+
+// ---------------------------------------------------------------------------
+// Sub-resources: Company Roles
+// ---------------------------------------------------------------------------
+
+/// GET /crm/contacts/:id/companies - List company roles for a contact
+async fn list_contact_companies(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<Vec<ContactCompanyRole>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let id = DbUuid::from(id);
+    require_contact_org_access(&access_context, pool, &id).await?;
+    let roles = ContactCompanyRole::list_for_contact(pool, id.as_str()).await?;
+    Ok(Json(ApiResponse::success(roles)))
+}
+
+// ---------------------------------------------------------------------------
+// Sub-resources: Organization Links
+// ---------------------------------------------------------------------------
+
+/// GET /crm/contacts/:id/organizations - List org links for a contact
+async fn list_contact_organizations(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<Vec<ContactOrgLink>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let id = DbUuid::from(id);
+    require_contact_org_access(&access_context, pool, &id).await?;
+    let links = ContactOrgLink::list_for_contact(pool, id.as_str()).await?;
+    Ok(Json(ApiResponse::success(links)))
+}
+
+// ---------------------------------------------------------------------------
+// Sub-resources: Invoices
+// ---------------------------------------------------------------------------
+
+/// GET /crm/contacts/:id/invoices - List invoices for a contact
+async fn list_contact_invoices(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<Vec<Invoice>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let id = DbUuid::from(id);
+    require_contact_org_access(&access_context, pool, &id).await?;
+    let invoices: Vec<Invoice> =
+        sqlx::query_as("SELECT * FROM invoices WHERE crm_contact_id = ?1 ORDER BY created_at DESC")
+            .bind(id.as_str())
+            .fetch_all(pool)
+            .await?;
+    Ok(Json(ApiResponse::success(invoices)))
+}
+
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/crm/contacts", get(list_contacts))
@@ -357,4 +518,20 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/crm/contacts/by-email/{organization_id}/{email}",
             get(get_contact_by_email),
         )
+        // Sub-resources: notes
+        .route("/crm/contacts/{id}/notes", get(list_contact_notes))
+        .route("/crm/contacts/{id}/notes", post(create_contact_note))
+        .route("/crm/contact-notes/{note_id}", patch(update_contact_note))
+        .route("/crm/contact-notes/{note_id}", delete(delete_contact_note))
+        // Sub-resources: social profiles, companies, orgs, invoices
+        .route(
+            "/crm/contacts/{id}/social-profiles",
+            get(list_contact_social_profiles),
+        )
+        .route("/crm/contacts/{id}/companies", get(list_contact_companies))
+        .route(
+            "/crm/contacts/{id}/organizations",
+            get(list_contact_organizations),
+        )
+        .route("/crm/contacts/{id}/invoices", get(list_contact_invoices))
 }

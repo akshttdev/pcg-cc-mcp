@@ -19,7 +19,6 @@ use db::{
     models::{
         company::Company,
         meeting_session::MeetingSession,
-        person::Person,
         project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource},
         proposal::Proposal,
         scheduled_meeting::{
@@ -94,19 +93,22 @@ async fn resolve_channel(
     override_channel: Option<&str>,
     override_address: Option<&str>,
 ) -> (String, Option<String>) {
-    let person = Person::find_by_id(pool, person_id).await.ok().flatten();
+    use db::models::crm_contact::CrmContact;
+    let contact = CrmContact::find_by_id(pool, &DbUuid::from(person_id))
+        .await
+        .ok();
 
     let channel = override_channel
         .map(|s| s.to_string())
-        .or_else(|| person.as_ref().and_then(|p| p.onboarding_channel.clone()))
-        .or_else(|| person.as_ref().and_then(|p| p.preferred_contact.clone()))
+        .or_else(|| contact.as_ref().and_then(|p| p.onboarding_channel.clone()))
+        .or_else(|| contact.as_ref().and_then(|p| p.preferred_contact.clone()))
         .unwrap_or_else(|| "email".to_string());
 
     if let Some(addr) = override_address {
         return (channel, Some(addr.to_string()));
     }
 
-    let address = person.as_ref().and_then(|p| match channel.as_str() {
+    let address = contact.as_ref().and_then(|p| match channel.as_str() {
         "email" => p.email.clone(),
         "sms" | "whatsapp" | "phone" => p.phone.clone(),
         _ => p.email.clone(), // fallback for social channels lacking stored handle
@@ -388,10 +390,12 @@ async fn schedule_meeting(
 
     for inv in &meeting_record.invitees {
         let pid = inv.person_id.parse::<Uuid>().unwrap_or(Uuid::nil());
-        let person = Person::find_by_id(pool, pid).await.ok().flatten();
-        let name = person
+        let contact = db::models::crm_contact::CrmContact::find_by_id(pool, &DbUuid::from(pid))
+            .await
+            .ok();
+        let name = contact
             .as_ref()
-            .map(|p| p.full_name.as_str())
+            .and_then(|p| p.full_name.as_deref())
             .unwrap_or("Valued Contact");
 
         let (status, message) = dispatch_invite(
@@ -530,8 +534,9 @@ async fn export_company_analysis(
         .map_err(|e| ApiError::InternalError(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound("Company not found".into()))?;
 
-    let persons: Vec<Person> = sqlx::query_as(
-        "SELECT * FROM persons WHERE company_id = ?1 ORDER BY lead_score DESC LIMIT 20",
+    use db::models::crm_contact::CrmContact;
+    let contacts: Vec<CrmContact> = sqlx::query_as(
+        "SELECT * FROM crm_contacts WHERE company_id = ?1 ORDER BY lead_score DESC LIMIT 20",
     )
     .bind(company_id.to_string())
     .fetch_all(pool)
@@ -594,10 +599,10 @@ async fn export_company_analysis(
     }
 
     doc.push_str("---\n\n## Key Contacts\n\n");
-    if persons.is_empty() {
+    if contacts.is_empty() {
         doc.push_str("_No contacts linked to this company._\n\n");
     } else {
-        for p in &persons {
+        for p in &contacts {
             doc.push_str(&format!(
                 "### {}\n\
                  - **Title:** {}\n\
@@ -605,7 +610,7 @@ async fn export_company_analysis(
                  - **Phone:** {}\n\
                  - **Lifecycle Stage:** {}\n\
                  - **Lead Score:** {}\n",
-                p.full_name,
+                p.full_name.as_deref().unwrap_or("Unknown"),
                 p.job_title.as_deref().unwrap_or("—"),
                 p.email.as_deref().unwrap_or("—"),
                 p.phone.as_deref().unwrap_or("—"),

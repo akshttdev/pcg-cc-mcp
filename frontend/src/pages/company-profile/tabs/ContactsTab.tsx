@@ -7,9 +7,9 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { toast } from 'sonner';
-import { type PersonRecord } from '@/lib/api';
+import { type CrmContactRecord } from '@/lib/api';
 
-export function ContactsTab({ contacts, onResearch }: { contacts: PersonRecord[]; onResearch: (id: string) => void }) {
+export function ContactsTab({ contacts, onResearch }: { contacts: CrmContactRecord[]; onResearch: (id: string) => void }) {
   const [runningDeep, setRunningDeep] = useState<Set<string>>(new Set());
 
   const handleDeepResearch = async (personId: string) => {
@@ -39,14 +39,14 @@ export function ContactsTab({ contacts, onResearch }: { contacts: PersonRecord[]
           <CardContent className="pt-3 pb-3">
             <div className="flex items-center gap-3">
               <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary shrink-0">
-                {c.full_name.slice(0,2).toUpperCase()}
+                {(c.full_name ?? '').slice(0,2).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
-                <Link to={`/people/${c.id}`} className="font-medium text-sm hover:text-primary transition-colors truncate block">
-                  {c.full_name}
+                <Link to={`/contacts/${c.id}`} className="font-medium text-sm hover:text-primary transition-colors truncate block">
+                  {c.full_name ?? 'Unnamed'}
                 </Link>
                 <p className="text-xs text-muted-foreground truncate">
-                  {c.job_title ?? c.person_type}
+                  {c.job_title ?? c.lifecycle_stage}
                   {c.email ? ` \u00b7 ${c.email}` : ''}
                 </p>
                 {(c.research_pass_count ?? 0) > 0 && (

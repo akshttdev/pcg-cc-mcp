@@ -1,4 +1,5 @@
 import { makeRequest, handleApiResponse } from './client';
+import type { CrmContactRecord } from './crm';
 
 // ============================================================================
 // EMAIL MESSAGES
@@ -77,51 +78,11 @@ export const emailMessagesApi = {
 };
 
 // ============================================================
-// Universal Persons API
+// Backward-compatible type alias — use CrmContactRecord directly in new code
 // ============================================================
 
-export interface PersonRecord {
-  id: string;
-  full_name: string;
-  email?: string;
-  phone?: string;
-  avatar_url?: string;
-  person_type: string;
-  financial_role: string;
-  client_profile?: string;
-  business_stage?: string;
-  lifecycle_stage: string;
-  lead_score: number;
-  company_name?: string;
-  job_title?: string;
-  website?: string;
-  user_id?: string;
-  crm_contact_id?: string;
-  organization_id?: string;
-  intelligence_summary?: string;
-  intelligence_raw?: string;
-  intelligence_last_run_at?: string;
-  intelligence_confidence: number;
-  intelligence_status?: 'idle' | 'queued' | 'running' | 'done' | 'failed';
-  intelligence_agent?: string;
-  research_pass_count?: number;
-  research_depth?: 'shallow' | 'moderate' | 'deep';
-  notes?: string;
-  tags: string;
-  custom_fields: string;
-  /** How this person first engaged: 'email'|'instagram'|'whatsapp'|'linkedin'|'twitter'|'sms'|'phone'|'in_person' */
-  onboarding_channel?: string;
-  /** Preferred outbound contact channel */
-  preferred_contact?: string;
-  /** JSON: [{value: string, label: string}] */
-  emails?: string;
-  /** JSON: [{value: string, label: string}] */
-  phones?: string;
-  company_id?: string;
-  assigned_to?: string;
-  created_at: string;
-  updated_at: string;
-}
+/** @deprecated Use CrmContactRecord from '@/lib/api/crm' instead */
+export type PersonRecord = CrmContactRecord;
 
 export interface PersonSocialProfile {
   id: string;
@@ -173,7 +134,7 @@ export interface CompanyContactMethod {
   created_at: string;
 }
 
-export interface PersonWithSocials extends PersonRecord {
+export interface PersonWithSocials extends CrmContactRecord {
   social_profiles: PersonSocialProfile[];
   company_roles: PersonCompanyRole[];
   org_contacts: PersonOrgContact[];
@@ -215,43 +176,19 @@ export interface InvoiceRecord {
   updated_at: string;
 }
 
-export interface CreatePersonInput {
-  full_name: string;
-  email?: string;
-  phone?: string;
-  person_type?: string;
-  financial_role?: string;
-  client_profile?: string;
-  business_stage?: string;
-  lifecycle_stage?: string;
-  company_name?: string;
-  job_title?: string;
-  website?: string;
-  notes?: string;
-  tags?: string[];
-}
+/** @deprecated Use CreateCrmContactRequest from '@/lib/api/crm' instead */
+export type CreatePersonInput = import('./crm').CreateCrmContactRequest;
 
-export interface UpdatePersonInput {
-  full_name?: string;
-  email?: string;
-  phone?: string;
-  person_type?: string;
-  financial_role?: string;
-  client_profile?: string;
-  business_stage?: string;
-  lifecycle_stage?: string;
-  lead_score?: number;
-  company_name?: string;
-  job_title?: string;
-  website?: string;
-  notes?: string;
-  tags?: string[];
-  intelligence_summary?: string;
-  onboarding_channel?: string;
-  preferred_contact?: string;
-}
+/** @deprecated Use UpdateCrmContactRequest from '@/lib/api/crm' instead */
+export type UpdatePersonInput = import('./crm').UpdateCrmContactRequest;
 
+/**
+ * @deprecated Use crmApi from '@/lib/api/crm' for main CRUD.
+ * Sub-resource endpoints (notes, social profiles, companies, orgs, invoices)
+ * now point to /crm/contacts/* routes.
+ */
 export const personsApi = {
+  // Main CRUD — delegate to crmApi
   list: async (params?: {
     person_type?: string;
     financial_role?: string;
@@ -260,146 +197,61 @@ export const personsApi = {
     q?: string;
     limit?: number;
     offset?: number;
-  }): Promise<PersonRecord[]> => {
-    const qs = new URLSearchParams();
-    if (params?.person_type) qs.set('person_type', params.person_type);
-    if (params?.financial_role) qs.set('financial_role', params.financial_role);
-    if (params?.lifecycle_stage) qs.set('lifecycle_stage', params.lifecycle_stage);
-    if (params?.organization_id) qs.set('organization_id', params.organization_id);
-    if (params?.q) qs.set('q', params.q);
-    if (params?.limit) qs.set('limit', String(params.limit));
-    if (params?.offset) qs.set('offset', String(params.offset));
-    const response = await makeRequest(`/api/persons?${qs}`);
-    return handleApiResponse<PersonRecord[]>(response);
-  },
-
-  get: async (id: string): Promise<PersonWithSocials> => {
-    const response = await makeRequest(`/api/persons/${id}`);
-    return handleApiResponse<PersonWithSocials>(response);
-  },
-
-  create: async (data: CreatePersonInput): Promise<PersonRecord> => {
-    const response = await makeRequest('/api/persons', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
+  }): Promise<CrmContactRecord[]> => {
+    const { crmApi } = await import('./crm');
+    return crmApi.listContacts(params?.organization_id ?? '', {
+      lifecycleStage: params?.lifecycle_stage,
+      limit: params?.limit,
     });
-    return handleApiResponse<PersonRecord>(response);
   },
 
-  update: async (id: string, data: UpdatePersonInput): Promise<PersonRecord> => {
-    const response = await makeRequest(`/api/persons/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    return handleApiResponse<PersonRecord>(response);
+  get: async (id: string): Promise<CrmContactRecord> => {
+    const { crmApi } = await import('./crm');
+    return crmApi.getContact(id);
   },
 
-  delete: async (id: string): Promise<void> => {
-    const response = await makeRequest(`/api/persons/${id}`, { method: 'DELETE' });
-    return handleApiResponse<void>(response);
-  },
-
-  listSocialProfiles: async (id: string): Promise<PersonSocialProfile[]> => {
-    const response = await makeRequest(`/api/persons/${id}/social-profiles`);
-    return handleApiResponse<PersonSocialProfile[]>(response);
-  },
-
-  upsertSocialProfile: async (
-    id: string,
-    data: {
-      platform: string;
-      handle?: string;
-      profile_url?: string;
-      follower_count?: number;
-      bio?: string;
-      verified?: boolean;
-    }
-  ): Promise<PersonSocialProfile> => {
-    const response = await makeRequest(`/api/persons/${id}/social-profiles`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    return handleApiResponse<PersonSocialProfile>(response);
-  },
-
-  deleteSocialProfile: async (id: string, platform: string): Promise<void> => {
-    const response = await makeRequest(`/api/persons/${id}/social-profiles/${platform}`, {
-      method: 'DELETE',
-    });
-    return handleApiResponse<void>(response);
-  },
-
-  listInvoices: async (id: string): Promise<InvoiceRecord[]> => {
-    const response = await makeRequest(`/api/persons/${id}/invoices`);
-    return handleApiResponse<InvoiceRecord[]>(response);
-  },
-
-  // Company affiliations
-  listCompanies: async (id: string): Promise<PersonCompanyRole[]> => {
-    const response = await makeRequest(`/api/persons/${id}/companies`);
-    return handleApiResponse<PersonCompanyRole[]>(response);
-  },
-  addCompany: async (id: string, data: { company_id: string; role?: string; title?: string; is_primary?: boolean }): Promise<PersonCompanyRole> => {
-    const response = await makeRequest(`/api/persons/${id}/companies`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-    return handleApiResponse<PersonCompanyRole>(response);
-  },
-  updateCompanyRole: async (id: string, company_id: string, data: { role?: string; title?: string; is_primary?: boolean }): Promise<PersonCompanyRole> => {
-    const response = await makeRequest(`/api/persons/${id}/companies/${company_id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(data),
-    });
-    return handleApiResponse<PersonCompanyRole>(response);
-  },
-  removeCompany: async (id: string, company_id: string): Promise<void> => {
-    const response = await makeRequest(`/api/persons/${id}/companies/${company_id}`, { method: 'DELETE' });
-    return handleApiResponse<void>(response);
-  },
-
-  // Notes
+  // Sub-resource endpoints (migrated to /crm/contacts)
   listNotes: async (id: string): Promise<PersonNote[]> => {
-    const response = await makeRequest(`/api/persons/${id}/notes`);
+    const response = await makeRequest(`/api/crm/contacts/${id}/notes`);
     return handleApiResponse<PersonNote[]>(response);
   },
   createNote: async (id: string, text: string, status?: string): Promise<PersonNote> => {
-    const response = await makeRequest(`/api/persons/${id}/notes`, {
+    const response = await makeRequest(`/api/crm/contacts/${id}/notes`, {
       method: 'POST',
-      body: JSON.stringify({ text, status: status ?? 'open', person_id: id }),
+      body: JSON.stringify({ text, status: status ?? 'open' }),
     });
     return handleApiResponse<PersonNote>(response);
   },
   updateNote: async (noteId: string, data: { text?: string; status?: string }): Promise<PersonNote> => {
-    const response = await makeRequest(`/api/person-notes/${noteId}`, {
+    const response = await makeRequest(`/api/crm/contact-notes/${noteId}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     });
     return handleApiResponse<PersonNote>(response);
   },
   deleteNote: async (noteId: string): Promise<void> => {
-    const response = await makeRequest(`/api/person-notes/${noteId}`, { method: 'DELETE' });
+    const response = await makeRequest(`/api/crm/contact-notes/${noteId}`, { method: 'DELETE' });
     return handleApiResponse<void>(response);
   },
 
-  // Org affiliations
+  listSocialProfiles: async (id: string): Promise<PersonSocialProfile[]> => {
+    const response = await makeRequest(`/api/crm/contacts/${id}/social-profiles`);
+    return handleApiResponse<PersonSocialProfile[]>(response);
+  },
+
+  listCompanies: async (id: string): Promise<PersonCompanyRole[]> => {
+    const response = await makeRequest(`/api/crm/contacts/${id}/companies`);
+    return handleApiResponse<PersonCompanyRole[]>(response);
+  },
+
+  listInvoices: async (id: string): Promise<InvoiceRecord[]> => {
+    const response = await makeRequest(`/api/crm/contacts/${id}/invoices`);
+    return handleApiResponse<InvoiceRecord[]>(response);
+  },
+
   listOrgs: async (id: string): Promise<PersonOrgContact[]> => {
-    const response = await makeRequest(`/api/persons/${id}/organizations`);
+    const response = await makeRequest(`/api/crm/contacts/${id}/organizations`);
     return handleApiResponse<PersonOrgContact[]>(response);
-  },
-  addOrg: async (id: string, data: { organization_id: string; context?: string }): Promise<PersonOrgContact> => {
-    const response = await makeRequest(`/api/persons/${id}/organizations`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-    return handleApiResponse<PersonOrgContact>(response);
-  },
-  removeOrg: async (id: string, org_id: string): Promise<void> => {
-    const response = await makeRequest(`/api/persons/${id}/organizations/${org_id}`, { method: 'DELETE' });
-    return handleApiResponse<void>(response);
   },
 };
 

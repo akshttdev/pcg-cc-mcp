@@ -321,10 +321,10 @@ async fn link_person_to_org(
 
     if let Some(assignee) = assigned_to {
         let _ = sqlx::query(
-            "UPDATE persons SET assigned_to = ?, updated_at = datetime('now','subsec') WHERE id = ? AND assigned_to IS NULL",
+            "UPDATE crm_contacts SET assigned_agent_id = ?, updated_at = datetime('now','subsec') WHERE CAST(id AS TEXT) = ? AND assigned_agent_id IS NULL",
         )
-        .bind(assignee)
-        .bind(person_id)
+        .bind(assignee.to_string())
+        .bind(person_id.to_string())
         .execute(pool)
         .await;
     }
@@ -336,17 +336,13 @@ pub(super) async fn find_person_by_email(pool: &sqlx::SqlitePool, email: &str) -
         id: Uuid,
     }
 
-    sqlx::query_as::<_, Row>(
-        "SELECT id FROM persons WHERE email = ? COLLATE NOCASE \
-         OR emails LIKE ? LIMIT 1",
-    )
-    .bind(email)
-    .bind(format!("%{email}%"))
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten()
-    .map(|r| r.id)
+    sqlx::query_as::<_, Row>("SELECT id FROM crm_contacts WHERE email = ? COLLATE NOCASE LIMIT 1")
+        .bind(email)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .map(|r| r.id)
 }
 
 pub(super) async fn find_person_by_name(pool: &sqlx::SqlitePool, name: &str) -> Option<Uuid> {
@@ -365,7 +361,7 @@ pub(super) async fn find_person_by_name_and_company(
 
     // 1. Exact full_name match
     let exact = sqlx::query_as::<_, Row>(
-        "SELECT id FROM persons WHERE full_name = ? COLLATE NOCASE LIMIT 1",
+        "SELECT id FROM crm_contacts WHERE full_name = ? COLLATE NOCASE LIMIT 1",
     )
     .bind(name)
     .fetch_optional(pool)
@@ -385,7 +381,7 @@ pub(super) async fn find_person_by_name_and_company(
         let first = parts[0];
         let last = parts[parts.len() - 1];
         let found = sqlx::query_as::<_, Row>(
-            "SELECT id FROM persons WHERE full_name LIKE ? AND full_name LIKE ? LIMIT 1",
+            "SELECT id FROM crm_contacts WHERE full_name LIKE ? AND full_name LIKE ? LIMIT 1",
         )
         .bind(format!("%{first}%"))
         .bind(format!("%{last}%"))
@@ -408,7 +404,7 @@ pub(super) async fn find_person_by_name_and_company(
         // 3a. If we have a company, use it to disambiguate
         if let Some(co) = company {
             let found = sqlx::query_as::<_, Row>(
-                "SELECT id FROM persons \
+                "SELECT id FROM crm_contacts \
                  WHERE (full_name LIKE ? OR full_name LIKE ?) \
                    AND company_name LIKE ? \
                  LIMIT 1",
@@ -429,7 +425,7 @@ pub(super) async fn find_person_by_name_and_company(
 
         // 3b. Without company, match first-name prefix (only if exactly one result)
         let found = sqlx::query_as::<_, Row>(
-            "SELECT id FROM persons \
+            "SELECT id FROM crm_contacts \
              WHERE full_name LIKE ? OR full_name = ? COLLATE NOCASE \
              LIMIT 1",
         )
@@ -454,7 +450,7 @@ pub(super) async fn find_person_by_name_and_company(
                     continue;
                 }
                 let found = sqlx::query_as::<_, Row>(
-                    "SELECT id FROM persons \
+                    "SELECT id FROM crm_contacts \
                      WHERE full_name LIKE ? \
                        AND company_name LIKE ? \
                      LIMIT 1",
@@ -619,17 +615,17 @@ async fn update_person_from_intake(
 ) {
     // Fill in blanks only — don't overwrite existing data
     let _ = sqlx::query(
-        "UPDATE persons SET
+        "UPDATE crm_contacts SET
             company_name = COALESCE(company_name, ?),
             job_title = COALESCE(job_title, ?),
             email = COALESCE(email, ?),
             updated_at = datetime('now','subsec')
-         WHERE id = ?",
+         WHERE CAST(id AS TEXT) = ?",
     )
     .bind(&participant.company)
     .bind(&participant.role)
     .bind(&participant.email)
-    .bind(person_id)
+    .bind(person_id.to_string())
     .execute(pool)
     .await;
 }
@@ -691,26 +687,28 @@ async fn trigger_research_if_needed(pool: &sqlx::SqlitePool, person_id: Uuid) {
         intelligence_status: Option<String>,
     }
 
-    let status = sqlx::query_as::<_, Row>("SELECT intelligence_status FROM persons WHERE id = ?")
-        .bind(person_id)
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten()
-        .and_then(|r| r.intelligence_status)
-        .unwrap_or_else(|| "idle".into());
+    let status = sqlx::query_as::<_, Row>(
+        "SELECT intelligence_status FROM crm_contacts WHERE CAST(id AS TEXT) = ?",
+    )
+    .bind(person_id.to_string())
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
+    .and_then(|r| r.intelligence_status)
+    .unwrap_or_else(|| "idle".into());
 
     // Only trigger if idle or failed (not already running/queued/done)
     if matches!(status.as_str(), "idle" | "failed") {
         let _ = sqlx::query(
-            "UPDATE persons SET intelligence_status = 'queued', \
-             intelligence_agent = 'scout', updated_at = datetime('now','subsec') WHERE id = ?",
+            "UPDATE crm_contacts SET intelligence_status = 'queued', \
+             intelligence_agent = 'scout', updated_at = datetime('now','subsec') WHERE CAST(id AS TEXT) = ?",
         )
-        .bind(person_id)
+        .bind(person_id.to_string())
         .execute(pool)
         .await;
 
-        info!("Queued research for person {}", person_id);
+        info!("Queued research for contact {}", person_id);
         // Note: Full Nora orchestration would be triggered here with get_nora_instance().
         // For now the status is set to 'queued' and the admin can manually trigger via
         // POST /api/persons/:id/research.
@@ -747,15 +745,18 @@ async fn ingest_contextual_individuals(
         let person_id = if let Some(pid) = existing {
             pid
         } else {
-            // Create a minimal person record for context (type = 'contact', not 'lead')
+            // Create a minimal contact record for context (type = 'contact', not 'lead')
             let id = Uuid::new_v4();
             let ok = sqlx::query(
-                "INSERT OR IGNORE INTO persons
-                 (id, full_name, email, company_name, job_title,
-                  person_type, intelligence_status, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, 'contact', 'idle', datetime('now','subsec'), datetime('now','subsec'))",
+                "INSERT OR IGNORE INTO crm_contacts
+                 (id, organization_id, full_name, email, company_name, job_title,
+                  person_type, intelligence_status, lifecycle_stage,
+                  created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, 'contact', 'idle', 'subscriber',
+                         datetime('now','subsec'), datetime('now','subsec'))",
             )
             .bind(id)
+            .bind(org_id)
             .bind(&ind.name)
             .bind(&ind.email)
             .bind(&ind.company)
@@ -868,8 +869,8 @@ async fn ensure_crm_deal_for_person(
         full_name: String,
     }
 
-    let person_name = sqlx::query_as::<_, PersonRow>("SELECT full_name FROM persons WHERE id = ?")
-        .bind(person_id)
+    let person_name = sqlx::query_as::<_, PersonRow>("SELECT COALESCE(full_name, 'Unknown') as full_name FROM crm_contacts WHERE CAST(id AS TEXT) = ?")
+        .bind(person_id.to_string())
         .fetch_optional(pool)
         .await
         .ok()
@@ -891,19 +892,8 @@ async fn ensure_crm_deal_for_person(
         return Uuid::parse_str(existing.id.as_str()).ok();
     }
 
-    // Find crm_contact_id for this person if available
-    #[derive(sqlx::FromRow)]
-    struct ContactRow {
-        id: Uuid,
-    }
-    let contact_id =
-        sqlx::query_as::<_, ContactRow>("SELECT id FROM crm_contacts WHERE person_id = ? LIMIT 1")
-            .bind(person_id)
-            .fetch_optional(pool)
-            .await
-            .ok()
-            .flatten()
-            .map(|r| r.id);
+    // person_id IS the contact id in the unified contacts model
+    let contact_id = Some(person_id);
 
     // Create the deal
     let deal_result = CrmDeal::create(

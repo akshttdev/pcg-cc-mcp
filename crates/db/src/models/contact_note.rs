@@ -5,7 +5,8 @@ use uuid::Uuid;
 
 use crate::db_uuid::DbUuid;
 
-const COLUMNS: &str = "id, crm_contact_id, author_id, text, status, attachments, proposal_id, created_at, updated_at";
+const COLUMNS: &str =
+    "id, crm_contact_id, author_id, text, status, attachments, proposal_id, created_at, updated_at";
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct ContactNote {
@@ -62,10 +63,12 @@ impl ContactNote {
     }
 
     pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
-        sqlx::query_as(&format!("SELECT {} FROM contact_notes WHERE id = ?", COLUMNS))
-            .bind(id.to_string())
-            .fetch_optional(pool)
-            .await
+        sqlx::query_as(&format!(
+            "SELECT {COLUMNS} FROM contact_notes WHERE id = ?"
+        ))
+        .bind(id.to_string())
+        .fetch_optional(pool)
+        .await
     }
 
     pub async fn list_for_contact(
@@ -75,8 +78,7 @@ impl ContactNote {
     ) -> Result<Vec<Self>, sqlx::Error> {
         if let Some(s) = status {
             sqlx::query_as(&format!(
-                "SELECT {} FROM contact_notes WHERE crm_contact_id = ? AND status = ? ORDER BY created_at DESC",
-                COLUMNS
+                "SELECT {COLUMNS} FROM contact_notes WHERE crm_contact_id = ? AND status = ? ORDER BY created_at DESC"
             ))
             .bind(contact_id)
             .bind(s)
@@ -84,8 +86,7 @@ impl ContactNote {
             .await
         } else {
             sqlx::query_as(&format!(
-                "SELECT {} FROM contact_notes WHERE crm_contact_id = ? ORDER BY created_at DESC",
-                COLUMNS
+                "SELECT {COLUMNS} FROM contact_notes WHERE crm_contact_id = ? ORDER BY created_at DESC"
             ))
             .bind(contact_id)
             .fetch_all(pool)

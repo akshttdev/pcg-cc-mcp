@@ -520,10 +520,10 @@ export const projectBoardKeys = {
   tasks: (projectId?: string) => ['projectTasks', projectId] as const,
 };
 
-// ── Org Persons ───────────────────────────────────────────────────────────
+// ── Org Contacts (legacy: orgPersonKeys) ──────────────────────────────────
 
 export const orgPersonKeys = {
-  list: (orgId?: string) => ['org-persons', orgId] as const,
+  list: (orgId?: string) => ['org-contacts', orgId] as const,
 };
 
 // ── Workflow Templates ────────────────────────────────────────────────────

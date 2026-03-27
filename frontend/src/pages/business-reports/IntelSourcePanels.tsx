@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { personsApi, companiesApi, type PersonRecord, type CompanyRecord } from '@/lib/api';
+import { crmApi, companiesApi, type CrmContactRecord, type CompanyRecord } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import {
   Globe, ExternalLink,
@@ -18,9 +18,9 @@ export function IntelSourcePanels({ personId, companyId }: IntelSourcePanelsProp
   const toggleFlag = (key: string) =>
     setFlagged(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
-  const { data: person } = useQuery<PersonRecord>({
-    queryKey: ['intel-person', personId],
-    queryFn: () => personsApi.get(personId!),
+  const { data: person } = useQuery<CrmContactRecord>({
+    queryKey: ['intel-contact', personId],
+    queryFn: () => crmApi.getContact(personId!),
     enabled: !!personId,
     staleTime: 120_000,
   });
@@ -53,10 +53,10 @@ export function IntelSourcePanels({ personId, companyId }: IntelSourcePanelsProp
               )}
             </div>
             <div className="flex items-center gap-2">
-              <Link to={`/people/${person.id}?tab=reports`} className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-0.5">
+              <Link to={`/contacts/${person.id}?tab=reports`} className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-0.5">
                 <Brain className="w-3 h-3" /> Intel
               </Link>
-              <Link to={`/people/${person.id}`} className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-0.5">
+              <Link to={`/contacts/${person.id}`} className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-0.5">
                 <ExternalLink className="w-3 h-3" /> Profile
               </Link>
               <button
@@ -70,7 +70,7 @@ export function IntelSourcePanels({ personId, companyId }: IntelSourcePanelsProp
           </div>
 
           <div>
-            <p className="text-sm font-medium text-white">{person.full_name}</p>
+            <p className="text-sm font-medium text-white">{person.full_name ?? person.email ?? 'Unnamed'}</p>
             {person.job_title && <p className="text-xs text-slate-400">{person.job_title}</p>}
           </div>
 

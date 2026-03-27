@@ -19,7 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   type CompanyRecord,
   type ProposalRecord,
-  type PersonRecord,
+  type CrmContactRecord,
   type CompanyContactMethod,
 } from '@/lib/api';
 import {
@@ -41,7 +41,7 @@ export function OverviewTab({
 }: {
   company: CompanyRecord;
   proposals: ProposalRecord[];
-  contacts: PersonRecord[];
+  contacts: CrmContactRecord[];
   contactMethods: CompanyContactMethod[];
   onNavigate: (tab: Tab) => void;
   onRemoveMethod: (id: string) => Promise<void>;
@@ -164,14 +164,14 @@ export function OverviewTab({
               {contacts.slice(0, 4).map((c) => (
                 <Link
                   key={c.id}
-                  to={`/people/${c.id}`}
+                  to={`/contacts/${c.id}`}
                   className="flex items-center gap-2 text-sm py-1 border-b last:border-0 hover:text-primary transition-colors"
                 >
                   <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary shrink-0">
-                    {c.full_name.slice(0,2).toUpperCase()}
+                    {(c.full_name ?? '').slice(0,2).toUpperCase()}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium truncate">{c.full_name}</p>
+                    <p className="font-medium truncate">{c.full_name ?? c.email ?? 'Unnamed'}</p>
                     {c.job_title && <p className="text-xs text-muted-foreground truncate">{c.job_title}</p>}
                   </div>
                 </Link>

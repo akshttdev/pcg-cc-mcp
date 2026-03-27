@@ -457,9 +457,9 @@ pub async fn register(
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to add org member: {}", e)))?;
 
-    // 6. Bridge persons.user_id for persons whose company_org_id matches
+    // 6. Bridge owner_user_id for contacts whose organization_id matches
     sqlx::query(
-        "UPDATE persons SET user_id = ?, updated_at = datetime('now','subsec') WHERE company_org_id = ? AND user_id IS NULL",
+        "UPDATE crm_contacts SET owner_user_id = ?, updated_at = datetime('now','subsec') WHERE organization_id = ? AND owner_user_id IS NULL",
     )
     .bind(&user_id_str)
     .bind(&org.id)
