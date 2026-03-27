@@ -268,6 +268,12 @@ impl AgentFlowExecutor {
         let max_retries = 3;
         let models = [None, None, Some("claude-sonnet-4-6-20250514")]; // last attempt uses cheaper model
 
+        // Extract deal_id from flow config for simulated mode
+        let flow_deal_id = flow.flow_config.as_deref()
+            .and_then(|c| serde_json::from_str::<Value>(c).ok())
+            .and_then(|v| v.get("deal_id").and_then(|d| d.as_str().map(String::from)))
+            .unwrap_or_default();
+
         for attempt in 0..max_retries {
             let model_hint = models.get(attempt).copied().flatten();
 
@@ -284,7 +290,7 @@ impl AgentFlowExecutor {
             }
 
             match self
-                .call_llm_once(messages.clone(), tools, model_hint)
+                .call_llm_once(messages.clone(), tools, model_hint, &flow_deal_id)
                 .await
             {
                 Ok(output) => return Ok(output),
@@ -330,10 +336,11 @@ impl AgentFlowExecutor {
         mut messages: Vec<Value>,
         tools: &[ToolDefinition],
         model_hint: Option<&str>,
+        deal_id: &str,
     ) -> anyhow::Result<String> {
         // Simulation mode: return realistic agent responses without calling LLM
         if std::env::var("SIMULATE_LLM").unwrap_or_default() == "1" {
-            return self.simulate_llm_response(&messages).await;
+            return self.simulate_llm_response(&messages, deal_id).await;
         }
 
         let max_turns = 5;
@@ -1055,7 +1062,7 @@ impl AgentFlowExecutor {
     /// Simulate a realistic LLM response based on the agent name extracted from messages.
     /// Executes real tool calls (get_deal_context, update_deal_field, save_artifact)
     /// so the pipeline state actually advances — just skips the LLM API call.
-    async fn simulate_llm_response(&self, messages: &[Value]) -> anyhow::Result<String> {
+    async fn simulate_llm_response(&self, messages: &[Value], deal_id_override: &str) -> anyhow::Result<String> {
         // Extract agent name from system prompt
         let system_text = messages
             .first()
@@ -1082,19 +1089,22 @@ impl AgentFlowExecutor {
             .and_then(|c| c.as_str())
             .unwrap_or("");
 
-        // Try to extract deal_id from context (look for UUID pattern)
-        let deal_id = user_text
-            .split_whitespace()
-            .find(|w| w.len() == 36 && w.contains('-'))
-            .or_else(|| {
-                // Fallback: look for deal_id in the message content
-                user_text.split("deal_id").nth(1).and_then(|s| {
-                    s.split_whitespace()
-                        .next()
-                        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric() && c != '-'))
+        // Use deal_id from flow_config (passed via call chain), fallback to text extraction
+        let deal_id = if !deal_id_override.is_empty() {
+            deal_id_override
+        } else {
+            user_text
+                .split_whitespace()
+                .find(|w| w.len() == 36 && w.contains('-'))
+                .or_else(|| {
+                    user_text.split("deal_id").nth(1).and_then(|s| {
+                        s.split_whitespace()
+                            .next()
+                            .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric() && c != '-'))
+                    })
                 })
-            })
-            .unwrap_or("");
+                .unwrap_or("")
+        };
 
         tracing::info!(
             "[AgentFlowEngine] SIMULATE_LLM: agent={}, deal_id={}",
