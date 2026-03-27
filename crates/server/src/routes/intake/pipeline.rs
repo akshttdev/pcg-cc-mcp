@@ -967,12 +967,11 @@ async fn ensure_crm_deal_for_person(
 
     // Check for existing deal with same company/name in this org (dedup)
     let org_db_id = DbUuid::from(org_id);
-    let intake_item_id_str = intake_item_id.hyphenated().to_string();
     if let Ok(Some(existing)) = CrmDeal::find_by_name_and_org(pool, &deal_name, &org_db_id).await {
-        // Link intake item to existing deal
+        // Link intake item to existing deal (call_intake_items.id is BLOB — bind Uuid)
         let _ = sqlx::query("UPDATE call_intake_items SET crm_deal_id = ? WHERE id = ?")
             .bind(existing.id.as_str())
-            .bind(&intake_item_id_str)
+            .bind(intake_item_id)
             .execute(pool)
             .await;
         return Uuid::parse_str(existing.id.as_str()).ok();
@@ -1007,10 +1006,10 @@ async fn ensure_crm_deal_for_person(
                 "Auto-created CRM deal {} for person {} in pipeline {}",
                 deal.id, person_id, pipeline_id
             );
-            // Link intake item to deal
+            // Link intake item to deal (call_intake_items.id is BLOB — bind Uuid)
             let _ = sqlx::query("UPDATE call_intake_items SET crm_deal_id = ? WHERE id = ?")
                 .bind(deal.id.as_str())
-                .bind(&intake_item_id_str)
+                .bind(intake_item_id)
                 .execute(pool)
                 .await;
             Uuid::parse_str(deal.id.as_str()).ok()

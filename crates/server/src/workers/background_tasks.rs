@@ -454,7 +454,6 @@ impl BackgroundWorker for NoraInboxPoller {
                                     CreateCallIntakeItem {
                                         source_type: "email".into(),
                                         source_ref: Some(msg_id.clone()),
-                                        raw_content: Some(full_body),
                                         subject: Some(msg.subject.clone()),
                                         from_email: Some(msg.from_address.clone()),
                                         from_name: None,
@@ -464,7 +463,9 @@ impl BackgroundWorker for NoraInboxPoller {
                                             "message_id": msg_id,
                                             "ingested_by": "nora_inbox_poller",
                                             "organization_id": org_id.map(|id| id.to_string()),
+                                            "source_links": extract_source_links(&full_body),
                                         }).to_string()),
+                                        raw_content: Some(full_body),
                                     },
                                 )
                                 .await;
@@ -495,4 +496,46 @@ impl BackgroundWorker for NoraInboxPoller {
             }
         }
     }
+}
+
+/// Extract known transcript/document source links from email body.
+/// Returns a JSON array of {type, url, label} objects.
+fn extract_source_links(body: &str) -> Vec<serde_json::Value> {
+    let mut links = Vec::new();
+    for line in body.lines() {
+        let trimmed = line.trim();
+        if trimmed.contains("fireflies.ai/view/") {
+            // Extract the URL
+            if let Some(start) = trimmed.find("https://app.fireflies.ai") {
+                let url = &trimmed[start..];
+                let url = url.split_whitespace().next().unwrap_or(url);
+                links.push(serde_json::json!({
+                    "type": "fireflies_transcript",
+                    "label": "Fireflies Transcript",
+                    "url": url
+                }));
+            }
+        } else if trimmed.contains("docs.google.com/document/") {
+            if let Some(start) = trimmed.find("https://docs.google.com") {
+                let url = &trimmed[start..];
+                let url = url.split_whitespace().next().unwrap_or(url);
+                links.push(serde_json::json!({
+                    "type": "google_doc",
+                    "label": "Meeting Notes (Google Doc)",
+                    "url": url
+                }));
+            }
+        } else if trimmed.contains("otter.ai/") {
+            if let Some(start) = trimmed.find("https://otter.ai") {
+                let url = &trimmed[start..];
+                let url = url.split_whitespace().next().unwrap_or(url);
+                links.push(serde_json::json!({
+                    "type": "otter_transcript",
+                    "label": "Otter.ai Transcript",
+                    "url": url
+                }));
+            }
+        }
+    }
+    links
 }

@@ -907,13 +907,49 @@ pub async fn run_phase2_from_company_intel(
         company.name.clone()
     };
 
+    // Pull discovery call content from intake items for this company (by company_name match)
+    // This ensures the actual meeting notes/transcript are included in the report context
+    let call_context = {
+        #[derive(sqlx::FromRow)]
+        struct IntakeRow {
+            call_summary: Option<String>,
+            raw_content: Option<String>,
+        }
+        let rows: Vec<IntakeRow> = sqlx::query_as(
+            "SELECT call_summary, raw_content FROM call_intake_items
+             WHERE extracted_businesses LIKE ? OR extracted_businesses LIKE ?
+             ORDER BY created_at DESC LIMIT 3"
+        )
+        .bind(format!("%\"{}%", company.name))
+        .bind(format!("%{}%", company.name))
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default();
+
+        let mut ctx = String::new();
+        for row in &rows {
+            if let Some(summary) = &row.call_summary {
+                ctx.push_str(&format!("Discovery Call Summary:\n{}\n\n", summary));
+            }
+            if let Some(raw) = &row.raw_content {
+                // Include up to 4000 chars of the raw email/transcript content
+                ctx.push_str(&format!("Call/Email Content:\n{}\n\n", &raw[..raw.len().min(4000)]));
+            }
+        }
+        if ctx.is_empty() {
+            "No call context available.".to_string()
+        } else {
+            ctx
+        }
+    };
+
     info!("[Phase II] Generating Astra deep research report for {}", company.name);
 
     let generated = generate_report_with_claude(
         &person_name,
         &company.name,
         intel_summary,
-        "No call context — report triggered from KG intel approval.",
+        &call_context,
         &company_research_ctx,
         &biz_list,
         "",

@@ -1066,7 +1066,7 @@ pub async fn run_company_research_direct(
          description = COALESCE(NULLIF(?, ''), description), \
          industry = COALESCE(NULLIF(?, ''), industry), \
          updated_at = datetime('now','subsec') \
-         WHERE id = ?",
+         WHERE id = ? OR CAST(id AS TEXT) = ?",
     )
     .bind(&summary)
     .bind(&raw_json)
@@ -1074,7 +1074,8 @@ pub async fn run_company_research_direct(
     .bind(website)
     .bind(description)
     .bind(industry)
-    .bind(company_id.as_bytes().as_slice())
+    .bind(company_id.to_string())  // TEXT-stored companies.id
+    .bind(company_id.to_string())
     .execute(pool)
     .await;
 
@@ -1349,7 +1350,7 @@ async fn write_company_intel_results(
     )
     .bind(summary)
     .bind(confidence)
-    .bind(company_id.as_bytes().as_slice())
+    .bind(company_id.to_string())  // companies.id is TEXT
     .execute(pool)
     .await;
 }
