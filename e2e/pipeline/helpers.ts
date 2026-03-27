@@ -7,7 +7,7 @@
 import type { Page, APIRequestContext } from "@playwright/test";
 import { expect } from "./fixtures";
 import { t, demoPause } from "../helpers";
-import { dealCard, dealDetail } from "./testids";
+import { dealCard, dealDetail, review } from "./testids";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -217,7 +217,7 @@ export async function waitForDealStage(
 
     // Check current stage via API (read-only, not a shortcut)
     const dealRes = await request.get(`/api/crm/deals/${dealId}`);
-    const deal = (await dealRes.json()).data || (await dealRes.json());
+    const deal = await dealRes.json().then((b: any) => b.data || b);
     const currentStage = deal.stage?.toLowerCase() || '';
 
     if (currentStage === stageName.toLowerCase()) return true;
@@ -245,7 +245,7 @@ export async function waitForDealStage(
           if (await reviewTab.isVisible({ timeout: 300 })) {
             await reviewTab.click();
             await page.waitForTimeout(300);
-            const markComplete = page.getByTestId("review-mark-complete");
+            const markComplete = page.getByTestId(review.markComplete);
             if (await markComplete.isVisible({ timeout: 500 })) {
               await markComplete.click();
               await page.waitForTimeout(500);

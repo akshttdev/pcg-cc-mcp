@@ -7,7 +7,7 @@
 import { test, expect } from "./fixtures";
 import { t, demoPause, login, apiLogin, TEST_DATA_PREFIX } from "../helpers";
 import { ORG_ID, PIPELINE_URL, moveDealViaContextMenu } from "./helpers";
-import { pipeline, dealCard, dealDetail } from "./testids";
+import { pipeline, dealCard, dealDetail, review } from "./testids";
 
 const DEAL_NAME = `${TEST_DATA_PREFIX} Lifecycle ${Date.now()}`;
 let dl2DealId: string;
@@ -204,7 +204,7 @@ test.describe("DL-2: Move deals between stages", () => {
         if (await reviewTab.isVisible({ timeout: 1_000 }).catch(() => false)) {
           await reviewTab.click();
           await page.waitForTimeout(demoPause.short);
-          const markComplete = page.getByTestId("review-mark-complete");
+          const markComplete = page.getByTestId(review.markComplete);
           if (await markComplete.isVisible({ timeout: 1_000 }).catch(() => false)) {
             await markComplete.click();
             await page.waitForTimeout(demoPause.medium);
@@ -269,7 +269,7 @@ test.describe("DL-2: Move deals between stages", () => {
         if (await reviewTab.isVisible({ timeout: 1_000 }).catch(() => false)) {
           await reviewTab.click();
           await page.waitForTimeout(demoPause.short);
-          const markComplete = page.getByTestId("review-mark-complete");
+          const markComplete = page.getByTestId(review.markComplete);
           if (await markComplete.isVisible({ timeout: 1_000 }).catch(() => false)) {
             await markComplete.click();
             await page.waitForTimeout(demoPause.medium);
@@ -350,7 +350,7 @@ test.describe("DL-3: Won deal automation", () => {
         amount: 5000,
       },
     });
-    const deal = (await dealRes.json()).data || (await dealRes.json());
+    const deal = await dealRes.json().then((b: any) => b.data || b);
 
     // Mark as Won via API
     const wonRes = await request.post(`/api/crm/deals/${deal.id}/mark-won`, {
@@ -414,7 +414,7 @@ test.describe("DL-3: Won deal automation", () => {
         amount: 3000,
       },
     });
-    const deal = (await dealRes.json()).data || (await dealRes.json());
+    const deal = await dealRes.json().then((b: any) => b.data || b);
 
     // Move to Won via stage move API (simulates DnD)
     if (wonStage) {

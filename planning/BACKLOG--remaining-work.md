@@ -1163,6 +1163,34 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 **Recommendation:** Add a pre-flight env check to `e2e/helpers/index.ts` or `playwright.config.ts` globalSetup that logs warnings for optional env vars and fails fast for required ones. Pattern: `console.warn("⚠️ GITHUB_TOKEN not set — agent simulation tests will be skipped")`.
 **Status:** NOT STARTED
 
+### PR #61: Migration CAST fragility in contacts_intelligence backfill
+**Source:** QA review PR #61 (2026-03-27)
+**File:** `crates/db/migrations/20260418000000_contacts_intelligence.sql:30-53`
+**What:** Backfill UPDATE uses `CAST(p.crm_contact_id AS TEXT) = CAST(crm_contacts.id AS TEXT)` 8 times. If both columns are TEXT, CASTs are unnecessary. If one is BLOB, this may silently fail to match. A single CTE or JOIN would be more efficient.
+**Recommendation:** Simplify to `WHERE p.crm_contact_id = crm_contacts.id` (both are TEXT post BLOB→TEXT migration). Replace 8 correlated subqueries with a single CTE-based UPDATE.
+**Status:** NOT STARTED — affects contacts unification phase, not blocking current sprint
+
+### PR #61: ReviewTab missing error UI for task fetch
+**Source:** QA review PR #61 (2026-03-27)
+**File:** `frontend/src/components/crm/deal-detail/tabs/ReviewTab.tsx:162-169`
+**What:** `useQuery` for deal tasks has no `isError` state rendered. API failures silently default to empty array. User sees no feedback.
+**Recommendation:** Add error boundary or `isError` check with retry button, matching pattern from AgentHistoryTab.
+**Status:** NOT STARTED — low priority, follows existing tab pattern
+
+### PR #61: Agent History "View Task" link is generic
+**Source:** QA review PR #61 (2026-03-27)
+**File:** `frontend/src/components/crm/deal-detail/tabs/AgentHistoryTab.tsx:186-191`
+**What:** "View Task" navigates to `/my-tasks` instead of deep-linking to the specific task. `flow.task_id` is available but `project_id` is not in `AgentFlowSummary`.
+**Recommendation:** Add `project_id` to the agent flows API response, then link to `/projects/{projectId}/tasks/{taskId}`.
+**Status:** NOT STARTED — UX improvement
+
+### PR #61: E2E timeout increases are symptomatic
+**Source:** QA review PR #61 (2026-03-27)
+**Files:** `e2e/pipeline/agent-automations.spec.ts:187,202`
+**What:** Test timeouts doubled (45→90s, 30→60s) to reduce flakiness. Increases test suite runtime.
+**Recommendation:** Replace polling with SSE event wait or targeted condition checks.
+**Status:** NOT STARTED — test infrastructure improvement
+
 ### ~~13. Onboarding Dialog Bypass for Test Environments~~ → RESOLVED
 **Source:** PR #47 smoke testing (2026-03-18)
 **Resolution:** PR #48 unified 4 sequential modals into single WelcomeWizard, added `VITE_SKIP_ONBOARDING=1` env var bypass, and SetupProgress sidebar indicator for return-to-setup.
