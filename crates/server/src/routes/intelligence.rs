@@ -77,9 +77,11 @@ pub async fn trigger_research(
         .await?
         .ok_or_else(|| ApiError::NotFound("Person not found".into()))?;
 
+    // Set queued status on the linked contact (canonical)
     sqlx::query(
-        "UPDATE persons SET intelligence_status = 'queued', \
-         intelligence_agent = ?, updated_at = datetime('now','subsec') WHERE id = ?",
+        "UPDATE crm_contacts SET intelligence_status = 'queued', \
+         intelligence_agent = ?, updated_at = datetime('now','subsec') \
+         WHERE id = (SELECT crm_contact_id FROM persons WHERE id = ?)",
     )
     .bind(body.agent_preference.as_deref().unwrap_or("scout"))
     .bind(person_id)
@@ -115,7 +117,8 @@ pub async fn trigger_research(
                 e
             );
             let _ = sqlx::query(
-                "UPDATE persons SET intelligence_status = 'failed', updated_at = datetime('now','subsec') WHERE id = ?",
+                "UPDATE crm_contacts SET intelligence_status = 'failed', updated_at = datetime('now','subsec') \
+                 WHERE id = (SELECT crm_contact_id FROM persons WHERE id = ?)",
             )
             .bind(person_id)
             .execute(&pool_clone)
@@ -424,18 +427,19 @@ pub async fn write_intelligence_results(
     project_id: Option<Uuid>,
     full_name: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // 1. Update person intelligence fields
-
-    sqlx::query(
-        "UPDATE persons SET \
+    // Write to crm_contacts (canonical table after unification)
+    // Look up the contact via persons.crm_contact_id bridge
+    let contact_rows = sqlx::query(
+        "UPDATE crm_contacts SET \
          intelligence_status = 'done', \
          intelligence_summary = ?, \
          intelligence_raw = ?, \
          intelligence_confidence = ?, \
          intelligence_last_run_at = datetime('now','subsec'), \
          intelligence_agent = 'scout', \
+         research_pass_count = COALESCE(research_pass_count, 0) + 1, \
          updated_at = datetime('now','subsec') \
-         WHERE id = ?",
+         WHERE id = (SELECT crm_contact_id FROM persons WHERE id = ?)",
     )
     .bind(summary)
     .bind(raw)
@@ -443,6 +447,13 @@ pub async fn write_intelligence_results(
     .bind(person_id)
     .execute(pool)
     .await?;
+
+    if contact_rows.rows_affected() == 0 {
+        tracing::warn!(
+            "[Intelligence] No crm_contacts row found for person {} — person may not have a linked contact",
+            person_id
+        );
+    }
 
     // Register in knowledge graph if project_id provided
     if let Some(pid) = project_id {
@@ -454,7 +465,7 @@ pub async fn write_intelligence_results(
             pid,
             &KnowledgeSourceType::Entity,
             &source_id,
-            &format!("Person: {}", full_name),
+            &format!("Contact: {}", full_name),
             source_summary.as_deref(),
             confidence,
         )
@@ -462,8 +473,8 @@ pub async fn write_intelligence_results(
     }
 
     tracing::info!(
-        "Intelligence research complete for person {} (confidence: {:.0}%)",
-        person_id,
+        "Intelligence research complete for {} (confidence: {:.0}%)",
+        full_name,
         confidence * 100.0
     );
     Ok(())
@@ -1027,15 +1038,132 @@ pub async fn trigger_research_for_person(
     run_research_via_nora(pool, person, research_prompt, None).await
 }
 
+// ── Contact-targeted endpoints ────────────────────────────────────────────────
+// These read/write crm_contacts directly — the canonical path after unification.
+
+/// POST /api/crm/contacts/:id/research — trigger research for a CRM contact
+pub async fn trigger_contact_research(
+    State(d): State<DeploymentImpl>,
+    Path(contact_id): Path<String>,
+    Json(body): Json<ResearchRequest>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
+    let contact_id = DbUuid::parse(&contact_id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let pool = &d.db().pool;
+
+    // Verify contact exists
+    #[derive(sqlx::FromRow)]
+    struct ContactRow { full_name: Option<String>, person_id: Option<String> }
+    let contact: ContactRow = sqlx::query_as(
+        "SELECT full_name, person_id FROM crm_contacts WHERE id = ?"
+    )
+    .bind(&contact_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| ApiError::NotFound("Contact not found".into()))?;
+
+    // Set status to queued on contact
+    sqlx::query(
+        "UPDATE crm_contacts SET intelligence_status = 'queued', \
+         intelligence_agent = ?, updated_at = datetime('now','subsec') WHERE id = ?",
+    )
+    .bind(body.agent_preference.as_deref().unwrap_or("scout"))
+    .bind(&contact_id)
+    .execute(pool)
+    .await?;
+
+    // If contact has a linked person, delegate to existing research pipeline
+    if let Some(ref pid) = contact.person_id {
+        if let Ok(person_uuid) = DbUuid::parse(pid) {
+            let person = Person::find_by_id(pool, person_uuid.to_uuid()).await?;
+            if let Some(person) = person {
+                let pool_clone = pool.clone();
+                let project_id = body.project_id;
+                tokio::spawn(async move {
+                    let result = run_research_direct(&pool_clone, &person, project_id).await;
+                    if let Err(e) = result {
+                        tracing::error!("[Intelligence] Contact research failed: {}", e);
+                    }
+                });
+            }
+        }
+    } else {
+        // No person linked — write a placeholder and let Scout (simulated) handle it
+        // In the future, research will target contacts directly without person bridge
+        tracing::info!(
+            "[Intelligence] Contact {} has no person link — research will be available after intake pipeline update",
+            contact_id
+        );
+        sqlx::query(
+            "UPDATE crm_contacts SET intelligence_status = 'idle', updated_at = datetime('now','subsec') WHERE id = ?",
+        )
+        .bind(&contact_id)
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(Json(ApiResponse::success(serde_json::json!({
+        "contact_id": contact_id.to_string(),
+        "status": "queued",
+        "message": format!("Research queued for {}", contact.full_name.unwrap_or_else(|| "contact".into())),
+    }))))
+}
+
+/// GET /api/crm/contacts/:id/intelligence-status
+pub async fn get_contact_intelligence_status(
+    State(d): State<DeploymentImpl>,
+    Path(contact_id): Path<String>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
+    let contact_id = DbUuid::parse(&contact_id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let pool = &d.db().pool;
+
+    #[derive(sqlx::FromRow)]
+    struct Row {
+        intelligence_status: String,
+        intelligence_summary: Option<String>,
+        intelligence_confidence: f64,
+        intelligence_agent: Option<String>,
+        intelligence_last_run_at: Option<String>,
+    }
+
+    let row: Option<Row> = sqlx::query_as(
+        "SELECT intelligence_status, intelligence_summary, intelligence_confidence, \
+         intelligence_agent, intelligence_last_run_at FROM crm_contacts WHERE id = ?",
+    )
+    .bind(&contact_id)
+    .fetch_optional(pool)
+    .await?;
+
+    let row = row.ok_or_else(|| ApiError::NotFound("Contact not found".into()))?;
+
+    Ok(Json(ApiResponse::success(serde_json::json!({
+        "contact_id": contact_id.to_string(),
+        "status": row.intelligence_status,
+        "summary": row.intelligence_summary,
+        "confidence": row.intelligence_confidence,
+        "agent": row.intelligence_agent,
+        "last_run_at": row.intelligence_last_run_at,
+    }))))
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
+        // Person-targeted (legacy — will be deprecated in Phase 4)
         .route("/persons/{id}/research", post(trigger_research))
         .route(
             "/persons/{id}/intelligence-status",
             get(get_intelligence_status),
         )
+        // Contact-targeted (canonical after unification)
+        .route("/crm/contacts/{id}/research", post(trigger_contact_research))
+        .route(
+            "/crm/contacts/{id}/intelligence-status",
+            get(get_contact_intelligence_status),
+        )
+        // Company intelligence
         .route(
             "/companies/{id}/intelligence-status",
             get(get_company_intelligence_status),
