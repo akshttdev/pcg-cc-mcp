@@ -179,27 +179,14 @@ async fn list_enriched_deals(
             None
         };
 
-        let person_id: Option<DbUuid> = if let Some(ref cid) = deal.crm_contact_id {
-            #[derive(sqlx::FromRow)]
-            struct Row {
-                id: DbUuid,
-            }
-            sqlx::query_as::<_, Row>("SELECT id FROM persons WHERE crm_contact_id = ? LIMIT 1")
-                .bind(cid)
-                .fetch_optional(pool)
-                .await
-                .ok()
-                .flatten()
-                .map(|r| r.id)
-        } else {
-            None
-        };
+        // person_id from crm_contacts.person_id (no persons table query)
+        let person_id: Option<DbUuid> = contact_info
+            .as_ref()
+            .and_then(|c| c.person_id.as_ref())
+            .and_then(|pid| DbUuid::parse(pid).ok());
 
-        let report_id = if let Some(ref pid) = person_id {
-            CrmDeal::report_id_for_person_pub(pool, pid).await
-        } else {
-            None
-        };
+        // report_id via crm_deal_id (direct, no person bridge)
+        let report_id = CrmDeal::report_id_for_deal_pub(pool, &deal.id).await;
 
         let (project_name, task_total, task_done, deliverable_count) =
             if let Some(ref pid) = deal.project_id {
@@ -218,7 +205,7 @@ async fn list_enriched_deals(
             review_task_id,
             review_task_status,
             review_task_assignee,
-        ) = CrmDeal::fetch_intel_data_pub(pool, &deal.id, person_id.as_ref()).await;
+        ) = CrmDeal::fetch_intel_data_pub(pool, &deal.id, deal.crm_contact_id.as_ref()).await;
 
         let (company_intelligence_status, company_id, company_intelligence_summary) =
             CrmDeal::fetch_company_intel_status(
@@ -315,48 +302,14 @@ async fn get_deal_rich(
         None
     };
 
-    // person_id via persons.crm_contact_id (reverse lookup) or email fallback
-    let person_id: Option<DbUuid> = {
-        let by_contact: Option<DbUuid> = if let Some(ref contact_id) = deal.crm_contact_id {
-            #[derive(sqlx::FromRow)]
-            struct Row {
-                id: DbUuid,
-            }
-            sqlx::query_as::<_, Row>("SELECT id FROM persons WHERE crm_contact_id = ? LIMIT 1")
-                .bind(contact_id)
-                .fetch_optional(pool)
-                .await
-                .ok()
-                .flatten()
-                .map(|r| r.id)
-        } else {
-            None
-        };
+    // person_id from crm_contacts.person_id (no persons table query)
+    let person_id: Option<DbUuid> = contact_info
+        .as_ref()
+        .and_then(|c| c.person_id.as_ref())
+        .and_then(|pid| DbUuid::parse(pid).ok());
 
-        if by_contact.is_some() {
-            by_contact
-        } else if let Some(email) = contact_info.as_ref().and_then(|c| c.email.as_deref()) {
-            #[derive(sqlx::FromRow)]
-            struct Row {
-                id: DbUuid,
-            }
-            sqlx::query_as::<_, Row>("SELECT id FROM persons WHERE email = ? LIMIT 1")
-                .bind(email)
-                .fetch_optional(pool)
-                .await
-                .ok()
-                .flatten()
-                .map(|r| r.id)
-        } else {
-            None
-        }
-    };
-
-    let report_id = if let Some(ref pid) = person_id {
-        CrmDeal::report_id_for_person_pub(pool, pid).await
-    } else {
-        None
-    };
+    // report_id via crm_deal_id (direct, no person bridge)
+    let report_id = CrmDeal::report_id_for_deal_pub(pool, &deal.id).await;
 
     let (project_name, task_total, task_done, deliverable_count) =
         if let Some(ref pid) = deal.project_id {
@@ -375,7 +328,7 @@ async fn get_deal_rich(
         review_task_id,
         review_task_status,
         review_task_assignee,
-    ) = CrmDeal::fetch_intel_data_pub(pool, &deal.id, person_id.as_ref()).await;
+    ) = CrmDeal::fetch_intel_data_pub(pool, &deal.id, deal.crm_contact_id.as_ref()).await;
 
     // Look up company intelligence status before constructing deal_with_contact
     let company_name_for_intel = contact_info
