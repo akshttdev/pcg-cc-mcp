@@ -17,20 +17,14 @@
 - Migration, model updates, Scout rewiring, DbUuid fixes all done
 - Experience audit: 1 BLOCKER (review task links), 2 pain points, 4 friction items
 
-### PC-1a: Review task links — BLOCKER (from experience audit)
-- **Effort**: 2 hours | **Impact**: Unblocks review task workflow from My Tasks
-- CRM review tasks have `project_id=""`, link goes to `/projects/tasks/:id` which matches no route → blank page
-- Fix: add `/my-tasks/:taskId` route OR give review tasks a valid `project_id`
+### PC-1a: Review task links — ✅ FIXED
+- Guarded empty `project_id` in my-tasks.tsx, global-tasks.tsx (falls back to `/my-tasks`)
 
-### PC-1b: Strip raw JSON from intelligence summaries — QUICK WIN
-- **Effort**: 30 min | **Impact**: Removes raw JSON visible across 4 views (deal cards, Intel tab, Review tab, Operator Context)
-- Simulated Scout appends `Original context: {"name":"..."}` to summary
-- Fix: sanitize on write in `agent_flow_executor.rs` or strip at render time
+### PC-1b: Strip raw JSON from intelligence summaries — ✅ FIXED
+- Root cause fix in `agent_flow_executor.rs` — simulated Scout no longer appends raw context
 
-### PC-1c: Surface intelligence on contact detail panel — INVESTMENT
-- **Effort**: 4 hours | **Impact**: Completes contacts unification UX story
-- Contact detail panel (from Contacts page) shows no intelligence data despite it being stored
-- Add intelligence status, summary, confidence to contact detail view
+### PC-1c: Surface intelligence on contact detail panel — ✅ FIXED
+- Added Intelligence section to ContactDetailModal with status, confidence, summary, agent
 
 ### PC-2: Add research endpoint for contacts
 - **Effort**: 0.5 day | **Impact**: Enables "Trigger Research" from Intel tab
