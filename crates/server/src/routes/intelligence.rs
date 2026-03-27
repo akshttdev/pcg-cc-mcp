@@ -1289,13 +1289,7 @@ pub async fn get_contact_intelligence_status(
 
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
-        // Person-targeted (legacy — will be deprecated in Phase 4)
-        .route("/persons/{id}/research", post(trigger_research))
-        .route(
-            "/persons/{id}/intelligence-status",
-            get(get_intelligence_status),
-        )
-        // Contact-targeted (canonical after unification)
+        // Contact intelligence (canonical)
         .route(
             "/crm/contacts/{id}/research",
             post(trigger_contact_research),
@@ -1303,6 +1297,18 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route(
             "/crm/contacts/{id}/intelligence-status",
             get(get_contact_intelligence_status),
+        )
+        .route(
+            "/crm/contacts/{id}/research-passes",
+            get(list_research_passes),
+        )
+        .route(
+            "/crm/contacts/{id}/research-passes/next",
+            post(trigger_next_research_pass),
+        )
+        .route(
+            "/crm/contacts/{id}/reports",
+            get(list_person_reports),
         )
         // Company intelligence
         .route(
@@ -1314,7 +1320,9 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
 
 // ── Iterative research pass endpoints ────────────────────────────────────────
 
-use db::models::{business_report::BusinessReport, person_research_pass::PersonResearchPass};
+use db::models::{
+    business_report::BusinessReport, contact_research_pass::ContactResearchPass,
+};
 
 #[derive(Debug, Deserialize)]
 pub struct NextPassRequest {
@@ -1324,43 +1332,52 @@ pub struct NextPassRequest {
     pub project_id: Option<Uuid>,
 }
 
-/// GET /api/persons/:id/research-passes — list all research passes in order
+/// GET /api/crm/contacts/:id/research-passes — list all research passes
 pub async fn list_research_passes(
     State(d): State<DeploymentImpl>,
-    Path(person_id): Path<String>,
-) -> Result<Json<ApiResponse<Vec<PersonResearchPass>>>, ApiError> {
-    let person_id = DbUuid::parse(&person_id)
-        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
-        .to_uuid();
-    let passes = PersonResearchPass::list_for_person(&d.db().pool, person_id).await?;
+    Path(contact_id): Path<String>,
+) -> Result<Json<ApiResponse<Vec<ContactResearchPass>>>, ApiError> {
+    let contact_id = DbUuid::parse(&contact_id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let passes = ContactResearchPass::list_for_contact(&d.db().pool, &contact_id).await?;
     Ok(Json(ApiResponse::success(passes)))
 }
 
-/// POST /api/persons/:id/research-passes/next
+/// POST /api/crm/contacts/:id/research-passes/next
 /// Triggers the next logical research pass, building on all prior passes.
 pub async fn trigger_next_research_pass(
     State(d): State<DeploymentImpl>,
-    Path(person_id): Path<String>,
+    Path(contact_id): Path<String>,
     Json(body): Json<NextPassRequest>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
-    let person_id = DbUuid::parse(&person_id)
-        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
-        .to_uuid();
+    let contact_id = DbUuid::parse(&contact_id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
     let pool = &d.db().pool;
 
-    let person = Person::find_by_id(pool, person_id)
-        .await?
-        .ok_or_else(|| ApiError::NotFound("Person not found".into()))?;
+    // Read contact directly
+    #[derive(sqlx::FromRow)]
+    struct ContactRow {
+        full_name: Option<String>,
+        company_name: Option<String>,
+        intelligence_summary: Option<String>,
+    }
+    let contact: ContactRow = sqlx::query_as(
+        "SELECT full_name, company_name, intelligence_summary FROM crm_contacts WHERE id = ?",
+    )
+    .bind(contact_id.to_string())
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| ApiError::NotFound("Contact not found".into()))?;
 
     // Determine next pass number and auto-select focus
-    let pass_number = PersonResearchPass::next_pass_number(pool, person_id).await;
+    let pass_number = ContactResearchPass::next_pass_number(pool, &contact_id).await;
     let focus = body
         .focus
         .clone()
         .unwrap_or_else(|| auto_focus(pass_number));
 
     // Collect prior pass summaries for context
-    let prior_passes = PersonResearchPass::list_for_person(pool, person_id).await?;
+    let prior_passes = ContactResearchPass::list_for_contact(pool, &contact_id).await?;
     let prior_context: String = prior_passes
         .iter()
         .filter(|p| p.status == "done")
@@ -1375,37 +1392,37 @@ pub async fn trigger_next_research_pass(
         .collect::<Vec<_>>()
         .join("\n\n");
 
-    let pass = PersonResearchPass::create(
+    let pass = ContactResearchPass::create(
         pool,
-        person_id,
+        &contact_id,
         pass_number,
         &focus,
         body.custom_prompt.as_deref(),
     )
     .await?;
-    let pass_id = pass.id;
+    let pass_id = pass.id.to_uuid();
 
     // Build research prompt incorporating all prior context
-    let intel = person
+    let intel = contact
         .intelligence_summary
         .as_deref()
         .unwrap_or("")
         .to_string();
-    let name = person.full_name.clone();
-    let company = person
+    let name = contact.full_name.unwrap_or_else(|| "Unknown".into());
+    let company = contact
         .company_name
-        .clone()
         .unwrap_or_else(|| "Unknown company".into());
     let project_id = body.project_id;
     let pool_clone = pool.clone();
     let pool_for_err = pool.clone();
     let focus_for_resp = focus.clone();
+    let contact_id_str = contact_id.to_string();
 
     tokio::spawn(async move {
         if let Err(e) = run_research_pass(
             pool_clone,
             pass_id,
-            person_id,
+            &contact_id_str,
             pass_number,
             &focus,
             &name,
@@ -1418,10 +1435,10 @@ pub async fn trigger_next_research_pass(
         {
             tracing::error!("Research pass failed for {}: {}", pass_id, e);
             let _ = sqlx::query(
-                "UPDATE person_research_passes SET status = 'failed', error = ?, completed_at = datetime('now','subsec') WHERE id = ?",
+                "UPDATE contact_research_passes SET status = 'failed', error = ?, completed_at = datetime('now','subsec') WHERE CAST(id AS TEXT) = ?",
             )
             .bind(e.to_string())
-            .bind(pass_id)
+            .bind(pass_id.to_string())
             .execute(&pool_for_err)
             .await;
         }
@@ -1435,13 +1452,13 @@ pub async fn trigger_next_research_pass(
     }))))
 }
 
-/// GET /api/persons/:id/reports
+/// GET /api/crm/contacts/:id/reports
 pub async fn list_person_reports(
     State(d): State<DeploymentImpl>,
-    Path(person_id): Path<String>,
+    Path(contact_id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<BusinessReport>>>, ApiError> {
-    DbUuid::parse(&person_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
-    let reports = BusinessReport::list_by_person(&d.db().pool, &person_id).await?;
+    DbUuid::parse(&contact_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let reports = BusinessReport::list_by_contact(&d.db().pool, &contact_id).await?;
     Ok(Json(ApiResponse::success(reports)))
 }
 
@@ -1459,7 +1476,7 @@ fn auto_focus(pass_number: i64) -> String {
 async fn run_research_pass(
     pool: sqlx::SqlitePool,
     pass_id: Uuid,
-    person_id: Uuid,
+    contact_id: &str,
     pass_number: i64,
     focus: &str,
     name: &str,
@@ -1471,8 +1488,8 @@ async fn run_research_pass(
     use serde_json::Value;
 
     // Mark running
-    sqlx::query("UPDATE person_research_passes SET status = 'running' WHERE id = ?")
-        .bind(pass_id)
+    sqlx::query("UPDATE contact_research_passes SET status = 'running' WHERE CAST(id AS TEXT) = ?")
+        .bind(pass_id.to_string())
         .execute(&pool)
         .await?;
 
@@ -1599,7 +1616,7 @@ async fn run_research_pass(
 
     // Save pass results
     sqlx::query(
-        "UPDATE person_research_passes SET
+        "UPDATE contact_research_passes SET
             status = 'done',
             summary = ?,
             raw_results = ?,
@@ -1608,18 +1625,18 @@ async fn run_research_pass(
             confidence_delta = ?,
             agent_used = 'claude',
             completed_at = datetime('now','subsec')
-         WHERE id = ?",
+         WHERE CAST(id AS TEXT) = ?",
     )
     .bind(&summary)
     .bind(json_str)
     .bind(&key_findings)
     .bind(&search_queries)
     .bind(confidence_score)
-    .bind(pass_id)
+    .bind(pass_id.to_string())
     .execute(&pool)
     .await?;
 
-    // Update persons table with accumulated intelligence
+    // Update crm_contacts with accumulated intelligence
     if !updated_intel.is_empty() {
         let new_confidence = (confidence_score as f64).min(1.0);
         let depth = match pass_number {
@@ -1628,7 +1645,7 @@ async fn run_research_pass(
             _ => "deep",
         };
         sqlx::query(
-            "UPDATE persons SET
+            "UPDATE crm_contacts SET
                 intelligence_summary = ?,
                 intelligence_status = 'done',
                 intelligence_last_run_at = datetime('now','subsec'),
@@ -1637,13 +1654,13 @@ async fn run_research_pass(
                 research_pass_count = ?,
                 research_depth = ?,
                 updated_at = datetime('now','subsec')
-             WHERE id = ?",
+             WHERE CAST(id AS TEXT) = ?",
         )
         .bind(&updated_intel)
         .bind(new_confidence)
         .bind(pass_number)
         .bind(depth)
-        .bind(person_id)
+        .bind(contact_id)
         .execute(&pool)
         .await?;
     }
