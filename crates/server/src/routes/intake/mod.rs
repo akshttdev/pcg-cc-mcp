@@ -40,8 +40,16 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             post(handlers::generate_report_handler),
         )
         .route(
+            "/business-reports/phase2",
+            post(handlers::phase2_report_handler),
+        )
+        .route(
             "/business-reports/{id}",
             get(handlers::get_report).patch(handlers::patch_report),
+        )
+        .route(
+            "/business-reports/{id}/pdf",
+            get(handlers::business_report_pdf_redirect),
         )
         // Human review endpoints
         .route(
@@ -97,6 +105,16 @@ pub struct UploadIntakePayload {
 pub struct GenerateReportRequest {
     pub person_id: Uuid,
     pub report_type: Option<String>,
+}
+
+/// Trigger Phase II deep research from company KG intel
+#[derive(Debug, Deserialize)]
+pub struct Phase2ReportRequest {
+    pub company_id: String,
+    pub client_id: Option<String>,
+    pub deal_id: Option<String>,
+    /// Task ID of the intel review task to mark complete on approval
+    pub review_task_id: Option<String>,
 }
 
 /// Body for POST /api/business-reports/:id/request-revision

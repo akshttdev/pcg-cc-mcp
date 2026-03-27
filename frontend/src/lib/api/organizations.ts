@@ -129,6 +129,25 @@ export interface ClientData {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  company_id?: string;
+  primary_person_id?: string;
+  prospect_at?: string;
+  client_since?: string;
+}
+
+export interface ClientWithIntel extends ClientData {
+  company_intel_status?: string;
+  company_intel_summary?: string;
+  company_intel_raw?: string;
+  company_intel_confidence?: number;
+  company_website?: string;
+  company_logo_url?: string;
+  company_industry?: string;
+  company_employee_count?: string;
+  person_intel_summary?: string;
+  person_full_name?: string;
+  person_title?: string;
+  person_linkedin_url?: string;
 }
 
 // ============================================================================
@@ -281,6 +300,19 @@ export const organizationsApi = {
       body: JSON.stringify(data),
     });
     return handleApiResponse<ClientData>(response);
+  },
+
+  getClientWithIntel: async (clientId: string): Promise<ClientWithIntel> => {
+    const response = await makeRequest(`/api/clients/${clientId}`);
+    return handleApiResponse<ClientWithIntel>(response);
+  },
+
+  linkClientCompany: async (clientId: string, companyId: string, personId?: string): Promise<void> => {
+    const response = await makeRequest(`/api/clients/${clientId}/link-company`, {
+      method: 'POST',
+      body: JSON.stringify({ company_id: companyId, person_id: personId }),
+    });
+    return handleApiResponse<void>(response);
   },
 
   updateClient: async (clientId: string, data: { name?: string; slug?: string; description?: string; website?: string }): Promise<ClientData> => {

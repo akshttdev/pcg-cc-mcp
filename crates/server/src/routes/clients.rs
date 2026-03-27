@@ -6,7 +6,7 @@ use axum::{
 use db::{
     db_uuid::DbUuid,
     models::{
-        client::{Client, ClientMember, CreateClient, CreateClientMember, UpdateClient},
+        client::{Client, ClientMember, ClientWithIntel, CreateClient, CreateClientMember, UpdateClient},
         project::Project,
         user::Organization,
     },
@@ -88,23 +88,52 @@ pub async fn create_client(
     Ok(Json(ApiResponse::success(client)))
 }
 
-/// GET /api/clients/:id — client details
+/// GET /api/clients/:id — client details with inherited KG intel
 pub async fn get_client(
     Path(id): Path<String>,
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-) -> Result<Json<ApiResponse<Client>>, ApiError> {
-    let client = Client::find_by_id(&deployment.db().pool, &id)
+) -> Result<Json<ApiResponse<ClientWithIntel>>, ApiError> {
+    let client_with_intel = Client::find_with_intel(&deployment.db().pool, &id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Client not found".into()))?;
 
     require_org_access(
         &deployment.db().pool,
         &access_context,
-        &client.organization_id,
+        &client_with_intel.client.organization_id,
     )
     .await?;
-    Ok(Json(ApiResponse::success(client)))
+    Ok(Json(ApiResponse::success(client_with_intel)))
+}
+
+#[derive(serde::Deserialize)]
+struct LinkCompanyBody {
+    company_id: String,
+    person_id: Option<String>,
+}
+
+/// POST /api/clients/:id/link-company — link client to a Knowledge Graph company
+pub async fn link_company(
+    Path(id): Path<String>,
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Json(body): Json<LinkCompanyBody>,
+) -> Result<Json<ApiResponse<()>>, ApiError> {
+    let client = Client::find_by_id(&deployment.db().pool, &id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Client not found".into()))?;
+
+    require_org_admin(&deployment.db().pool, &access_context, &client.organization_id).await?;
+
+    Client::set_company_link(
+        &deployment.db().pool,
+        &id,
+        &body.company_id,
+        body.person_id.as_deref(),
+    )
+    .await?;
+    Ok(Json(ApiResponse::success(())))
 }
 
 /// PUT /api/clients/:id — update client
@@ -322,4 +351,5 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         )
         .route("/clients/{id}/members/{uid}", delete(remove_client_member))
         .route("/clients/{id}/projects", get(list_client_projects))
+        .route("/clients/{id}/link-company", axum::routing::post(link_company))
 }

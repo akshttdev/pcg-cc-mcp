@@ -1,12 +1,12 @@
 import { lazy, Suspense, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { organizationsApi, projectsApi, type CrmContactRecord, type OrgBrandProfile, type ClientData } from '@/lib/api';
+import { organizationsApi, projectsApi, type CrmContactRecord, type OrgBrandProfile, type ClientWithIntel } from '@/lib/api';
 import { userKeys, organizationKeys, projectKeys } from '@/lib/query-keys';
 import type { Project } from 'shared/types';
 
-/** Extended client data as returned by the API (superset of ClientData) */
-interface ClientOverviewData extends ClientData {
+/** Extended client data as returned by the API */
+interface ClientOverviewData extends ClientWithIntel {
   crm_person_id?: string;
   crm_confidence?: number;
 }
@@ -113,12 +113,114 @@ function ProjectsTab({ projects, isProjectsLoading, orgId, clientId }: {
   );
 }
 
+// ── KG Intel panel (inline on Overview) ───────────────────────────────────────
+function KgIntelPanel({ client }: { client: ClientOverviewData }) {
+  if (!client.company_id && !client.primary_person_id) {
+    return (
+      <Card className="p-4 border-dashed border-indigo-500/30 bg-indigo-950/10">
+        <div className="flex items-center gap-2 mb-1">
+          <Brain className="h-4 w-4 text-indigo-400" />
+          <span className="text-xs font-semibold text-indigo-300 uppercase tracking-wide">Knowledge Graph</span>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Not linked to the Knowledge Graph.{' '}
+          <span className="text-indigo-400">Search companies to link intel.</span>
+        </p>
+      </Card>
+    );
+  }
+
+  const raw = client.company_intel_raw ? (() => { try { return JSON.parse(client.company_intel_raw!); } catch { return null; } })() : null;
+
+  return (
+    <Card className="p-4 border-indigo-700/30 bg-indigo-950/10 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Brain className="h-4 w-4 text-indigo-400" />
+          <span className="text-xs font-semibold text-indigo-300 uppercase tracking-wide">Knowledge Graph</span>
+          {client.company_intel_status && (
+            <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+              client.company_intel_status === 'done' ? 'bg-green-500/20 text-green-400' :
+              client.company_intel_status === 'running' ? 'bg-amber-500/20 text-amber-400' :
+              'bg-muted text-muted-foreground'
+            }`}>{client.company_intel_status}</span>
+          )}
+          {client.company_intel_confidence != null && (
+            <span className="text-xs text-muted-foreground">
+              {Math.round(client.company_intel_confidence * 100)}% confidence
+            </span>
+          )}
+        </div>
+        {client.company_id && (
+          <Link to={`/companies/${client.company_id}/intel`}
+            className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
+          >
+            Full Intel <ExternalLink className="h-3 w-3" />
+          </Link>
+        )}
+      </div>
+
+      {/* Company summary */}
+      {client.company_intel_summary && (
+        <p className="text-xs text-foreground/80 leading-relaxed border-l-2 border-indigo-500/30 pl-3">
+          {client.company_intel_summary}
+        </p>
+      )}
+
+      {/* Company meta */}
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        {(client.company_industry ?? raw?.industry) && <span>{client.company_industry ?? raw?.industry}</span>}
+        {(client.company_employee_count ?? raw?.employee_count) && <span>{client.company_employee_count ?? raw?.employee_count} employees</span>}
+        {(client.company_website ?? raw?.website) && (
+          <a href={client.company_website ?? raw?.website} target="_blank" rel="noopener noreferrer"
+            className="text-primary hover:underline flex items-center gap-1"
+          >
+            <Globe className="h-3 w-3" />
+            {(client.company_website ?? raw?.website ?? '').replace(/^https?:\/\//, '')}
+          </a>
+        )}
+      </div>
+
+      {/* Primary person */}
+      {(client.person_full_name || client.person_intel_summary) && (
+        <div className="border-t border-border/40 pt-3 flex items-start gap-3">
+          <div className="w-7 h-7 rounded-full bg-indigo-800/40 flex items-center justify-center text-xs font-semibold text-indigo-300 shrink-0">
+            {client.person_full_name?.charAt(0) ?? '?'}
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold">{client.person_full_name}</p>
+            {client.person_title && <p className="text-xs text-muted-foreground">{client.person_title}</p>}
+            {client.person_intel_summary && (
+              <p className="text-xs text-foreground/70 mt-1 line-clamp-2">{client.person_intel_summary}</p>
+            )}
+            {client.person_linkedin_url && (
+              <a href={client.person_linkedin_url} target="_blank" rel="noopener noreferrer"
+                className="text-xs text-indigo-400 hover:underline"
+              >LinkedIn</a>
+            )}
+          </div>
+          {client.primary_person_id && (
+            <Link to={`/people/${client.primary_person_id}/intel`}
+              className="ml-auto text-xs text-indigo-400 hover:text-indigo-300 shrink-0"
+            >
+              Intel →
+            </Link>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 // ── Overview tab ──────────────────────────────────────────────────────────────
 function OverviewTab({ client, projects, orgId }: { client: ClientOverviewData; projects: Project[]; orgId: string }) {
   const activeProjects = projects.filter((p) => (p as Project & { project_status?: string }).project_status !== 'archived');
   const completedProjects = projects.filter((p) => (p as Project & { project_status?: string }).project_status === 'archived');
   return (
     <div className="space-y-6">
+      {/* KG Intel — always shown at top of overview */}
+      <KgIntelPanel client={client} />
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-1">
@@ -136,6 +238,15 @@ function OverviewTab({ client, projects, orgId }: { client: ClientOverviewData; 
           <p className="text-2xl font-semibold">{completedProjects.length}</p>
           <p className="text-xs text-muted-foreground">archived</p>
         </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Activity className="h-4 w-4 text-amber-500" />
+            <span className="text-xs text-muted-foreground font-medium">Status</span>
+          </div>
+          <Badge variant={client.is_active ? 'default' : 'secondary'} className="mt-1">
+            {client.client_since ? 'Client' : client.prospect_at ? 'Prospect' : client.is_active ? 'Active' : 'Inactive'}
+          </Badge>
+        </Card>
         {client.crm_confidence != null && (
           <Card className="p-4">
             <div className="flex items-center gap-2 mb-1">
@@ -145,15 +256,6 @@ function OverviewTab({ client, projects, orgId }: { client: ClientOverviewData; 
             <p className="text-2xl font-semibold">{Math.round((client.crm_confidence ?? 0) * 100)}%</p>
           </Card>
         )}
-        <Card className="p-4">
-          <div className="flex items-center gap-2 mb-1">
-            <Activity className="h-4 w-4 text-amber-500" />
-            <span className="text-xs text-muted-foreground font-medium">Status</span>
-          </div>
-          <Badge variant={client.is_active ? 'default' : 'secondary'} className="mt-1">
-            {client.is_active ? 'Active' : 'Inactive'}
-          </Badge>
-        </Card>
       </div>
 
       {client.description && (
@@ -371,10 +473,10 @@ export function ClientOverview() {
   const [tab, setTab] = useState<Tab>('overview');
   const [membersOpen, setMembersOpen] = useState(false);
 
-  const { data: clients = [], isLoading } = useQuery({
-    queryKey: organizationKeys.orgClients(orgId!),
-    queryFn: () => organizationsApi.getClients(orgId!),
-    enabled: !!orgId,
+  const { data: client, isLoading } = useQuery<ClientOverviewData>({
+    queryKey: ['client', clientId],
+    queryFn: () => organizationsApi.getClientWithIntel(clientId!) as Promise<ClientOverviewData>,
+    enabled: !!clientId,
   });
 
   const { data: projects = [], isLoading: isProjectsLoading } = useQuery({
@@ -390,7 +492,6 @@ export function ClientOverview() {
     staleTime: 5 * 60_000,
   });
 
-  const client = clients.find((c) => c.id === clientId) as ClientOverviewData | undefined;
   const allProjects = projects;
 
   // Brand colors: use org brand profile if available, otherwise hash-derived palette
@@ -432,18 +533,23 @@ export function ClientOverview() {
         {/* Header row */}
         <div className="relative flex items-start justify-between gap-4">
           <div className="flex items-center gap-4">
-            {/* Brand avatar */}
-            <div className="w-14 h-14 rounded-xl flex items-center justify-center text-xl font-semibold text-white shrink-0 shadow-lg"
+            {/* Brand avatar — use KG logo if available */}
+            <div className="w-14 h-14 rounded-xl flex items-center justify-center text-xl font-semibold text-white shrink-0 shadow-lg overflow-hidden"
               style={{ background: `linear-gradient(135deg, ${brandFrom}, ${brandTo})` }}
             >
-              {client.name.charAt(0)}
+              {(client.company_logo_url ?? client.logo_url) ? (
+                <img src={client.company_logo_url ?? client.logo_url} alt={client.name} className="w-full h-full object-contain p-1" />
+              ) : client.name.charAt(0)}
             </div>
             <div>
               <h1 className="text-2xl font-bold">{client.name}</h1>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
-                <Badge variant={client.is_active ? 'default' : 'secondary'}>
-                  {client.is_active ? 'Active' : 'Inactive'}
+                <Badge variant={client.client_since ? 'default' : 'secondary'}>
+                  {client.client_since ? 'Client' : client.prospect_at ? 'Prospect' : 'Active'}
                 </Badge>
+                {client.company_industry && (
+                  <span className="text-xs text-muted-foreground">{client.company_industry}</span>
+                )}
                 <span className="text-xs text-muted-foreground font-mono">{client.slug}</span>
                 <span className="text-xs text-muted-foreground">
                   {allProjects.length} project{allProjects.length !== 1 ? 's' : ''}
@@ -515,16 +621,40 @@ export function ClientOverview() {
             </Suspense>
           )}
           {tab === 'intel' && (
-            client.crm_person_id
-              ? <PersonIntelPage personId={client.crm_person_id} embedded={true} />
-              : (
-                <div className="text-center py-16 text-muted-foreground">
-                  <Brain className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                  <p className="text-sm font-medium mb-1">No CRM Person Linked</p>
-                  <p className="text-xs opacity-70 max-w-xs mx-auto">
-                    Link a CRM person to this client to access intelligence profiles and research.
-                  </p>
+            client.company_id
+              ? (
+                <div className="space-y-4">
+                  <div className="flex gap-2 flex-wrap">
+                    <Link to={`/companies/${client.company_id}/intel`}>
+                      <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-indigo-700/60 text-indigo-400 hover:bg-indigo-950/40 text-xs font-medium transition-colors">
+                        <Brain className="h-3.5 w-3.5" /> Company Intel →
+                      </button>
+                    </Link>
+                    {client.primary_person_id && (
+                      <Link to={`/people/${client.primary_person_id}/intel`}>
+                        <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground text-xs font-medium transition-colors">
+                          <Users className="h-3.5 w-3.5" /> Person Intel →
+                        </button>
+                      </Link>
+                    )}
+                  </div>
+                  {client.crm_person_id && (
+                    <PersonIntelPage personId={client.crm_person_id} embedded={true} />
+                  )}
                 </div>
+              )
+              : (
+                client.crm_person_id
+                  ? <PersonIntelPage personId={client.crm_person_id} embedded={true} />
+                  : (
+                    <div className="text-center py-16 text-muted-foreground">
+                      <Brain className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                      <p className="text-sm font-medium mb-1">No Knowledge Graph Link</p>
+                      <p className="text-xs opacity-70 max-w-xs mx-auto">
+                        Link this client to a company in the Knowledge Graph to access intel.
+                      </p>
+                    </div>
+                  )
               )
           )}
           {tab === 'integrations' && <IntegrationsPlaceholderTab />}

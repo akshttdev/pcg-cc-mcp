@@ -22,7 +22,7 @@ use db::{
     db_uuid::DbUuid,
     models::{
         person::Person,
-        project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource},
+        project_knowledge_source::{KnowledgeOwnerScope, KnowledgeSourceType, ProjectKnowledgeSource},
     },
 };
 use deployment::Deployment;
@@ -281,6 +281,30 @@ async fn run_research_direct(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use serde_json::json;
 
+    // Pull any prior KG entity entries for this person to prime the research
+    let prior_kg = if let Some(pid) = project_id {
+        ProjectKnowledgeSource::find_by_project(pool, pid)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|s| {
+                s.source_type == "entity"
+                    && s.source_id == person.id.as_ref()
+                    && !s.is_stale
+            })
+            .filter_map(|s| s.source_summary)
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        String::new()
+    };
+
+    let prior_context_section = if prior_kg.is_empty() {
+        String::new()
+    } else {
+        format!("\n\nPrior intelligence already collected (do not repeat, build on this):\n{}", prior_kg)
+    };
+
     let system = "You are Scout, Social Intelligence Analyst for Power Club Global. \
         Your specialty is finding and structuring online presence data about individuals. \
         Research the person thoroughly based on your knowledge. Return their: \
@@ -292,11 +316,12 @@ async fn run_research_direct(
         Provide a comprehensive intelligence brief about this person and their company. \
         Include: professional background, notable achievements, social media presence, \
         company overview, competitive positioning, and any publicly available information. \
-        Write as a structured intelligence report, not JSON.",
+        Write as a structured intelligence report, not JSON.{}",
         person.full_name,
         person.company_name.as_deref().unwrap_or("unknown"),
         person.email.as_deref().unwrap_or("unknown"),
         person.job_title.as_deref().unwrap_or("unknown"),
+        prior_context_section,
     );
 
     let client = reqwest::Client::new();
@@ -444,22 +469,19 @@ pub async fn write_intelligence_results(
     .execute(pool)
     .await?;
 
-    // Register in knowledge graph if project_id provided
-    if let Some(pid) = project_id {
-        let source_id = person_id.to_string();
-        let source_summary = Some(format!("Scout intelligence: {}", summary));
-
-        let _ = ProjectKnowledgeSource::upsert_source(
-            pool,
-            pid,
-            &KnowledgeSourceType::Entity,
-            &source_id,
-            &format!("Person: {}", full_name),
-            source_summary.as_deref(),
-            confidence,
-        )
-        .await;
-    }
+    // Register in knowledge graph (project scope if available, always org scope)
+    let source_summary = format!("Scout intelligence: {}", summary);
+    register_person_in_kg(
+        pool,
+        person_id,
+        full_name,
+        &source_summary,
+        confidence,
+        project_id,
+        None,
+        None,
+    )
+    .await;
 
     tracing::info!(
         "Intelligence research complete for person {} (confidence: {:.0}%)",
@@ -467,6 +489,123 @@ pub async fn write_intelligence_results(
         confidence * 100.0
     );
     Ok(())
+}
+
+/// Write a person entity into every applicable Knowledge Graph scope:
+///  1. Project scope  — if project_id provided
+///  2. Org scope      — from person_organization_contacts; ALSO derived from project.organization_id
+///  3. Company scope  — from person_company_roles joined to companies table
+///
+/// source_id_override: stable ID for the entry (person UUID for final pass, pass UUID per-pass).
+/// title_prefix: shown in KG source list (e.g. "Person", "Pass #2 (business_profile)").
+async fn register_person_in_kg(
+    pool: &sqlx::SqlitePool,
+    person_id: &str,
+    full_name: &str,
+    summary: &str,
+    confidence: f64,
+    project_id: Option<Uuid>,
+    source_id_override: Option<&str>,
+    title_prefix: Option<&str>,
+) {
+    let source_id = source_id_override.unwrap_or(person_id);
+    let prefix = title_prefix.unwrap_or("Person");
+    let title = format!("{}: {}", prefix, &full_name[..full_name.len().min(60)]);
+
+    // ── 1. Project scope ────────────────────────────────────────────────────
+    if let Some(pid) = project_id {
+        let _ = ProjectKnowledgeSource::upsert_scoped(
+            pool,
+            &KnowledgeOwnerScope::Project,
+            &pid.to_string(),
+            Some(pid),
+            &KnowledgeSourceType::Entity,
+            source_id,
+            &title,
+            Some(summary),
+            confidence,
+        )
+        .await;
+    }
+
+    // ── 2. Org scope ─────────────────────────────────────────────────────────
+    // Collect org IDs from two sources: person_organization_contacts + project.organization_id
+    let mut org_ids: Vec<String> = Vec::new();
+
+    #[derive(sqlx::FromRow)] struct OrgRow { org_id: Uuid }
+
+    if let Ok(rows) = sqlx::query_as::<_, OrgRow>(
+        "SELECT organization_id AS org_id FROM person_organization_contacts WHERE person_id = ?",
+    )
+    .bind(person_id)
+    .fetch_all(pool)
+    .await
+    {
+        for r in rows { org_ids.push(r.org_id.to_string()); }
+    }
+
+    // Derive org from project context (the org that owns the project that triggered research)
+    if let Some(pid) = project_id {
+        #[derive(sqlx::FromRow)] struct ProjOrgRow { org_id: Option<Uuid> }
+        if let Ok(Some(row)) = sqlx::query_as::<_, ProjOrgRow>(
+            "SELECT organization_id AS org_id FROM projects WHERE id = ?",
+        )
+        .bind(pid)
+        .fetch_optional(pool)
+        .await
+        {
+            if let Some(oid) = row.org_id {
+                let s = oid.to_string();
+                if !org_ids.contains(&s) { org_ids.push(s); }
+            }
+        }
+    }
+
+    org_ids.dedup();
+    for org_id in &org_ids {
+        let _ = ProjectKnowledgeSource::upsert_scoped(
+            pool,
+            &KnowledgeOwnerScope::Organization,
+            org_id,
+            None,
+            &KnowledgeSourceType::Entity,
+            source_id,
+            &title,
+            Some(summary),
+            confidence,
+        )
+        .await;
+    }
+
+    // ── 3. Company scope ─────────────────────────────────────────────────────
+    #[derive(sqlx::FromRow)] struct CompanyRow { company_id: Uuid, company_name: String }
+
+    if let Ok(companies) = sqlx::query_as::<_, CompanyRow>(
+        "SELECT c.id AS company_id, c.name AS company_name \
+         FROM person_company_roles pcr \
+         JOIN companies c ON c.id = pcr.company_id \
+         WHERE pcr.person_id = ?",
+    )
+    .bind(person_id)
+    .fetch_all(pool)
+    .await
+    {
+        for co in &companies {
+            let co_title = format!("{} at {}", &full_name[..full_name.len().min(40)], co.company_name);
+            let _ = ProjectKnowledgeSource::upsert_scoped(
+                pool,
+                &KnowledgeOwnerScope::Company,
+                &co.company_id.to_string(),
+                None,
+                &KnowledgeSourceType::Entity,
+                source_id,
+                &co_title,
+                Some(summary),
+                confidence,
+            )
+            .await;
+        }
+    }
 }
 
 // ── Text extraction helpers ───────────────────────────────────────────────────
@@ -757,64 +896,89 @@ pub async fn run_company_research_direct(
     );
     let client = reqwest::Client::new();
 
+    // Fetch the company's known website to anchor the search to the right entity
+    let known_website: Option<String> = sqlx::query_scalar(
+        "SELECT website FROM companies WHERE id = ?"
+    )
+    .bind(company_id.as_bytes().as_slice())
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
+    .flatten();
+
+    let website_ctx = match &known_website {
+        Some(w) if !w.trim().is_empty() => format!(
+            " Their official website is {}. Search that domain directly — do NOT research similarly-named businesses.",
+            w
+        ),
+        _ => String::new(),
+    };
+
     let prompt = format!(
-        "Research the company '{}'. Provide a comprehensive company intelligence brief including: \
-        1) Company overview and background, \
-        2) Website and contact information, \
-        3) Social media presence, \
-        4) Leadership and key personnel, \
-        5) Business model and services/products, \
-        6) Market positioning and competitive landscape, \
-        7) Key opportunities for a creative agency partnership. \
-        Write as a structured intelligence report.",
-        company_name
+        "Research the company '{name}' for Power Club Global's CRM.{website_ctx} \
+        Use web search to gather current, accurate information about THIS specific business. \
+        Return ONLY a valid JSON object (no markdown, no preamble) with these exact keys:\n\
+        {{\
+          \"summary\": \"one-sentence overview\",\
+          \"executive_summary\": \"2-3 paragraph executive overview covering what they do, market position, and relevance\",\
+          \"company_overview\": \"detailed description of services, business model, history\",\
+          \"market_analysis\": \"market position, industry size, trends, growth trajectory\",\
+          \"brand_positioning\": \"how they position themselves, brand identity, messaging\",\
+          \"target_clients\": \"ideal customer profile, demographics, psychographics\",\
+          \"digital_presence\": \"website quality, social media footprint, SEO presence, content strategy\",\
+          \"competitors\": [{{\
+            \"name\": \"competitor name\",\
+            \"website\": \"url or null\",\
+            \"strengths\": \"what they do well\",\
+            \"weaknesses\": \"where they are weak\",\
+            \"threat_level\": \"high|medium|low\"\
+          }}],\
+          \"pain_points\": [{{\
+            \"point\": \"specific challenge or gap\",\
+            \"severity\": \"high|medium|low\"\
+          }}],\
+          \"opportunities\": [{{\
+            \"title\": \"opportunity name\",\
+            \"description\": \"how PCG could help\",\
+            \"priority\": \"high|medium|low\",\
+            \"estimated_value\": \"rough revenue estimate e.g. $5K-$15K/mo\"\
+          }}],\
+          \"recommended_services\": [{{\
+            \"name\": \"service name\",\
+            \"rationale\": \"why this fits\",\
+            \"timeline\": \"e.g. Immediate, 3-6 months\"\
+          }}],\
+          \"sources\": [{{\
+            \"title\": \"page title\",\
+            \"url\": \"source url\"\
+          }}],\
+          \"founder_name\": \"name or null\",\
+          \"industry\": \"industry category\",\
+          \"founded_year\": 2020,\
+          \"size_estimate\": \"1-5 | 5-20 | 20-100 | 100+ employees\",\
+          \"website\": \"primary website url\",\
+          \"description\": \"one-line tagline or description\",\
+          \"instagram\": \"handle or url or null\",\
+          \"twitter\": \"handle or url or null\",\
+          \"linkedin\": \"profile url or null\",\
+          \"facebook\": \"page url or null\",\
+          \"confidence\": 0.85\
+        }}",
+        name = company_name,
+        website_ctx = website_ctx
     );
 
-    let system = "You are Scout, a business intelligence analyst. Research companies thoroughly and produce comprehensive intelligence briefs.";
+    let system = "You are Scout, a business intelligence analyst for Power Club Global. \
+        Research companies thoroughly and return ONLY valid JSON — no markdown, no preamble, no backticks. \
+        You MUST include every key specified in the user's request. Use null for any field you cannot find.";
 
-    // Try OpenAI first
+    // Use Anthropic with web search (authoritative, current data)
     let mut response_text = String::new();
-    if let Ok(openai_key) = std::env::var("OPENAI_API_KEY") {
-        let body = serde_json::json!({
-            "model": "gpt-4o",
-            "max_tokens": 3000,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": prompt}
-            ]
-        });
-        match client
-            .post("https://api.openai.com/v1/chat/completions")
-            .header("Authorization", format!("Bearer {}", openai_key))
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await
+    {
+        let api_key = match std::env::var("ANTHROPIC_API_KEY")
+            .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
         {
-            Ok(resp) if resp.status().is_success() => {
-                if let Ok(val) = resp.json::<serde_json::Value>().await {
-                    if let Some(text) = val["choices"][0]["message"]["content"].as_str() {
-                        response_text = text.to_string();
-                        tracing::info!(
-                            "[Scout] OpenAI company research for {}: {} chars",
-                            company_name,
-                            response_text.len()
-                        );
-                    }
-                }
-            }
-            _ => {
-                tracing::warn!(
-                    "[Scout] OpenAI failed for company {}, trying Anthropic",
-                    company_name
-                );
-            }
-        }
-    }
-
-    // Fallback to Anthropic
-    if response_text.is_empty() {
-        let api_key = match std::env::var("ANTHROPIC_API_KEY") {
             Ok(k) => k,
             Err(_) => {
                 write_company_intel_results(pool, company_id, "No LLM API key configured", 0.0)
@@ -824,9 +988,10 @@ pub async fn run_company_research_direct(
         };
 
         let body = serde_json::json!({
-            "model": "claude-opus-4-6",
-            "max_tokens": 3000,
-            "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 6}],
+            "model": "claude-sonnet-4-6",
+            "max_tokens": 6000,
+            "system": system,
+            "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 8}],
             "messages": [{"role": "user", "content": prompt}]
         });
 
@@ -888,25 +1053,28 @@ pub async fn run_company_research_direct(
         .and_then(|v| v.as_str())
         .unwrap_or_default();
 
+    let raw_json = serde_json::to_string(&parsed).unwrap_or_else(|_| response_text.clone());
     let _ = sqlx::query(
         "UPDATE companies SET \
          intelligence_status = 'done', \
          intelligence_summary = ?, \
+         intelligence_raw = ?, \
          intelligence_confidence = ?, \
          intelligence_last_run_at = datetime('now','subsec'), \
-         intelligence_agent = 'astra', \
+         intelligence_agent = 'scout', \
          website = COALESCE(NULLIF(?, ''), website), \
          description = COALESCE(NULLIF(?, ''), description), \
          industry = COALESCE(NULLIF(?, ''), industry), \
          updated_at = datetime('now','subsec') \
-         WHERE CAST(id AS TEXT) = ?",
+         WHERE id = ?",
     )
     .bind(&summary)
+    .bind(&raw_json)
     .bind(confidence)
     .bind(website)
     .bind(description)
     .bind(industry)
-    .bind(company_id.to_string())
+    .bind(company_id.as_bytes().as_slice())
     .execute(pool)
     .await;
 
@@ -937,11 +1105,13 @@ pub async fn run_company_research_direct(
         }
     }
 
-    // Register in knowledge graph if project_id provided
+    // Register in project KG scope (if project_id provided)
     if let Some(pid) = project_id {
-        let _ = ProjectKnowledgeSource::upsert_source(
+        let _ = ProjectKnowledgeSource::upsert_scoped(
             pool,
-            pid,
+            &KnowledgeOwnerScope::Project,
+            &pid.to_string(),
+            Some(pid),
             &KnowledgeSourceType::Entity,
             &company_id.to_string(),
             &format!("Company: {}", company_name),
@@ -950,12 +1120,92 @@ pub async fn run_company_research_direct(
         )
         .await;
     }
+    // Always register in the company's own KG scope
+    let _ = ProjectKnowledgeSource::upsert_scoped(
+        pool,
+        &KnowledgeOwnerScope::Company,
+        &company_id.to_string(),
+        None,
+        &KnowledgeSourceType::Entity,
+        &company_id.to_string(),
+        &format!("Company: {}", company_name),
+        Some(&summary),
+        confidence,
+    )
+    .await;
+
+    // Auto-create human review tasks for any deals linked to this company
+    auto_create_intel_review_tasks(pool, company_id, company_name).await;
 
     tracing::info!(
         "Company research complete for {} (confidence: {:.0}%)",
         company_name,
         confidence * 100.0
     );
+}
+
+/// After Stage 1 intel completes, auto-create a "Review Intel" task on each deal's project
+async fn auto_create_intel_review_tasks(
+    pool: &sqlx::SqlitePool,
+    company_id: Uuid,
+    company_name: &str,
+) {
+    // Find deals linked to clients that map to this company
+    #[derive(sqlx::FromRow)]
+    struct DealRow {
+        deal_id: String,
+        project_id: Option<String>,
+        owner_user_id: Option<String>,
+    }
+
+    let company_id_str = company_id.to_string();
+
+    let deals: Vec<DealRow> = sqlx::query_as(
+        r#"SELECT d.id as deal_id, d.project_id, d.owner_user_id
+           FROM crm_deals d
+           JOIN clients cl ON cl.id = d.client_id
+           WHERE cl.company_id = ?
+             AND d.stage NOT IN ('won', 'lost')
+             AND d.project_id IS NOT NULL"#,
+    )
+    .bind(&company_id_str)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    for deal in &deals {
+        let Some(project_id) = &deal.project_id else { continue };
+        let task_id = uuid::Uuid::new_v4().to_string();
+        let title = format!("Review Intel: {}", company_name);
+        let description = format!(
+            "Phase I Scout research is complete for {}. \
+             Review the intel, correct any errors (website, contacts, market data), \
+             and approve to trigger Phase II deep research (Astra Business Analysis Report).",
+            company_name
+        );
+        let _ = sqlx::query(
+            "INSERT INTO tasks (id, project_id, crm_deal_id, title, description, status, priority,
+             assignee_id, tags, created_by, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, 'todo', 'high', ?, 'intel_review', 'system',
+             datetime('now','subsec'), datetime('now','subsec'))",
+        )
+        .bind(&task_id)
+        .bind(project_id)
+        .bind(&deal.deal_id)
+        .bind(&title)
+        .bind(&description)
+        .bind(&deal.owner_user_id)
+        .execute(pool)
+        .await;
+    }
+
+    if !deals.is_empty() {
+        tracing::info!(
+            "[Scout] Created {} intel review tasks for company {}",
+            deals.len(),
+            company_name
+        );
+    }
 }
 
 async fn write_company_intel_results(
@@ -971,11 +1221,11 @@ async fn write_company_intel_results(
          intelligence_confidence = ?, \
          intelligence_last_run_at = datetime('now','subsec'), \
          updated_at = datetime('now','subsec') \
-         WHERE CAST(id AS TEXT) = ?",
+         WHERE id = ?",
     )
     .bind(summary)
     .bind(confidence)
-    .bind(company_id.to_string())
+    .bind(company_id.as_bytes().as_slice())
     .execute(pool)
     .await;
 }
@@ -1031,15 +1281,16 @@ pub async fn trigger_research_for_person(
 
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
+        // Single-pass research (legacy / quick)
         .route("/persons/{id}/research", post(trigger_research))
-        .route(
-            "/persons/{id}/intelligence-status",
-            get(get_intelligence_status),
-        )
-        .route(
-            "/companies/{id}/intelligence-status",
-            get(get_company_intelligence_status),
-        )
+        // Iterative Scout pass system
+        .route("/persons/{id}/research-passes", get(list_research_passes))
+        .route("/persons/{id}/research-passes/next", post(trigger_next_research_pass))
+        // Business reports
+        .route("/persons/{id}/reports", get(list_person_reports))
+        // Status polling
+        .route("/persons/{id}/intelligence-status", get(get_intelligence_status))
+        .route("/companies/{id}/intelligence-status", get(get_company_intelligence_status))
         .with_state(deployment.clone())
 }
 
@@ -1114,7 +1365,7 @@ pub async fn trigger_next_research_pass(
         body.custom_prompt.as_deref(),
     )
     .await?;
-    let pass_id = pass.id;
+    let pass_id = pass.id.clone();
 
     // Build research prompt incorporating all prior context
     let intel = person
@@ -1131,8 +1382,10 @@ pub async fn trigger_next_research_pass(
     let pool_clone = pool.clone();
     let pool_for_err = pool.clone();
     let focus_for_resp = focus.clone();
+    let pass_id_for_resp = pass_id.clone();
 
     tokio::spawn(async move {
+        let pass_id_err = pass_id.clone();
         if let Err(e) = run_research_pass(
             pool_clone,
             pass_id,
@@ -1147,19 +1400,19 @@ pub async fn trigger_next_research_pass(
         )
         .await
         {
-            tracing::error!("Research pass failed for {}: {}", pass_id, e);
+            tracing::error!("Research pass failed for {}: {}", &pass_id_err, e);
             let _ = sqlx::query(
                 "UPDATE person_research_passes SET status = 'failed', error = ?, completed_at = datetime('now','subsec') WHERE id = ?",
             )
             .bind(e.to_string())
-            .bind(pass_id)
+            .bind(&pass_id_err)
             .execute(&pool_for_err)
             .await;
         }
     });
 
     Ok(Json(ApiResponse::success(serde_json::json!({
-        "pass_id": pass_id,
+        "pass_id": pass_id_for_resp,
         "pass_number": pass_number,
         "focus": focus_for_resp,
         "status": "queued"
@@ -1180,18 +1433,18 @@ pub async fn list_person_reports(
 
 fn auto_focus(pass_number: i64) -> String {
     match pass_number {
-        1 => "identity",
-        2 => "market_position",
-        3 => "competitors",
-        4 => "target_clients",
-        _ => "deep_strategy",
+        1 => "identity_social",
+        2 => "business_profile",
+        3 => "media_content",
+        4 => "audience_market",
+        _ => "pcg_opportunity",
     }
     .to_string()
 }
 
 async fn run_research_pass(
     pool: sqlx::SqlitePool,
-    pass_id: Uuid,
+    pass_id: String,
     person_id: Uuid,
     pass_number: i64,
     focus: &str,
@@ -1206,7 +1459,7 @@ async fn run_research_pass(
 
     // Mark running
     sqlx::query("UPDATE person_research_passes SET status = 'running' WHERE id = ?")
-        .bind(pass_id)
+        .bind(&pass_id)
         .execute(&pool)
         .await?;
 
@@ -1214,6 +1467,63 @@ async fn run_research_pass(
         .map_err(|_| anyhow::anyhow!("ANTHROPIC_API_KEY not set"))?;
 
     let focus_instructions = match focus {
+        "identity_social" => format!(
+            "Research who {} ({}) is as a person and their full social media presence. Find: \
+             1) Full confirmed name, location (city/state), professional headline. \
+             2) Best available photo URL (LinkedIn headshot, Instagram profile pic, or website). \
+             3) ALL social media handles with platform, handle, full profile URL, follower count, \
+                following count, bio text, verified status, engagement rate if discoverable, \
+                post count, top content themes (3-5 topics they post about most). \
+             4) Website(s), Linktree, booking pages, any other online presence URLs. \
+             5) Short personal brand statement or tagline if they use one.",
+            name, company
+        ),
+        "business_profile" => format!(
+            "Research all of {}'s business affiliations and the financials behind their primary venture(s). Find: \
+             1) Current and past business roles (company name, their role/title, start year, end year, \
+                whether current, company website URL, company type/category, brief description). \
+             2) Revenue estimates for their primary business with the basis for the estimate. \
+             3) Pricing model — specific product/service tiers with prices if publicly visible. \
+             4) Platform stack — what tools, apps, or platforms they use to run their business. \
+             5) Estimated active customers/members/clients.",
+            name
+        ),
+        "media_content" => format!(
+            "Research {}'s public media presence and content strategy. Find: \
+             1) Podcast appearances (as guest or host) — show name, episode title, date, URL. \
+             2) Press mentions and news articles — publication, headline, date, URL. \
+             3) YouTube features or speaking events — event/video name, date, URL. \
+             4) Content strategy: primary platforms, posting frequency per platform, \
+                content types (reels/stories/long-form/etc), brand voice description, \
+                best performing content type, hashtag strategy if visible. \
+             5) Any notable collaborations, brand deals, or partnerships.",
+            name
+        ),
+        "audience_market" => format!(
+            "Research the market position and audience of {} / {}. Find: \
+             1) Target audience demographics (age range, gender breakdown if known, interests, location). \
+             2) Audience engagement signals (comment quality, community vibe, testimonials). \
+             3) Top 4-6 direct competitors — for each: name, website, how they differ, threat level (high/medium/low). \
+             4) Market category, industry standing (niche vs mainstream), geographic focus. \
+             5) Unique differentiators that separate {} from competitors.",
+            name, company, name
+        ),
+        "pcg_opportunity" => format!(
+            "Perform a PCG agency opportunity assessment for {} ({}). PCG is a full-service creative agency \
+             offering: Brand Identity, VSL/Video Production, Landing Pages, Sales Funnels, Social Strategy, \
+             App/Content Creation, PR/Media. Find: \
+             1) Specific pain points that map to PCG services (what is visually inconsistent, \
+                what is missing from their funnel, where their online presence is weak). \
+             2) Budget signals — what have they already invested in, what pricing tier do they sell at, \
+                estimated monthly/annual revenue. \
+             3) Decision-making style — are they DIY, do they hire help, do they act fast or deliberate. \
+             4) Communication style and preferences based on their content and public interactions. \
+             5) Overall PCG opportunity score 0-10 with rationale. \
+             6) Recommended PCG engagement strategy — which service to lead with, what angle to use, \
+                what NOT to say to this person.",
+            name, company
+        ),
+        // Legacy focuses (backward compat)
         "identity" => format!(
             "Research who {} at {} is: professional background, career history, social presence, \
              personal brand, public statements, media appearances.",
@@ -1260,23 +1570,84 @@ async fn run_research_pass(
         )
     };
 
-    let system = "You are an expert business intelligence researcher. Conduct thorough web research \
-        and return structured findings. Always respond with valid JSON only.";
+    let system = "You are Scout, Social Intelligence Analyst for Power Club Global (PCG), a full-service \
+        creative agency. Conduct thorough web research using your search tools and return structured \
+        findings as valid JSON only. Be specific — find real handles, real follower counts, real URLs. \
+        Never fabricate data; mark uncertain fields with null. Always respond with valid JSON only.";
 
     let prompt = format!(
         "RESEARCH TASK — Pass #{pass_number} | Focus: {focus}\n\n\
         Subject: {name} ({company})\n\
         {existing_section}{prior_section}\n\n\
         FOCUS FOR THIS PASS:\n{focus_instructions}\n\n\
-        Return JSON:\n\
+        Return ONLY valid JSON with this structure (include all fields, use null for unknown):\n\
         {{\n\
-          \"summary\": \"3-5 sentence summary of findings for this pass\",\n\
+          \"summary\": \"3-5 sentence summary of what was discovered in this pass\",\n\
           \"key_findings\": [\n\
-            {{\"finding\": \"string\", \"confidence\": \"high|medium|low\", \"source\": \"where found or inferred\"}}\n\
+            {{\"finding\": \"specific fact discovered\", \"confidence\": \"high|medium|low\", \"source\": \"URL or platform where found\"}}\n\
           ],\n\
-          \"search_queries\": [\"queries you would use to verify this\"],\n\
-          \"updated_intelligence\": \"comprehensive updated intelligence summary incorporating all passes\",\n\
-          \"confidence_score\": 0.0-1.0\n\
+          \"search_queries\": [\"actual queries used to find this\"],\n\
+          \"updated_intelligence\": \"full cumulative intelligence summary incorporating all passes so far\",\n\
+          \"confidence_score\": 0.0,\n\
+          \"photo_url\": \"best available photo URL or null\",\n\
+          \"location\": \"City, State/Country or null\",\n\
+          \"social_profiles\": [\n\
+            {{\n\
+              \"platform\": \"instagram|tiktok|linkedin|twitter|youtube|facebook|website|linktree\",\n\
+              \"handle\": \"handle without @ or null\",\n\
+              \"url\": \"full profile URL\",\n\
+              \"follower_count\": 0,\n\
+              \"following_count\": 0,\n\
+              \"bio\": \"profile bio text or null\",\n\
+              \"verified\": false,\n\
+              \"engagement_rate\": 0.0,\n\
+              \"post_count\": 0,\n\
+              \"content_themes\": [\"theme1\", \"theme2\"]\n\
+            }}\n\
+          ],\n\
+          \"business_affiliations\": [\n\
+            {{\n\
+              \"company_name\": \"name\",\n\
+              \"role\": \"Founder|CEO|etc\",\n\
+              \"title\": \"exact job title\",\n\
+              \"start_date\": \"2021 or null\",\n\
+              \"end_date\": null,\n\
+              \"current\": true,\n\
+              \"description\": \"what the company does\",\n\
+              \"company_url\": \"https://...\",\n\
+              \"company_type\": \"category\"\n\
+            }}\n\
+          ],\n\
+          \"media_appearances\": [\n\
+            {{\"type\": \"podcast|press|video|speaking\", \"title\": \"title\", \"publication\": \"name\", \"date\": \"YYYY-MM\", \"url\": \"URL or null\", \"summary\": \"one sentence\"}}\n\
+          ],\n\
+          \"content_strategy\": {{\n\
+            \"primary_platforms\": [\"instagram\"],\n\
+            \"posting_frequency\": \"description or null\",\n\
+            \"content_types\": [\"reels\", \"stories\"],\n\
+            \"brand_voice\": \"description or null\",\n\
+            \"best_performing\": \"description or null\"\n\
+          }},\n\
+          \"pcg_opportunity\": {{\n\
+            \"score\": 0.0,\n\
+            \"recommended_tier\": \"Tier 1|Tier 2|Tier 3 or null\",\n\
+            \"recommended_services\": [\"Brand Kit\"],\n\
+            \"pain_points\": [\"specific gap mapped to PCG service\"],\n\
+            \"budget_signals\": \"evidence-based estimate or null\",\n\
+            \"engagement_style\": \"communication preference description or null\",\n\
+            \"best_approach\": \"recommended opening angle for PCG pitch or null\"\n\
+          }},\n\
+          \"background\": \"professional background narrative or null\",\n\
+          \"positioning\": \"market positioning or null\",\n\
+          \"specialization\": \"area of expertise or null\",\n\
+          \"expertise\": [\"skill1\", \"skill2\"],\n\
+          \"target_clients\": [\"who they serve\"],\n\
+          \"competitors\": [\"competitor name — how they differ\"],\n\
+          \"strategy\": \"strategic direction or null\",\n\
+          \"communication_style\": \"how they communicate or null\",\n\
+          \"opportunities\": [\"opportunity for PCG\"],\n\
+          \"risks\": [\"risk or objection\"],\n\
+          \"network\": \"notable connections or null\"\n\
         }}"
     );
 
@@ -1349,7 +1720,7 @@ async fn run_research_pass(
     .bind(&key_findings)
     .bind(&search_queries)
     .bind(confidence_score)
-    .bind(pass_id)
+    .bind(&pass_id)
     .execute(&pool)
     .await?;
 
@@ -1361,77 +1732,170 @@ async fn run_research_pass(
             2 | 3 => "moderate",
             _ => "deep",
         };
+
+        // Extract photo_url and location from parsed JSON
+        let photo_url = parsed["photo_url"].as_str().filter(|s| !s.is_empty() && *s != "null");
+        let location = parsed["location"].as_str().filter(|s| !s.is_empty() && *s != "null");
+
         sqlx::query(
             "UPDATE persons SET
                 intelligence_summary = ?,
+                intelligence_raw = ?,
                 intelligence_status = 'done',
                 intelligence_last_run_at = datetime('now','subsec'),
                 intelligence_confidence = ?,
                 intelligence_agent = 'claude',
                 research_pass_count = ?,
                 research_depth = ?,
+                avatar_url = COALESCE(NULLIF(?, ''), avatar_url),
                 updated_at = datetime('now','subsec')
              WHERE id = ?",
         )
         .bind(&updated_intel)
+        .bind(json_str)
         .bind(new_confidence)
         .bind(pass_number)
         .bind(depth)
+        .bind(photo_url.unwrap_or(""))
         .bind(person_id)
         .execute(&pool)
         .await?;
-    }
 
-    // Register each key finding in the project knowledge graph
-    if let Some(pid) = project_id {
-        let title = format!(
-            "Research Pass #{}: {} — {}",
-            pass_number,
-            focus,
-            &name[..name.len().min(40)]
-        );
-        let _ = ProjectKnowledgeSource::upsert_source(
-            &pool,
-            pid,
-            &KnowledgeSourceType::Entity,
-            &pass_id.to_string(),
-            &title,
-            Some(&summary),
-            confidence_score,
-        )
-        .await;
-    }
+        // Update location if found (stored in company_name fallback via notes or a dedicated col)
+        // For now store in intelligence_raw which we already wrote above
 
-    // Also register in the org-level knowledge graph (owner_type='organization')
-    // Find org from person's associations
-    #[derive(sqlx::FromRow)]
-    struct OrgRow {
-        org_id: Option<Uuid>,
-    }
-    if let Ok(Some(row)) = sqlx::query_as::<_, OrgRow>(
-        "SELECT poc.organization_id AS org_id FROM person_org_contacts poc WHERE poc.person_id = ? LIMIT 1",
-    )
-    .bind(person_id)
-    .fetch_optional(&pool)
-    .await {
-        if let Some(org_id) = row.org_id {
-            let title = format!("[Org KG] Research Pass #{}: {} — {}", pass_number, focus, &name[..name.len().min(40)]);
-            let _ = sqlx::query(
-                "INSERT OR IGNORE INTO project_knowledge_sources
-                 (id, owner_type, owner_id, source_type, source_id, source_title, source_summary,
-                  coverage_score, auto_registered, is_active, created_at, updated_at)
-                 VALUES (?, 'organization', ?, 'entity', ?, ?, ?, ?, 1, 1, datetime('now','subsec'), datetime('now','subsec'))",
-            )
-            .bind(Uuid::new_v4())
-            .bind(org_id.to_string())
-            .bind(pass_id.to_string())
-            .bind(&title)
-            .bind(&summary)
-            .bind(confidence_score)
-            .execute(&pool)
-            .await;
+        // Upsert social profiles extracted from this pass
+        if let Some(profiles) = parsed["social_profiles"].as_array() {
+            for sp in profiles {
+                let platform = match sp["platform"].as_str() {
+                    Some(p) if !p.is_empty() => p,
+                    _ => continue,
+                };
+                let handle = sp["handle"].as_str().unwrap_or("").to_string();
+                let profile_url = sp["url"].as_str().unwrap_or("").to_string();
+                let follower_count = sp["follower_count"].as_i64();
+                let following_count = sp["following_count"].as_i64();
+                let bio = sp["bio"].as_str().filter(|s| !s.is_empty() && *s != "null").map(|s| s.to_string());
+                let verified: i32 = if sp["verified"].as_bool().unwrap_or(false) { 1 } else { 0 };
+                let engagement_rate = sp["engagement_rate"].as_f64();
+                let post_count = sp["post_count"].as_i64();
+                let content_themes = serde_json::to_string(&sp["content_themes"]).ok()
+                    .filter(|s| s != "null" && s != "[]");
+
+                let _ = sqlx::query(
+                    "INSERT INTO person_social_profiles
+                        (id, person_id, platform, handle, profile_url, follower_count, following_count,
+                         bio, verified, engagement_rate, post_count, content_themes, last_synced_at,
+                         created_at, updated_at)
+                     VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','subsec'), datetime('now','subsec'), datetime('now','subsec'))
+                     ON CONFLICT(person_id, platform) DO UPDATE SET
+                        handle = COALESCE(NULLIF(excluded.handle, ''), handle),
+                        profile_url = COALESCE(NULLIF(excluded.profile_url, ''), profile_url),
+                        follower_count = COALESCE(excluded.follower_count, follower_count),
+                        following_count = COALESCE(excluded.following_count, following_count),
+                        bio = COALESCE(excluded.bio, bio),
+                        verified = excluded.verified,
+                        engagement_rate = COALESCE(excluded.engagement_rate, engagement_rate),
+                        post_count = COALESCE(excluded.post_count, post_count),
+                        content_themes = COALESCE(excluded.content_themes, content_themes),
+                        last_synced_at = datetime('now','subsec'),
+                        updated_at = datetime('now','subsec')",
+                )
+                .bind(person_id.to_string())
+                .bind(platform)
+                .bind(&handle)
+                .bind(&profile_url)
+                .bind(follower_count)
+                .bind(following_count)
+                .bind(&bio)
+                .bind(verified)
+                .bind(engagement_rate)
+                .bind(post_count)
+                .bind(&content_themes)
+                .execute(&pool)
+                .await;
+            }
+        }
+
+        // Upsert business affiliations extracted from this pass
+        if let Some(affiliations) = parsed["business_affiliations"].as_array() {
+            for aff in affiliations {
+                let company_name = match aff["company_name"].as_str() {
+                    Some(n) if !n.is_empty() => n,
+                    _ => continue,
+                };
+                let role = aff["role"].as_str().unwrap_or("contact");
+                let title = aff["title"].as_str().filter(|s| !s.is_empty() && *s != "null");
+                let start_date = aff["start_date"].as_str().filter(|s| !s.is_empty() && *s != "null");
+                let end_date = aff["end_date"].as_str().filter(|s| !s.is_empty() && *s != "null");
+                let description = aff["description"].as_str().filter(|s| !s.is_empty() && *s != "null");
+                let company_url = aff["company_url"].as_str().filter(|s| !s.is_empty() && *s != "null");
+                let company_type = aff["company_type"].as_str().filter(|s| !s.is_empty() && *s != "null");
+
+                // Try to find or create the company in the companies table
+                #[derive(sqlx::FromRow)]
+                struct CompanyRow { id: String }
+                let company_row = sqlx::query_as::<_, CompanyRow>(
+                    "SELECT CAST(id AS TEXT) as id FROM companies WHERE LOWER(name) = LOWER(?) LIMIT 1"
+                )
+                .bind(company_name)
+                .fetch_optional(&pool)
+                .await
+                .ok()
+                .flatten();
+
+                let company_id = if let Some(row) = company_row {
+                    row.id
+                } else {
+                    // Create minimal company record
+                    let new_id = uuid::Uuid::new_v4().to_string();
+                    let _ = sqlx::query(
+                        "INSERT OR IGNORE INTO companies (id, name, website, created_at, updated_at)
+                         VALUES (?, ?, ?, datetime('now','subsec'), datetime('now','subsec'))"
+                    )
+                    .bind(&new_id)
+                    .bind(company_name)
+                    .bind(company_url.unwrap_or(""))
+                    .execute(&pool)
+                    .await;
+                    new_id
+                };
+
+                // Insert company role if not already exists
+                let _ = sqlx::query(
+                    "INSERT OR IGNORE INTO person_company_roles
+                        (id, person_id, company_id, role, title, start_date, end_date,
+                         description, company_url, company_type, is_primary, created_at)
+                     VALUES (randomblob(16), ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, datetime('now','subsec'))"
+                )
+                .bind(person_id.to_string())
+                .bind(&company_id)
+                .bind(role)
+                .bind(title)
+                .bind(start_date)
+                .bind(end_date)
+                .bind(description)
+                .bind(company_url)
+                .bind(company_type)
+                .execute(&pool)
+                .await;
+            }
         }
     }
+
+    // Register this pass in all applicable KG scopes (project + org + company)
+    let pass_title_prefix = format!("Pass #{} ({})", pass_number, focus);
+    register_person_in_kg(
+        &pool,
+        &person_id.to_string(),
+        &name,
+        &summary,
+        confidence_score,
+        project_id,
+        Some(&pass_id),
+        Some(&pass_title_prefix),
+    )
+    .await;
 
     tracing::info!(
         "Research pass #{} complete for person {} ({})",

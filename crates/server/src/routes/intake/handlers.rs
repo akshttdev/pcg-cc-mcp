@@ -3,6 +3,7 @@
 use axum::{
     Extension, Json,
     extract::{Path, State},
+    response::Redirect,
 };
 use db::{
     db_uuid::DbUuid,
@@ -18,8 +19,8 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use super::{
-    EmailIntakePayload, GenerateReportRequest, RevisionRequest, UploadIntakePayload,
-    pipeline::run_intake_pipeline, report::run_report_generation,
+    EmailIntakePayload, GenerateReportRequest, Phase2ReportRequest, RevisionRequest, UploadIntakePayload,
+    pipeline::run_intake_pipeline, report::{run_report_generation, run_phase2_from_company_intel},
 };
 use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
@@ -592,4 +593,59 @@ pub async fn generate_report_handler(
         "person_id": person_id,
         "message": "Report generation started — poll GET /api/persons/:id/reports"
     }))))
+}
+
+/// POST /api/business-reports/phase2
+/// Approve intel review and trigger Astra Phase II deep research from company KG intel.
+pub async fn phase2_report_handler(
+    State(d): State<DeploymentImpl>,
+    Extension(access_context): Extension<AccessContext>,
+    Json(body): Json<Phase2ReportRequest>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
+    use deployment::Deployment;
+    let pool = d.db().pool.clone();
+    let company_id = body.company_id.clone();
+
+    // Mark review task complete if provided
+    if let Some(task_id) = &body.review_task_id {
+        let _ = sqlx::query(
+            "UPDATE tasks SET status = 'done', updated_at = datetime('now','subsec') WHERE id = ?",
+        )
+        .bind(task_id)
+        .execute(&pool)
+        .await;
+    }
+
+    let company_id_clone = company_id.clone();
+    let client_id = body.client_id.clone();
+    let deal_id = body.deal_id.clone();
+    let approved_by = access_context.user_id.to_string();
+
+    tokio::spawn(async move {
+        if let Err(e) = run_phase2_from_company_intel(
+            pool,
+            &company_id_clone,
+            client_id.as_deref(),
+            deal_id.as_deref(),
+            &approved_by,
+        )
+        .await
+        {
+            tracing::error!("Phase II report generation failed for company {}: {}", company_id_clone, e);
+        }
+    });
+
+    Ok(Json(ApiResponse::success(serde_json::json!({
+        "status": "queued",
+        "company_id": company_id,
+        "message": "Phase II deep research started — report will appear at /business-reports"
+    }))))
+}
+
+/// GET /api/business-reports/:id/pdf
+/// Redirects to the business report page with ?print=true — browser handles print-to-PDF.
+pub async fn business_report_pdf_redirect(
+    Path(id): Path<String>,
+) -> Redirect {
+    Redirect::temporary(&format!("/business-reports/{}?print=true", id))
 }

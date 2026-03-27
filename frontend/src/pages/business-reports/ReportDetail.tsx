@@ -1,5 +1,5 @@
-import { useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useCallback, useEffect } from 'react';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import { reportsApi, type BusinessReportRecord } from '@/lib/api';
@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   ArrowLeft, User, Building2, Globe, ExternalLink,
   TrendingUp, Users, Target, Zap, MapPin, AlertCircle, CheckCircle,
-  Star, ChevronRight, Printer, BookOpen, Loader2,
+  Star, ChevronRight, Printer, BookOpen, Loader2, Download,
 } from 'lucide-react';
 
 import { parseJson, fmtDate, severityColor, priorityDot, threatBadge, SectionHeader, IntelCard } from './report-helpers';
@@ -19,7 +19,16 @@ import { ReviewBanner } from './ReviewBanner';
 
 export function ReportDetail() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
+
+  // Auto-trigger print when ?print=true (e.g. from PDF redirect)
+  useEffect(() => {
+    if (searchParams.get('print') === 'true') {
+      const timer = setTimeout(() => window.print(), 800);
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams]);
 
   const { data: report, isLoading } = useQuery({
     queryKey: businessKeys.report(id!),
@@ -102,6 +111,11 @@ export function ReportDetail() {
           <Button variant="ghost" size="sm" className="gap-2 text-slate-400" onClick={() => window.print()}>
             <Printer className="w-4 h-4" /> Print
           </Button>
+          <a href={`/api/business-reports/${id}/pdf`} target="_blank" rel="noopener noreferrer">
+            <Button variant="outline" size="sm" className="gap-2 border-emerald-700/60 text-emerald-400 hover:bg-emerald-950/40">
+              <Download className="w-4 h-4" /> Download PDF
+            </Button>
+          </a>
         </div>
       </div>
 

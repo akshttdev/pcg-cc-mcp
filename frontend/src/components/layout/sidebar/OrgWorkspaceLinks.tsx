@@ -23,12 +23,13 @@ import {
   Radio,
   Network,
   GitBranch,
+  Briefcase,
   // BarChart3, — used only by commented-out CrmSidebarLinks
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ============================================================================
-// OrgCrmSection — collapsible CRM with Overview/Contacts/Pipeline/Deliverables/Social
+// OrgCrmSection — collapsible CRM with Overview/Pipeline/Clients/Deliverables
 // ============================================================================
 
 export function OrgCrmSection({
@@ -61,11 +62,10 @@ export function OrgCrmSection({
       <CollapsibleContent>
         <div className="pl-4 space-y-0.5 py-0.5">
           {[
-            { label: 'Overview',     to: `${orgBase}/crm`,              icon: LayoutGrid, color: 'text-muted-foreground',        match: location.pathname === `${orgBase}/crm` },
-            { label: 'Contacts',     to: `${orgBase}/crm/contacts`,     icon: Users,      color: 'text-primary',                 match: location.pathname === `${orgBase}/crm/contacts` },
-            { label: 'Companies',    to: `${orgBase}/crm/companies`,    icon: Building2,  color: 'text-purple-500',              match: location.pathname === `${orgBase}/crm/companies` },
-            { label: 'Pipeline',     to: `${orgBase}/crm/pipeline`,     icon: TrendingUp, color: 'text-[hsl(var(--warning))]',   match: location.pathname === `${orgBase}/crm/pipeline` },
-            { label: 'Deliverables', to: `${orgBase}/crm/deliverables`, icon: Package,    color: 'text-[hsl(var(--success))]',   match: location.pathname === `${orgBase}/crm/deliverables` },
+            { label: 'Overview',     to: `${orgBase}/crm`,                    icon: LayoutGrid, color: 'text-muted-foreground',        match: location.pathname === `${orgBase}/crm` },
+            { label: 'Pipeline',     to: `${orgBase}/crm/pipeline`,           icon: TrendingUp, color: 'text-[hsl(var(--warning))]',   match: location.pathname === `${orgBase}/crm/pipeline` },
+            { label: 'Clients',      to: `${orgBase}/clients`,                icon: Briefcase,  color: 'text-indigo-400',              match: location.pathname.startsWith(`${orgBase}/clients`) },
+            { label: 'Deliverables', to: `${orgBase}/crm/deliverables`,       icon: Package,    color: 'text-[hsl(var(--success))]',   match: location.pathname === `${orgBase}/crm/deliverables` },
           ].map(({ label, to, icon: Icon, color, match }) => (
             <Link
               key={label}

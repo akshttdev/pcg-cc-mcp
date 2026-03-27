@@ -33,6 +33,7 @@ async fn run_all(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     automation_sql_draft_proposal_task(pool).await?;
     automation_signed_proposal_create_project(pool).await?;
     automation_complete_project_draft_invoice(pool).await?;
+    automation_research_orphaned_companies(pool).await;
     Ok(())
 }
 
@@ -315,4 +316,55 @@ async fn list_automations() -> Json<ApiResponse<Vec<AutomationDefinition>>> {
 
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new().route("/automations", get(list_automations))
+}
+
+// ── 6. Research orphaned companies (idle, older than 1 hour) ─────────────────
+
+async fn automation_research_orphaned_companies(pool: &SqlitePool) {
+    #[derive(sqlx::FromRow)]
+    struct Row {
+        id: Vec<u8>,
+        name: String,
+    }
+
+    let companies: Vec<Row> = match sqlx::query_as(
+        "SELECT id, name FROM companies
+         WHERE intelligence_status = 'idle'
+           AND created_at < datetime('now', '-1 hour')
+         ORDER BY created_at ASC
+         LIMIT 5",
+    )
+    .fetch_all(pool)
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            error!("Auto-research: failed to query orphaned companies: {e}");
+            return;
+        }
+    };
+
+    if companies.is_empty() {
+        return;
+    }
+
+    info!("Auto-research: queuing {} orphaned companies for Scout Phase I", companies.len());
+
+    for c in companies {
+        let Ok(company_id) = Uuid::from_slice(&c.id) else { continue };
+
+        // Mark as queued
+        let _ = sqlx::query(
+            "UPDATE companies SET intelligence_status = 'queued', updated_at = datetime('now','subsec') WHERE id = ?",
+        )
+        .bind(&c.id)
+        .execute(pool)
+        .await;
+
+        let pool2 = pool.clone();
+        let name = c.name.clone();
+        tokio::spawn(async move {
+            crate::routes::intelligence::run_company_research_direct(&pool2, company_id, &name, None).await;
+        });
+    }
 }

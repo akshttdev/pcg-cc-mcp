@@ -8,7 +8,13 @@ use axum::{
     Extension, Json,
     extract::{Path, State},
 };
-use db::{db_uuid::DbUuid, models::crm_deal::CrmDeal};
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        crm_deal::CrmDeal,
+        project_knowledge_source::{KnowledgeOwnerScope, KnowledgeSourceType, ProjectKnowledgeSource},
+    },
+};
 use deployment::Deployment;
 use utils::response::ApiResponse;
 
@@ -199,10 +205,122 @@ pub async fn trigger_who_is_research(
         }
     }
 
+    // Register deal in the Knowledge Graph so agents have deal context
+    // (register_deal_in_kg queries project_id internally from crm_deals)
+    register_deal_in_kg(pool, &deal_id).await;
+
     // If person has a company_name, check/create Company and trigger company research if idle
     if let Some(ref company_name) = intel_company.filter(|n| !n.is_empty()) {
         trigger_company_research_if_idle(pool, company_name).await;
     }
+}
+
+/// Write the CRM deal into the KG as a context_injection source so all agents on this
+/// project automatically receive deal metadata (title, stage, contact, value) in their prompts.
+async fn register_deal_in_kg(pool: &sqlx::SqlitePool, deal_id: &DbUuid) {
+    #[derive(sqlx::FromRow)]
+    struct DealRow {
+        name: String,
+        stage: String,
+        contact_name: Option<String>,
+        amount: Option<f64>,
+        probability: Option<i64>,
+        expected_close_date: Option<String>,
+        description: Option<String>,
+        org_id: Option<DbUuid>,
+        project_id: Option<DbUuid>,
+    }
+
+    let row = sqlx::query_as::<_, DealRow>(
+        "SELECT
+           cd.name,
+           cd.stage,
+           cc.full_name AS contact_name,
+           cd.amount,
+           cd.probability,
+           cd.expected_close_date,
+           cd.description,
+           cp.organization_id AS org_id,
+           cd.project_id
+         FROM crm_deals cd
+         LEFT JOIN crm_contacts cc ON cc.id = cd.crm_contact_id
+         LEFT JOIN crm_pipelines cp ON cp.id = cd.crm_pipeline_id
+         WHERE cd.id = ?",
+    )
+    .bind(deal_id)
+    .fetch_optional(pool)
+    .await;
+
+    let Ok(Some(deal)) = row else { return };
+
+    let title = deal.name.as_str();
+    let stage = deal.stage.as_str();
+    let contact = deal.contact_name.as_deref().unwrap_or("Unknown Contact");
+
+    let summary = {
+        let mut parts = vec![
+            format!("Stage: {}", stage),
+            format!("Contact: {}", contact),
+        ];
+        if let Some(v) = deal.amount { parts.push(format!("Value: ${:.0}", v)); }
+        if let Some(p) = deal.probability { parts.push(format!("Probability: {}%", p)); }
+        if let Some(d) = &deal.expected_close_date { parts.push(format!("Expected Close: {}", d)); }
+        if let Some(d) = &deal.description { parts.push(format!("Notes: {}", &d[..d.len().min(200)])); }
+        parts.join(" | ")
+    };
+
+    let coverage = deal.probability.map(|p| p as f64 / 100.0).unwrap_or(0.5);
+    let source_id = format!("deal_{}", deal_id);
+    let source_title = format!("Deal: {}", title);
+
+    // Project scope
+    if let Some(ref pid) = deal.project_id {
+        let pid_uuid = pid.to_uuid();
+        let _ = ProjectKnowledgeSource::upsert_scoped(
+            pool,
+            &KnowledgeOwnerScope::Project,
+            &pid_uuid.to_string(),
+            Some(pid_uuid),
+            &KnowledgeSourceType::ContextInjection,
+            &source_id,
+            &source_title,
+            Some(&summary),
+            coverage,
+        )
+        .await;
+    }
+
+    // Deal scope (deal's own KG — can be queried by deal-aware agents)
+    let _ = ProjectKnowledgeSource::upsert_scoped(
+        pool,
+        &KnowledgeOwnerScope::Deal,
+        &deal_id.to_string(),
+        None,
+        &KnowledgeSourceType::ContextInjection,
+        &source_id,
+        &source_title,
+        Some(&summary),
+        coverage,
+    )
+    .await;
+
+    // Org scope
+    if let Some(org) = deal.org_id {
+        let _ = ProjectKnowledgeSource::upsert_scoped(
+            pool,
+            &KnowledgeOwnerScope::Organization,
+            &org.to_string(),
+            None,
+            &KnowledgeSourceType::ContextInjection,
+            &source_id,
+            &source_title,
+            Some(&summary),
+            coverage,
+        )
+        .await;
+    }
+
+    tracing::info!("[KG] Deal '{}' registered in knowledge graph (stage: {})", title, stage);
 }
 
 /// Trigger company research if the company's intel status is idle
@@ -1264,7 +1382,10 @@ pub async fn mark_deal_won(
                 .collect::<Vec<_>>()
                 .join("-");
             sqlx::query(
-                "INSERT INTO clients (id, organization_id, name, slug, crm_contact_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, datetime('now','subsec'), datetime('now','subsec'))"
+                "INSERT INTO clients (id, organization_id, name, slug, crm_contact_id,
+                 prospect_at, client_since, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, datetime('now','subsec'), datetime('now','subsec'),
+                 datetime('now','subsec'), datetime('now','subsec'))"
             )
             .bind(&cid)
             .bind(&deal.organization_id)
@@ -1279,6 +1400,18 @@ pub async fn mark_deal_won(
             cid
         }
     };
+
+    // Promote existing client to client_since (first payment/won)
+    let _ = sqlx::query(
+        "UPDATE clients SET
+         client_since = COALESCE(client_since, datetime('now','subsec')),
+         prospect_at = COALESCE(prospect_at, datetime('now','subsec')),
+         updated_at = datetime('now','subsec')
+         WHERE id = ?",
+    )
+    .bind(&client_id)
+    .execute(pool)
+    .await;
 
     // ── Create Project ───────────────────────────────────────────────────────
     let project_id = DbUuid::new();

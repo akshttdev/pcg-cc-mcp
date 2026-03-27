@@ -45,6 +45,7 @@ const CrmPage               = lazy(() => import('@/pages/crm').then(m => ({ defa
 // const CrmOverviewPage       = lazy(() => import('@/pages/crm-overview').then(m => ({ default: m.CrmOverviewPage })));
 const OrganizationProfilePage  = lazy(() => import('@/pages/organization-profile').then(m => ({ default: m.OrganizationProfilePage })));
 const ClientOverview        = lazy(() => import('@/pages/client-overview').then(m => ({ default: m.ClientOverview })));
+const OrgClientsPage        = lazy(() => import('@/pages/org-clients').then(m => ({ default: m.OrgClientsPage })));
 const VirtualEnvironmentPage       = lazy(() => import('@/pages/virtual-environment').then(m => ({ default: m.VirtualEnvironmentPage })));
 const EmbedVirtualEnvironmentPage  = lazy(() => import('@/pages/embed/virtual-environment').then(m => ({ default: m.EmbedVirtualEnvironmentPage })));
 // MeshPage merged into Settings > Network & Mesh
@@ -59,6 +60,7 @@ const PeoplePage            = lazy(() => import('@/pages/people').then(m => ({ d
 const ProposalsPage         = lazy(() => import('@/pages/proposals').then(m => ({ default: m.ProposalsPage })));
 const CompaniesPage         = lazy(() => import('@/pages/companies').then(m => ({ default: m.CompaniesPage })));
 const CompanyProfilePage    = lazy(() => import('@/pages/company-profile').then(m => ({ default: m.CompanyProfilePage })));
+const CompanyIntelPage      = lazy(() => import('@/pages/company-intel').then(m => ({ default: m.CompanyIntelPage })));
 const CommandCenterPage     = lazy(() => import('@/pages/command-center').then(m => ({ default: m.CommandCenterPage })));
 const InvoicesPage          = lazy(() => import('@/pages/invoices').then(m => ({ default: m.InvoicesPage })));
 const ProjectDeliverablesPage = lazy(() => import('@/pages/project-deliverables').then(m => ({ default: m.ProjectDeliverablesPage })));
@@ -285,7 +287,11 @@ function App() {
             path="/organizations/:orgId/wiki"
             element={<ProtectedRoute><OrganizationProfilePage defaultTab="wiki" /></ProtectedRoute>}
           />
-          {/* Organization - Clients and Data Sources */}
+          {/* Organization - Clients */}
+          <Route
+            path="/organizations/:orgId/clients"
+            element={<ProtectedRoute><OrgClientsPage /></ProtectedRoute>}
+          />
           <Route
             path="/organizations/:orgId/clients/:clientId"
             element={<ProtectedRoute><ClientOverview /></ProtectedRoute>}
@@ -355,6 +361,10 @@ function App() {
           <Route
             path="/companies/:companyId"
             element={<RoleRoute minRole="org_viewer"><CompanyProfilePage /></RoleRoute>}
+          />
+          <Route
+            path="/companies/:companyId/intel"
+            element={<RoleRoute minRole="org_viewer"><CompanyIntelPage /></RoleRoute>}
           />
           <Route
             path="/companies/:companyId/brand-guide"
