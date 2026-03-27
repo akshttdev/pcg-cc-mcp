@@ -20,225 +20,311 @@ use crate::{
 
 // ── Scout: Who-Is Research ────────────────────────────────────────────────────
 
-/// Auto-trigger "Who Is" research for a deal's contact person and company
+/// Auto-trigger Scout research for a deal's contact and company.
+/// Works directly with crm_contacts — no person bridge needed.
 pub async fn trigger_who_is_research(
     pool: &sqlx::SqlitePool,
     deal_id: DbUuid,
     contact_id: Option<DbUuid>,
 ) {
-    let Some(contact_id) = contact_id else { return };
-
-    // Look up person_id from crm_contacts (direction 1: crm_contacts.person_id)
-    // OR from persons table (direction 2: persons.crm_contact_id → migration-linked records)
-    #[derive(sqlx::FromRow)]
-    struct ContactRow {
-        person_id: Option<DbUuid>,
-    }
-
-    // Direction 1: crm_contacts.person_id
-    let person_id_via_contact =
-        sqlx::query_as::<_, ContactRow>("SELECT person_id FROM crm_contacts WHERE id = ?")
-            .bind(&contact_id)
-            .fetch_optional(pool)
-            .await
-            .ok()
-            .flatten()
-            .and_then(|r| r.person_id);
-
-    // Direction 2: persons.crm_contact_id (migration-linked records)
-    let person_id = if person_id_via_contact.is_some() {
-        person_id_via_contact
-    } else {
-        #[derive(sqlx::FromRow)]
-        struct PersonRow {
-            id: DbUuid,
-        }
-        sqlx::query_as::<_, PersonRow>("SELECT id FROM persons WHERE crm_contact_id = ? LIMIT 1")
-            .bind(&contact_id)
-            .fetch_optional(pool)
-            .await
-            .ok()
-            .flatten()
-            .map(|r| r.id)
+    let Some(contact_id) = contact_id else {
+        tracing::warn!(
+            "[Scout] Deal {} has no crm_contact_id — cannot trigger research",
+            deal_id
+        );
+        return;
     };
 
-    let Some(person_id) = person_id else { return };
-
-    // Check if person intelligence is idle or null — only trigger if not already running
+    // Read contact directly from crm_contacts (canonical source)
     #[derive(sqlx::FromRow)]
-    struct IntelRow {
-        intelligence_status: Option<String>,
+    struct ContactRow {
+        full_name: Option<String>,
+        email: Option<String>,
         company_name: Option<String>,
+        job_title: Option<String>,
+        intelligence_status: Option<String>,
     }
-    let intel = sqlx::query_as::<_, IntelRow>(
-        "SELECT p.intelligence_status, p.company_name FROM persons p WHERE p.id = ?",
+
+    let contact = match sqlx::query_as::<_, ContactRow>(
+        "SELECT full_name, email, company_name, job_title, intelligence_status \
+         FROM crm_contacts WHERE id = ?",
     )
-    .bind(&person_id)
+    .bind(&contact_id)
     .fetch_optional(pool)
     .await
-    .ok()
-    .flatten();
-
-    // Extract fields from intel before any borrows
-    let intel_status = intel.as_ref().map(|i| {
-        i.intelligence_status
-            .as_deref()
-            .unwrap_or("idle")
-            .to_string()
-    });
-    let intel_company = intel.as_ref().and_then(|i| i.company_name.clone());
-
-    if let Some(ref status) = intel_status {
-        if status == "idle" || status.is_empty() {
-            // Trigger person research via the same logic as POST /api/persons/:id/research
-            tracing::info!(
-                "Auto-triggering Who Is research for person {} (deal {})",
-                person_id,
+    {
+        Ok(Some(c)) => c,
+        Ok(None) => {
+            tracing::error!(
+                "[Scout] Contact {} not found in crm_contacts (deal {})",
+                contact_id,
                 deal_id
             );
-            if let Err(e) = sqlx::query(
-                "UPDATE persons SET intelligence_status = 'queued', updated_at = datetime('now','subsec') WHERE id = ?",
+            return;
+        }
+        Err(e) => {
+            tracing::error!(
+                "[Scout] Failed to query crm_contacts for {} (deal {}): {}",
+                contact_id,
+                deal_id,
+                e
+            );
+            return;
+        }
+    };
+
+    let status = contact
+        .intelligence_status
+        .as_deref()
+        .unwrap_or("idle");
+
+    // Only trigger if not already running/queued
+    if status != "idle" && !status.is_empty() {
+        tracing::info!(
+            "[Scout] Contact {} already has intelligence_status='{}', skipping",
+            contact_id,
+            status
+        );
+        return;
+    }
+
+    let contact_name = contact
+        .full_name
+        .clone()
+        .unwrap_or_else(|| "Unknown".to_string());
+
+    tracing::info!(
+        "[Scout] Auto-triggering research for contact {} '{}' (deal {})",
+        contact_id,
+        contact_name,
+        deal_id
+    );
+
+    // Queue contact research
+    if let Err(e) = sqlx::query(
+        "UPDATE crm_contacts SET intelligence_status = 'queued', \
+         intelligence_agent = 'scout', \
+         updated_at = datetime('now','subsec') WHERE id = ?",
+    )
+    .bind(&contact_id)
+    .execute(pool)
+    .await
+    {
+        tracing::error!(
+            "[Scout] Failed to queue contact {} for research: {}",
+            contact_id,
+            e
+        );
+        return;
+    }
+
+    // Spawn contact research
+    let contact_uuid = contact_id.to_uuid();
+    let pool_contact = pool.clone();
+    let name = contact_name.clone();
+    let email = contact.email.clone().unwrap_or_default();
+    let company = contact.company_name.clone().unwrap_or_default();
+    let title = contact.job_title.clone().unwrap_or_default();
+    tokio::spawn(async move {
+        if let Err(e) =
+            crate::routes::intelligence::run_contact_research_direct(
+                &pool_contact,
+                contact_uuid,
+                &name,
+                &email,
+                &company,
+                &title,
+                None,
             )
-            .bind(&person_id)
-            .execute(pool)
             .await
-            {
-                tracing::error!("[trigger_who_is_research] Failed to queue person intelligence status: {}", e);
-            }
+        {
+            tracing::error!(
+                "[Scout] Contact research failed for {} ({}): {}",
+                name,
+                contact_uuid,
+                e
+            );
+        }
+    });
 
-            // Convert DbUuid to Uuid for intelligence API
-            let person_uuid = person_id.to_uuid();
-            let pool2 = pool.clone();
-            tokio::spawn(async move {
-                if let Err(e) =
-                    crate::routes::intelligence::trigger_research_for_person(&pool2, person_uuid)
-                        .await
-                {
-                    tracing::error!(
-                        "Auto Who Is research failed for person {}: {}",
-                        person_uuid,
-                        e
-                    );
-                }
-            });
+    // Create Phase 1 visibility tasks + trigger company research
+    let project_id: Option<DbUuid> = sqlx::query_scalar(
+        "SELECT project_id FROM crm_deals WHERE id = ?",
+    )
+    .bind(&deal_id)
+    .fetch_optional(pool)
+    .await
+    .unwrap_or(None);
 
-            // Fetch deal's project_id for workflow task visibility
-            #[derive(sqlx::FromRow)]
-            struct DealProjectRow {
-                project_id: Option<DbUuid>,
-            }
-            let deal_project = sqlx::query_as::<_, DealProjectRow>(
-                "SELECT project_id FROM crm_deals WHERE id = ?",
-            )
-            .bind(&deal_id)
-            .fetch_optional(pool)
-            .await
-            .ok()
-            .flatten();
+    let has_phase1_tasks: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM tasks WHERE crm_deal_id = ? \
+         AND title LIKE 'Phase 1 Research:%' AND deleted_at IS NULL",
+    )
+    .bind(&deal_id)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0);
 
-            #[derive(sqlx::FromRow)]
-            struct PersonNameRow {
-                full_name: Option<String>,
-            }
-            let person_data =
-                sqlx::query_as::<_, PersonNameRow>("SELECT full_name FROM persons WHERE id = ?")
-                    .bind(&person_id)
-                    .fetch_optional(pool)
-                    .await
-                    .ok()
-                    .flatten();
+    if has_phase1_tasks == 0 {
+        // Build task list: always contact, optionally company
+        let mut tasks: Vec<(String, &str)> = vec![(
+            format!("Phase 1 Research: {} (Contact)", contact_name),
+            "Scout gathering intelligence profile for this contact",
+        )];
+        if let Some(cn) = contact.company_name.as_deref().filter(|n| !n.is_empty()) {
+            tasks.push((
+                format!("Phase 1 Research: {} (Company)", cn),
+                "Scout gathering company intelligence and building company wiki",
+            ));
+        }
 
-            let project_id_ref = deal_project.as_ref().and_then(|d| d.project_id.as_ref());
-
-            // Create Phase 1 workflow visibility tasks (deduped by title prefix)
-            let existing_phase1: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM tasks WHERE crm_deal_id = ? AND title LIKE 'Phase 1 Research:%' AND deleted_at IS NULL",
-            )
-            .bind(&deal_id)
-            .fetch_one(pool)
-            .await
-            .unwrap_or(0);
-
-            if existing_phase1 == 0 {
-                if let Some(ref pd) = person_data {
-                    if let Some(ref name) = pd.full_name {
-                        let task_id = DbUuid::new();
-                        if let Err(e) = sqlx::query(
-                            "INSERT INTO tasks (id, title, description, status, crm_deal_id, project_id, created_at, updated_at) VALUES (?, ?, ?, 'inprogress', ?, ?, datetime('now','subsec'), datetime('now','subsec'))",
-                        )
-                        .bind(&task_id)
-                        .bind(format!("Phase 1 Research: {} (Person)", name))
-                        .bind("AI research gathering intelligence profile for this contact")
-                        .bind(&deal_id)
-                        .bind(project_id_ref)
-                        .execute(pool)
-                        .await
-                        {
-                            tracing::error!("[trigger_who_is_research] Failed to create Phase 1 research task (person): {}", e);
-                        }
-                    }
-                }
-
-                if let Some(ref cn) = intel_company.as_ref().filter(|n| !n.is_empty()) {
-                    let task_id = DbUuid::new();
-                    if let Err(e) = sqlx::query(
-                        "INSERT INTO tasks (id, title, description, status, crm_deal_id, project_id, created_at, updated_at) VALUES (?, ?, ?, 'inprogress', ?, ?, datetime('now','subsec'), datetime('now','subsec'))",
-                    )
-                    .bind(&task_id)
-                    .bind(format!("Phase 1 Research: {} (Company)", cn))
-                    .bind("AI research gathering company intelligence and building company wiki")
-                    .bind(&deal_id)
-                    .bind(project_id_ref)
-                    .execute(pool)
-                    .await
-                    {
-                        tracing::error!("[trigger_who_is_research] Failed to create Phase 1 research task (company): {}", e);
-                    }
-                }
+        for (title, description) in &tasks {
+            if let Err(e) = create_research_task(pool, &deal_id, project_id.as_ref(), title, description).await {
+                tracing::error!("[Scout] Failed to create task '{}' for deal {}: {}", title, deal_id, e);
             }
         }
     }
 
-    // If person has a company_name, check/create Company and trigger company research if idle
-    if let Some(ref company_name) = intel_company.filter(|n| !n.is_empty()) {
-        trigger_company_research_if_idle(pool, company_name).await;
+    // Trigger company research in parallel (auto-create company if missing)
+    if let Some(company_name) = contact.company_name.as_deref().filter(|n| !n.is_empty()) {
+        trigger_company_research_if_idle(pool, company_name, &contact_id).await;
     }
 }
 
-/// Trigger company research if the company's intel status is idle
-async fn trigger_company_research_if_idle(pool: &sqlx::SqlitePool, company_name: &str) {
+/// Insert a Phase 1 research visibility task for a deal.
+async fn create_research_task(
+    pool: &sqlx::SqlitePool,
+    deal_id: &DbUuid,
+    project_id: Option<&DbUuid>,
+    title: &str,
+    description: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO tasks (id, title, description, status, crm_deal_id, project_id, \
+         created_at, updated_at) \
+         VALUES (?, ?, ?, 'inprogress', ?, ?, datetime('now','subsec'), datetime('now','subsec'))",
+    )
+    .bind(DbUuid::new())
+    .bind(title)
+    .bind(description)
+    .bind(deal_id)
+    .bind(project_id)
+    .execute(pool)
+    .await
+    .map(|_| ())
+}
+
+/// Trigger Scout company research. Auto-creates the company if it doesn't exist.
+async fn trigger_company_research_if_idle(
+    pool: &sqlx::SqlitePool,
+    company_name: &str,
+    contact_id: &DbUuid,
+) {
     #[derive(sqlx::FromRow)]
     struct CompanyRow {
         id: DbUuid,
         intelligence_status: Option<String>,
     }
-    let company = sqlx::query_as::<_, CompanyRow>(
+    let company = match sqlx::query_as::<_, CompanyRow>(
         "SELECT id, intelligence_status FROM companies WHERE name = ? COLLATE NOCASE LIMIT 1",
     )
     .bind(company_name)
     .fetch_optional(pool)
     .await
-    .ok()
-    .flatten();
-
-    if let Some(company) = company {
-        let status = company.intelligence_status.as_deref().unwrap_or("idle");
-        if status == "idle" || status.is_empty() {
+    {
+        Ok(Some(c)) => c,
+        Ok(None) => {
+            // Auto-create company so research has a target
+            let new_id = DbUuid::new();
             tracing::info!(
-                "Auto-triggering company research for '{}' ({})",
+                "[Scout] Auto-creating company '{}' (id: {}) for contact {}",
                 company_name,
-                company.id
+                new_id,
+                contact_id
             );
-            let company_uuid = company.id.to_uuid();
-            crate::routes::intelligence::run_company_research_direct(
-                pool,
-                company_uuid,
-                company_name,
-                None,
+            // Look up org_id from the contact
+            let org_id: Option<String> = sqlx::query_scalar(
+                "SELECT organization_id FROM crm_contacts WHERE id = ?",
             )
+            .bind(contact_id)
+            .fetch_optional(pool)
+            .await
+            .unwrap_or(None);
+
+            let Some(org_id) = org_id else {
+                tracing::error!(
+                    "[Scout] Cannot auto-create company — contact {} has no organization_id",
+                    contact_id
+                );
+                return;
+            };
+
+            if let Err(e) = sqlx::query(
+                "INSERT INTO companies (id, name, organization_id, intelligence_status, \
+                 created_at, updated_at) \
+                 VALUES (?, ?, ?, 'idle', datetime('now','subsec'), datetime('now','subsec'))",
+            )
+            .bind(&new_id)
+            .bind(company_name)
+            .bind(&org_id)
+            .execute(pool)
+            .await
+            {
+                tracing::error!(
+                    "[Scout] Failed to auto-create company '{}': {}",
+                    company_name,
+                    e
+                );
+                return;
+            }
+
+            // Link contact to company
+            let _ = sqlx::query(
+                "UPDATE crm_contacts SET company_id = ? WHERE id = ? AND company_id IS NULL",
+            )
+            .bind(&new_id)
+            .bind(contact_id)
+            .execute(pool)
             .await;
+
+            CompanyRow {
+                id: new_id,
+                intelligence_status: Some("idle".to_string()),
+            }
         }
+        Err(e) => {
+            tracing::error!(
+                "[Scout] Failed to look up company '{}': {}",
+                company_name,
+                e
+            );
+            return;
+        }
+    };
+
+    let status = company.intelligence_status.as_deref().unwrap_or("idle");
+    if status != "idle" && !status.is_empty() {
+        tracing::info!(
+            "[Scout] Company '{}' already has intelligence_status='{}', skipping",
+            company_name,
+            status
+        );
+        return;
     }
+
+    tracing::info!(
+        "[Scout] Auto-triggering company research for '{}' ({})",
+        company_name,
+        company.id
+    );
+    let company_uuid = company.id.to_uuid();
+    crate::routes::intelligence::run_company_research_direct(
+        pool,
+        company_uuid,
+        company_name,
+        None,
+    )
+    .await;
 }
 
 // ── Phase 1 Business Report Generation ────────────────────────────────────────
