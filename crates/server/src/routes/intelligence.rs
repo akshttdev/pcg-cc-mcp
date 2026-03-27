@@ -1692,9 +1692,9 @@ async fn run_research_pass(
         org_id: Option<Uuid>,
     }
     if let Ok(Some(row)) = sqlx::query_as::<_, OrgRow>(
-        "SELECT poc.organization_id AS org_id FROM person_org_contacts poc WHERE poc.person_id = ? LIMIT 1",
+        "SELECT col.organization_id AS org_id FROM contact_organization_links col WHERE col.crm_contact_id = ? LIMIT 1",
     )
-    .bind(person_id)
+    .bind(contact_id)
     .fetch_optional(&pool)
     .await {
         if let Some(org_id) = row.org_id {
@@ -1717,9 +1717,9 @@ async fn run_research_pass(
     }
 
     tracing::info!(
-        "Research pass #{} complete for person {} ({})",
+        "[Scout] Research pass #{} complete for contact {} ({})",
         pass_number,
-        person_id,
+        contact_id,
         focus
     );
     Ok(())
