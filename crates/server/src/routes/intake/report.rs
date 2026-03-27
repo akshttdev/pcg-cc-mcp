@@ -937,6 +937,49 @@ pub async fn run_phase2_from_company_intel(
         }
     }
 
-    info!("[Phase II] Complete for {} — report {}", company.name, report_id_str);
+    // ── Auto-pipeline task transitions ────────────────────────────────────────
+    use crate::routes::intake::pipeline::SIRAK_CONFIG;
+
+    // Mark Phase II (Astra Report) task done
+    let _ = sqlx::query(
+        "UPDATE tasks SET status = 'done', updated_at = datetime('now','subsec')
+         WHERE workflow_type = 'phase2_astra' AND entity_id = ? AND status != 'done'",
+    )
+    .bind(company_id)
+    .execute(&pool)
+    .await;
+
+    // Create Phase III review task assigned to the human operator (Sirak)
+    let task3_id = Uuid::new_v4().to_string();
+    let task3_title = format!("Review: {} Business Report", company.name);
+    let task3_desc = format!(
+        "Phase III — Human review of Astra deep research business analysis.\n\
+         Report ID: {}\n\
+         Company: {}\n\
+         Action: Review the report, make edits if needed, then mark approved to close the pipeline.",
+        report_id_str, company.name
+    );
+    let _ = sqlx::query(
+        "INSERT INTO tasks (id, project_id, title, description, status, priority,
+         assignee_id, created_by, tags, workflow_type, entity_type, entity_id,
+         crm_deal_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'todo', 'high', ?, 'auto-pipeline',
+         '[\"phase3\",\"review\",\"auto-pipeline\"]', 'phase3_review', 'business_report', ?,
+         ?, datetime('now','subsec'), datetime('now','subsec'))",
+    )
+    .bind(&task3_id)
+    .bind(SIRAK_CONFIG.project_id)
+    .bind(&task3_title)
+    .bind(&task3_desc)
+    .bind(SIRAK_CONFIG.sirak_user_id)
+    .bind(&report_id_str)
+    .bind(deal_id)
+    .execute(&pool)
+    .await;
+
+    info!(
+        "[Phase II] Complete for {} — report {} — Phase III review task created",
+        company.name, report_id_str
+    );
     Ok(())
 }

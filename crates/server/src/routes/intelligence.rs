@@ -1134,8 +1134,8 @@ pub async fn run_company_research_direct(
     )
     .await;
 
-    // Auto-create human review tasks for any deals linked to this company
-    auto_create_intel_review_tasks(pool, company_id, company_name).await;
+    // Phase I complete — advance pipeline (auto or human review depending on org)
+    after_phase1_complete(pool, company_id, company_name, project_id).await;
 
     tracing::info!(
         "Company research complete for {} (confidence: {:.0}%)",
@@ -1206,6 +1206,130 @@ async fn auto_create_intel_review_tasks(
             company_name
         );
     }
+}
+
+/// Called when Phase I Scout research completes for a company.
+/// - Marks the phase1_scout task as done.
+/// - If the intake was from a trusted auto-pipeline sender (Sirak Studios):
+///   immediately creates Phase II task and spawns Astra deep research.
+/// - Otherwise: creates a human "Review Intel" task for operator approval.
+async fn after_phase1_complete(
+    pool: &sqlx::SqlitePool,
+    company_id: Uuid,
+    company_name: &str,
+    project_id: Option<Uuid>,
+) {
+    use crate::routes::intake::pipeline::SIRAK_CONFIG;
+
+    // Mark phase1_scout task done
+    let _ = sqlx::query(
+        "UPDATE tasks SET status = 'done', updated_at = datetime('now','subsec')
+         WHERE workflow_type = 'phase1_scout' AND entity_id = ? AND status != 'done'",
+    )
+    .bind(company_id.to_string())
+    .execute(pool)
+    .await;
+
+    // Check if this company originated from an auto-pipeline intake (trusted Sirak sender)
+    let is_auto_pipeline: bool = sqlx::query_scalar(
+        "SELECT COUNT(*) > 0 FROM call_intake_items ci
+         JOIN persons p ON p.id = ci.person_id
+         JOIN person_company_roles pcr ON pcr.person_id = p.id
+         WHERE pcr.company_id = ?
+           AND (ci.from_email LIKE '%@sirakstudios.com'
+                OR ci.from_email = 'sirak@sirakstudios.com'
+                OR ci.from_email = 'aaren@sirakstudios.com')",
+    )
+    .bind(company_id.to_string())
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or(false);
+
+    if is_auto_pipeline {
+        tracing::info!(
+            "[Auto-pipeline] Phase I done for '{}' — spawning Phase II (Astra)",
+            company_name
+        );
+
+        // Create Phase II task as in_progress
+        let task2_id = uuid::Uuid::new_v4().to_string();
+        let task2_title = format!("Astra Report: {}", company_name);
+        let task2_desc = format!(
+            "Phase II — Astra deep research business analysis for {}.\n\
+             Triggered automatically after Phase I Scout completion.\n\
+             Company ID: {}",
+            company_name, company_id
+        );
+        let _ = sqlx::query(
+            "INSERT INTO tasks (id, project_id, title, description, status, priority,
+             agent_id, created_by, tags, workflow_type, entity_type, entity_id,
+             created_at, updated_at)
+             VALUES (?, ?, ?, ?, 'inprogress', 'high', ?, 'auto-pipeline',
+             '[\"phase2\",\"auto-pipeline\"]', 'phase2_astra', 'company', ?,
+             datetime('now','subsec'), datetime('now','subsec'))",
+        )
+        .bind(&task2_id)
+        .bind(SIRAK_CONFIG.project_id)
+        .bind(&task2_title)
+        .bind(&task2_desc)
+        .bind(SIRAK_CONFIG.nora_agent_id)
+        .bind(company_id.to_string())
+        .execute(pool)
+        .await;
+        tracing::info!("[Auto-pipeline] Created Phase II task '{}'", task2_title);
+
+        // Resolve client_id and deal_id for Phase II context
+        let client_id: Option<String> = sqlx::query_scalar(
+            "SELECT id FROM clients WHERE company_id = ? AND organization_id = ?
+             ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(company_id.to_string())
+        .bind(SIRAK_CONFIG.org_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten();
+
+        let deal_id: Option<String> = if let Some(ref cid) = client_id {
+            sqlx::query_scalar(
+                "SELECT id FROM crm_deals WHERE client_id = ?
+                 AND stage NOT IN ('won','lost') ORDER BY created_at DESC LIMIT 1",
+            )
+            .bind(cid)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten()
+        } else {
+            None
+        };
+
+        // Spawn Phase II in background
+        let pool2 = pool.clone();
+        let company_id_str = company_id.to_string();
+        let client_id_clone = client_id.clone();
+        let deal_id_clone = deal_id.clone();
+        tokio::spawn(async move {
+            if let Err(e) = crate::routes::intake::report::run_phase2_from_company_intel(
+                pool2,
+                &company_id_str,
+                client_id_clone.as_deref(),
+                deal_id_clone.as_deref(),
+                "auto-pipeline",
+            )
+            .await
+            {
+                tracing::error!("[Auto-pipeline] Phase II failed for {}: {}", company_id_str, e);
+            }
+        });
+    } else {
+        // Standard flow: create human review task
+        auto_create_intel_review_tasks(pool, company_id, company_name).await;
+    }
+
+    let _ = project_id; // reserved for future project-scoped task routing
 }
 
 async fn write_company_intel_results(

@@ -8,8 +8,8 @@
 //!   5. Report  — aggregate all context → generate business_audit report
 
 mod handlers;
-mod pipeline;
-mod report;
+pub(crate) mod pipeline;
+pub(crate) mod report;
 
 use axum::{
     Router,
