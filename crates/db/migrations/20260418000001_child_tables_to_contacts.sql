@@ -26,16 +26,18 @@ CREATE TABLE contact_research_passes (
 );
 
 -- Migrate data: map person_id → crm_contact_id via persons bridge
+-- Only migrate rows with valid contact links (skip orphaned rows)
 INSERT INTO contact_research_passes
 SELECT
     prp.id,
-    COALESCE(p.crm_contact_id, prp.person_id) AS crm_contact_id,
+    p.crm_contact_id,
     prp.pass_number, prp.research_focus, prp.focus_prompt, prp.status,
     prp.summary, prp.raw_results, prp.key_findings, prp.search_queries,
     prp.confidence_delta, prp.agent_used, prp.tokens_used, prp.error,
     prp.created_at, prp.completed_at
 FROM person_research_passes prp
-LEFT JOIN persons p ON CAST(p.id AS TEXT) = CAST(prp.person_id AS TEXT);
+JOIN persons p ON CAST(p.id AS TEXT) = CAST(prp.person_id AS TEXT)
+WHERE p.crm_contact_id IS NOT NULL;
 
 DROP TABLE IF EXISTS person_research_passes;
 
@@ -60,14 +62,16 @@ CREATE TABLE contact_social_profiles (
     UNIQUE (crm_contact_id, platform)
 );
 
+-- Only migrate rows with valid contact links
 INSERT INTO contact_social_profiles
 SELECT
     sp.id,
-    COALESCE(p.crm_contact_id, sp.person_id) AS crm_contact_id,
+    p.crm_contact_id,
     sp.platform, sp.handle, sp.profile_url, sp.follower_count, sp.following_count,
     sp.bio, sp.verified, sp.raw_data, sp.last_synced_at, sp.created_at, sp.updated_at
 FROM person_social_profiles sp
-LEFT JOIN persons p ON CAST(p.id AS TEXT) = CAST(sp.person_id AS TEXT);
+JOIN persons p ON CAST(p.id AS TEXT) = CAST(sp.person_id AS TEXT)
+WHERE p.crm_contact_id IS NOT NULL;
 
 DROP TABLE IF EXISTS person_social_profiles;
 

@@ -14,7 +14,7 @@
 //! The frontend polls GET /api/persons/:id/intelligence-status.
 
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, State},
     routing::{get, post},
 };
@@ -31,7 +31,10 @@ use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, routes::nora::get_nora_instance};
+use crate::{
+    DeploymentImpl, error::ApiError, middleware::access_control::AccessContext,
+    routes::nora::get_nora_instance,
+};
 
 // ── Request / Response types ──────────────────────────────────────────────────
 
@@ -116,13 +119,16 @@ pub async fn trigger_research(
                 person_id,
                 e
             );
-            let _ = sqlx::query(
+            if let Err(e2) = sqlx::query(
                 "UPDATE crm_contacts SET intelligence_status = 'failed', updated_at = datetime('now','subsec') \
                  WHERE id = (SELECT crm_contact_id FROM persons WHERE CAST(id AS TEXT) = ?)",
             )
             .bind(person_id.to_string())
             .execute(&pool_clone)
-            .await;
+            .await
+            {
+                tracing::warn!("[Intelligence] Failed to reset status to 'failed': {}", e2);
+            }
         }
     });
 
@@ -211,7 +217,7 @@ async fn run_research_via_nora(
         };
 
         let nora_request = NoraRequest {
-            request_id: Uuid::new_v4().to_string(),
+            request_id: DbUuid::new().to_string(),
             session_id: format!("research-{}", person_id),
             request_type: NoraRequestType::TextInteraction,
             content: prompt,
@@ -1110,6 +1116,7 @@ pub async fn trigger_research_for_person(
 
 /// POST /api/crm/contacts/:id/research — trigger research for a CRM contact
 pub async fn trigger_contact_research(
+    Extension(_access_context): Extension<AccessContext>,
     State(d): State<DeploymentImpl>,
     Path(contact_id): Path<String>,
     Json(body): Json<ResearchRequest>,
@@ -1185,6 +1192,7 @@ pub async fn trigger_contact_research(
 
 /// GET /api/crm/contacts/:id/intelligence-status
 pub async fn get_contact_intelligence_status(
+    Extension(_access_context): Extension<AccessContext>,
     State(d): State<DeploymentImpl>,
     Path(contact_id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
@@ -1376,10 +1384,8 @@ pub async fn list_person_reports(
     State(d): State<DeploymentImpl>,
     Path(person_id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<BusinessReport>>>, ApiError> {
-    let person_id = DbUuid::parse(&person_id)
-        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
-        .to_uuid();
-    let reports = BusinessReport::list_by_person(&d.db().pool, person_id).await?;
+    DbUuid::parse(&person_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let reports = BusinessReport::list_by_person(&d.db().pool, &person_id).await?;
     Ok(Json(ApiResponse::success(reports)))
 }
 
@@ -1626,7 +1632,7 @@ async fn run_research_pass(
                   coverage_score, auto_registered, is_active, created_at, updated_at)
                  VALUES (?, 'organization', ?, 'entity', ?, ?, ?, ?, 1, 1, datetime('now','subsec'), datetime('now','subsec'))",
             )
-            .bind(Uuid::new_v4())
+            .bind(DbUuid::new().to_string())
             .bind(org_id.to_string())
             .bind(pass_id.to_string())
             .bind(&title)

@@ -1133,14 +1133,11 @@ impl AgentFlowExecutor {
             "scout" => {
                 // Scout: save research to deal description + person intelligence fields
                 if !deal_id.is_empty() {
-                    let summary = format!(
-                        "Contact appears to be a decision-maker at a mid-size company. \
+                    let summary = "Contact appears to be a decision-maker at a mid-size company. \
                          Key talking points: digital transformation, operational efficiency, \
                          and competitive positioning. Company is in a growth phase with \
-                         potential for strategic partnerships.\n\n\
-                         Original context: {}",
-                        context.chars().take(200).collect::<String>()
-                    );
+                         potential for strategic partnerships."
+                        .to_string();
 
                     // Update deal description
                     let result = self

@@ -245,7 +245,6 @@ export function CrmPipelineBoard({
       toast.success('Deal updated.');
     } else {
       await createDeal.mutateAsync(data as CreateCrmDeal);
-      toast.success('Deal added to pipeline.');
     }
   };
 

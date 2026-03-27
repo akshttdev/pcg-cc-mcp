@@ -166,7 +166,7 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
   };
 
   // Fetch all tasks linked to this deal (for completed reviews section)
-  const { data: dealTasks = [] } = useQuery<DealTask[]>({
+  const { data: dealTasks = [], isError: tasksError } = useQuery<DealTask[]>({
     queryKey: [...crmKeys.deal(deal.id), 'tasks'],
     queryFn: async () => {
       const response = await makeRequest(`/api/tasks?crm_deal_id=${deal.id}`);
@@ -266,6 +266,9 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
       )}
 
       {/* Completed review tasks */}
+      {tasksError && (
+        <p className="text-xs text-red-500">Failed to load completed reviews</p>
+      )}
       {completedTasks.length > 0 && (
         <div>
           <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5">
@@ -275,7 +278,7 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
             {completedTasks.map((task) => (
               <Link
                 key={task.id}
-                to={task.project_id ? `/projects/${task.project_id}/tasks/${task.id}` : '/my-tasks'}
+                to={task.project_id && task.project_id.length > 0 ? `/projects/${task.project_id}/tasks/${task.id}` : '/my-tasks'}
               >
                 <Card className="bg-green-50/50 dark:bg-green-950/10 border-border/40 hover:bg-green-50 dark:hover:bg-green-950/20 transition-colors cursor-pointer">
                   <CardContent className="p-2.5 flex items-center gap-2">

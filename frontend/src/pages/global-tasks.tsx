@@ -307,7 +307,7 @@ export function GlobalTasksPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Link to={`/projects/${task.project_id}/tasks/${task.id}`}>
+                      <Link to={task.project_id && task.project_id.length > 0 ? `/projects/${task.project_id}/tasks/${task.id}` : '/my-tasks'}>
                         <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity">
                           View
                           <ArrowRight className="h-4 w-4 ml-1" />
@@ -324,7 +324,7 @@ export function GlobalTasksPage() {
             {filteredTasks.map((task) => (
               <Link
                 key={task.id}
-                to={`/projects/${task.project_id}/tasks/${task.id}`}
+                to={task.project_id && task.project_id.length > 0 ? `/projects/${task.project_id}/tasks/${task.id}` : '/my-tasks'}
               >
                 <Card className="card-interactive h-full">
                   <CardHeader className="pb-2">

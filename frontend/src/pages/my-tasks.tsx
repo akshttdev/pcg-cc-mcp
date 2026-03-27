@@ -446,8 +446,12 @@ function MyTaskCard({ task, selectionMode, isSelected, onToggleSelection }: MyTa
     );
   }
 
+  const taskUrl = task.project_id && task.project_id.length > 0
+    ? `/projects/${task.project_id}/tasks/${task.id}`
+    : '/my-tasks';
+
   return (
-    <Link to={`/projects/${task.project_id}/tasks/${task.id}`}>
+    <Link to={taskUrl}>
       {cardContent}
     </Link>
   );
