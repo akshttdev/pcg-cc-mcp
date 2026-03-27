@@ -278,7 +278,7 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
             {completedTasks.map((task) => (
               <Link
                 key={task.id}
-                to={task.project_id ? `/projects/${task.project_id}/tasks/${task.id}` : '/my-tasks'}
+                to={task.project_id && task.project_id.length > 0 ? `/projects/${task.project_id}/tasks/${task.id}` : '/my-tasks'}
               >
                 <Card className="bg-green-50/50 dark:bg-green-950/10 border-border/40 hover:bg-green-50 dark:hover:bg-green-950/20 transition-colors cursor-pointer">
                   <CardContent className="p-2.5 flex items-center gap-2">
