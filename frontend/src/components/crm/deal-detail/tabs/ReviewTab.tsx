@@ -166,7 +166,7 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
   };
 
   // Fetch all tasks linked to this deal (for completed reviews section)
-  const { data: dealTasks = [] } = useQuery<DealTask[]>({
+  const { data: dealTasks = [], isError: tasksError } = useQuery<DealTask[]>({
     queryKey: [...crmKeys.deal(deal.id), 'tasks'],
     queryFn: async () => {
       const response = await makeRequest(`/api/tasks?crm_deal_id=${deal.id}`);
@@ -266,6 +266,9 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
       )}
 
       {/* Completed review tasks */}
+      {tasksError && (
+        <p className="text-xs text-red-500">Failed to load completed reviews</p>
+      )}
       {completedTasks.length > 0 && (
         <div>
           <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5">

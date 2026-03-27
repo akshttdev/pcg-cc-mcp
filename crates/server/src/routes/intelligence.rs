@@ -116,13 +116,16 @@ pub async fn trigger_research(
                 person_id,
                 e
             );
-            let _ = sqlx::query(
+            if let Err(e2) = sqlx::query(
                 "UPDATE crm_contacts SET intelligence_status = 'failed', updated_at = datetime('now','subsec') \
                  WHERE id = (SELECT crm_contact_id FROM persons WHERE id = ?)",
             )
             .bind(person_id)
             .execute(&pool_clone)
-            .await;
+            .await
+            {
+                tracing::warn!("[Intelligence] Failed to reset status to 'failed': {}", e2);
+            }
         }
     });
 
@@ -486,27 +489,6 @@ fn extract_summary_from_response(text: &str) -> String {
         .trim_start_matches("```")
         .trim();
     clean.chars().take(300).collect()
-}
-
-fn extract_text_from_anthropic_response(response: &serde_json::Value) -> String {
-    if let Some(content) = response.get("content").and_then(|c| c.as_array()) {
-        let mut parts = Vec::new();
-        for block in content {
-            if block.get("type").and_then(|t| t.as_str()) == Some("text") {
-                if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                    parts.push(text.to_string());
-                }
-            }
-        }
-        if !parts.is_empty() {
-            return parts.join("\n");
-        }
-    }
-    // Check for error
-    if let Some(err) = response.get("error") {
-        return format!("API error: {}", err);
-    }
-    response.to_string()
 }
 
 fn extract_confidence_from_response(text: &str) -> f64 {
