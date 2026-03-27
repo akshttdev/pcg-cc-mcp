@@ -2,6 +2,8 @@
 //!
 //! Each implements BackgroundWorker for graceful shutdown support.
 
+use std::collections::HashSet;
+
 use tokio_util::sync::CancellationToken;
 
 use super::BackgroundWorker;
@@ -300,6 +302,155 @@ impl BackgroundWorker for MeetingSessionCleanup {
                 }
                 _ = shutdown.cancelled() => {
                     tracing::info!("[MEETING] Session cleanup shutting down");
+                    break;
+                }
+            }
+        }
+    }
+}
+
+/// Nora inbox poller — checks nora@powerclubglobal.com every 3 minutes.
+/// Any unprocessed email is pushed through the call-intake pipeline.
+/// This is a PCG platform service: Nora monitors on behalf of all org clients
+/// (e.g. Sirak Studios), routing via resolve_org_and_assignee.
+pub struct NoraInboxPoller {
+    pool: sqlx::SqlitePool,
+}
+
+impl NoraInboxPoller {
+    pub fn new(pool: sqlx::SqlitePool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait::async_trait]
+impl BackgroundWorker for NoraInboxPoller {
+    fn name(&self) -> &str {
+        "nora_inbox_poller"
+    }
+
+    async fn run(&self, shutdown: CancellationToken) {
+        use std::sync::Arc;
+        use services::services::agent_channels::{AgentChannelService, ChannelOwner};
+
+        let svc = Arc::new(AgentChannelService::new(self.pool.clone()));
+
+        // Look up Nora's agent owner_id from her email account record.
+        // owner_id is stored as a 32-char hex UUID string (no dashes).
+        #[derive(sqlx::FromRow)]
+        struct AccountRow { owner_id: String }
+        let nora_account = sqlx::query_as::<_, AccountRow>(
+            "SELECT owner_id FROM email_accounts WHERE email_address = 'nora@powerclubglobal.com' AND owner_type = 'agent' AND status != 'revoked' ORDER BY last_sync_at DESC NULLS LAST LIMIT 1"
+        )
+        .fetch_optional(&self.pool)
+        .await;
+
+        let nora_id = match nora_account {
+            Ok(Some(r)) => match uuid::Uuid::parse_str(&r.owner_id) {
+                Ok(id) => id,
+                Err(_) => {
+                    tracing::warn!("[NORA_INBOX] Could not parse Nora agent UUID '{}' — poller disabled", r.owner_id);
+                    return;
+                }
+            },
+            _ => {
+                tracing::warn!("[NORA_INBOX] nora@powerclubglobal.com email account not found — poller disabled");
+                return;
+            }
+        };
+        let owner = ChannelOwner::Agent(nora_id);
+
+        // In-memory dedup: track message IDs seen this session.
+        // On restart we re-check the last 20 messages — the source_ref dedup in
+        // CallIntakeItem::create (UNIQUE on source_ref) prevents double-processing.
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(180)); // 3 min
+
+        tracing::info!("[NORA_INBOX] Poller started — checking nora@powerclubglobal.com every 3 min");
+
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    match svc.read_inbox(&owner, 20).await {
+                        Err(e) => tracing::warn!("[NORA_INBOX] read_inbox failed: {}", e),
+                        Ok(messages) => {
+                            for msg in messages {
+                                let msg_id = msg.message_id.clone();
+                                if seen.contains(&msg_id) {
+                                    continue;
+                                }
+                                seen.insert(msg_id.clone());
+
+                                // Dedup: skip if already ingested (source_ref match)
+                                let already: bool = sqlx::query_scalar(
+                                    "SELECT COUNT(*) > 0 FROM call_intake_items WHERE source_ref = ?"
+                                )
+                                .bind(&msg_id)
+                                .fetch_one(&self.pool)
+                                .await
+                                .unwrap_or(false);
+
+                                if already {
+                                    continue;
+                                }
+
+                                tracing::info!(
+                                    "[NORA_INBOX] New email from {} — subject: {:?}",
+                                    msg.from_address, msg.subject
+                                );
+
+                                // Resolve org/assignee from sender
+                                let (org_id, assigned) = crate::routes::intake::resolve_org_and_assignee(
+                                    &self.pool,
+                                    Some(msg.from_address.as_str()),
+                                    None,
+                                    None,
+                                )
+                                .await;
+
+                                // Create intake item
+                                use db::models::call_intake_item::{CallIntakeItem, CreateCallIntakeItem};
+                                let item = CallIntakeItem::create(
+                                    &self.pool,
+                                    CreateCallIntakeItem {
+                                        source_type: "email".into(),
+                                        source_ref: Some(msg_id.clone()),
+                                        raw_content: Some(msg.summary.clone()),
+                                        subject: Some(msg.subject.clone()),
+                                        from_email: Some(msg.from_address.clone()),
+                                        from_name: None,
+                                        call_date: None,
+                                        duration_seconds: None,
+                                        metadata: Some(serde_json::json!({
+                                            "message_id": msg_id,
+                                            "ingested_by": "nora_inbox_poller",
+                                            "organization_id": org_id.map(|id| id.to_string()),
+                                        }).to_string()),
+                                    },
+                                )
+                                .await;
+
+                                match item {
+                                    Err(e) => tracing::error!("[NORA_INBOX] Failed to create intake item: {}", e),
+                                    Ok(item) => {
+                                        let pool2 = self.pool.clone();
+                                        tokio::spawn(async move {
+                                            if let Err(e) = crate::routes::intake::pipeline::run_intake_pipeline(
+                                                pool2, item.id, org_id, assigned,
+                                            )
+                                            .await
+                                            {
+                                                tracing::error!("[NORA_INBOX] Pipeline failed for {}: {}", item.id, e);
+                                            }
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                _ = shutdown.cancelled() => {
+                    tracing::info!("[NORA_INBOX] Poller shutting down");
                     break;
                 }
             }

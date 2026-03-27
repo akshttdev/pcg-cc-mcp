@@ -361,10 +361,14 @@ async fn main() -> Result<(), VibeKanbanError> {
         )
         .await;
 
-    // VIBE deposit watcher — migrated to BackgroundWorker (workers/background_tasks.rs)
-
-    // VIBE withdrawal executor — migrated to BackgroundWorker (workers/background_tasks.rs)
-    // Meeting stale-session cleanup — migrated to BackgroundWorker (workers/background_tasks.rs)
+    // Nora inbox poller — monitors nora@powerclubglobal.com, routes to intake pipeline
+    registry
+        .spawn_worker(
+            server::workers::background_tasks::NoraInboxPoller::new(
+                deployment.db().pool.clone(),
+            ),
+        )
+        .await;
 
     let app_router = routes::router(deployment);
 
