@@ -10,6 +10,7 @@ export {
   dealDetail,
   callScheduling,
   deck,
+  review,
   pipelineSettings,
   tabs,
 } from "../../shared/testids";

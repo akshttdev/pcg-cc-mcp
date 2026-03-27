@@ -850,6 +850,14 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/crm/deals/{id}/transcripts",
             post(crm_deal_automations::link_deal_transcript),
         )
+        .route(
+            "/crm/deals/{id}/data-sources",
+            get(crm_deal_automations::list_deal_data_sources),
+        )
+        .route(
+            "/crm/deals/{id}/data-sources",
+            post(crm_deal_automations::link_deal_data_source),
+        )
         // Org-scoped CRM deal routes
         .route("/organizations/{org_id}/crm/deals", get(list_org_deals))
 }

@@ -21,7 +21,7 @@ use crate::routes::{
         generate_deck_background, generate_phase1_business_report, trigger_deep_research_pass2,
         trigger_who_is_research,
     },
-    crm_deal_transitions::manage_stage_review_tasks,
+    crm_deal_transitions::manage_stage_review_tasks_with_config,
 };
 
 // ── Stage Config Schema ─────────────────────────────────────────────────────
@@ -45,6 +45,13 @@ pub struct StageConfig {
     pub on_exit_validations: Vec<StageValidation>,
     #[serde(default)]
     pub stage_owner: Option<StageOwner>,
+    /// User ID or username to assign review tasks to. Falls back to org owner if not set.
+    #[serde(default)]
+    pub review_assignee: Option<String>,
+    /// If true, deals entering this stage immediately auto-advance to the next stage.
+    /// Useful for optional stages (e.g., Lead) that some pipelines want to skip.
+    #[serde(default)]
+    pub auto_skip: bool,
 }
 
 fn default_cancel_window() -> u32 {
@@ -67,6 +74,7 @@ pub enum StageValidation {
     RequireField { field: String, message: String },
     RequireIntel { entity: String, status: String },
     RequirePendingTasks { count: i32 },
+    RequireTranscriptOrSource { message: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -195,6 +203,15 @@ pub async fn process_transition(
                         });
                     }
                 }
+                StageValidation::RequireTranscriptOrSource { message } => {
+                    let has_transcript = check_deal_has_transcript_or_source(pool, deal).await;
+                    if !has_transcript {
+                        warnings.push(ValidationWarning {
+                            field: "transcript_linked".to_string(),
+                            message: message.clone(),
+                        });
+                    }
+                }
             }
         }
     }
@@ -237,7 +254,14 @@ pub async fn process_transition(
             match action {
                 StageAction::CreateReviewTask { description } => {
                     let stage_name = to_stage.name.to_lowercase();
-                    manage_stage_review_tasks(pool, deal, description, &stage_name).await;
+                    manage_stage_review_tasks_with_config(
+                        pool,
+                        deal,
+                        description,
+                        &stage_name,
+                        to_config.as_ref(),
+                    )
+                    .await;
                     actions_taken.push("Created review task".to_string());
                 }
                 StageAction::CreateDeliveryDeal => {
@@ -250,46 +274,147 @@ pub async fn process_transition(
         }
 
         // Pass 2: agent triggers (can now find the review task for FK)
-        for action in &effective_actions {
-            if let StageAction::TriggerAgent { agent, flow_type } = action {
-                const KNOWN_AGENTS: &[&str] =
-                    &["scout", "astra", "cash", "lux", "nora", "assistant"];
-                if !KNOWN_AGENTS.contains(&agent.to_lowercase().as_str()) {
-                    tracing::warn!(
-                        "[StageTransition] Unknown agent '{}' in stage config — skipping",
-                        agent
-                    );
-                    continue;
-                }
-                if config.auto_trigger {
-                    match schedule_agent_flow(
-                        pool,
-                        deal,
-                        agent,
-                        flow_type,
-                        config.cancel_window_secs,
-                    )
+        // Sequential queue: collect all TriggerAgent actions, schedule only the first,
+        // store the rest as chain_actions in the flow's config for the executor to chain.
+        let agent_actions: Vec<&StageAction> = effective_actions
+            .iter()
+            .filter(|a| matches!(a, StageAction::TriggerAgent { .. }))
+            .collect();
+
+        if !agent_actions.is_empty() && config.auto_trigger {
+            let StageAction::TriggerAgent { agent, flow_type } = agent_actions[0] else {
+                unreachable!()
+            };
+
+            const KNOWN_AGENTS: &[&str] = &["scout", "astra", "cash", "lux", "nora", "assistant"];
+            if KNOWN_AGENTS.contains(&agent.to_lowercase().as_str()) {
+                // Build chain_actions from remaining agent triggers
+                let chain_actions: Vec<serde_json::Value> = agent_actions[1..]
+                    .iter()
+                    .filter_map(|a| {
+                        if let StageAction::TriggerAgent { agent, flow_type } = a {
+                            Some(serde_json::json!({
+                                "agent": agent,
+                                "flow_type": flow_type
+                            }))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                match schedule_agent_flow(pool, deal, agent, flow_type, config.cancel_window_secs)
                     .await
-                    {
-                        Ok((flow_id, deadline)) => {
-                            agent_flow_id = Some(flow_id);
-                            cancel_deadline = Some(deadline);
-                            actions_taken.push(format!("Scheduled {} agent", agent));
+                {
+                    Ok((flow_id, deadline)) => {
+                        // Store chain_actions in the flow's config if there are queued agents
+                        if !chain_actions.is_empty() {
+                            let chain_json = serde_json::to_string(&chain_actions)
+                                .unwrap_or_else(|_| "[]".to_string());
+                            if let Err(e) = sqlx::query(
+                                "UPDATE agent_flows SET flow_config = json_set(COALESCE(flow_config, '{}'), '$.chain_actions', json(?1)), updated_at = datetime('now', 'subsec') WHERE id = ?2",
+                            )
+                            .bind(&chain_json)
+                            .bind(&flow_id)
+                            .execute(pool)
+                            .await
+                            {
+                                tracing::error!(
+                                    "[StageTransition] Failed to set chain_actions on flow {}: {}",
+                                    flow_id, e
+                                );
+                            } else {
+                                let chain_names: Vec<&str> = agent_actions[1..]
+                                    .iter()
+                                    .filter_map(|a| if let StageAction::TriggerAgent { agent, .. } = a { Some(agent.as_str()) } else { None })
+                                    .collect();
+                                actions_taken.push(format!("Queued chained agents: {}", chain_names.join(" → ")));
+                            }
                         }
-                        Err(e) => {
-                            tracing::error!(
-                                "Failed to schedule agent flow for deal {}: {}",
-                                deal.id,
-                                e
-                            );
-                        }
+
+                        agent_flow_id = Some(flow_id);
+                        cancel_deadline = Some(deadline);
+                        actions_taken.push(format!("Scheduled {} agent", agent));
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            "Failed to schedule agent flow for deal {}: {}",
+                            deal.id,
+                            e
+                        );
                     }
                 }
+            } else {
+                tracing::warn!(
+                    "[StageTransition] Unknown agent '{}' in stage config — skipping",
+                    agent
+                );
             }
         }
     } else {
         // ── Hardcoded fallback for stages without config ────────────────
         run_hardcoded_entry_actions(pool, deal, to_stage, &mut actions_taken).await;
+    }
+
+    // ── 4. Auto-skip: immediately advance to next stage if configured ───
+    if to_config.as_ref().map_or(false, |c| c.auto_skip) {
+        actions_taken.push(format!("Auto-skipping {} stage", to_stage.name));
+        tracing::info!(
+            "[StageTransition] Auto-skip enabled for stage '{}' — advancing deal {} to next stage",
+            to_stage.name,
+            deal.id
+        );
+
+        // Find next stage by position
+        if let Some(ref pipeline_id) = deal.crm_pipeline_id {
+            let next_stage = sqlx::query_as::<_, CrmPipelineStage>(
+                "SELECT * FROM crm_pipeline_stages WHERE pipeline_id = ?1 AND position > ?2 ORDER BY position ASC LIMIT 1",
+            )
+            .bind(pipeline_id)
+            .bind(to_stage.position)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
+
+            if let Some(ref next) = next_stage {
+                // Move the deal
+                if let Err(e) = CrmDeal::move_to_stage(pool, &deal.id, &next.id, 0).await {
+                    tracing::error!(
+                        "[StageTransition] Auto-skip move failed for deal {}: {}",
+                        deal.id,
+                        e
+                    );
+                } else {
+                    // Re-read deal and recursively process the next stage's transition
+                    if let Ok(updated_deal) = CrmDeal::find_by_id(pool, &deal.id).await {
+                        let next_result = Box::pin(process_transition(
+                            pool,
+                            &updated_deal,
+                            Some(to_stage),
+                            next,
+                        ))
+                        .await;
+
+                        // Merge results
+                        warnings.extend(next_result.warnings);
+                        actions_taken.extend(next_result.actions_taken);
+                        if next_result.agent_flow_id.is_some() {
+                            agent_flow_id = next_result.agent_flow_id;
+                            cancel_deadline = next_result.cancel_deadline;
+                        }
+
+                        return TransitionResult {
+                            deal: next_result.deal,
+                            warnings,
+                            agent_flow_id,
+                            cancel_deadline,
+                            actions_taken,
+                        };
+                    }
+                }
+            }
+        }
     }
 
     TransitionResult {
@@ -487,7 +612,7 @@ async fn run_hardcoded_entry_actions(
 
     for (stage_key, task_desc) in &review_stages {
         if stage_name_lower == *stage_key || stage_type_lower == *stage_key {
-            manage_stage_review_tasks(pool, deal, task_desc, stage_key).await;
+            manage_stage_review_tasks_with_config(pool, deal, task_desc, stage_key, None).await;
             actions_taken.push("Created review task".to_string());
             break;
         }
@@ -511,6 +636,26 @@ async fn handle_won_transition(pool: &SqlitePool, deal: &CrmDeal) -> Option<Stri
         return None;
     }
 
+    let mut actions = Vec::new();
+
+    // ── Full Won provisioning (client, project, tasks, VIBE) ─────────────────
+    match crate::routes::crm_deal_automations::provision_won_deal(pool, deal).await {
+        Ok(result) => {
+            actions.push(format!(
+                "Won provisioning: client '{}', project '{}', {} tasks",
+                result.client_name, result.project_name, result.tasks_created
+            ));
+        }
+        Err(e) => {
+            tracing::error!(
+                "[StageTransition] Won provisioning failed for deal {}: {}",
+                deal.id,
+                e
+            );
+        }
+    }
+
+    // ── Create delivery pipeline deal (dedup by contact) ─────────────────────
     let deal_org_id = deal.organization_id.as_ref()?;
     let delivery_pipeline =
         CrmPipeline::find_by_type_for_org(pool, deal_org_id, PipelineType::Delivery)
@@ -519,7 +664,6 @@ async fn handle_won_transition(pool: &SqlitePool, deal: &CrmDeal) -> Option<Stri
             .ok()
             .flatten()?;
 
-    // Dedup: check if delivery deal already exists for this contact
     let has_delivery_deal = if let Some(ref contact_id) = deal.crm_contact_id {
         let contact_deals = CrmDeal::find_by_contact(pool, contact_id)
             .await
@@ -531,50 +675,47 @@ async fn handle_won_transition(pool: &SqlitePool, deal: &CrmDeal) -> Option<Stri
         false
     };
 
-    if has_delivery_deal {
-        tracing::warn!(
-            "Skipping delivery deal creation: contact already has a deal in delivery pipeline {}",
-            delivery_pipeline.id
-        );
-        return None;
-    }
-
-    let delivery_stages = CrmPipelineStage::find_by_pipeline(pool, &delivery_pipeline.id)
-        .await
-        .unwrap_or_default();
-    let first_stage = delivery_stages.first()?;
-
-    match CrmDeal::create(
-        pool,
-        CreateCrmDeal {
-            organization_id: deal_org_id.clone(),
-            client_id: deal.client_id.clone(),
-            crm_contact_id: deal.crm_contact_id.clone(),
-            crm_pipeline_id: Some(delivery_pipeline.id.clone()),
-            crm_stage_id: Some(first_stage.id.clone()),
-            name: format!("{} - Delivery", deal.name),
-            description: Some(format!("Auto-created from won deal: {}", deal.name)),
-            amount: deal.amount,
-            currency: Some(deal.currency.clone()),
-            expected_close_date: None,
-            tags: None,
-            custom_fields: None,
-        },
-    )
-    .await
-    {
-        Ok(_) => {}
-        Err(e) => {
-            tracing::error!(
-                "[StageTransition] Failed to create delivery deal for {}: {}",
-                deal.id,
-                e
-            );
-            return None;
+    if !has_delivery_deal {
+        let delivery_stages = CrmPipelineStage::find_by_pipeline(pool, &delivery_pipeline.id)
+            .await
+            .unwrap_or_default();
+        if let Some(first_stage) = delivery_stages.first() {
+            match CrmDeal::create(
+                pool,
+                CreateCrmDeal {
+                    organization_id: deal_org_id.clone(),
+                    client_id: deal.client_id.clone(),
+                    crm_contact_id: deal.crm_contact_id.clone(),
+                    crm_pipeline_id: Some(delivery_pipeline.id.clone()),
+                    crm_stage_id: Some(first_stage.id.clone()),
+                    name: format!("{} - Delivery", deal.name),
+                    description: Some(format!("Auto-created from won deal: {}", deal.name)),
+                    amount: deal.amount,
+                    currency: Some(deal.currency.clone()),
+                    expected_close_date: None,
+                    tags: None,
+                    custom_fields: None,
+                },
+            )
+            .await
+            {
+                Ok(_) => actions.push("Created delivery pipeline deal".to_string()),
+                Err(e) => {
+                    tracing::error!(
+                        "[StageTransition] Failed to create delivery deal for {}: {}",
+                        deal.id,
+                        e
+                    );
+                }
+            }
         }
     }
 
-    Some("Created delivery pipeline deal".to_string())
+    if actions.is_empty() {
+        None
+    } else {
+        Some(actions.join("; "))
+    }
 }
 
 // ── Agent Flow Scheduling ────────────────────────────────────────────────────
@@ -740,6 +881,16 @@ async fn count_pending_tasks(pool: &SqlitePool, deal: &CrmDeal) -> i64 {
     .fetch_one(pool)
     .await
     .unwrap_or(0)
+}
+
+async fn check_deal_has_transcript_or_source(pool: &SqlitePool, deal: &CrmDeal) -> bool {
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM deal_transcripts WHERE deal_id = ?")
+        .bind(deal.id.to_string())
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+
+    count > 0
 }
 
 /// Cancel a pending agent flow if within the cancel window.

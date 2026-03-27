@@ -1,6 +1,8 @@
+import { Eye, EyeOff } from 'lucide-react';
 import { useState } from 'react';
 import { dealDetail as tid } from 'shared/testids';
 
+import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription,DialogTitle } from '@/components/ui/dialog';
 import { ResizableDrawer } from '@/components/ui/resizable-drawer';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -10,6 +12,7 @@ import type { CrmDealWithContact, CrmPipelineStage } from '@/types/crm';
 
 import { DealConvertDialog } from '../DealConvertDialog';
 import { DealHeader, PipelineStepper } from './DealHeader';
+import { getVisibleTabs } from './stage-tab-config';
 import { ActivityTab } from './tabs/ActivityTab';
 import { AgentHistoryTab } from './tabs/AgentHistoryTab';
 import { DeckTab } from './tabs/DeckTab';
@@ -52,10 +55,12 @@ export function CrmDealDetailPanel({
   const [activeTab, setActiveTab] = useState('overview');
   const [convertOpen, setConvertOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showAllTabs, setShowAllTabs] = useState(false);
 
   if (!deal) return null;
 
   const effectiveStageName = stageName || deal.stage || '';
+  const visibleTabValues = showAllTabs ? null : getVisibleTabs(effectiveStageName);
 
   const stageColor =
     allStages?.find((s) => s.name.toLowerCase() === effectiveStageName.toLowerCase())?.color ||
@@ -92,9 +97,23 @@ export function CrmDealDetailPanel({
             onStageClick={deal && onMoveTo ? (_name, stageId) => onMoveTo(deal, stageId) : undefined}
           />
 
+          {/* Tab visibility toggle */}
+          <div className="flex items-center justify-end px-5 pt-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-[10px] text-muted-foreground hover:text-foreground gap-1"
+              onClick={() => setShowAllTabs(!showAllTabs)}
+              data-testid={tid.allTabsToggle}
+            >
+              {showAllTabs ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+              {showAllTabs ? 'Stage tabs' : 'All tabs'}
+            </Button>
+          </div>
+
           {/* Tabs */}
           <TabPanel
-            tabs={[
+            tabs={([
               { value: 'overview', label: 'Overview' },
               { value: 'intel', label: 'Intel', indicator: intelDone ? 'green' : null },
               { value: 'review', label: 'Review', indicator: hasActiveReview ? 'amber' : null },
@@ -104,8 +123,8 @@ export function CrmDealDetailPanel({
               { value: 'projects', label: 'Projects' },
               { value: 'activity', label: 'Activity' },
               { value: 'agents', label: 'Agent History', indicator: deal.active_agent_flow_status === 'executing' ? 'amber' : null },
-            ] satisfies TabDefinition[]}
-            value={activeTab}
+            ] satisfies TabDefinition[]).filter(t => !visibleTabValues || visibleTabValues.includes(t.value))}
+            value={visibleTabValues && !visibleTabValues.includes(activeTab) ? 'overview' : activeTab}
             onValueChange={setActiveTab}
             className="flex-1 flex flex-col min-h-0"
             listClassName="mx-5 mt-3 mb-0 h-9 bg-transparent p-0 border-b rounded-none justify-start gap-0 w-auto shrink-0 overflow-x-auto"
@@ -121,6 +140,7 @@ export function CrmDealDetailPanel({
                     stageColor={stageColor}
                     onConvert={() => setConvertOpen(true)}
                     orgId={orgId}
+                    onSwitchTab={setActiveTab}
                   />
                 </ScrollArea>
               </TabsContent>

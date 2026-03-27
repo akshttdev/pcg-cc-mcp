@@ -1,6 +1,6 @@
 import NiceModal from '@ebay/nice-modal-react';
 import { Bot, DollarSign, Loader2, Plus,Settings, Target, User, Users } from 'lucide-react';
-import { useEffect,useMemo, useState } from 'react';
+import { useCallback,useEffect,useMemo, useRef, useState } from 'react';
 import { dealCard as dealTid,pipeline as tid } from 'shared/testids';
 import { toast } from 'sonner';
 
@@ -17,7 +17,11 @@ import {
 } from '@/components/ui/shadcn-io/kanban';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider,TooltipTrigger } from '@/components/ui/tooltip';
+import { useQueryClient } from '@tanstack/react-query';
+
 import { useCreateDeal, useCrmKanban, useCrmPipelineByType, useDeleteDeal,useMoveDeal, useOrgCrmKanban, useOrgCrmPipelineByType, useUpdateDeal } from '@/hooks/useCrmPipeline';
+import { resolveApiUrl } from '@/lib/api';
+import { crmKeys } from '@/lib/query-keys';
 import { useProjectBoardProgress } from '@/hooks/useProjectBoardProgress';
 import { formatCurrencyFull } from '@/lib/formatters';
 import type { CreateCrmDeal, CrmDealWithContact, PipelineType, UpdateCrmDeal } from '@/types/crm';
@@ -99,7 +103,8 @@ const STAGE_DESCRIPTIONS: Record<string, string> = {
   'discovery': 'Discovery call with the prospect. Nora auto-links transcript. Out-of-order flow triggers Scout if no intel exists.',
   'proposal': 'Cash generates AI proposal from full knowledge graph — business report, discovery transcript, intel wikis. Operator reviews + approves.',
   'polish': 'Lux generates branded sales deck from approved proposal + org & client brand guides. Operator reviews before presenting.',
-  'present': 'Live presentation to client. Invoice sent from this stage. Payment received → auto-advances to Won.',
+  'present': 'Present deck to client on live call, then send invoice and confirm payment.',
+  'present & invoice': 'Present deck to client on live call, then send invoice and confirm payment.',
   'follow up': 'Post-presentation follow-up. Nora sends follow-up comms. Close out as Won or Lost.',
   'won': 'Deal closed. Automation: client record + project + tasks from proposal deliverables auto-created.',
   'lost': 'Deal closed lost. Reason recorded for future learning. Deal retained for re-engagement.',
@@ -133,6 +138,25 @@ export function CrmPipelineBoard({
   const [initialStageId, setInitialStageId] = useState<string | undefined>();
 
   const isOrgMode = !!orgId;
+  const queryClient = useQueryClient();
+
+  // SSE subscription for real-time pipeline updates
+  const eventSourceRef = useRef<EventSource | null>(null);
+  useEffect(() => {
+    const url = resolveApiUrl(`/api/events/pipeline?org_id=${orgId || ''}`);
+    const es = new EventSource(url);
+    eventSourceRef.current = es;
+
+    es.addEventListener('pipeline_changed', () => {
+      queryClient.invalidateQueries({ queryKey: crmKeys.kanbanAll() });
+      queryClient.invalidateQueries({ queryKey: crmKeys.orgKanbanAll() });
+    });
+
+    return () => {
+      es.close();
+      eventSourceRef.current = null;
+    };
+  }, [orgId, queryClient]);
 
   const projectPipeline = useCrmPipelineByType(projectId || '', pipelineType);
   const orgPipeline = useOrgCrmPipelineByType(orgId || '', pipelineType);

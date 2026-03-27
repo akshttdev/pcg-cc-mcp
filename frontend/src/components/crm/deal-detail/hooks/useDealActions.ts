@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { reportsApi, crmDealsApi, intelligenceApi } from '@/lib/api';
+import { reportsApi, crmDealsApi, intelligenceApi, tasksApi } from '@/lib/api';
 import { crmKeys } from '@/lib/query-keys';
 import { showConfirm } from '@/lib/modals';
 import { toast } from 'sonner';
@@ -74,6 +74,22 @@ export function useDealActions() {
     }
   };
 
+  const [completeLoading, setCompleteLoading] = useState(false);
+
+  const completeReviewTask = async (taskId: string) => {
+    setCompleteLoading(true);
+    try {
+      await tasksApi.update(taskId, { status: 'done' });
+      toast.success('Review task completed');
+      queryClient.invalidateQueries({ queryKey: crmKeys.kanbanAll() });
+      queryClient.invalidateQueries({ queryKey: crmKeys.orgKanbanAll() });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to complete review task');
+    } finally {
+      setCompleteLoading(false);
+    }
+  };
+
   return {
     advanceDeal,
     advanceLoading,
@@ -82,5 +98,7 @@ export function useDealActions() {
     approveReport,
     requestRevision,
     reportLoading,
+    completeReviewTask,
+    completeLoading,
   } as const;
 }
