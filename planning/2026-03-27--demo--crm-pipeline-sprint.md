@@ -15,28 +15,29 @@ Demo the full CRM workflow: data source upload → contact/company/deal extracti
 
 ## Day 1: Real LLM Foundation (~8h)
 
-### W1: Verify contacts-unification ✅ CI PASSES (~1h)
+### W1: Verify contacts-unification ✅ DONE
 - [x] Run `/check` — all 5 CI checks pass (2 clippy fixes applied: dead fn in intelligence.rs, map_or in stage_transition.rs)
-- [ ] Test Scout writing intelligence to `crm_contacts` (Phase 1)
-- [ ] Test Intel tab reading from contacts directly (Phase 3) — `IntelTab.tsx:81` prefers `crm_contact_id`
-- [ ] Test PCG Router model routing (Phase 2) — `pcg_router.rs:236` route_completion()
-- [ ] Verify E2E pipeline tests pass (headed mode)
+- [x] Eliminate persons-table queries from deal enrichment (list_enriched_deals, get_deal_rich, kanban)
+- [x] Fix advance_deal() intel gate — reads from crm_contacts directly
+- [x] Fix get_advance_requirements() — same pattern
+- [x] Add report_id_for_deal() — queries business_reports by crm_deal_id
+- [x] MCP verification: pipeline board renders, deal detail loads, Intel tab works
+- [ ] Verify E2E pipeline tests pass (headed mode) — deferred, needs full seed DB
 
-### W2: Add workflow templates (~2h)
-System workflows already persist via `seed_defaults()` (INSERT OR REPLACE in `data_source_workflows.rs:486-509`). 5 templates exist. Add 3 new ones:
-- [ ] Add `sales_conversation_workflow()` function — extract prospects from call transcripts
-- [ ] Add `prospect_list_workflow()` function — parse CSV/text list of potential clients
-- [ ] Add `company_research_workflow()` function — extract company profile from article
-- [ ] Add all 3 to `seed_defaults()` array
-- [ ] Restart server → verify templates appear in data-source-detail workflow dropdown
-- **Files**: `crates/server/src/routes/data_source_workflows.rs` (add functions near line 398, update seed_defaults at line 486)
-- **No migration needed** — seed_defaults() runs at startup
+### W1b: Simulation-first pipeline ✅ DONE
+- [x] SIMULATE_LLM guards on run_research_direct() and run_company_research_direct()
+- [x] Thread flow_id through call_llm chain → save_artifact in all 4 agent simulation branches
+- [x] Deal creation runs full process_transition() (not just Intel-specific hook)
+- [x] Review tasks start as "waiting" when agent is active, promoted to "todo" on completion
+- [x] MCP verified: deal created in Intel → Scout agent scheduled → card shows "scout pending" (not "Needs review")
+
+### W2: Add workflow templates ✅ DONE (prior commit adccb389f)
+- [x] sales_conversation_workflow, prospect_list_workflow, company_research_workflow
+- [x] All 3 added to seed_defaults()
 
 ### W3: Enable real LLM execution (~4-6h, RISKIEST)
 - [ ] Set `SIMULATE_LLM=0` in `.env` (currently `=1` at line 58)
-- [ ] **CRITICAL FIX**: Add tool usage instructions to `build_agent_prompt()` (`agent_flow_executor.rs:1258`)
-  - Each agent prompt must describe available tools: `get_deal_context`, `update_deal_field`, `save_artifact`
-  - Without this, real LLM will produce text-only responses (no tool calls)
+- [x] **DONE**: Tool usage instructions added to `build_agent_prompt()` (commit 4ac25286d)
 - [ ] Test each agent individually: Scout, Astra, Cash, Lux
   - Done criteria: agent produces >100 chars coherent output + calls ≥1 tool correctly
 - [ ] Verify tool-call loop works (`agent_flow_executor.rs:348-398`, max 5 turns)
