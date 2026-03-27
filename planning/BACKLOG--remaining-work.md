@@ -1,8 +1,52 @@
 # Backlog — Remaining Work
 
-**Last updated:** 2026-03-24 (sloperation intent gap audit — 5 missing capabilities + 3 partial implementations identified)
+**Last updated:** 2026-03-27 (persons→contacts unification audit added)
 **Context:** Consolidated from all completed planning docs + 27 research reports + 45-item research-derived backlog. **Prioritized by ROI = (revenue impact × probability) / effort**, not legacy ordering.
 **Phase 0 Sprint Plan:** See [`2026-03-19--analysis--phase0-sprint-candidates.md`](2026-03-19--analysis--phase0-sprint-candidates.md) for full scoring and sprint schedule.
+
+---
+
+## P0 — Persons→Contacts Unification (HIGH PRIORITY)
+
+**Audit**: [`2026-03-27--audit--persons-contacts-unification.md`](2026-03-27--audit--persons-contacts-unification.md)
+**Decision**: Keep `crm_contacts` as canonical. Merge `persons` intelligence fields into contacts. Retire `persons` table.
+**Why high priority**: Scout agent research is invisible in the Intel tab because intelligence lives on `persons` but the CRM pipeline operates through `crm_contacts`. Every new deal created via the CRM UI has no person record, so agent research has nowhere to land.
+
+### PC-1: Add intelligence fields to crm_contacts — BLOCKING
+- **Effort**: 0.5 day | **Impact**: Unblocks Scout → Intel tab visibility
+- Migration: add `intelligence_summary`, `intelligence_status`, `intelligence_raw`, `intelligence_confidence`, `intelligence_last_run_at`, `research_pass_count`, `research_depth`, `company_id`, `person_id` to `crm_contacts`
+- Backfill from linked persons
+- Update `CrmDealWithContact` query to read intel from contacts instead of persons JOIN
+- Scout executor writes directly to `crm_contacts` (no person lookup)
+
+### PC-2: Add research endpoint for contacts
+- **Effort**: 0.5 day | **Impact**: Enables "Trigger Research" from Intel tab
+- New endpoint: `POST /api/crm/contacts/:id/research` (delegates to intelligence service)
+- Intel tab's "Trigger Research" button targets contact ID instead of person ID
+
+### PC-3: Move research passes to contacts
+- **Effort**: 0.5 day | **Impact**: Full research history on contacts
+- Re-FK `person_research_passes` → `contact_research_passes` (or add `crm_contact_id` FK)
+- Research pass detail visible from contact record
+
+### PC-4: Move social profiles to contacts
+- **Effort**: 0.5 day | **Impact**: Social data accessible from CRM
+- Re-FK `person_social_profiles` → contacts
+- Social data visible in deal detail without person lookup
+
+### PC-5: Update intake pipeline to create contacts
+- **Effort**: 1 day | **Impact**: Eliminates person creation pathway
+- Intake workflow creates `crm_contacts` directly (with org_id)
+- Intelligence results written to contact record
+- Removes the need for the 20260404 auto-linking migration logic
+
+### PC-6: Retire persons table
+- **Effort**: 1 day | **Impact**: Eliminates redundancy
+- Migrate remaining persons-only fields (person_type, financial_role, business_stage) to contacts
+- `/people/:id` route reads from contacts (or redirect)
+- Drop persons API routes or alias to contacts
+- Drop `persons` table
+- Clean up unused models
 
 ---
 
