@@ -1,4 +1,5 @@
 import NiceModal from '@ebay/nice-modal-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Bot, DollarSign, Loader2, Plus,Settings, Target, User, Users } from 'lucide-react';
 import { useEffect,useMemo, useRef, useState } from 'react';
 import { dealCard as dealTid,pipeline as tid } from 'shared/testids';
@@ -17,13 +18,11 @@ import {
 } from '@/components/ui/shadcn-io/kanban';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider,TooltipTrigger } from '@/components/ui/tooltip';
-import { useQueryClient } from '@tanstack/react-query';
-
 import { useCreateDeal, useCrmKanban, useCrmPipelineByType, useDeleteDeal,useMoveDeal, useOrgCrmKanban, useOrgCrmPipelineByType, useUpdateDeal } from '@/hooks/useCrmPipeline';
-import { resolveApiUrl } from '@/lib/api';
-import { crmKeys } from '@/lib/query-keys';
 import { useProjectBoardProgress } from '@/hooks/useProjectBoardProgress';
+import { resolveApiUrl } from '@/lib/api';
 import { formatCurrencyFull } from '@/lib/formatters';
+import { crmKeys } from '@/lib/query-keys';
 import type { CreateCrmDeal, CrmDealWithContact, PipelineType, UpdateCrmDeal } from '@/types/crm';
 
 import { CrmDealCard } from './CrmDealCard';
@@ -35,7 +34,7 @@ interface CrmPipelineBoardProps {
   orgId?: string;
   pipelineType: PipelineType;
   title?: string;
-  onSettingsClick?: () => void;
+  onSettingsClick?: (pipelineId?: string) => void;
 }
 
 type StageOwner = {
@@ -318,7 +317,7 @@ export function CrmPipelineBoard({
           </Button>
           {onSettingsClick && (
             <IconButton
-              variant="outline" className="h-8 w-8" onClick={onSettingsClick}
+              variant="outline" className="h-8 w-8" onClick={() => onSettingsClick(pipeline?.id)}
               icon={Settings}
               label="Pipeline settings"
               data-testid={tid.settings}

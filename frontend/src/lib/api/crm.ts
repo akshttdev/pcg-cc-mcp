@@ -66,6 +66,13 @@ export interface CrmContactRecord {
   meeting_count: number;
   deal_count: number;
   total_revenue: number;
+  intelligence_summary: string | null;
+  intelligence_status: string;
+  intelligence_confidence: number;
+  intelligence_last_run_at: string | null;
+  intelligence_agent: string | null;
+  research_pass_count: number;
+  research_depth: string;
   created_at: string;
   updated_at: string;
 }
