@@ -269,7 +269,9 @@ impl AgentFlowExecutor {
         let models = [None, None, Some("claude-sonnet-4-6-20250514")]; // last attempt uses cheaper model
 
         // Extract deal_id from flow config for simulated mode
-        let flow_deal_id = flow.flow_config.as_deref()
+        let flow_deal_id = flow
+            .flow_config
+            .as_deref()
             .and_then(|c| serde_json::from_str::<Value>(c).ok())
             .and_then(|v| v.get("deal_id").and_then(|d| d.as_str().map(String::from)))
             .unwrap_or_default();
@@ -1062,7 +1064,11 @@ impl AgentFlowExecutor {
     /// Simulate a realistic LLM response based on the agent name extracted from messages.
     /// Executes real tool calls (get_deal_context, update_deal_field, save_artifact)
     /// so the pipeline state actually advances — just skips the LLM API call.
-    async fn simulate_llm_response(&self, messages: &[Value], deal_id_override: &str) -> anyhow::Result<String> {
+    async fn simulate_llm_response(
+        &self,
+        messages: &[Value],
+        deal_id_override: &str,
+    ) -> anyhow::Result<String> {
         // Extract agent name from system prompt
         let system_text = messages
             .first()
@@ -1152,7 +1158,10 @@ impl AgentFlowExecutor {
                     }
 
                     // Update contact intelligence so Intel tab shows results
-                    if let Err(e) = self.update_deal_contact_intelligence(deal_id, &summary).await {
+                    if let Err(e) = self
+                        .update_deal_contact_intelligence(deal_id, &summary)
+                        .await
+                    {
                         tracing::error!(
                             "[AgentFlowEngine] Simulated scout: update_deal_contact_intelligence error: {}",
                             e

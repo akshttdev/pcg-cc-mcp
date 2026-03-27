@@ -1,6 +1,6 @@
 import NiceModal from '@ebay/nice-modal-react';
 import { Bot, DollarSign, Loader2, Plus,Settings, Target, User, Users } from 'lucide-react';
-import { useCallback,useEffect,useMemo, useRef, useState } from 'react';
+import { useEffect,useMemo, useRef, useState } from 'react';
 import { dealCard as dealTid,pipeline as tid } from 'shared/testids';
 import { toast } from 'sonner';
 

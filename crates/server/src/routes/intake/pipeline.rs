@@ -517,7 +517,10 @@ async fn create_person_from_intake(
 
     match result {
         Ok(_) => {
-            info!("Created new contact from intake: {} ({})", participant.name, id);
+            info!(
+                "Created new contact from intake: {} ({})",
+                participant.name, id
+            );
             // Link contact to company record (find or create)
             if let Some(company_name) = &participant.company {
                 if !company_name.trim().is_empty() {
@@ -530,13 +533,11 @@ async fn create_person_from_intake(
                     .await
                     {
                         // Set company_id on contact
-                        let _ = sqlx::query(
-                            "UPDATE crm_contacts SET company_id = ? WHERE id = ?",
-                        )
-                        .bind(company.id)
-                        .bind(id)
-                        .execute(pool)
-                        .await;
+                        let _ = sqlx::query("UPDATE crm_contacts SET company_id = ? WHERE id = ?")
+                            .bind(company.id)
+                            .bind(id)
+                            .execute(pool)
+                            .await;
                     }
                 }
             }
@@ -545,7 +546,10 @@ async fn create_person_from_intake(
             Some(id)
         }
         Err(e) => {
-            warn!("Failed to create contact from intake {}: {}", participant.name, e);
+            warn!(
+                "Failed to create contact from intake {}: {}",
+                participant.name, e
+            );
             None
         }
     }

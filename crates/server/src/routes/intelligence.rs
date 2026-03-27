@@ -310,7 +310,7 @@ async fn run_research_direct(
     let (response, metadata) = WorkflowLLMService::completion_with_tools(
         pool,
         messages,
-        &[], // no tools needed for text research
+        &[],  // no tools needed for text research
         None, // use default model priority
         Some(2048),
         None,
@@ -740,23 +740,44 @@ pub async fn run_company_research_direct(
     ];
 
     let response_text = match WorkflowLLMService::completion_with_tools(
-        pool, messages, &[], None, Some(3000), None,
-    ).await {
+        pool,
+        messages,
+        &[],
+        None,
+        Some(3000),
+        None,
+    )
+    .await
+    {
         Ok((LLMResponse::Text { content, .. }, metadata)) => {
             tracing::info!(
                 "[Scout] PCG Router company research for {} via {}/{}: {} chars",
-                company_name, metadata.provider, metadata.model_used, content.len()
+                company_name,
+                metadata.provider,
+                metadata.model_used,
+                content.len()
             );
             content
         }
         Ok((LLMResponse::ToolCalls { .. }, _)) => {
             tracing::error!("[Scout] Unexpected tool calls in company research");
-            write_company_intel_results(pool, company_id, "LLM returned tool calls instead of text", 0.0).await;
+            write_company_intel_results(
+                pool,
+                company_id,
+                "LLM returned tool calls instead of text",
+                0.0,
+            )
+            .await;
             return;
         }
         Err(e) => {
-            tracing::error!("[Scout] PCG Router failed for company {}: {}", company_name, e);
-            write_company_intel_results(pool, company_id, &format!("Research failed: {}", e), 0.0).await;
+            tracing::error!(
+                "[Scout] PCG Router failed for company {}: {}",
+                company_name,
+                e
+            );
+            write_company_intel_results(pool, company_id, &format!("Research failed: {}", e), 0.0)
+                .await;
             return;
         }
     };
@@ -939,20 +960,22 @@ pub async fn trigger_contact_research(
     Path(contact_id): Path<String>,
     Json(body): Json<ResearchRequest>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
-    let contact_id = DbUuid::parse(&contact_id)
-        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let contact_id =
+        DbUuid::parse(&contact_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
     let pool = &d.db().pool;
 
     // Verify contact exists
     #[derive(sqlx::FromRow)]
-    struct ContactRow { full_name: Option<String>, person_id: Option<String> }
-    let contact: ContactRow = sqlx::query_as(
-        "SELECT full_name, person_id FROM crm_contacts WHERE id = ?"
-    )
-    .bind(&contact_id)
-    .fetch_optional(pool)
-    .await?
-    .ok_or_else(|| ApiError::NotFound("Contact not found".into()))?;
+    struct ContactRow {
+        full_name: Option<String>,
+        person_id: Option<String>,
+    }
+    let contact: ContactRow =
+        sqlx::query_as("SELECT full_name, person_id FROM crm_contacts WHERE id = ?")
+            .bind(&contact_id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or_else(|| ApiError::NotFound("Contact not found".into()))?;
 
     // Set status to queued on contact
     sqlx::query(
@@ -1006,8 +1029,8 @@ pub async fn get_contact_intelligence_status(
     State(d): State<DeploymentImpl>,
     Path(contact_id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
-    let contact_id = DbUuid::parse(&contact_id)
-        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let contact_id =
+        DbUuid::parse(&contact_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
     let pool = &d.db().pool;
 
     #[derive(sqlx::FromRow)]
@@ -1050,7 +1073,10 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             get(get_intelligence_status),
         )
         // Contact-targeted (canonical after unification)
-        .route("/crm/contacts/{id}/research", post(trigger_contact_research))
+        .route(
+            "/crm/contacts/{id}/research",
+            post(trigger_contact_research),
+        )
         .route(
             "/crm/contacts/{id}/intelligence-status",
             get(get_contact_intelligence_status),
@@ -1303,11 +1329,10 @@ async fn run_research_pass(
         serde_json::json!({"role": "user", "content": prompt}),
     ];
 
-    let (response, metadata) = WorkflowLLMService::completion_with_tools(
-        &pool, messages, &[], None, Some(4096), None,
-    )
-    .await
-    .map_err(|e| anyhow::anyhow!("PCG Router failed for research pass: {}", e))?;
+    let (response, metadata) =
+        WorkflowLLMService::completion_with_tools(&pool, messages, &[], None, Some(4096), None)
+            .await
+            .map_err(|e| anyhow::anyhow!("PCG Router failed for research pass: {}", e))?;
 
     let text = match response {
         LLMResponse::Text { content, .. } => content,
@@ -1318,7 +1343,10 @@ async fn run_research_pass(
 
     tracing::info!(
         "[Scout] Research pass #{} via {}/{}: {} chars",
-        pass_number, metadata.provider, metadata.model_used, text.len()
+        pass_number,
+        metadata.provider,
+        metadata.model_used,
+        text.len()
     );
 
     let text = &text;
