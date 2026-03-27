@@ -882,14 +882,14 @@ async fn ensure_crm_deal_for_person(
 
     let pipeline_id = pipeline.map(|p| p.id)?;
 
-    // Find the named stage in this pipeline
+    // Find the stage: try by name first, fall back to lowest position (first stage)
     #[derive(sqlx::FromRow)]
     struct StageRow {
         id: Vec<u8>,
     }
 
     let stage = sqlx::query_as::<_, StageRow>(
-        "SELECT id FROM crm_pipeline_stages WHERE pipeline_id = ? AND name = ? LIMIT 1",
+        "SELECT id FROM crm_pipeline_stages WHERE pipeline_id = ? AND lower(name) = lower(?) LIMIT 1",
     )
     .bind(pipeline_id)
     .bind(stage_name)
@@ -897,6 +897,20 @@ async fn ensure_crm_deal_for_person(
     .await
     .ok()
     .flatten();
+
+    // If named stage not found, use the first stage by position
+    let stage = if stage.is_none() {
+        sqlx::query_as::<_, StageRow>(
+            "SELECT id FROM crm_pipeline_stages WHERE pipeline_id = ? ORDER BY position ASC LIMIT 1",
+        )
+        .bind(pipeline_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+    } else {
+        stage
+    };
 
     let stage_id = stage.and_then(|s| Uuid::from_slice(&s.id).ok())?;
 
