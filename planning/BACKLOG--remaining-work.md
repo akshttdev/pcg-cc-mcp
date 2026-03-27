@@ -1,8 +1,52 @@
 # Backlog — Remaining Work
 
-**Last updated:** 2026-03-24 (sloperation intent gap audit — 5 missing capabilities + 3 partial implementations identified)
+**Last updated:** 2026-03-27 (persons→contacts unification audit added)
 **Context:** Consolidated from all completed planning docs + 27 research reports + 45-item research-derived backlog. **Prioritized by ROI = (revenue impact × probability) / effort**, not legacy ordering.
 **Phase 0 Sprint Plan:** See [`2026-03-19--analysis--phase0-sprint-candidates.md`](2026-03-19--analysis--phase0-sprint-candidates.md) for full scoring and sprint schedule.
+
+---
+
+## P0 — Persons→Contacts Unification (HIGH PRIORITY)
+
+**Audit**: [`2026-03-27--audit--persons-contacts-unification.md`](2026-03-27--audit--persons-contacts-unification.md)
+**Decision**: Keep `crm_contacts` as canonical. Merge `persons` intelligence fields into contacts. Retire `persons` table.
+**Why high priority**: Scout agent research is invisible in the Intel tab because intelligence lives on `persons` but the CRM pipeline operates through `crm_contacts`. Every new deal created via the CRM UI has no person record, so agent research has nowhere to land.
+
+### PC-1: Add intelligence fields to crm_contacts — BLOCKING
+- **Effort**: 0.5 day | **Impact**: Unblocks Scout → Intel tab visibility
+- Migration: add `intelligence_summary`, `intelligence_status`, `intelligence_raw`, `intelligence_confidence`, `intelligence_last_run_at`, `research_pass_count`, `research_depth`, `company_id`, `person_id` to `crm_contacts`
+- Backfill from linked persons
+- Update `CrmDealWithContact` query to read intel from contacts instead of persons JOIN
+- Scout executor writes directly to `crm_contacts` (no person lookup)
+
+### PC-2: Add research endpoint for contacts
+- **Effort**: 0.5 day | **Impact**: Enables "Trigger Research" from Intel tab
+- New endpoint: `POST /api/crm/contacts/:id/research` (delegates to intelligence service)
+- Intel tab's "Trigger Research" button targets contact ID instead of person ID
+
+### PC-3: Move research passes to contacts
+- **Effort**: 0.5 day | **Impact**: Full research history on contacts
+- Re-FK `person_research_passes` → `contact_research_passes` (or add `crm_contact_id` FK)
+- Research pass detail visible from contact record
+
+### PC-4: Move social profiles to contacts
+- **Effort**: 0.5 day | **Impact**: Social data accessible from CRM
+- Re-FK `person_social_profiles` → contacts
+- Social data visible in deal detail without person lookup
+
+### PC-5: Update intake pipeline to create contacts
+- **Effort**: 1 day | **Impact**: Eliminates person creation pathway
+- Intake workflow creates `crm_contacts` directly (with org_id)
+- Intelligence results written to contact record
+- Removes the need for the 20260404 auto-linking migration logic
+
+### PC-6: Retire persons table
+- **Effort**: 1 day | **Impact**: Eliminates redundancy
+- Migrate remaining persons-only fields (person_type, financial_role, business_stage) to contacts
+- `/people/:id` route reads from contacts (or redirect)
+- Drop persons API routes or alias to contacts
+- Drop `persons` table
+- Clean up unused models
 
 ---
 
@@ -517,40 +561,50 @@ Feature: Stage configs match the dealflow plan across all pipelines
       | Conferences               | Researching        | scout | true    | Scout                  |
 ```
 
-### Spec Coverage Summary (2026-03-24)
+### Spec Coverage Summary (2026-03-24, updated post-sloperation sprint)
 
-**PASSING**: DL-1, DL-2, DL-4, AA-1 (+ Run Now), AA-2, AA-3, AA-5, AA-6 (auto-advance chain), AA-7 (retrigger), RG-1, RG-2, DD-2, DD-3, DD-5 (agent history), DL-5 (card badges), DL-6 (toasts), PC-1, PC-2, PC-3, PC-4 (stage owners)
-**PARTIAL**: DL-3, DD-1, DD-4
-**FAILING**: AA-4
+**PASSING**: DL-1, DL-2, DL-3 (Won unified), DL-4, AA-1 (+ Run Now), AA-2, AA-3, AA-4 (Pass 2 chain), AA-5, AA-6 (auto-advance chain), AA-7 (retrigger), RG-1, RG-2, DD-2, DD-3, DD-5 (agent history), DL-5 (card badges), DL-6 (toasts), PC-1, PC-2, PC-3, PC-4 (stage owners)
+**PARTIAL**: DD-1, DD-4
+**FAILING**: (none)
 
-### Remaining Gaps (FAILING/PARTIAL specs)
+### Remaining Gaps (PARTIAL specs)
 
 | Spec | Gap | Effort | Priority |
 |------|-----|--------|----------|
-| **DL-3** | Won dual-path: stage transition only creates delivery deal; mark_deal_won does full provisioning (client + project + tasks + VIBE). Two paths to Won = different results. | 1-2 days | HIGH — core revenue tracking |
-| **AA-4** | Astra Pass 2 → Cash chaining. Depends on Discovery stage (see sloperation gap below). | 1-2 days | MEDIUM — improves proposal quality |
 | **DD-1** | Auto-match transcripts from call intake | 1-2 days | LOW — manual linking works |
 | **DD-4** | AR invoice dashboard | 2-3 days | MEDIUM — invoice generation works, tracking doesn't |
 
 ### Sloperation Intent Gaps (Audited 2026-03-24)
 
-5 sloperation317 intents have **no analogue** in the current 9-stage architecture. These are not bugs — they are missing business capabilities. Full analysis: `docs/PIPELINE.md` → "Sloperation Intent Gaps".
+**Sloperation sprint (2026-03-24)** resolved all 5 missing intents and 3 partial items. See `planning/2026-03-24--plan--sloperation-intent-sprint.md`.
 
-| Gap | Sloperation Intent | Impact | Depends On |
-|-----|-------------------|--------|-----------|
-| **Discovery stage** | Human call step between BA and Proposal (position 3). AM conducts discovery call, logs transcript. | Proposals lack client-specific insights. Call scheduling UI exists but has no associated stage. | New stage + stage_config |
-| **Astra Pass 2 (F12)** | Enhanced research pass reading transcript + Phase 1 report on Discovery→Proposal transition | Proposals built from Phase 1 data only | Discovery stage |
-| **Astra→Cash chaining** | Pass 2 automatically chains to Cash with enriched report | Cash uses unenriched data | Astra Pass 2 |
-| **Present stage** | Deck presentation on live call BEFORE invoicing | Invoice stage is about payment, skips presentation | New stage or expanded Invoice |
-| **Transcript→Proposal pipeline** | deal_transcripts feed into Astra P2 → Cash | No mechanism to incorporate call insights | Discovery stage + Astra P2 |
+| Gap | Status | Resolution |
+|-----|--------|-----------|
+| **Discovery stage** | ✅ RESOLVED | Restored at position 3. Hero card in OverviewTab. Soft exit gate for transcript/source. |
+| **Astra Pass 2 (F12)** | ✅ RESOLVED | Sequential agent queue: Astra deep_research fires first on Proposal entry, chains to Cash. |
+| **Astra→Cash chaining** | ✅ RESOLVED | chain_actions in flow_config. Executor chains next agent before auto-advance. |
+| **Present stage** | ✅ RESOLVED | Invoice renamed to "Present & Invoice". Presentation tracking in DeckTab. Invoice gated on presentation. |
+| **Transcript→Proposal pipeline** | ✅ RESOLVED | deal_data_sources join table with dual agent/stage scoping. Agent context loads linked sources. |
+| **F8: Org-specific review routing** | ✅ RESOLVED | stage_config.review_assignee with org owner fallback via resolve_review_assignee(). |
+| **Won dual-path** | ✅ RESOLVED | provision_won_deal() extracted. Stage transition to Won triggers full provisioning. |
+| **F3: Person invite** | ⚠️ STUB | Still logs only. Token generation + copy link deferred. Backlog: Resend email integration. |
+| **Lead stage Scout label** | ⚠️ OPEN | Lead shows "Scout" badge but no agent fires there | Either add light Scout trigger or remove Scout label |
 
-3 items are **partially covered** (exist but incomplete):
+### Remaining Items from Sloperation Sprint
 
-| Gap | Issue | Resolution |
-|-----|-------|-----------|
-| **F8: Org-specific review routing** | Tasks created but not assigned to org operator | Add assignee routing in CreateReviewTask |
-| **F3: Person invite** | Stub — logs "wire invite system later" | Needs invite token + email send |
-| **Lead stage Scout label** | Lead shows "Scout" badge but no agent fires there | Either add light Scout trigger or remove Scout label |
+| Item | Effort | Priority |
+|------|--------|----------|
+| **SSE events for pipeline refresh** — replace 15s polling with SSE events from agent executor. Emit on flow completion, auto-advance, chaining. Frontend subscribes via useEventSourceManager. | 1 day | HIGH |
+| **W8: Cost bridge** — agent flows record token usage, cost dashboard shows real VIBE data | 0.5 day | MEDIUM |
+| **Data source picker dialog** — browse org's data library instead of paste UUID | 1 day | MEDIUM |
+| **Data source file upload** — upload creates data_source + links to deal | 0.5 day | LOW |
+| **Full E2E refresh** — update all 5 pipeline specs for 10-stage pipeline | 2 days | MEDIUM |
+| **chain_to vs dependency graph** — research alternative agent chaining approaches | research | LOW |
+| **stage_config.visible_tabs** — drive tab visibility from backend config | 1 day | LOW |
+| **Progressive tab unlock** — tabs accumulate as deal advances, never hide | 0.5 day | LOW |
+| **Resend email integration** — person invite via email on Won | 1 day | MEDIUM |
+| **Auto-match transcripts** from call intake (DD-1) | 1-2 days | LOW |
+| **crm_deal_automations.rs split** — 1400+ lines, split into won_provisioning + research_triggers + invoice_transcripts | 0.5 day | LOW |
 
 ### Architectural Divergences (intentional, documented)
 
@@ -558,10 +612,10 @@ These are places where the current implementation deliberately differs from the 
 
 | 317 Plan | Current | Rationale | Still Valid? |
 |----------|---------|-----------|-------------|
-| Deals enter at Intel (no Lead stage) | Lead added as manual qualification buffer | Gives human a chance to qualify before agent triggers | ⚠️ May be unnecessary — original design had Scout fire on deal creation |
-| Discovery stage between BA and Proposal | Removed entirely | Simplified flow — but lost human input step + transcript feeding | ❌ **Should be restored** — see sloperation gaps |
-| Astra Pass 2 on Discovery→Proposal | Not ported | Depends on Discovery stage | ❌ **Should be restored** |
-| Present stage (deck on live call) | Replaced by Invoice (payment confirmation) | Different business intent | ⚠️ Review — may need both stages |
+| Deals enter at Intel (no Lead stage) | Lead with auto_skip: true (sloperation sprint) | Deals auto-skip Lead to Intel. Orgs can disable auto_skip for manual qualification. | ✅ |
+| Discovery stage between BA and Proposal | ✅ Restored (sloperation sprint) | Discovery stage at position 3 with hero card + exit gates | ✅ |
+| Astra Pass 2 on Discovery→Proposal | ✅ Restored (sloperation sprint) | Sequential agent queue with chain_actions | ✅ |
+| Present stage (deck on live call) | ✅ Consolidated into "Present & Invoice" | Invoice renamed, presentation tracking added | ✅ |
 | Hardcoded stage automations in route handlers | Data-driven `stage_config` JSON with `StageTransitionProcessor` | Enables UI-based configuration; hardcoded logic preserved as fallback | ✅ |
 | `call_llm()` direct HTTP in route handlers | `WorkflowLLMService` + `AgentFlowExecutor` with tool-calling loop | Richer agent capabilities (get_deal_context, update_deal_field, save_artifact) | ✅ |
 | No cancel window | 30s cancel window with frontend indicator | User control over agent execution | ✅ |
@@ -1108,6 +1162,34 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 **What:** When essential env vars (GITHUB_TOKEN, LLM_BACKEND_URL, etc.) are missing, tests throw cryptic errors deep in execution instead of warning upfront. The `simulation.ts` helper throws at line 15 but only after 3 prior steps pass, wasting test time.
 **Recommendation:** Add a pre-flight env check to `e2e/helpers/index.ts` or `playwright.config.ts` globalSetup that logs warnings for optional env vars and fails fast for required ones. Pattern: `console.warn("⚠️ GITHUB_TOKEN not set — agent simulation tests will be skipped")`.
 **Status:** NOT STARTED
+
+### PR #61: Migration CAST fragility in contacts_intelligence backfill
+**Source:** QA review PR #61 (2026-03-27)
+**File:** `crates/db/migrations/20260418000000_contacts_intelligence.sql:30-53`
+**What:** Backfill UPDATE uses `CAST(p.crm_contact_id AS TEXT) = CAST(crm_contacts.id AS TEXT)` 8 times. If both columns are TEXT, CASTs are unnecessary. If one is BLOB, this may silently fail to match. A single CTE or JOIN would be more efficient.
+**Recommendation:** Simplify to `WHERE p.crm_contact_id = crm_contacts.id` (both are TEXT post BLOB→TEXT migration). Replace 8 correlated subqueries with a single CTE-based UPDATE.
+**Status:** NOT STARTED — affects contacts unification phase, not blocking current sprint
+
+### PR #61: ReviewTab missing error UI for task fetch
+**Source:** QA review PR #61 (2026-03-27)
+**File:** `frontend/src/components/crm/deal-detail/tabs/ReviewTab.tsx:162-169`
+**What:** `useQuery` for deal tasks has no `isError` state rendered. API failures silently default to empty array. User sees no feedback.
+**Recommendation:** Add error boundary or `isError` check with retry button, matching pattern from AgentHistoryTab.
+**Status:** NOT STARTED — low priority, follows existing tab pattern
+
+### PR #61: Agent History "View Task" link is generic
+**Source:** QA review PR #61 (2026-03-27)
+**File:** `frontend/src/components/crm/deal-detail/tabs/AgentHistoryTab.tsx:186-191`
+**What:** "View Task" navigates to `/my-tasks` instead of deep-linking to the specific task. `flow.task_id` is available but `project_id` is not in `AgentFlowSummary`.
+**Recommendation:** Add `project_id` to the agent flows API response, then link to `/projects/{projectId}/tasks/{taskId}`.
+**Status:** NOT STARTED — UX improvement
+
+### PR #61: E2E timeout increases are symptomatic
+**Source:** QA review PR #61 (2026-03-27)
+**Files:** `e2e/pipeline/agent-automations.spec.ts:187,202`
+**What:** Test timeouts doubled (45→90s, 30→60s) to reduce flakiness. Increases test suite runtime.
+**Recommendation:** Replace polling with SSE event wait or targeted condition checks.
+**Status:** NOT STARTED — test infrastructure improvement
 
 ### ~~13. Onboarding Dialog Bypass for Test Environments~~ → RESOLVED
 **Source:** PR #47 smoke testing (2026-03-18)

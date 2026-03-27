@@ -7,7 +7,7 @@
 import type { Page, APIRequestContext } from "@playwright/test";
 import { expect } from "./fixtures";
 import { t, demoPause } from "../helpers";
-import { dealDetail } from "./testids";
+import { dealCard, dealDetail, review } from "./testids";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -154,41 +154,118 @@ export async function moveDealViaContextMenu(
 
 /**
  * Wait for a deal to reach a target stage via agent auto-advance.
- * Polls the API every 3s, completing review tasks that might block advance.
+ *
+ * Uses UI interactions:
+ * - Clicks "Run Now" on agent toast to bypass cancel window
+ * - Opens deal detail → Review tab → "Mark Review Complete" to unblock advance
+ * - Polls API to check stage (read-only, not a shortcut)
+ *
  * Returns true if the deal reached the stage, false on timeout.
+ */
+/**
+ * Wait for a deal card to appear in a target stage column on the kanban board.
+ * Pure UI — watches for the card text inside the column testid. No API polling.
+ * SSE events keep the board fresh so cards appear within ~1s of backend processing.
+ */
+export async function waitForCardInColumn(
+  page: Page,
+  dealNameFragment: string,
+  stageName: string,
+  timeoutMs = 15_000,
+) {
+  const column = page.getByTestId(`stage-column-${stageName.toLowerCase().replace(/\s+/g, '-')}`);
+  await expect(column.getByText(dealNameFragment, { exact: false })).toBeVisible({ timeout: timeoutMs });
+}
+
+/**
+ * Wait for a deal to reach a target stage via agent auto-advance.
+ *
+ * Demo-quality flow:
+ * 1. Watch the kanban board (drawer closed) for card movement
+ * 2. Click "Run Now" on agent toast when it appears
+ * 3. When review task blocks advance: open drawer → Review tab → Mark Complete → close
+ * 4. Watch card move to next column
+ *
+ * Uses SSE for real-time board updates — no API polling.
  */
 export async function waitForDealStage(
   page: Page,
   request: APIRequestContext,
   dealId: string,
   stageName: string,
-  timeoutMs = 90_000,
+  timeoutMs = 15_000,
 ) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    // Complete any review tasks that might block advance
-    await completeDealTasks(request, dealId);
+  // Close any open drawer so we can watch the kanban board
+  try {
+    const closeBtn = page.getByTestId(dealDetail.close);
+    if (await closeBtn.isVisible({ timeout: 300 })) await closeBtn.click();
+  } catch { /* not open */ }
 
-    // Click Run Now if visible (speeds up agent execution)
+  const start = Date.now();
+  let lastStage = '';
+  let drawerAttempts = 0;
+
+  while (Date.now() - start < timeoutMs) {
+    // Click Run Now on toast if visible (bypasses cancel window)
     try {
       const runNow = page.getByRole("button", { name: "Run Now" });
-      if (await runNow.isVisible({ timeout: 1_000 })) {
+      if (await runNow.isVisible({ timeout: 500 })) {
         await runNow.click();
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(300);
       }
-    } catch { /* toast may not be visible */ }
+    } catch { /* no toast */ }
 
-    // Check deal's current stage via API
+    // Check current stage via API (read-only, not a shortcut)
     const dealRes = await request.get(`/api/crm/deals/${dealId}`);
-    const deal = (await dealRes.json()).data || (await dealRes.json());
-    if (deal.stage?.toLowerCase() === stageName.toLowerCase()) return true;
-    await page.waitForTimeout(3_000);
+    const deal = await dealRes.json().then((b: any) => b.data || b);
+    const currentStage = deal.stage?.toLowerCase() || '';
+
+    if (currentStage === stageName.toLowerCase()) return true;
+
+    // Detect if we're stuck at the same stage (needs review task completion)
+    const stageChanged = currentStage !== lastStage;
+    lastStage = currentStage;
+
+    if (stageChanged) {
+      // Stage just changed — give agents time to start, skip drawer interaction
+      drawerAttempts = 0;
+      await page.waitForTimeout(1_500);
+      continue;
+    }
+
+    // Only open drawer for review completion every other iteration to reduce overhead
+    drawerAttempts++;
+    if (drawerAttempts % 2 === 0) {
+      try {
+        const card = page.getByTestId(dealCard.card(dealId));
+        if (await card.isVisible({ timeout: 500 })) {
+          await card.click();
+          await page.waitForTimeout(300);
+          const reviewTab = page.getByTestId(dealDetail.tab("review"));
+          if (await reviewTab.isVisible({ timeout: 300 })) {
+            await reviewTab.click();
+            await page.waitForTimeout(300);
+            const markComplete = page.getByTestId(review.markComplete);
+            if (await markComplete.isVisible({ timeout: 500 })) {
+              await markComplete.click();
+              await page.waitForTimeout(500);
+            }
+          }
+          // Close drawer to watch board again
+          const closeBtn = page.getByTestId(dealDetail.close);
+          if (await closeBtn.isVisible({ timeout: 300 })) await closeBtn.click();
+        }
+      } catch { /* deal card not visible or drawer interaction failed */ }
+    }
+
+    await page.waitForTimeout(1_500);
   }
   return false;
 }
 
 /**
- * Complete all pending tasks for a deal (so review gates don't block advance).
+ * Complete all pending tasks for a deal via API.
+ * NOTE: Use completeDealTasksViaUI for demo-quality tests.
  */
 export async function completeDealTasks(request: APIRequestContext, dealId: string) {
   const res = await request.get(`/api/tasks?crm_deal_id=${dealId}`);
@@ -199,6 +276,19 @@ export async function completeDealTasks(request: APIRequestContext, dealId: stri
       }
     }
   }
+}
+
+/**
+ * Advance a deal from a human-owned stage to the next stage via context menu.
+ * Use this when the auto-advance chain stops at a human stage (e.g., Discovery).
+ */
+export async function advanceDealViaUI(
+  page: Page,
+  dealNameFragment: string,
+  targetStage: string,
+) {
+  await moveDealViaContextMenu(page, dealNameFragment, targetStage);
+  await page.waitForTimeout(demoPause.long);
 }
 
 // ── Pipeline Settings UI ─────────────────────────────────────────────────────

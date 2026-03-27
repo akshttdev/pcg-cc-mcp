@@ -112,6 +112,22 @@ pub struct DealTranscript {
     pub created_at: String,
 }
 
+/// Join table: links data sources from the data library to deals.
+/// Allows multiple sources per deal. Used by Astra Pass 2 for enriched context.
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct DealDataSource {
+    pub id: DbUuid,
+    pub deal_id: DbUuid,
+    pub data_source_id: DbUuid,
+    /// JSON array of stage names, e.g. ["discovery", "proposal"]. NULL = all stages.
+    pub relevant_stages: Option<String>,
+    /// JSON array of agent names, e.g. ["astra", "cash"]. NULL = all agents.
+    pub relevant_agents: Option<String>,
+    pub linked_by: Option<String>,
+    pub created_at: String,
+}
+
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct LinkTranscriptRequest {
@@ -120,6 +136,16 @@ pub struct LinkTranscriptRequest {
     pub transcript_text: Option<String>,
     pub summary: Option<String>,
     pub matched_by: Option<String>,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub struct LinkDataSourceRequest {
+    pub data_source_id: String,
+    /// Stage names this source is relevant for. Omit for all stages.
+    pub relevant_stages: Option<Vec<String>>,
+    /// Agent names this source is relevant for. Omit for all agents.
+    pub relevant_agents: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]

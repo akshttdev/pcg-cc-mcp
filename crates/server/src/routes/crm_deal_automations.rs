@@ -1166,50 +1166,24 @@ pub async fn send_deal_invoice(
 
 // ── POST /crm/deals/:id/mark-won ─────────────────────────────────────────────
 /// Won automation chain: set won_at, move to Won stage, create client + project + tasks
-pub async fn mark_deal_won(
-    Extension(access_context): Extension<AccessContext>,
-    State(deployment): State<DeploymentImpl>,
-    Path(id): Path<String>,
-    Json(body): Json<serde_json::Value>,
-) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
-    let pool = &deployment.db().pool;
-    let id = parse_db_uuid_param(&id, "deal ID")?;
-    let deal = require_deal_org_access(&access_context, pool, &id).await?;
+/// Result of Won provisioning — shared between mark_deal_won endpoint and stage transition
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct WonProvisionResult {
+    pub client_id: String,
+    pub client_name: String,
+    pub project_id: String,
+    pub project_name: String,
+    pub tasks_created: i32,
+    pub vibe_amount: Option<f64>,
+}
 
-    let win_reason = body["win_reason"].as_str().map(|s| s.to_string());
-
-    // Find Won stage for this pipeline
-    let won_stage: Option<DbUuid> = if let Some(ref pipeline_id) = deal.crm_pipeline_id {
-        #[derive(sqlx::FromRow)]
-        struct S {
-            id: DbUuid,
-        }
-        sqlx::query_as::<_, S>("SELECT id FROM crm_pipeline_stages WHERE pipeline_id = ? AND (stage_type = 'won' OR name = 'Won') LIMIT 1")
-            .bind(pipeline_id).fetch_optional(pool).await.ok().flatten().map(|s| s.id)
-    } else {
-        None
-    };
-
-    // Move to Won stage
-    if let Some(ref won_stage_id) = won_stage {
-        CrmDeal::move_to_stage(pool, &id, won_stage_id, 0)
-            .await
-            .map_err(|e| {
-                tracing::error!(
-                    "[mark_deal_won] Failed to move deal {} to Won stage: {}",
-                    id,
-                    e
-                );
-                ApiError::InternalError(format!("Failed to move deal to Won stage: {}", e))
-            })?;
-    }
-
-    // Set won_at and win_reason
-    sqlx::query("UPDATE crm_deals SET won_at = datetime('now','subsec'), win_reason = COALESCE(?, win_reason), updated_at = datetime('now','subsec') WHERE id = ?")
-        .bind(&win_reason)
-        .bind(&id)
-        .execute(pool).await
-        .map_err(|e| ApiError::BadRequest(format!("Failed to update deal: {}", e)))?;
+/// Provision a Won deal: create client, project, tasks from deliverables, VIBE transaction, log activity.
+/// Idempotent — checks if client/project already exist. Called by both mark_deal_won and stage transition.
+pub async fn provision_won_deal(
+    pool: &sqlx::SqlitePool,
+    deal: &CrmDeal,
+) -> Result<WonProvisionResult, String> {
+    let deal_id = &deal.id;
 
     // Resolve contact info for client/project creation
     #[derive(sqlx::FromRow)]
@@ -1263,7 +1237,7 @@ pub async fn mark_deal_won(
                 .filter(|s| !s.is_empty())
                 .collect::<Vec<_>>()
                 .join("-");
-            sqlx::query(
+            if let Err(e) = sqlx::query(
                 "INSERT INTO clients (id, organization_id, name, slug, crm_contact_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, datetime('now','subsec'), datetime('now','subsec'))"
             )
             .bind(&cid)
@@ -1272,61 +1246,69 @@ pub async fn mark_deal_won(
             .bind(&slug)
             .bind(&deal.crm_contact_id)
             .execute(pool).await
-            .map_err(|e| {
-                tracing::error!("[mark_deal_won] Failed to create client for deal {}: {}", id, e);
-                ApiError::InternalError(format!("Failed to create client: {}", e))
-            })?;
+            {
+                return Err(format!("Failed to create client: {}", e));
+            }
             cid
         }
     };
 
     // ── Create Project ───────────────────────────────────────────────────────
-    let project_id = DbUuid::new();
-    let project_name = format!("{} — {}", deal.name, company_name);
-    sqlx::query(
-        "INSERT INTO projects (id, name, git_repo_path, client_id, organization_id, created_at, updated_at) VALUES (?, ?, '', ?, ?, datetime('now','subsec'), datetime('now','subsec'))"
-    )
-    .bind(&project_id)
-    .bind(&project_name)
-    .bind(&client_id)
-    .bind(&deal.organization_id)
-    .execute(pool).await
-    .map_err(|e| {
-        tracing::error!("[mark_deal_won] Failed to create project for deal {}: {}", id, e);
-        ApiError::InternalError(format!("Failed to create project: {}", e))
-    })?;
-
-    // Link project to deal
-    if let Err(e) = sqlx::query(
-        "UPDATE crm_deals SET project_id = ?, updated_at = datetime('now','subsec') WHERE id = ?",
-    )
-    .bind(&project_id)
-    .bind(&id)
-    .execute(pool)
-    .await
-    {
-        tracing::error!(
-            "[mark_deal_won] Failed to link project {} to deal {}: {}",
-            project_id,
-            id,
-            e
+    // Check if project already linked (idempotent)
+    if deal.project_id.is_some() {
+        tracing::info!(
+            "[provision_won_deal] Deal {} already has project, skipping creation",
+            deal_id
         );
     }
 
-    // ── F3: Move deliverables to the new project ────────────────────────────
-    sqlx::query(
+    let project_id = if let Some(ref existing_project_id) = deal.project_id {
+        existing_project_id.clone()
+    } else {
+        let pid = DbUuid::new();
+        let project_name = format!("{} — {}", deal.name, company_name);
+        let repo_path = format!("deals/{}", deal_id);
+        if let Err(e) = sqlx::query(
+            "INSERT INTO projects (id, name, git_repo_path, organization_id, created_at, updated_at) VALUES (?, ?, ?, ?, datetime('now','subsec'), datetime('now','subsec'))"
+        )
+        .bind(&pid)
+        .bind(&project_name)
+        .bind(&repo_path)
+        .bind(&deal.organization_id)
+        .execute(pool).await
+        {
+            return Err(format!("Failed to create project: {}", e));
+        }
+
+        // Link project to deal
+        if let Err(e) = sqlx::query(
+            "UPDATE crm_deals SET project_id = ?, updated_at = datetime('now','subsec') WHERE id = ?",
+        )
+        .bind(&pid)
+        .bind(deal_id)
+        .execute(pool)
+        .await
+        {
+            tracing::error!("[provision_won_deal] Failed to link project {} to deal {}: {}", pid, deal_id, e);
+        }
+        pid
+    };
+
+    let project_name = format!("{} — {}", deal.name, company_name);
+
+    // ── Move deliverables to the project ─────────────────────────────────────
+    if let Err(e) = sqlx::query(
         "UPDATE deliverables SET project_id = ?, updated_at = datetime('now','subsec') WHERE crm_deal_id = ?"
     )
     .bind(&project_id)
-    .bind(&id)
+    .bind(deal_id)
     .execute(pool)
     .await
-    .map_err(|e| {
-        tracing::error!("[mark_deal_won] Failed to move deliverables to project: {}", e);
-        ApiError::InternalError(format!("Failed to move deliverables to project: {}", e))
-    })?;
+    {
+        tracing::error!("[provision_won_deal] Failed to move deliverables to project: {}", e);
+    }
 
-    // ── F3: Create tasks from deliverables table (not JSON re-parsing) ──────
+    // ── Create tasks from deliverables ───────────────────────────────────────
     #[derive(sqlx::FromRow)]
     struct DeliverableRow {
         #[allow(dead_code)]
@@ -1337,7 +1319,7 @@ pub async fn mark_deal_won(
     let deliverables: Vec<DeliverableRow> = sqlx::query_as::<_, DeliverableRow>(
         "SELECT id, title, description FROM deliverables WHERE crm_deal_id = ? ORDER BY created_at ASC"
     )
-    .bind(&id)
+    .bind(deal_id)
     .fetch_all(pool)
     .await
     .unwrap_or_default();
@@ -1345,95 +1327,153 @@ pub async fn mark_deal_won(
     let mut task_count = deliverables.len() as i32;
     for deliv in &deliverables {
         let task_id = DbUuid::new();
-        sqlx::query(
+        if let Err(e) = sqlx::query(
             "INSERT INTO tasks (id, project_id, crm_deal_id, title, description, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'todo', datetime('now','subsec'), datetime('now','subsec'))"
         )
-        .bind(&task_id).bind(&project_id).bind(&id)
+        .bind(&task_id).bind(&project_id).bind(deal_id)
         .bind(&deliv.title).bind(&deliv.description)
         .execute(pool).await
-        .map_err(|e| {
-            tracing::error!("[mark_deal_won] Failed to create task from deliverable: {}", e);
-            ApiError::InternalError(format!("Failed to create task from deliverable: {}", e))
-        })?;
+        {
+            tracing::error!("[provision_won_deal] Failed to create task from deliverable: {}", e);
+        }
     }
 
     // Fallback: if no deliverables exist, create a default setup task
     if task_count == 0 {
         let task_id = DbUuid::new();
-        sqlx::query(
+        if let Err(e) = sqlx::query(
             "INSERT INTO tasks (id, project_id, crm_deal_id, title, description, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'todo', datetime('now','subsec'), datetime('now','subsec'))"
         )
-        .bind(&task_id).bind(&project_id).bind(&id)
+        .bind(&task_id).bind(&project_id).bind(deal_id)
         .bind("Project Setup & Kickoff")
         .bind(format!("Initial project setup for {}. Review proposal and create specific deliverables.", company_name))
         .execute(pool).await
-        .map_err(|e| {
-            tracing::error!("[mark_deal_won] Failed to create default setup task: {}", e);
-            ApiError::InternalError(format!("Failed to create default setup task: {}", e))
-        })?;
+        {
+            tracing::error!("[provision_won_deal] Failed to create default setup task: {}", e);
+        }
         task_count = 1;
     }
 
-    // ── F3: VIBE transaction for deal value ─────────────────────────────────
-    if let Some(amount) = deal.amount {
-        let vibe_amount = amount * 100.0; // 1 USD = 100 VIBE
+    // ── VIBE transaction for deal value ──────────────────────────────────────
+    let vibe_amount = if let Some(amount) = deal.amount {
+        let vibe = amount * 100.0; // 1 USD = 100 VIBE
         let tx_id = DbUuid::new();
         if let Err(e) = sqlx::query(
             "INSERT INTO vibe_transactions (id, amount, transaction_type, description, created_at) VALUES (?, ?, 'deal_won', ?, datetime('now','subsec'))"
         )
         .bind(&tx_id)
-        .bind(vibe_amount)
+        .bind(vibe)
         .bind(format!("Deal won: {} — ${:.2}", deal.name, amount))
         .execute(pool)
         .await
         {
-            tracing::error!("[mark_deal_won] Failed to create VIBE transaction: {}", e);
+            tracing::error!("[provision_won_deal] Failed to create VIBE transaction: {}", e);
         }
-        tracing::info!(
-            "VIBE transaction {} created: {} VIBE for deal {}",
-            tx_id,
-            vibe_amount,
-            id
-        );
-    }
+        Some(amount)
+    } else {
+        None
+    };
 
-    // F3: Person invitation — log for now (full invite system to be wired later)
+    // ── Person invitation stub ───────────────────────────────────────────────
     if let Some(ref ci) = contact_info {
         tracing::info!(
             "Won deal {}: person invitation pending for {} ({}) — wire invite system later",
-            id,
+            deal_id,
             ci.full_name.as_deref().unwrap_or("unknown"),
             ci.email.as_deref().unwrap_or("no-email")
         );
     }
 
-    // Log Won activity
+    // ── Log Won activity ─────────────────────────────────────────────────────
     if let Err(e) = sqlx::query(
         "INSERT INTO crm_activities (id, organization_id, crm_contact_id, crm_deal_id, activity_type, subject, activity_at) VALUES (?, ?, ?, ?, 'deal_won', ?, datetime('now','subsec'))"
     )
     .bind(DbUuid::new())
     .bind(&deal.organization_id)
     .bind(&deal.crm_contact_id)
-    .bind(&id)
+    .bind(deal_id)
     .bind(format!("Deal won: {} — {} tasks created", deal.name, task_count))
     .execute(pool).await
     {
-        tracing::error!("[mark_deal_won] Failed to log Won activity: {}", e);
+        tracing::error!("[provision_won_deal] Failed to log Won activity: {}", e);
     }
 
     tracing::info!(
-        "Deal {} marked Won. Client '{}', Project '{}', {} tasks created",
-        id,
+        "Deal {} provisioned as Won. Client '{}', Project '{}', {} tasks created",
+        deal_id,
         company_name,
         project_name,
         task_count
     );
+
+    Ok(WonProvisionResult {
+        client_id: client_id.to_string(),
+        client_name: company_name,
+        project_id: project_id.to_string(),
+        project_name,
+        tasks_created: task_count,
+        vibe_amount,
+    })
+}
+
+pub async fn mark_deal_won(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let id = parse_db_uuid_param(&id, "deal ID")?;
+    let deal = require_deal_org_access(&access_context, pool, &id).await?;
+
+    let win_reason = body["win_reason"].as_str().map(|s| s.to_string());
+
+    // Find Won stage for this pipeline
+    let won_stage: Option<DbUuid> = if let Some(ref pipeline_id) = deal.crm_pipeline_id {
+        #[derive(sqlx::FromRow)]
+        struct S {
+            id: DbUuid,
+        }
+        sqlx::query_as::<_, S>("SELECT id FROM crm_pipeline_stages WHERE pipeline_id = ? AND (stage_type = 'won' OR name = 'Won') LIMIT 1")
+            .bind(pipeline_id).fetch_optional(pool).await.ok().flatten().map(|s| s.id)
+    } else {
+        None
+    };
+
+    // Move to Won stage
+    if let Some(ref won_stage_id) = won_stage {
+        CrmDeal::move_to_stage(pool, &id, won_stage_id, 0)
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    "[mark_deal_won] Failed to move deal {} to Won stage: {}",
+                    id,
+                    e
+                );
+                ApiError::InternalError(format!("Failed to move deal to Won stage: {}", e))
+            })?;
+    }
+
+    // Set won_at and win_reason
+    sqlx::query("UPDATE crm_deals SET won_at = datetime('now','subsec'), win_reason = COALESCE(?, win_reason), updated_at = datetime('now','subsec') WHERE id = ?")
+        .bind(&win_reason)
+        .bind(&id)
+        .execute(pool).await
+        .map_err(|e| ApiError::BadRequest(format!("Failed to update deal: {}", e)))?;
+
+    // Provision: client, project, deliverables→tasks, VIBE transaction, activity log
+    let result = provision_won_deal(pool, &deal)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Won provisioning failed: {}", e)))?;
+
     Ok(Json(ApiResponse::success(serde_json::json!({
         "deal_id": id.to_string(),
-        "client_id": client_id.to_string(),
-        "project_id": project_id.to_string(),
-        "project_name": project_name,
-        "tasks_created": task_count,
+        "client_id": result.client_id,
+        "client_name": result.client_name,
+        "project_id": result.project_id,
+        "project_name": result.project_name,
+        "tasks_created": result.tasks_created,
+        "vibe_amount": result.vibe_amount,
     }))))
 }
 
@@ -1496,6 +1536,77 @@ pub async fn link_deal_transcript(
     Ok(Json(ApiResponse::success(record)))
 }
 
+// ── POST /crm/deals/:id/data-sources ─────────────────────────────────────────
+/// Link a data source from the data library to a deal.
+pub async fn link_deal_data_source(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<String>,
+    Json(body): Json<db::models::crm_deal::LinkDataSourceRequest>,
+) -> Result<Json<ApiResponse<db::models::crm_deal::DealDataSource>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let deal_id = parse_db_uuid_param(&id, "deal ID")?;
+    require_deal_org_access(&access_context, pool, &deal_id).await?;
+
+    let link_id = DbUuid::new();
+    let data_source_id = DbUuid::parse(&body.data_source_id)
+        .map_err(|_| ApiError::BadRequest("Invalid data_source_id".to_string()))?;
+
+    let relevant_stages_json = body
+        .relevant_stages
+        .as_ref()
+        .and_then(|v| serde_json::to_string(v).ok());
+    let relevant_agents_json = body
+        .relevant_agents
+        .as_ref()
+        .and_then(|v| serde_json::to_string(v).ok());
+
+    sqlx::query(
+        "INSERT INTO deal_data_sources (id, deal_id, data_source_id, relevant_stages, relevant_agents, linked_by, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now','subsec'))"
+    )
+    .bind(&link_id)
+    .bind(&deal_id)
+    .bind(&data_source_id)
+    .bind(&relevant_stages_json)
+    .bind(&relevant_agents_json)
+    .bind(access_context.user_id.to_string())
+    .execute(pool)
+    .await
+    .map_err(|e| ApiError::BadRequest(format!("Failed to link data source: {}", e)))?;
+
+    let record = sqlx::query_as::<_, db::models::crm_deal::DealDataSource>(
+        "SELECT * FROM deal_data_sources WHERE id = ?",
+    )
+    .bind(&link_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| ApiError::BadRequest(format!("DB error: {}", e)))?;
+
+    Ok(Json(ApiResponse::success(record)))
+}
+
+// ── GET /crm/deals/:id/data-sources ──────────────────────────────────────────
+/// List data sources linked to a deal.
+pub async fn list_deal_data_sources(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<Vec<db::models::crm_deal::DealDataSource>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let deal_id = parse_db_uuid_param(&id, "deal ID")?;
+    require_deal_org_access(&access_context, pool, &deal_id).await?;
+
+    let sources = sqlx::query_as::<_, db::models::crm_deal::DealDataSource>(
+        "SELECT * FROM deal_data_sources WHERE deal_id = ? ORDER BY created_at ASC",
+    )
+    .bind(&deal_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| ApiError::BadRequest(format!("DB error: {}", e)))?;
+
+    Ok(Json(ApiResponse::success(sources)))
+}
+
 // ── POST /crm/deals/:id/generate-invite ──────────────────────────────────────
 /// Generate a token-based invite link for the deal's contact person.
 /// Returns the invite URL for clipboard copy.
@@ -1534,11 +1645,11 @@ pub async fn generate_deal_invite(
         None
     };
 
-    // Generate invite token
+    // Generate invite token (64 hex chars from two UUIDs)
     let token = format!(
         "{}{}",
-        uuid::Uuid::new_v4().to_string().replace('-', ""),
-        uuid::Uuid::new_v4().to_string().replace('-', "")
+        DbUuid::new().to_string().replace('-', ""),
+        DbUuid::new().to_string().replace('-', "")
     );
 
     // Store in deal's custom_fields

@@ -45,6 +45,7 @@ export const crmKeys = {
   contactDeals: (contactId: string) => ['contact-deals', contactId] as const,
   contactActivities: (contactId: string) => ['contact-activities', contactId] as const,
   dealTranscripts: (dealId: string) => ['deal-transcripts', dealId] as const,
+  dealDataSources: (dealId: string) => ['deal-data-sources', dealId] as const,
   dealLegacy: (dealId: string) => ['crm-deal', dealId] as const,
   kanbanLegacy: () => ['crm-kanban'] as const,
   kanbanLegacyFlat: () => ['kanban'] as const,

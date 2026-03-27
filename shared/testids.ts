@@ -40,6 +40,7 @@ export const dealDetail = {
   edit: "deal-detail-edit",
   delete: "deal-detail-delete",
   tab: (name: string) => `deal-detail-tabs-${name}`,
+  allTabsToggle: "deal-detail-all-tabs",
 } as const;
 
 // ── Call Scheduling (OverviewCallSchedulingSection.tsx) ───────────────────────
@@ -56,11 +57,30 @@ export const callScheduling = {
 
 export const deck = {
   generate: "deck-generate",
+  presentationStatus: "deck-presentation-status",
+  presentationDate: "deck-presentation-date",
+  presentationSave: "deck-presentation-save",
   sendInvoice: "deck-send-invoice",
   confirmSendInvoice: "deck-confirm-send-invoice",
   markWon: "deck-mark-won",
   confirmWon: "deck-confirm-won",
   generateInvite: "deck-generate-invite",
+} as const;
+
+// ── Review Tab (ReviewTab.tsx) ────────────────────────────────────────────────
+
+export const review = {
+  markComplete: "review-mark-complete",
+  approveAdvance: "review-approve-advance",
+} as const;
+
+// ── Discovery Stage (OverviewTab.tsx) ─────────────────────────────────────────
+
+export const discovery = {
+  heroCard: "discovery-hero-card",
+  callStatus: "discovery-call-status",
+  scheduleCall: "discovery-schedule-call",
+  linkTranscript: "discovery-link-transcript",
 } as const;
 
 // ── Agent History (AgentHistoryTab.tsx) ───────────────────────────────────────

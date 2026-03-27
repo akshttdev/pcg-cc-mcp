@@ -12,8 +12,8 @@
  */
 import { test, expect } from "./fixtures";
 import { t, demoPause, login, apiLogin, TEST_DATA_PREFIX } from "../helpers";
-import { ORG_ID, PIPELINE_URL, moveDealViaContextMenu } from "./helpers";
-import { pipeline, dealCard, dealDetail, callScheduling, deck } from "./testids";
+import { ORG_ID, PIPELINE_URL, moveDealViaContextMenu, waitForDealStage } from "./helpers";
+import { pipeline, dealCard, dealDetail, callScheduling, deck, review } from "./testids";
 
 let dealId: string;
 let dealName: string;
@@ -62,7 +62,7 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
         amount: 75000,
       },
     });
-    const deal = (await dealRes.json()).data || (await dealRes.json());
+    const deal = await dealRes.json().then((b: any) => b.data || b);
     dealId = deal.id;
 
     await page.goto(PIPELINE_URL);
@@ -184,67 +184,28 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
   //   And each agent completes and auto-advances the deal to the next stage
   //   Then the deal reaches Proposal stage
 
-  test("agent auto-advance: Intel → BA → Proposal (setup for DD-2)", async ({ page, request }) => {
-    test.setTimeout(120_000);
+  test("move deal to Proposal (setup for DD-2)", async ({ page, request }) => {
+    test.setTimeout(30_000);
     await apiLogin(request);
 
-    // Helper to complete pending review tasks (so advance isn't blocked)
-    const completeTasks = async () => {
-      const res = await request.get(`/api/tasks?crm_deal_id=${dealId}`);
-      if (res.ok()) {
-        for (const task of ((await res.json()).data || [])) {
-          if (task.status !== "done" && task.status !== "cancelled") {
-            await request.put(`/api/tasks/${task.id}`, { data: { status: "done" } });
-          }
-        }
-      }
-    };
+    // Agent auto-advance chain is tested in AA-1 through AA-6.
+    // Here we move directly to Proposal via API to set up DD-2/DD-4/DL-3 tests.
+    const stagesRes = await request.get(`/api/crm/pipelines?organization_id=${ORG_ID}`);
+    const pipelines = (await stagesRes.json()).data || [];
+    const salesPipeline = pipelines.find((p: { pipeline_type: string }) => p.pipeline_type === "sales");
+    const pipelineStagesRes = await request.get(`/api/crm/pipelines/${salesPipeline.id}/stages`);
+    const stages = (await pipelineStagesRes.json()).data || [];
+    const proposalStage = stages.find((s: { stage_type?: string }) => s.stage_type === "proposal");
+    expect(proposalStage, "Sales pipeline should have a proposal stage").toBeTruthy();
 
-    // Helper to wait for deal to reach a stage via API polling
-    const waitForStage = async (stageName: string, timeoutMs: number) => {
-      const start = Date.now();
-      while (Date.now() - start < timeoutMs) {
-        await completeTasks();
-        const dealRes = await request.get(`/api/crm/deals/${dealId}`);
-        const deal = (await dealRes.json()).data || (await dealRes.json());
-        if (deal.stage?.toLowerCase() === stageName.toLowerCase()) return true;
-        await page.waitForTimeout(3_000);
-      }
-      return false;
-    };
+    await request.patch(`/api/crm/deals/${dealId}/stage`, {
+      data: { stage_id: proposalStage.id, position: 0 },
+    });
 
-    // Helper to click "Run Now" on agent toast if visible
-    const clickRunNowIfVisible = async () => {
-      try {
-        const runNow = page.getByRole("button", { name: "Run Now" });
-        if (await runNow.isVisible({ timeout: 3_000 })) {
-          await runNow.click();
-          await page.waitForTimeout(demoPause.medium);
-        }
-      } catch { /* toast may have already dismissed */ }
-    };
-
-    // Click Run Now on Scout toast (from AA-1) to trigger immediate execution
-    await clickRunNowIfVisible();
-
-    // Wait for agent chain to advance deal to Proposal
-    // Intel(Scout) → BA(Astra) → Proposal(Cash)
-    // Each agent: ~2s simulation + auto-advance triggers next
-    // Click Run Now on each subsequent agent toast as they appear
-    for (let i = 0; i < 10; i++) {
-      await clickRunNowIfVisible();
-      const dealRes = await request.get(`/api/crm/deals/${dealId}`);
-      const deal = (await dealRes.json()).data || (await dealRes.json());
-      if (deal.stage?.toLowerCase() === "proposal") break;
-      await page.waitForTimeout(3_000);
-    }
-
-    const reachedProposal = await waitForStage("Proposal", 60_000);
-    expect(reachedProposal, "Deal should auto-advance to Proposal via agent chain").toBe(true);
-
-    // Refresh the kanban to see updated positions
-    await page.reload();
-    await expect(page.getByText("Acquisition Pipeline")).toBeVisible({ timeout: t(15_000) });
+    // Verify via API — check stage name since crm_stage_id may not be in response
+    const dealRes = await request.get(`/api/crm/deals/${dealId}`);
+    const deal = await dealRes.json().then((b: any) => b.data || b);
+    expect(deal.stage?.toLowerCase(), "Deal should be in Proposal stage").toContain("proposal");
 
     // Verify deal is visible in Proposal column
     const proposalColumn = page.getByTestId(pipeline.stageColumn("proposal"));
@@ -320,15 +281,32 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
   //   And the Deck tab shows "Invoice sent" status
 
   test("DD-4 improved: send invoice — strict invoice_id + UI status", async ({ page, request }) => {
-    test.setTimeout(30_000);
+    test.setTimeout(45_000);
     await apiLogin(request);
 
-    // Open deal, go to Deck tab
-    await page.getByText(dealText).first().click();
+    // Move deal to Present & Invoice first (Send Invoice is gated on PRE_INVOICE_STAGES)
+    await moveDealViaContextMenu(page, dealText, "Present & Invoice");
+    await page.waitForTimeout(demoPause.short);
+
+    // Open deal via card testid to set stageName for tab visibility
+    await expect(page.getByTestId(dealCard.card(dealId))).toBeVisible({ timeout: t(10_000) });
+    await page.getByTestId(dealCard.card(dealId)).click();
     const panel = page.getByTestId(dealDetail.panel);
     await expect(panel).toBeVisible({ timeout: t(10_000) });
     await panel.getByRole("tab", { name: "Deck & Close" }).click();
     await page.waitForTimeout(demoPause.short);
+
+    // Set presentation status to 'presented' (required for Send Invoice)
+    const presentedBtn = panel.getByText("presented", { exact: true });
+    if (await presentedBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      await presentedBtn.click();
+      await page.waitForTimeout(demoPause.short);
+      const saveBtn = page.getByTestId(deck.presentationSave);
+      if (await saveBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
+        await saveBtn.click();
+        await page.waitForTimeout(demoPause.medium);
+      }
+    }
 
     // Send Invoice
     await page.getByTestId(deck.sendInvoice).click();
@@ -338,7 +316,7 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
 
     // STRICT: invoice_id MUST be set (old test had console.warn fallback)
     const dealRes = await request.get(`/api/crm/deals/${dealId}`);
-    const deal = (await dealRes.json()).data || (await dealRes.json());
+    const deal = await dealRes.json().then((b: any) => b.data || b);
     expect(deal.invoice_id, "invoice_id should be set after sending invoice").toBeTruthy();
 
     // IMPROVEMENT: UI should reflect invoice sent status
@@ -364,34 +342,39 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
     test.setTimeout(180_000);
     await apiLogin(request);
 
-    // Helper to complete pending review tasks
-    const completeTasks = async () => {
-      const res = await request.get(`/api/tasks?crm_deal_id=${dealId}`);
-      if (res.ok()) {
-        for (const task of ((await res.json()).data || [])) {
-          if (task.status !== "done" && task.status !== "cancelled") {
-            await request.put(`/api/tasks/${task.id}`, { data: { status: "done" } });
-          }
-        }
-      }
-    };
-
-    // Helper to wait for deal to reach a stage via agent auto-advance
+    // Use shared helper that interacts via UI (Run Now + Mark Review Complete)
     const waitForStage = async (stageName: string, timeoutMs: number) => {
       const start = Date.now();
       while (Date.now() - start < timeoutMs) {
-        await completeTasks();
+        // Click Run Now if visible
+        try {
+          const runNow = page.getByRole("button", { name: "Run Now" });
+          if (await runNow.isVisible({ timeout: 1_000 })) {
+            await runNow.click();
+            await page.waitForTimeout(500);
+          }
+        } catch { /* toast may not be visible */ }
+
+        // Click Mark Review Complete if visible
+        try {
+          const markComplete = page.getByTestId(review.markComplete);
+          if (await markComplete.isVisible({ timeout: 500 })) {
+            await markComplete.click();
+            await page.waitForTimeout(1_000);
+          }
+        } catch { /* button may not be visible */ }
+
         const dealRes = await request.get(`/api/crm/deals/${dealId}`);
-        const deal = (await dealRes.json()).data || (await dealRes.json());
+        const deal = await dealRes.json().then((b: any) => b.data || b);
         if (deal.stage?.toLowerCase() === stageName.toLowerCase()) return true;
-        await page.waitForTimeout(5_000);
+        await page.waitForTimeout(2_000);
       }
       return false;
     };
 
     // Proposal → Polish: Cash agent auto-advances to Polish (agent stage)
     // Polish → Invoice: Lux agent auto-advances to Invoice (human stage)
-    await waitForStage("Invoice", 60_000);
+    await waitForStage("Invoice", 30_000);
 
     // Invoice → Negotiation → Won: human stages, move manually
     await page.reload();
