@@ -115,15 +115,15 @@ pub async fn trigger_research(
 
         if let Err(e) = result {
             tracing::error!(
-                "Intelligence research failed for person {}: {}",
+                "[Scout] Research failed for person {} (legacy path): {}",
                 person_id,
                 e
             );
             if let Err(e2) = sqlx::query(
                 "UPDATE crm_contacts SET intelligence_status = 'failed', updated_at = datetime('now','subsec') \
-                 WHERE id = (SELECT crm_contact_id FROM persons WHERE id = ?)",
+                 WHERE id = (SELECT crm_contact_id FROM persons WHERE CAST(id AS TEXT) = ?)",
             )
-            .bind(person_id)
+            .bind(person_id.to_string())
             .execute(&pool_clone)
             .await
             {
@@ -345,14 +345,15 @@ async fn run_research_direct(
         || response_text.contains("credit balance")
     {
         tracing::warn!(
-            "Research hit API limit for {}, resetting to idle for retry",
+            "[Scout] Research hit API limit for '{}', resetting to idle for retry",
             person.full_name
         );
+        // Reset via person bridge (legacy path)
         let _ = sqlx::query(
             "UPDATE crm_contacts SET intelligence_status = 'idle', updated_at = datetime('now','subsec') \
-             WHERE id = (SELECT crm_contact_id FROM persons WHERE id = ?)",
+             WHERE id = (SELECT crm_contact_id FROM persons WHERE CAST(id AS TEXT) = ?)",
         )
-        .bind(person.id.clone())
+        .bind(person.id.as_ref())
         .execute(pool)
         .await;
         return Ok(());
@@ -374,62 +375,85 @@ async fn run_research_direct(
     Ok(())
 }
 
+/// Write intelligence results to crm_contacts.
+/// Accepts either a contact_id directly or a person_id (legacy bridge).
 pub async fn write_intelligence_results(
     pool: &sqlx::SqlitePool,
-    person_id: &str,
+    contact_or_person_id: &str,
     summary: &str,
     confidence: f64,
     raw: &str,
     project_id: Option<Uuid>,
     full_name: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Write to crm_contacts (canonical table after unification)
-    // Look up the contact via persons.crm_contact_id bridge
-    let contact_rows = sqlx::query(
+    // Try direct contact update first, fall back to person bridge
+    let rows = sqlx::query(
         "UPDATE crm_contacts SET \
          intelligence_status = 'done', \
-         intelligence_summary = ?, \
-         intelligence_raw = ?, \
-         intelligence_confidence = ?, \
+         intelligence_summary = ?1, \
+         intelligence_raw = ?2, \
+         intelligence_confidence = ?3, \
          intelligence_last_run_at = datetime('now','subsec'), \
          intelligence_agent = 'scout', \
          research_pass_count = COALESCE(research_pass_count, 0) + 1, \
          updated_at = datetime('now','subsec') \
-         WHERE id = (SELECT crm_contact_id FROM persons WHERE id = ?)",
+         WHERE CAST(id AS TEXT) = ?4",
     )
     .bind(summary)
     .bind(raw)
     .bind(confidence)
-    .bind(person_id)
+    .bind(contact_or_person_id)
     .execute(pool)
     .await?;
 
-    if contact_rows.rows_affected() == 0 {
-        tracing::warn!(
-            "[Intelligence] No crm_contacts row found for person {} — person may not have a linked contact",
-            person_id
+    // If no direct match, try person bridge (legacy callers pass person_id)
+    let affected = if rows.rows_affected() == 0 {
+        sqlx::query(
+            "UPDATE crm_contacts SET \
+             intelligence_status = 'done', \
+             intelligence_summary = ?1, \
+             intelligence_raw = ?2, \
+             intelligence_confidence = ?3, \
+             intelligence_last_run_at = datetime('now','subsec'), \
+             intelligence_agent = 'scout', \
+             research_pass_count = COALESCE(research_pass_count, 0) + 1, \
+             updated_at = datetime('now','subsec') \
+             WHERE id = (SELECT crm_contact_id FROM persons WHERE CAST(id AS TEXT) = ?4)",
+        )
+        .bind(summary)
+        .bind(raw)
+        .bind(confidence)
+        .bind(contact_or_person_id)
+        .execute(pool)
+        .await?
+        .rows_affected()
+    } else {
+        rows.rows_affected()
+    };
+
+    if affected == 0 {
+        tracing::error!(
+            "[Scout] No crm_contacts row found for id '{}' — intelligence data lost!",
+            contact_or_person_id
         );
     }
 
-    // Register in knowledge graph if project_id provided
+    // Register in knowledge graph
     if let Some(pid) = project_id {
-        let source_id = person_id.to_string();
-        let source_summary = Some(format!("Scout intelligence: {}", summary));
-
         let _ = ProjectKnowledgeSource::upsert_source(
             pool,
             pid,
             &KnowledgeSourceType::Entity,
-            &source_id,
+            contact_or_person_id,
             &format!("Contact: {}", full_name),
-            source_summary.as_deref(),
+            Some(&format!("Scout intelligence: {}", summary)),
             confidence,
         )
         .await;
     }
 
     tracing::info!(
-        "Intelligence research complete for {} (confidence: {:.0}%)",
+        "[Scout] Intelligence complete for '{}' (confidence: {:.0}%)",
         full_name,
         confidence * 100.0
     );
@@ -493,6 +517,8 @@ fn extract_summary_from_response(text: &str) -> String {
         .trim();
     clean.chars().take(300).collect()
 }
+
+
 
 fn extract_confidence_from_response(text: &str) -> f64 {
     // Try to parse JSON and extract confidence field
@@ -803,7 +829,7 @@ pub async fn run_company_research_direct(
          intelligence_summary = ?, \
          intelligence_confidence = ?, \
          intelligence_last_run_at = datetime('now','subsec'), \
-         intelligence_agent = 'astra', \
+         intelligence_agent = 'scout', \
          website = COALESCE(NULLIF(?, ''), website), \
          description = COALESCE(NULLIF(?, ''), description), \
          industry = COALESCE(NULLIF(?, ''), industry), \
@@ -889,7 +915,158 @@ async fn write_company_intel_results(
     .await;
 }
 
-// ── Internal helpers (called from other routes) ──────────────────────────────
+// ── Contact-first research (called from deal automations) ────────────────────
+
+/// Run Scout research directly on a crm_contact — no person bridge needed.
+/// Writes results to crm_contacts.intelligence_* columns.
+pub async fn run_contact_research_direct(
+    pool: &sqlx::SqlitePool,
+    contact_id: Uuid,
+    full_name: &str,
+    email: &str,
+    company_name: &str,
+    job_title: &str,
+    project_id: Option<Uuid>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use services::services::workflow_llm::{LLMResponse, WorkflowLLMService};
+
+    tracing::info!(
+        "[Scout] Starting contact research for '{}' (id: {}) via PCG Router",
+        full_name,
+        contact_id
+    );
+
+    let system = "You are Scout, Social Intelligence Analyst for Power Club Global. \
+        Your specialty is finding and structuring online presence data about individuals. \
+        Research the person thoroughly based on your knowledge. Return their: \
+        current role, company details, social profiles, recent activity, and public bio. \
+        Return a detailed intelligence summary as plain text (not JSON).";
+
+    let prompt = format!(
+        "Research this contact for PCG: Name={}, Company={}, Email={}, Title={}. \
+        Provide a comprehensive intelligence brief about this person and their company. \
+        Include: professional background, notable achievements, social media presence, \
+        company overview, competitive positioning, and any publicly available information. \
+        Write as a structured intelligence report, not JSON.",
+        full_name,
+        if company_name.is_empty() { "unknown" } else { company_name },
+        if email.is_empty() { "unknown" } else { email },
+        if job_title.is_empty() { "unknown" } else { job_title },
+    );
+
+    let messages = vec![
+        serde_json::json!({"role": "system", "content": system}),
+        serde_json::json!({"role": "user", "content": prompt}),
+    ];
+
+    let (response, metadata) = WorkflowLLMService::completion_with_tools(
+        pool,
+        messages,
+        &[],
+        None,
+        Some(2048),
+        None,
+    )
+    .await
+    .map_err(|e| format!("PCG Router LLM call failed: {}", e))?;
+
+    let response_text = match response {
+        LLMResponse::Text { content, .. } => content,
+        LLMResponse::ToolCalls { .. } => {
+            // Write failure status so it's visible, not silent
+            let _ = sqlx::query(
+                "UPDATE crm_contacts SET intelligence_status = 'failed', \
+                 intelligence_summary = 'LLM returned tool calls instead of text', \
+                 updated_at = datetime('now','subsec') WHERE CAST(id AS TEXT) = ?",
+            )
+            .bind(contact_id.to_string())
+            .execute(pool)
+            .await;
+            return Err("Unexpected tool calls in contact research response".into());
+        }
+    };
+
+    tracing::info!(
+        "[Scout] PCG Router response for '{}' via {}/{}: {} chars",
+        full_name,
+        metadata.provider,
+        metadata.model_used,
+        response_text.len()
+    );
+
+    // Check for API rate limit errors — reset to idle for retry
+    if response_text.contains("rate_limit_error")
+        || response_text.contains("rate limit")
+        || response_text.contains("credit balance")
+    {
+        tracing::warn!(
+            "[Scout] Research hit API limit for '{}', resetting to idle for retry",
+            full_name
+        );
+        let _ = sqlx::query(
+            "UPDATE crm_contacts SET intelligence_status = 'idle', \
+             updated_at = datetime('now','subsec') WHERE CAST(id AS TEXT) = ?",
+        )
+        .bind(contact_id.to_string())
+        .execute(pool)
+        .await;
+        return Ok(());
+    }
+
+    let summary = extract_summary_from_response(&response_text);
+    let confidence = extract_confidence_from_response(&response_text);
+
+    // Write directly to crm_contacts — no person bridge
+    let rows = sqlx::query(
+        "UPDATE crm_contacts SET \
+         intelligence_status = 'done', \
+         intelligence_summary = ?, \
+         intelligence_raw = ?, \
+         intelligence_confidence = ?, \
+         intelligence_last_run_at = datetime('now','subsec'), \
+         intelligence_agent = 'scout', \
+         research_pass_count = COALESCE(research_pass_count, 0) + 1, \
+         updated_at = datetime('now','subsec') \
+         WHERE CAST(id AS TEXT) = ?",
+    )
+    .bind(&summary)
+    .bind(&response_text)
+    .bind(confidence)
+    .bind(contact_id.to_string())
+    .execute(pool)
+    .await?;
+
+    if rows.rows_affected() == 0 {
+        tracing::error!(
+            "[Scout] Contact {} not found when writing research results — data lost!",
+            contact_id
+        );
+        return Err(format!("Contact {} not found when writing results", contact_id).into());
+    }
+
+    // Register in knowledge graph if project_id provided
+    if let Some(pid) = project_id {
+        let _ = ProjectKnowledgeSource::upsert_source(
+            pool,
+            pid,
+            &KnowledgeSourceType::Entity,
+            &contact_id.to_string(),
+            &format!("Contact: {}", full_name),
+            Some(&format!("Scout intelligence: {}", summary)),
+            confidence,
+        )
+        .await;
+    }
+
+    tracing::info!(
+        "[Scout] Contact research complete for '{}' (confidence: {:.0}%)",
+        full_name,
+        confidence * 100.0
+    );
+    Ok(())
+}
+
+// ── Legacy person-based helpers (called from older routes) ───────────────────
 
 /// Trigger person research internally (called from stage-transition hooks).
 /// Assumes intelligence_status is already set to 'queued'.
@@ -950,18 +1127,21 @@ pub async fn trigger_contact_research(
         DbUuid::parse(&contact_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
     let pool = &d.db().pool;
 
-    // Verify contact exists
+    // Read contact directly — no person bridge needed
     #[derive(sqlx::FromRow)]
     struct ContactRow {
         full_name: Option<String>,
-        person_id: Option<String>,
+        email: Option<String>,
+        company_name: Option<String>,
+        job_title: Option<String>,
     }
-    let contact: ContactRow =
-        sqlx::query_as("SELECT full_name, person_id FROM crm_contacts WHERE id = ?")
-            .bind(&contact_id)
-            .fetch_optional(pool)
-            .await?
-            .ok_or_else(|| ApiError::NotFound("Contact not found".into()))?;
+    let contact: ContactRow = sqlx::query_as(
+        "SELECT full_name, email, company_name, job_title FROM crm_contacts WHERE id = ?",
+    )
+    .bind(&contact_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| ApiError::NotFound("Contact not found".into()))?;
 
     // Set status to queued on contact
     sqlx::query(
@@ -973,35 +1153,37 @@ pub async fn trigger_contact_research(
     .execute(pool)
     .await?;
 
-    // If contact has a linked person, delegate to existing research pipeline
-    if let Some(ref pid) = contact.person_id {
-        if let Ok(person_uuid) = DbUuid::parse(pid) {
-            let person = Person::find_by_id(pool, person_uuid.to_uuid()).await?;
-            if let Some(person) = person {
-                let pool_clone = pool.clone();
-                let project_id = body.project_id;
-                tokio::spawn(async move {
-                    let result = run_research_direct(&pool_clone, &person, project_id).await;
-                    if let Err(e) = result {
-                        tracing::error!("[Intelligence] Contact research failed: {}", e);
-                    }
-                });
-            }
-        }
-    } else {
-        // No person linked — write a placeholder and let Scout (simulated) handle it
-        // In the future, research will target contacts directly without person bridge
-        tracing::info!(
-            "[Intelligence] Contact {} has no person link — research will be available after intake pipeline update",
-            contact_id
-        );
-        sqlx::query(
-            "UPDATE crm_contacts SET intelligence_status = 'idle', updated_at = datetime('now','subsec') WHERE id = ?",
+    // Run research directly on contact — no person bridge
+    let contact_uuid = contact_id.to_uuid();
+    let pool_clone = pool.clone();
+    let name = contact
+        .full_name
+        .clone()
+        .unwrap_or_else(|| "Unknown".to_string());
+    let email = contact.email.clone().unwrap_or_default();
+    let company = contact.company_name.clone().unwrap_or_default();
+    let title = contact.job_title.clone().unwrap_or_default();
+    let project_id = body.project_id;
+    tokio::spawn(async move {
+        if let Err(e) = run_contact_research_direct(
+            &pool_clone,
+            contact_uuid,
+            &name,
+            &email,
+            &company,
+            &title,
+            project_id,
         )
-        .bind(&contact_id)
-        .execute(pool)
-        .await?;
-    }
+        .await
+        {
+            tracing::error!(
+                "[Scout] Contact research failed for {} ({}): {}",
+                name,
+                contact_uuid,
+                e
+            );
+        }
+    });
 
     Ok(Json(ApiResponse::success(serde_json::json!({
         "contact_id": contact_id.to_string(),
