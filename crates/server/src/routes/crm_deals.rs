@@ -526,26 +526,28 @@ async fn create_deal(
     .execute(pool)
     .await?;
 
-    // Auto-trigger stage-entry hooks if deal starts in Intel stage
+    // Run stage-entry transition processor for any starting stage (schedules agents, creates review tasks)
     if let Some(ref stage_id) = deal.crm_stage_id {
-        if let Ok(stage) =
+        if let Ok(to_stage) =
             db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, stage_id).await
         {
-            let sn = stage.name.to_lowercase();
-            let st = stage.stage_type.as_deref().unwrap_or("").to_lowercase();
-            if sn == "intel" || st == "intel" {
-                let pool_bg = pool.clone();
-                let deal_id = deal.id.clone();
-                let contact_id = deal.crm_contact_id.clone();
-                tokio::spawn(async move {
-                    crm_deal_automations::trigger_who_is_research(&pool_bg, deal_id, contact_id)
-                        .await;
-                });
+            let pool_bg = pool.clone();
+            let deal_clone = deal.clone();
+            tokio::spawn(async move {
+                let result = crate::stage_transition::process_transition(
+                    &pool_bg,
+                    &deal_clone,
+                    None, // no "from" stage on creation
+                    &to_stage,
+                )
+                .await;
                 tracing::info!(
-                    "Scout auto-triggered for new deal {} in Intel stage",
-                    deal.id
+                    "Stage-entry transition for new deal {} in {}: {:?}",
+                    deal_clone.id,
+                    to_stage.name,
+                    result.actions_taken
                 );
-            }
+            });
         }
     }
 
