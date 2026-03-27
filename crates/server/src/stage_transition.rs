@@ -357,7 +357,7 @@ pub async fn process_transition(
     }
 
     // ── 4. Auto-skip: immediately advance to next stage if configured ───
-    if to_config.as_ref().map_or(false, |c| c.auto_skip) {
+    if to_config.as_ref().is_some_and(|c| c.auto_skip) {
         actions_taken.push(format!("Auto-skipping {} stage", to_stage.name));
         tracing::info!(
             "[StageTransition] Auto-skip enabled for stage '{}' — advancing deal {} to next stage",
