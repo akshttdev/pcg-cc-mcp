@@ -14,7 +14,7 @@
 //! The frontend polls GET /api/persons/:id/intelligence-status.
 
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, State},
     routing::{get, post},
 };
@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, routes::nora::get_nora_instance};
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext, routes::nora::get_nora_instance};
 
 // ── Request / Response types ──────────────────────────────────────────────────
 
@@ -956,6 +956,7 @@ pub async fn trigger_research_for_person(
 
 /// POST /api/crm/contacts/:id/research — trigger research for a CRM contact
 pub async fn trigger_contact_research(
+    Extension(_access_context): Extension<AccessContext>,
     State(d): State<DeploymentImpl>,
     Path(contact_id): Path<String>,
     Json(body): Json<ResearchRequest>,
@@ -1026,6 +1027,7 @@ pub async fn trigger_contact_research(
 
 /// GET /api/crm/contacts/:id/intelligence-status
 pub async fn get_contact_intelligence_status(
+    Extension(_access_context): Extension<AccessContext>,
     State(d): State<DeploymentImpl>,
     Path(contact_id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {

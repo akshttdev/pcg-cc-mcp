@@ -78,7 +78,8 @@ export function IntelTab({ deal }: IntelTabProps) {
 
   const handleTriggerResearch = () => {
     // Prefer contact-targeted API (canonical after unification)
-    const contactId = (deal as unknown as Record<string, unknown>).crm_contact_id as string | undefined;
+    // crm_contact_id is available on the deal's flattened CrmDeal struct
+    const contactId = 'crm_contact_id' in deal.deal ? (deal.deal as { crm_contact_id?: string }).crm_contact_id : undefined;
     if (contactId) {
       triggerResearch(contactId, true);
     } else if (deal.person_id) {
