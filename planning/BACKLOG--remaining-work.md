@@ -12,17 +12,13 @@
 **Decision**: Keep `crm_contacts` as canonical. Merge `persons` intelligence fields into contacts. Retire `persons` table.
 **Why high priority**: Scout agent research is invisible in the Intel tab because intelligence lives on `persons` but the CRM pipeline operates through `crm_contacts`. Every new deal created via the CRM UI has no person record, so agent research has nowhere to land.
 
-### PC-1: Add intelligence fields to crm_contacts — BLOCKING
-- **Effort**: 0.5 day | **Impact**: Unblocks Scout → Intel tab visibility
-- Migration: add `intelligence_summary`, `intelligence_status`, `intelligence_raw`, `intelligence_confidence`, `intelligence_last_run_at`, `research_pass_count`, `research_depth`, `company_id`, `person_id` to `crm_contacts`
-- Backfill from linked persons
-- Update `CrmDealWithContact` query to read intel from contacts instead of persons JOIN
-- Scout executor writes directly to `crm_contacts` (no person lookup)
+### PC-1: Add intelligence fields to crm_contacts — ✅ DONE (Phase 4, commit 46c958a13)
+- Migration `20260418000000_contacts_intelligence.sql` adds all fields + backfill
 
-### PC-2: Add research endpoint for contacts
-- **Effort**: 0.5 day | **Impact**: Enables "Trigger Research" from Intel tab
-- New endpoint: `POST /api/crm/contacts/:id/research` (delegates to intelligence service)
-- Intel tab's "Trigger Research" button targets contact ID instead of person ID
+### PC-2: Add research endpoint for contacts — ✅ DONE (Phase 3 W2, commit 8bf10a2cb + refactor 103c250cd)
+- `POST /api/crm/contacts/:id/research` — contact-first, no person bridge
+- `run_contact_research_direct()` writes to crm_contacts directly
+- Company research auto-creates company + uses Scout agent (not Astra)
 
 ### PC-3: Move research passes to contacts
 - **Effort**: 0.5 day | **Impact**: Full research history on contacts
@@ -34,11 +30,9 @@
 - Re-FK `person_social_profiles` → contacts
 - Social data visible in deal detail without person lookup
 
-### PC-5: Update intake pipeline to create contacts
-- **Effort**: 1 day | **Impact**: Eliminates person creation pathway
-- Intake workflow creates `crm_contacts` directly (with org_id)
-- Intelligence results written to contact record
-- Removes the need for the 20260404 auto-linking migration logic
+### PC-5: Update intake pipeline to create contacts — ✅ DONE (Phase 3 W1, commit 800de2fe0)
+- Intake pipeline creates `crm_contacts` directly
+- Intelligence written to contact record
 
 ### PC-6: Retire persons table
 - **Effort**: 1 day | **Impact**: Eliminates redundancy
@@ -1751,3 +1745,16 @@ The current pipeline uses `position` for stage ordering, and `advance_deal()` si
 
 **Dependencies:** Pipeline Stage Config Visual Builder (Option B) for the long-term visual designer.
 **Effort:** 1 day (short) + 2-4 days (medium) | **Sprint:** Phase 1 | **Status:** NOT STARTED
+
+---
+
+## E2E Pipeline Flow Timing (2026-03-27)
+
+**Bug**: `pipeline-flow.spec.ts:212` — "move deal to Proposal (setup for DD-2)" fails because the kanban board SSE update doesn't arrive within 10s after an API-driven stage transition.
+- The deal is moved via `PATCH /api/crm/deals/:id/stage`, and the API confirms the stage change
+- But `getByTestId('stage-column-proposal').getByText(dealName)` times out — the board UI doesn't reflect the move
+- Likely cause: stage transition triggers agent automations (auto-skip, BA agent) which further advance the deal before SSE fires, or the SSE event is delayed/not emitted for API-driven transitions
+- **Affects**: tests 6-9 in pipeline-flow (serial dependency cascade)
+- **Category**: E2E test timing / SSE reliability
+- **Resolution**: Either increase timeout, add page reload after API transition, or ensure SSE emits on API-driven stage changes
+- **Effort**: 0.5 day | **Status:** NOT STARTED
