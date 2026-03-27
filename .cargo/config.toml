@@ -1,7 +1,7 @@
 # ── Build performance ──────────────────────────────────────────────
 # Use sccache to cache compiled crates across clean builds & branches
-# [build]
-# rustc-wrapper = "sccache"
+[build]
+rustc-wrapper = "sccache"
 
 # ── macOS ─────────────────────────────────────────────────────────
 # Set macOS deployment target to avoid linker warnings
@@ -10,14 +10,14 @@
 [target.x86_64-apple-darwin.env]
 MACOSX_DEPLOYMENT_TARGET = "10.12"
 
-# [target.x86_64-apple-darwin]
-# rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 
 [target.aarch64-apple-darwin.env]
 MACOSX_DEPLOYMENT_TARGET = "11.0"
 
-# [target.aarch64-apple-darwin]
-# rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 
 # ── Windows ───────────────────────────────────────────────────────
 [target.x86_64-pc-windows-msvc]

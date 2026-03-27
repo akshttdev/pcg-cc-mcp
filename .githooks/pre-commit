@@ -1,68 +1,87 @@
-#!/bin/bash
-# Pre-commit hook: Migration Timestamp Collision Detection
-#
-# Prevents commits with duplicate migration timestamps.
+#!/bin/sh
+# Pre-commit hook: Rust fmt + TS generation reminder + lint-staged + migration collision detection
 # Install: git config core.hooksPath .githooks
-#
-# What it checks:
-# 1. Duplicate timestamps in staged migration files
-# 2. Same-day collisions with existing migrations (warning only)
 
-# Exit on any unhandled error
 set -e
 
-# Check for migration files in staged changes
-MIGRATIONS=$(git diff --cached --name-only | grep 'crates/db/migrations/.*\.sql$' || true)
-
-if [ -z "$MIGRATIONS" ]; then
-    # No migrations staged, nothing to check
-    exit 0
+# ── Rust: cargo fmt on staged .rs files only ──
+STAGED_RS=$(git diff --cached --name-only --diff-filter=ACM -- '*.rs')
+if [ -n "$STAGED_RS" ]; then
+  echo "[pre-commit] Formatting staged Rust files"
+  # Format only the staged files (not entire crates)
+  echo "$STAGED_RS" | while read -r f; do
+    if [ -f "$f" ]; then
+      rustfmt --edition 2021 "$f" 2>/dev/null || true
+    fi
+  done
+  # Re-stage formatted files
+  echo "$STAGED_RS" | xargs git add
 fi
 
-echo "Checking migrations for timestamp collisions..."
+# ── Rust: remind about type generation if TS-exported structs changed ──
+if [ -n "$STAGED_RS" ] && echo "$STAGED_RS" | xargs grep -l 'derive.*TS\|ts(export)' 2>/dev/null | head -1 > /dev/null 2>&1; then
+  if echo "$STAGED_RS" | xargs grep -l 'derive.*TS\|ts(export)' 2>/dev/null | head -1 | grep -q .; then
+    echo ""
+    echo "[pre-commit] ⚠ Staged files contain #[derive(TS)] changes."
+    echo "             Run 'npm run generate-types' and commit shared/types.ts"
+    echo ""
+  fi
+fi
 
-# Extract timestamps from staged migration files
-NEW_TIMESTAMPS=$(echo "$MIGRATIONS" | sed 's/.*\/\([0-9]*\)_.*/\1/' | sort)
+# ── Frontend: eslint --fix + prettier via lint-staged ──
+STAGED_FE=$(git diff --cached --name-only --diff-filter=ACM -- 'frontend/*.ts' 'frontend/*.tsx' 'frontend/*.js' 'frontend/*.json' 'frontend/*.css' 'shared/*.ts')
+if [ -n "$STAGED_FE" ]; then
+  echo "[pre-commit] Running lint-staged on frontend files"
+  cd frontend && npx lint-staged
+fi
 
-# Check for duplicate timestamps in staged files
-DUPLICATES=$(echo "$NEW_TIMESTAMPS" | uniq -d)
-if [ -n "$DUPLICATES" ]; then
+# ── Migrations: timestamp collision detection ──
+MIGRATIONS=$(git diff --cached --name-only | grep 'crates/db/migrations/.*\.sql$' || true)
+
+if [ -n "$MIGRATIONS" ]; then
+  echo "[pre-commit] Checking migrations for timestamp collisions..."
+
+  # Extract timestamps from staged migration files
+  NEW_TIMESTAMPS=$(echo "$MIGRATIONS" | sed 's/.*\/\([0-9]*\)_.*/\1/' | sort)
+
+  # Check for duplicate timestamps in staged files
+  DUPLICATES=$(echo "$NEW_TIMESTAMPS" | uniq -d)
+  if [ -n "$DUPLICATES" ]; then
     echo ""
     echo "ERROR: Duplicate migration timestamps detected in staged files:"
     echo ""
     for TS in $DUPLICATES; do
-        echo "  Timestamp: $TS"
-        echo "$MIGRATIONS" | grep "$TS" | sed 's/^/    /'
+      echo "  Timestamp: $TS"
+      echo "$MIGRATIONS" | grep "$TS" | sed 's/^/    /'
     done
     echo ""
     echo "Fix: Rename one migration to use a different timestamp."
     echo "     Use ./scripts/new-migration.sh to generate unique timestamps."
     exit 1
-fi
+  fi
 
-# Check for same-day collisions with existing migrations (warning only)
-HAS_WARNING=0
-for TS in $NEW_TIMESTAMPS; do
-    DAY="${TS:0:8}"
-    # Count existing migrations for this day (excluding the new one)
+  # Check for same-day collisions with existing migrations (warning only)
+  HAS_WARNING=0
+  for TS in $NEW_TIMESTAMPS; do
+    DAY=$(echo "$TS" | cut -c1-8)
     EXISTING=$(ls crates/db/migrations/${DAY}*.sql 2>/dev/null | wc -l | tr -d ' ')
 
-    # If there are multiple migrations for this day, warn
     if [ "$EXISTING" -gt 1 ]; then
-        if [ "$HAS_WARNING" -eq 0 ]; then
-            echo ""
-            echo "WARNING: Multiple migrations detected for the same day:"
-            HAS_WARNING=1
-        fi
-        echo "  Date: ${DAY:0:4}-${DAY:4:2}-${DAY:6:2} ($EXISTING migrations)"
-        ls crates/db/migrations/${DAY}*.sql 2>/dev/null | sed 's/.*\//    /'
+      if [ "$HAS_WARNING" -eq 0 ]; then
+        echo ""
+        echo "WARNING: Multiple migrations detected for the same day:"
+        HAS_WARNING=1
+      fi
+      echo "  Date: $(echo $DAY | cut -c1-4)-$(echo $DAY | cut -c5-6)-$(echo $DAY | cut -c7-8) ($EXISTING migrations)"
+      ls crates/db/migrations/${DAY}*.sql 2>/dev/null | sed 's/.*\//    /'
     fi
-done
+  done
 
-if [ "$HAS_WARNING" -eq 1 ]; then
+  if [ "$HAS_WARNING" -eq 1 ]; then
     echo ""
     echo "This is OK if timestamps differ (YYYYMMDDHHMMSS), but verify no conflicts."
     echo ""
-fi
+  fi
 
-echo "Migration timestamps OK"
+  echo "[pre-commit] Migration timestamps OK"
+fi

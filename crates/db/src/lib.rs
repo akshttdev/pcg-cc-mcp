@@ -35,8 +35,14 @@ async fn acquire_migration_lock(pool: &SqlitePool) -> Result<(), Error> {
     .execute(pool)
     .await?;
 
-    // Check for stale lock (older than 10 minutes - likely crashed process)
-    let stale_threshold_minutes = 10;
+    // Check for stale lock — if a process crashes mid-migration, the lock stays.
+    // Default: 30 minutes. Override with MIGRATION_LOCK_TIMEOUT_MINUTES env var.
+    // Large data migrations (e.g., BLOB→TEXT UUID normalization on big tables)
+    // may take longer than the default — increase if needed.
+    let stale_threshold_minutes: i64 = std::env::var("MIGRATION_LOCK_TIMEOUT_MINUTES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(30);
     sqlx::query(
         "DELETE FROM _migration_lock
          WHERE datetime(locked_at) < datetime('now', ?)",
