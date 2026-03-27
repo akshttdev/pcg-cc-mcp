@@ -1,8 +1,52 @@
 # Backlog — Remaining Work
 
-**Last updated:** 2026-03-24 (sloperation intent gap audit — 5 missing capabilities + 3 partial implementations identified)
+**Last updated:** 2026-03-27 (persons→contacts unification audit added)
 **Context:** Consolidated from all completed planning docs + 27 research reports + 45-item research-derived backlog. **Prioritized by ROI = (revenue impact × probability) / effort**, not legacy ordering.
 **Phase 0 Sprint Plan:** See [`2026-03-19--analysis--phase0-sprint-candidates.md`](2026-03-19--analysis--phase0-sprint-candidates.md) for full scoring and sprint schedule.
+
+---
+
+## P0 — Persons→Contacts Unification (HIGH PRIORITY)
+
+**Audit**: [`2026-03-27--audit--persons-contacts-unification.md`](2026-03-27--audit--persons-contacts-unification.md)
+**Decision**: Keep `crm_contacts` as canonical. Merge `persons` intelligence fields into contacts. Retire `persons` table.
+**Why high priority**: Scout agent research is invisible in the Intel tab because intelligence lives on `persons` but the CRM pipeline operates through `crm_contacts`. Every new deal created via the CRM UI has no person record, so agent research has nowhere to land.
+
+### PC-1: Add intelligence fields to crm_contacts — BLOCKING
+- **Effort**: 0.5 day | **Impact**: Unblocks Scout → Intel tab visibility
+- Migration: add `intelligence_summary`, `intelligence_status`, `intelligence_raw`, `intelligence_confidence`, `intelligence_last_run_at`, `research_pass_count`, `research_depth`, `company_id`, `person_id` to `crm_contacts`
+- Backfill from linked persons
+- Update `CrmDealWithContact` query to read intel from contacts instead of persons JOIN
+- Scout executor writes directly to `crm_contacts` (no person lookup)
+
+### PC-2: Add research endpoint for contacts
+- **Effort**: 0.5 day | **Impact**: Enables "Trigger Research" from Intel tab
+- New endpoint: `POST /api/crm/contacts/:id/research` (delegates to intelligence service)
+- Intel tab's "Trigger Research" button targets contact ID instead of person ID
+
+### PC-3: Move research passes to contacts
+- **Effort**: 0.5 day | **Impact**: Full research history on contacts
+- Re-FK `person_research_passes` → `contact_research_passes` (or add `crm_contact_id` FK)
+- Research pass detail visible from contact record
+
+### PC-4: Move social profiles to contacts
+- **Effort**: 0.5 day | **Impact**: Social data accessible from CRM
+- Re-FK `person_social_profiles` → contacts
+- Social data visible in deal detail without person lookup
+
+### PC-5: Update intake pipeline to create contacts
+- **Effort**: 1 day | **Impact**: Eliminates person creation pathway
+- Intake workflow creates `crm_contacts` directly (with org_id)
+- Intelligence results written to contact record
+- Removes the need for the 20260404 auto-linking migration logic
+
+### PC-6: Retire persons table
+- **Effort**: 1 day | **Impact**: Eliminates redundancy
+- Migrate remaining persons-only fields (person_type, financial_role, business_stage) to contacts
+- `/people/:id` route reads from contacts (or redirect)
+- Drop persons API routes or alias to contacts
+- Drop `persons` table
+- Clean up unused models
 
 ---
 
@@ -1118,6 +1162,34 @@ Also: remaining conversation helper adoption (nora/voice, agent_chat, twilio), ~
 **What:** When essential env vars (GITHUB_TOKEN, LLM_BACKEND_URL, etc.) are missing, tests throw cryptic errors deep in execution instead of warning upfront. The `simulation.ts` helper throws at line 15 but only after 3 prior steps pass, wasting test time.
 **Recommendation:** Add a pre-flight env check to `e2e/helpers/index.ts` or `playwright.config.ts` globalSetup that logs warnings for optional env vars and fails fast for required ones. Pattern: `console.warn("⚠️ GITHUB_TOKEN not set — agent simulation tests will be skipped")`.
 **Status:** NOT STARTED
+
+### PR #61: Migration CAST fragility in contacts_intelligence backfill
+**Source:** QA review PR #61 (2026-03-27)
+**File:** `crates/db/migrations/20260418000000_contacts_intelligence.sql:30-53`
+**What:** Backfill UPDATE uses `CAST(p.crm_contact_id AS TEXT) = CAST(crm_contacts.id AS TEXT)` 8 times. If both columns are TEXT, CASTs are unnecessary. If one is BLOB, this may silently fail to match. A single CTE or JOIN would be more efficient.
+**Recommendation:** Simplify to `WHERE p.crm_contact_id = crm_contacts.id` (both are TEXT post BLOB→TEXT migration). Replace 8 correlated subqueries with a single CTE-based UPDATE.
+**Status:** NOT STARTED — affects contacts unification phase, not blocking current sprint
+
+### PR #61: ReviewTab missing error UI for task fetch
+**Source:** QA review PR #61 (2026-03-27)
+**File:** `frontend/src/components/crm/deal-detail/tabs/ReviewTab.tsx:162-169`
+**What:** `useQuery` for deal tasks has no `isError` state rendered. API failures silently default to empty array. User sees no feedback.
+**Recommendation:** Add error boundary or `isError` check with retry button, matching pattern from AgentHistoryTab.
+**Status:** NOT STARTED — low priority, follows existing tab pattern
+
+### PR #61: Agent History "View Task" link is generic
+**Source:** QA review PR #61 (2026-03-27)
+**File:** `frontend/src/components/crm/deal-detail/tabs/AgentHistoryTab.tsx:186-191`
+**What:** "View Task" navigates to `/my-tasks` instead of deep-linking to the specific task. `flow.task_id` is available but `project_id` is not in `AgentFlowSummary`.
+**Recommendation:** Add `project_id` to the agent flows API response, then link to `/projects/{projectId}/tasks/{taskId}`.
+**Status:** NOT STARTED — UX improvement
+
+### PR #61: E2E timeout increases are symptomatic
+**Source:** QA review PR #61 (2026-03-27)
+**Files:** `e2e/pipeline/agent-automations.spec.ts:187,202`
+**What:** Test timeouts doubled (45→90s, 30→60s) to reduce flakiness. Increases test suite runtime.
+**Recommendation:** Replace polling with SSE event wait or targeted condition checks.
+**Status:** NOT STARTED — test infrastructure improvement
 
 ### ~~13. Onboarding Dialog Bypass for Test Environments~~ → RESOLVED
 **Source:** PR #47 smoke testing (2026-03-18)

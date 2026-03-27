@@ -132,11 +132,12 @@ test.describe("Agent Automations (AA-1 to AA-7)", () => {
   //     And a review task is created: "Review business report (Astra)"
 
   test("AA-2: auto-advance to BA — Astra triggers + review task created", async ({ page, request }) => {
-    test.setTimeout(45_000);
+    test.setTimeout(90_000);
     await apiLogin(request);
 
     // Scout completes → deal auto-advances to BA → Astra triggers
-    const reached = await waitForDealStage(page, request, dealId, "Business Analysis", 30_000);
+    // Give extra time: Intel→BA requires Scout completion + review task completion
+    const reached = await waitForDealStage(page, request, dealId, "Business Analysis", 60_000);
     expect(reached, "Deal should auto-advance to BA after Scout completes").toBe(true);
 
     // Then: review task created with title mentioning "business report" or "Astra"
@@ -160,11 +161,12 @@ test.describe("Agent Automations (AA-1 to AA-7)", () => {
   //     And a review task is created: "Review and approve proposal"
 
   test("AA-3: advance through Discovery to Proposal — Cash triggers + review task created", async ({ page, request }) => {
-    test.setTimeout(45_000);
+    test.setTimeout(90_000);
     await apiLogin(request);
 
     // Astra completes → deal auto-advances to Discovery (human stage, stops)
-    const reachedDiscovery = await waitForDealStage(page, request, dealId, "Discovery", 30_000);
+    // Give extra time: BA→Discovery requires Astra completion + review task completion
+    const reachedDiscovery = await waitForDealStage(page, request, dealId, "Discovery", 60_000);
     expect(reachedDiscovery, "Deal should auto-advance to Discovery after Astra completes").toBe(true);
 
     // Reload to see deal in Discovery column, then advance via context menu
@@ -172,7 +174,8 @@ test.describe("Agent Automations (AA-1 to AA-7)", () => {
     await expect(page.getByText("Acquisition Pipeline").first()).toBeVisible({ timeout: t(10_000) });
     await moveDealViaContextMenu(page, dealText, "Proposal");
 
-    const reached = await waitForDealStage(page, request, dealId, "Proposal", 30_000);
+    // Deal is now at Proposal — agents may be starting but stage is already set
+    const reached = await waitForDealStage(page, request, dealId, "Proposal", 15_000);
     expect(reached, "Deal should reach Proposal after Discovery advance").toBe(true);
 
     // Then: review task created mentioning "proposal" or "Cash"

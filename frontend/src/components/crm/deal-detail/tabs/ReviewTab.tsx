@@ -10,6 +10,7 @@ import {
   Building2,
   CheckCircle2,
   AlertCircle,
+  ClipboardCheck,
   Loader2,
   ShieldCheck,
   Search,
@@ -22,9 +23,22 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { review as tid } from 'shared/testids';
+import { handleApiResponse, makeRequest } from '@/lib/api/client';
 
 import { useDealActions } from '../hooks/useDealActions';
 import type { CrmDealWithContact } from '@/types/crm';
+
+// ── Task type for deal-linked tasks ─────────────────────────────────────────
+
+interface DealTask {
+  id: string;
+  title: string;
+  status: string;
+  assignee_id?: string;
+  project_id?: string;
+  updated_at: string;
+  created_at: string;
+}
 
 // ── Stage checklist data ─────────────────────────────────────────────────────
 
@@ -151,6 +165,18 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
     if (deal.person_id) triggerResearch(deal.person_id);
   };
 
+  // Fetch all tasks linked to this deal (for completed reviews section)
+  const { data: dealTasks = [], isError: tasksError } = useQuery<DealTask[]>({
+    queryKey: [...crmKeys.deal(deal.id), 'tasks'],
+    queryFn: async () => {
+      const response = await makeRequest(`/api/tasks?crm_deal_id=${deal.id}`);
+      return handleApiResponse<DealTask[]>(response);
+    },
+    staleTime: 30_000,
+  });
+
+  const completedTasks = dealTasks.filter(t => t.status === 'done' || t.status === 'cancelled');
+
   const checklist = STAGE_CHECKLIST[effectiveStage] || [];
   const allChecked =
     checklist.length > 0 && checklist.every(({ item }) => checkedItems.has(item));
@@ -237,6 +263,40 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
             )}
           </CardContent>
         </Card>
+      )}
+
+      {/* Completed review tasks */}
+      {tasksError && (
+        <p className="text-xs text-red-500 flex items-center gap-1">
+          <AlertCircle className="h-3 w-3" />
+          Failed to load review tasks
+        </p>
+      )}
+      {completedTasks.length > 0 && (
+        <div>
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5">
+            <ClipboardCheck className="h-3 w-3" /> Completed Reviews
+          </h4>
+          <div className="space-y-1.5">
+            {completedTasks.map((task) => (
+              <Link
+                key={task.id}
+                to={task.project_id ? `/projects/${task.project_id}/tasks/${task.id}` : '/my-tasks'}
+              >
+                <Card className="bg-green-50/50 dark:bg-green-950/10 border-border/40 hover:bg-green-50 dark:hover:bg-green-950/20 transition-colors cursor-pointer">
+                  <CardContent className="p-2.5 flex items-center gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                    <span className="text-xs font-medium flex-1 truncate">{task.title}</span>
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {formatDistanceToNow(new Date(task.updated_at), { addSuffix: true })}
+                    </span>
+                    <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Stage review checklist */}
