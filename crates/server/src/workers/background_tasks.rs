@@ -2,8 +2,6 @@
 //!
 //! Each implements BackgroundWorker for graceful shutdown support.
 
-use std::collections::HashSet;
-
 use tokio_util::sync::CancellationToken;
 
 use super::BackgroundWorker;
@@ -360,10 +358,6 @@ impl BackgroundWorker for NoraInboxPoller {
         };
         let owner = ChannelOwner::Agent(nora_id);
 
-        // In-memory dedup: track message IDs seen this session.
-        // On restart we re-check the last 20 messages — the source_ref dedup in
-        // CallIntakeItem::create (UNIQUE on source_ref) prevents double-processing.
-        let mut seen: HashSet<String> = HashSet::new();
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(180)); // 3 min
 
         tracing::info!("[NORA_INBOX] Poller started — checking nora@powerclubglobal.com every 3 min");
@@ -391,11 +385,6 @@ impl BackgroundWorker for NoraInboxPoller {
                                     continue;
                                 }
 
-                                if seen.contains(&msg_id) {
-                                    continue;
-                                }
-                                seen.insert(msg_id.clone());
-
                                 // Dedup: skip if already ingested (source_ref match)
                                 let already: bool = sqlx::query_scalar(
                                     "SELECT COUNT(*) > 0 FROM call_intake_items WHERE source_ref = ?"
@@ -409,23 +398,45 @@ impl BackgroundWorker for NoraInboxPoller {
                                     continue;
                                 }
 
-                                tracing::info!(
-                                    "[NORA_INBOX] New lead email from {} — subject: {:?}",
-                                    msg.from_address, msg.subject
-                                );
-
                                 // Fetch full message body (inbox API returns summary only)
                                 let full_body = match svc.fetch_message_body(&owner, &msg_id).await {
                                     Ok(b) if !b.trim().is_empty() => b,
                                     Ok(_) => {
-                                        tracing::warn!("[NORA_INBOX] Empty body for message {}, using summary", msg_id);
+                                        tracing::warn!("[NORA_INBOX] Empty body for {}, using summary", msg_id);
                                         msg.summary.clone()
                                     }
                                     Err(e) => {
-                                        tracing::warn!("[NORA_INBOX] Could not fetch body for {}: {} — using summary", msg_id, e);
+                                        tracing::warn!("[NORA_INBOX] Could not fetch body for {}: {}", msg_id, e);
                                         msg.summary.clone()
                                     }
                                 };
+
+                                // Classify the email before deciding how to handle it
+                                use crate::routes::intake::report::{EmailClass, classify_email};
+                                let class = classify_email(&msg.subject, &full_body).await;
+
+                                tracing::info!(
+                                    "[NORA_INBOX] Email from {} — subject: {:?} — class: {:?}",
+                                    msg.from_address, msg.subject, class
+                                );
+
+                                match class {
+                                    EmailClass::DiscoveryCall => {
+                                        // Fall through to create intake item + run pipeline
+                                    }
+                                    EmailClass::OngoingClient => {
+                                        tracing::info!("[NORA_INBOX] Ongoing client email — logged, no new pipeline");
+                                        continue;
+                                    }
+                                    EmailClass::Other => {
+                                        tracing::info!("[NORA_INBOX] Non-actionable email — skipped");
+                                        continue;
+                                    }
+                                }
+
+                                tracing::info!(
+                                    "[NORA_INBOX] Discovery call detected — routing to intake pipeline"
+                                );
 
                                 // Resolve org/assignee from sender
                                 let (org_id, assigned) = crate::routes::intake::resolve_org_and_assignee(

@@ -18,6 +18,74 @@ use super::{
 
 // ── Stage 1: Extract structure ────────────────────────────────────────────────
 
+/// Email classification result — determines how an incoming email is handled.
+#[derive(Debug, PartialEq)]
+pub(crate) enum EmailClass {
+    /// A new discovery call or new lead introduction — run full auto-pipeline
+    DiscoveryCall,
+    /// An update about an existing client relationship — log only, no new pipeline
+    OngoingClient,
+    /// Not actionable (marketing, notification, admin) — skip
+    Other,
+}
+
+/// Classify an inbound email from a trusted sender (e.g. sirak@sirakstudios.com)
+/// using a lightweight Claude call. Returns in ~1-2s.
+pub(crate) async fn classify_email(subject: &str, body: &str) -> EmailClass {
+    let api_key = match std::env::var("ANTHROPIC_API_KEY") {
+        Ok(k) => k,
+        Err(_) => return EmailClass::Other,
+    };
+
+    let prompt = format!(
+        r#"Classify this email from a client into exactly one category.
+
+Subject: {}
+Body (first 2000 chars): {}
+
+Reply with ONLY one of these words — nothing else:
+- DISCOVERY  (a new prospective client or discovery call being shared)
+- ONGOING    (an update, follow-up, or note about an existing client relationship)
+- OTHER      (administrative, notifications, marketing, or unrelated)
+
+Classification:"#,
+        subject,
+        &body[..body.len().min(2000)]
+    );
+
+    let client = reqwest::Client::new();
+    let res = client
+        .post("https://api.anthropic.com/v1/messages")
+        .header("x-api-key", &api_key)
+        .header("anthropic-version", "2023-06-01")
+        .header("content-type", "application/json")
+        .json(&serde_json::json!({
+            "model": "claude-haiku-4-5-20251001",
+            "max_tokens": 10,
+            "messages": [{"role": "user", "content": prompt}]
+        }))
+        .send()
+        .await;
+
+    let label = match res {
+        Ok(r) => r
+            .json::<serde_json::Value>()
+            .await
+            .ok()
+            .and_then(|b| b["content"][0]["text"].as_str().map(|s| s.trim().to_uppercase()))
+            .unwrap_or_default(),
+        Err(_) => return EmailClass::Other,
+    };
+
+    if label.contains("DISCOVERY") {
+        EmailClass::DiscoveryCall
+    } else if label.contains("ONGOING") {
+        EmailClass::OngoingClient
+    } else {
+        EmailClass::Other
+    }
+}
+
 pub(super) async fn extract_intake_structure(raw: &str) -> anyhow::Result<ExtractedIntake> {
     let api_key = std::env::var("ANTHROPIC_API_KEY")
         .map_err(|_| anyhow::anyhow!("ANTHROPIC_API_KEY not set"))?;
