@@ -30,8 +30,24 @@ export const intelligenceApi = {
     return handleApiResponse(response);
   },
 
+  /** Trigger research for a CRM contact (canonical — no person bridge needed) */
+  triggerContactResearch: async (contactId: string, opts?: { project_id?: string; agent_preference?: string }): Promise<{ contact_id: string; status: string; message: string }> => {
+    const response = await makeRequest(`/api/crm/contacts/${contactId}/research`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(opts ?? {}),
+    });
+    return handleApiResponse(response);
+  },
+
   getStatus: async (personId: string): Promise<IntelligenceStatus> => {
     const response = await makeRequest(`/api/persons/${personId}/intelligence-status`);
+    return handleApiResponse<IntelligenceStatus>(response);
+  },
+
+  /** Get intelligence status from CRM contact (canonical) */
+  getContactStatus: async (contactId: string): Promise<IntelligenceStatus> => {
+    const response = await makeRequest(`/api/crm/contacts/${contactId}/intelligence-status`);
     return handleApiResponse<IntelligenceStatus>(response);
   },
 

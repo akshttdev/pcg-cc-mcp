@@ -36,10 +36,14 @@ export function useDealActions() {
     }
   };
 
-  const triggerResearch = async (personId: string) => {
+  const triggerResearch = async (contactOrPersonId: string, useContactApi = false) => {
     setResearchLoading(true);
     try {
-      await intelligenceApi.triggerResearch(personId);
+      if (useContactApi) {
+        await intelligenceApi.triggerContactResearch(contactOrPersonId);
+      } else {
+        await intelligenceApi.triggerResearch(contactOrPersonId);
+      }
       toast.success('Research triggered — gathering intel on this contact');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to trigger research');
