@@ -177,6 +177,25 @@ pub async fn run_intake_pipeline(
         {
             upsert_prospect_client(&pool, org_id, cid, cname, primary_person_id).await;
         }
+
+        // Create CRM deal if we don't have one yet (handles new leads where
+        // primary_person_id was None at Stage 2b because they didn't exist yet)
+        if crm_deal_id.is_none() {
+            if let Some(pid) = primary_person_id {
+                let new_deal_id = ensure_crm_deal_for_person(
+                    &pool,
+                    pid,
+                    item_id,
+                    organization_id,
+                    &extracted.call_summary,
+                    "Lead",
+                )
+                .await;
+                if new_deal_id.is_some() {
+                    info!("Created CRM deal (post-person-creation) for person {}", pid);
+                }
+            }
+        }
     }
 
     // Stage 5 & 6: Run company research passes, then generate comprehensive report
@@ -863,35 +882,38 @@ async fn ensure_crm_deal_for_person(
     stage_name: &str,
 ) -> Option<Uuid> {
     let org_id = organization_id?;
+    let org_id_str = org_id.hyphenated().to_string();
 
     // Find the Acquisition (sales) pipeline for this org
+    // Use string binding — crm_pipelines.organization_id is TEXT (UUID with dashes)
     #[derive(sqlx::FromRow)]
     struct PipelineRow {
-        id: Uuid,
+        id: String,
     }
 
     let pipeline = sqlx::query_as::<_, PipelineRow>(
         "SELECT id FROM crm_pipelines WHERE organization_id = ? AND pipeline_type = 'sales'
          AND project_id IS NULL LIMIT 1",
     )
-    .bind(org_id)
+    .bind(&org_id_str)
     .fetch_optional(pool)
     .await
     .ok()
     .flatten();
 
-    let pipeline_id = pipeline.map(|p| p.id)?;
+    let pipeline_id_str = pipeline.map(|p| p.id)?;
 
     // Find the stage: try by name first, fall back to lowest position (first stage)
+    // Use string binding — crm_pipeline_stages.pipeline_id is TEXT (UUID with dashes)
     #[derive(sqlx::FromRow)]
     struct StageRow {
-        id: Vec<u8>,
+        id: String,
     }
 
     let stage = sqlx::query_as::<_, StageRow>(
         "SELECT id FROM crm_pipeline_stages WHERE pipeline_id = ? AND lower(name) = lower(?) LIMIT 1",
     )
-    .bind(pipeline_id)
+    .bind(&pipeline_id_str)
     .bind(stage_name)
     .fetch_optional(pool)
     .await
@@ -903,7 +925,7 @@ async fn ensure_crm_deal_for_person(
         sqlx::query_as::<_, StageRow>(
             "SELECT id FROM crm_pipeline_stages WHERE pipeline_id = ? ORDER BY position ASC LIMIT 1",
         )
-        .bind(pipeline_id)
+        .bind(&pipeline_id_str)
         .fetch_optional(pool)
         .await
         .ok()
@@ -912,7 +934,8 @@ async fn ensure_crm_deal_for_person(
         stage
     };
 
-    let stage_id = stage.and_then(|s| Uuid::from_slice(&s.id).ok())?;
+    let stage_id = stage.and_then(|s| Uuid::parse_str(&s.id).ok())?;
+    let pipeline_id = Uuid::parse_str(&pipeline_id_str).ok()?;
 
     // Look up person name + company for dedup check
     #[derive(sqlx::FromRow)]
@@ -921,6 +944,8 @@ async fn ensure_crm_deal_for_person(
         company_name: Option<String>,
     }
 
+    let person_id_str = person_id.hyphenated().to_string();
+    // persons.id is stored as BLOB — bind Uuid directly (encodes as 16-byte BLOB)
     let person = sqlx::query_as::<_, PersonRow>(
         "SELECT full_name, company_name FROM persons WHERE id = ?",
     )
@@ -942,29 +967,19 @@ async fn ensure_crm_deal_for_person(
 
     // Check for existing deal with same company/name in this org (dedup)
     let org_db_id = DbUuid::from(org_id);
+    let intake_item_id_str = intake_item_id.hyphenated().to_string();
     if let Ok(Some(existing)) = CrmDeal::find_by_name_and_org(pool, &deal_name, &org_db_id).await {
         // Link intake item to existing deal
         let _ = sqlx::query("UPDATE call_intake_items SET crm_deal_id = ? WHERE id = ?")
             .bind(existing.id.as_str())
-            .bind(intake_item_id)
+            .bind(&intake_item_id_str)
             .execute(pool)
             .await;
         return Uuid::parse_str(existing.id.as_str()).ok();
     }
 
-    // Find crm_contact_id for this person if available
-    #[derive(sqlx::FromRow)]
-    struct ContactRow {
-        id: Uuid,
-    }
-    let contact_id =
-        sqlx::query_as::<_, ContactRow>("SELECT id FROM crm_contacts WHERE person_id = ? LIMIT 1")
-            .bind(person_id)
-            .fetch_optional(pool)
-            .await
-            .ok()
-            .flatten()
-            .map(|r| r.id);
+    // crm_contacts doesn't have a person_id column — skip contact lookup
+    let contact_id: Option<DbUuid> = None;
 
     // Create the deal
     let deal_result = CrmDeal::create(
@@ -972,7 +987,7 @@ async fn ensure_crm_deal_for_person(
         CreateCrmDeal {
             organization_id: org_db_id,
             client_id: None,
-            crm_contact_id: contact_id.map(DbUuid::from),
+            crm_contact_id: contact_id,
             crm_pipeline_id: Some(DbUuid::from(pipeline_id)),
             crm_stage_id: Some(DbUuid::from(stage_id)),
             name: deal_name,
@@ -995,7 +1010,7 @@ async fn ensure_crm_deal_for_person(
             // Link intake item to deal
             let _ = sqlx::query("UPDATE call_intake_items SET crm_deal_id = ? WHERE id = ?")
                 .bind(deal.id.as_str())
-                .bind(intake_item_id)
+                .bind(&intake_item_id_str)
                 .execute(pool)
                 .await;
             Uuid::parse_str(deal.id.as_str()).ok()

@@ -270,7 +270,11 @@ impl AgentChannelService {
         Ok(messages)
     }
 
-    /// Fetch the full plain-text body of a single Zoho message.
+    /// Fetch the full content of a Zoho message, including text from any linked
+    /// documents (Google Docs, Fireflies transcripts) found in the body.
+    ///
+    /// Uses the folder-scoped endpoint which is required for message content access:
+    /// GET /api/accounts/{accountId}/folders/{folderId}/messages/{messageId}/content
     pub async fn fetch_message_body(
         &self,
         owner: &ChannelOwner,
@@ -281,11 +285,50 @@ impl AgentChannelService {
         let zoho_domain = self.zoho_domain_from_account(&account);
         let account_id = self.zoho_account_id_from_account(&account)?;
 
+        // Step 1: get folder list to find the inbox folder ID
+        let folders_resp = self
+            .http
+            .get(format!(
+                "https://mail.zoho.{}/api/accounts/{}/folders",
+                zoho_domain, account_id
+            ))
+            .header("Authorization", format!("Zoho-oauthtoken {}", token))
+            .send()
+            .await
+            .map_err(|e| ChannelError::Api(e.to_string()))?;
+
+        let folders: serde_json::Value = folders_resp
+            .json()
+            .await
+            .map_err(|e| ChannelError::Api(format!("Failed to parse folders: {}", e)))?;
+
+        // Find inbox (or any folder that has this message — try inbox first)
+        let inbox_id = folders["data"]
+            .as_array()
+            .and_then(|arr| {
+                arr.iter().find(|f| {
+                    f["folderName"].as_str().map(|n| n.eq_ignore_ascii_case("Inbox")).unwrap_or(false)
+                })
+            })
+            .and_then(|f| f["folderId"].as_str().or_else(|| f["folderId"].as_u64().map(|_| "")).map(|_| ()))
+            .and_then(|_| {
+                folders["data"].as_array().and_then(|arr| {
+                    arr.iter().find(|f| {
+                        f["folderName"].as_str().map(|n| n.eq_ignore_ascii_case("Inbox")).unwrap_or(false)
+                    }).and_then(|f| {
+                        f["folderId"].as_u64().map(|id| id.to_string())
+                            .or_else(|| f["folderId"].as_str().map(String::from))
+                    })
+                })
+            })
+            .ok_or_else(|| ChannelError::Api("Inbox folder not found".into()))?;
+
+        // Step 2: fetch message content via folder-scoped endpoint
         let resp = self
             .http
             .get(format!(
-                "https://mail.zoho.{}/api/accounts/{}/messages/{}/content",
-                zoho_domain, account_id, message_id
+                "https://mail.zoho.{}/api/accounts/{}/folders/{}/messages/{}/content",
+                zoho_domain, account_id, inbox_id, message_id
             ))
             .header("Authorization", format!("Zoho-oauthtoken {}", token))
             .send()
@@ -305,13 +348,21 @@ impl AgentChannelService {
             .await
             .map_err(|e| ChannelError::Api(format!("Failed to parse message body: {}", e)))?;
 
-        // Zoho returns { data: { content: "...", ... } }
-        let content = body["data"]["content"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
+        let html_content = body["data"]["content"].as_str().unwrap_or("").to_string();
 
-        Ok(content)
+        // Step 3: strip HTML and extract plain text
+        let plain = strip_html(&html_content);
+
+        // Step 4: find linked document URLs (Google Docs, Fireflies, Otter.ai, etc.)
+        // and fetch their public text content to append to the email body
+        let mut full_content = plain.clone();
+        let linked_text = fetch_linked_documents(&self.http, &plain).await;
+        if !linked_text.is_empty() {
+            full_content.push_str("\n\n--- Linked Document Content ---\n");
+            full_content.push_str(&linked_text);
+        }
+
+        Ok(full_content)
     }
 
     /// Send an outbound SMS from Nora's Twilio number.
@@ -472,4 +523,107 @@ impl AgentChannelService {
                 ChannelError::Api("zoho_account_id not found in account metadata".into())
             })
     }
+}
+
+/// Strip HTML tags and decode entities to plain text.
+fn strip_html(html: &str) -> String {
+    // Remove script/style blocks (RE2 has no backreferences — match each separately)
+    let re_script = regex::Regex::new(r"(?si)<script[^>]*>.*?</script>").unwrap();
+    let re_style = regex::Regex::new(r"(?si)<style[^>]*>.*?</style>").unwrap();
+    let s = re_script.replace_all(html, " ");
+    let s = re_style.replace_all(&s, " ");
+    // Remove all remaining tags
+    let re_tag = regex::Regex::new(r"<[^>]+>").unwrap();
+    let s = re_tag.replace_all(&s, " ");
+    // Decode common HTML entities
+    let s = s
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&nbsp;", " ")
+        .replace("&#x27;", "'");
+    // Collapse whitespace
+    let re_ws = regex::Regex::new(r"[ \t]{2,}").unwrap();
+    let s = re_ws.replace_all(&s, " ");
+    let re_nl = regex::Regex::new(r"\n{3,}").unwrap();
+    re_nl.replace_all(s.trim(), "\n\n").to_string()
+}
+
+/// Extract URLs from text and fetch content from known document sources:
+/// - Google Docs (export as plain text)
+/// - Fireflies.ai transcripts (public view page → scrape text)
+/// - Otter.ai transcripts
+async fn fetch_linked_documents(http: &Client, text: &str) -> String {
+    let re_url = regex::Regex::new("https?://[^\\s<>\"']+").unwrap();
+    let mut results = Vec::new();
+
+    for url_match in re_url.find_iter(text) {
+        let url = url_match.as_str().trim_end_matches(&['.', ',', ')', ']'][..]);
+
+        if url.contains("docs.google.com/document") {
+            // Convert to plain text export URL
+            let export_url = if let Some(id_start) = url.find("/d/") {
+                let after_d = &url[id_start + 3..];
+                let doc_id = after_d.split('/').next().unwrap_or("");
+                if !doc_id.is_empty() {
+                    format!("https://docs.google.com/document/d/{}/export?format=txt", doc_id)
+                } else {
+                    continue;
+                }
+            } else {
+                continue;
+            };
+
+            if let Ok(resp) = http.get(&export_url).send().await {
+                if resp.status().is_success() {
+                    if let Ok(text) = resp.text().await {
+                        if text.len() > 50 {
+                            results.push(format!("[Google Doc: {}]\n{}", url, &text[..text.len().min(8000)]));
+                        }
+                    }
+                }
+            }
+        } else if url.contains("fireflies.ai/view") || url.contains("fireflies.ai/d") {
+            // Fireflies public transcript page — fetch HTML and strip
+            if let Ok(resp) = http.get(url)
+                .header("User-Agent", "Mozilla/5.0")
+                .send()
+                .await
+            {
+                if resp.status().is_success() {
+                    if let Ok(html) = resp.text().await {
+                        let plain = strip_html(&html);
+                        // Extract the transcript portion (usually after "Transcript" heading)
+                        let trimmed = if let Some(idx) = plain.find("Transcript") {
+                            &plain[idx..]
+                        } else {
+                            &plain
+                        };
+                        if trimmed.len() > 100 {
+                            results.push(format!("[Fireflies Transcript: {}]\n{}", url, &trimmed[..trimmed.len().min(8000)]));
+                        }
+                    }
+                }
+            }
+        } else if url.contains("otter.ai") {
+            if let Ok(resp) = http.get(url)
+                .header("User-Agent", "Mozilla/5.0")
+                .send()
+                .await
+            {
+                if resp.status().is_success() {
+                    if let Ok(html) = resp.text().await {
+                        let plain = strip_html(&html);
+                        if plain.len() > 100 {
+                            results.push(format!("[Otter.ai Transcript: {}]\n{}", url, &plain[..plain.len().min(8000)]));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    results.join("\n\n")
 }
