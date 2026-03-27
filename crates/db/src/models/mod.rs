@@ -28,6 +28,8 @@ pub mod cms_product;
 pub mod cms_site;
 pub mod cms_site_setting;
 pub mod comment;
+pub mod contact_research_pass;
+pub mod contact_social_profile;
 pub mod context_injection;
 pub mod crm_activity;
 pub mod crm_contact;
