@@ -526,15 +526,6 @@ async fn create_deal(
     .execute(pool)
     .await?;
 
-    // Always register deal in knowledge graph (unconditional)
-    {
-        let pool_bg = pool.clone();
-        let deal_id = deal.id.clone();
-        tokio::spawn(async move {
-            crm_deal_automations::register_deal_in_kg_pub(&pool_bg, &deal_id).await;
-        });
-    }
-
     // Run stage-entry transition processor for any starting stage (schedules agents, creates review tasks)
     if let Some(ref stage_id) = deal.crm_stage_id {
         if let Ok(to_stage) =
