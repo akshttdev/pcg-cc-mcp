@@ -10,6 +10,7 @@ use db::{
     models::{
         agent_flow::{AgentFlow, AgentPhase, FlowStatus},
         agent_flow_event::{AgentFlowEvent, CreateFlowEvent, FlowEventPayload, FlowEventType},
+        crm_deal::CrmDeal,
     },
 };
 use serde_json::{Value, json};
@@ -158,8 +159,19 @@ impl AgentFlowExecutor {
             .and_then(|v| v.as_str())
             .unwrap_or("");
 
-        // Build context from deal data
-        let deal_context = self.load_deal_context(deal_id).await;
+        // Build context from deal data (scoped to this agent + deal's current stage)
+        let deal_stage: Option<String> = sqlx::query_scalar(
+            "SELECT s.name FROM crm_deals d JOIN crm_pipeline_stages s ON d.crm_stage_id = s.id WHERE d.id = ?1",
+        )
+        .bind(deal_id)
+        .fetch_optional(&self.pool)
+        .await
+        .ok()
+        .flatten();
+        let stage_ref = deal_stage.as_deref();
+        let deal_context = self
+            .load_deal_context(deal_id, Some(agent_name), stage_ref)
+            .await;
 
         // Build system prompt based on agent name
         let system_prompt = build_agent_prompt(agent_name, &deal_context);
@@ -225,9 +237,18 @@ impl AgentFlowExecutor {
                     agent_name
                 );
 
-                // Auto-advance: if the stage is agent-owned, move deal to next stage
+                // Chain next agent if chain_actions exist, otherwise auto-advance
                 if !deal_id.is_empty() {
-                    self.try_auto_advance_deal(deal_id).await;
+                    let flow_config = self.parse_flow_config(flow);
+                    if self.try_chain_next_agent(deal_id, &flow_config).await {
+                        tracing::info!(
+                            "[AgentFlowEngine] Chained next agent for deal {} (from flow {})",
+                            deal_id,
+                            flow.id
+                        );
+                    } else {
+                        self.try_auto_advance_deal(deal_id).await;
+                    }
                 }
             }
             Err(e) => {
@@ -387,7 +408,8 @@ impl AgentFlowExecutor {
                     .get("deal_id")
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
-                self.load_deal_context(deal_id).await
+                // Tool call doesn't have agent/stage scope — load all sources
+                self.load_deal_context(deal_id, None, None).await
             }
             "update_deal_field" => {
                 let deal_id = call
@@ -433,7 +455,12 @@ impl AgentFlowExecutor {
 
     // ── Tool Implementations ────────────────────────────────────────────
 
-    async fn load_deal_context(&self, deal_id: &str) -> String {
+    async fn load_deal_context(
+        &self,
+        deal_id: &str,
+        agent_name: Option<&str>,
+        stage_name: Option<&str>,
+    ) -> String {
         #[derive(sqlx::FromRow)]
         struct DealRow {
             name: String,
@@ -452,18 +479,74 @@ impl AgentFlowExecutor {
         .ok()
         .flatten();
 
-        match deal {
-            Some(d) => json!({
-                "name": d.name,
-                "description": d.description,
-                "stage": d.stage,
-                "amount": d.amount,
-                "currency": d.currency,
-                "has_proposal": d.proposal_text.is_some(),
-            })
-            .to_string(),
-            None => json!({"error": "Deal not found"}).to_string(),
+        let Some(d) = deal else {
+            return json!({"error": "Deal not found"}).to_string();
+        };
+
+        // Load linked transcripts
+        #[derive(sqlx::FromRow)]
+        struct TranscriptRow {
+            summary: Option<String>,
+            transcript_text: Option<String>,
         }
+        let transcripts: Vec<TranscriptRow> = sqlx::query_as(
+            "SELECT summary, transcript_text FROM deal_transcripts WHERE deal_id = ?1 ORDER BY created_at DESC LIMIT 5",
+        )
+        .bind(deal_id)
+        .fetch_all(&self.pool)
+        .await
+        .unwrap_or_default();
+
+        let transcript_summaries: Vec<String> = transcripts
+            .iter()
+            .filter_map(|t| t.summary.clone().or(t.transcript_text.clone()))
+            .collect();
+
+        // Load linked data sources (via join table), filtered by agent + stage scope
+        #[derive(sqlx::FromRow)]
+        struct SourceRow {
+            title: Option<String>,
+            content: Option<String>,
+        }
+        let agent_filter = agent_name.unwrap_or("");
+        let stage_filter = stage_name.unwrap_or("");
+        let sources: Vec<SourceRow> = sqlx::query_as(
+            r#"SELECT ds.title, SUBSTR(ds.content, 1, 10000) as content
+               FROM deal_data_sources dds
+               JOIN data_sources ds ON dds.data_source_id = ds.id
+               WHERE dds.deal_id = ?1
+                 AND (dds.relevant_agents IS NULL OR dds.relevant_agents LIKE '%"' || ?2 || '"%')
+                 AND (dds.relevant_stages IS NULL OR dds.relevant_stages LIKE '%"' || ?3 || '"%')
+               ORDER BY dds.created_at DESC LIMIT 5"#,
+        )
+        .bind(deal_id)
+        .bind(agent_filter)
+        .bind(stage_filter)
+        .fetch_all(&self.pool)
+        .await
+        .unwrap_or_default();
+
+        let source_items: Vec<Value> = sources
+            .iter()
+            .map(|s| {
+                json!({
+                    "title": s.title,
+                    "content": s.content,
+                })
+            })
+            .collect();
+
+        json!({
+            "name": d.name,
+            "description": d.description,
+            "stage": d.stage,
+            "amount": d.amount,
+            "currency": d.currency,
+            "has_proposal": d.proposal_text.is_some(),
+            "transcripts": transcript_summaries,
+            "linked_sources": source_items,
+        })
+        .to_string()
     }
 
     async fn update_deal_field(&self, deal_id: &str, field: &str, value: &str) -> String {
@@ -493,6 +576,55 @@ impl AgentFlowExecutor {
             Ok(_) => json!({"success": true, "field": field}).to_string(),
             Err(e) => json!({"error": e.to_string()}).to_string(),
         }
+    }
+
+    /// Update person intelligence fields via the deal's linked contact.
+    /// The Intel tab reads from `persons.intelligence_summary` and `persons.intelligence_status`,
+    /// so Scout must write there for results to be visible.
+    async fn update_deal_person_intelligence(
+        &self,
+        deal_id: &str,
+        summary: &str,
+    ) -> Result<(), anyhow::Error> {
+        // Look up person_id via deal → contact → person
+        let person_id: Option<String> = sqlx::query_scalar(
+            r#"SELECT p.id FROM persons p
+               JOIN crm_contacts c ON c.person_id = p.id
+               JOIN crm_deals d ON d.crm_contact_id = c.id
+               WHERE d.id = ?1"#,
+        )
+        .bind(deal_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(pid) = person_id {
+            sqlx::query(
+                r#"UPDATE persons
+                   SET intelligence_summary = ?1,
+                       intelligence_status = 'done',
+                       intelligence_confidence = 0.75, -- simulated confidence; replace with real scoring when LLM evaluation is wired
+                       research_pass_count = COALESCE(research_pass_count, 0) + 1,
+                       updated_at = datetime('now', 'subsec')
+                   WHERE id = ?2"#,
+            )
+            .bind(summary)
+            .bind(&pid)
+            .execute(&self.pool)
+            .await?;
+
+            tracing::info!(
+                "[AgentFlowEngine] Updated person intelligence for deal={} person={}",
+                deal_id,
+                pid
+            );
+        } else {
+            tracing::warn!(
+                "[AgentFlowEngine] No person linked to deal {} — cannot update intelligence",
+                deal_id
+            );
+        }
+
+        Ok(())
     }
 
     async fn save_artifact(&self, flow_id_str: &str, title: &str, content: &str) -> String {
@@ -648,6 +780,82 @@ impl AgentFlowExecutor {
             .and_then(|s| serde_json::from_str(s).ok())
             .unwrap_or_else(|| json!({}))
     }
+
+    /// Check if the completed flow has chained agent actions queued.
+    /// If so, schedule the next agent and pass remaining chain to it.
+    /// Returns true if a chained agent was scheduled (caller should NOT auto-advance).
+    async fn try_chain_next_agent(&self, deal_id: &str, flow_config: &Value) -> bool {
+        let chain_actions = match flow_config.get("chain_actions").and_then(|v| v.as_array()) {
+            Some(actions) if !actions.is_empty() => actions,
+            _ => return false,
+        };
+
+        let next = &chain_actions[0];
+        let agent = match next.get("agent").and_then(|v| v.as_str()) {
+            Some(a) => a,
+            None => return false,
+        };
+        let flow_type = next
+            .get("flow_type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("custom");
+
+        // Load the deal for schedule_agent_flow
+        let deal_uuid = DbUuid::from_string(deal_id.to_string());
+        let deal = match CrmDeal::find_by_id(&self.pool, &deal_uuid).await {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::error!("[AgentFlowEngine] Chain: deal {} not found: {}", deal_id, e);
+                return false;
+            }
+        };
+
+        // Schedule the next agent with default 30s cancel window
+        match crate::stage_transition::schedule_agent_flow(&self.pool, &deal, agent, flow_type, 30)
+            .await
+        {
+            Ok((new_flow_id, _)) => {
+                // Pass remaining chain to the new flow
+                let remaining: Vec<&Value> = chain_actions.iter().skip(1).collect();
+                if !remaining.is_empty() {
+                    let remaining_json =
+                        serde_json::to_string(&remaining).unwrap_or_else(|_| "[]".to_string());
+                    if let Err(e) = sqlx::query(
+                        "UPDATE agent_flows SET flow_config = json_set(COALESCE(flow_config, '{}'), '$.chain_actions', json(?1)), updated_at = datetime('now', 'subsec') WHERE id = ?2",
+                    )
+                    .bind(&remaining_json)
+                    .bind(&new_flow_id)
+                    .execute(&self.pool)
+                    .await
+                    {
+                        tracing::error!(
+                            "[AgentFlowEngine] Failed to set chain_actions on chained flow {}: {}",
+                            new_flow_id,
+                            e
+                        );
+                    }
+                }
+
+                tracing::info!(
+                    "[AgentFlowEngine] Chained {} agent (flow {}) for deal {} ({} remaining in chain)",
+                    agent,
+                    new_flow_id,
+                    deal_id,
+                    remaining.len()
+                );
+                true
+            }
+            Err(e) => {
+                tracing::error!(
+                    "[AgentFlowEngine] Failed to schedule chained {} agent for deal {}: {}",
+                    agent,
+                    deal_id,
+                    e
+                );
+                false
+            }
+        }
+    }
 }
 
 // ── Auto-Advance ────────────────────────────────────────────────────────────
@@ -737,6 +945,25 @@ impl AgentFlowExecutor {
                 "[AgentFlowEngine] Auto-advance: deal {} has {} pending flows, waiting",
                 deal_id,
                 pending_flows
+            );
+            return;
+        }
+
+        // Check if deal-linked tasks are completed
+        // Review tasks are created on stage entry — operator must complete them before auto-advance
+        let pending_deal_tasks: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM tasks WHERE crm_deal_id = ?1 AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL",
+        )
+        .bind(deal_id)
+        .fetch_one(&self.pool)
+        .await
+        .unwrap_or(0);
+
+        if pending_deal_tasks > 0 {
+            tracing::info!(
+                "[AgentFlowEngine] Auto-advance: deal {} has {} pending task(s) — operator must complete before advancing",
+                deal_id,
+                pending_deal_tasks
             );
             return;
         }
@@ -887,9 +1114,9 @@ impl AgentFlowExecutor {
             deal_id
         );
 
-        // Load real deal context for realistic output
+        // Load real deal context for realistic output (simulated — no agent/stage scope)
         let context = if !deal_id.is_empty() {
-            self.load_deal_context(deal_id).await
+            self.load_deal_context(deal_id, None, None).await
         } else {
             "No deal context available".to_string()
         };
@@ -900,27 +1127,37 @@ impl AgentFlowExecutor {
         // Execute real tool calls based on agent role + return summary
         match agent_name {
             "scout" => {
-                // Scout: save research artifact
+                // Scout: save research to deal description + person intelligence fields
                 if !deal_id.is_empty() {
+                    let summary = format!(
+                        "Contact appears to be a decision-maker at a mid-size company. \
+                         Key talking points: digital transformation, operational efficiency, \
+                         and competitive positioning. Company is in a growth phase with \
+                         potential for strategic partnerships.\n\n\
+                         Original context: {}",
+                        context.chars().take(200).collect::<String>()
+                    );
+
+                    // Update deal description
                     let result = self
                         .update_deal_field(
                             deal_id,
                             "description",
-                            &format!(
-                                "[Scout Research — Simulated]\n\n\
-                             Contact appears to be a decision-maker at a mid-size company. \
-                             Key talking points: digital transformation, operational efficiency, \
-                             and competitive positioning. Company is in a growth phase with \
-                             potential for strategic partnerships.\n\n\
-                             Original context: {}",
-                                context.chars().take(200).collect::<String>()
-                            ),
+                            &format!("[Scout Research — Simulated]\n\n{}", summary),
                         )
                         .await;
                     if result.contains("error") {
                         tracing::error!(
                             "[AgentFlowEngine] Simulated scout: update_deal_field returned error: {}",
                             result
+                        );
+                    }
+
+                    // Update person intelligence so Intel tab shows results
+                    if let Err(e) = self.update_deal_person_intelligence(deal_id, &summary).await {
+                        tracing::error!(
+                            "[AgentFlowEngine] Simulated scout: update_deal_person_intelligence error: {}",
+                            e
                         );
                     }
                 }

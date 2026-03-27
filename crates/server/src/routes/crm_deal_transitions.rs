@@ -348,6 +348,17 @@ pub async fn manage_stage_review_tasks(
     description: &str,
     stage_name: &str,
 ) {
+    manage_stage_review_tasks_with_config(pool, deal, description, stage_name, None).await;
+}
+
+/// Create review tasks with optional stage_config for assignee routing.
+pub async fn manage_stage_review_tasks_with_config(
+    pool: &sqlx::SqlitePool,
+    deal: &CrmDeal,
+    description: &str,
+    stage_name: &str,
+    stage_config: Option<&crate::stage_transition::StageConfig>,
+) {
     // Cancel review tasks from previous stages
     let current_prefix = format!("Review & approve: {} —", stage_name);
     if let Err(e) = sqlx::query(
@@ -416,10 +427,29 @@ pub async fn manage_stage_review_tasks(
             return;
         }
 
-        // F8: BA Operator Assignment — assign review task to org-specific operator
-        if stage_name == "business analysis" {
+        // F8: Config-driven review assignee with org owner fallback
+        if let Some(assignee_id) = resolve_review_assignee(pool, deal, stage_config).await {
+            if let Err(e) = sqlx::query(
+                "UPDATE tasks SET assignee_id = ?, updated_at = datetime('now','subsec') WHERE id = ?"
+            )
+            .bind(&assignee_id)
+            .bind(&task_id)
+            .execute(pool)
+            .await
+            {
+                tracing::error!("[manage_stage_review_tasks] Failed to assign review task: {}", e);
+            } else {
+                tracing::info!("[manage_stage_review_tasks] Assigned review task {} to {}", task_id, assignee_id);
+            }
+        }
+
+        // Legacy hardcoded BA assignment (fallback if no config)
+        if stage_config
+            .and_then(|c| c.review_assignee.as_ref())
+            .is_none()
+            && stage_name == "business analysis"
+        {
             if let Some(ref org_id) = deal.organization_id {
-                // Look up organization name
                 #[derive(sqlx::FromRow)]
                 struct OrgNameRow {
                     name: String,
@@ -646,6 +676,7 @@ pub async fn get_deal_agent_flows(
 
         result.push(serde_json::json!({
             "id": flow.id.to_string(),
+            "task_id": flow.task_id,
             "status": flow.status.to_string(),
             "flow_type": flow.flow_type.to_string(),
             "flow_config": flow.flow_config,
@@ -662,4 +693,55 @@ pub async fn get_deal_agent_flows(
     }
 
     Ok(Json(ApiResponse::success(result)))
+}
+
+/// Resolve the review task assignee:
+/// 1. Check stage_config.review_assignee → resolve username to user_id
+/// 2. Fallback: org owner_id
+/// Returns None if no assignee can be resolved.
+async fn resolve_review_assignee(
+    pool: &sqlx::SqlitePool,
+    deal: &CrmDeal,
+    config: Option<&crate::stage_transition::StageConfig>,
+) -> Option<String> {
+    // 1. Config-driven assignee
+    if let Some(username) = config.and_then(|c| c.review_assignee.as_deref()) {
+        #[derive(sqlx::FromRow)]
+        struct UserIdRow {
+            id: DbUuid,
+        }
+        if let Some(user) = sqlx::query_as::<_, UserIdRow>(
+            "SELECT id FROM users WHERE username = ? OR display_name = ? LIMIT 1",
+        )
+        .bind(username)
+        .bind(username)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        {
+            return Some(user.id.to_string());
+        }
+        tracing::warn!(
+            "[resolve_review_assignee] Config review_assignee '{}' not found in users table",
+            username
+        );
+    }
+
+    // 2. Fallback: org owner
+    if let Some(ref org_id) = deal.organization_id {
+        let owner_id: Option<String> =
+            sqlx::query_scalar("SELECT owner_id FROM organizations WHERE id = ? LIMIT 1")
+                .bind(org_id)
+                .fetch_optional(pool)
+                .await
+                .ok()
+                .flatten();
+
+        if let Some(oid) = owner_id {
+            return Some(oid);
+        }
+    }
+
+    None
 }

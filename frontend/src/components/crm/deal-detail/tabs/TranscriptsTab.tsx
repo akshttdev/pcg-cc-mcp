@@ -1,14 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
-import { Clock, Link2, Loader2, Mic, Plus } from 'lucide-react';
+import { Clock, Database, Link2, Loader2, Mic, Plus } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SectionHeader } from '@/components/ui/section-header';
 import { Textarea } from '@/components/ui/textarea';
 import { useMutationWithToast } from '@/hooks/useMutationWithToast';
 import { crmDealsApi } from '@/lib/api/crm';
+import { dataSourcesApi } from '@/lib/api/intelligence';
 import { crmKeys } from '@/lib/query-keys';
 import type { CrmDealWithContact } from '@/types/crm';
 
@@ -184,6 +186,133 @@ export function TranscriptsTab({ deal }: TranscriptsTabProps) {
                   </pre>
                 </details>
               )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Divider */}
+      <div className="border-t" />
+
+      {/* Linked Data Sources */}
+      <LinkedDataSourcesSection deal={deal} />
+    </div>
+  );
+}
+
+// ── Linked Data Sources Section ────────────────────────────────────────────
+
+function LinkedDataSourcesSection({ deal }: { deal: CrmDealWithContact }) {
+  const [linking, setLinking] = useState(false);
+  const [selectedSourceId, setSelectedSourceId] = useState('');
+
+  const orgId = deal.organization_id;
+
+  const { data: sources, isLoading } = useQuery({
+    queryKey: crmKeys.dealDataSources(deal.id),
+    queryFn: () => crmDealsApi.listDataSources(deal.id),
+    staleTime: 30000,
+  });
+
+  // Fetch org's available data sources for the picker
+  const { data: availableSources } = useQuery({
+    queryKey: ['org-data-sources', orgId],
+    queryFn: () => orgId ? dataSourcesApi.listByOrganization(orgId) : Promise.resolve([]),
+    enabled: linking && !!orgId,
+    staleTime: 60000,
+  });
+
+  const linkSource = useMutationWithToast({
+    mutationFn: () =>
+      crmDealsApi.linkDataSource(deal.id, { data_source_id: selectedSourceId }),
+    successMessage: 'Data source linked',
+    errorMessage: 'Failed to link data source',
+    invalidateKeys: [crmKeys.dealDataSources(deal.id)],
+    onSuccess: () => {
+      setLinking(false);
+      setSelectedSourceId('');
+    },
+  });
+
+  // Filter out already-linked sources
+  const linkedIds = new Set(sources?.map(s => s.data_source_id) ?? []);
+  const unlinkedSources = (availableSources ?? []).filter(
+    (s: { id: string }) => !linkedIds.has(s.id)
+  );
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <SectionHeader icon={Database} title="Linked Sources" />
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1 text-xs"
+          onClick={() => setLinking(!linking)}
+        >
+          <Plus className="h-3 w-3" /> Link Source
+        </Button>
+      </div>
+
+      {linking && (
+        <div className="rounded-lg border p-3 space-y-3 bg-muted/20">
+          <p className="text-xs font-medium">Link Data Source</p>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Select source from data library</Label>
+            <select
+              className="w-full h-8 rounded border border-border bg-background px-2 text-xs"
+              value={selectedSourceId}
+              onChange={(e) => setSelectedSourceId(e.target.value)}
+            >
+              <option value="">Choose a data source…</option>
+              {unlinkedSources.map((s: { id: string; title?: string; name?: string }) => (
+                <option key={s.id} value={s.id}>
+                  {s.title || s.name || s.id}
+                </option>
+              ))}
+            </select>
+            {unlinkedSources.length === 0 && availableSources && (
+              <p className="text-xs text-muted-foreground">No unlinked sources available in this organization.</p>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              className="h-7 gap-1 text-xs"
+              onClick={() => linkSource.mutate()}
+              disabled={linkSource.isPending || !selectedSourceId}
+            >
+              {linkSource.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Link2 className="h-3 w-3" />}
+              Link
+            </Button>
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setLinking(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {isLoading && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3 w-3 animate-spin" /> Loading…
+        </div>
+      )}
+
+      {!isLoading && (!sources || sources.length === 0) && !linking && (
+        <p className="text-xs text-muted-foreground">
+          No data sources linked. Link sources from the data library to enrich agent context.
+        </p>
+      )}
+
+      {sources && sources.length > 0 && (
+        <div className="space-y-2">
+          {sources.map((s) => (
+            <div key={s.id} className="rounded-lg border p-3 flex items-center gap-2">
+              <Database className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+              <span className="text-xs font-mono text-muted-foreground truncate">{s.data_source_id}</span>
+              <span className="text-xs text-muted-foreground ml-auto">
+                {formatDistanceToNow(new Date(s.created_at), { addSuffix: true })}
+              </span>
             </div>
           ))}
         </div>

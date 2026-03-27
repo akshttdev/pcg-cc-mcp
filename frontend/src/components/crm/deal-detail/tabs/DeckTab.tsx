@@ -1,15 +1,19 @@
 import { useMutation,useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Copy,Link2, Loader2, Presentation, Receipt, Share2, Trophy, Wand2 } from 'lucide-react';
+import { Calendar, CheckCircle2, Copy,Link2, Loader2, Presentation, Receipt, Share2, Trophy, Wand2 } from 'lucide-react';
 import { useState } from 'react';
 import { deck as tid } from 'shared/testids';
 import { toast } from 'sonner';
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { SectionHeader } from '@/components/ui/section-header';
 import { crmDealsApi } from '@/lib/api/crm';
 import { crmKeys } from '@/lib/query-keys';
 import type { CrmDealWithContact } from '@/types/crm';
+
+/** Stages where invoice sending is gated (before deck is presented) */
+const PRE_INVOICE_STAGES = ['lead', 'intel', 'business_analysis', 'discovery', 'build_proposal', 'proposal'] as const;
 
 interface DeckTabProps {
   deal: CrmDealWithContact;
@@ -123,7 +127,13 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
       {/* Divider */}
       <div className="border-t" />
 
-      {/* Invoice Section — Present stage action */}
+      {/* Presentation Section — track deck presentation to client */}
+      <PresentationSection deal={deal} />
+
+      {/* Divider */}
+      <div className="border-t" />
+
+      {/* Invoice Section — Present & Invoice stage action */}
       <div className="space-y-3">
         <SectionHeader icon={Receipt} title="Invoice" />
 
@@ -138,9 +148,10 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
               Send the invoice after presenting the deck to the client. Amount: {deal.amount ? new Intl.NumberFormat('en-US', { style: 'currency', currency: deal.currency || 'USD', minimumFractionDigits: 0 }).format(deal.amount) : 'not set'}.
             </p>
             {!invoiceSending ? (() => {
-                const earlyStages = ['lead', 'intel', 'business_analysis', 'discovery', 'build_proposal'];
                 const dealStage = (deal.stage ?? '').toLowerCase().replace(/\s+/g, '_');
-                const isTooEarly = earlyStages.some((s) => s === dealStage);
+                const cf = (() => { try { return typeof deal.custom_fields === 'string' ? JSON.parse(deal.custom_fields) : (deal.custom_fields ?? {}); } catch { return {}; } })();
+                const presentationDone = cf.presentation_status === 'presented';
+                const isTooEarly = PRE_INVOICE_STAGES.some((s) => s === dealStage) || !presentationDone;
                 return (
                   <div>
                     <Button
@@ -326,6 +337,91 @@ function InviteLinkSection({ deal }: { deal: CrmDealWithContact }) {
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Presentation Tracking Section ──────────────────────────────────────────
+
+const PRESENTATION_STATUSES = ['pending', 'scheduled', 'presented'] as const;
+
+function PresentationSection({ deal }: { deal: CrmDealWithContact }) {
+  const qc = useQueryClient();
+  const customFields = (() => {
+    try {
+      return typeof deal.custom_fields === 'string'
+        ? JSON.parse(deal.custom_fields)
+        : (deal.custom_fields ?? {});
+    } catch { return {}; }
+  })();
+
+  const [status, setStatus] = useState<string>(customFields.presentation_status ?? 'pending');
+  const [date, setDate] = useState<string>(customFields.presentation_date ?? '');
+  const [dirty, setDirty] = useState(false);
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      crmDealsApi.updateDeal(deal.id, {
+        custom_fields: {
+          ...customFields,
+          presentation_status: status,
+          presentation_date: date || undefined,
+        },
+      }),
+    onSuccess: () => {
+      toast.success('Presentation tracking saved');
+      qc.invalidateQueries({ queryKey: crmKeys.kanbanAll() });
+      qc.invalidateQueries({ queryKey: crmKeys.orgKanbanAll() });
+      qc.invalidateQueries({ queryKey: crmKeys.kanbanLegacy() });
+      setDirty(false);
+    },
+    onError: () => toast.error('Failed to save presentation tracking'),
+  });
+
+  return (
+    <div className="space-y-3">
+      <SectionHeader icon={Calendar} title="Presentation" />
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-muted-foreground w-16">Status:</span>
+          <div className="flex gap-1.5">
+            {PRESENTATION_STATUSES.map((s) => (
+              <Badge
+                key={s}
+                data-testid={s === status ? tid.presentationStatus : undefined}
+                variant={s === status ? 'default' : 'outline'}
+                className={`cursor-pointer capitalize text-xs ${s === status && s === 'presented' ? 'bg-green-600' : ''}`}
+                onClick={() => { setStatus(s); setDirty(true); }}
+              >
+                {s}
+              </Badge>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-muted-foreground w-16">Date:</span>
+          <input
+            type="date"
+            data-testid={tid.presentationDate}
+            value={date}
+            onChange={(e) => { setDate(e.target.value); setDirty(true); }}
+            className="h-7 rounded border border-border bg-background px-2 text-xs"
+          />
+        </div>
+        {dirty && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5 text-xs"
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending}
+            data-testid={tid.presentationSave}
+          >
+            {saveMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+            Save
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

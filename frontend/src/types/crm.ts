@@ -220,6 +220,18 @@ export interface DealTranscript {
   created_at: string;
 }
 
+export interface DealDataSource {
+  id: string;
+  deal_id: string;
+  data_source_id: string;
+  /** JSON array of stage names. Null = all stages. */
+  relevant_stages?: string | null;
+  /** JSON array of agent names. Null = all agents. */
+  relevant_agents?: string | null;
+  linked_by?: string;
+  created_at: string;
+}
+
 export interface MarkWonResult {
   deal_id: string;
   client_id: string;
