@@ -578,48 +578,36 @@ impl AgentFlowExecutor {
         }
     }
 
-    /// Update person intelligence fields via the deal's linked contact.
-    /// The Intel tab reads from `persons.intelligence_summary` and `persons.intelligence_status`,
-    /// so Scout must write there for results to be visible.
-    async fn update_deal_person_intelligence(
+    /// Update contact intelligence fields directly via the deal's linked contact.
+    /// The Intel tab reads from `crm_contacts.intelligence_summary`, so Scout
+    /// writes there — no person lookup needed.
+    async fn update_deal_contact_intelligence(
         &self,
         deal_id: &str,
         summary: &str,
     ) -> Result<(), anyhow::Error> {
-        // Look up person_id via deal → contact → person
-        let person_id: Option<String> = sqlx::query_scalar(
-            r#"SELECT p.id FROM persons p
-               JOIN crm_contacts c ON c.person_id = p.id
-               JOIN crm_deals d ON d.crm_contact_id = c.id
-               WHERE d.id = ?1"#,
+        let rows = sqlx::query(
+            r#"UPDATE crm_contacts
+               SET intelligence_summary = ?1,
+                   intelligence_status = 'done',
+                   intelligence_confidence = 0.75,
+                   research_pass_count = COALESCE(research_pass_count, 0) + 1,
+                   updated_at = datetime('now', 'subsec')
+               WHERE id = (SELECT crm_contact_id FROM crm_deals WHERE id = ?2)"#,
         )
+        .bind(summary)
         .bind(deal_id)
-        .fetch_optional(&self.pool)
+        .execute(&self.pool)
         .await?;
 
-        if let Some(pid) = person_id {
-            sqlx::query(
-                r#"UPDATE persons
-                   SET intelligence_summary = ?1,
-                       intelligence_status = 'done',
-                       intelligence_confidence = 0.75,
-                       research_pass_count = COALESCE(research_pass_count, 0) + 1,
-                       updated_at = datetime('now', 'subsec')
-                   WHERE id = ?2"#,
-            )
-            .bind(summary)
-            .bind(&pid)
-            .execute(&self.pool)
-            .await?;
-
+        if rows.rows_affected() > 0 {
             tracing::info!(
-                "[AgentFlowEngine] Updated person intelligence for deal={} person={}",
-                deal_id,
-                pid
+                "[AgentFlowEngine] Updated contact intelligence for deal={}",
+                deal_id
             );
         } else {
             tracing::warn!(
-                "[AgentFlowEngine] No person linked to deal {} — cannot update intelligence",
+                "[AgentFlowEngine] No contact linked to deal {} — cannot update intelligence",
                 deal_id
             );
         }
@@ -1153,10 +1141,10 @@ impl AgentFlowExecutor {
                         );
                     }
 
-                    // Update person intelligence so Intel tab shows results
-                    if let Err(e) = self.update_deal_person_intelligence(deal_id, &summary).await {
+                    // Update contact intelligence so Intel tab shows results
+                    if let Err(e) = self.update_deal_contact_intelligence(deal_id, &summary).await {
                         tracing::error!(
-                            "[AgentFlowEngine] Simulated scout: update_deal_person_intelligence error: {}",
+                            "[AgentFlowEngine] Simulated scout: update_deal_contact_intelligence error: {}",
                             e
                         );
                     }
