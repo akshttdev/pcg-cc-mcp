@@ -279,10 +279,9 @@ async fn run_research_via_nora(
 async fn run_research_direct(
     pool: &sqlx::SqlitePool,
     person: &Person,
-
     project_id: Option<Uuid>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use serde_json::json;
+    use services::services::workflow_llm::{LLMResponse, WorkflowLLMService};
 
     let system = "You are Scout, Social Intelligence Analyst for Power Club Global. \
         Your specialty is finding and structuring online presence data about individuals. \
@@ -302,87 +301,37 @@ async fn run_research_direct(
         person.job_title.as_deref().unwrap_or("unknown"),
     );
 
-    let client = reqwest::Client::new();
-    let mut response_text = String::new();
+    let messages = vec![
+        serde_json::json!({"role": "system", "content": system}),
+        serde_json::json!({"role": "user", "content": prompt}),
+    ];
 
-    // Try OpenAI first
-    if let Ok(openai_key) = std::env::var("OPENAI_API_KEY") {
-        let body = json!({
-            "model": "gpt-4o",
-            "max_tokens": 2048,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": prompt}
-            ]
-        });
-        match client
-            .post("https://api.openai.com/v1/chat/completions")
-            .header("Authorization", format!("Bearer {}", openai_key))
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await
-        {
-            Ok(resp) if resp.status().is_success() => {
-                if let Ok(val) = resp.json::<serde_json::Value>().await {
-                    if let Some(text) = val["choices"][0]["message"]["content"].as_str() {
-                        response_text = text.to_string();
-                        tracing::info!(
-                            "[Scout] OpenAI response for {}: {} chars",
-                            person.full_name,
-                            response_text.len()
-                        );
-                    }
-                }
-            }
-            Ok(resp) => {
-                tracing::warn!(
-                    "[Scout] OpenAI returned {}, falling back to Anthropic",
-                    resp.status()
-                );
-            }
-            Err(e) => {
-                tracing::warn!("[Scout] OpenAI failed: {}, falling back to Anthropic", e);
-            }
+    // Use PCG Router — automatic priority-based fallback + cost tracking
+    let (response, metadata) = WorkflowLLMService::completion_with_tools(
+        pool,
+        messages,
+        &[], // no tools needed for text research
+        None, // use default model priority
+        Some(2048),
+        None,
+    )
+    .await
+    .map_err(|e| format!("PCG Router LLM call failed: {}", e))?;
+
+    let response_text = match response {
+        LLMResponse::Text { content, .. } => content,
+        LLMResponse::ToolCalls { .. } => {
+            return Err("Unexpected tool calls in research response".into());
         }
-    }
+    };
 
-    // Fallback to Anthropic if OpenAI didn't produce a result
-    if response_text.is_empty() {
-        let api_key = std::env::var("ANTHROPIC_API_KEY")
-            .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
-            .map_err(|_| "No LLM API key configured (OPENAI_API_KEY or ANTHROPIC_API_KEY)")?;
-
-        let body = json!({
-            "model": "claude-sonnet-4-6",
-            "max_tokens": 2048,
-            "system": system,
-            "tools": [{
-                "type": "web_search_20250305",
-                "name": "web_search",
-                "max_uses": 5
-            }],
-            "messages": [{"role": "user", "content": prompt}]
-        });
-
-        let resp = client
-            .post("https://api.anthropic.com/v1/messages")
-            .header("x-api-key", &api_key)
-            .header("anthropic-version", "2023-06-01")
-            .header("anthropic-beta", "web-search-2025-03-05")
-            .header("content-type", "application/json")
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| format!("HTTP error: {}", e))?;
-
-        let response: serde_json::Value = resp
-            .json()
-            .await
-            .map_err(|e| format!("JSON parse error: {}", e))?;
-
-        response_text = extract_text_from_anthropic_response(&response);
-    }
+    tracing::info!(
+        "[Scout] PCG Router response for {} via {}/{}: {} chars",
+        person.full_name,
+        metadata.provider,
+        metadata.model_used,
+        response_text.len()
+    );
 
     // Check for error responses — reset status to idle for retry
     if response_text.contains("rate_limit_error")
@@ -390,11 +339,12 @@ async fn run_research_direct(
         || response_text.contains("credit balance")
     {
         tracing::warn!(
-            "Research hit API limit for person {}, resetting to idle for retry",
-            person.id
+            "Research hit API limit for {}, resetting to idle for retry",
+            person.full_name
         );
         let _ = sqlx::query(
-            "UPDATE persons SET intelligence_status = 'idle', updated_at = datetime('now','subsec') WHERE id = ?",
+            "UPDATE crm_contacts SET intelligence_status = 'idle', updated_at = datetime('now','subsec') \
+             WHERE id = (SELECT crm_contact_id FROM persons WHERE id = ?)",
         )
         .bind(person.id.clone())
         .execute(pool)
@@ -761,12 +711,13 @@ pub async fn run_company_research_direct(
     company_name: &str,
     project_id: Option<Uuid>,
 ) {
+    use services::services::workflow_llm::{LLMResponse, WorkflowLLMService};
+
     tracing::info!(
-        "[Scout] Starting direct company research for {} (id: {})",
+        "[Scout] Starting company research for {} (id: {}) via PCG Router",
         company_name,
         company_id
     );
-    let client = reqwest::Client::new();
 
     let prompt = format!(
         "Research the company '{}'. Provide a comprehensive company intelligence brief including: \
@@ -783,91 +734,32 @@ pub async fn run_company_research_direct(
 
     let system = "You are Scout, a business intelligence analyst. Research companies thoroughly and produce comprehensive intelligence briefs.";
 
-    // Try OpenAI first
-    let mut response_text = String::new();
-    if let Ok(openai_key) = std::env::var("OPENAI_API_KEY") {
-        let body = serde_json::json!({
-            "model": "gpt-4o",
-            "max_tokens": 3000,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": prompt}
-            ]
-        });
-        match client
-            .post("https://api.openai.com/v1/chat/completions")
-            .header("Authorization", format!("Bearer {}", openai_key))
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await
-        {
-            Ok(resp) if resp.status().is_success() => {
-                if let Ok(val) = resp.json::<serde_json::Value>().await {
-                    if let Some(text) = val["choices"][0]["message"]["content"].as_str() {
-                        response_text = text.to_string();
-                        tracing::info!(
-                            "[Scout] OpenAI company research for {}: {} chars",
-                            company_name,
-                            response_text.len()
-                        );
-                    }
-                }
-            }
-            _ => {
-                tracing::warn!(
-                    "[Scout] OpenAI failed for company {}, trying Anthropic",
-                    company_name
-                );
-            }
+    let messages = vec![
+        serde_json::json!({"role": "system", "content": system}),
+        serde_json::json!({"role": "user", "content": prompt}),
+    ];
+
+    let response_text = match WorkflowLLMService::completion_with_tools(
+        pool, messages, &[], None, Some(3000), None,
+    ).await {
+        Ok((LLMResponse::Text { content, .. }, metadata)) => {
+            tracing::info!(
+                "[Scout] PCG Router company research for {} via {}/{}: {} chars",
+                company_name, metadata.provider, metadata.model_used, content.len()
+            );
+            content
         }
-    }
-
-    // Fallback to Anthropic
-    if response_text.is_empty() {
-        let api_key = match std::env::var("ANTHROPIC_API_KEY") {
-            Ok(k) => k,
-            Err(_) => {
-                write_company_intel_results(pool, company_id, "No LLM API key configured", 0.0)
-                    .await;
-                return;
-            }
-        };
-
-        let body = serde_json::json!({
-            "model": "claude-opus-4-6",
-            "max_tokens": 3000,
-            "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 6}],
-            "messages": [{"role": "user", "content": prompt}]
-        });
-
-        let resp = client
-            .post("https://api.anthropic.com/v1/messages")
-            .header("x-api-key", &api_key)
-            .header("anthropic-version", "2023-06-01")
-            .header("anthropic-beta", "web-search-2025-03-05")
-            .header("content-type", "application/json")
-            .json(&body)
-            .send()
-            .await;
-
-        match resp {
-            Ok(r) if r.status().is_success() => {
-                let val: serde_json::Value = r.json().await.unwrap_or_default();
-                response_text = extract_text_from_anthropic_response(&val);
-            }
-            Ok(r) => {
-                let text = r.text().await.unwrap_or_default();
-                tracing::error!(
-                    "Company research Anthropic error: {}",
-                    &text[..text.len().min(200)]
-                );
-            }
-            Err(e) => {
-                tracing::error!("Company research HTTP error: {}", e);
-            }
+        Ok((LLMResponse::ToolCalls { .. }, _)) => {
+            tracing::error!("[Scout] Unexpected tool calls in company research");
+            write_company_intel_results(pool, company_id, "LLM returned tool calls instead of text", 0.0).await;
+            return;
         }
-    }
+        Err(e) => {
+            tracing::error!("[Scout] PCG Router failed for company {}: {}", company_name, e);
+            write_company_intel_results(pool, company_id, &format!("Research failed: {}", e), 0.0).await;
+            return;
+        }
+    };
 
     let parsed = parse_research_json(&response_text);
     let confidence = parsed
@@ -1329,7 +1221,6 @@ async fn run_research_pass(
     prior_context: &str,
     project_id: Option<Uuid>,
 ) -> anyhow::Result<()> {
-    use reqwest::Client;
     use serde_json::Value;
 
     // Mark running
@@ -1337,9 +1228,6 @@ async fn run_research_pass(
         .bind(pass_id)
         .execute(&pool)
         .await?;
-
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .map_err(|_| anyhow::anyhow!("ANTHROPIC_API_KEY not set"))?;
 
     let focus_instructions = match focus {
         "identity" => format!(
@@ -1408,31 +1296,32 @@ async fn run_research_pass(
         }}"
     );
 
-    let client = Client::new();
-    let res = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", &api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("anthropic-beta", "web-search-2025-03-05")
-        .header("content-type", "application/json")
-        .json(&serde_json::json!({
-            "model": "claude-sonnet-4-20250514",
-            "max_tokens": 4096,
-            "system": system,
-            "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}],
-            "messages": [{"role": "user", "content": prompt}]
-        }))
-        .send()
-        .await?;
+    use services::services::workflow_llm::{LLMResponse, WorkflowLLMService};
 
-    let body: Value = res.json().await?;
+    let messages = vec![
+        serde_json::json!({"role": "system", "content": system}),
+        serde_json::json!({"role": "user", "content": prompt}),
+    ];
 
-    // Extract text from response (may be in content array)
-    let text = body["content"]
-        .as_array()
-        .and_then(|arr| arr.iter().find(|b| b["type"] == "text"))
-        .and_then(|b| b["text"].as_str())
-        .ok_or_else(|| anyhow::anyhow!("No text in response: {:?}", body))?;
+    let (response, metadata) = WorkflowLLMService::completion_with_tools(
+        &pool, messages, &[], None, Some(4096), None,
+    )
+    .await
+    .map_err(|e| anyhow::anyhow!("PCG Router failed for research pass: {}", e))?;
+
+    let text = match response {
+        LLMResponse::Text { content, .. } => content,
+        LLMResponse::ToolCalls { .. } => {
+            anyhow::bail!("Unexpected tool calls in research pass response");
+        }
+    };
+
+    tracing::info!(
+        "[Scout] Research pass #{} via {}/{}: {} chars",
+        pass_number, metadata.provider, metadata.model_used, text.len()
+    );
+
+    let text = &text;
 
     let json_str = text
         .trim()
