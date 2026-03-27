@@ -7,6 +7,9 @@ use ts_rs::TS;
 use super::crm_pipeline::CrmPipelineStage;
 use crate::db_uuid::DbUuid;
 
+/// Prefix for review task titles — used in queries and task creation.
+pub const REVIEW_TASK_PREFIX: &str = "Review & approve:";
+
 #[derive(Debug, Error)]
 pub enum CrmDealError {
     #[error(transparent)]
@@ -807,6 +810,7 @@ impl CrmDeal {
                 FROM tasks t
                 LEFT JOIN users u ON CAST(u.id AS TEXT) = t.assignee_id
                 WHERE t.crm_deal_id = ?
+                  AND t.title LIKE ?
                   AND t.status NOT IN ('cancelled', 'done', 'waiting')
                   AND t.deleted_at IS NULL
                 ORDER BY t.created_at ASC
@@ -814,6 +818,7 @@ impl CrmDeal {
                 "#,
             )
             .bind(deal_id)
+            .bind(format!("{}%", REVIEW_TASK_PREFIX))
             .fetch_optional(pool)
             .await
             {

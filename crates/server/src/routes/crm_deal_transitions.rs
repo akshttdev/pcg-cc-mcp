@@ -179,13 +179,17 @@ pub async fn advance_deal(
             .await
             .map_err(|_| ApiError::NotFound("Current stage not found".to_string()))?;
     let current_stage_name_lower = current_stage.name.to_lowercase();
-    let review_prefix = format!("Review & approve: {}%", current_stage_name_lower);
+    let review_prefix = format!("{} {}%", db::models::crm_deal::REVIEW_TASK_PREFIX, current_stage_name_lower);
 
+    let review_like = format!("{}%", db::models::crm_deal::REVIEW_TASK_PREFIX);
+    let review_like_spaced = format!("{} %", db::models::crm_deal::REVIEW_TASK_PREFIX);
     let pending_tasks: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM tasks WHERE crm_deal_id = ? AND (title LIKE ? OR (title LIKE 'Review & approve:%' AND title NOT LIKE 'Review & approve: %')) AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL",
+        "SELECT COUNT(*) FROM tasks WHERE crm_deal_id = ? AND (title LIKE ? OR (title LIKE ? AND title NOT LIKE ?)) AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL",
     )
     .bind(&id)
     .bind(&review_prefix)
+    .bind(&review_like)
+    .bind(&review_like_spaced)
     .fetch_one(pool)
     .await
     .unwrap_or(0);
@@ -353,11 +357,13 @@ pub async fn manage_stage_review_tasks_full(
     initial_status: &str,
 ) {
     // Cancel review tasks from previous stages
-    let current_prefix = format!("Review & approve: {} —", stage_name);
+    let current_prefix = format!("{} {} —", db::models::crm_deal::REVIEW_TASK_PREFIX, stage_name);
+    let all_review_like = format!("{}%", db::models::crm_deal::REVIEW_TASK_PREFIX);
     if let Err(e) = sqlx::query(
-        "UPDATE tasks SET status = 'cancelled', updated_at = datetime('now','subsec') WHERE crm_deal_id = ? AND title LIKE 'Review & approve:%' AND title NOT LIKE ? AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL",
+        "UPDATE tasks SET status = 'cancelled', updated_at = datetime('now','subsec') WHERE crm_deal_id = ? AND title LIKE ? AND title NOT LIKE ? AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL",
     )
     .bind(&deal.id)
+    .bind(&all_review_like)
     .bind(format!("{}%", current_prefix))
     .execute(pool)
     .await
@@ -377,7 +383,7 @@ pub async fn manage_stage_review_tasks_full(
 
     if existing_count == 0 {
         let task_id = DbUuid::new();
-        let task_title = format!("Review & approve: {} — {}", stage_name, deal.name);
+        let task_title = format!("{} {} — {}", db::models::crm_deal::REVIEW_TASK_PREFIX, stage_name, deal.name);
         // Default assignee: first admin user (so tasks show up in My Tasks)
         let default_assignee: Option<String> =
             sqlx::query_scalar::<_, String>("SELECT hex(id) FROM users WHERE is_admin = 1 LIMIT 1")
