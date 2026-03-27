@@ -1690,32 +1690,48 @@ Using the new research, extend and correct the existing data. Return a JSON obje
     .bind(&research_doc)
     .execute(pool).await?;
 
-    // ── 7. CRM: create/update founder person record ───────────────────────────
+    // ── 7. CRM: create/update founder contact record ──────────────────────────
     if let Some(founder) = final_data["founder_name"].as_str() {
         if !founder.is_empty() {
             let name_parts: Vec<&str> = founder.splitn(2, ' ').collect();
             let first = name_parts.first().copied().unwrap_or(founder);
             let last = name_parts.get(1).copied().unwrap_or("");
             let bio = final_data["founder_background"].as_str().unwrap_or("");
+            let full = format!("{} {}", first, last).trim().to_string();
 
-            let exists: Option<(Vec<u8>,)> = sqlx::query_as(
-                "SELECT id FROM persons WHERE first_name = ? AND (last_name = ? OR last_name IS NULL) LIMIT 1"
+            let exists: Option<(String,)> = sqlx::query_as(
+                "SELECT id FROM crm_contacts WHERE first_name = ? AND (last_name = ? OR last_name IS NULL) LIMIT 1"
             )
             .bind(first).bind(last)
             .fetch_optional(pool).await.ok().flatten();
 
             if exists.is_none() {
-                let person_id = Uuid::new_v4();
+                let contact_id = DbUuid::new();
                 let _ = sqlx::query(
-                    "INSERT INTO persons (id, first_name, last_name, role, notes, created_at, updated_at) VALUES (?, ?, ?, 'Founder / CEO', ?, datetime('now','subsec'), datetime('now','subsec'))"
+                    "INSERT INTO crm_contacts (id, first_name, last_name, full_name, job_title, organization_id, \
+                     intelligence_status, intelligence_confidence, research_pass_count, lead_score, \
+                     email_count, meeting_count, deal_count, total_revenue, lifecycle_stage, research_depth, \
+                     created_at, updated_at) \
+                     VALUES (?, ?, ?, ?, 'Founder / CEO', ?, 'idle', 0.0, 0, 0, 0, 0, 0, 0.0, 'lead', 'basic', \
+                     datetime('now','subsec'), datetime('now','subsec'))"
                 )
-                .bind(person_id.to_string())
+                .bind(contact_id.to_string())
                 .bind(first)
                 .bind(last)
-                .bind(if bio.is_empty() { None } else { Some(bio) })
+                .bind(&full)
+                .bind(org_id.to_string())
                 .execute(pool).await;
+                // Also store bio as custom_fields if present
+                if !bio.is_empty() {
+                    let _ = sqlx::query(
+                        "UPDATE crm_contacts SET custom_fields = json_set(COALESCE(custom_fields, '{}'), '$.founder_bio', ?) WHERE id = ?"
+                    )
+                    .bind(bio)
+                    .bind(contact_id.to_string())
+                    .execute(pool).await;
+                }
                 tracing::info!(
-                    "[BRAND_RESEARCH] Created CRM person record for founder: {}",
+                    "[BRAND_RESEARCH] Created CRM contact record for founder: {}",
                     founder
                 );
             } else {

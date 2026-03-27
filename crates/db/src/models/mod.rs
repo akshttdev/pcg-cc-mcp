@@ -114,6 +114,8 @@ pub mod meeting_session;
 pub mod operator_rate;
 pub mod oss_library;
 pub mod pcg_router_model;
+pub mod contact_association;
+pub mod contact_note;
 pub mod person;
 pub mod person_association;
 pub mod person_note;

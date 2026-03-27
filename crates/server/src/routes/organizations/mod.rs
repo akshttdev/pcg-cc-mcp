@@ -8,9 +8,9 @@ use db::{
     models::{
         brand_intake_token::BrandIntakeToken,
         company::Company,
+        contact_association::{ContactOrgLink, UpsertContactOrgLink},
+        crm_contact::CrmContact,
         org_brand_profile::{OrgBrandProfile, UpsertOrgBrandProfile},
-        person::Person,
-        person_association::{PersonOrgContact, UpsertPersonOrgContact},
         user::{CreateOrganization, Organization, OrganizationMember, UpdateOrganization},
     },
 };
@@ -236,7 +236,7 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/organizations/{id}/generate-invite",
             post(members::generate_invite),
         )
-        .route("/organizations/{id}/persons", get(members::get_org_persons))
+        .route("/organizations/{id}/contacts", get(members::get_org_persons))
         .route(
             "/organizations/{id}/data-sources",
             get(members::list_org_data_sources),
@@ -263,7 +263,7 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             delete(members::unassign_client),
         )
         .route(
-            "/organizations/{id}/person-contacts",
+            "/organizations/{id}/contact-links",
             get(members::list_org_person_contacts).post(members::add_org_person_contact),
         )
         .route(
