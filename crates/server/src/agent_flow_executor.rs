@@ -192,8 +192,10 @@ impl AgentFlowExecutor {
             )),
         ];
 
-        // Call LLM with retry logic
-        let result = self.call_llm_with_retry(flow, messages, &tools).await;
+        // Call LLM with retry logic (pass flow.id for artifact saving in simulation)
+        let result = self
+            .call_llm_with_retry(flow, messages, &tools, &flow.id)
+            .await;
 
         match result {
             Ok(output) => {
@@ -264,6 +266,7 @@ impl AgentFlowExecutor {
         flow: &AgentFlow,
         messages: Vec<Value>,
         tools: &[ToolDefinition],
+        flow_id: &DbUuid,
     ) -> anyhow::Result<String> {
         let max_retries = 3;
         let models = [None, None, Some("claude-sonnet-4-6-20250514")]; // last attempt uses cheaper model
@@ -292,7 +295,7 @@ impl AgentFlowExecutor {
             }
 
             match self
-                .call_llm_once(messages.clone(), tools, model_hint, &flow_deal_id)
+                .call_llm_once(messages.clone(), tools, model_hint, &flow_deal_id, flow_id)
                 .await
             {
                 Ok(output) => return Ok(output),
@@ -339,10 +342,13 @@ impl AgentFlowExecutor {
         tools: &[ToolDefinition],
         model_hint: Option<&str>,
         deal_id: &str,
+        flow_id: &DbUuid,
     ) -> anyhow::Result<String> {
         // Simulation mode: return realistic agent responses without calling LLM
         if std::env::var("SIMULATE_LLM").unwrap_or_default() == "1" {
-            return self.simulate_llm_response(&messages, deal_id).await;
+            return self
+                .simulate_llm_response(&messages, deal_id, flow_id)
+                .await;
         }
 
         let max_turns = 5;
@@ -1068,6 +1074,7 @@ impl AgentFlowExecutor {
         &self,
         messages: &[Value],
         deal_id_override: &str,
+        flow_id: &DbUuid,
     ) -> anyhow::Result<String> {
         // Extract agent name from system prompt
         let system_text = messages
@@ -1128,119 +1135,121 @@ impl AgentFlowExecutor {
         // Simulate a brief processing delay
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
+        let flow_id_str = flow_id.to_string();
+
         // Execute real tool calls based on agent role + return summary
         match agent_name {
             "scout" => {
-                // Scout: save research to deal description + person intelligence fields
+                let report = "[Simulated Scout Output]\n\n\
+                    ## Contact Intelligence Report\n\n\
+                    Contact appears to be a decision-maker at a mid-size company.\n\
+                    Key talking points: digital transformation, operational efficiency, \
+                    and competitive positioning. Company is in a growth phase with \
+                    potential for strategic partnerships.\n\n\
+                    ### Key Findings\n\
+                    - Contact profile analyzed\n\
+                    - Company overview compiled\n\
+                    - 4 key talking points identified\n\
+                    - 3 potential pain points flagged"
+                    .to_string();
+
                 if !deal_id.is_empty() {
-                    let summary = "Contact appears to be a decision-maker at a mid-size company. \
-                         Key talking points: digital transformation, operational efficiency, \
-                         and competitive positioning. Company is in a growth phase with \
-                         potential for strategic partnerships."
-                        .to_string();
+                    self.update_deal_field(
+                        deal_id,
+                        "description",
+                        &format!("[Scout Research — Simulated]\n\n{}", report),
+                    )
+                    .await;
 
-                    // Update deal description
-                    let result = self
-                        .update_deal_field(
-                            deal_id,
-                            "description",
-                            &format!("[Scout Research — Simulated]\n\n{}", summary),
-                        )
-                        .await;
-                    if result.contains("error") {
-                        tracing::error!(
-                            "[AgentFlowEngine] Simulated scout: update_deal_field returned error: {}",
-                            result
-                        );
-                    }
-
-                    // Update contact intelligence so Intel tab shows results
                     if let Err(e) = self
-                        .update_deal_contact_intelligence(deal_id, &summary)
+                        .update_deal_contact_intelligence(deal_id, &report)
                         .await
                     {
                         tracing::error!(
-                            "[AgentFlowEngine] Simulated scout: update_deal_contact_intelligence error: {}",
+                            "[AgentFlowEngine] Simulated scout: contact intel error: {}",
                             e
                         );
                     }
                 }
-                Ok(format!(
-                    "[Simulated Scout Output]\n\n\
-                     ## Research Summary\n\
-                     - Contact profile analyzed\n\
-                     - Company overview compiled\n\
-                     - 4 key talking points identified\n\
-                     - 3 potential pain points flagged\n\n\
-                     Deal context updated with research findings."
-                ))
+
+                self.save_artifact(&flow_id_str, "Contact Intelligence Report", &report)
+                    .await;
+
+                Ok(report)
             }
-            "astra" => Ok(format!(
-                "[Simulated Astra Output]\n\n\
-                     ## Business Analysis\n\
-                     - Pain point: manual processes causing bottlenecks\n\
-                     - Recommended: workflow automation + AI integration\n\
-                     - Scope: 3-6 month engagement\n\
-                     - Risk: low (proven approach, clear ROI)\n\n\
-                     Ready for proposal generation."
-            )),
-            "cash" => {
+            "astra" => {
+                let report = "[Simulated Astra Output]\n\n\
+                    ## Business Analysis Report\n\n\
+                    ### Pain Points\n\
+                    - Manual processes causing operational bottlenecks\n\
+                    - Lack of integrated data across departments\n\n\
+                    ### Recommended Services\n\
+                    - Workflow automation + AI integration\n\
+                    - Data pipeline consolidation\n\n\
+                    ### Scope & Timeline\n\
+                    - Engagement: 3-6 months\n\
+                    - Risk: low (proven approach, clear ROI)\n\n\
+                    Ready for proposal generation."
+                    .to_string();
+
                 if !deal_id.is_empty() {
-                    let result = self
-                        .update_deal_field(
-                            deal_id,
-                            "proposal_text",
-                            "[Simulated Proposal — Cash]\n\n\
-                         ## Executive Summary\n\
-                         We propose a comprehensive digital transformation engagement.\n\n\
-                         ## Scope of Work\n\
-                         1. Process audit and optimization (Month 1)\n\
-                         2. Workflow automation implementation (Month 2-3)\n\
-                         3. AI agent integration (Month 3-4)\n\
-                         4. Training and handoff (Month 5)\n\n\
-                         ## Investment\n\
-                         Total: $45,000 over 5 months\n\n\
-                         ## Timeline\n\
-                         Start: 2 weeks from approval",
-                        )
-                        .await;
-                    if result.contains("error") {
-                        tracing::error!(
-                            "[AgentFlowEngine] Simulated cash: update_deal_field returned error: {}",
-                            result
-                        );
-                    }
+                    self.update_deal_field(
+                        deal_id,
+                        "description",
+                        &format!("[Astra Analysis — Simulated]\n\n{}", report),
+                    )
+                    .await;
                 }
-                Ok(format!(
-                    "[Simulated Cash Output]\n\n\
-                     Proposal generated and saved to deal.\n\
-                     - 4 work phases defined\n\
-                     - Pricing: $45,000\n\
-                     - Timeline: 5 months"
-                ))
+
+                self.save_artifact(&flow_id_str, "Business Analysis Report", &report)
+                    .await;
+
+                Ok(report)
+            }
+            "cash" => {
+                let proposal = "[Simulated Proposal — Cash]\n\n\
+                    ## Executive Summary\n\
+                    We propose a comprehensive digital transformation engagement.\n\n\
+                    ## Scope of Work\n\
+                    1. Process audit and optimization (Month 1)\n\
+                    2. Workflow automation implementation (Month 2-3)\n\
+                    3. AI agent integration (Month 3-4)\n\
+                    4. Training and handoff (Month 5)\n\n\
+                    ## Investment\n\
+                    Total: $45,000 over 5 months\n\n\
+                    ## Timeline\n\
+                    Start: 2 weeks from approval"
+                    .to_string();
+
+                if !deal_id.is_empty() {
+                    self.update_deal_field(deal_id, "proposal_text", &proposal)
+                        .await;
+                }
+
+                self.save_artifact(&flow_id_str, "Proposal Document", &proposal)
+                    .await;
+
+                Ok(proposal)
             }
             "lux" => {
+                let deck = "[Simulated Lux Output]\n\n\
+                    ## Pitch Deck Outline\n\n\
+                    1. **Title**: Value proposition — transforming operations through AI\n\
+                    2. **Problem/Opportunity**: Manual processes, data silos, competitive pressure\n\
+                    3. **Solution approach**: Phased automation + AI agent integration\n\
+                    4. **Deliverables & timeline**: 5 months, 4 work phases\n\
+                    5. **Investment & ROI**: $45,000 — projected 3x return in Year 1"
+                    .to_string();
+
                 if !deal_id.is_empty() {
-                    let result = self
-                        .update_deal_field(deal_id, "deck_url", "/api/decks/simulated-deck.pdf")
+                    self.update_deal_field(deal_id, "deck_url", "/api/decks/simulated-deck.pdf")
                         .await;
-                    if result.contains("error") {
-                        tracing::error!(
-                            "[AgentFlowEngine] Simulated lux: update_deal_field returned error: {}",
-                            result
-                        );
-                    }
                 }
-                Ok(format!(
-                    "[Simulated Lux Output]\n\n\
-                     Presentation deck outline created:\n\
-                     1. Title: Value proposition\n\
-                     2. Problem/Opportunity\n\
-                     3. Solution approach\n\
-                     4. Deliverables & timeline\n\
-                     5. Investment & ROI\n\n\
-                     Deck URL saved to deal."
-                ))
+
+                self.save_artifact(&flow_id_str, "Pitch Deck Outline", &deck)
+                    .await;
+
+                Ok(deck)
             }
             _ => Ok(format!(
                 "[Simulated Agent Output]\n\nAnalysis complete for deal. Context: {}",

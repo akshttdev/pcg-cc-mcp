@@ -282,11 +282,36 @@ async fn run_research_via_nora(
 
 /// Fallback: direct Anthropic web search when Nora is not initialized.
 /// Uses Scout's persona — social intelligence specialization.
+/// When SIMULATE_LLM=1, writes simulated data and returns immediately.
 async fn run_research_direct(
     pool: &sqlx::SqlitePool,
     person: &Person,
     project_id: Option<Uuid>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Simulation mode: write realistic placeholder data without calling LLM
+    if std::env::var("SIMULATE_LLM").unwrap_or_default() == "1" {
+        let summary = format!(
+            "Contact appears to be a decision-maker in their organization. \
+             Key areas: digital transformation, operational efficiency, strategic partnerships. \
+             Company is positioned for growth with opportunities in automation and AI integration."
+        );
+        tracing::info!(
+            "[Scout] Simulated research for '{}' (SIMULATE_LLM=1)",
+            person.full_name
+        );
+        write_intelligence_results(
+            pool,
+            person.id.as_ref(),
+            &summary,
+            0.75,
+            &format!("[Simulated Scout Research for {}]", person.full_name),
+            project_id,
+            &person.full_name,
+        )
+        .await?;
+        return Ok(());
+    }
+
     use services::services::workflow_llm::{LLMResponse, WorkflowLLMService};
 
     let system = "You are Scout, Social Intelligence Analyst for Power Club Global. \
@@ -722,6 +747,35 @@ pub async fn run_company_research_direct(
     company_name: &str,
     project_id: Option<Uuid>,
 ) {
+    // Simulation mode: write realistic placeholder data without calling LLM
+    if std::env::var("SIMULATE_LLM").unwrap_or_default() == "1" {
+        tracing::info!(
+            "[Scout] Simulated company research for '{}' (SIMULATE_LLM=1)",
+            company_name
+        );
+        let summary = format!(
+            "{} is a mid-size company positioned for growth in their market segment. \
+             Key opportunities: digital transformation, process automation, and strategic partnerships. \
+             Competitive landscape shows room for differentiation through technology adoption.",
+            company_name
+        );
+        write_company_intel_results(pool, company_id, &summary, 0.75).await;
+        // Register in knowledge graph if project scope provided
+        if let Some(pid) = project_id {
+            let _ = ProjectKnowledgeSource::upsert_source(
+                pool,
+                pid,
+                &KnowledgeSourceType::Entity,
+                &company_id.to_string(),
+                &format!("Company: {}", company_name),
+                Some(&format!("Scout intelligence: {}", summary)),
+                0.75,
+            )
+            .await;
+        }
+        return;
+    }
+
     use services::services::workflow_llm::{LLMResponse, WorkflowLLMService};
 
     tracing::info!(
