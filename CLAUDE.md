@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Session Handoff
+
+If `planning/SESSION-HANDOFF.md` exists, **read it first** — it contains the previous session's work state and remaining tasks. After reading, delete the file and continue with the remaining work. Use `/handoff` to create one before clearing context.
+
 ## Worktree Awareness
 
 This repo may use **git worktrees** for parallel development. Before making changes:

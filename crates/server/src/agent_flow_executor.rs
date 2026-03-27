@@ -524,8 +524,8 @@ impl AgentFlowExecutor {
                FROM deal_data_sources dds
                JOIN data_sources ds ON dds.data_source_id = ds.id
                WHERE dds.deal_id = ?1
-                 AND (dds.relevant_agents IS NULL OR dds.relevant_agents LIKE '%"' || ?2 || '"%')
-                 AND (dds.relevant_stages IS NULL OR dds.relevant_stages LIKE '%"' || ?3 || '"%')
+                 AND (dds.relevant_agents IS NULL OR ?2 IN (SELECT value FROM json_each(dds.relevant_agents)))
+                 AND (dds.relevant_stages IS NULL OR ?3 IN (SELECT value FROM json_each(dds.relevant_stages)))
                ORDER BY dds.created_at DESC LIMIT 5"#,
         )
         .bind(deal_id)
