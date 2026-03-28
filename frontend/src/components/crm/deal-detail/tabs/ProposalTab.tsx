@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import MarkdownRenderer from '@/components/ui/markdown-renderer';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Textarea } from '@/components/ui/textarea';
 import { crmDealsApi } from '@/lib/api/crm';
@@ -151,8 +152,8 @@ export function ProposalTab({ deal }: ProposalTabProps) {
       {/* Proposal text — view mode */}
       {deal.proposal_text && !editing && (
         <div className="space-y-3">
-          <div className="rounded-lg border bg-muted/30 p-4 text-xs leading-relaxed font-mono whitespace-pre-wrap max-h-[420px] overflow-y-auto">
-            {deal.proposal_text}
+          <div className="rounded-lg border bg-muted/30 p-4 text-xs leading-relaxed max-h-[520px] overflow-y-auto space-y-2">
+            <MarkdownRenderer content={deal.proposal_text} enableCopyButton />
           </div>
 
           <div className="flex items-center gap-2">

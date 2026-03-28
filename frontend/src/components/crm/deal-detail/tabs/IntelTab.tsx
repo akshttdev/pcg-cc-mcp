@@ -19,6 +19,7 @@ import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import MarkdownRenderer from '@/components/ui/markdown-renderer';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { getStatusInfo } from '@/lib/status-utils';
 import type { CrmDealWithContact } from '@/types/crm';
@@ -181,10 +182,8 @@ export function IntelTab({ deal }: IntelTabProps) {
               )}
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-3 pt-0">
-            <p className="text-sm leading-relaxed whitespace-pre-wrap">
-              {deal.intelligence_summary}
-            </p>
+          <CardContent className="p-3 pt-0 text-sm">
+            <MarkdownRenderer content={deal.intelligence_summary} />
           </CardContent>
         </Card>
       )}
@@ -219,11 +218,9 @@ export function IntelTab({ deal }: IntelTabProps) {
               </div>
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-3 pt-0">
+          <CardContent className="p-3 pt-0 text-sm">
             {deal.company_intelligence_summary ? (
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                {deal.company_intelligence_summary}
-              </p>
+              <MarkdownRenderer content={deal.company_intelligence_summary} />
             ) : (
               <p className="text-xs text-muted-foreground">
                 {companyResearching

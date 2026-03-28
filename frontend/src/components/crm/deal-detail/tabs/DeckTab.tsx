@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { deck as tid } from 'shared/testids';
 import { toast } from 'sonner';
 
+import MarkdownRenderer from '@/components/ui/markdown-renderer';
+
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -119,8 +121,8 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
             })()}
 
             {deckScript && (
-              <div className="rounded-lg border bg-muted/30 p-4 text-xs leading-relaxed font-mono whitespace-pre-wrap max-h-[260px] overflow-y-auto">
-                {deckScript}
+              <div className="rounded-lg border bg-muted/30 p-4 text-xs leading-relaxed max-h-[320px] overflow-y-auto space-y-2">
+                <MarkdownRenderer content={deckScript} enableCopyButton />
               </div>
             )}
 

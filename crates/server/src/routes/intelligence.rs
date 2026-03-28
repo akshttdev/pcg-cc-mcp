@@ -1513,7 +1513,7 @@ pub async fn trigger_next_research_pass(
         let pass_id_err = pass_id.clone();
         if let Err(e) = run_research_pass(
             pool_clone,
-            pass_id,
+            pass_id.to_string(),
             person_id,
             pass_number,
             &focus,
