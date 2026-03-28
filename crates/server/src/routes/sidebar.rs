@@ -228,7 +228,9 @@ pub async fn get_sidebar_tree(
 ) -> Result<Json<ApiResponse<SidebarTree>>, ApiError> {
     let pool = &deployment.db().pool;
     let user_id = &access_context.user_id;
-    // organization_members.user_id is stored as BLOB (raw bytes), not TEXT UUID
+    // organization_members.user_id is stored as TEXT (UUID string), not BLOB
+    // project_members.user_id and tasks.assignee_id are stored as BLOB
+    let user_id_str = db::bind_uuid(user_id);
     let user_id_bytes = db::bind_uuid_blob(user_id)
         .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {e}")))?;
 
@@ -242,7 +244,7 @@ pub async fn get_sidebar_tree(
                WHERE o.is_active = 1
                ORDER BY o.name ASC"#,
         )
-        .bind(&user_id_bytes)
+        .bind(user_id_str)
         .fetch_all(pool)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to fetch orgs: {}", e)))?
@@ -254,7 +256,7 @@ pub async fn get_sidebar_tree(
                WHERE om.user_id = ? AND o.is_active = 1
                ORDER BY o.name ASC"#,
         )
-        .bind(&user_id_bytes)
+        .bind(user_id_str)
         .fetch_all(pool)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to fetch orgs: {}", e)))?
