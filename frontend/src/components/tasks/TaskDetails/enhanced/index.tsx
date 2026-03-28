@@ -217,6 +217,7 @@ export function EnhancedTaskDetailsPanel({
             artifactsLoading={artifactsLoading}
             artifactsError={artifactsError}
             onArtifactDownload={handleArtifactDownload}
+            onArtifactUploadComplete={handleRefresh}
           />
         </TabsContent>
 

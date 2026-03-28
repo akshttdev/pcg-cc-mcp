@@ -34,6 +34,7 @@ interface TaskArtifactsPanelProps {
   onExportXml?: (artifact: ExecutionArtifact) => void;
   onUpload?: (file: File) => Promise<void>;
   onLinkAdd?: (url: string, name: string) => Promise<void>;
+  onFileUploaded?: (artifactId: string, filePath: string) => void;
   className?: string;
 }
 
@@ -66,6 +67,7 @@ function ArtifactCard({
   onDownload,
   onPreview,
   onExportXml,
+  onFileUploaded,
 }: {
   artifact: ExecutionArtifact;
   isPinned?: boolean;
@@ -73,9 +75,33 @@ function ArtifactCard({
   onDownload?: () => void;
   onPreview?: () => void;
   onExportXml?: () => void;
+  onFileUploaded?: (artifactId: string, filePath: string) => void;
 }) {
+  const [uploading, setUploading] = useState(false);
   const metadata = artifact.metadata ? JSON.parse(artifact.metadata) : {};
   const phase = metadata.phase as ArtifactPhase | undefined;
+
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`/api/artifacts/${artifact.id}/upload`, {
+        method: 'POST',
+        credentials: 'include',
+        body: fd,
+      });
+      const data = await res.json();
+      if (data.success) {
+        onFileUploaded?.(artifact.id, data.file_path);
+      }
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  }, [artifact.id, onFileUploaded]);
 
   const isPreviewable = [
     'screenshot', 'visual_brief', 'walkthrough', 'browser_recording',
@@ -139,6 +165,24 @@ function ArtifactCard({
                 iconClassName="h-3.5 w-3.5"
               />
             )}
+            {/* Upload file to replace/set the artifact's stored file */}
+            <div className="relative">
+              <IconButton
+                variant="ghost"
+                className="h-7 w-7"
+                icon={uploading ? FolderOpen : Upload}
+                label={uploading ? 'Uploading…' : 'Upload file'}
+                iconClassName="h-3.5 w-3.5"
+              />
+              {!uploading && (
+                <input
+                  type="file"
+                  className="absolute inset-0 opacity-0 cursor-pointer"
+                  onChange={handleFileUpload}
+                  title="Upload file to this artifact"
+                />
+              )}
+            </div>
             {isExportable && onExportXml && (
               <IconButton
                 variant="ghost" onClick={onExportXml} className="h-7 w-7"
@@ -274,6 +318,7 @@ export function TaskArtifactsPanel({
   onExportXml,
   onUpload,
   onLinkAdd,
+  onFileUploaded,
   className,
 }: TaskArtifactsPanelProps) {
   // Group artifacts by phase
@@ -333,6 +378,7 @@ export function TaskArtifactsPanel({
                   onDownload={onDownload ? () => onDownload(artifact) : undefined}
                   onPreview={onPreview ? () => onPreview(artifact) : undefined}
                   onExportXml={onExportXml ? () => onExportXml(artifact) : undefined}
+                  onFileUploaded={onFileUploaded}
                 />
               ))}
             </div>
@@ -372,6 +418,7 @@ export function TaskArtifactsPanel({
                   onDownload={onDownload ? () => onDownload(artifact) : undefined}
                   onPreview={onPreview ? () => onPreview(artifact) : undefined}
                   onExportXml={onExportXml ? () => onExportXml(artifact) : undefined}
+                  onFileUploaded={onFileUploaded}
                 />
               ))
             )}

@@ -567,7 +567,7 @@ export function ClientOverview() {
             >
               <Brain className="h-4 w-4" /> Intel
             </Button>
-            <Link to={`/organizations/${orgId}/brand-guide`}>
+            <Link to={client.company_id ? `/companies/${client.company_id}/brand-guide` : `/organizations/${orgId}/brand-guide`}>
               <Button variant="outline" size="sm" className="gap-1.5">
                 <BookOpen className="h-4 w-4" /> Brand Guide
               </Button>

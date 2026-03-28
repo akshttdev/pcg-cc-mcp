@@ -1,4 +1,4 @@
-import { Download, Package, X } from 'lucide-react';
+import { Download, ExternalLink, Package, X } from 'lucide-react';
 import { useEffect, useMemo,useState } from 'react';
 import type {
   AgentFlowEvent,
@@ -114,6 +114,8 @@ export function TaskDetailsPanel({
   const [artifacts, setArtifacts] = useState<ExecutionArtifact[]>([]);
   const [artifactsLoading, setArtifactsLoading] = useState(false);
   const [artifactsError, setArtifactsError] = useState<string | null>(null);
+  const [artifactsRefetchKey, setArtifactsRefetchKey] = useState(0);
+  const refetchArtifacts = () => setArtifactsRefetchKey((k) => k + 1);
   const [workflowEvents, setWorkflowEvents] = useState<AgentFlowEvent[]>([]);
   const [workflowLoading, setWorkflowLoading] = useState(false);
   const [workflowError, setWorkflowError] = useState<string | null>(null);
@@ -185,7 +187,7 @@ export function TaskDetailsPanel({
     return () => {
       cancelled = true;
     };
-  }, [task?.id]);
+  }, [task?.id, artifactsRefetchKey]);
 
   useEffect(() => {
     if (!task?.id) {
@@ -260,6 +262,7 @@ export function TaskDetailsPanel({
         onDownload={handleArtifactDownload}
         onPreview={handleArtifactPreview}
         onExportXml={handleExportXml}
+        onFileUploaded={() => refetchArtifacts()}
         className="shadow-none border"
       />
     );
@@ -728,6 +731,14 @@ function ArtifactPreviewModal({
 
   const [selectedVideo, setSelectedVideo] = useState(0);
 
+  const isPdf = artifact.file_path?.toLowerCase().includes('.pdf');
+  const isDropbox = artifact.file_path?.includes('dropbox.com');
+  const embedUrl = isDropbox && isPdf
+    ? artifact.file_path!
+        .replace('www.dropbox.com', 'dl.dropboxusercontent.com')
+        .replace('?dl=0', '').replace('&dl=0', '')
+    : (isPdf ? artifact.file_path : null);
+
   // JSON content for non-video types
   const jsonContent = useMemo(() => {
     if (!artifact.content || isVideoType) return null;
@@ -760,8 +771,32 @@ function ArtifactPreviewModal({
           </div>
         </DialogHeader>
 
+        {/* External file link */}
+        {artifact.file_path && (
+          <div className="flex items-center gap-2 px-1 pb-3 border-b border-border/40">
+            <a
+              href={artifact.file_path}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-sm text-primary hover:underline"
+            >
+              <ExternalLink className="h-4 w-4" />
+              Open {isPdf ? 'PDF' : 'file'} in new tab
+            </a>
+          </div>
+        )}
+
         <div className="flex-1 min-h-0 overflow-auto">
-          {isVideoType && videoFiles.length > 0 ? (
+          {isPdf && embedUrl ? (
+            <div className="w-full rounded overflow-hidden border border-border/40" style={{ height: '65vh' }}>
+              <iframe
+                src={embedUrl}
+                title={artifact.title}
+                className="w-full h-full"
+                style={{ border: 'none' }}
+              />
+            </div>
+          ) : isVideoType && videoFiles.length > 0 ? (
             <div className="space-y-4">
               {/* Video player */}
               <div className="bg-black rounded-lg overflow-hidden">
@@ -807,6 +842,10 @@ function ArtifactPreviewModal({
             <pre className="bg-muted rounded-lg p-4 text-xs overflow-auto max-h-[60vh] whitespace-pre-wrap">
               {jsonContent}
             </pre>
+          ) : artifact.file_path ? (
+            <p className="text-muted-foreground text-center py-8 text-sm">
+              Use the link above to open this file.
+            </p>
           ) : (
             <p className="text-muted-foreground text-center py-8">
               No previewable content

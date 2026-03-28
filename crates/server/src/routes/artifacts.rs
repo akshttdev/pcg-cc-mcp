@@ -1,17 +1,17 @@
 use axum::{
-    Router,
+    Json, Router,
     body::Body,
-    extract::{Path, Request, State},
+    extract::{DefaultBodyLimit, Multipart, Path, Request, State},
     http::{StatusCode, header},
     response::Response,
-    routing::get,
+    routing::{get, post},
 };
 use db::models::execution_artifact::ExecutionArtifact;
 use deployment::Deployment;
 use serde_json::json;
 use tokio::{
     fs::File,
-    io::{AsyncReadExt, AsyncSeekExt},
+    io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt},
 };
 use tokio_util::io::ReaderStream;
 use utils::assets::asset_dir;
@@ -42,7 +42,91 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/artifacts/{artifact_id}/files/{*filename}",
             get(get_artifact_file),
         )
+        .route(
+            "/artifacts/{artifact_id}/upload",
+            post(upload_artifact_file).layer(DefaultBodyLimit::max(100 * 1024 * 1024)), // 100MB
+        )
         .with_state(deployment.clone())
+}
+
+/// POST /api/artifacts/{artifact_id}/upload
+/// Accepts a multipart file upload and stores it in the artifact's directory.
+/// Updates file_path on the artifact record.
+async fn upload_artifact_file(
+    State(deployment): State<DeploymentImpl>,
+    Path(artifact_id): Path<Uuid>,
+    mut multipart: Multipart,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let pool = &deployment.db().pool;
+
+    let artifact = ExecutionArtifact::find_by_id(pool, artifact_id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("Artifact {} not found", artifact_id)))?;
+
+    // Artifact storage directory: dev_assets/artifacts/{id}/
+    let artifact_dir = asset_dir().join("artifacts").join(artifact_id.to_string());
+    tokio::fs::create_dir_all(&artifact_dir)
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("Failed to create artifact dir: {e}")))?;
+
+    let mut saved_filename: Option<String> = None;
+    let mut saved_bytes: u64 = 0;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+    {
+        let filename = field
+            .file_name()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "upload".to_string());
+
+        // Sanitise
+        let safe_name = std::path::Path::new(&filename)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "upload".to_string());
+
+        let dest = artifact_dir.join(&safe_name);
+        let data = field
+            .bytes()
+            .await
+            .map_err(|e| ApiError::BadRequest(format!("Failed to read upload: {e}")))?;
+
+        saved_bytes = data.len() as u64;
+        let mut f = tokio::fs::File::create(&dest)
+            .await
+            .map_err(|e| ApiError::BadRequest(format!("Failed to write file: {e}")))?;
+        f.write_all(&data)
+            .await
+            .map_err(|e| ApiError::BadRequest(format!("Failed to write file: {e}")))?;
+
+        saved_filename = Some(safe_name);
+        break; // only first file
+    }
+
+    let filename = saved_filename
+        .ok_or_else(|| ApiError::BadRequest("No file received".into()))?;
+
+    // Relative path for DB storage
+    let relative_path = format!("artifacts/{}/{}", artifact_id, filename);
+
+    // Update the artifact's file_path
+    sqlx::query(
+        "UPDATE execution_artifacts SET file_path = ? WHERE id = ?",
+    )
+    .bind(&relative_path)
+    .bind(artifact.id)
+    .execute(pool)
+    .await?;
+
+    Ok(Json(json!({
+        "success": true,
+        "file_path": relative_path,
+        "filename": filename,
+        "size_bytes": saved_bytes
+    })))
 }
 
 /// GET /api/artifacts/{artifact_id}/content

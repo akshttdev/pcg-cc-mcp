@@ -367,8 +367,8 @@ impl Client {
                 co.employee_count AS company_employee_count,
                 p.intelligence_summary AS person_intel_summary,
                 p.full_name AS person_full_name,
-                p.title AS person_title,
-                p.linkedin_url AS person_linkedin_url
+                p.job_title AS person_title,
+                p.website AS person_linkedin_url
                FROM clients c
                LEFT JOIN companies co ON lower(hex(substr(co.id,1,4)) || '-' || hex(substr(co.id,5,2)) || '-' ||
                    hex(substr(co.id,7,2)) || '-' || hex(substr(co.id,9,2)) || '-' || hex(substr(co.id,11,6))) = c.company_id

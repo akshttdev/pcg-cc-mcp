@@ -6,7 +6,6 @@ import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import {
   type DragEndEvent,
   KanbanBoard,
@@ -328,8 +327,9 @@ export function CrmPipelineBoard({
         </div>
       </div>
 
-      {/* Kanban Board */}
-      <ScrollArea className="flex-1">
+      {/* Kanban Board — direction:rtl puts scrollbar at top; inner ltr restores reading order */}
+      <div className="flex-1 overflow-auto" style={{ direction: 'rtl' }}>
+        <div style={{ direction: 'ltr' }}>
         <TooltipProvider delayDuration={300}>
         <KanbanProvider onDragEnd={handleDragEnd}>
           {kanbanData.stages.map((stageData) => {
@@ -458,8 +458,8 @@ export function CrmPipelineBoard({
           })}
         </KanbanProvider>
         </TooltipProvider>
-        <ScrollBar orientation="horizontal" />
-      </ScrollArea>
+        </div>
+      </div>
 
       {/* Deal Form Dialog */}
       {pipeline && (

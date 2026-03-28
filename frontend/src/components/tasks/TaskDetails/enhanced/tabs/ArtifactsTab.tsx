@@ -8,6 +8,7 @@ interface ArtifactsTabProps {
   artifactsLoading: boolean;
   artifactsError: string | null;
   onArtifactDownload: (artifact: ExecutionArtifact) => void;
+  onArtifactUploadComplete?: () => void;
 }
 
 export function ArtifactsTab({
@@ -15,6 +16,7 @@ export function ArtifactsTab({
   artifactsLoading,
   artifactsError,
   onArtifactDownload,
+  onArtifactUploadComplete,
 }: ArtifactsTabProps) {
   if (artifactsLoading) {
     return (
@@ -47,6 +49,7 @@ export function ArtifactsTab({
       artifacts={artifacts}
       className="h-full"
       onDownload={onArtifactDownload}
+      onArtifactUploadComplete={onArtifactUploadComplete}
       onUpload={async () => {
         // TODO: Implement file upload
       }}

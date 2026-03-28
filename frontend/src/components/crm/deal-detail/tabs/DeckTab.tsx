@@ -1,5 +1,5 @@
 import { useMutation,useQueryClient } from '@tanstack/react-query';
-import { Calendar, CheckCircle2, Copy,Link2, Loader2, Presentation, Receipt, Share2, Trophy, Wand2 } from 'lucide-react';
+import { Calendar, CheckCircle2, Copy, ExternalLink, Link2, Loader2, Presentation, Receipt, Share2, Trophy, Wand2 } from 'lucide-react';
 import { useState } from 'react';
 import { deck as tid } from 'shared/testids';
 import { toast } from 'sonner';
@@ -90,35 +90,55 @@ export function DeckTab({ deal, onMarkWon }: DeckTabProps) {
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <div className="h-2 w-2 rounded-full bg-pink-500" />
-              <span className="text-xs text-muted-foreground">Deck script ready</span>
-              <Button variant="ghost" size="sm" className="h-6 gap-1 text-xs ml-auto" onClick={() => generateDeck.mutate()} disabled={generateDeck.isPending}>
+              <span className="text-xs text-muted-foreground">Deck ready</span>
+              <a
+                href={deal.deck_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 ml-auto text-xs text-pink-400 hover:text-pink-300 hover:underline"
+              >
+                <ExternalLink className="h-3 w-3" /> Open deck
+              </a>
+              <Button variant="ghost" size="sm" className="h-6 gap-1 text-xs" onClick={() => generateDeck.mutate()} disabled={generateDeck.isPending}>
                 {generateDeck.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
                 Regenerate
               </Button>
             </div>
+
+            {/* PDF embed if the deck_url is a PDF */}
+            {deal.deck_url.toLowerCase().includes('.pdf') && (() => {
+              const isDropbox = deal.deck_url!.includes('dropbox.com');
+              const embedUrl = isDropbox
+                ? deal.deck_url!.replace('www.dropbox.com', 'dl.dropboxusercontent.com').replace('?dl=0', '').replace('&dl=0', '')
+                : deal.deck_url!;
+              return (
+                <div className="rounded-lg overflow-hidden border border-border/40" style={{ height: '420px' }}>
+                  <iframe src={embedUrl} title="Sales Deck" className="w-full h-full" style={{ border: 'none' }} />
+                </div>
+              );
+            })()}
+
             {deckScript && (
               <div className="rounded-lg border bg-muted/30 p-4 text-xs leading-relaxed font-mono whitespace-pre-wrap max-h-[260px] overflow-y-auto">
                 {deckScript}
               </div>
             )}
-            {/* Internal Review Link */}
+
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
                 className="gap-1.5 text-xs border-indigo-500/40 text-indigo-400 hover:bg-indigo-950/30"
                 onClick={() => {
-                  const url = `${window.location.origin}/api/crm/deals/${deal.id}/deck/${deal.deck_url?.split('/').pop() ?? ''}`;
-                  navigator.clipboard.writeText(url);
+                  navigator.clipboard.writeText(deal.deck_url!);
                   setReviewLinkCopied(true);
-                  toast.success('Internal review link copied');
+                  toast.success('Deck link copied');
                   setTimeout(() => setReviewLinkCopied(false), 3000);
                 }}
               >
                 {reviewLinkCopied ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Share2 className="h-3.5 w-3.5" />}
-                {reviewLinkCopied ? 'Copied!' : 'Share for Review'}
+                {reviewLinkCopied ? 'Copied!' : 'Copy Link'}
               </Button>
-              <span className="text-xs text-muted-foreground">Internal team review only</span>
             </div>
           </div>
         )}

@@ -54,6 +54,7 @@ interface ArtifactGalleryProps {
   onDownload?: (artifact: ExecutionArtifact) => void;
   onUpload?: (file: File) => Promise<void>;
   onLinkAdd?: (url: string, name: string) => Promise<void>;
+  onArtifactUploadComplete?: () => void;
   className?: string;
   defaultView?: ViewMode;
   showHeader?: boolean;
@@ -205,6 +206,7 @@ export function ArtifactGallery({
   onDownload,
   onUpload,
   onLinkAdd,
+  onArtifactUploadComplete,
   className,
   defaultView = 'grid',
   showHeader = true,
@@ -469,6 +471,7 @@ export function ArtifactGallery({
                       size="md"
                       showCreator
                       onDownload={onDownload ? () => onDownload(artifact) : undefined}
+                      onUploadComplete={onArtifactUploadComplete}
                     />
                   ))}
                 </div>

@@ -2,10 +2,12 @@ import {
   Bot,
   Clapperboard,
   Download,
+  ExternalLink,
   FileText,
   Image,
   Play,
   RotateCw,
+  Upload,
   User,
   X,
   ZoomIn,
@@ -33,6 +35,7 @@ interface ArtifactPreviewCardProps {
   size?: 'sm' | 'md' | 'lg';
   showCreator?: boolean;
   onDownload?: () => void;
+  onUploadComplete?: () => void;
   className?: string;
 }
 
@@ -126,14 +129,22 @@ function ImageLightbox({
 function DocumentPreview({
   content,
   title,
+  filePath,
   open,
   onClose,
 }: {
   content: string;
   title: string;
+  filePath?: string;
   open: boolean;
   onClose: () => void;
 }) {
+  const isPdf = filePath?.toLowerCase().includes('.pdf');
+  const isDropbox = filePath?.includes('dropbox.com');
+  // Dropbox direct-download link for iframe embedding
+  const embedUrl = isDropbox && isPdf
+    ? filePath!.replace('www.dropbox.com', 'dl.dropboxusercontent.com').replace('?dl=0', '').replace('&dl=0', '')
+    : filePath;
   // Simple markdown-like rendering (can be enhanced with a proper markdown library)
   const renderedContent = useMemo(() => {
     if (!content) return '';
@@ -164,16 +175,45 @@ function DocumentPreview({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden">
-        <DialogHeader className="border-b pb-3">
-          <DialogTitle>{title}</DialogTitle>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader className="border-b pb-3 shrink-0">
+          <div className="flex items-start justify-between gap-3">
+            <DialogTitle className="flex-1">{title}</DialogTitle>
+            {filePath && (
+              <a
+                href={filePath}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 shrink-0 text-xs bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 rounded px-2.5 py-1.5 transition-colors"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Open {isPdf ? 'PDF' : 'File'}
+              </a>
+            )}
+          </div>
         </DialogHeader>
-        <ScrollArea className="flex-1 max-h-[60vh]">
-          <div
-            className="prose prose-sm dark:prose-invert max-w-none p-4"
-            dangerouslySetInnerHTML={{ __html: renderedContent }}
-          />
-        </ScrollArea>
+
+        {/* PDF embed */}
+        {isPdf && embedUrl && (
+          <div className="flex-1 min-h-0 rounded overflow-hidden border border-border/40" style={{ height: '65vh' }}>
+            <iframe
+              src={embedUrl}
+              title={title}
+              className="w-full h-full"
+              style={{ border: 'none' }}
+            />
+          </div>
+        )}
+
+        {/* Text content (shown when no PDF, or as supplement) */}
+        {(!isPdf || content) && (
+          <ScrollArea className="flex-1 max-h-[50vh]">
+            <div
+              className="prose prose-sm dark:prose-invert max-w-none p-4"
+              dangerouslySetInnerHTML={{ __html: renderedContent }}
+            />
+          </ScrollArea>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -240,9 +280,11 @@ export function ArtifactPreviewCard({
   size = 'md',
   showCreator = false,
   onDownload,
+  onUploadComplete,
   className,
 }: ArtifactPreviewCardProps) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const metadata = useMemo(() => {
     try {
@@ -262,7 +304,32 @@ export function ArtifactPreviewCard({
   const config = sizeConfig[size];
 
   const handleClick = () => {
+    // Open PDFs in the dialog (iframe embed); only bypass for non-PDF external links
+    const isPdfFile = artifact.file_path?.toLowerCase().includes('.pdf');
+    if (isDocument && artifact.file_path && !artifact.content && !isPdfFile) {
+      window.open(artifact.file_path, '_blank', 'noopener,noreferrer');
+      return;
+    }
     setLightboxOpen(true);
+  };
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('file', file, file.name);
+    try {
+      const res = await fetch(`/api/artifacts/${artifact.id}/upload`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+      if (res.ok) onUploadComplete?.();
+    } catch { /* ignore */ } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
   };
 
   // Get the artifact URL (content endpoint for JSON, file endpoint for media)
@@ -318,7 +385,17 @@ export function ArtifactPreviewCard({
         {/* Document artifact preview */}
         {isDocument && (
           <div className="absolute inset-0 p-3 bg-gray-50 dark:bg-gray-900">
-            <FileText className="h-4 w-4 text-muted-foreground mb-1" />
+            <div className="flex items-center gap-1.5 mb-1">
+              <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+              {artifact.file_path && (
+                <span className="text-[10px] font-medium text-primary/80 bg-primary/10 rounded px-1 py-0.5 uppercase tracking-wide">
+                  {artifact.file_path.toLowerCase().includes('.pdf') ? 'PDF' :
+                   artifact.file_path.toLowerCase().includes('.docx') ? 'DOCX' :
+                   artifact.file_path.includes('docs.google.com') ? 'Doc' :
+                   artifact.file_path.includes('dropbox.com') ? 'File' : 'Link'}
+                </span>
+              )}
+            </div>
             {artifact.content && (
               <div
                 className={cn(
@@ -402,6 +479,22 @@ export function ArtifactPreviewCard({
           </button>
         )}
 
+        {/* Upload button on hover */}
+        {onUploadComplete && (
+          <label
+            className="absolute top-2 left-2 h-6 w-6 flex items-center justify-center rounded bg-secondary text-secondary-foreground opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-secondary/80"
+            title="Upload file for this artifact"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {uploading ? (
+              <span className="h-3 w-3 border border-current border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Upload className="h-3 w-3" />
+            )}
+            <input type="file" className="hidden" onChange={handleUpload} disabled={uploading} />
+          </label>
+        )}
+
         {/* Download button on hover */}
         {onDownload && (artifact.file_path || artifact.content) && (
           <IconButton
@@ -427,10 +520,11 @@ export function ArtifactPreviewCard({
         />
       )}
 
-      {isDocument && artifact.content && (
+      {isDocument && (artifact.content || artifact.file_path) && (
         <DocumentPreview
-          content={artifact.content}
+          content={artifact.content ?? ''}
           title={artifact.title}
+          filePath={artifact.file_path ?? undefined}
           open={lightboxOpen}
           onClose={() => setLightboxOpen(false)}
         />
