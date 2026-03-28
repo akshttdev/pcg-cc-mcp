@@ -658,12 +658,12 @@ fn extract_summary_from_response(text: &str) -> String {
             break;
         }
     }
-    // Fall back to first 300 chars of text (strip markdown fences)
+    // Fall back to full text (strip markdown fences) — don't truncate, the LLM returned prose
     let clean = text
         .trim_start_matches("```json")
         .trim_start_matches("```")
         .trim();
-    clean.chars().take(300).collect()
+    clean.to_string()
 }
 
 fn extract_text_from_anthropic_response(response: &serde_json::Value) -> String {
