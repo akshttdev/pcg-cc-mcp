@@ -212,11 +212,18 @@ pub fn default_agent_profiles() -> Vec<AgentProfile> {
                 "story_blueprint_synthesis".to_string(),
                 "motion_systems_orchestration".to_string(),
                 "render_queue_control".to_string(),
+                "fal_ai_image_generation".to_string(),
+                "video_post_processing".to_string(),
+                "hologram_effects".to_string(),
+                "heygen_video_pipeline".to_string(),
             ],
             strengths: vec![
                 "Advanced iMovie workflow recipes (compound clips, adjustment layers, smart audio ducking)".to_string(),
                 "Shot-matching heuristics tuned for nightlife and live-event lighting".to_string(),
                 "Bridges Dropbox capture folders into normalized edit bins".to_string(),
+                "fal.ai FLUX Pro Ultra image generation — photorealistic AI portraits with raw mode".to_string(),
+                "FFmpeg hologram_glitch, color_grade, and vignette post-processing presets".to_string(),
+                "HeyGen video job post-processing pipeline — chains effects on TTS avatar renders".to_string(),
             ],
             current_focus: vec![
                 "Powerclub recap series".to_string(),

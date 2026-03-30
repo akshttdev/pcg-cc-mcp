@@ -2919,6 +2919,348 @@ impl ExecutiveTools {
                 "matrix_id": uuid::Uuid::new_v4().to_string()
             })),
             // Add more implementations...
+
+            // ── AI Image Generation ──────────────────────────────────────────
+            NoraExecutiveTool::GenerateImage {
+                prompt,
+                reference_image_url,
+                aspect_ratio,
+                reference_strength,
+                raw_mode,
+                seed,
+                model,
+                output_filename,
+                task_id,
+                project_id,
+            } => {
+                let fal_key = std::env::var("FAL_API_KEY").unwrap_or_default();
+                if fal_key.is_empty() {
+                    return Ok(serde_json::json!({
+                        "success": false,
+                        "error": "FAL_API_KEY not configured"
+                    }));
+                }
+
+                let endpoint_model = model.as_deref().unwrap_or("fal-ai/flux-pro/v1.1-ultra");
+                let ar = aspect_ratio.as_deref().unwrap_or("3:4");
+                let strength = reference_strength.unwrap_or(0.35);
+                let use_raw = raw_mode.unwrap_or(true);
+
+                // Choose endpoint based on whether we have a reference image
+                let (endpoint, body) = if let Some(ref ref_url) = reference_image_url {
+                    let redux_endpoint = format!("https://fal.run/{}/redux", endpoint_model);
+                    let b = serde_json::json!({
+                        "image_url": ref_url,
+                        "prompt": prompt,
+                        "strength": strength,
+                        "aspect_ratio": ar,
+                        "raw": use_raw,
+                        "seed": seed,
+                        "num_images": 1,
+                        "enable_safety_checker": false,
+                        "output_format": "png"
+                    });
+                    (redux_endpoint, b)
+                } else {
+                    let base_endpoint = format!("https://fal.run/{}", endpoint_model);
+                    let b = serde_json::json!({
+                        "prompt": prompt,
+                        "aspect_ratio": ar,
+                        "raw": use_raw,
+                        "seed": seed,
+                        "num_inference_steps": 28,
+                        "guidance_scale": 3.5,
+                        "num_images": 1,
+                        "enable_safety_checker": false,
+                        "output_format": "png"
+                    });
+                    (base_endpoint, b)
+                };
+
+                tracing::info!("[TOOL] GenerateImage: endpoint={} ar={}", endpoint, ar);
+
+                let client = reqwest::Client::new();
+                let resp = match client
+                    .post(&endpoint)
+                    .header("Authorization", format!("Key {}", fal_key))
+                    .header("Content-Type", "application/json")
+                    .json(&body)
+                    .send()
+                    .await
+                {
+                    Ok(r) => r,
+                    Err(e) => return Ok(serde_json::json!({"success": false, "error": e.to_string()})),
+                };
+
+                if !resp.status().is_success() {
+                    let err = resp.text().await.unwrap_or_default();
+                    return Ok(serde_json::json!({"success": false, "error": err}));
+                }
+
+                let data: serde_json::Value = match resp.json().await {
+                    Ok(d) => d,
+                    Err(e) => return Ok(serde_json::json!({"success": false, "error": e.to_string()})),
+                };
+
+                let img_url = data["images"][0]["url"].as_str().unwrap_or("").to_string();
+                let width = data["images"][0]["width"].as_u64().unwrap_or(0);
+                let height = data["images"][0]["height"].as_u64().unwrap_or(0);
+                let gen_seed = data["seed"].as_u64();
+
+                // Download and save the image
+                let fname = output_filename
+                    .clone()
+                    .unwrap_or_else(|| format!("editron_gen_{}.png", uuid::Uuid::new_v4()));
+                let portraits_dir = std::path::PathBuf::from("dev_assets/video_gen/portraits");
+                let _ = tokio::fs::create_dir_all(&portraits_dir).await;
+                let save_path = portraits_dir.join(&fname);
+
+                if !img_url.is_empty() {
+                    if let Ok(img_resp) = client.get(&img_url).send().await {
+                        if let Ok(img_bytes) = img_resp.bytes().await {
+                            let _ = tokio::fs::write(&save_path, &img_bytes).await;
+                            tracing::info!("[TOOL] GenerateImage saved: {} ({} bytes)", save_path.display(), img_bytes.len());
+                        }
+                    }
+                }
+
+                // VIBE cost: 50 per image
+                let vibe_cost = 50i64;
+                if let Some(executor) = &self.task_executor {
+                    let pool = executor.pool();
+                    if let Some(pid) = &project_id {
+                        let task_str = task_id.as_deref().unwrap_or("");
+                        let _ = crate::editron_tracking::log_editron_activity(
+                            pool,
+                            task_str,
+                            "editron_image_generated",
+                            &format!("Generated image: {} ({}x{})", fname, width, height),
+                            vibe_cost,
+                            serde_json::json!({"model": endpoint_model, "seed": gen_seed, "path": save_path.display().to_string()}),
+                        ).await;
+                        let _ = crate::editron_tracking::record_editron_vibe(
+                            pool,
+                            pid,
+                            task_str,
+                            vibe_cost,
+                            &format!("Editron image generation: {}", fname),
+                            "editron-image-gen",
+                            serde_json::json!({"model": endpoint_model, "fal_ai": true}),
+                        ).await;
+                    }
+                }
+
+                Ok(serde_json::json!({
+                    "success": true,
+                    "image_url": img_url,
+                    "local_path": save_path.display().to_string(),
+                    "width": width,
+                    "height": height,
+                    "seed": gen_seed,
+                    "model": endpoint_model,
+                    "vibe_cost": vibe_cost
+                }))
+            }
+
+            // ── Video Post-Processing ────────────────────────────────────────
+            NoraExecutiveTool::ApplyVideoEffect {
+                input_path,
+                effect,
+                output_path,
+                effect_params,
+                task_id,
+                project_id,
+            } => {
+                let out_path = output_path.clone().unwrap_or_else(|| {
+                    let p = std::path::Path::new(&input_path);
+                    let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("video");
+                    let dir = p.parent().and_then(|d| d.to_str()).unwrap_or(".");
+                    format!("{}/{}_{}.mp4", dir, stem, effect)
+                });
+
+                tracing::info!("[TOOL] ApplyVideoEffect: effect={} input={}", effect, input_path);
+
+                // Build FFmpeg command based on effect preset
+                let ffmpeg_args: Vec<String> = match effect.as_str() {
+                    "hologram_glitch" => {
+                        let duration_out = tokio::process::Command::new("ffprobe")
+                            .args(["-v", "quiet", "-show_entries", "format=duration", "-of", "csv=p=0", &input_path])
+                            .output().await.ok()
+                            .and_then(|o| String::from_utf8(o.stdout).ok())
+                            .and_then(|s| s.trim().parse::<f64>().ok())
+                            .unwrap_or(20.0);
+                        let glitch_start = (duration_out - 1.8).max(0.0);
+                        vec![
+                            "-y".into(), "-i".into(), input_path.clone(),
+                            "-vf".into(), format!(
+                                "geq=r='if(lt(T,{gs}),r(X,Y),if(lt(mod(Y,4),2),r(X+2,Y),r(X-2,Y)))':g='if(lt(T,{gs}),g(X,Y),if(lt(mod(Y,4),2),g(X-2,Y),g(X+2,Y)))':b='if(lt(T,{gs}),b(X,Y),b(X,Y))',drawgrid=width=0:height=4:thickness=1:color='if(lt(T,{gs}),black@0,cyan@0.08)',colorchannelmixer=rr='if(lt(T,{gs}),1,0.6)':gg='if(lt(T,{gs}),1,0.8)':bb='if(lt(T,{gs}),1,1.4)',fade=t=out:st={gs}:d=1.8:color=black",
+                                gs = glitch_start
+                            ),
+                            "-c:v".into(), "libx264".into(), "-crf".into(), "18".into(),
+                            "-c:a".into(), "aac".into(), out_path.clone(),
+                        ]
+                    }
+                    "color_grade" => vec![
+                        "-y".into(), "-i".into(), input_path.clone(),
+                        "-vf".into(), "eq=contrast=1.1:brightness=-0.02:saturation=1.15,vignette=PI/4".into(),
+                        "-c:v".into(), "libx264".into(), "-crf".into(), "18".into(),
+                        "-c:a".into(), "aac".into(), out_path.clone(),
+                    ],
+                    "vignette" => vec![
+                        "-y".into(), "-i".into(), input_path.clone(),
+                        "-vf".into(), "vignette=PI/3.5".into(),
+                        "-c:v".into(), "libx264".into(), "-crf".into(), "18".into(),
+                        "-c:a".into(), "aac".into(), out_path.clone(),
+                    ],
+                    _ => return Ok(serde_json::json!({"success": false, "error": format!("Unknown effect: {}", effect)})),
+                };
+
+                let result = tokio::process::Command::new("ffmpeg")
+                    .args(&ffmpeg_args)
+                    .output()
+                    .await;
+
+                match result {
+                    Ok(out) if out.status.success() => {
+                        let vibe_cost = 100i64;
+                        if let Some(executor) = &self.task_executor {
+                            let pool = executor.pool();
+                            if let Some(pid) = &project_id {
+                                let task_str = task_id.as_deref().unwrap_or("");
+                                let _ = crate::editron_tracking::log_editron_activity(
+                                    pool, task_str, "editron_effect_applied",
+                                    &format!("Applied {} effect: {}", effect, out_path),
+                                    vibe_cost, serde_json::json!({"effect": effect, "output": out_path}),
+                                ).await;
+                                let _ = crate::editron_tracking::record_editron_vibe(
+                                    pool, pid, task_str, vibe_cost,
+                                    &format!("Editron post-processing: {}", effect),
+                                    "editron-post-process",
+                                    serde_json::json!({"effect": effect}),
+                                ).await;
+                            }
+                        }
+                        Ok(serde_json::json!({
+                            "success": true,
+                            "effect": effect,
+                            "output_path": out_path,
+                            "vibe_cost": vibe_cost
+                        }))
+                    }
+                    Ok(out) => {
+                        let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+                        Ok(serde_json::json!({"success": false, "error": stderr}))
+                    }
+                    Err(e) => Ok(serde_json::json!({"success": false, "error": e.to_string()})),
+                }
+            }
+
+            NoraExecutiveTool::PostProcessVideoJob {
+                video_job_id,
+                effects,
+                effect_params: _,
+                task_id,
+                project_id,
+            } => {
+                let pool = match &self.task_executor {
+                    Some(e) => e.pool().clone(),
+                    None => return Ok(serde_json::json!({"success": false, "error": "DB not available"})),
+                };
+
+                // Look up the video job
+                let job_uuid = match uuid::Uuid::parse_str(&video_job_id) {
+                    Ok(u) => u,
+                    Err(_) => return Ok(serde_json::json!({"success": false, "error": "Invalid video_job_id"})),
+                };
+
+                let job = match db::models::video_job::VideoJob::find(&pool, job_uuid).await {
+                    Ok(Some(j)) => j,
+                    Ok(None) => return Ok(serde_json::json!({"success": false, "error": "Video job not found"})),
+                    Err(e) => return Ok(serde_json::json!({"success": false, "error": e.to_string()})),
+                };
+
+                if job.status != "ready" && job.status != "completed" {
+                    return Ok(serde_json::json!({
+                        "success": false,
+                        "error": format!("Video job is not ready (status: {})", job.status)
+                    }));
+                }
+
+                // Find the local video file
+                let raw_path = format!("dev_assets/video_gen/video/{}.mp4", video_job_id.replace("-", ""));
+                let input = if std::path::Path::new(&raw_path).exists() {
+                    raw_path
+                } else {
+                    return Ok(serde_json::json!({"success": false, "error": "Raw video file not found locally"}));
+                };
+
+                // Apply effects in sequence
+                let mut current_input = input.clone();
+                let mut final_output = String::new();
+                for (i, effect) in effects.iter().enumerate() {
+                    let suffix = if i == effects.len() - 1 { "_final".to_string() } else { format!("_{}", i) };
+                    let out = format!("dev_assets/video_gen/video/{}_{}{}.mp4",
+                        video_job_id.replace("-",""), effect, suffix);
+
+                    // Inline the hologram_glitch effect
+                    let duration_out = tokio::process::Command::new("ffprobe")
+                        .args(["-v", "quiet", "-show_entries", "format=duration", "-of", "csv=p=0", &current_input])
+                        .output().await.ok()
+                        .and_then(|o| String::from_utf8(o.stdout).ok())
+                        .and_then(|s| s.trim().parse::<f64>().ok())
+                        .unwrap_or(20.0);
+
+                    let vf = match effect.as_str() {
+                        "hologram_glitch" => {
+                            let gs = (duration_out - 1.8).max(0.0);
+                            format!("geq=r='if(lt(T,{gs}),r(X,Y),if(lt(mod(Y,4),2),r(X+2,Y),r(X-2,Y)))':g='if(lt(T,{gs}),g(X,Y),if(lt(mod(Y,4),2),g(X-2,Y),g(X+2,Y)))':b='if(lt(T,{gs}),b(X,Y),b(X,Y))',drawgrid=width=0:height=4:thickness=1:color='if(lt(T,{gs}),black@0,cyan@0.08)',colorchannelmixer=rr='if(lt(T,{gs}),1,0.6)':gg='if(lt(T,{gs}),1,0.8)':bb='if(lt(T,{gs}),1,1.4)',fade=t=out:st={gs}:d=1.8:color=black", gs=gs)
+                        }
+                        "color_grade" => "eq=contrast=1.1:brightness=-0.02:saturation=1.15,vignette=PI/4".into(),
+                        _ => continue,
+                    };
+
+                    let ffmpeg_result = tokio::process::Command::new("ffmpeg")
+                        .args(["-y", "-i", &current_input, "-vf", &vf,
+                               "-c:v", "libx264", "-crf", "18", "-c:a", "aac", &out])
+                        .output().await;
+
+                    if let Ok(o) = ffmpeg_result {
+                        if o.status.success() {
+                            current_input = out.clone();
+                            final_output = out;
+                        }
+                    }
+                }
+
+                if final_output.is_empty() {
+                    return Ok(serde_json::json!({"success": false, "error": "Post-processing failed"}));
+                }
+
+                let vibe_cost = 100i64 * effects.len() as i64;
+                if let Some(pid) = &project_id {
+                    let task_str = task_id.as_deref().unwrap_or("");
+                    let _ = crate::editron_tracking::log_editron_activity(
+                        &pool, task_str, "editron_post_process_complete",
+                        &format!("Post-processed video job {}: {:?}", video_job_id, effects),
+                        vibe_cost, serde_json::json!({"effects": effects, "output": final_output}),
+                    ).await;
+                    let _ = crate::editron_tracking::record_editron_vibe(
+                        &pool, pid, task_str, vibe_cost,
+                        &format!("Editron post-production: {} effects", effects.len()),
+                        "editron-post-process",
+                        serde_json::json!({"video_job_id": video_job_id, "effects": effects}),
+                    ).await;
+                }
+
+                Ok(serde_json::json!({
+                    "success": true,
+                    "video_job_id": video_job_id,
+                    "effects_applied": effects,
+                    "final_output": final_output,
+                    "vibe_cost": vibe_cost
+                }))
+            }
+
             _ => Ok(serde_json::json!({
                 "message": "Tool implementation pending",
                 "tool_executed": true
