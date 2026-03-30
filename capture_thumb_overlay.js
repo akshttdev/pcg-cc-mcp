@@ -1,0 +1,23 @@
+const { chromium } = require('playwright');
+const { execSync } = require('child_process');
+const fs = require('fs');
+(async () => {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+  await page.setViewportSize({ width: 1600, height: 30000 });
+  await page.goto('http://localhost:8765/vertical-preview.html', { waitUntil: 'networkidle', timeout: 15000 });
+  await page.waitForTimeout(2000);
+  await page.addStyleTag({ content: 'html,body{background:transparent!important;}.canvas{background:transparent!important;border:none!important;}.canvas::before{display:none!important;}' });
+  await page.waitForTimeout(600);
+  const cardLabel = page.locator('.card-label').filter({ hasText: 'A — Thumbnail' }).first();
+  const canvas = cardLabel.locator('..').locator('.canvas').first();
+  await canvas.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(300);
+  const tmp = '/tmp/thumb_ovl_tmp.png';
+  const out = '/tmp/pcg_ep01_overlays/thumb_A_overlay.png';
+  await canvas.screenshot({ path: tmp, omitBackground: true, type: 'png' });
+  execSync(`ffmpeg -y -i "${tmp}" -vf "scale=720:1280:flags=lanczos" -pix_fmt rgba "${out}" 2>/dev/null`);
+  fs.unlinkSync(tmp);
+  console.log('done: ' + fs.statSync(out).size + ' bytes');
+  await browser.close();
+})().catch(e => { console.error(e.message); process.exit(1); });
