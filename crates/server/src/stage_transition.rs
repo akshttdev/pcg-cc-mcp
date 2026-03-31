@@ -859,7 +859,7 @@ async fn check_intel_status(
             .flatten()
             .and_then(|r| r.intelligence_status);
 
-            matches!(status.as_deref(), Some(s) if s == expected_status || s == "complete")
+            matches!(status.as_deref(), Some(s) if s == expected_status || s == "completed")
         }
         "company" => {
             #[derive(sqlx::FromRow)]
@@ -878,7 +878,7 @@ async fn check_intel_status(
             .flatten()
             .and_then(|r| r.intelligence_status);
 
-            matches!(status.as_deref(), Some(s) if s == expected_status || s == "complete")
+            matches!(status.as_deref(), Some(s) if s == expected_status || s == "completed")
         }
         _ => false,
     }

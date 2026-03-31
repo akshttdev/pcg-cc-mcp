@@ -13,7 +13,7 @@ use db::{
         crm_deal::CrmDeal,
     },
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use services::services::workflow_llm::{
     LLMResponse, ToolCallRequest, ToolDefinition, WorkflowLLMService,
 };
@@ -719,22 +719,28 @@ impl AgentFlowExecutor {
             );
         }
 
-        // Mark as completed
-        if let Err(e) = sqlx::query(
-            "UPDATE agent_flows SET status = 'completed', execution_completed_at = datetime('now', 'subsec'), updated_at = datetime('now', 'subsec') WHERE id = ?1",
+        // Mark as completed — guard on status to prevent double-completion races
+        match sqlx::query(
+            "UPDATE agent_flows SET status = 'completed', execution_completed_at = datetime('now', 'subsec'), updated_at = datetime('now', 'subsec') WHERE id = ?1 AND status IN ('planning', 'executing')",
         )
         .bind(&flow.id)
         .execute(&self.pool)
         .await
         {
-            tracing::error!("[AgentFlowEngine] Failed to mark flow {} as completed: {}", flow.id, e);
+            Ok(r) if r.rows_affected() == 0 => {
+                tracing::warn!(
+                    "[AgentFlowEngine] Flow {} already completed or not in a completable state — skipping",
+                    flow.id
+                );
+            }
+            Err(e) => {
+                tracing::error!("[AgentFlowEngine] Failed to mark flow {} as completed: {}", flow.id, e);
+            }
+            _ => {}
         }
 
         // Promote "waiting" review tasks to "todo" now that the agent is done
-        let deal_id = flow
-            .crm_deal_id
-            .as_deref()
-            .unwrap_or("");
+        let deal_id = flow.crm_deal_id.as_deref().unwrap_or("");
         if !deal_id.is_empty() {
             let promoted = sqlx::query(
                 "UPDATE tasks SET status = 'todo', updated_at = datetime('now','subsec') WHERE crm_deal_id = ?1 AND status = 'waiting' AND deleted_at IS NULL",
@@ -785,9 +791,9 @@ impl AgentFlowExecutor {
             );
         }
 
-        // Mark as failed
+        // Mark as failed — guard on status to avoid overwriting a completed flow
         if let Err(e) = sqlx::query(
-            "UPDATE agent_flows SET status = 'failed', last_error = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2",
+            "UPDATE agent_flows SET status = 'failed', last_error = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2 AND status IN ('planning', 'executing')",
         )
         .bind(error)
         .bind(&flow.id)

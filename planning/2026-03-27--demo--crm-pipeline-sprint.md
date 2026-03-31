@@ -205,3 +205,96 @@ Demo the full CRM workflow: data source upload → contact/company/deal extracti
 | Won chain test failure (DL-3) | LOW | Known fix: better lookup logic (W4) |
 | CI E2E setup complexity | LOW | Well-documented patterns exist |
 | Merge conflicts with main (223 commits ahead) | MEDIUM | Merge main before PR |
+
+---
+
+## Regression Test & QA Results (2026-03-31)
+
+### Summary
+- Branch: `feature/2026-03-27--demo-sprint` vs `main`
+- Commits ahead: 249 | Files changed: 512 | +32,806 / -14,069
+- Critical: 2 | High: 6 | Medium: 6 | Low: 4
+
+### Static Checks
+
+| Check | Status | Notes |
+|-------|--------|-------|
+| cargo fmt | **PASS** | Clean |
+| cargo clippy | **ENV BLOCKED** | `glib-sys`/`openssl-sys` build failure — needs flox activation fix; must verify in CI |
+| tsc | **PASS** (branch) | 3 errors in untracked `KnowledgeGraphViz.tsx` — pre-existing, not in branch |
+| eslint | **PASS** (branch) | 2 errors in `error-boundary-fallback.tsx` — pre-existing, not in branch |
+| generate-types | **PASS** | `shared/types.ts` is up to date |
+| Conflict markers | **PASS** | None found |
+| Dead imports | **PASS** | None found |
+
+### Critical — Must Fix Before Merge
+
+| # | Issue | Location | Fix |
+|---|-------|----------|-----|
+| C1 | **Auth bypass on SSE pipeline events** — `stream_pipeline_events()` accepts any `org_id` query param with no `AccessContext` validation; any user can spy on any org's deal events | `crates/server/src/routes/pipeline_events.rs:27–79` | Add `Extension(access_context)` + `require_org_membership()` check |
+| C2 | **Status string typo** — code checks `s == "complete"` but enum serializes as `"completed"`; flow completion silently misdetected | `crates/server/src/stage_transition.rs:868,887` | Use `FlowStatus` enum, fix typo |
+
+### High — Should Fix Before Merge
+
+| # | Issue | Location | Fix |
+|---|-------|----------|-----|
+| H1 | **Race condition on flow completion** — UPDATE to `completed` has no `AND status = 'executing'` guard; concurrent executors can double-complete | `crates/server/src/agent_flow_executor.rs:~805` | Add expected-status WHERE clause, check `rows_affected()` |
+| H2 | **Race condition on flow failure** — same pattern; failure UPDATE has no status guard | `crates/server/src/stage_transition.rs:920` | Add `AND status IN ('planning', 'executing')` |
+| H3 | **Auth audit needed on data_source_workflows.rs** — new route file, unclear if all routes check `require_org_membership()` | `crates/server/src/routes/data_source_workflows.rs` | Audit all routes for `AccessContext` + org membership check |
+| H4 | **AgentFlowSummary.current_phase undefined** — frontend interface requires field, but backend returns `serde_json::Value` with no type enforcement | `frontend/src/components/crm/deal-detail/tabs/AgentHistoryTab.tsx:33–48` | Define Rust struct + ts-rs derive, or add runtime validation |
+| H5 | **`as string` cast on `customFields.discovery_call_status`** — typed as `unknown`, cast without guard | `frontend/src/components/crm/deal-detail/tabs/OverviewTab.tsx:~52` | Add `typeof === 'string'` guard |
+| H6 | **CallSchedulingSection form closes on mutation failure** — user loses data silently | `frontend/src/components/crm/deal-detail/tabs/OverviewCallSchedulingSection.tsx:32–43` | Re-open form in `onError` handler |
+
+### Medium — Track for Follow-up
+
+| # | Issue | Location |
+|---|-------|----------|
+| M1 | Silent error drops (`let _ =`) on task/review creation | `stage_transition.rs`, `crm_deal_automations.rs` |
+| M2 | Empty string defaults (`unwrap_or("")`) masking missing flow config | `agent_flow_executor.rs:227,514` |
+| M3 | JSON stage_config has no schema validation — breakage is silent | `agent_flow_executor.rs` |
+| M4 | `text-[10px]` → `text-xs` (10px→12px) may cause badge/pill reflow | Multiple frontend files |
+| M5 | Stage-tab visibility falls back to ALL_TABS for unknown stages | `frontend/src/components/crm/deal-detail/stage-tab-config.ts:38–44` |
+| M6 | Missing accessibility labels on call scheduling inputs | `OverviewCallSchedulingSection.tsx:75–88` |
+
+### Migration Assessment
+
+| Migration | Risk | Notes |
+|-----------|------|-------|
+| `20260416000000_normalize_blob_uuids_to_text` | **HIGH** | Irreversible; 13 tables; requires DB backup before deploy |
+| `20260418000001_child_tables_to_contacts` | **HIGH** | Drops `person_research_passes` + `person_social_profiles`; orphaned rows (NULL `crm_contact_id`) silently discarded |
+| Stage config UPDATEs (×5) | MEDIUM | JSON format overwritten without backup; no rollback path |
+| `20260417000000_discovery_stage` | MEDIUM | Position reshift assumes no stage at position >100 |
+| All others | LOW | Additive (ADD COLUMN, CREATE TABLE, CREATE INDEX) |
+
+**Pre-deployment checklist:**
+- [ ] Full DB backup before running `20260416000000`
+- [ ] Audit `persons.crm_contact_id IS NULL` rows before `20260418000001`
+- [ ] Validate `max(position) < 100` in `crm_pipeline_stages`
+- [ ] Verify clippy passes in CI (local env blocked by openssl-sys)
+
+### API Wiring — All Connected ✅
+
+All 7 new backend routes have frontend consumers:
+`cancelDealAgent`, `approveDealAgent`, `retriggerDealAgent`, `generateInvite`, `listDataSources`, `linkDataSource`, `fetchDealAgentFlows`
+
+### Clean Areas ✅
+
+- UUID handling excellent — consistent `DbUuid`, no `uuid::Uuid` in route handlers
+- No SQL injection — all queries parameterized
+- Error propagation consistent with `?` + `ApiError`
+- Migration ordering correct, no timestamp conflicts
+- No conflict markers, no dead imports
+- CI config unchanged, no suppressed lints
+
+## Merge Recommendation
+
+| Gate | Status |
+|------|--------|
+| Critical issues (C1, C2) | ❌ Must fix — auth bypass + status typo |
+| High issues (H1–H6) | ⚠️ Should fix |
+| Auth / security | ❌ C1 blocks merge |
+| Type safety | ⚠️ H4, H5 should be fixed |
+| Migration safety | ⚠️ Requires backup plan + orphan audit |
+| Clippy | ⏳ Must verify in CI (env blocked locally) |
+
+**Recommendation: NEEDS FIXES** — fix C1 (auth bypass) and C2 (status typo) before merge. H1–H3 (race conditions + auth audit) strongly recommended. All fixable in a single commit.

@@ -1,7 +1,7 @@
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     routing::{get, post, put},
+    Extension, Json, Router,
 };
 use db::models::{
     data_source::DataSource,
@@ -12,18 +12,18 @@ use db::models::{
 };
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 pub use services::services::workflow_execution::{
-    NodePosition, WorkflowConnection, WorkflowDefinition, WorkflowNode, build_schema_prompt_text,
-    check_company_duplicate, check_contact_duplicate, check_deal_duplicate,
-    check_intra_batch_duplicate, check_task_duplicate, compute_confidence, execute_action_node,
-    execute_node_with_llm, extract_records_from_output, is_fallback_placeholder,
-    validate_record_against_schema,
+    build_schema_prompt_text, check_company_duplicate, check_contact_duplicate,
+    check_deal_duplicate, check_intra_batch_duplicate, check_task_duplicate, compute_confidence,
+    execute_action_node, execute_node_with_llm, extract_records_from_output,
+    is_fallback_placeholder, validate_record_against_schema, NodePosition, WorkflowConnection,
+    WorkflowDefinition, WorkflowNode,
 };
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 // Legacy step type for backwards compat with run_workflow
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -919,6 +919,7 @@ struct RunWorkflowRequest {
 /// Extract individual records from LLM output JSON
 /// POST /api/data-sources/:id/workflows/:workflow_id/run
 async fn run_workflow(
+    Extension(access_context): Extension<AccessContext>,
     Path((data_source_id, workflow_id)): Path<(Uuid, String)>,
     State(deployment): State<DeploymentImpl>,
     body: Option<Json<RunWorkflowRequest>>,
@@ -935,6 +936,11 @@ async fn run_workflow(
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to look up data source: {e}")))?
         .ok_or_else(|| ApiError::NotFound("Data source not found".to_string()))?;
+
+    // Verify caller has access to the org that owns this data source
+    if let Some(ref org_id) = data_source.organization_id {
+        access_context.require_org_membership(pool, org_id).await?;
+    }
 
     let workflow = load_workflow(pool, &workflow_id)
         .await
@@ -1267,10 +1273,16 @@ struct ArtifactRecentParams {
 }
 
 async fn list_recent_artifacts(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Query(params): Query<ArtifactRecentParams>,
 ) -> Result<Json<ApiResponse<Vec<ExecutionArtifact>>>, ApiError> {
     let pool = &deployment.db().pool;
+
+    // Verify caller belongs to the requested org before scoping results
+    if let Some(ref org_id) = params.organization_id {
+        access_context.require_org_membership(pool, org_id).await?;
+    }
 
     let artifacts = if let Some(ref org_id) = params.organization_id {
         // Scope artifacts to those created from data sources owned by this org.
