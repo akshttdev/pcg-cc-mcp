@@ -21,8 +21,8 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 use super::{
-    ExtractedIndividual, ExtractedIntake, ExtractedParticipant,
     report::{run_company_research_pass, run_report_generation},
+    ExtractedIndividual, ExtractedIntake, ExtractedParticipant,
 };
 
 // ── Core pipeline ─────────────────────────────────────────────────────────────
@@ -311,7 +311,7 @@ async fn link_person_to_org(
     assigned_to: Option<Uuid>,
 ) {
     let _ = sqlx::query(
-        "INSERT OR IGNORE INTO person_organization_contacts (person_id, organization_id, context)
+        "INSERT OR IGNORE INTO contact_organization_links (person_id, organization_id, context)
          VALUES (?, ?, 'lead')",
     )
     .bind(person_id)

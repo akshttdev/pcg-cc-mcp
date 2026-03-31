@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
+use ts_rs::TS;
 use uuid::Uuid;
 
 use crate::db_uuid::DbUuid;
@@ -8,7 +9,8 @@ use crate::db_uuid::DbUuid;
 const COLUMNS: &str =
     "id, crm_contact_id, author_id, text, status, attachments, proposal_id, created_at, updated_at";
 
-#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct ContactNote {
     pub id: Uuid,
     pub crm_contact_id: Option<String>,
@@ -63,12 +65,10 @@ impl ContactNote {
     }
 
     pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
-        sqlx::query_as(&format!(
-            "SELECT {COLUMNS} FROM contact_notes WHERE id = ?"
-        ))
-        .bind(id.to_string())
-        .fetch_optional(pool)
-        .await
+        sqlx::query_as(&format!("SELECT {COLUMNS} FROM contact_notes WHERE id = ?"))
+            .bind(id.to_string())
+            .fetch_optional(pool)
+            .await
     }
 
     pub async fn list_for_contact(

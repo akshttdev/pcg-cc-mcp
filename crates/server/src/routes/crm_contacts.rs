@@ -3,9 +3,9 @@
 //! Handles contact creation, lead scoring, lifecycle management, and Zoho CRM sync.
 
 use axum::{
-    Extension, Json, Router,
     extract::{Path, Query, State},
     routing::{delete, get, patch, post},
+    Extension, Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 #[derive(Debug, Deserialize)]
 pub struct ListContactsQuery {
@@ -385,7 +385,7 @@ async fn create_contact_note(
 
     let input = CreateContactNote {
         crm_contact_id: id.to_string(),
-        author_id: access_context.user_id.map(|u| *u.as_uuid()),
+        author_id: Some(access_context.user_id.to_uuid()),
         text: body.text,
         status: body.status,
         proposal_id: None,
@@ -396,15 +396,23 @@ async fn create_contact_note(
 
 /// PATCH /crm/contact-notes/:note_id - Update a note
 async fn update_contact_note(
-    Extension(_access_context): Extension<AccessContext>,
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(note_id): Path<String>,
     Json(body): Json<UpdateContactNote>,
 ) -> Result<Json<ApiResponse<ContactNote>>, ApiError> {
     let pool = &deployment.db().pool;
-    let note_uuid = Uuid::parse_str(&note_id)
+    let note_db_id = DbUuid::parse(&note_id)
         .map_err(|_| ApiError::BadRequest(format!("Invalid note ID: {}", note_id)))?;
-    let note = ContactNote::update(pool, note_uuid, body)
+    // Load the note first to verify the caller has access to the owning contact
+    let existing = ContactNote::find_by_id(pool, note_db_id.to_uuid())
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("Note {} not found", note_id)))?;
+    if let Some(ref contact_id_str) = existing.crm_contact_id {
+        let contact_id = DbUuid::from_string(contact_id_str.clone());
+        require_contact_org_access(&access_context, pool, &contact_id).await?;
+    }
+    let note = ContactNote::update(pool, note_db_id.to_uuid(), body)
         .await?
         .ok_or_else(|| ApiError::NotFound(format!("Note {} not found", note_id)))?;
     Ok(Json(ApiResponse::success(note)))
@@ -412,14 +420,22 @@ async fn update_contact_note(
 
 /// DELETE /crm/contact-notes/:note_id - Delete a note
 async fn delete_contact_note(
-    Extension(_access_context): Extension<AccessContext>,
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(note_id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    let note_uuid = Uuid::parse_str(&note_id)
+    let note_db_id = DbUuid::parse(&note_id)
         .map_err(|_| ApiError::BadRequest(format!("Invalid note ID: {}", note_id)))?;
-    let deleted = ContactNote::delete(pool, note_uuid).await?;
+    // Load the note first to verify the caller has access to the owning contact
+    let existing = ContactNote::find_by_id(pool, note_db_id.to_uuid())
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("Note {} not found", note_id)))?;
+    if let Some(ref contact_id_str) = existing.crm_contact_id {
+        let contact_id = DbUuid::from_string(contact_id_str.clone());
+        require_contact_org_access(&access_context, pool, &contact_id).await?;
+    }
+    let deleted = ContactNote::delete(pool, note_db_id.to_uuid()).await?;
     if !deleted {
         return Err(ApiError::NotFound(format!("Note {} not found", note_id)));
     }

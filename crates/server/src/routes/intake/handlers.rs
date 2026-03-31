@@ -1,8 +1,8 @@
 //! HTTP handlers for intake CRUD and business report endpoints.
 
 use axum::{
-    Extension, Json,
     extract::{Path, State},
+    Extension, Json,
 };
 use db::{
     db_uuid::DbUuid,
@@ -18,10 +18,10 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use super::{
-    EmailIntakePayload, GenerateReportRequest, RevisionRequest, UploadIntakePayload,
-    pipeline::run_intake_pipeline, report::run_report_generation,
+    pipeline::run_intake_pipeline, report::run_report_generation, EmailIntakePayload,
+    GenerateReportRequest, RevisionRequest, UploadIntakePayload,
 };
-use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 // ── Intake ingestion ─────────────────────────────────────────────────────────
 
@@ -406,7 +406,7 @@ pub async fn approve_business_report(
                 organization_id: Uuid,
             }
             let org_id = sqlx::query_as::<_, OrgRow>(
-                "SELECT organization_id FROM person_organization_contacts WHERE person_id = ? LIMIT 1",
+                "SELECT organization_id FROM contact_organization_links WHERE person_id = ? LIMIT 1",
             )
             .bind(person_id.as_str())
             .fetch_optional(pool)

@@ -1,6 +1,6 @@
 # Backlog — Remaining Work
 
-**Last updated:** 2026-03-27 (persons→contacts unification audit added)
+**Last updated:** 2026-03-31 (PR #63 regression fixes added)
 **Context:** Consolidated from all completed planning docs + 27 research reports + 45-item research-derived backlog. **Prioritized by ROI = (revenue impact × probability) / effort**, not legacy ordering.
 **Phase 0 Sprint Plan:** See [`2026-03-19--analysis--phase0-sprint-candidates.md`](2026-03-19--analysis--phase0-sprint-candidates.md) for full scoring and sprint schedule.
 
@@ -1426,6 +1426,19 @@ Dealflow pipeline v2, company profiles, brand guides, Dockerfile fixes, VIBE tok
 | Query key mismatches (brandProfile, workflowTemplates) | Fixed cache invalidation bugs (PR #48) |
 | Orphaned project-level CRM routes (7) | Commented out in App.tsx (PR #48) |
 | Rust warnings (9 unused imports/vars in server+db) | Cleaned up (PR #48) |
+| PR #62 C1: pipeline_events SSE auth bypass | Added AccessContext + require_org_membership (PR #62) |
+| PR #62 C2: stage_transition "complete" typo | Fixed → "completed" in 2 places (PR #62) |
+| PR #62 H1/H2: agent_flow_executor race conditions | Status guards on complete_flow/fail_flow (PR #62) |
+| PR #62 H3: data_source_workflows missing org auth | Added require_org_membership to run_workflow + list_recent_artifacts (PR #62) |
+| PR #62 H4: AgentFlowSummary current_phase crash | Made optional (PR #62) |
+| PR #62 H5: OverviewTab unsafe `as string` cast | Replaced with typeof guard (PR #62) |
+| PR #63 C1/C2: intake table name mismatch | person_organization_contacts → contact_organization_links (PR #63) |
+| PR #63 C3: note update/delete no ownership check | Added require_contact_org_access pre-check (PR #63) |
+| PR #63 H1/H2: trigger_contact_research/get_intel_status unauthed | Added org membership check via organization_id field (PR #63) |
+| PR #63 H3: contact_note.rs author_id DbUuid.map() compile error | Fixed: Some(user_id.to_uuid()) (PR #63) |
+| PR #63 M1: stage_transition "complete" typo (inherited) | Fixed → "completed" in 2 places (PR #63) |
+| PR #63 M2: ContactResearchPass/SocialProfile/Note missing TS export | Added #[derive(TS)] + #[ts(export)] (PR #63) |
+| PR #63 L1-L5: intelligence.rs let _ = silent DB failures | Replaced with if let Err(e) + tracing::warn! (PR #63) |
 
 ---
 
