@@ -987,3 +987,17 @@ export type ContextEntryType = "finding" | "decision" | "blocker" | "intermediat
 export type ContextEntryStatus = "active" | "resolved" | "superseded";
 
 export type ContextPriority = "low" | "normal" | "high" | "critical";
+
+export type ContactNote = { id: string, crm_contact_id: string | null, author_id: string | null, text: string, 
+/**
+ * open | follow_up | resolved | pinned
+ */
+status: string, 
+/**
+ * JSON: [{name, url, mime_type, size_bytes}]
+ */
+attachments: string, proposal_id: string | null, created_at: string, updated_at: string, };
+
+export type ContactResearchPass = { id: string, crm_contact_id: string, pass_number: bigint, research_focus: string, focus_prompt: string | null, status: string, summary: string | null, raw_results: string | null, key_findings: string, search_queries: string, confidence_delta: number, agent_used: string | null, tokens_used: bigint | null, error: string | null, created_at: string, completed_at: string | null, };
+
+export type ContactSocialProfile = { id: string, crm_contact_id: string, platform: string, handle: string | null, profile_url: string | null, follower_count: bigint | null, following_count: bigint | null, bio: string | null, verified: number, raw_data: string | null, last_synced_at: string | null, created_at: string, updated_at: string, };
