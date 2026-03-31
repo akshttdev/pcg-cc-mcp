@@ -1,6 +1,6 @@
 # Backlog — Remaining Work
 
-**Last updated:** 2026-03-27 (persons→contacts unification audit added)
+**Last updated:** 2026-03-31 (demo-sprint PR #62 regression/QA fixes applied; contacts-unification PR #63 open)
 **Context:** Consolidated from all completed planning docs + 27 research reports + 45-item research-derived backlog. **Prioritized by ROI = (revenue impact × probability) / effort**, not legacy ordering.
 **Phase 0 Sprint Plan:** See [`2026-03-19--analysis--phase0-sprint-candidates.md`](2026-03-19--analysis--phase0-sprint-candidates.md) for full scoring and sprint schedule.
 
@@ -36,27 +36,21 @@
 - `run_contact_research_direct()` writes to crm_contacts directly
 - Company research auto-creates company + uses Scout agent (not Astra)
 
-### PC-3: Move research passes to contacts
-- **Effort**: 0.5 day | **Impact**: Full research history on contacts
-- Re-FK `person_research_passes` → `contact_research_passes` (or add `crm_contact_id` FK)
-- Research pass detail visible from contact record
+### PC-3: Move research passes to contacts — ✅ DONE (contacts-unification PR #63, migration 20260418000001)
+- `contact_research_passes` table created; data migrated from `person_research_passes`; old table dropped
 
-### PC-4: Move social profiles to contacts
-- **Effort**: 0.5 day | **Impact**: Social data accessible from CRM
-- Re-FK `person_social_profiles` → contacts
-- Social data visible in deal detail without person lookup
+### PC-4: Move social profiles to contacts — ✅ DONE (contacts-unification PR #63, migration 20260418000001)
+- `contact_social_profiles` table created; data migrated from `person_social_profiles`; old table dropped
 
 ### PC-5: Update intake pipeline to create contacts — ✅ DONE (Phase 3 W1, commit 800de2fe0)
 - Intake pipeline creates `crm_contacts` directly
 - Intelligence written to contact record
 
-### PC-6: Retire persons table
-- **Effort**: 1 day | **Impact**: Eliminates redundancy
-- Migrate remaining persons-only fields (person_type, financial_role, business_stage) to contacts
-- `/people/:id` route reads from contacts (or redirect)
-- Drop persons API routes or alias to contacts
-- Drop `persons` table
-- Clean up unused models
+### PC-6: Retire persons table — ✅ DONE (contacts-unification PR #63)
+- `/api/persons` endpoints removed; intelligence routes target contacts
+- `persons` table retired; person models replaced with contact equivalents
+- user_profiles table created; person_type/financial_role migrated to custom_fields
+- **Pre-merge checklist**: backup DB before 20260416000000 (irreversible BLOB→TEXT); audit `persons.crm_contact_id IS NULL` rows before 20260418000001 drops tables
 
 ---
 
@@ -829,6 +823,38 @@ See Phase 0 sprint backlog above.
 
 ---
 
+## P1 — Demo Sprint Follow-up (from PR #62 regression audit, 2026-03-31)
+
+### DS-1. Silent error drops in pipeline backend [MEDIUM]
+**What:** `let _ =` ignores failures on task/review-task creation in `stage_transition.rs` and `crm_deal_automations.rs`. Failed creates are invisible in logs.
+**Fix:** Replace `let _ =` with `if let Err(e) = ... { tracing::error!(...) }` pattern.
+**Effort:** 1h | **Status:** NOT STARTED
+
+### DS-2. Empty-string defaults masking missing flow config [MEDIUM]
+**What:** `flow_config.get("deal_id").and_then(...).unwrap_or("")` in `agent_flow_executor.rs` silently continues with an empty deal_id when config is malformed.
+**Fix:** Return an error for missing required config fields; reserve `unwrap_or("")` for optional strings.
+**Effort:** 1h | **Status:** NOT STARTED
+
+### DS-3. stage_config JSON has no schema validation [MEDIUM]
+**What:** `stage_config` column is a freeform JSON string. If a migration seeds invalid JSON or an agent writes unexpected keys, stage automation breaks silently at runtime.
+**Fix:** Define a `StageConfig` Rust struct with `#[derive(Deserialize)]`, validate on read, log parse errors with the raw value.
+**Effort:** 2h | **Status:** NOT STARTED
+
+### DS-4. Stage-tab visibility falls back to ALL_TABS for unknown stages [MEDIUM]
+**What:** `getVisibleTabs()` in `stage-tab-config.ts` shows all tabs for any stage name not in `STAGE_TAB_MAP`. Unknown stages (e.g., custom pipelines) show every tab regardless of relevance.
+**Fix:** Read `stage_config.visible_tabs` from the backend and use that as the source of truth; `STAGE_TAB_MAP` becomes a fallback for stages without explicit config.
+**Effort:** 3h | **Status:** NOT STARTED (noted as Backlog in the file already)
+
+### DS-5. Migration pre-deployment checklist (before merging PR #62→main) [HIGH]
+**What:** Several migrations in demo-sprint are irreversible or destructive:
+- `20260416000000_normalize_blob_uuids_to_text`: converts 13 tables' BLOB IDs to TEXT — **take full DB backup first**
+- `20260418000001_child_tables_to_contacts`: drops `person_research_passes` and `person_social_profiles` — **audit `persons.crm_contact_id IS NULL` rows first**
+- `20260417000000_discovery_stage`: position reshift assumes `max(position) < 100` — **verify in prod data**
+- Five stage-config UPDATE migrations overwrite JSON without backup — **verify stage automation still parses correctly after deploy**
+**Status:** NOT STARTED — block merge until completed
+
+---
+
 ## P0.5 — CI Quality (do on main, feature branches pick up on merge)
 
 ### CI-1. Add E2E Tests to CI
@@ -1429,6 +1455,13 @@ Dealflow pipeline v2, company profiles, brand guides, Dockerfile fixes, VIBE tok
 | Query key mismatches (brandProfile, workflowTemplates) | Fixed cache invalidation bugs (PR #48) |
 | Orphaned project-level CRM routes (7) | Commented out in App.tsx (PR #48) |
 | Rust warnings (9 unused imports/vars in server+db) | Cleaned up (PR #48) |
+| SSE pipeline events auth bypass (PR #62 C1) | `require_org_membership` + `AccessContext` added to `stream_pipeline_events` (2026-03-31) |
+| Status typo "complete" vs "completed" (PR #62 C2) | Fixed both occurrences in `stage_transition.rs` intel checks (2026-03-31) |
+| Agent flow double-completion race (PR #62 H1) | `complete_flow` UPDATE guards on `AND status IN ('planning','executing')` (2026-03-31) |
+| Agent flow fail-overwrite race (PR #62 H2) | `fail_flow` UPDATE guards on same statuses (2026-03-31) |
+| Data source routes missing org auth (PR #62 H3) | `run_workflow` + `list_recent_artifacts` verify org membership (2026-03-31) |
+| `AgentFlowSummary.current_phase` non-nullable (PR #62 H4) | Made optional (`current_phase?: string`) (2026-03-31) |
+| Unsafe `as string` cast on `discovery_call_status` (PR #62 H5) | Replaced with `typeof === 'string'` guard (2026-03-31) |
 
 ---
 
