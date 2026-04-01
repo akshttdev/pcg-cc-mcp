@@ -1,32 +1,33 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { crmKeys } from '@/lib/query-keys';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { formatDistanceToNow } from 'date-fns';
 import {
+  AlertCircle,
   Brain,
   Building2,
   CheckCircle2,
-  AlertCircle,
-  ClipboardCheck,
-  Loader2,
-  ShieldCheck,
-  Search,
   CircleDot,
-  Phone,
-  FileText,
+  ClipboardCheck,
   ExternalLink,
+  FileText,
+  Loader2,
+  Phone,
+  Search,
+  ShieldCheck,
   User,
 } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
-import { cn } from '@/lib/utils';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { review as tid } from 'shared/testids';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { handleApiResponse, makeRequest } from '@/lib/api/client';
+import { crmKeys } from '@/lib/query-keys';
+import { cn } from '@/lib/utils';
+import type { CrmDealWithContact } from '@/types/crm';
 
 import { useDealActions } from '../hooks/useDealActions';
-import type { CrmDealWithContact } from '@/types/crm';
 
 // ── Task type for deal-linked tasks ─────────────────────────────────────────
 
@@ -42,13 +43,19 @@ interface DealTask {
 
 // ── Stage checklist data ─────────────────────────────────────────────────────
 
-const STAGE_CHECKLIST: Record<string, { item: string; description?: string }[]> = {
+const STAGE_CHECKLIST: Record<
+  string,
+  { item: string; description?: string }[]
+> = {
   lead: [
     {
       item: 'Person research complete',
       description: '"Who Is" research completed on this contact',
     },
-    { item: 'Company research complete', description: 'Company intelligence is available' },
+    {
+      item: 'Company research complete',
+      description: 'Company intelligence is available',
+    },
     {
       item: 'Lead quality verified',
       description: 'Account Manager has confirmed lead is worth pursuing',
@@ -63,7 +70,10 @@ const STAGE_CHECKLIST: Record<string, { item: string; description?: string }[]> 
       item: 'Market opportunity assessed',
       description: 'We understand their market position and opportunity',
     },
-    { item: 'Discovery call scheduled', description: 'Meeting with prospect is booked' },
+    {
+      item: 'Discovery call scheduled',
+      description: 'Meeting with prospect is booked',
+    },
   ],
   'discovery and analysis': [
     {
@@ -74,7 +84,10 @@ const STAGE_CHECKLIST: Record<string, { item: string; description?: string }[]> 
       item: 'Pain points identified',
       description: 'We understand what problems they need solved',
     },
-    { item: 'Budget range confirmed', description: 'We have a clear budget expectation' },
+    {
+      item: 'Budget range confirmed',
+      description: 'We have a clear budget expectation',
+    },
     {
       item: 'Knowledge is proposal-ready',
       description: 'We have enough to build a strong proposal',
@@ -89,7 +102,10 @@ const STAGE_CHECKLIST: Record<string, { item: string; description?: string }[]> 
       item: 'Pricing approved internally',
       description: 'Pricing reviewed and signed off',
     },
-    { item: 'Timeline is realistic', description: 'Delivery schedule is achievable' },
+    {
+      item: 'Timeline is realistic',
+      description: 'Delivery schedule is achievable',
+    },
     {
       item: 'Topsi has generated proposal',
       description: 'AI proposal draft has been created',
@@ -100,7 +116,10 @@ const STAGE_CHECKLIST: Record<string, { item: string; description?: string }[]> 
       item: 'Presentation deck complete',
       description: 'Slides are polished and client-ready',
     },
-    { item: 'Report card accurate', description: 'Data and metrics are verified' },
+    {
+      item: 'Report card accurate',
+      description: 'Data and metrics are verified',
+    },
     {
       item: 'Graphical quality verified',
       description: 'Design quality meets our standards',
@@ -119,7 +138,10 @@ const STAGE_CHECKLIST: Record<string, { item: string; description?: string }[]> 
       item: 'Decision maker confirmed',
       description: 'The right stakeholders will be present',
     },
-    { item: 'Presentation rehearsed', description: 'Team is prepared for the pitch' },
+    {
+      item: 'Presentation rehearsed',
+      description: 'Team is prepared for the pitch',
+    },
   ],
   'follow up': [
     {
@@ -150,7 +172,14 @@ interface ReviewTabProps {
 
 export function ReviewTab({ deal, stageName }: ReviewTabProps) {
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
-  const { advanceDeal, advanceLoading, triggerResearch, researchLoading, completeReviewTask, completeLoading } = useDealActions();
+  const {
+    advanceDeal,
+    advanceLoading,
+    triggerResearch,
+    researchLoading,
+    completeReviewTask,
+    completeLoading,
+  } = useDealActions();
 
   const hasReviewTask = !!deal.review_task_id;
   const taskDone = deal.review_task_status === 'done';
@@ -175,11 +204,14 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
     staleTime: 30_000,
   });
 
-  const completedTasks = dealTasks.filter(t => t.status === 'done' || t.status === 'cancelled');
+  const completedTasks = dealTasks.filter(
+    (t) => t.status === 'done' || t.status === 'cancelled'
+  );
 
   const checklist = STAGE_CHECKLIST[effectiveStage] || [];
   const allChecked =
-    checklist.length > 0 && checklist.every(({ item }) => checkedItems.has(item));
+    checklist.length > 0 &&
+    checklist.every(({ item }) => checkedItems.has(item));
 
   return (
     <div className="p-5 space-y-5">
@@ -255,10 +287,18 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
         <Card className="bg-muted/30 border-border/60">
           <CardContent className="p-4 text-center space-y-2">
             <AlertCircle className="h-6 w-6 mx-auto text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">No review task for this stage.</p>
-            {!['closed won', 'closed lost', 'presentation', 'follow up'].includes(effectiveStage) && (
+            <p className="text-sm text-muted-foreground">
+              No review task for this stage.
+            </p>
+            {![
+              'closed won',
+              'closed lost',
+              'presentation',
+              'follow up',
+            ].includes(effectiveStage) && (
               <p className="text-xs text-muted-foreground/70">
-                A review task is created automatically when entering an active stage.
+                A review task is created automatically when entering an active
+                stage.
               </p>
             )}
           </CardContent>
@@ -267,7 +307,10 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
 
       {/* Completed review tasks */}
       {tasksError && (
-        <p className="text-xs text-red-500">Failed to load completed reviews</p>
+        <p className="text-xs text-red-500 flex items-center gap-1">
+          <AlertCircle className="h-3 w-3" />
+          Failed to load review tasks
+        </p>
       )}
       {completedTasks.length > 0 && (
         <div>
@@ -278,14 +321,22 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
             {completedTasks.map((task) => (
               <Link
                 key={task.id}
-                to={task.project_id && task.project_id.length > 0 ? `/projects/${task.project_id}/tasks/${task.id}` : '/my-tasks'}
+                to={
+                  task.project_id && task.project_id.length > 0
+                    ? `/projects/${task.project_id}/tasks/${task.id}`
+                    : '/my-tasks'
+                }
               >
                 <Card className="bg-green-50/50 dark:bg-green-950/10 border-border/40 hover:bg-green-50 dark:hover:bg-green-950/20 transition-colors cursor-pointer">
                   <CardContent className="p-2.5 flex items-center gap-2">
                     <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
-                    <span className="text-xs font-medium flex-1 truncate">{task.title}</span>
+                    <span className="text-xs font-medium flex-1 truncate">
+                      {task.title}
+                    </span>
                     <span className="text-xs text-muted-foreground shrink-0">
-                      {formatDistanceToNow(new Date(task.updated_at), { addSuffix: true })}
+                      {formatDistanceToNow(new Date(task.updated_at), {
+                        addSuffix: true,
+                      })}
                     </span>
                     <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />
                   </CardContent>
@@ -332,7 +383,9 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
                   <div
                     className={cn(
                       'w-4 h-4 rounded border-2 shrink-0 mt-0.5 flex items-center justify-center transition-all',
-                      checked ? 'bg-green-500 border-green-500' : 'border-muted-foreground/30'
+                      checked
+                        ? 'bg-green-500 border-green-500'
+                        : 'border-muted-foreground/30'
                     )}
                   >
                     {checked && <CheckCircle2 className="h-3 w-3 text-white" />}
@@ -347,7 +400,9 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
                       {item}
                     </p>
                     {description && (
-                      <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {description}
+                      </p>
                     )}
                   </div>
                 </button>
@@ -384,7 +439,8 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
       )}
 
       {/* Intel snapshot */}
-      {(deal.intelligence_summary || deal.company_intelligence_status === 'done') && (
+      {(deal.intelligence_summary ||
+        deal.company_intelligence_status === 'done') && (
         <div>
           <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
             Intel Snapshot
@@ -399,7 +455,10 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
                       <span className="text-xs font-medium">Person Intel</span>
                     </div>
                     {deal.person_id && (
-                      <Link to={`/people/${deal.person_id}?tab=reports`} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5">
+                      <Link
+                        to={`/people/${deal.person_id}?tab=reports`}
+                        className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5"
+                      >
                         <ExternalLink className="h-3 w-3" /> Intel
                       </Link>
                     )}
@@ -421,12 +480,17 @@ export function ReviewTab({ deal, stageName }: ReviewTabProps) {
                       </span>
                     </div>
                     {deal.company_id && (
-                      <Link to={`/companies/${deal.company_id}`} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5">
+                      <Link
+                        to={`/companies/${deal.company_id}`}
+                        className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5"
+                      >
                         <ExternalLink className="h-3 w-3" /> View
                       </Link>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground">Company research complete.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Company research complete.
+                  </p>
                 </CardContent>
               </Card>
             )}
@@ -446,7 +510,10 @@ function DataSourcesSection({ deal }: { deal: CrmDealWithContact }) {
   const { data: callLogs = [], isLoading } = useQuery<CallLogSummary[]>({
     queryKey: crmKeys.callLogsDeal(deal.id),
     queryFn: async () => {
-      const res = await fetch(`/api/communications/calls?crm_deal_id=${deal.id}&limit=10`, { credentials: 'include' });
+      const res = await fetch(
+        `/api/communications/calls?crm_deal_id=${deal.id}&limit=10`,
+        { credentials: 'include' }
+      );
       const json = await res.json();
       return json.data ?? [];
     },
@@ -469,7 +536,9 @@ function DataSourcesSection({ deal }: { deal: CrmDealWithContact }) {
               <CardContent className="p-3">
                 <div className="flex items-center gap-2">
                   <FileText className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
-                  <span className="text-xs font-medium flex-1">Business Analysis Report</span>
+                  <span className="text-xs font-medium flex-1">
+                    Business Analysis Report
+                  </span>
                   <ExternalLink className="h-3 w-3 text-muted-foreground" />
                 </div>
                 {deal.report_status && (
@@ -518,15 +587,22 @@ function DataSourcesSection({ deal }: { deal: CrmDealWithContact }) {
                 </span>
                 {log.created_at && (
                   <span className="text-xs text-muted-foreground shrink-0">
-                    {formatDistanceToNow(new Date(log.created_at), { addSuffix: true })}
+                    {formatDistanceToNow(new Date(log.created_at), {
+                      addSuffix: true,
+                    })}
                   </span>
                 )}
               </div>
               {log.summary && (
-                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{log.summary}</p>
+                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                  {log.summary}
+                </p>
               )}
               {log.transcription_status === 'completed' && (
-                <Badge variant="outline" className="text-xs px-1.5 py-0 mt-1.5 text-green-600">
+                <Badge
+                  variant="outline"
+                  className="text-xs px-1.5 py-0 mt-1.5 text-green-600"
+                >
                   Transcript available
                 </Badge>
               )}
