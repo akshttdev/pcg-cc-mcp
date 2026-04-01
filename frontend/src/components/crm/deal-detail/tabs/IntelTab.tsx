@@ -181,14 +181,16 @@ export function IntelTab({ deal }: IntelTabProps) {
             <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
               <User className="h-3.5 w-3.5" />
               Person Intelligence
-              {deal.person_id && (
+              {(deal.crm_contact_id || deal.person_id) && (
                 <Button
                   variant="ghost"
                   size="sm"
                   className="h-5 text-xs gap-1 ml-auto px-1.5"
                   asChild
                 >
-                  <Link to={`/people/${deal.person_id}`}>
+                  <Link
+                    to={`/contacts/${deal.crm_contact_id ?? deal.person_id}`}
+                  >
                     Profile <ExternalLink className="h-2.5 w-2.5" />
                   </Link>
                 </Button>
@@ -365,7 +367,7 @@ export function IntelTab({ deal }: IntelTabProps) {
       )}
 
       {/* Re-trigger research */}
-      {deal.person_id && !isResearching && (
+      {(deal.crm_contact_id || deal.person_id) && !isResearching && (
         <Button
           variant="outline"
           size="sm"
@@ -383,7 +385,7 @@ export function IntelTab({ deal }: IntelTabProps) {
       )}
 
       {/* Full profile link */}
-      {deal.person_id && (
+      {(deal.crm_contact_id || deal.person_id) && (
         <div className="pt-2 border-t">
           <Button
             variant="ghost"
@@ -391,7 +393,7 @@ export function IntelTab({ deal }: IntelTabProps) {
             className="w-full h-8 text-xs gap-1.5"
             asChild
           >
-            <Link to={`/people/${deal.person_id}`}>
+            <Link to={`/contacts/${deal.crm_contact_id ?? deal.person_id}`}>
               <Brain className="h-3.5 w-3.5" />
               View Full Intelligence Profile
               <ExternalLink className="h-3 w-3 ml-auto" />

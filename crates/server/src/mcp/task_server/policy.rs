@@ -5,16 +5,15 @@ use db::models::{
     task::Task,
 };
 use rmcp::{
-    ErrorData,
     handler::server::tool::Parameters,
     model::{CallToolResult, Content},
-    tool,
+    tool, ErrorData,
 };
 use serde_json::Value;
 use services::services::pcg_policy::{self, PolicyAction, PolicyCheckContext};
 use uuid::Uuid;
 
-use super::{TaskServer, helpers::*, types::*};
+use super::{helpers::*, types::*, TaskServer};
 
 impl TaskServer {
     #[tool(description = "Evaluate PCG governance policies for a task before execution.")]
@@ -158,7 +157,9 @@ impl TaskServer {
         let search_projects = search_all || types.contains(&"projects".to_string());
         let search_tasks = search_all || types.contains(&"tasks".to_string());
         let search_knowledge = search_all || types.contains(&"knowledge".to_string());
-        let search_contacts = search_all || types.contains(&"contacts".to_string()) || types.contains(&"persons".to_string());
+        let search_contacts = search_all
+            || types.contains(&"contacts".to_string())
+            || types.contains(&"persons".to_string());
 
         let mut results = serde_json::json!({ "query": req.query });
 

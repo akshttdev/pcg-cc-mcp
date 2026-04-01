@@ -1,7 +1,7 @@
 use axum::{
-    Extension, Json, Router,
     extract::{Path, Query, State},
     routing::{delete, get, patch, post, put},
+    Extension, Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -20,7 +20,7 @@ use serde_json::Value;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 pub mod brand;
 pub mod intake;
@@ -236,7 +236,10 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/organizations/{id}/generate-invite",
             post(members::generate_invite),
         )
-        .route("/organizations/{id}/contacts", get(members::get_org_persons))
+        .route(
+            "/organizations/{id}/contacts",
+            get(members::get_org_persons),
+        )
         .route(
             "/organizations/{id}/data-sources",
             get(members::list_org_data_sources),

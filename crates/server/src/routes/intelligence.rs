@@ -650,6 +650,7 @@ pub async fn trigger_company_research(
 
 /// GET /api/companies/:id/intelligence-status
 pub async fn get_company_intelligence_status(
+    Extension(access_context): Extension<AccessContext>,
     State(d): State<DeploymentImpl>,
     Path(company_id): Path<String>,
 ) -> Result<Json<ApiResponse<CompanyIntelligenceStatusResponse>>, ApiError> {
@@ -658,6 +659,7 @@ pub async fn get_company_intelligence_status(
         .to_uuid();
     #[derive(sqlx::FromRow)]
     struct Row {
+        organization_id: Option<String>,
         intelligence_status: String,
         intelligence_summary: Option<String>,
         intelligence_confidence: Option<f64>,
@@ -666,14 +668,20 @@ pub async fn get_company_intelligence_status(
     }
     let pool = &d.db().pool;
     let row: Option<Row> = sqlx::query_as(
-        "SELECT intelligence_status, intelligence_summary, intelligence_confidence, \
-         intelligence_agent, intelligence_last_run_at FROM companies WHERE id = ?",
+        "SELECT organization_id, intelligence_status, intelligence_summary, \
+         intelligence_confidence, intelligence_agent, intelligence_last_run_at \
+         FROM companies WHERE id = ?",
     )
     .bind(company_id)
     .fetch_optional(pool)
     .await?;
 
     let row = row.ok_or_else(|| ApiError::NotFound("Company not found".into()))?;
+
+    // Verify org membership
+    if let Some(ref org_id) = row.organization_id {
+        access_context.require_org_membership(pool, org_id).await?;
+    }
     Ok(Json(ApiResponse::success(
         CompanyIntelligenceStatusResponse {
             company_id,
@@ -1326,18 +1334,36 @@ pub struct NextPassRequest {
 
 /// GET /api/crm/contacts/:id/research-passes — list all research passes
 pub async fn list_research_passes(
+    Extension(access_context): Extension<AccessContext>,
     State(d): State<DeploymentImpl>,
     Path(contact_id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<ContactResearchPass>>>, ApiError> {
     let contact_id =
         DbUuid::parse(&contact_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
-    let passes = ContactResearchPass::list_for_contact(&d.db().pool, &contact_id).await?;
+    let pool = &d.db().pool;
+    #[derive(sqlx::FromRow)]
+    struct OrgRow {
+        organization_id: Option<String>,
+    }
+    let org_row: Option<OrgRow> =
+        sqlx::query_as("SELECT organization_id FROM crm_contacts WHERE id = ?")
+            .bind(&contact_id)
+            .fetch_optional(pool)
+            .await?;
+    if let Some(OrgRow {
+        organization_id: Some(ref org_id),
+    }) = org_row
+    {
+        access_context.require_org_membership(pool, org_id).await?;
+    }
+    let passes = ContactResearchPass::list_for_contact(pool, &contact_id).await?;
     Ok(Json(ApiResponse::success(passes)))
 }
 
 /// POST /api/crm/contacts/:id/research-passes/next
 /// Triggers the next logical research pass, building on all prior passes.
 pub async fn trigger_next_research_pass(
+    Extension(access_context): Extension<AccessContext>,
     State(d): State<DeploymentImpl>,
     Path(contact_id): Path<String>,
     Json(body): Json<NextPassRequest>,
@@ -1349,17 +1375,23 @@ pub async fn trigger_next_research_pass(
     // Read contact directly
     #[derive(sqlx::FromRow)]
     struct ContactRow {
+        organization_id: Option<String>,
         full_name: Option<String>,
         company_name: Option<String>,
         intelligence_summary: Option<String>,
     }
     let contact: ContactRow = sqlx::query_as(
-        "SELECT full_name, company_name, intelligence_summary FROM crm_contacts WHERE id = ?",
+        "SELECT organization_id, full_name, company_name, intelligence_summary FROM crm_contacts WHERE id = ?",
     )
     .bind(contact_id.to_string())
     .fetch_optional(pool)
     .await?
     .ok_or_else(|| ApiError::NotFound("Contact not found".into()))?;
+
+    // Verify org membership
+    if let Some(ref org_id) = contact.organization_id {
+        access_context.require_org_membership(pool, org_id).await?;
+    }
 
     // Determine next pass number and auto-select focus
     let pass_number = ContactResearchPass::next_pass_number(pool, &contact_id).await;
@@ -1449,11 +1481,28 @@ pub async fn trigger_next_research_pass(
 
 /// GET /api/crm/contacts/:id/reports
 pub async fn list_person_reports(
+    Extension(access_context): Extension<AccessContext>,
     State(d): State<DeploymentImpl>,
     Path(contact_id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<BusinessReport>>>, ApiError> {
     DbUuid::parse(&contact_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
-    let reports = BusinessReport::list_by_contact(&d.db().pool, &contact_id).await?;
+    let pool = &d.db().pool;
+    #[derive(sqlx::FromRow)]
+    struct OrgRow {
+        organization_id: Option<String>,
+    }
+    let org_row: Option<OrgRow> =
+        sqlx::query_as("SELECT organization_id FROM crm_contacts WHERE id = ?")
+            .bind(&contact_id)
+            .fetch_optional(pool)
+            .await?;
+    if let Some(OrgRow {
+        organization_id: Some(ref org_id),
+    }) = org_row
+    {
+        access_context.require_org_membership(pool, org_id).await?;
+    }
+    let reports = BusinessReport::list_by_contact(pool, &contact_id).await?;
     Ok(Json(ApiResponse::success(reports)))
 }
 
