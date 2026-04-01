@@ -1,9 +1,9 @@
 use axum::{
-    Extension, Json, Router,
     extract::{Path, State},
     middleware::from_fn_with_state,
     response::Json as ResponseJson,
     routing::get,
+    Extension, Json, Router,
 };
 use db::models::{
     cms_page_section::{CmsPageSection, CreateCmsPageSection, UpdateCmsPageSection},
@@ -13,7 +13,7 @@ use deployment::Deployment;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::require_auth};
+use crate::{error::ApiError, middleware::require_auth, DeploymentImpl};
 
 pub async fn list_page_sections(
     Extension(site): Extension<CmsSite>,

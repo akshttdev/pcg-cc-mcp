@@ -4,9 +4,9 @@
 //! before committing to CRM contacts, companies, deals, or tasks.
 
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     routing::{get, post},
+    Json, Router,
 };
 use db::{db_uuid::DbUuid, models::workflow_staging::WorkflowStagingRecord};
 use deployment::Deployment;
@@ -16,7 +16,7 @@ use sqlx::SqlitePool;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 /// Normalize a date or datetime string to RFC3339 format.
 /// Handles "2026-08-01" → "2026-08-01T00:00:00Z" and passes through already-valid datetimes.

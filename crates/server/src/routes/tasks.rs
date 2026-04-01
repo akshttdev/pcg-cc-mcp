@@ -2,15 +2,15 @@ use std::path::PathBuf;
 
 use anyhow;
 use axum::{
-    Extension, Json, Router,
     extract::{
-        Query, State,
         ws::{WebSocket, WebSocketUpgrade},
+        Query, State,
     },
     http::StatusCode,
     middleware::from_fn_with_state,
     response::{IntoResponse, Json as ResponseJson},
     routing::{delete, get, post},
+    Extension, Json, Router,
 };
 use db::models::{
     activity::{ActivityLog, ActorType, CreateActivityLog},
@@ -30,18 +30,18 @@ use futures_util::{SinkExt, StreamExt, TryStreamExt};
 use serde::Deserialize;
 use serde_json::json;
 use services::services::container::{
-    ContainerService, WorktreeCleanupData, cleanup_worktrees_direct,
+    cleanup_worktrees_direct, ContainerService, WorktreeCleanupData,
 };
-use sqlx::{Error as SqlxError, types::Json as SqlxJson};
+use sqlx::{types::Json as SqlxJson, Error as SqlxError};
 use ts_rs::TS;
 use utils::response::ApiResponse;
 // TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 
 use crate::{
-    DeploymentImpl,
     error::ApiError,
     middleware::{access_control::AccessContext, load_task_middleware},
+    DeploymentImpl,
 };
 
 /// Broadcast a task event to all connected WebSocket clients

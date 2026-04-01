@@ -6,22 +6,22 @@
 use std::sync::Arc;
 
 use axum::{
-    Router,
     extract::{
-        State, WebSocketUpgrade,
         ws::{Message, WebSocket},
+        State, WebSocketUpgrade,
     },
     response::{Json, Response},
     routing::{get, post},
+    Router,
 };
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use tokio::sync::{RwLock, broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, RwLock};
 use ts_rs::TS;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 // ========== Types ==========
 

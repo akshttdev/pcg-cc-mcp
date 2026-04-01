@@ -1,8 +1,8 @@
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::get,
+    Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -13,7 +13,7 @@ use serde::Deserialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 #[derive(Debug, Deserialize)]
 pub struct CreateEventPayload {

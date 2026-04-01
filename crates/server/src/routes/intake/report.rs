@@ -15,8 +15,8 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 use super::{
-    ExtractedBusiness, ExtractedIndividual, ExtractedIntake, GeneratedReport,
-    pipeline::advance_deal_stage,
+    pipeline::advance_deal_stage, ExtractedBusiness, ExtractedIndividual, ExtractedIntake,
+    GeneratedReport,
 };
 
 // ── Stage 1: Extract structure ────────────────────────────────────────────────

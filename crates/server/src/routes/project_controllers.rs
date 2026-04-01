@@ -3,10 +3,10 @@
 //! Handles project-specific AI controller configuration and chat functionality.
 
 use axum::{
-    Extension, Json, Router,
     extract::{Path, State},
     http::StatusCode,
     routing::{get, post},
+    Extension, Json, Router,
 };
 use db::models::{
     project::Project,
@@ -17,12 +17,12 @@ use db::models::{
 };
 use deployment::Deployment;
 use nora::brain::{
-    ConversationMessage, LLMClient, LLMConfig, LLMResponse, infer_provider_from_model,
+    infer_provider_from_model, ConversationMessage, LLMClient, LLMConfig, LLMResponse,
 };
 use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 // ============================================================================
 // Request/Response Types

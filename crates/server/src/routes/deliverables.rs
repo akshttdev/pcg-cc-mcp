@@ -1,7 +1,7 @@
 use axum::{
-    Json, Router,
     extract::{Path, State},
     routing::{get, patch},
+    Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -14,7 +14,7 @@ use db::{
 use deployment::Deployment;
 use utils::response::ApiResponse;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

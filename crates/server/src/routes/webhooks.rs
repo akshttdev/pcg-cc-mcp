@@ -1,13 +1,13 @@
 use axum::{
-    Router,
     body::Bytes,
     extract::{Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Json},
     routing::{get, post},
+    Router,
 };
 use chrono::Utc;
-use db::models::dropbox_source::{DropboxSource, render_reference_name};
+use db::models::dropbox_source::{render_reference_name, DropboxSource};
 use deployment::Deployment;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};

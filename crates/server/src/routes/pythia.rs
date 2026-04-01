@@ -10,15 +10,15 @@
 //! When Pythia is not available, endpoints return graceful fallback responses.
 
 use axum::{
-    Router,
     extract::{Path, Query, State},
     response::Json,
     routing::{get, post},
+    Router,
 };
 use serde::Deserialize;
 use utils::response::ApiResponse;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 fn pythia_client() -> pythia_client::PythiaClient {
     let url = std::env::var("PYTHIA_URL").unwrap_or_else(|_| "http://localhost:8100".to_string());

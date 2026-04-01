@@ -1,8 +1,8 @@
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
+    Json, Router,
 };
 use db::models::artifact_review::{
     ArtifactReview, CreateArtifactReview, ResolveReview, ReviewStatus, ReviewType,
@@ -12,7 +12,7 @@ use serde::Deserialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 #[derive(Debug, Deserialize)]
 pub struct CreateReviewPayload {

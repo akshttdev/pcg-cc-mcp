@@ -9,7 +9,7 @@ use db::models::oss_library::OssLibrary;
 use nora::agent::{NoraRequest, NoraRequestType, RequestPriority};
 use serde::Deserialize;
 use sqlx::SqlitePool;
-use tokio::time::{Duration, interval};
+use tokio::time::{interval, Duration};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 

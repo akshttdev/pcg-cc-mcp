@@ -1,13 +1,13 @@
 //! Wallet import endpoint for linking Aptos wallet addresses to users
 
-use axum::{Router, extract::State, response::Json as ResponseJson, routing::post};
+use axum::{extract::State, response::Json as ResponseJson, routing::post, Router};
 use db::models::user::User;
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use utils::response::ApiResponse;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]

@@ -4,10 +4,10 @@
 //! Each organization connects its own QBO account.
 
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     response::Redirect,
     routing::{delete, get, patch, post},
+    Json, Router,
 };
 use chrono::{Duration, Utc};
 use db::{
@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 

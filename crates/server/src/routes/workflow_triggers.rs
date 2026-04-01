@@ -1,9 +1,9 @@
 use axum::{
-    Extension, Json, Router,
     body::Bytes,
     extract::{Path, Query, State},
     http::HeaderMap,
     routing::{get, post},
+    Extension, Json, Router,
 };
 use db::models::{
     data_source::DataSource,
@@ -18,7 +18,7 @@ use tracing::{error, info, warn};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 #[derive(Debug, Deserialize)]
 struct ListTriggersQuery {

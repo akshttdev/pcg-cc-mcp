@@ -3,8 +3,8 @@
 use axum::{
     extract::WebSocketUpgrade,
     response::{
-        Response,
         sse::{Event, KeepAlive, Sse},
+        Response,
     },
 };
 use futures::stream::Stream;

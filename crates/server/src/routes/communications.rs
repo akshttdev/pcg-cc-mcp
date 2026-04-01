@@ -3,9 +3,9 @@
 //! API endpoints for phone calls and SMS messages (Twilio integration).
 
 use axum::{
-    Extension, Json, Router,
     extract::{Path, Query, State},
     routing::{get, patch, post},
+    Extension, Json, Router,
 };
 use db::models::{
     call_log::{CallLog, CallStats, UpdateCallLog},
@@ -16,7 +16,7 @@ use serde::Deserialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 // ============================================================================
 // Call Logs

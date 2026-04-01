@@ -38,11 +38,11 @@ use std::{
 };
 
 use axum::{
-    Form, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
+    Form, Router,
 };
 use chrono::Utc;
 use db::{
@@ -58,8 +58,8 @@ use deployment::Deployment;
 use nora::{
     agent::{NoraRequest, NoraRequestType, RequestPriority},
     twilio::{
-        TwilioCallHandler, TwilioCallRequest, TwilioConfig, TwilioSpeechResult,
-        TwilioStatusCallback, TwimlBuilder, get_audio_cache,
+        get_audio_cache, TwilioCallHandler, TwilioCallRequest, TwilioConfig, TwilioSpeechResult,
+        TwilioStatusCallback, TwimlBuilder,
     },
 };
 use once_cell::sync::Lazy;
@@ -70,7 +70,7 @@ use tokio::{sync::Mutex, time::timeout};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, routes::nora::get_nora_instance};
+use crate::{routes::nora::get_nora_instance, DeploymentImpl};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared statics

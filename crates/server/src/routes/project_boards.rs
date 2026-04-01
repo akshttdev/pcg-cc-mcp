@@ -1,8 +1,8 @@
 use axum::{
-    Extension, Json, Router,
     extract::{Path, State},
     http::StatusCode,
     routing::{get, patch},
+    Extension, Json, Router,
 };
 use db::models::{
     project::Project,
@@ -12,7 +12,7 @@ use deployment::Deployment;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 #[derive(Debug, serde::Deserialize)]
 pub struct CreateBoardPayload {

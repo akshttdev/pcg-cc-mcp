@@ -3,9 +3,9 @@
 //! Handles Gmail and Zoho Mail connections, OAuth flows, and email account operations.
 
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     routing::{delete, get, patch, post},
+    Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 #[derive(Debug, Deserialize)]
 pub struct ListAccountsQuery {

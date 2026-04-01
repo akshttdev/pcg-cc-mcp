@@ -1,7 +1,7 @@
 use axum::{
-    Extension, Json, Router,
     extract::{Path, State},
     routing::get,
+    Extension, Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -15,7 +15,7 @@ use deployment::Deployment;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 /// Check if user has access to an org (is member or admin)
 async fn require_org_access(
