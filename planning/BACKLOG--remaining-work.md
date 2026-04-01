@@ -1537,6 +1537,12 @@ Dealflow pipeline v2, company profiles, brand guides, Dockerfile fixes, VIBE tok
 **Recommendation:** Move to a configurable mapping (org_settings table or env var).
 **Status:** DEFERRED — working as designed for current orgs
 
+### Intake Pipeline — Silent DB Failures (10 `let _ =` locations)
+**Source:** PR #63 regression audit (2026-04-01)
+**What:** 10 `let _ =` assignments in `crates/server/src/routes/intake/pipeline.rs` silently drop database errors: company description updates, contact_organization_links inserts, assigned_agent_id updates, company_id links, intelligence_status updates, knowledge_source inserts, deal-to-intake links. Pre-existing on main; not introduced by this branch.
+**Recommendation:** Replace each `let _ =` with `if let Err(e) = ... { tracing::warn!(...) }` to surface pipeline failures for debugging.
+**Status:** DEFERRED — pre-existing, not blocking
+
 ### BLOB Column uuid::Uuid Usage in Pre-existing Code
 **Source:** PR #50 QA regression review (2026-03-18)
 **What:** 5 pre-existing functions still use `uuid::Uuid::parse_str()` for BLOB column binding: `trigger_who_is_research`, `trigger_company_research_if_idle`, `generate_phase1_business_report`. These should use `DbUuid::parse().to_uuid()` pattern.

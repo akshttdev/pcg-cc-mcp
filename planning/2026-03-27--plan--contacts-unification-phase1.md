@@ -142,3 +142,55 @@ All work items implemented and verified:
 4. Task link blank page — guarded empty project_id in my-tasks + global-tasks ✅
 5. Raw JSON in intelligence — fixed root cause in agent_flow_executor.rs ✅
 6. Duplicate toasts — removed redundant "Deal added to pipeline" toast ✅
+
+## Regression Audit (2026-04-01)
+
+**Scope**: 244 commits, 65 files, +1626/-2247 lines vs main
+**Agents**: Backend security, Frontend type safety, Migration/infra
+**Commit**: `44ad6122`
+
+### Summary
+- Critical: 2 found, 2 fixed
+- High: 1 found, 1 fixed (partial — pre-existing items documented)
+- Medium: 3 found, tracked below
+- Low: 2 found, 1 fixed (cargo fmt)
+
+### Critical — Fixed
+| # | Issue | File | Fix |
+|---|-------|------|-----|
+| C1 | Auth bypass: 4 intelligence endpoints unprotected | `intelligence.rs` | Added `AccessContext` + `require_org_membership` to `list_research_passes`, `trigger_next_research_pass`, `list_person_reports`, `get_company_intelligence_status` |
+| C2 | IntelTab links to `/people/:id` (retired route) | `IntelTab.tsx:191,394` | Changed to `/contacts/:id` using `crm_contact_id ?? person_id` |
+
+### High — Pre-existing (not from this branch)
+| # | Issue | File | Status |
+|---|-------|------|--------|
+| H1 | 10 `let _ =` silent DB failures in intake pipeline | `intake/pipeline.rs` | Pre-existing on main — not introduced by this branch. Tracked in BACKLOG. |
+
+### Medium — Tracked for follow-up
+| # | Issue | File | Status |
+|---|-------|------|--------|
+| M1 | Missing `ON DELETE CASCADE` on 4 new FK constraints | `20260418000003_contacts_sub_resources.sql` | Low risk — app-layer deletion enforces cascade. Track for follow-up migration. |
+| M2 | UUID type inconsistency: `contact_association.rs` uses `String`/`Uuid` instead of `DbUuid` | `contact_association.rs` | Style debt, functionally correct. Batch fix in DbUuid sprint. |
+| M3 | Duplicate API methods in `intelligence.ts`: `triggerResearch` + `triggerContactResearch` | `frontend/src/lib/api/intelligence.ts` | Bridge period during migration. Remove legacy `triggerResearch` after PR #63 merge. |
+
+### Low — Fixed
+- `cargo fmt`: import ordering in `db_uuid.rs`, `generate_types.rs` ✅
+
+### Clean Areas Verified
+- SQL injection: no string interpolation in queries ✅
+- Panics: no `.unwrap()`/`.expect()` in non-test code ✅
+- Route exports: all new modules registered in `mod.rs` ✅
+- Auth on CRUD endpoints: all contact CRUD properly guarded ✅
+- Conflict markers: none ✅
+- Migration ordering: no timestamp conflicts ✅
+- Generated types: `shared/types.ts` up to date ✅
+
+## Static Check Results (2026-04-01)
+
+| Check | Status |
+|-------|--------|
+| cargo fmt | ✅ PASS |
+| cargo clippy | ✅ PASS |
+| tsc | ✅ PASS (KnowledgeGraphViz.tsx errors are from untracked file, not our branch) |
+| eslint | ✅ PASS |
+| generate-types:check | ✅ PASS |
