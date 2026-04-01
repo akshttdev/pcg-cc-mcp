@@ -13,7 +13,7 @@ use db::{
         crm_deal::CrmDeal,
     },
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use services::services::workflow_llm::{
     LLMResponse, ToolCallRequest, ToolDefinition, WorkflowLLMService,
 };
@@ -192,8 +192,10 @@ impl AgentFlowExecutor {
             )),
         ];
 
-        // Call LLM with retry logic
-        let result = self.call_llm_with_retry(flow, messages, &tools).await;
+        // Call LLM with retry logic (pass flow.id for artifact saving in simulation)
+        let result = self
+            .call_llm_with_retry(flow, messages, &tools, &flow.id)
+            .await;
 
         match result {
             Ok(output) => {
@@ -264,9 +266,18 @@ impl AgentFlowExecutor {
         flow: &AgentFlow,
         messages: Vec<Value>,
         tools: &[ToolDefinition],
+        flow_id: &DbUuid,
     ) -> anyhow::Result<String> {
         let max_retries = 3;
-        let models = [None, None, Some("claude-sonnet-4-6-20250514")]; // last attempt uses cheaper model
+        let models = [None, None, Some("claude-sonnet-4-6")]; // last attempt uses cheaper model
+
+        // Extract deal_id from flow config for simulated mode
+        let flow_deal_id = flow
+            .flow_config
+            .as_deref()
+            .and_then(|c| serde_json::from_str::<Value>(c).ok())
+            .and_then(|v| v.get("deal_id").and_then(|d| d.as_str().map(String::from)))
+            .unwrap_or_default();
 
         for attempt in 0..max_retries {
             let model_hint = models.get(attempt).copied().flatten();
@@ -284,7 +295,7 @@ impl AgentFlowExecutor {
             }
 
             match self
-                .call_llm_once(messages.clone(), tools, model_hint)
+                .call_llm_once(messages.clone(), tools, model_hint, &flow_deal_id, flow_id)
                 .await
             {
                 Ok(output) => return Ok(output),
@@ -330,10 +341,14 @@ impl AgentFlowExecutor {
         mut messages: Vec<Value>,
         tools: &[ToolDefinition],
         model_hint: Option<&str>,
+        deal_id: &str,
+        flow_id: &DbUuid,
     ) -> anyhow::Result<String> {
         // Simulation mode: return realistic agent responses without calling LLM
         if std::env::var("SIMULATE_LLM").unwrap_or_default() == "1" {
-            return self.simulate_llm_response(&messages).await;
+            return self
+                .simulate_llm_response(&messages, deal_id, flow_id)
+                .await;
         }
 
         let max_turns = 5;
@@ -578,48 +593,36 @@ impl AgentFlowExecutor {
         }
     }
 
-    /// Update person intelligence fields via the deal's linked contact.
-    /// The Intel tab reads from `persons.intelligence_summary` and `persons.intelligence_status`,
-    /// so Scout must write there for results to be visible.
-    async fn update_deal_person_intelligence(
+    /// Update contact intelligence fields directly via the deal's linked contact.
+    /// The Intel tab reads from `crm_contacts.intelligence_summary`, so Scout
+    /// writes there — no person lookup needed.
+    async fn update_deal_contact_intelligence(
         &self,
         deal_id: &str,
         summary: &str,
     ) -> Result<(), anyhow::Error> {
-        // Look up person_id via deal → contact → person
-        let person_id: Option<String> = sqlx::query_scalar(
-            r#"SELECT p.id FROM persons p
-               JOIN crm_contacts c ON c.person_id = p.id
-               JOIN crm_deals d ON d.crm_contact_id = c.id
-               WHERE d.id = ?1"#,
+        let rows = sqlx::query(
+            r#"UPDATE crm_contacts
+               SET intelligence_summary = ?1,
+                   intelligence_status = 'done',
+                   intelligence_confidence = 0.75,
+                   research_pass_count = COALESCE(research_pass_count, 0) + 1,
+                   updated_at = datetime('now', 'subsec')
+               WHERE id = (SELECT crm_contact_id FROM crm_deals WHERE id = ?2)"#,
         )
+        .bind(summary)
         .bind(deal_id)
-        .fetch_optional(&self.pool)
+        .execute(&self.pool)
         .await?;
 
-        if let Some(pid) = person_id {
-            sqlx::query(
-                r#"UPDATE persons
-                   SET intelligence_summary = ?1,
-                       intelligence_status = 'done',
-                       intelligence_confidence = 0.75, -- simulated confidence; replace with real scoring when LLM evaluation is wired
-                       research_pass_count = COALESCE(research_pass_count, 0) + 1,
-                       updated_at = datetime('now', 'subsec')
-                   WHERE id = ?2"#,
-            )
-            .bind(summary)
-            .bind(&pid)
-            .execute(&self.pool)
-            .await?;
-
+        if rows.rows_affected() > 0 {
             tracing::info!(
-                "[AgentFlowEngine] Updated person intelligence for deal={} person={}",
-                deal_id,
-                pid
+                "[AgentFlowEngine] Updated contact intelligence for deal={}",
+                deal_id
             );
         } else {
             tracing::warn!(
-                "[AgentFlowEngine] No person linked to deal {} — cannot update intelligence",
+                "[AgentFlowEngine] No contact linked to deal {} — cannot update intelligence",
                 deal_id
             );
         }
@@ -716,15 +719,53 @@ impl AgentFlowExecutor {
             );
         }
 
-        // Mark as completed
-        if let Err(e) = sqlx::query(
-            "UPDATE agent_flows SET status = 'completed', execution_completed_at = datetime('now', 'subsec'), updated_at = datetime('now', 'subsec') WHERE id = ?1",
+        // Mark as completed — guard on status to prevent double-completion races
+        match sqlx::query(
+            "UPDATE agent_flows SET status = 'completed', execution_completed_at = datetime('now', 'subsec'), updated_at = datetime('now', 'subsec') WHERE id = ?1 AND status IN ('planning', 'executing')",
         )
         .bind(&flow.id)
         .execute(&self.pool)
         .await
         {
-            tracing::error!("[AgentFlowEngine] Failed to mark flow {} as completed: {}", flow.id, e);
+            Ok(r) if r.rows_affected() == 0 => {
+                tracing::warn!(
+                    "[AgentFlowEngine] Flow {} already completed or not in a completable state — skipping",
+                    flow.id
+                );
+            }
+            Err(e) => {
+                tracing::error!("[AgentFlowEngine] Failed to mark flow {} as completed: {}", flow.id, e);
+            }
+            _ => {}
+        }
+
+        // Promote "waiting" review tasks to "todo" now that the agent is done
+        let deal_id = flow.crm_deal_id.as_deref().unwrap_or("");
+        if !deal_id.is_empty() {
+            let promoted = sqlx::query(
+                "UPDATE tasks SET status = 'todo', updated_at = datetime('now','subsec') WHERE crm_deal_id = ?1 AND status = 'waiting' AND deleted_at IS NULL",
+            )
+            .bind(deal_id)
+            .execute(&self.pool)
+            .await;
+
+            match promoted {
+                Ok(r) if r.rows_affected() > 0 => {
+                    tracing::info!(
+                        "[AgentFlowEngine] Promoted {} waiting review task(s) to todo for deal {}",
+                        r.rows_affected(),
+                        deal_id
+                    );
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "[AgentFlowEngine] Failed to promote waiting tasks for deal {}: {}",
+                        deal_id,
+                        e
+                    );
+                }
+                _ => {}
+            }
         }
     }
 
@@ -750,9 +791,9 @@ impl AgentFlowExecutor {
             );
         }
 
-        // Mark as failed
+        // Mark as failed — guard on status to avoid overwriting a completed flow
         if let Err(e) = sqlx::query(
-            "UPDATE agent_flows SET status = 'failed', last_error = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2",
+            "UPDATE agent_flows SET status = 'failed', last_error = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2 AND status IN ('planning', 'executing')",
         )
         .bind(error)
         .bind(&flow.id)
@@ -1067,7 +1108,12 @@ impl AgentFlowExecutor {
     /// Simulate a realistic LLM response based on the agent name extracted from messages.
     /// Executes real tool calls (get_deal_context, update_deal_field, save_artifact)
     /// so the pipeline state actually advances — just skips the LLM API call.
-    async fn simulate_llm_response(&self, messages: &[Value]) -> anyhow::Result<String> {
+    async fn simulate_llm_response(
+        &self,
+        messages: &[Value],
+        deal_id_override: &str,
+        flow_id: &DbUuid,
+    ) -> anyhow::Result<String> {
         // Extract agent name from system prompt
         let system_text = messages
             .first()
@@ -1094,19 +1140,22 @@ impl AgentFlowExecutor {
             .and_then(|c| c.as_str())
             .unwrap_or("");
 
-        // Try to extract deal_id from context (look for UUID pattern)
-        let deal_id = user_text
-            .split_whitespace()
-            .find(|w| w.len() == 36 && w.contains('-'))
-            .or_else(|| {
-                // Fallback: look for deal_id in the message content
-                user_text.split("deal_id").nth(1).and_then(|s| {
-                    s.split_whitespace()
-                        .next()
-                        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric() && c != '-'))
+        // Use deal_id from flow_config (passed via call chain), fallback to text extraction
+        let deal_id = if !deal_id_override.is_empty() {
+            deal_id_override
+        } else {
+            user_text
+                .split_whitespace()
+                .find(|w| w.len() == 36 && w.contains('-'))
+                .or_else(|| {
+                    user_text.split("deal_id").nth(1).and_then(|s| {
+                        s.split_whitespace()
+                            .next()
+                            .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric() && c != '-'))
+                    })
                 })
-            })
-            .unwrap_or("");
+                .unwrap_or("")
+        };
 
         tracing::info!(
             "[AgentFlowEngine] SIMULATE_LLM: agent={}, deal_id={}",
@@ -1124,119 +1173,121 @@ impl AgentFlowExecutor {
         // Simulate a brief processing delay
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
+        let flow_id_str = flow_id.to_string();
+
         // Execute real tool calls based on agent role + return summary
         match agent_name {
             "scout" => {
-                // Scout: save research to deal description + person intelligence fields
+                let report = "[Simulated Scout Output]\n\n\
+                    ## Contact Intelligence Report\n\n\
+                    Contact appears to be a decision-maker at a mid-size company.\n\
+                    Key talking points: digital transformation, operational efficiency, \
+                    and competitive positioning. Company is in a growth phase with \
+                    potential for strategic partnerships.\n\n\
+                    ### Key Findings\n\
+                    - Contact profile analyzed\n\
+                    - Company overview compiled\n\
+                    - 4 key talking points identified\n\
+                    - 3 potential pain points flagged"
+                    .to_string();
+
                 if !deal_id.is_empty() {
-                    let summary = format!(
-                        "Contact appears to be a decision-maker at a mid-size company. \
-                         Key talking points: digital transformation, operational efficiency, \
-                         and competitive positioning. Company is in a growth phase with \
-                         potential for strategic partnerships.\n\n\
-                         Original context: {}",
-                        context.chars().take(200).collect::<String>()
-                    );
+                    self.update_deal_field(
+                        deal_id,
+                        "description",
+                        &format!("[Scout Research — Simulated]\n\n{}", report),
+                    )
+                    .await;
 
-                    // Update deal description
-                    let result = self
-                        .update_deal_field(
-                            deal_id,
-                            "description",
-                            &format!("[Scout Research — Simulated]\n\n{}", summary),
-                        )
-                        .await;
-                    if result.contains("error") {
+                    if let Err(e) = self
+                        .update_deal_contact_intelligence(deal_id, &report)
+                        .await
+                    {
                         tracing::error!(
-                            "[AgentFlowEngine] Simulated scout: update_deal_field returned error: {}",
-                            result
-                        );
-                    }
-
-                    // Update person intelligence so Intel tab shows results
-                    if let Err(e) = self.update_deal_person_intelligence(deal_id, &summary).await {
-                        tracing::error!(
-                            "[AgentFlowEngine] Simulated scout: update_deal_person_intelligence error: {}",
+                            "[AgentFlowEngine] Simulated scout: contact intel error: {}",
                             e
                         );
                     }
                 }
-                Ok(format!(
-                    "[Simulated Scout Output]\n\n\
-                     ## Research Summary\n\
-                     - Contact profile analyzed\n\
-                     - Company overview compiled\n\
-                     - 4 key talking points identified\n\
-                     - 3 potential pain points flagged\n\n\
-                     Deal context updated with research findings."
-                ))
+
+                self.save_artifact(&flow_id_str, "Contact Intelligence Report", &report)
+                    .await;
+
+                Ok(report)
             }
-            "astra" => Ok(format!(
-                "[Simulated Astra Output]\n\n\
-                     ## Business Analysis\n\
-                     - Pain point: manual processes causing bottlenecks\n\
-                     - Recommended: workflow automation + AI integration\n\
-                     - Scope: 3-6 month engagement\n\
-                     - Risk: low (proven approach, clear ROI)\n\n\
-                     Ready for proposal generation."
-            )),
-            "cash" => {
+            "astra" => {
+                let report = "[Simulated Astra Output]\n\n\
+                    ## Business Analysis Report\n\n\
+                    ### Pain Points\n\
+                    - Manual processes causing operational bottlenecks\n\
+                    - Lack of integrated data across departments\n\n\
+                    ### Recommended Services\n\
+                    - Workflow automation + AI integration\n\
+                    - Data pipeline consolidation\n\n\
+                    ### Scope & Timeline\n\
+                    - Engagement: 3-6 months\n\
+                    - Risk: low (proven approach, clear ROI)\n\n\
+                    Ready for proposal generation."
+                    .to_string();
+
                 if !deal_id.is_empty() {
-                    let result = self
-                        .update_deal_field(
-                            deal_id,
-                            "proposal_text",
-                            "[Simulated Proposal — Cash]\n\n\
-                         ## Executive Summary\n\
-                         We propose a comprehensive digital transformation engagement.\n\n\
-                         ## Scope of Work\n\
-                         1. Process audit and optimization (Month 1)\n\
-                         2. Workflow automation implementation (Month 2-3)\n\
-                         3. AI agent integration (Month 3-4)\n\
-                         4. Training and handoff (Month 5)\n\n\
-                         ## Investment\n\
-                         Total: $45,000 over 5 months\n\n\
-                         ## Timeline\n\
-                         Start: 2 weeks from approval",
-                        )
-                        .await;
-                    if result.contains("error") {
-                        tracing::error!(
-                            "[AgentFlowEngine] Simulated cash: update_deal_field returned error: {}",
-                            result
-                        );
-                    }
+                    self.update_deal_field(
+                        deal_id,
+                        "description",
+                        &format!("[Astra Analysis — Simulated]\n\n{}", report),
+                    )
+                    .await;
                 }
-                Ok(format!(
-                    "[Simulated Cash Output]\n\n\
-                     Proposal generated and saved to deal.\n\
-                     - 4 work phases defined\n\
-                     - Pricing: $45,000\n\
-                     - Timeline: 5 months"
-                ))
+
+                self.save_artifact(&flow_id_str, "Business Analysis Report", &report)
+                    .await;
+
+                Ok(report)
+            }
+            "cash" => {
+                let proposal = "[Simulated Proposal — Cash]\n\n\
+                    ## Executive Summary\n\
+                    We propose a comprehensive digital transformation engagement.\n\n\
+                    ## Scope of Work\n\
+                    1. Process audit and optimization (Month 1)\n\
+                    2. Workflow automation implementation (Month 2-3)\n\
+                    3. AI agent integration (Month 3-4)\n\
+                    4. Training and handoff (Month 5)\n\n\
+                    ## Investment\n\
+                    Total: $45,000 over 5 months\n\n\
+                    ## Timeline\n\
+                    Start: 2 weeks from approval"
+                    .to_string();
+
+                if !deal_id.is_empty() {
+                    self.update_deal_field(deal_id, "proposal_text", &proposal)
+                        .await;
+                }
+
+                self.save_artifact(&flow_id_str, "Proposal Document", &proposal)
+                    .await;
+
+                Ok(proposal)
             }
             "lux" => {
+                let deck = "[Simulated Lux Output]\n\n\
+                    ## Pitch Deck Outline\n\n\
+                    1. **Title**: Value proposition — transforming operations through AI\n\
+                    2. **Problem/Opportunity**: Manual processes, data silos, competitive pressure\n\
+                    3. **Solution approach**: Phased automation + AI agent integration\n\
+                    4. **Deliverables & timeline**: 5 months, 4 work phases\n\
+                    5. **Investment & ROI**: $45,000 — projected 3x return in Year 1"
+                    .to_string();
+
                 if !deal_id.is_empty() {
-                    let result = self
-                        .update_deal_field(deal_id, "deck_url", "/api/decks/simulated-deck.pdf")
+                    self.update_deal_field(deal_id, "deck_url", "/api/decks/simulated-deck.pdf")
                         .await;
-                    if result.contains("error") {
-                        tracing::error!(
-                            "[AgentFlowEngine] Simulated lux: update_deal_field returned error: {}",
-                            result
-                        );
-                    }
                 }
-                Ok(format!(
-                    "[Simulated Lux Output]\n\n\
-                     Presentation deck outline created:\n\
-                     1. Title: Value proposition\n\
-                     2. Problem/Opportunity\n\
-                     3. Solution approach\n\
-                     4. Deliverables & timeline\n\
-                     5. Investment & ROI\n\n\
-                     Deck URL saved to deal."
-                ))
+
+                self.save_artifact(&flow_id_str, "Pitch Deck Outline", &deck)
+                    .await;
+
+                Ok(deck)
             }
             _ => Ok(format!(
                 "[Simulated Agent Output]\n\nAnalysis complete for deal. Context: {}",
@@ -1249,47 +1300,75 @@ impl AgentFlowExecutor {
 // ── Agent Prompts (hardcoded for v1) ─────────────────────────────────────────
 
 fn build_agent_prompt(agent_name: &str, deal_context: &str) -> String {
+    let tool_instructions = "\n\n## Available Tools\n\
+        You have the following tools — use them to complete your task:\n\n\
+        1. **get_deal_context**: Retrieve full deal details (contact info, company, stage, prior research).\n\
+           Always call this first to get up-to-date context before generating output.\n\
+        2. **update_deal_field**: Write results to the deal. Fields: description, proposal_text, deck_url, custom_fields.\n\
+           Use this to persist your analysis — don't just return text.\n\
+        3. **save_artifact**: Save a detailed document (research report, proposal, deck outline) as a named artifact.\n\
+           Use this for longer outputs that should be reviewable.\n\n\
+        ## Workflow\n\
+        1. Call `get_deal_context` to load the deal\n\
+        2. Do your analysis\n\
+        3. Call `update_deal_field` to persist key results on the deal\n\
+        4. Call `save_artifact` to save the full report/document\n\
+        5. Return a brief summary of what you did\n";
+
     match agent_name {
         "scout" => format!(
-            "You are Scout, a research agent. Your job is to gather intelligence about a person and their company.\n\
-             Research the contact associated with this deal and provide:\n\
-             1. A professional profile summary\n\
+            "You are Scout, Social Intelligence Analyst for Power Club Global.\n\
+             Your job is to gather intelligence about a deal's contact and their company.\n\n\
+             Research the contact and provide:\n\
+             1. Professional profile summary (background, role, achievements)\n\
              2. Company overview and market position\n\
              3. Key talking points for a business meeting\n\
-             4. Potential pain points and opportunities\n\n\
+             4. Potential pain points and opportunities for PCG\n\n\
+             Save your research via `update_deal_field` (field: description) and `save_artifact`.\n\
+             {tool_instructions}\n\
              Deal context: {deal_context}"
         ),
         "astra" => format!(
-            "You are Astra, a business analysis agent. Your job is to analyze business opportunities.\n\
-             Based on the deal and research data, provide:\n\
-             1. Business pain point analysis\n\
-             2. Recommended services and solutions\n\
-             3. Estimated project scope and timeline\n\
-             4. Risk assessment\n\n\
+            "You are Astra, Business Intelligence Analyst for Power Club Global.\n\
+             Your job is to analyze business opportunities and produce structured reports.\n\n\
+             Based on prior research (call `get_deal_context` first), provide:\n\
+             1. Business pain point analysis — what problems does the prospect face?\n\
+             2. Recommended services and solutions PCG can offer\n\
+             3. Estimated project scope, timeline, and budget range\n\
+             4. Risk assessment and competitive considerations\n\n\
+             Save your analysis via `save_artifact` with title 'Business Analysis Report'.\n\
+             {tool_instructions}\n\
              Deal context: {deal_context}"
         ),
         "cash" => format!(
-            "You are Cash, a proposal generation agent. Your job is to create compelling proposals.\n\
-             Based on the business analysis, generate a professional proposal including:\n\
-             1. Executive summary\n\
-             2. Scope of work with deliverables\n\
-             3. Pricing breakdown with estimated value\n\
-             4. Timeline and milestones\n\n\
+            "You are Cash, Proposal Strategist for Power Club Global.\n\
+             Your job is to create compelling, professional proposals.\n\n\
+             Based on the business analysis (call `get_deal_context` first), generate:\n\
+             1. Executive summary — the hook\n\
+             2. Scope of work with specific deliverables\n\
+             3. Pricing breakdown with estimated investment\n\
+             4. Timeline with milestones and checkpoints\n\n\
+             Save the proposal via `update_deal_field` (field: proposal_text) AND `save_artifact`.\n\
+             {tool_instructions}\n\
              Deal context: {deal_context}"
         ),
         "lux" => format!(
-            "You are Lux, a presentation deck generation agent. Your job is to create polished pitch decks.\n\
-             Based on the proposal, create a presentation outline with:\n\
-             1. Title slide with key value proposition\n\
-             2. Problem/opportunity slides\n\
-             3. Solution and approach\n\
-             4. Deliverables and timeline\n\
-             5. Investment and ROI\n\n\
+            "You are Lux, Creative Director for Power Club Global.\n\
+             Your job is to create polished pitch deck outlines.\n\n\
+             Based on the proposal (call `get_deal_context` first), create:\n\
+             1. Title slide — value proposition in one line\n\
+             2. Problem/opportunity — what the client faces\n\
+             3. Solution and approach — how PCG solves it\n\
+             4. Deliverables and timeline — what they get and when\n\
+             5. Investment and ROI — pricing framed as value\n\n\
+             Save the deck outline via `update_deal_field` (field: deck_url placeholder) AND `save_artifact`.\n\
+             {tool_instructions}\n\
              Deal context: {deal_context}"
         ),
         _ => format!(
-            "You are an AI assistant helping with a CRM deal.\n\
-             Analyze the deal context and provide helpful insights.\n\n\
+            "You are an AI assistant helping with a CRM deal for Power Club Global.\n\
+             Analyze the deal context and provide helpful insights.\n\
+             {tool_instructions}\n\
              Deal context: {deal_context}"
         ),
     }

@@ -1,13 +1,13 @@
 use axum::{
-    Router,
-    http::{Method, StatusCode, header},
+    http::{header, Method, StatusCode},
     middleware,
     response::IntoResponse,
-    routing::{IntoMakeService, get},
+    routing::{get, IntoMakeService},
+    Router,
 };
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
-use crate::{DeploymentImpl, middleware as app_middleware};
+use crate::{middleware as app_middleware, DeploymentImpl};
 
 pub mod activity;
 pub mod agent_flow_events;
@@ -55,7 +55,6 @@ pub mod email_accounts;
 pub mod entity_conversion;
 pub mod event_stream;
 pub mod events;
-pub mod pipeline_events;
 pub mod execution_processes;
 pub mod execution_summaries;
 pub mod feedback;
@@ -92,6 +91,8 @@ pub mod pcg_router;
 pub mod peer_rewards;
 pub mod permissions;
 pub mod persons;
+pub mod pipeline_events;
+pub mod pipeline_events;
 pub mod project_boards;
 pub mod project_controllers;
 pub mod project_folders;

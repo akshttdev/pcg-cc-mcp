@@ -121,3 +121,10 @@ Fix `uuid::Uuid` → `DbUuid` in CRM route handlers:
 4. Verify research results written to crm_contacts (not persons)
 5. Verify research_passes accessible via contact
 6. Verify business_reports have crm_contact_id populated
+
+
+---
+
+## Status: IMPLEMENTED (2026-03-27)
+
+Commits: `5a895d33f` (W1), `f5aa308f6` (W2), `1cdaff0ce` (W3). Functionality audit pending.

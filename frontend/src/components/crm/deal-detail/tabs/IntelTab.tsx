@@ -77,7 +77,12 @@ export function IntelTab({ deal }: IntelTabProps) {
   };
 
   const handleTriggerResearch = () => {
-    if (deal.person_id) triggerResearch(deal.person_id);
+    // Prefer contact-targeted API (canonical after unification)
+    if (deal.crm_contact_id) {
+      triggerResearch(deal.crm_contact_id, true);
+    } else if (deal.person_id) {
+      triggerResearch(deal.person_id);
+    }
   };
 
   // Research actively in flight with no data yet

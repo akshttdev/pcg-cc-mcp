@@ -1,6 +1,6 @@
 # Backlog — Remaining Work
 
-**Last updated:** 2026-03-27 (persons→contacts unification audit added)
+**Last updated:** 2026-03-31 (demo-sprint PR #62 regression/QA fixes applied; contacts-unification PR #63 open)
 **Context:** Consolidated from all completed planning docs + 27 research reports + 45-item research-derived backlog. **Prioritized by ROI = (revenue impact × probability) / effort**, not legacy ordering.
 **Phase 0 Sprint Plan:** See [`2026-03-19--analysis--phase0-sprint-candidates.md`](2026-03-19--analysis--phase0-sprint-candidates.md) for full scoring and sprint schedule.
 
@@ -12,41 +12,45 @@
 **Decision**: Keep `crm_contacts` as canonical. Merge `persons` intelligence fields into contacts. Retire `persons` table.
 **Why high priority**: Scout agent research is invisible in the Intel tab because intelligence lives on `persons` but the CRM pipeline operates through `crm_contacts`. Every new deal created via the CRM UI has no person record, so agent research has nowhere to land.
 
-### PC-1: Add intelligence fields to crm_contacts — BLOCKING
-- **Effort**: 0.5 day | **Impact**: Unblocks Scout → Intel tab visibility
-- Migration: add `intelligence_summary`, `intelligence_status`, `intelligence_raw`, `intelligence_confidence`, `intelligence_last_run_at`, `research_pass_count`, `research_depth`, `company_id`, `person_id` to `crm_contacts`
-- Backfill from linked persons
-- Update `CrmDealWithContact` query to read intel from contacts instead of persons JOIN
-- Scout executor writes directly to `crm_contacts` (no person lookup)
+### PC-1: Add intelligence fields to crm_contacts — ✅ DONE (Phase 4, commit 46c958a13)
+- Migration `20260418000000_contacts_intelligence.sql` adds all fields + backfill
+- Experience audit: 1 BLOCKER (review task links), 2 pain points, 4 friction items
 
-### PC-2: Add research endpoint for contacts
-- **Effort**: 0.5 day | **Impact**: Enables "Trigger Research" from Intel tab
-- New endpoint: `POST /api/crm/contacts/:id/research` (delegates to intelligence service)
-- Intel tab's "Trigger Research" button targets contact ID instead of person ID
+### PC-1a: Review task links — BLOCKER (from experience audit)
+- **Effort**: 2 hours | **Impact**: Unblocks review task workflow from My Tasks
+- CRM review tasks have `project_id=""`, link goes to `/projects/tasks/:id` which matches no route → blank page
+- Fix: add `/my-tasks/:taskId` route OR give review tasks a valid `project_id`
 
-### PC-3: Move research passes to contacts
-- **Effort**: 0.5 day | **Impact**: Full research history on contacts
-- Re-FK `person_research_passes` → `contact_research_passes` (or add `crm_contact_id` FK)
-- Research pass detail visible from contact record
+### PC-1b: Strip raw JSON from intelligence summaries — QUICK WIN
+- **Effort**: 30 min | **Impact**: Removes raw JSON visible across 4 views (deal cards, Intel tab, Review tab, Operator Context)
+- Simulated Scout appends `Original context: {"name":"..."}` to summary
+- Fix: sanitize on write in `agent_flow_executor.rs` or strip at render time
 
-### PC-4: Move social profiles to contacts
-- **Effort**: 0.5 day | **Impact**: Social data accessible from CRM
-- Re-FK `person_social_profiles` → contacts
-- Social data visible in deal detail without person lookup
+### PC-1c: Surface intelligence on contact detail panel — INVESTMENT
+- **Effort**: 4 hours | **Impact**: Completes contacts unification UX story
+- Contact detail panel (from Contacts page) shows no intelligence data despite it being stored
+- Add intelligence status, summary, confidence to contact detail view
 
-### PC-5: Update intake pipeline to create contacts
-- **Effort**: 1 day | **Impact**: Eliminates person creation pathway
-- Intake workflow creates `crm_contacts` directly (with org_id)
-- Intelligence results written to contact record
-- Removes the need for the 20260404 auto-linking migration logic
+### PC-2: Add research endpoint for contacts — ✅ DONE (Phase 3 W2, commit 8bf10a2cb + refactor 103c250cd)
+- `POST /api/crm/contacts/:id/research` — contact-first, no person bridge
+- `run_contact_research_direct()` writes to crm_contacts directly
+- Company research auto-creates company + uses Scout agent (not Astra)
 
-### PC-6: Retire persons table
-- **Effort**: 1 day | **Impact**: Eliminates redundancy
-- Migrate remaining persons-only fields (person_type, financial_role, business_stage) to contacts
-- `/people/:id` route reads from contacts (or redirect)
-- Drop persons API routes or alias to contacts
-- Drop `persons` table
-- Clean up unused models
+### PC-3: Move research passes to contacts — ✅ DONE (contacts-unification PR #63, migration 20260418000001)
+- `contact_research_passes` table created; data migrated from `person_research_passes`; old table dropped
+
+### PC-4: Move social profiles to contacts — ✅ DONE (contacts-unification PR #63, migration 20260418000001)
+- `contact_social_profiles` table created; data migrated from `person_social_profiles`; old table dropped
+
+### PC-5: Update intake pipeline to create contacts — ✅ DONE (Phase 3 W1, commit 800de2fe0)
+- Intake pipeline creates `crm_contacts` directly
+- Intelligence written to contact record
+
+### PC-6: Retire persons table — ✅ DONE (contacts-unification PR #63)
+- `/api/persons` endpoints removed; intelligence routes target contacts
+- `persons` table retired; person models replaced with contact equivalents
+- user_profiles table created; person_type/financial_role migrated to custom_fields
+- **Pre-merge checklist**: backup DB before 20260416000000 (irreversible BLOB→TEXT); audit `persons.crm_contact_id IS NULL` rows before 20260418000001 drops tables
 
 ---
 
@@ -819,6 +823,38 @@ See Phase 0 sprint backlog above.
 
 ---
 
+## P1 — Demo Sprint Follow-up (from PR #62 regression audit, 2026-03-31)
+
+### DS-1. Silent error drops in pipeline backend [MEDIUM]
+**What:** `let _ =` ignores failures on task/review-task creation in `stage_transition.rs` and `crm_deal_automations.rs`. Failed creates are invisible in logs.
+**Fix:** Replace `let _ =` with `if let Err(e) = ... { tracing::error!(...) }` pattern.
+**Effort:** 1h | **Status:** NOT STARTED
+
+### DS-2. Empty-string defaults masking missing flow config [MEDIUM]
+**What:** `flow_config.get("deal_id").and_then(...).unwrap_or("")` in `agent_flow_executor.rs` silently continues with an empty deal_id when config is malformed.
+**Fix:** Return an error for missing required config fields; reserve `unwrap_or("")` for optional strings.
+**Effort:** 1h | **Status:** NOT STARTED
+
+### DS-3. stage_config JSON has no schema validation [MEDIUM]
+**What:** `stage_config` column is a freeform JSON string. If a migration seeds invalid JSON or an agent writes unexpected keys, stage automation breaks silently at runtime.
+**Fix:** Define a `StageConfig` Rust struct with `#[derive(Deserialize)]`, validate on read, log parse errors with the raw value.
+**Effort:** 2h | **Status:** NOT STARTED
+
+### DS-4. Stage-tab visibility falls back to ALL_TABS for unknown stages [MEDIUM]
+**What:** `getVisibleTabs()` in `stage-tab-config.ts` shows all tabs for any stage name not in `STAGE_TAB_MAP`. Unknown stages (e.g., custom pipelines) show every tab regardless of relevance.
+**Fix:** Read `stage_config.visible_tabs` from the backend and use that as the source of truth; `STAGE_TAB_MAP` becomes a fallback for stages without explicit config.
+**Effort:** 3h | **Status:** NOT STARTED (noted as Backlog in the file already)
+
+### DS-5. Migration pre-deployment checklist (before merging PR #62→main) [HIGH]
+**What:** Several migrations in demo-sprint are irreversible or destructive:
+- `20260416000000_normalize_blob_uuids_to_text`: converts 13 tables' BLOB IDs to TEXT — **take full DB backup first**
+- `20260418000001_child_tables_to_contacts`: drops `person_research_passes` and `person_social_profiles` — **audit `persons.crm_contact_id IS NULL` rows first**
+- `20260417000000_discovery_stage`: position reshift assumes `max(position) < 100` — **verify in prod data**
+- Five stage-config UPDATE migrations overwrite JSON without backup — **verify stage automation still parses correctly after deploy**
+**Status:** NOT STARTED — block merge until completed
+
+---
+
 ## P0.5 — CI Quality (do on main, feature branches pick up on merge)
 
 ### CI-1. Add E2E Tests to CI
@@ -1447,6 +1483,13 @@ Dealflow pipeline v2, company profiles, brand guides, Dockerfile fixes, VIBE tok
 | Query key mismatches (brandProfile, workflowTemplates) | Fixed cache invalidation bugs (PR #48) |
 | Orphaned project-level CRM routes (7) | Commented out in App.tsx (PR #48) |
 | Rust warnings (9 unused imports/vars in server+db) | Cleaned up (PR #48) |
+| SSE pipeline events auth bypass (PR #62 C1) | `require_org_membership` + `AccessContext` added to `stream_pipeline_events` (2026-03-31) |
+| Status typo "complete" vs "completed" (PR #62 C2) | Fixed both occurrences in `stage_transition.rs` intel checks (2026-03-31) |
+| Agent flow double-completion race (PR #62 H1) | `complete_flow` UPDATE guards on `AND status IN ('planning','executing')` (2026-03-31) |
+| Agent flow fail-overwrite race (PR #62 H2) | `fail_flow` UPDATE guards on same statuses (2026-03-31) |
+| Data source routes missing org auth (PR #62 H3) | `run_workflow` + `list_recent_artifacts` verify org membership (2026-03-31) |
+| `AgentFlowSummary.current_phase` non-nullable (PR #62 H4) | Made optional (`current_phase?: string`) (2026-03-31) |
+| Unsafe `as string` cast on `discovery_call_status` (PR #62 H5) | Replaced with `typeof === 'string'` guard (2026-03-31) |
 
 ---
 
@@ -1528,6 +1571,12 @@ Dealflow pipeline v2, company profiles, brand guides, Dockerfile fixes, VIBE tok
 ### DB Error Wrapping Trait
 **What:** 1,060+ `ApiError::InternalError(format!("..."))` conversions → `DbErrorExt` trait with consistent logging.
 **Effort:** 50 min + migration
+**Status:** NOT STARTED
+
+### Kanban Deal Enrichment Dedup
+**Source:** Contacts unification Phase 1 (2026-03-27)
+**What:** `crm_deal.rs` has the same deal enrichment logic duplicated between `get_kanban_data()` (~line 900) and `find_by_id_with_contact()` (~line 1075). Both do: contact lookup → person_id resolution → report_id → fetch_intel_data → company intel → active agent flow. Extract to a shared `enrich_deal_with_contact(pool, deal, contact_info) → CrmDealWithContact` helper.
+**Effort:** 30 min
 **Status:** NOT STARTED
 
 ### Large Backend File Splits
@@ -1773,3 +1822,16 @@ The current pipeline uses `position` for stage ordering, and `advance_deal()` si
 
 **Dependencies:** Pipeline Stage Config Visual Builder (Option B) for the long-term visual designer.
 **Effort:** 1 day (short) + 2-4 days (medium) | **Sprint:** Phase 1 | **Status:** NOT STARTED
+
+---
+
+## E2E Pipeline Flow Timing (2026-03-27)
+
+**Bug**: `pipeline-flow.spec.ts:212` — "move deal to Proposal (setup for DD-2)" fails because the kanban board SSE update doesn't arrive within 10s after an API-driven stage transition.
+- The deal is moved via `PATCH /api/crm/deals/:id/stage`, and the API confirms the stage change
+- But `getByTestId('stage-column-proposal').getByText(dealName)` times out — the board UI doesn't reflect the move
+- Likely cause: stage transition triggers agent automations (auto-skip, BA agent) which further advance the deal before SSE fires, or the SSE event is delayed/not emitted for API-driven transitions
+- **Affects**: tests 6-9 in pipeline-flow (serial dependency cascade)
+- **Category**: E2E test timing / SSE reliability
+- **Resolution**: Either increase timeout, add page reload after API transition, or ensure SSE emits on API-driven stage changes
+- **Effort**: 0.5 day | **Status:** NOT STARTED

@@ -10,13 +10,13 @@ use axum::{
     extract::{Query, State},
     response::sse::{Event, KeepAlive, Sse},
     routing::get,
-    Router,
+    Extension, Router,
 };
 use deployment::Deployment;
 use futures::stream::{self, Stream};
 use serde::Deserialize;
 
-use crate::DeploymentImpl;
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 #[derive(Debug, Deserialize)]
 pub struct PipelineEventsQuery {
@@ -25,11 +25,18 @@ pub struct PipelineEventsQuery {
 
 /// SSE stream that emits "pipeline_changed" whenever deals in the org are modified.
 pub async fn stream_pipeline_events(
+    Extension(access_context): Extension<AccessContext>,
     Query(query): Query<PipelineEventsQuery>,
     State(deployment): State<DeploymentImpl>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, ApiError> {
     let pool = deployment.db().pool.clone();
-    let org_id = query.org_id.unwrap_or_default();
+    let org_id = match query.org_id {
+        Some(ref id) if !id.is_empty() => {
+            access_context.require_org_membership(&pool, id).await?;
+            id.clone()
+        }
+        _ => String::new(),
+    };
 
     let stream = stream::unfold(
         (pool, org_id, String::new()),
@@ -71,7 +78,7 @@ pub async fn stream_pipeline_events(
         },
     );
 
-    Sse::new(stream).keep_alive(KeepAlive::default())
+    Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
 }
 
 pub fn router() -> Router<DeploymentImpl> {

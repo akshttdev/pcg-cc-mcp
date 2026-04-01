@@ -7,7 +7,10 @@ use axum::{
     extract::{Path, Query, State},
     routing::{delete, get, post},
 };
-use db::models::crm_activity::{CreateCrmActivity, CrmActivity};
+use db::{
+    db_uuid::DbUuid,
+    models::crm_activity::{CreateCrmActivity, CrmActivity},
+};
 use deployment::Deployment;
 use serde::Deserialize;
 use utils::response::ApiResponse;
@@ -62,9 +65,8 @@ async fn delete_activity(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id =
-        Uuid::parse_str(&id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {e}")))?;
-    CrmActivity::delete(pool, id).await?;
+    let id = DbUuid::parse(&id).map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {e}")))?;
+    CrmActivity::delete(pool, id.to_uuid()).await?;
     Ok(Json(ApiResponse::success(())))
 }
 

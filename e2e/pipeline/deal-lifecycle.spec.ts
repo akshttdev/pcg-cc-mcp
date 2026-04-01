@@ -350,7 +350,7 @@ test.describe("DL-3: Won deal automation", () => {
         amount: 5000,
       },
     });
-    const deal = await dealRes.json().then((b: any) => b.data || b);
+    const deal = (await dealRes.json()).data || (await dealRes.json());
 
     // Mark as Won via API
     const wonRes = await request.post(`/api/crm/deals/${deal.id}/mark-won`, {
@@ -414,7 +414,7 @@ test.describe("DL-3: Won deal automation", () => {
         amount: 3000,
       },
     });
-    const deal = await dealRes.json().then((b: any) => b.data || b);
+    const deal = (await dealRes.json()).data || (await dealRes.json());
 
     // Move to Won via stage move API (simulates DnD)
     if (wonStage) {

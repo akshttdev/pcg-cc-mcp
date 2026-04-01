@@ -485,36 +485,43 @@ async fn create_person_from_intake(
     assigned_to: Option<Uuid>,
 ) -> Option<Uuid> {
     let id = Uuid::new_v4();
-    let channel = match item.source_type.as_str() {
-        "email" | "email_message" => "email",
-        "call_log" => "phone",
-        _ => "phone",
+
+    // Split name into first/last
+    let (first_name, last_name) = {
+        let parts: Vec<&str> = participant.name.splitn(2, ' ').collect();
+        (
+            parts.first().unwrap_or(&"").to_string(),
+            parts.get(1).map(|s| s.to_string()),
+        )
     };
 
+    // Create contact directly (not a person — contacts unification)
     let result = sqlx::query(
-        "INSERT INTO persons
-         (id, full_name, email, company_name, job_title, onboarding_channel,
-          person_type, assigned_to, intelligence_status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'lead', ?, 'idle', datetime('now','subsec'), datetime('now','subsec'))",
+        "INSERT INTO crm_contacts
+         (id, organization_id, first_name, last_name, full_name, email,
+          company_name, job_title, source, lifecycle_stage,
+          intelligence_status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'intake', 'lead',
+                 'idle', datetime('now','subsec'), datetime('now','subsec'))",
     )
     .bind(id)
+    .bind(organization_id)
+    .bind(&first_name)
+    .bind(&last_name)
     .bind(&participant.name)
     .bind(&participant.email)
     .bind(&participant.company)
     .bind(&participant.role)
-    .bind(channel)
-    .bind(assigned_to)
     .execute(pool)
     .await;
 
     match result {
         Ok(_) => {
-            info!("Created new person: {} ({})", participant.name, id);
-            // Link to organization immediately
-            if let Some(org_id) = organization_id {
-                link_person_to_org(pool, id, org_id, assigned_to).await;
-            }
-            // Link person to their company record (find or create)
+            info!(
+                "Created new contact from intake: {} ({})",
+                participant.name, id
+            );
+            // Link contact to company record (find or create)
             if let Some(company_name) = &participant.company {
                 if !company_name.trim().is_empty() {
                     if let Ok(company) = Company::find_or_create(
@@ -525,15 +532,12 @@ async fn create_person_from_intake(
                     )
                     .await
                     {
-                        let _ = sqlx::query(
-                            "INSERT OR IGNORE INTO person_company_roles \
-                             (id, person_id, company_id, role, is_primary) \
-                             VALUES (randomblob(16), ?, ?, 'contact', 1)",
-                        )
-                        .bind(id)
-                        .bind(company.id)
-                        .execute(pool)
-                        .await;
+                        // Set company_id on contact
+                        let _ = sqlx::query("UPDATE crm_contacts SET company_id = ? WHERE id = ?")
+                            .bind(company.id)
+                            .bind(id)
+                            .execute(pool)
+                            .await;
                     }
                 }
             }
@@ -542,7 +546,10 @@ async fn create_person_from_intake(
             Some(id)
         }
         Err(e) => {
-            warn!("Failed to create person {}: {}", participant.name, e);
+            warn!(
+                "Failed to create contact from intake {}: {}",
+                participant.name, e
+            );
             None
         }
     }

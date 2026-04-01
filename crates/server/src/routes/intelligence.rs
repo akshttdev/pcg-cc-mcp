@@ -14,7 +14,7 @@
 //! The frontend polls GET /api/persons/:id/intelligence-status.
 
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, State},
     routing::{get, post},
 };
@@ -31,7 +31,10 @@ use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, routes::nora::get_nora_instance};
+use crate::{
+    DeploymentImpl, error::ApiError, middleware::access_control::AccessContext,
+    routes::nora::get_nora_instance,
+};
 
 // ── Request / Response types ──────────────────────────────────────────────────
 
@@ -77,9 +80,11 @@ pub async fn trigger_research(
         .await?
         .ok_or_else(|| ApiError::NotFound("Person not found".into()))?;
 
+    // Set queued status on the linked contact (canonical)
     sqlx::query(
-        "UPDATE persons SET intelligence_status = 'queued', \
-         intelligence_agent = ?, updated_at = datetime('now','subsec') WHERE id = ?",
+        "UPDATE crm_contacts SET intelligence_status = 'queued', \
+         intelligence_agent = ?, updated_at = datetime('now','subsec') \
+         WHERE id = (SELECT crm_contact_id FROM persons WHERE id = ?)",
     )
     .bind(body.agent_preference.as_deref().unwrap_or("scout"))
     .bind(person_id)
@@ -110,16 +115,20 @@ pub async fn trigger_research(
 
         if let Err(e) = result {
             tracing::error!(
-                "Intelligence research failed for person {}: {}",
+                "[Scout] Research failed for person {} (legacy path): {}",
                 person_id,
                 e
             );
-            let _ = sqlx::query(
-                "UPDATE persons SET intelligence_status = 'failed', updated_at = datetime('now','subsec') WHERE id = ?",
+            if let Err(e2) = sqlx::query(
+                "UPDATE crm_contacts SET intelligence_status = 'failed', updated_at = datetime('now','subsec') \
+                 WHERE id = (SELECT crm_contact_id FROM persons WHERE CAST(id AS TEXT) = ?)",
             )
-            .bind(person_id)
+            .bind(person_id.to_string())
             .execute(&pool_clone)
-            .await;
+            .await
+            {
+                tracing::warn!("[Intelligence] Failed to reset status to 'failed': {}", e2);
+            }
         }
     });
 
@@ -208,7 +217,7 @@ async fn run_research_via_nora(
         };
 
         let nora_request = NoraRequest {
-            request_id: Uuid::new_v4().to_string(),
+            request_id: DbUuid::new().to_string(),
             session_id: format!("research-{}", person_id),
             request_type: NoraRequestType::TextInteraction,
             content: prompt,
@@ -273,13 +282,37 @@ async fn run_research_via_nora(
 
 /// Fallback: direct Anthropic web search when Nora is not initialized.
 /// Uses Scout's persona — social intelligence specialization.
+/// When SIMULATE_LLM=1, writes simulated data and returns immediately.
 async fn run_research_direct(
     pool: &sqlx::SqlitePool,
     person: &Person,
-
     project_id: Option<Uuid>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use serde_json::json;
+    // Simulation mode: write realistic placeholder data without calling LLM
+    if std::env::var("SIMULATE_LLM").unwrap_or_default() == "1" {
+        let summary = format!(
+            "Contact appears to be a decision-maker in their organization. \
+             Key areas: digital transformation, operational efficiency, strategic partnerships. \
+             Company is positioned for growth with opportunities in automation and AI integration."
+        );
+        tracing::info!(
+            "[Scout] Simulated research for '{}' (SIMULATE_LLM=1)",
+            person.full_name
+        );
+        write_intelligence_results(
+            pool,
+            person.id.as_ref(),
+            &summary,
+            0.75,
+            &format!("[Simulated Scout Research for {}]", person.full_name),
+            project_id,
+            &person.full_name,
+        )
+        .await?;
+        return Ok(());
+    }
+
+    use services::services::workflow_llm::{LLMResponse, WorkflowLLMService};
 
     let system = "You are Scout, Social Intelligence Analyst for Power Club Global. \
         Your specialty is finding and structuring online presence data about individuals. \
@@ -299,87 +332,37 @@ async fn run_research_direct(
         person.job_title.as_deref().unwrap_or("unknown"),
     );
 
-    let client = reqwest::Client::new();
-    let mut response_text = String::new();
+    let messages = vec![
+        serde_json::json!({"role": "system", "content": system}),
+        serde_json::json!({"role": "user", "content": prompt}),
+    ];
 
-    // Try OpenAI first
-    if let Ok(openai_key) = std::env::var("OPENAI_API_KEY") {
-        let body = json!({
-            "model": "gpt-4o",
-            "max_tokens": 2048,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": prompt}
-            ]
-        });
-        match client
-            .post("https://api.openai.com/v1/chat/completions")
-            .header("Authorization", format!("Bearer {}", openai_key))
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await
-        {
-            Ok(resp) if resp.status().is_success() => {
-                if let Ok(val) = resp.json::<serde_json::Value>().await {
-                    if let Some(text) = val["choices"][0]["message"]["content"].as_str() {
-                        response_text = text.to_string();
-                        tracing::info!(
-                            "[Scout] OpenAI response for {}: {} chars",
-                            person.full_name,
-                            response_text.len()
-                        );
-                    }
-                }
-            }
-            Ok(resp) => {
-                tracing::warn!(
-                    "[Scout] OpenAI returned {}, falling back to Anthropic",
-                    resp.status()
-                );
-            }
-            Err(e) => {
-                tracing::warn!("[Scout] OpenAI failed: {}, falling back to Anthropic", e);
-            }
+    // Use PCG Router — automatic priority-based fallback + cost tracking
+    let (response, metadata) = WorkflowLLMService::completion_with_tools(
+        pool,
+        messages,
+        &[],  // no tools needed for text research
+        None, // use default model priority
+        Some(2048),
+        None,
+    )
+    .await
+    .map_err(|e| format!("PCG Router LLM call failed: {}", e))?;
+
+    let response_text = match response {
+        LLMResponse::Text { content, .. } => content,
+        LLMResponse::ToolCalls { .. } => {
+            return Err("Unexpected tool calls in research response".into());
         }
-    }
+    };
 
-    // Fallback to Anthropic if OpenAI didn't produce a result
-    if response_text.is_empty() {
-        let api_key = std::env::var("ANTHROPIC_API_KEY")
-            .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
-            .map_err(|_| "No LLM API key configured (OPENAI_API_KEY or ANTHROPIC_API_KEY)")?;
-
-        let body = json!({
-            "model": "claude-sonnet-4-6",
-            "max_tokens": 2048,
-            "system": system,
-            "tools": [{
-                "type": "web_search_20250305",
-                "name": "web_search",
-                "max_uses": 5
-            }],
-            "messages": [{"role": "user", "content": prompt}]
-        });
-
-        let resp = client
-            .post("https://api.anthropic.com/v1/messages")
-            .header("x-api-key", &api_key)
-            .header("anthropic-version", "2023-06-01")
-            .header("anthropic-beta", "web-search-2025-03-05")
-            .header("content-type", "application/json")
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| format!("HTTP error: {}", e))?;
-
-        let response: serde_json::Value = resp
-            .json()
-            .await
-            .map_err(|e| format!("JSON parse error: {}", e))?;
-
-        response_text = extract_text_from_anthropic_response(&response);
-    }
+    tracing::info!(
+        "[Scout] PCG Router response for {} via {}/{}: {} chars",
+        person.full_name,
+        metadata.provider,
+        metadata.model_used,
+        response_text.len()
+    );
 
     // Check for error responses — reset status to idle for retry
     if response_text.contains("rate_limit_error")
@@ -387,13 +370,15 @@ async fn run_research_direct(
         || response_text.contains("credit balance")
     {
         tracing::warn!(
-            "Research hit API limit for person {}, resetting to idle for retry",
-            person.id
+            "[Scout] Research hit API limit for '{}', resetting to idle for retry",
+            person.full_name
         );
+        // Reset via person bridge (legacy path)
         let _ = sqlx::query(
-            "UPDATE persons SET intelligence_status = 'idle', updated_at = datetime('now','subsec') WHERE id = ?",
+            "UPDATE crm_contacts SET intelligence_status = 'idle', updated_at = datetime('now','subsec') \
+             WHERE id = (SELECT crm_contact_id FROM persons WHERE CAST(id AS TEXT) = ?)",
         )
-        .bind(person.id.clone())
+        .bind(person.id.as_ref())
         .execute(pool)
         .await;
         return Ok(());
@@ -415,55 +400,86 @@ async fn run_research_direct(
     Ok(())
 }
 
+/// Write intelligence results to crm_contacts.
+/// Accepts either a contact_id directly or a person_id (legacy bridge).
 pub async fn write_intelligence_results(
     pool: &sqlx::SqlitePool,
-    person_id: &str,
+    contact_or_person_id: &str,
     summary: &str,
     confidence: f64,
     raw: &str,
     project_id: Option<Uuid>,
     full_name: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // 1. Update person intelligence fields
-
-    sqlx::query(
-        "UPDATE persons SET \
+    // Try direct contact update first, fall back to person bridge
+    let rows = sqlx::query(
+        "UPDATE crm_contacts SET \
          intelligence_status = 'done', \
-         intelligence_summary = ?, \
-         intelligence_raw = ?, \
-         intelligence_confidence = ?, \
+         intelligence_summary = ?1, \
+         intelligence_raw = ?2, \
+         intelligence_confidence = ?3, \
          intelligence_last_run_at = datetime('now','subsec'), \
          intelligence_agent = 'scout', \
+         research_pass_count = COALESCE(research_pass_count, 0) + 1, \
          updated_at = datetime('now','subsec') \
-         WHERE id = ?",
+         WHERE CAST(id AS TEXT) = ?4",
     )
     .bind(summary)
     .bind(raw)
     .bind(confidence)
-    .bind(person_id)
+    .bind(contact_or_person_id)
     .execute(pool)
     .await?;
 
-    // Register in knowledge graph if project_id provided
-    if let Some(pid) = project_id {
-        let source_id = person_id.to_string();
-        let source_summary = Some(format!("Scout intelligence: {}", summary));
+    // If no direct match, try person bridge (legacy callers pass person_id)
+    let affected = if rows.rows_affected() == 0 {
+        sqlx::query(
+            "UPDATE crm_contacts SET \
+             intelligence_status = 'done', \
+             intelligence_summary = ?1, \
+             intelligence_raw = ?2, \
+             intelligence_confidence = ?3, \
+             intelligence_last_run_at = datetime('now','subsec'), \
+             intelligence_agent = 'scout', \
+             research_pass_count = COALESCE(research_pass_count, 0) + 1, \
+             updated_at = datetime('now','subsec') \
+             WHERE id = (SELECT crm_contact_id FROM persons WHERE CAST(id AS TEXT) = ?4)",
+        )
+        .bind(summary)
+        .bind(raw)
+        .bind(confidence)
+        .bind(contact_or_person_id)
+        .execute(pool)
+        .await?
+        .rows_affected()
+    } else {
+        rows.rows_affected()
+    };
 
+    if affected == 0 {
+        tracing::error!(
+            "[Scout] No crm_contacts row found for id '{}' — intelligence data lost!",
+            contact_or_person_id
+        );
+    }
+
+    // Register in knowledge graph
+    if let Some(pid) = project_id {
         let _ = ProjectKnowledgeSource::upsert_source(
             pool,
             pid,
             &KnowledgeSourceType::Entity,
-            &source_id,
-            &format!("Person: {}", full_name),
-            source_summary.as_deref(),
+            contact_or_person_id,
+            &format!("Contact: {}", full_name),
+            Some(&format!("Scout intelligence: {}", summary)),
             confidence,
         )
         .await;
     }
 
     tracing::info!(
-        "Intelligence research complete for person {} (confidence: {:.0}%)",
-        person_id,
+        "[Scout] Intelligence complete for '{}' (confidence: {:.0}%)",
+        full_name,
         confidence * 100.0
     );
     Ok(())
@@ -525,27 +541,6 @@ fn extract_summary_from_response(text: &str) -> String {
         .trim_start_matches("```")
         .trim();
     clean.chars().take(300).collect()
-}
-
-fn extract_text_from_anthropic_response(response: &serde_json::Value) -> String {
-    if let Some(content) = response.get("content").and_then(|c| c.as_array()) {
-        let mut parts = Vec::new();
-        for block in content {
-            if block.get("type").and_then(|t| t.as_str()) == Some("text") {
-                if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                    parts.push(text.to_string());
-                }
-            }
-        }
-        if !parts.is_empty() {
-            return parts.join("\n");
-        }
-    }
-    // Check for error
-    if let Some(err) = response.get("error") {
-        return format!("API error: {}", err);
-    }
-    response.to_string()
 }
 
 fn extract_confidence_from_response(text: &str) -> f64 {
@@ -750,12 +745,42 @@ pub async fn run_company_research_direct(
     company_name: &str,
     project_id: Option<Uuid>,
 ) {
+    // Simulation mode: write realistic placeholder data without calling LLM
+    if std::env::var("SIMULATE_LLM").unwrap_or_default() == "1" {
+        tracing::info!(
+            "[Scout] Simulated company research for '{}' (SIMULATE_LLM=1)",
+            company_name
+        );
+        let summary = format!(
+            "{} is a mid-size company positioned for growth in their market segment. \
+             Key opportunities: digital transformation, process automation, and strategic partnerships. \
+             Competitive landscape shows room for differentiation through technology adoption.",
+            company_name
+        );
+        write_company_intel_results(pool, company_id, &summary, 0.75).await;
+        // Register in knowledge graph if project scope provided
+        if let Some(pid) = project_id {
+            let _ = ProjectKnowledgeSource::upsert_source(
+                pool,
+                pid,
+                &KnowledgeSourceType::Entity,
+                &company_id.to_string(),
+                &format!("Company: {}", company_name),
+                Some(&format!("Scout intelligence: {}", summary)),
+                0.75,
+            )
+            .await;
+        }
+        return;
+    }
+
+    use services::services::workflow_llm::{LLMResponse, WorkflowLLMService};
+
     tracing::info!(
-        "[Scout] Starting direct company research for {} (id: {})",
+        "[Scout] Starting company research for {} (id: {}) via PCG Router",
         company_name,
         company_id
     );
-    let client = reqwest::Client::new();
 
     let prompt = format!(
         "Research the company '{}'. Provide a comprehensive company intelligence brief including: \
@@ -772,91 +797,53 @@ pub async fn run_company_research_direct(
 
     let system = "You are Scout, a business intelligence analyst. Research companies thoroughly and produce comprehensive intelligence briefs.";
 
-    // Try OpenAI first
-    let mut response_text = String::new();
-    if let Ok(openai_key) = std::env::var("OPENAI_API_KEY") {
-        let body = serde_json::json!({
-            "model": "gpt-4o",
-            "max_tokens": 3000,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": prompt}
-            ]
-        });
-        match client
-            .post("https://api.openai.com/v1/chat/completions")
-            .header("Authorization", format!("Bearer {}", openai_key))
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await
-        {
-            Ok(resp) if resp.status().is_success() => {
-                if let Ok(val) = resp.json::<serde_json::Value>().await {
-                    if let Some(text) = val["choices"][0]["message"]["content"].as_str() {
-                        response_text = text.to_string();
-                        tracing::info!(
-                            "[Scout] OpenAI company research for {}: {} chars",
-                            company_name,
-                            response_text.len()
-                        );
-                    }
-                }
-            }
-            _ => {
-                tracing::warn!(
-                    "[Scout] OpenAI failed for company {}, trying Anthropic",
-                    company_name
-                );
-            }
+    let messages = vec![
+        serde_json::json!({"role": "system", "content": system}),
+        serde_json::json!({"role": "user", "content": prompt}),
+    ];
+
+    let response_text = match WorkflowLLMService::completion_with_tools(
+        pool,
+        messages,
+        &[],
+        None,
+        Some(3000),
+        None,
+    )
+    .await
+    {
+        Ok((LLMResponse::Text { content, .. }, metadata)) => {
+            tracing::info!(
+                "[Scout] PCG Router company research for {} via {}/{}: {} chars",
+                company_name,
+                metadata.provider,
+                metadata.model_used,
+                content.len()
+            );
+            content
         }
-    }
-
-    // Fallback to Anthropic
-    if response_text.is_empty() {
-        let api_key = match std::env::var("ANTHROPIC_API_KEY") {
-            Ok(k) => k,
-            Err(_) => {
-                write_company_intel_results(pool, company_id, "No LLM API key configured", 0.0)
-                    .await;
-                return;
-            }
-        };
-
-        let body = serde_json::json!({
-            "model": "claude-opus-4-6",
-            "max_tokens": 3000,
-            "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 6}],
-            "messages": [{"role": "user", "content": prompt}]
-        });
-
-        let resp = client
-            .post("https://api.anthropic.com/v1/messages")
-            .header("x-api-key", &api_key)
-            .header("anthropic-version", "2023-06-01")
-            .header("anthropic-beta", "web-search-2025-03-05")
-            .header("content-type", "application/json")
-            .json(&body)
-            .send()
+        Ok((LLMResponse::ToolCalls { .. }, _)) => {
+            tracing::error!("[Scout] Unexpected tool calls in company research");
+            write_company_intel_results(
+                pool,
+                company_id,
+                "LLM returned tool calls instead of text",
+                0.0,
+            )
             .await;
-
-        match resp {
-            Ok(r) if r.status().is_success() => {
-                let val: serde_json::Value = r.json().await.unwrap_or_default();
-                response_text = extract_text_from_anthropic_response(&val);
-            }
-            Ok(r) => {
-                let text = r.text().await.unwrap_or_default();
-                tracing::error!(
-                    "Company research Anthropic error: {}",
-                    &text[..text.len().min(200)]
-                );
-            }
-            Err(e) => {
-                tracing::error!("Company research HTTP error: {}", e);
-            }
+            return;
         }
-    }
+        Err(e) => {
+            tracing::error!(
+                "[Scout] PCG Router failed for company {}: {}",
+                company_name,
+                e
+            );
+            write_company_intel_results(pool, company_id, &format!("Research failed: {}", e), 0.0)
+                .await;
+            return;
+        }
+    };
 
     let parsed = parse_research_json(&response_text);
     let confidence = parsed
@@ -894,7 +881,7 @@ pub async fn run_company_research_direct(
          intelligence_summary = ?, \
          intelligence_confidence = ?, \
          intelligence_last_run_at = datetime('now','subsec'), \
-         intelligence_agent = 'astra', \
+         intelligence_agent = 'scout', \
          website = COALESCE(NULLIF(?, ''), website), \
          description = COALESCE(NULLIF(?, ''), description), \
          industry = COALESCE(NULLIF(?, ''), industry), \
@@ -980,7 +967,158 @@ async fn write_company_intel_results(
     .await;
 }
 
-// ── Internal helpers (called from other routes) ──────────────────────────────
+// ── Contact-first research (called from deal automations) ────────────────────
+
+/// Run Scout research directly on a crm_contact — no person bridge needed.
+/// Writes results to crm_contacts.intelligence_* columns.
+pub async fn run_contact_research_direct(
+    pool: &sqlx::SqlitePool,
+    contact_id: Uuid,
+    full_name: &str,
+    email: &str,
+    company_name: &str,
+    job_title: &str,
+    project_id: Option<Uuid>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use services::services::workflow_llm::{LLMResponse, WorkflowLLMService};
+
+    tracing::info!(
+        "[Scout] Starting contact research for '{}' (id: {}) via PCG Router",
+        full_name,
+        contact_id
+    );
+
+    let system = "You are Scout, Social Intelligence Analyst for Power Club Global. \
+        Your specialty is finding and structuring online presence data about individuals. \
+        Research the person thoroughly based on your knowledge. Return their: \
+        current role, company details, social profiles, recent activity, and public bio. \
+        Return a detailed intelligence summary as plain text (not JSON).";
+
+    let prompt = format!(
+        "Research this contact for PCG: Name={}, Company={}, Email={}, Title={}. \
+        Provide a comprehensive intelligence brief about this person and their company. \
+        Include: professional background, notable achievements, social media presence, \
+        company overview, competitive positioning, and any publicly available information. \
+        Write as a structured intelligence report, not JSON.",
+        full_name,
+        if company_name.is_empty() { "unknown" } else { company_name },
+        if email.is_empty() { "unknown" } else { email },
+        if job_title.is_empty() { "unknown" } else { job_title },
+    );
+
+    let messages = vec![
+        serde_json::json!({"role": "system", "content": system}),
+        serde_json::json!({"role": "user", "content": prompt}),
+    ];
+
+    let (response, metadata) = WorkflowLLMService::completion_with_tools(
+        pool,
+        messages,
+        &[],
+        None,
+        Some(2048),
+        None,
+    )
+    .await
+    .map_err(|e| format!("PCG Router LLM call failed: {}", e))?;
+
+    let response_text = match response {
+        LLMResponse::Text { content, .. } => content,
+        LLMResponse::ToolCalls { .. } => {
+            // Write failure status so it's visible, not silent
+            let _ = sqlx::query(
+                "UPDATE crm_contacts SET intelligence_status = 'failed', \
+                 intelligence_summary = 'LLM returned tool calls instead of text', \
+                 updated_at = datetime('now','subsec') WHERE CAST(id AS TEXT) = ?",
+            )
+            .bind(contact_id.to_string())
+            .execute(pool)
+            .await;
+            return Err("Unexpected tool calls in contact research response".into());
+        }
+    };
+
+    tracing::info!(
+        "[Scout] PCG Router response for '{}' via {}/{}: {} chars",
+        full_name,
+        metadata.provider,
+        metadata.model_used,
+        response_text.len()
+    );
+
+    // Check for API rate limit errors — reset to idle for retry
+    if response_text.contains("rate_limit_error")
+        || response_text.contains("rate limit")
+        || response_text.contains("credit balance")
+    {
+        tracing::warn!(
+            "[Scout] Research hit API limit for '{}', resetting to idle for retry",
+            full_name
+        );
+        let _ = sqlx::query(
+            "UPDATE crm_contacts SET intelligence_status = 'idle', \
+             updated_at = datetime('now','subsec') WHERE CAST(id AS TEXT) = ?",
+        )
+        .bind(contact_id.to_string())
+        .execute(pool)
+        .await;
+        return Ok(());
+    }
+
+    let summary = extract_summary_from_response(&response_text);
+    let confidence = extract_confidence_from_response(&response_text);
+
+    // Write directly to crm_contacts — no person bridge
+    let rows = sqlx::query(
+        "UPDATE crm_contacts SET \
+         intelligence_status = 'done', \
+         intelligence_summary = ?, \
+         intelligence_raw = ?, \
+         intelligence_confidence = ?, \
+         intelligence_last_run_at = datetime('now','subsec'), \
+         intelligence_agent = 'scout', \
+         research_pass_count = COALESCE(research_pass_count, 0) + 1, \
+         updated_at = datetime('now','subsec') \
+         WHERE CAST(id AS TEXT) = ?",
+    )
+    .bind(&summary)
+    .bind(&response_text)
+    .bind(confidence)
+    .bind(contact_id.to_string())
+    .execute(pool)
+    .await?;
+
+    if rows.rows_affected() == 0 {
+        tracing::error!(
+            "[Scout] Contact {} not found when writing research results — data lost!",
+            contact_id
+        );
+        return Err(format!("Contact {} not found when writing results", contact_id).into());
+    }
+
+    // Register in knowledge graph if project_id provided
+    if let Some(pid) = project_id {
+        let _ = ProjectKnowledgeSource::upsert_source(
+            pool,
+            pid,
+            &KnowledgeSourceType::Entity,
+            &contact_id.to_string(),
+            &format!("Contact: {}", full_name),
+            Some(&format!("Scout intelligence: {}", summary)),
+            confidence,
+        )
+        .await;
+    }
+
+    tracing::info!(
+        "[Scout] Contact research complete for '{}' (confidence: {:.0}%)",
+        full_name,
+        confidence * 100.0
+    );
+    Ok(())
+}
+
+// ── Legacy person-based helpers (called from older routes) ───────────────────
 
 /// Trigger person research internally (called from stage-transition hooks).
 /// Assumes intelligence_status is already set to 'queued'.
@@ -1027,15 +1165,144 @@ pub async fn trigger_research_for_person(
     run_research_via_nora(pool, person, research_prompt, None).await
 }
 
+// ── Contact-targeted endpoints ────────────────────────────────────────────────
+// These read/write crm_contacts directly — the canonical path after unification.
+
+/// POST /api/crm/contacts/:id/research — trigger research for a CRM contact
+pub async fn trigger_contact_research(
+    Extension(_access_context): Extension<AccessContext>,
+    State(d): State<DeploymentImpl>,
+    Path(contact_id): Path<String>,
+    Json(body): Json<ResearchRequest>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
+    let contact_id =
+        DbUuid::parse(&contact_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let pool = &d.db().pool;
+
+    // Read contact directly — no person bridge needed
+    #[derive(sqlx::FromRow)]
+    struct ContactRow {
+        full_name: Option<String>,
+        email: Option<String>,
+        company_name: Option<String>,
+        job_title: Option<String>,
+    }
+    let contact: ContactRow = sqlx::query_as(
+        "SELECT full_name, email, company_name, job_title FROM crm_contacts WHERE id = ?",
+    )
+    .bind(&contact_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| ApiError::NotFound("Contact not found".into()))?;
+
+    // Set status to queued on contact
+    sqlx::query(
+        "UPDATE crm_contacts SET intelligence_status = 'queued', \
+         intelligence_agent = ?, updated_at = datetime('now','subsec') WHERE id = ?",
+    )
+    .bind(body.agent_preference.as_deref().unwrap_or("scout"))
+    .bind(&contact_id)
+    .execute(pool)
+    .await?;
+
+    // Run research directly on contact — no person bridge
+    let contact_uuid = contact_id.to_uuid();
+    let pool_clone = pool.clone();
+    let name = contact
+        .full_name
+        .clone()
+        .unwrap_or_else(|| "Unknown".to_string());
+    let email = contact.email.clone().unwrap_or_default();
+    let company = contact.company_name.clone().unwrap_or_default();
+    let title = contact.job_title.clone().unwrap_or_default();
+    let project_id = body.project_id;
+    tokio::spawn(async move {
+        if let Err(e) = run_contact_research_direct(
+            &pool_clone,
+            contact_uuid,
+            &name,
+            &email,
+            &company,
+            &title,
+            project_id,
+        )
+        .await
+        {
+            tracing::error!(
+                "[Scout] Contact research failed for {} ({}): {}",
+                name,
+                contact_uuid,
+                e
+            );
+        }
+    });
+
+    Ok(Json(ApiResponse::success(serde_json::json!({
+        "contact_id": contact_id.to_string(),
+        "status": "queued",
+        "message": format!("Research queued for {}", contact.full_name.unwrap_or_else(|| "contact".into())),
+    }))))
+}
+
+/// GET /api/crm/contacts/:id/intelligence-status
+pub async fn get_contact_intelligence_status(
+    Extension(_access_context): Extension<AccessContext>,
+    State(d): State<DeploymentImpl>,
+    Path(contact_id): Path<String>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
+    let contact_id =
+        DbUuid::parse(&contact_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let pool = &d.db().pool;
+
+    #[derive(sqlx::FromRow)]
+    struct Row {
+        intelligence_status: String,
+        intelligence_summary: Option<String>,
+        intelligence_confidence: f64,
+        intelligence_agent: Option<String>,
+        intelligence_last_run_at: Option<String>,
+    }
+
+    let row: Option<Row> = sqlx::query_as(
+        "SELECT intelligence_status, intelligence_summary, intelligence_confidence, \
+         intelligence_agent, intelligence_last_run_at FROM crm_contacts WHERE id = ?",
+    )
+    .bind(&contact_id)
+    .fetch_optional(pool)
+    .await?;
+
+    let row = row.ok_or_else(|| ApiError::NotFound("Contact not found".into()))?;
+
+    Ok(Json(ApiResponse::success(serde_json::json!({
+        "contact_id": contact_id.to_string(),
+        "status": row.intelligence_status,
+        "summary": row.intelligence_summary,
+        "confidence": row.intelligence_confidence,
+        "agent": row.intelligence_agent,
+        "last_run_at": row.intelligence_last_run_at,
+    }))))
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
+        // Person-targeted (legacy — will be deprecated in Phase 4)
         .route("/persons/{id}/research", post(trigger_research))
         .route(
             "/persons/{id}/intelligence-status",
             get(get_intelligence_status),
         )
+        // Contact-targeted (canonical after unification)
+        .route(
+            "/crm/contacts/{id}/research",
+            post(trigger_contact_research),
+        )
+        .route(
+            "/crm/contacts/{id}/intelligence-status",
+            get(get_contact_intelligence_status),
+        )
+        // Company intelligence
         .route(
             "/companies/{id}/intelligence-status",
             get(get_company_intelligence_status),
@@ -1171,10 +1438,8 @@ pub async fn list_person_reports(
     State(d): State<DeploymentImpl>,
     Path(person_id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<BusinessReport>>>, ApiError> {
-    let person_id = DbUuid::parse(&person_id)
-        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
-        .to_uuid();
-    let reports = BusinessReport::list_by_person(&d.db().pool, person_id).await?;
+    DbUuid::parse(&person_id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let reports = BusinessReport::list_by_person(&d.db().pool, &person_id).await?;
     Ok(Json(ApiResponse::success(reports)))
 }
 
@@ -1201,7 +1466,6 @@ async fn run_research_pass(
     prior_context: &str,
     project_id: Option<Uuid>,
 ) -> anyhow::Result<()> {
-    use reqwest::Client;
     use serde_json::Value;
 
     // Mark running
@@ -1209,9 +1473,6 @@ async fn run_research_pass(
         .bind(pass_id)
         .execute(&pool)
         .await?;
-
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .map_err(|_| anyhow::anyhow!("ANTHROPIC_API_KEY not set"))?;
 
     let focus_instructions = match focus {
         "identity" => format!(
@@ -1280,31 +1541,34 @@ async fn run_research_pass(
         }}"
     );
 
-    let client = Client::new();
-    let res = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", &api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("anthropic-beta", "web-search-2025-03-05")
-        .header("content-type", "application/json")
-        .json(&serde_json::json!({
-            "model": "claude-sonnet-4-20250514",
-            "max_tokens": 4096,
-            "system": system,
-            "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}],
-            "messages": [{"role": "user", "content": prompt}]
-        }))
-        .send()
-        .await?;
+    use services::services::workflow_llm::{LLMResponse, WorkflowLLMService};
 
-    let body: Value = res.json().await?;
+    let messages = vec![
+        serde_json::json!({"role": "system", "content": system}),
+        serde_json::json!({"role": "user", "content": prompt}),
+    ];
 
-    // Extract text from response (may be in content array)
-    let text = body["content"]
-        .as_array()
-        .and_then(|arr| arr.iter().find(|b| b["type"] == "text"))
-        .and_then(|b| b["text"].as_str())
-        .ok_or_else(|| anyhow::anyhow!("No text in response: {:?}", body))?;
+    let (response, metadata) =
+        WorkflowLLMService::completion_with_tools(&pool, messages, &[], None, Some(4096), None)
+            .await
+            .map_err(|e| anyhow::anyhow!("PCG Router failed for research pass: {}", e))?;
+
+    let text = match response {
+        LLMResponse::Text { content, .. } => content,
+        LLMResponse::ToolCalls { .. } => {
+            anyhow::bail!("Unexpected tool calls in research pass response");
+        }
+    };
+
+    tracing::info!(
+        "[Scout] Research pass #{} via {}/{}: {} chars",
+        pass_number,
+        metadata.provider,
+        metadata.model_used,
+        text.len()
+    );
+
+    let text = &text;
 
     let json_str = text
         .trim()
@@ -1422,7 +1686,7 @@ async fn run_research_pass(
                   coverage_score, auto_registered, is_active, created_at, updated_at)
                  VALUES (?, 'organization', ?, 'entity', ?, ?, ?, ?, 1, 1, datetime('now','subsec'), datetime('now','subsec'))",
             )
-            .bind(Uuid::new_v4())
+            .bind(DbUuid::new().to_string())
             .bind(org_id.to_string())
             .bind(pass_id.to_string())
             .bind(&title)

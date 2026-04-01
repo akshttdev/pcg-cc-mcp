@@ -217,7 +217,7 @@ export async function waitForDealStage(
 
     // Check current stage via API (read-only, not a shortcut)
     const dealRes = await request.get(`/api/crm/deals/${dealId}`);
-    const deal = await dealRes.json().then((b: any) => b.data || b);
+    const deal = (await dealRes.json()).data || (await dealRes.json());
     const currentStage = deal.stage?.toLowerCase() || '';
 
     if (currentStage === stageName.toLowerCase()) return true;
