@@ -5,8 +5,8 @@
 //! and transcript management.
 
 use axum::{
-    Extension, Json,
     extract::{Path, State},
+    Extension, Json,
 };
 use db::{db_uuid::DbUuid, models::crm_deal::CrmDeal};
 use deployment::Deployment;
@@ -14,8 +14,8 @@ use utils::response::ApiResponse;
 
 use super::crm_deals::require_deal_org_access;
 use crate::{
-    DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param,
-    middleware::access_control::AccessContext,
+    error::ApiError, helpers::uuid_params::parse_db_uuid_param,
+    middleware::access_control::AccessContext, DeploymentImpl,
 };
 
 // ── Scout: Who-Is Research ────────────────────────────────────────────────────
@@ -73,10 +73,7 @@ pub async fn trigger_who_is_research(
         }
     };
 
-    let status = contact
-        .intelligence_status
-        .as_deref()
-        .unwrap_or("idle");
+    let status = contact.intelligence_status.as_deref().unwrap_or("idle");
 
     // Only trigger if not already running/queued
     if status != "idle" && !status.is_empty() {
@@ -126,17 +123,16 @@ pub async fn trigger_who_is_research(
     let company = contact.company_name.clone().unwrap_or_default();
     let title = contact.job_title.clone().unwrap_or_default();
     tokio::spawn(async move {
-        if let Err(e) =
-            crate::routes::intelligence::run_contact_research_direct(
-                &pool_contact,
-                contact_uuid,
-                &name,
-                &email,
-                &company,
-                &title,
-                None,
-            )
-            .await
+        if let Err(e) = crate::routes::intelligence::run_contact_research_direct(
+            &pool_contact,
+            contact_uuid,
+            &name,
+            &email,
+            &company,
+            &title,
+            None,
+        )
+        .await
         {
             tracing::error!(
                 "[Scout] Contact research failed for {} ({}): {}",
@@ -148,13 +144,12 @@ pub async fn trigger_who_is_research(
     });
 
     // Create Phase 1 visibility tasks + trigger company research
-    let project_id: Option<DbUuid> = sqlx::query_scalar(
-        "SELECT project_id FROM crm_deals WHERE id = ?",
-    )
-    .bind(&deal_id)
-    .fetch_optional(pool)
-    .await
-    .unwrap_or(None);
+    let project_id: Option<DbUuid> =
+        sqlx::query_scalar("SELECT project_id FROM crm_deals WHERE id = ?")
+            .bind(&deal_id)
+            .fetch_optional(pool)
+            .await
+            .unwrap_or(None);
 
     let has_phase1_tasks: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM tasks WHERE crm_deal_id = ? \
@@ -179,8 +174,15 @@ pub async fn trigger_who_is_research(
         }
 
         for (title, description) in &tasks {
-            if let Err(e) = create_research_task(pool, &deal_id, project_id.as_ref(), title, description).await {
-                tracing::error!("[Scout] Failed to create task '{}' for deal {}: {}", title, deal_id, e);
+            if let Err(e) =
+                create_research_task(pool, &deal_id, project_id.as_ref(), title, description).await
+            {
+                tracing::error!(
+                    "[Scout] Failed to create task '{}' for deal {}: {}",
+                    title,
+                    deal_id,
+                    e
+                );
             }
         }
     }
@@ -243,13 +245,12 @@ async fn trigger_company_research_if_idle(
                 contact_id
             );
             // Look up org_id from the contact
-            let org_id: Option<String> = sqlx::query_scalar(
-                "SELECT organization_id FROM crm_contacts WHERE id = ?",
-            )
-            .bind(contact_id)
-            .fetch_optional(pool)
-            .await
-            .unwrap_or(None);
+            let org_id: Option<String> =
+                sqlx::query_scalar("SELECT organization_id FROM crm_contacts WHERE id = ?")
+                    .bind(contact_id)
+                    .fetch_optional(pool)
+                    .await
+                    .unwrap_or(None);
 
             let Some(org_id) = org_id else {
                 tracing::error!(

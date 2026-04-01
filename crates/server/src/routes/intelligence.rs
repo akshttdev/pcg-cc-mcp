@@ -14,9 +14,9 @@
 //! The frontend polls GET /api/persons/:id/intelligence-status.
 
 use axum::{
-    Extension, Json, Router,
     extract::{Path, State},
     routing::{get, post},
+    Extension, Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -32,8 +32,8 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use crate::{
-    DeploymentImpl, error::ApiError, middleware::access_control::AccessContext,
-    routes::nora::get_nora_instance,
+    error::ApiError, middleware::access_control::AccessContext, routes::nora::get_nora_instance,
+    DeploymentImpl,
 };
 
 // ── Request / Response types ──────────────────────────────────────────────────
@@ -1001,9 +1001,17 @@ pub async fn run_contact_research_direct(
         company overview, competitive positioning, and any publicly available information. \
         Write as a structured intelligence report, not JSON.",
         full_name,
-        if company_name.is_empty() { "unknown" } else { company_name },
+        if company_name.is_empty() {
+            "unknown"
+        } else {
+            company_name
+        },
         if email.is_empty() { "unknown" } else { email },
-        if job_title.is_empty() { "unknown" } else { job_title },
+        if job_title.is_empty() {
+            "unknown"
+        } else {
+            job_title
+        },
     );
 
     let messages = vec![
@@ -1011,16 +1019,10 @@ pub async fn run_contact_research_direct(
         serde_json::json!({"role": "user", "content": prompt}),
     ];
 
-    let (response, metadata) = WorkflowLLMService::completion_with_tools(
-        pool,
-        messages,
-        &[],
-        None,
-        Some(2048),
-        None,
-    )
-    .await
-    .map_err(|e| format!("PCG Router LLM call failed: {}", e))?;
+    let (response, metadata) =
+        WorkflowLLMService::completion_with_tools(pool, messages, &[], None, Some(2048), None)
+            .await
+            .map_err(|e| format!("PCG Router LLM call failed: {}", e))?;
 
     let response_text = match response {
         LLMResponse::Text { content, .. } => content,
@@ -1521,7 +1523,8 @@ async fn run_research_pass(
         )
     };
 
-    let system = "You are an expert business intelligence researcher. Conduct thorough web research \
+    let system =
+        "You are an expert business intelligence researcher. Conduct thorough web research \
         and return structured findings. Always respond with valid JSON only.";
 
     let prompt = format!(

@@ -4,17 +4,17 @@
 //! and Phase 1 business report generation.
 
 use axum::{
-    Extension, Json,
     extract::{Path, State},
+    Extension, Json,
 };
 use db::{db_uuid::DbUuid, models::crm_deal::CrmDeal};
 use deployment::Deployment;
 use utils::response::ApiResponse;
 
-use super::crm_deals::{MoveDealRequest, require_deal_org_access};
+use super::crm_deals::{require_deal_org_access, MoveDealRequest};
 use crate::{
-    DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param,
-    middleware::access_control::AccessContext,
+    error::ApiError, helpers::uuid_params::parse_db_uuid_param,
+    middleware::access_control::AccessContext, DeploymentImpl,
 };
 
 /// PATCH /crm/deals/:id/stage - Move deal to new stage (drag-drop or context menu)
@@ -179,7 +179,11 @@ pub async fn advance_deal(
             .await
             .map_err(|_| ApiError::NotFound("Current stage not found".to_string()))?;
     let current_stage_name_lower = current_stage.name.to_lowercase();
-    let review_prefix = format!("{} {}%", db::models::crm_deal::REVIEW_TASK_PREFIX, current_stage_name_lower);
+    let review_prefix = format!(
+        "{} {}%",
+        db::models::crm_deal::REVIEW_TASK_PREFIX,
+        current_stage_name_lower
+    );
 
     let review_like = format!("{}%", db::models::crm_deal::REVIEW_TASK_PREFIX);
     let review_like_spaced = format!("{} %", db::models::crm_deal::REVIEW_TASK_PREFIX);
@@ -357,7 +361,11 @@ pub async fn manage_stage_review_tasks_full(
     initial_status: &str,
 ) {
     // Cancel review tasks from previous stages
-    let current_prefix = format!("{} {} —", db::models::crm_deal::REVIEW_TASK_PREFIX, stage_name);
+    let current_prefix = format!(
+        "{} {} —",
+        db::models::crm_deal::REVIEW_TASK_PREFIX,
+        stage_name
+    );
     let all_review_like = format!("{}%", db::models::crm_deal::REVIEW_TASK_PREFIX);
     if let Err(e) = sqlx::query(
         "UPDATE tasks SET status = 'cancelled', updated_at = datetime('now','subsec') WHERE crm_deal_id = ? AND title LIKE ? AND title NOT LIKE ? AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL",
@@ -383,7 +391,12 @@ pub async fn manage_stage_review_tasks_full(
 
     if existing_count == 0 {
         let task_id = DbUuid::new();
-        let task_title = format!("{} {} — {}", db::models::crm_deal::REVIEW_TASK_PREFIX, stage_name, deal.name);
+        let task_title = format!(
+            "{} {} — {}",
+            db::models::crm_deal::REVIEW_TASK_PREFIX,
+            stage_name,
+            deal.name
+        );
         // Default assignee: first admin user (so tasks show up in My Tasks)
         let default_assignee: Option<String> =
             sqlx::query_scalar::<_, String>("SELECT hex(id) FROM users WHERE is_admin = 1 LIMIT 1")
