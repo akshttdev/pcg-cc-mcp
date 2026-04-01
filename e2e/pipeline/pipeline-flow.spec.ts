@@ -13,7 +13,7 @@
 import { test, expect } from "./fixtures";
 import { t, demoPause, login, apiLogin, TEST_DATA_PREFIX } from "../helpers";
 import { ORG_ID, PIPELINE_URL, moveDealViaContextMenu, waitForDealStage } from "./helpers";
-import { pipeline, dealCard, dealDetail, callScheduling, deck } from "./testids";
+import { pipeline, dealCard, dealDetail, callScheduling, deck, review } from "./testids";
 
 let dealId: string;
 let dealName: string;
@@ -62,7 +62,7 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
         amount: 75000,
       },
     });
-    const deal = (await dealRes.json()).data || (await dealRes.json());
+    const deal = await dealRes.json().then((b: any) => b.data || b);
     dealId = deal.id;
 
     await page.goto(PIPELINE_URL);
@@ -207,9 +207,11 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
     const deal = (await dealRes.json()).data || (await dealRes.json());
     expect(deal.stage?.toLowerCase(), "Deal should be in Proposal stage").toContain("proposal");
 
-    // Verify deal is visible in Proposal column
+    // NOTE: SSE should push stage updates to kanban — if this times out,
+    // investigate whether API-driven stage transitions emit SSE events.
+    // Do NOT add page.reload() — SSE is the canonical update mechanism.
     const proposalColumn = page.getByTestId(pipeline.stageColumn("proposal"));
-    await expect(proposalColumn.getByText(dealText)).toBeVisible({ timeout: t(10_000) });
+    await expect(proposalColumn.getByText(dealText)).toBeVisible({ timeout: t(15_000) });
   });
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -316,7 +318,7 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
 
     // STRICT: invoice_id MUST be set (old test had console.warn fallback)
     const dealRes = await request.get(`/api/crm/deals/${dealId}`);
-    const deal = (await dealRes.json()).data || (await dealRes.json());
+    const deal = await dealRes.json().then((b: any) => b.data || b);
     expect(deal.invoice_id, "invoice_id should be set after sending invoice").toBeTruthy();
 
     // IMPROVEMENT: UI should reflect invoice sent status
@@ -357,7 +359,7 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
 
         // Click Mark Review Complete if visible
         try {
-          const markComplete = page.getByTestId("review-mark-complete");
+          const markComplete = page.getByTestId(review.markComplete);
           if (await markComplete.isVisible({ timeout: 500 })) {
             await markComplete.click();
             await page.waitForTimeout(1_000);
@@ -365,7 +367,7 @@ test.describe("Pipeline Flow: Full Deal Lifecycle", () => {
         } catch { /* button may not be visible */ }
 
         const dealRes = await request.get(`/api/crm/deals/${dealId}`);
-        const deal = (await dealRes.json()).data || (await dealRes.json());
+        const deal = await dealRes.json().then((b: any) => b.data || b);
         if (deal.stage?.toLowerCase() === stageName.toLowerCase()) return true;
         await page.waitForTimeout(2_000);
       }

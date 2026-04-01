@@ -7,7 +7,7 @@
 import type { Page, APIRequestContext } from "@playwright/test";
 import { expect } from "./fixtures";
 import { t, demoPause } from "../helpers";
-import { dealCard, dealDetail } from "./testids";
+import { dealCard, dealDetail, review } from "./testids";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -245,7 +245,7 @@ export async function waitForDealStage(
           if (await reviewTab.isVisible({ timeout: 300 })) {
             await reviewTab.click();
             await page.waitForTimeout(300);
-            const markComplete = page.getByTestId("review-mark-complete");
+            const markComplete = page.getByTestId(review.markComplete);
             if (await markComplete.isVisible({ timeout: 500 })) {
               await markComplete.click();
               await page.waitForTimeout(500);

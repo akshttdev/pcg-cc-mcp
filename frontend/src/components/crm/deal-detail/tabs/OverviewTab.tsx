@@ -52,7 +52,10 @@ export function OverviewTab({
     }
   })();
 
-  const discoveryCallStatus = customFields.discovery_call_status as string | undefined;
+  const discoveryCallStatus =
+    typeof customFields.discovery_call_status === 'string'
+      ? customFields.discovery_call_status
+      : undefined;
 
   return (
     <div className="p-5">
@@ -61,7 +64,10 @@ export function OverviewTab({
         <div className="space-y-5">
           {/* Discovery Stage Hero Card */}
           {currentStage === 'discovery' && (
-            <Card data-testid={tid.heroCard} className="border-purple-500/30 bg-purple-50/50 dark:bg-purple-950/20">
+            <Card
+              data-testid={tid.heroCard}
+              className="border-purple-500/30 bg-purple-50/50 dark:bg-purple-950/20"
+            >
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Phone className="h-4 w-4 text-purple-600" />
@@ -73,10 +79,20 @@ export function OverviewTab({
                   <span className="text-sm text-muted-foreground">Status:</span>
                   <Badge
                     data-testid={tid.callStatus}
-                    variant={discoveryCallStatus === 'completed' ? 'default' : 'secondary'}
-                    className={discoveryCallStatus === 'completed' ? 'bg-green-600' : ''}
+                    variant={
+                      discoveryCallStatus === 'completed'
+                        ? 'default'
+                        : 'secondary'
+                    }
+                    className={
+                      discoveryCallStatus === 'completed' ? 'bg-green-600' : ''
+                    }
                   >
-                    {discoveryCallStatus === 'completed' ? 'Completed' : discoveryCallStatus === 'scheduled' ? 'Scheduled' : 'Not scheduled'}
+                    {discoveryCallStatus === 'completed'
+                      ? 'Completed'
+                      : discoveryCallStatus === 'scheduled'
+                        ? 'Scheduled'
+                        : 'Not scheduled'}
                   </Badge>
                 </div>
                 <div className="flex gap-2">
@@ -86,7 +102,9 @@ export function OverviewTab({
                     size="sm"
                     className="gap-1.5"
                     onClick={() => {
-                      document.querySelector('[data-testid="call-discovery-row"]')?.scrollIntoView({ behavior: 'smooth' });
+                      document
+                        .querySelector('[data-testid="call-discovery-row"]')
+                        ?.scrollIntoView({ behavior: 'smooth' });
                     }}
                   >
                     <Phone className="h-3.5 w-3.5" />
@@ -109,7 +127,10 @@ export function OverviewTab({
             </Card>
           )}
 
-          <OverviewContextSection deal={deal} invalidateKanban={invalidateKanban} />
+          <OverviewContextSection
+            deal={deal}
+            invalidateKanban={invalidateKanban}
+          />
 
           {/* Call Scheduling (Discovery / Proposal / Present stages) */}
           {(currentStage === 'discovery' ||

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { agentHistory as agentTid } from 'shared/testids';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -22,7 +23,6 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { handleApiResponse, makeRequest } from '@/lib/api/client';
 import { crmDealsApi } from '@/lib/api/crm';
-import { agentHistory as agentTid } from 'shared/testids';
 import { crmKeys } from '@/lib/query-keys';
 import { getStatusInfo } from '@/lib/status-utils';
 
@@ -34,7 +34,7 @@ interface AgentFlowSummary {
   status: string;
   flow_type: string;
   flow_config?: string;
-  current_phase: string;
+  current_phase?: string;
   retry_count: number;
   last_error?: string;
   cancel_deadline?: string;
@@ -54,7 +54,9 @@ interface AgentFlowEventSummary {
 
 // ── API ──────────────────────────────────────────────────────────────────────
 
-async function fetchDealAgentFlows(dealId: string): Promise<AgentFlowSummary[]> {
+async function fetchDealAgentFlows(
+  dealId: string
+): Promise<AgentFlowSummary[]> {
   const response = await makeRequest(`/api/crm/deals/${dealId}/agent-flows`);
   return handleApiResponse<AgentFlowSummary[]>(response);
 }
@@ -76,15 +78,24 @@ export function AgentHistoryTab({ dealId }: AgentHistoryTabProps) {
   const retrigger = useMutation({
     mutationFn: () => crmDealsApi.retriggerDealAgent(dealId),
     onSuccess: (res) => {
-      toast.success(`Re-triggered ${res.agent} agent`, { description: 'Agent will start shortly' });
-      qc.invalidateQueries({ queryKey: [...crmKeys.deal(dealId), 'agent-flows'] });
+      toast.success(`Re-triggered ${res.agent} agent`, {
+        description: 'Agent will start shortly',
+      });
+      qc.invalidateQueries({
+        queryKey: [...crmKeys.deal(dealId), 'agent-flows'],
+      });
       qc.invalidateQueries({ queryKey: crmKeys.kanbanAll() });
     },
-    onError: (e: Error) => toast.error(e.message ?? 'Failed to re-trigger agent'),
+    onError: (e: Error) =>
+      toast.error(e.message ?? 'Failed to re-trigger agent'),
   });
 
-  const hasActiveFlow = flows?.some(f => f.status === 'planning' || f.status === 'executing');
-  const hasFailedOrCancelled = flows?.some(f => f.status === 'failed' || f.status === 'cancelled');
+  const hasActiveFlow = flows?.some(
+    (f) => f.status === 'planning' || f.status === 'executing'
+  );
+  const hasFailedOrCancelled = flows?.some(
+    (f) => f.status === 'failed' || f.status === 'cancelled'
+  );
 
   if (isLoading) {
     return (
@@ -121,7 +132,11 @@ export function AgentHistoryTab({ dealId }: AgentHistoryTabProps) {
             disabled={retrigger.isPending}
             data-testid={agentTid.retrigger}
           >
-            {retrigger.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+            {retrigger.isPending ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <RotateCcw className="h-3 w-3" />
+            )}
             Retry Agent
           </Button>
         )}
@@ -148,11 +163,12 @@ function FlowCard({ flow }: { flow: AgentFlowSummary }) {
 
   const agentName = config.agent_name || flow.flow_type || 'Agent';
   const flowStatus = getStatusInfo(flow.status, 'flow');
-  const duration = flow.execution_started_at && flow.execution_completed_at
-    ? formatDuration(flow.execution_started_at, flow.execution_completed_at)
-    : flow.execution_started_at
-      ? 'Running...'
-      : null;
+  const duration =
+    flow.execution_started_at && flow.execution_completed_at
+      ? formatDuration(flow.execution_started_at, flow.execution_completed_at)
+      : flow.execution_started_at
+        ? 'Running...'
+        : null;
 
   return (
     <Card className="bg-muted/30 border-border/60">
@@ -197,7 +213,10 @@ function FlowCard({ flow }: { flow: AgentFlowSummary }) {
               </Link>
             )}
             {artifactEvents(flow.events).map((artifact, i) => (
-              <span key={i} className="text-xs text-muted-foreground flex items-center gap-1">
+              <span
+                key={i}
+                className="text-xs text-muted-foreground flex items-center gap-1"
+              >
                 <FileText className="h-2.5 w-2.5 text-amber-500" />
                 {artifact.label}
               </span>
@@ -230,7 +249,9 @@ function FlowCard({ flow }: { flow: AgentFlowSummary }) {
         )}
 
         {expanded && flow.events.length === 0 && (
-          <p className="text-xs text-muted-foreground mt-2 ml-7">No events recorded</p>
+          <p className="text-xs text-muted-foreground mt-2 ml-7">
+            No events recorded
+          </p>
         )}
       </CardContent>
     </Card>
@@ -276,8 +297,12 @@ function getEventIcon(eventType: string) {
 
 function artifactEvents(events: AgentFlowEventSummary[]): { label: string }[] {
   return events
-    .filter(e => e.event_type === 'artifact_created' || e.event_type === 'artifact_updated')
-    .map(e => {
+    .filter(
+      (e) =>
+        e.event_type === 'artifact_created' ||
+        e.event_type === 'artifact_updated'
+    )
+    .map((e) => {
       try {
         const data = JSON.parse(e.event_data);
         return { label: data.name || data.artifact_type || 'Artifact' };

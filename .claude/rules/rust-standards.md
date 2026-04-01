@@ -45,3 +45,16 @@ paths:
 - Implement `From<DomainError> for ApiError` so handlers can use `?`
 - Never return raw `StatusCode` — always use `ApiError` variants for structured error responses
 - Add `#[derive(TS)]` with `#[ts(type = "string")]` on error enums for TypeScript export
+
+## Functional Style — Prefer Combinators Over Nesting
+
+- **Combinators over `if let`/`match`**: Use `map`, `and_then`, `filter`, `unwrap_or_else` chains instead of deeply nested `if let Some(x)` / `match` blocks
+- **`?` operator chains**: Prefer `?` propagation over manual `match err { ... }` arms
+- **`as_deref()` / `as_ref()`**: Use instead of `.clone()` when borrowing is sufficient
+- **Iterator chains over imperative loops**: Prefer `.iter().filter().map().collect()` where it's readable — don't force it when a `for` loop is clearer
+- **Early returns and `let...else`**: Use guard clauses to avoid deep nesting:
+  ```rust
+  let Some(contact_id) = deal.crm_contact_id.as_ref() else { return None; };
+  ```
+- **Extract repeated patterns**: If you see the same 5+ line block in multiple places, extract a small helper function (like `create_research_task`)
+- **Avoid deep nesting**: If a block is indented more than 3 levels, refactor with early returns, combinators, or helper functions

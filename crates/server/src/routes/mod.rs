@@ -1,13 +1,13 @@
 use axum::{
-    Router,
-    http::{Method, StatusCode, header},
+    http::{header, Method, StatusCode},
     middleware,
     response::IntoResponse,
-    routing::{IntoMakeService, get},
+    routing::{get, IntoMakeService},
+    Router,
 };
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
-use crate::{DeploymentImpl, middleware as app_middleware};
+use crate::{middleware as app_middleware, DeploymentImpl};
 
 pub mod activity;
 pub mod agent_flow_events;

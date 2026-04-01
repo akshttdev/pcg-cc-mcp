@@ -55,7 +55,8 @@ export function IntelTab({ deal }: IntelTabProps) {
 
   const companyStatus = deal.company_intelligence_status;
   const companyDone = companyStatus === 'done';
-  const companyResearching = companyStatus === 'running' || companyStatus === 'queued';
+  const companyResearching =
+    companyStatus === 'running' || companyStatus === 'queued';
 
   const hasAnyData =
     deal.intelligence_summary ||
@@ -77,9 +78,11 @@ export function IntelTab({ deal }: IntelTabProps) {
   };
 
   const handleTriggerResearch = () => {
-    const contactId = deal.crm_contact_id ?? deal.person_id;
-    if (contactId) {
-      triggerResearch(contactId);
+    // Prefer contact-targeted API (canonical after unification)
+    if (deal.crm_contact_id) {
+      triggerResearch(deal.crm_contact_id, true);
+    } else if (deal.person_id) {
+      triggerResearch(deal.person_id);
     }
   };
 
@@ -108,7 +111,9 @@ export function IntelTab({ deal }: IntelTabProps) {
           <Brain className="h-6 w-6 text-muted-foreground/40" />
         </div>
         <div>
-          <p className="text-sm text-muted-foreground">No intelligence data yet.</p>
+          <p className="text-sm text-muted-foreground">
+            No intelligence data yet.
+          </p>
           {deal.person_id && (
             <Button
               variant="outline"
@@ -140,7 +145,13 @@ export function IntelTab({ deal }: IntelTabProps) {
             return (
               <StatusBadge
                 status={intelStatus.variant}
-                label={isDone ? 'Intelligence Complete' : isResearching ? 'Research Running' : 'Partial Intelligence'}
+                label={
+                  isDone
+                    ? 'Intelligence Complete'
+                    : isResearching
+                      ? 'Research Running'
+                      : 'Partial Intelligence'
+                }
                 icon={intelStatus.icon}
                 pulse={isResearching}
               />
@@ -200,7 +211,9 @@ export function IntelTab({ deal }: IntelTabProps) {
               <Building2 className="h-3.5 w-3.5" />
               <span className="truncate">{deal.contact_company}</span>
               <div className="ml-auto flex items-center gap-1.5 shrink-0">
-                {companyDone && <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />}
+                {companyDone && (
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                )}
                 {companyResearching && (
                   <Loader2 className="h-3.5 w-3.5 text-blue-500 animate-spin" />
                 )}
@@ -288,7 +301,8 @@ export function IntelTab({ deal }: IntelTabProps) {
                     Review task
                     {deal.review_task_assignee ? (
                       <>
-                        {' '}assigned to{' '}
+                        {' '}
+                        assigned to{' '}
                         <span className="font-medium text-foreground">
                           {deal.review_task_assignee}
                         </span>
@@ -371,7 +385,12 @@ export function IntelTab({ deal }: IntelTabProps) {
       {/* Full profile link */}
       {deal.person_id && (
         <div className="pt-2 border-t">
-          <Button variant="ghost" size="sm" className="w-full h-8 text-xs gap-1.5" asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full h-8 text-xs gap-1.5"
+            asChild
+          >
             <Link to={`/people/${deal.person_id}`}>
               <Brain className="h-3.5 w-3.5" />
               View Full Intelligence Profile
