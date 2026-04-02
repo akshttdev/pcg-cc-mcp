@@ -1,20 +1,20 @@
 //! Business Entity Graph — CRM topology visualization endpoints.
 //!
 //! Uses `entity_graph_nodes` and `entity_graph_edges` tables to represent
-//! relationships between companies, persons, proposals, orgs, and projects.
+//! relationships between companies, contacts, proposals, orgs, and projects.
 
 use axum::{
-    Json, Router,
     extract::{Path, State},
     routing::{get, post},
+    Json, Router,
 };
-use db::models::entity_graph::{EntitySubgraph, company_subgraph, sync_company_graph};
+use db::models::entity_graph::{company_subgraph, sync_company_graph, EntitySubgraph};
 use deployment::Deployment;
 use serde::Serialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 #[derive(Debug, Serialize)]
 pub struct SyncResponse {

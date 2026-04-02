@@ -6,13 +6,13 @@
 use std::{convert::Infallible, pin::Pin, time::Duration};
 
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     response::{
-        IntoResponse,
         sse::{Event as SseEvent, KeepAlive, Sse},
+        IntoResponse,
     },
     routing::{get, post},
+    Json, Router,
 };
 use db::models::meeting_session::MeetingSession;
 use deployment::Deployment;
@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::info;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 // ─── Response types ──────────────────────────────────────────────────────────
 

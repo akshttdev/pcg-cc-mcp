@@ -104,6 +104,8 @@ pub mod business_report;
 pub mod call_intake_item;
 pub mod cloud_file;
 pub mod company;
+pub mod contact_association;
+pub mod contact_note;
 pub mod data_source;
 pub mod deliverable;
 pub mod entity_conversion;
@@ -114,10 +116,9 @@ pub mod meeting_session;
 pub mod operator_rate;
 pub mod oss_library;
 pub mod pcg_router_model;
-pub mod person;
-pub mod person_association;
-pub mod person_note;
-pub mod person_research_pass;
+// Deprecated — migrating to crm_contact / contact_association / contact_note / contact_research_pass
+// Still referenced by intelligence.rs until it is fully migrated.
+// person_note and person_research_pass already retired
 pub mod proposal;
 pub mod quickbooks_account;
 pub mod repo;

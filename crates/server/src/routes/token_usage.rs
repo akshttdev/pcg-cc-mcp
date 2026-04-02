@@ -1,8 +1,8 @@
 use axum::{
-    Router,
     extract::{Path, Query, State},
     response::Json as ResponseJson,
     routing::{get, post},
+    Router,
 };
 use chrono::{Duration, Utc};
 use db::models::token_usage::{
@@ -15,7 +15,7 @@ use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 #[derive(Debug, Deserialize, TS)]
 pub struct TokenUsageQuery {

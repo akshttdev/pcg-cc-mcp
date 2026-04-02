@@ -3,10 +3,10 @@
 //! REST endpoints for browser automation, screenshots, and URL allowlisting.
 
 use axum::{
-    Router,
     extract::{Path, State},
     response::Json as ResponseJson,
     routing::{delete, get, post},
+    Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -24,7 +24,7 @@ use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 // ========== Request/Response Types ==========
 

@@ -249,6 +249,39 @@ export function ContactDetailModal({
             </div>
           )}
 
+          {/* Intelligence */}
+          {contact.intelligence_status && contact.intelligence_status !== 'idle' && (
+            <div>
+              <h4 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider flex items-center gap-1.5">
+                <Brain className="h-3.5 w-3.5" /> Intelligence
+              </h4>
+              <div className="p-3 rounded-lg bg-muted/30 space-y-2">
+                <div className="flex items-center justify-between">
+                  <Badge variant="secondary" className="text-xs capitalize">
+                    {contact.intelligence_status === 'done' ? 'Complete' : contact.intelligence_status}
+                  </Badge>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    {contact.intelligence_confidence > 0 && (
+                      <span>{Math.round(contact.intelligence_confidence * 100)}% confidence</span>
+                    )}
+                    {contact.research_pass_count > 0 && (
+                      <span>{contact.research_pass_count} {contact.research_pass_count === 1 ? 'pass' : 'passes'}</span>
+                    )}
+                  </div>
+                </div>
+                {contact.intelligence_summary && (
+                  <p className="text-sm leading-relaxed">{contact.intelligence_summary}</p>
+                )}
+                {contact.intelligence_last_run_at && (
+                  <p className="text-xs text-muted-foreground">
+                    Last researched {new Date(contact.intelligence_last_run_at).toLocaleDateString()}
+                    {contact.intelligence_agent && ` by ${contact.intelligence_agent}`}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Deals */}
           {deals.length > 0 && (
             <div>

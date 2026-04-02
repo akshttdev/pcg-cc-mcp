@@ -1,15 +1,15 @@
 use axum::{
-    Json, Router,
     extract::{Path, State},
     response::Json as ResponseJson,
     routing::get,
+    Json, Router,
 };
 use db::models::activity::{ActivityLog, CreateActivityLog};
 use deployment::Deployment;
 use serde::Deserialize;
 use utils::response::ApiResponse;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 #[derive(Debug, Deserialize)]
 pub struct TaskIdPath {

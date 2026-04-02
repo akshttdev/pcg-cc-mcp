@@ -156,6 +156,11 @@ pub struct CrmContact {
     pub research_depth: String,
     pub company_id: Option<String>,
     pub person_id: Option<String>,
+    // Fields migrated from persons table (PC-6)
+    pub onboarding_channel: Option<String>,
+    pub preferred_contact: Option<String>,
+    pub person_type: Option<String>,
+    pub financial_role: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

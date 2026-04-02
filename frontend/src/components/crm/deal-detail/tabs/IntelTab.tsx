@@ -55,7 +55,8 @@ export function IntelTab({ deal }: IntelTabProps) {
 
   const companyStatus = deal.company_intelligence_status;
   const companyDone = companyStatus === 'done';
-  const companyResearching = companyStatus === 'running' || companyStatus === 'queued';
+  const companyResearching =
+    companyStatus === 'running' || companyStatus === 'queued';
 
   const hasAnyData =
     deal.intelligence_summary ||
@@ -110,7 +111,9 @@ export function IntelTab({ deal }: IntelTabProps) {
           <Brain className="h-6 w-6 text-muted-foreground/40" />
         </div>
         <div>
-          <p className="text-sm text-muted-foreground">No intelligence data yet.</p>
+          <p className="text-sm text-muted-foreground">
+            No intelligence data yet.
+          </p>
           {deal.person_id && (
             <Button
               variant="outline"
@@ -142,7 +145,13 @@ export function IntelTab({ deal }: IntelTabProps) {
             return (
               <StatusBadge
                 status={intelStatus.variant}
-                label={isDone ? 'Intelligence Complete' : isResearching ? 'Research Running' : 'Partial Intelligence'}
+                label={
+                  isDone
+                    ? 'Intelligence Complete'
+                    : isResearching
+                      ? 'Research Running'
+                      : 'Partial Intelligence'
+                }
                 icon={intelStatus.icon}
                 pulse={isResearching}
               />
@@ -172,14 +181,16 @@ export function IntelTab({ deal }: IntelTabProps) {
             <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
               <User className="h-3.5 w-3.5" />
               Person Intelligence
-              {deal.person_id && (
+              {(deal.crm_contact_id || deal.person_id) && (
                 <Button
                   variant="ghost"
                   size="sm"
                   className="h-5 text-xs gap-1 ml-auto px-1.5"
                   asChild
                 >
-                  <Link to={`/people/${deal.person_id}`}>
+                  <Link
+                    to={`/contacts/${deal.crm_contact_id ?? deal.person_id}`}
+                  >
                     Profile <ExternalLink className="h-2.5 w-2.5" />
                   </Link>
                 </Button>
@@ -202,7 +213,9 @@ export function IntelTab({ deal }: IntelTabProps) {
               <Building2 className="h-3.5 w-3.5" />
               <span className="truncate">{deal.contact_company}</span>
               <div className="ml-auto flex items-center gap-1.5 shrink-0">
-                {companyDone && <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />}
+                {companyDone && (
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                )}
                 {companyResearching && (
                   <Loader2 className="h-3.5 w-3.5 text-blue-500 animate-spin" />
                 )}
@@ -290,7 +303,8 @@ export function IntelTab({ deal }: IntelTabProps) {
                     Review task
                     {deal.review_task_assignee ? (
                       <>
-                        {' '}assigned to{' '}
+                        {' '}
+                        assigned to{' '}
                         <span className="font-medium text-foreground">
                           {deal.review_task_assignee}
                         </span>
@@ -353,7 +367,7 @@ export function IntelTab({ deal }: IntelTabProps) {
       )}
 
       {/* Re-trigger research */}
-      {deal.person_id && !isResearching && (
+      {(deal.crm_contact_id || deal.person_id) && !isResearching && (
         <Button
           variant="outline"
           size="sm"
@@ -371,10 +385,15 @@ export function IntelTab({ deal }: IntelTabProps) {
       )}
 
       {/* Full profile link */}
-      {deal.person_id && (
+      {(deal.crm_contact_id || deal.person_id) && (
         <div className="pt-2 border-t">
-          <Button variant="ghost" size="sm" className="w-full h-8 text-xs gap-1.5" asChild>
-            <Link to={`/people/${deal.person_id}`}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full h-8 text-xs gap-1.5"
+            asChild
+          >
+            <Link to={`/contacts/${deal.crm_contact_id ?? deal.person_id}`}>
               <Brain className="h-3.5 w-3.5" />
               View Full Intelligence Profile
               <ExternalLink className="h-3 w-3 ml-auto" />

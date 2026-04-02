@@ -356,12 +356,6 @@ pub async fn generate_phase1_business_report(
 
     let Some(contact_id) = contact_id else { return };
 
-    // Resolve person via persons.crm_contact_id (reverse lookup)
-    #[derive(sqlx::FromRow)]
-    struct PersonDataRow {
-        id: DbUuid,
-        company_name: Option<String>,
-    }
     let contact_company: Option<String> = {
         #[derive(sqlx::FromRow)]
         struct CRow {
@@ -375,20 +369,7 @@ pub async fn generate_phase1_business_report(
             .flatten()
             .and_then(|r| r.company_name)
     };
-    let person_row = sqlx::query_as::<_, PersonDataRow>(
-        "SELECT id, company_name FROM persons WHERE crm_contact_id = ? LIMIT 1",
-    )
-    .bind(&contact_id)
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten();
-
-    let person_id = person_row.as_ref().map(|p| p.id.clone());
-    let company_name = person_row
-        .as_ref()
-        .and_then(|p| p.company_name.clone())
-        .or(contact_company);
+    let company_name = contact_company;
 
     #[derive(sqlx::FromRow)]
     struct PersonIntelRow {
@@ -398,18 +379,14 @@ pub async fn generate_phase1_business_report(
         email: Option<String>,
         job_title: Option<String>,
     }
-    let person_intel = if let Some(ref pid) = person_id {
-        sqlx::query_as::<_, PersonIntelRow>(
-            "SELECT id, full_name, intelligence_summary, email, job_title FROM persons WHERE id = ?",
-        )
-        .bind(pid)
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten()
-    } else {
-        None
-    };
+    let person_intel = sqlx::query_as::<_, PersonIntelRow>(
+        "SELECT id, full_name, intelligence_summary, email, job_title FROM crm_contacts WHERE id = ?",
+    )
+    .bind(&contact_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
 
     #[derive(sqlx::FromRow)]
     struct CompanyIntelRow {
@@ -694,7 +671,7 @@ pub async fn trigger_deep_research_pass2(pool: &sqlx::SqlitePool, deal_id: DbUui
             full_name: Option<String>,
         }
         sqlx::query_as::<_, PI>(
-            "SELECT intelligence_summary, full_name FROM persons WHERE crm_contact_id = ? LIMIT 1",
+            "SELECT intelligence_summary, full_name FROM crm_contacts WHERE id = ? LIMIT 1",
         )
         .bind(cid)
         .fetch_optional(pool)
@@ -716,7 +693,7 @@ pub async fn trigger_deep_research_pass2(pool: &sqlx::SqlitePool, deal_id: DbUui
             name: Option<String>,
         }
         sqlx::query_as::<_, CI>(
-            "SELECT c.intelligence_summary, c.name FROM companies c JOIN persons p ON lower(p.company_name) = lower(c.name) WHERE p.crm_contact_id = ? LIMIT 1"
+            "SELECT c.intelligence_summary, c.name FROM companies c JOIN crm_contacts cc ON lower(cc.company_name) = lower(c.name) WHERE cc.id = ? LIMIT 1"
         ).bind(cid).fetch_optional(pool).await.ok().flatten()
         .and_then(|c| c.intelligence_summary.map(|s| format!("**{}**\n{}", c.name.unwrap_or_default(), s)))
     } else {
@@ -856,7 +833,7 @@ async fn generate_proposal_core(pool: &sqlx::SqlitePool, id: &DbUuid) -> Result<
             full_name: Option<String>,
             company_name: Option<String>,
         }
-        sqlx::query_as::<_, PersonIntel>("SELECT intelligence_summary, full_name, company_name FROM persons WHERE crm_contact_id = ? LIMIT 1")
+        sqlx::query_as::<_, PersonIntel>("SELECT intelligence_summary, full_name, company_name FROM crm_contacts WHERE id = ? LIMIT 1")
             .bind(cid).fetch_optional(pool).await.ok().flatten()
             .map(|p| format!("**Contact:** {}\n**Company:** {}\n\n{}", p.full_name.unwrap_or_default(), p.company_name.unwrap_or_default(), p.intelligence_summary.unwrap_or_default()))
     } else {
@@ -870,7 +847,7 @@ async fn generate_proposal_core(pool: &sqlx::SqlitePool, id: &DbUuid) -> Result<
             name: Option<String>,
         }
         sqlx::query_as::<_, CI>(
-            "SELECT c.intelligence_summary, c.name FROM companies c JOIN persons p ON lower(p.company_name) = lower(c.name) WHERE p.crm_contact_id = ? LIMIT 1"
+            "SELECT c.intelligence_summary, c.name FROM companies c JOIN crm_contacts cc ON lower(cc.company_name) = lower(c.name) WHERE cc.id = ? LIMIT 1"
         ).bind(cid).fetch_optional(pool).await.ok().flatten()
         .and_then(|c| c.intelligence_summary.map(|s| format!("**Company: {}**\n\n{}", c.name.unwrap_or_default(), s)))
     } else {
@@ -1280,8 +1257,14 @@ pub async fn provision_won_deal(
         email: Option<String>,
     }
     let contact_info = if let Some(ref cid) = deal.crm_contact_id {
-        sqlx::query_as::<_, ContactInfo>("SELECT p.full_name, p.company_name, p.email FROM persons p WHERE p.crm_contact_id = ? LIMIT 1")
-            .bind(cid).fetch_optional(pool).await.ok().flatten()
+        sqlx::query_as::<_, ContactInfo>(
+            "SELECT full_name, company_name, email FROM crm_contacts WHERE id = ? LIMIT 1",
+        )
+        .bind(cid)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
     } else {
         None
     };
@@ -1719,15 +1702,13 @@ pub async fn generate_deal_invite(
         struct EmailRow {
             email: Option<String>,
         }
-        sqlx::query_as::<_, EmailRow>(
-            "SELECT p.email FROM persons p WHERE p.crm_contact_id = ? LIMIT 1",
-        )
-        .bind(cid)
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten()
-        .and_then(|r| r.email)
+        sqlx::query_as::<_, EmailRow>("SELECT email FROM crm_contacts WHERE id = ? LIMIT 1")
+            .bind(cid)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|r| r.email)
     } else {
         None
     };

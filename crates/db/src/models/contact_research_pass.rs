@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use ts_rs::TS;
 
 use crate::db_uuid::DbUuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, TS)]
+#[ts(export)]
 pub struct ContactResearchPass {
     pub id: DbUuid,
     pub crm_contact_id: DbUuid,

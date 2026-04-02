@@ -1,6 +1,6 @@
 # Backlog — Remaining Work
 
-**Last updated:** 2026-03-31 (demo-sprint PR #62 regression/QA fixes applied; contacts-unification PR #63 open)
+**Last updated:** 2026-03-31 (PR #62 + PR #63 regression fixes applied)
 **Context:** Consolidated from all completed planning docs + 27 research reports + 45-item research-derived backlog. **Prioritized by ROI = (revenue impact × probability) / effort**, not legacy ordering.
 **Phase 0 Sprint Plan:** See [`2026-03-19--analysis--phase0-sprint-candidates.md`](2026-03-19--analysis--phase0-sprint-candidates.md) for full scoring and sprint schedule.
 
@@ -12,24 +12,18 @@
 **Decision**: Keep `crm_contacts` as canonical. Merge `persons` intelligence fields into contacts. Retire `persons` table.
 **Why high priority**: Scout agent research is invisible in the Intel tab because intelligence lives on `persons` but the CRM pipeline operates through `crm_contacts`. Every new deal created via the CRM UI has no person record, so agent research has nowhere to land.
 
-### PC-1: Add intelligence fields to crm_contacts — ✅ DONE (Phase 4, commit 46c958a13)
-- Migration `20260418000000_contacts_intelligence.sql` adds all fields + backfill
+### PC-1: Add intelligence fields to crm_contacts — ✅ DONE (Phase 1, migration 20260418000000)
+- Migration adds all intelligence fields + backfill from persons
 - Experience audit: 1 BLOCKER (review task links), 2 pain points, 4 friction items
 
-### PC-1a: Review task links — BLOCKER (from experience audit)
-- **Effort**: 2 hours | **Impact**: Unblocks review task workflow from My Tasks
-- CRM review tasks have `project_id=""`, link goes to `/projects/tasks/:id` which matches no route → blank page
-- Fix: add `/my-tasks/:taskId` route OR give review tasks a valid `project_id`
+### PC-1a: Review task links — ✅ FIXED
+- Guarded empty `project_id` in my-tasks.tsx, global-tasks.tsx (falls back to `/my-tasks`)
 
-### PC-1b: Strip raw JSON from intelligence summaries — QUICK WIN
-- **Effort**: 30 min | **Impact**: Removes raw JSON visible across 4 views (deal cards, Intel tab, Review tab, Operator Context)
-- Simulated Scout appends `Original context: {"name":"..."}` to summary
-- Fix: sanitize on write in `agent_flow_executor.rs` or strip at render time
+### PC-1b: Strip raw JSON from intelligence summaries — ✅ FIXED
+- Root cause fix in `agent_flow_executor.rs` — simulated Scout no longer appends raw context
 
-### PC-1c: Surface intelligence on contact detail panel — INVESTMENT
-- **Effort**: 4 hours | **Impact**: Completes contacts unification UX story
-- Contact detail panel (from Contacts page) shows no intelligence data despite it being stored
-- Add intelligence status, summary, confidence to contact detail view
+### PC-1c: Surface intelligence on contact detail panel — ✅ FIXED
+- Added Intelligence section to ContactDetailModal with status, confidence, summary, agent
 
 ### PC-2: Add research endpoint for contacts — ✅ DONE (Phase 3 W2, commit 8bf10a2cb + refactor 103c250cd)
 - `POST /api/crm/contacts/:id/research` — contact-first, no person bridge
@@ -1483,13 +1477,19 @@ Dealflow pipeline v2, company profiles, brand guides, Dockerfile fixes, VIBE tok
 | Query key mismatches (brandProfile, workflowTemplates) | Fixed cache invalidation bugs (PR #48) |
 | Orphaned project-level CRM routes (7) | Commented out in App.tsx (PR #48) |
 | Rust warnings (9 unused imports/vars in server+db) | Cleaned up (PR #48) |
-| SSE pipeline events auth bypass (PR #62 C1) | `require_org_membership` + `AccessContext` added to `stream_pipeline_events` (2026-03-31) |
-| Status typo "complete" vs "completed" (PR #62 C2) | Fixed both occurrences in `stage_transition.rs` intel checks (2026-03-31) |
-| Agent flow double-completion race (PR #62 H1) | `complete_flow` UPDATE guards on `AND status IN ('planning','executing')` (2026-03-31) |
-| Agent flow fail-overwrite race (PR #62 H2) | `fail_flow` UPDATE guards on same statuses (2026-03-31) |
-| Data source routes missing org auth (PR #62 H3) | `run_workflow` + `list_recent_artifacts` verify org membership (2026-03-31) |
-| `AgentFlowSummary.current_phase` non-nullable (PR #62 H4) | Made optional (`current_phase?: string`) (2026-03-31) |
-| Unsafe `as string` cast on `discovery_call_status` (PR #62 H5) | Replaced with `typeof === 'string'` guard (2026-03-31) |
+| PR #62 C1: pipeline_events SSE auth bypass | Added AccessContext + require_org_membership (PR #62) |
+| PR #62 C2: stage_transition "complete" typo | Fixed → "completed" in 2 places (PR #62) |
+| PR #62 H1/H2: agent_flow_executor race conditions | Status guards on complete_flow/fail_flow (PR #62) |
+| PR #62 H3: data_source_workflows missing org auth | Added require_org_membership to run_workflow + list_recent_artifacts (PR #62) |
+| PR #62 H4: AgentFlowSummary current_phase crash | Made optional (PR #62) |
+| PR #62 H5: OverviewTab unsafe `as string` cast | Replaced with typeof guard (PR #62) |
+| PR #63 C1/C2: intake table name mismatch | person_organization_contacts → contact_organization_links (PR #63) |
+| PR #63 C3: note update/delete no ownership check | Added require_contact_org_access pre-check (PR #63) |
+| PR #63 H1/H2: trigger_contact_research/get_intel_status unauthed | Added org membership check via organization_id field (PR #63) |
+| PR #63 H3: contact_note.rs author_id DbUuid.map() compile error | Fixed: Some(user_id.to_uuid()) (PR #63) |
+| PR #63 M1: stage_transition "complete" typo (inherited) | Fixed → "completed" in 2 places (PR #63) |
+| PR #63 M2: ContactResearchPass/SocialProfile/Note missing TS export | Added #[derive(TS)] + #[ts(export)] (PR #63) |
+| PR #63 L1-L5: intelligence.rs let _ = silent DB failures | Replaced with if let Err(e) + tracing::warn! (PR #63) |
 
 ---
 
@@ -1536,6 +1536,12 @@ Dealflow pipeline v2, company profiles, brand guides, Dockerfile fixes, VIBE tok
 **What:** `create_review_task_if_needed` has hardcoded username-to-org mapping (Sirak → "Sirak", PowerClub/PCG → "Bodhi"). Breaks if org names or usernames change.
 **Recommendation:** Move to a configurable mapping (org_settings table or env var).
 **Status:** DEFERRED — working as designed for current orgs
+
+### Intake Pipeline — Silent DB Failures (10 `let _ =` locations)
+**Source:** PR #63 regression audit (2026-04-01)
+**What:** 10 `let _ =` assignments in `crates/server/src/routes/intake/pipeline.rs` silently drop database errors: company description updates, contact_organization_links inserts, assigned_agent_id updates, company_id links, intelligence_status updates, knowledge_source inserts, deal-to-intake links. Pre-existing on main; not introduced by this branch.
+**Recommendation:** Replace each `let _ =` with `if let Err(e) = ... { tracing::warn!(...) }` to surface pipeline failures for debugging.
+**Status:** DEFERRED — pre-existing, not blocking
 
 ### BLOB Column uuid::Uuid Usage in Pre-existing Code
 **Source:** PR #50 QA regression review (2026-03-18)

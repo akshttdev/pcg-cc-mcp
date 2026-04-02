@@ -3,10 +3,10 @@
 //! Handles OAuth connections, account management, and platform integrations.
 
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     response::Html,
     routing::{delete, get, patch},
+    Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 #[derive(Debug, Deserialize)]
 pub struct ListAccountsQuery {

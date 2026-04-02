@@ -62,7 +62,7 @@ interface CrmPipelineBoardProps {
   orgId?: string;
   pipelineType: PipelineType;
   title?: string;
-  onSettingsClick?: () => void;
+  onSettingsClick?: (pipelineId?: string) => void;
 }
 
 type StageOwner = {
@@ -399,7 +399,7 @@ export function CrmPipelineBoard({
             <IconButton
               variant="outline"
               className="h-8 w-8"
-              onClick={onSettingsClick}
+              onClick={() => onSettingsClick(pipeline?.id)}
               icon={Settings}
               label="Pipeline settings"
               data-testid={tid.settings}

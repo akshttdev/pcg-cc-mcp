@@ -1,8 +1,8 @@
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     response::Json as ResponseJson,
     routing::{get, post},
+    Json, Router,
 };
 use db::models::repo::{CreateRepo, Repo, RepoWithTargetBranch};
 use deployment::Deployment;
@@ -10,7 +10,7 @@ use serde::Deserialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 #[derive(Debug, Deserialize)]
 pub struct RepoQuery {

@@ -848,13 +848,12 @@ async fn check_intel_status(
                 intelligence_status: Option<String>,
             }
             let status = sqlx::query_as::<_, IntelRow>(
-                "SELECT intelligence_status FROM persons WHERE crm_contact_id = ? OR CAST(crm_contact_id AS TEXT) = ? LIMIT 1",
+                "SELECT intelligence_status FROM crm_contacts WHERE CAST(id AS TEXT) = ? LIMIT 1",
             )
-            .bind(contact_id)
             .bind(contact_id.to_string())
             .fetch_optional(pool)
             .await
-            .map_err(|e| tracing::warn!("[StageTransition] Person intel query failed: {e}"))
+            .map_err(|e| tracing::warn!("[StageTransition] Contact intel query failed: {e}"))
             .ok()
             .flatten()
             .and_then(|r| r.intelligence_status);
@@ -867,9 +866,10 @@ async fn check_intel_status(
                 intelligence_status: Option<String>,
             }
             let status = sqlx::query_as::<_, IntelRow>(
-                "SELECT co.intelligence_status FROM companies co JOIN persons p ON lower(p.company_name) = lower(co.name) WHERE p.crm_contact_id = ? OR CAST(p.crm_contact_id AS TEXT) = ? LIMIT 1",
+                "SELECT co.intelligence_status FROM companies co \
+                 JOIN crm_contacts cc ON lower(cc.company_name) = lower(co.name) \
+                 WHERE CAST(cc.id AS TEXT) = ? LIMIT 1",
             )
-            .bind(contact_id)
             .bind(contact_id.to_string())
             .fetch_optional(pool)
             .await

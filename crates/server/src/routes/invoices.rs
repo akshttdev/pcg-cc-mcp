@@ -4,10 +4,9 @@
 //! 1 VIBE = $0.01 USD  (VIBE_USD_VALUE in model_pricing.rs)
 
 use axum::{
-    Router,
     extract::{Path, Query, State},
     routing::{delete, get, patch, post},
-    Json,
+    Json, Router,
 };
 use db::models::invoice::{CreateInvoice, Invoice, UpdateInvoice};
 use deployment::Deployment;
@@ -15,7 +14,7 @@ use serde::Deserialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param};
+use crate::{error::ApiError, helpers::uuid_params::parse_db_uuid_param, DeploymentImpl};
 
 const VIBE_PER_USD: f64 = 100.0; // 1 USD = 100 VIBE  (since 1 VIBE = $0.01)
 
@@ -57,12 +56,10 @@ async fn list_invoices(
     if let Some(proj) = p.project_id {
         qb.push(" AND project_id = ").push_bind(proj);
     }
-    qb.push(" ORDER BY created_at DESC LIMIT ").push_bind(p.limit.unwrap_or(200));
+    qb.push(" ORDER BY created_at DESC LIMIT ")
+        .push_bind(p.limit.unwrap_or(200));
 
-    let invoices = qb
-        .build_query_as::<Invoice>()
-        .fetch_all(pool)
-        .await?;
+    let invoices = qb.build_query_as::<Invoice>().fetch_all(pool).await?;
     Ok(Json(ApiResponse::success(invoices)))
 }
 
@@ -125,10 +122,10 @@ async fn move_invoice_status(
 
     // Set paid_at when marking paid or partial
     let sql = match body.status.as_str() {
-        "paid" | "partial" =>
-            "UPDATE invoices SET status = ?, paid_at = datetime('now','subsec'), updated_at = datetime('now','subsec') WHERE id = ?",
-        _ =>
-            "UPDATE invoices SET status = ?, updated_at = datetime('now','subsec') WHERE id = ?",
+        "paid" | "partial" => {
+            "UPDATE invoices SET status = ?, paid_at = datetime('now','subsec'), updated_at = datetime('now','subsec') WHERE id = ?"
+        }
+        _ => "UPDATE invoices SET status = ?, updated_at = datetime('now','subsec') WHERE id = ?",
     };
     sqlx::query(sql)
         .bind(&body.status)
@@ -163,7 +160,9 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/invoices", get(list_invoices).post(create_invoice))
         .route(
             "/invoices/{id}",
-            get(get_invoice).patch(update_invoice).delete(delete_invoice),
+            get(get_invoice)
+                .patch(update_invoice)
+                .delete(delete_invoice),
         )
         .route("/invoices/{id}/status", patch(move_invoice_status))
         .with_state(deployment.clone())

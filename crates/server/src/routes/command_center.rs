@@ -9,9 +9,9 @@
 //!   - Closed projects with no invoice (complete + no AR invoice)
 
 use axum::{
-    Json, Router,
     extract::{Query, State},
     routing::get,
+    Json, Router,
 };
 use chrono::{Duration, Utc};
 use deployment::Deployment;
@@ -20,7 +20,7 @@ use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 // ── Response types ────────────────────────────────────────────────────────────
 
@@ -169,7 +169,7 @@ async fn get_command_center(
         "SELECT pr.id, pr.title, pe.full_name AS lead_name, \
                 pr.quote_amount_vibe, pr.created_at \
          FROM proposals pr \
-         LEFT JOIN persons pe ON pe.id = pr.lead_id \
+         LEFT JOIN crm_contacts pe ON pe.id = pr.lead_id \
          WHERE pr.status = 'pending_approval' \
          ORDER BY pr.created_at ASC LIMIT 30",
     )

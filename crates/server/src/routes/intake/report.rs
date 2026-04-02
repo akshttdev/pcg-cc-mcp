@@ -1,10 +1,13 @@
 //! Stage 1 (Claude extraction), Stage 5a (company research passes),
 //! and Stage 6 (comprehensive report generation).
 
-use db::models::{
-    business_report::{BusinessReport, CreateBusinessReport},
-    call_intake_item::CallIntakeItem,
-    person::Person,
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        business_report::{BusinessReport, CreateBusinessReport},
+        call_intake_item::CallIntakeItem,
+        crm_contact::CrmContact,
+    },
 };
 use reqwest::Client;
 use serde_json::Value;
@@ -12,8 +15,8 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 use super::{
-    ExtractedBusiness, ExtractedIndividual, ExtractedIntake, GeneratedReport,
-    pipeline::advance_deal_stage,
+    pipeline::advance_deal_stage, ExtractedBusiness, ExtractedIndividual, ExtractedIntake,
+    GeneratedReport,
 };
 
 // ── Stage 1: Extract structure ────────────────────────────────────────────────
@@ -259,25 +262,30 @@ pub(super) async fn run_company_research_pass(
 
 pub async fn run_report_generation(
     pool: sqlx::SqlitePool,
-    person_id: Uuid,
+    contact_id: Uuid,
     report_type: String,
     businesses: Vec<ExtractedBusiness>,
     individuals: Vec<ExtractedIndividual>,
     primary_intake_id: Uuid,
     crm_deal_id: Option<Uuid>,
 ) -> anyhow::Result<()> {
-    info!("Generating {} report for person {}", report_type, person_id);
+    info!(
+        "Generating {} report for contact {}",
+        report_type, contact_id
+    );
 
-    // Load person
-    let person = Person::find_by_id(&pool, person_id)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("Person not found"))?;
+    // Load contact
+    let db_contact_id = DbUuid::from(contact_id);
+    let contact = CrmContact::find_by_id(&pool, &db_contact_id).await?;
 
-    // Load all intake items for this person
-    let intake_items = CallIntakeItem::list_by_person(&pool, person_id).await?;
+    // Load all intake items for this contact (still uses person_id column)
+    let intake_items = CallIntakeItem::list_by_person(&pool, contact_id).await?;
 
     if intake_items.is_empty() {
-        warn!("No intake items for person {} — skipping report", person_id);
+        warn!(
+            "No intake items for contact {} — skipping report",
+            contact_id
+        );
         return Ok(());
     }
 
@@ -356,12 +364,12 @@ pub async fn run_report_generation(
     }
 
     // Intelligence summary
-    let intel_summary = person
+    let intel_summary = contact
         .intelligence_summary
         .as_deref()
         .unwrap_or("No prior research available.");
-    let person_name = &person.full_name;
-    let company = person.company_name.as_deref().unwrap_or(
+    let contact_name = contact.full_name.as_deref().unwrap_or("Unknown");
+    let company = contact.company_name.as_deref().unwrap_or(
         businesses
             .first()
             .map(|b| b.name.as_str())
@@ -396,7 +404,7 @@ pub async fn run_report_generation(
         .join("\n");
 
     let generated = generate_report_with_claude(
-        person_name,
+        contact_name,
         company,
         intel_summary,
         &call_context,
@@ -422,27 +430,18 @@ pub async fn run_report_generation(
     let mut merged_sources = generated.sources.clone();
     merged_sources.extend(all_sources);
 
-    // Resolve the person's primary company for the report
-    #[derive(sqlx::FromRow)]
-    struct CompanyIdRow {
-        company_id: Option<Uuid>,
-    }
-    let company_id: Option<Uuid> = sqlx::query_as::<_, CompanyIdRow>(
-        "SELECT company_id FROM person_company_roles WHERE person_id = ? AND is_primary = 1 LIMIT 1",
-    )
-    .bind(person_id)
-    .fetch_optional(&pool)
-    .await
-    .ok()
-    .flatten()
-    .and_then(|r| r.company_id);
+    // Resolve the contact's primary company for the report
+    let company_id: Option<DbUuid> = contact
+        .company_id
+        .as_deref()
+        .and_then(|s| DbUuid::parse(s).ok());
 
     // Store report
     let report = BusinessReport::create(
         &pool,
         CreateBusinessReport {
-            person_id: Some(person_id.into()),
-            company_id: company_id.map(|u| u.into()),
+            person_id: Some(contact_id.into()),
+            company_id,
             report_type: Some(report_type.clone()),
             title: generated.title.clone(),
             executive_summary: Some(generated.executive_summary),
@@ -514,34 +513,21 @@ pub async fn run_report_generation(
     }
 
     // Ingest report sources into org-scoped knowledge graph
-    ingest_sources_into_kg(&pool, person_id, &merged_sources).await;
+    ingest_sources_into_kg(&pool, contact.organization_id.as_ref(), &merged_sources).await;
 
-    info!("Report {} created for person {}", report_id_str, person_id);
+    info!(
+        "Report {} created for contact {}",
+        report_id_str, contact_id
+    );
     Ok(())
 }
 
 /// Register research source URLs in the org-scoped knowledge graph.
 async fn ingest_sources_into_kg(
     pool: &sqlx::SqlitePool,
-    person_id: Uuid,
+    org_id: Option<&DbUuid>,
     sources: &[serde_json::Value],
 ) {
-    // Find which org this person belongs to
-    #[derive(sqlx::FromRow)]
-    struct Row {
-        organization_id: Uuid,
-    }
-
-    let org_id = sqlx::query_as::<_, Row>(
-        "SELECT organization_id FROM person_organization_contacts WHERE person_id = ? LIMIT 1",
-    )
-    .bind(person_id)
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten()
-    .map(|r| r.organization_id);
-
     if let Some(org_id) = org_id {
         for src in sources {
             let url = match src["url"].as_str() {
@@ -558,8 +544,8 @@ async fn ingest_sources_into_kg(
                  VALUES (?, 'organization', ?, 'web_page', ?, ?, ?, 0.6, 1, 0,
                   datetime('now','subsec'), datetime('now','subsec'))",
             )
-            .bind(Uuid::new_v4())
-            .bind(org_id)
+            .bind(DbUuid::new().to_string())
+            .bind(org_id.to_string())
             .bind(url)
             .bind(title)
             .bind(excerpt)
@@ -570,7 +556,7 @@ async fn ingest_sources_into_kg(
 }
 
 async fn generate_report_with_claude(
-    person_name: &str,
+    contact_name: &str,
     company: &str,
     intel_summary: &str,
     call_context: &str,
@@ -590,7 +576,7 @@ async fn generate_report_with_claude(
 
     let prompt = format!(
         r#"Generate a comprehensive {report_type} analytics report for:
-Primary Contact: {person_name}
+Primary Contact: {contact_name}
 Primary Company: {company}
 
 --- IDENTIFIED INDIVIDUALS ---

@@ -14,15 +14,15 @@ use std::{
 };
 
 use axum::{
-    Json, Router,
     body::Bytes,
     extract::{Path, State},
     http::StatusCode,
     response::{
-        IntoResponse, Response,
         sse::{Event as SseEvent, KeepAlive, Sse},
+        IntoResponse, Response,
     },
     routing::{get, post},
+    Json, Router,
 };
 use chrono::Utc;
 use db::models::{
@@ -43,14 +43,14 @@ use serde_json::json;
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::{Child, Command},
-    sync::{Mutex, broadcast},
+    sync::{broadcast, Mutex},
 };
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{info, warn};
 // TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, routes::nora::get_nora_instance};
+use crate::{routes::nora::get_nora_instance, DeploymentImpl};
 
 // ── Global state ─────────────────────────────────────────────────────────────
 
@@ -817,9 +817,9 @@ async fn detect_and_link_attendees(
             id: Vec<u8>,
         }
 
-        // Try persons table first
+        // Try crm_contacts table first
         let person_bytes: Option<Vec<u8>> = sqlx::query_scalar(
-            "SELECT id FROM persons WHERE lower(full_name) LIKE lower('%' || ? || '%') LIMIT 1",
+            "SELECT id FROM crm_contacts WHERE lower(full_name) LIKE lower('%' || ? || '%') LIMIT 1",
         )
         .bind(name)
         .fetch_optional(pool)

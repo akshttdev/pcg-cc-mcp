@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
-import { type PersonRecord,personsApi } from '@/lib/api';
+import { type CrmContactRecord, crmApi } from '@/lib/api';
 import { entityKeys } from '@/lib/query-keys';
 
 
@@ -36,15 +36,15 @@ function statusIcon(status: string | undefined) {
   return <Clock className="w-3 h-3 text-slate-600" />;
 }
 
-function initials(name: string) {
-  return name.split(' ').slice(0, 2).map(w => w[0]?.toUpperCase() ?? '').join('');
+function initials(name: string | null) {
+  return (name ?? '').split(' ').slice(0, 2).map(w => w[0]?.toUpperCase() ?? '').join('');
 }
 
-function LeadCard({ person }: { person: PersonRecord }) {
+function LeadCard({ person }: { person: CrmContactRecord }) {
   const orgEntry = person.organization_id ? ORG_LABELS[person.organization_id] : null;
 
   return (
-    <Link to={`/people/${person.id}`} className="block group">
+    <Link to={`/contacts/${person.id}`} className="block group">
       <div className="rounded-xl border border-slate-800 bg-slate-900/50 hover:border-indigo-700/50 hover:bg-slate-900 transition-all p-4">
         <div className="flex items-start gap-4">
           {/* Avatar */}
@@ -56,14 +56,14 @@ function LeadCard({ person }: { person: PersonRecord }) {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 mb-0.5 flex-wrap">
               <p className="font-semibold text-slate-200 group-hover:text-white transition-colors">
-                {person.full_name}
+                {person.full_name ?? 'Unnamed Contact'}
               </p>
               <Badge variant="outline" className={`text-xs shrink-0 ${
-                person.person_type === 'lead'   ? 'border-amber-700 text-amber-400' :
-                person.person_type === 'client' ? 'border-emerald-700 text-emerald-400' :
+                person.lifecycle_stage === 'lead'   ? 'border-amber-700 text-amber-400' :
+                person.lifecycle_stage === 'customer' ? 'border-emerald-700 text-emerald-400' :
                 'border-slate-700 text-slate-500'
               }`}>
-                {person.person_type}
+                {person.lifecycle_stage}
               </Badge>
               {orgEntry && (
                 <Badge variant="outline" className={`text-xs shrink-0 ${orgEntry.color}`}>
@@ -102,9 +102,9 @@ function LeadCard({ person }: { person: PersonRecord }) {
                 {person.intelligence_status ?? 'idle'}
               </span>
 
-              {/* Onboarding channel */}
-              {person.onboarding_channel && (
-                <span className="text-slate-600 capitalize">{person.onboarding_channel}</span>
+              {/* Source */}
+              {person.source && (
+                <span className="text-slate-600 capitalize">{person.source}</span>
               )}
             </div>
           </div>
@@ -123,10 +123,8 @@ export function LeadsPage() {
 
   const { data: persons = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: entityKeys.leads(orgFilter, typeFilter, search),
-    queryFn: () => personsApi.list({
-      person_type: typeFilter,
-      organization_id: orgFilter,
-      q: search || undefined,
+    queryFn: () => crmApi.searchContacts(orgFilter ?? '', search || undefined, {
+      lifecycleStage: typeFilter,
       limit: 200,
     }),
     refetchInterval: 30000,

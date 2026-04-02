@@ -3,7 +3,7 @@ import { Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useProject } from '@/contexts/project-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
-import { tasksApi, organizationsApi, dataSourcesApi, personsApi, companiesApi } from '@/lib/api';
+import { tasksApi, organizationsApi, dataSourcesApi, crmApi, companiesApi } from '@/lib/api';
 import type { SidebarProject, SidebarClient } from '@/lib/api';
 import { sidebarKeys, taskKeys, dataSourceKeys, entityKeys, organizationKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
@@ -72,7 +72,7 @@ export function BreadcrumbNav({ onToggleFullscreen, isFullscreen }: BreadcrumbNa
   // Fetch person if personId is present
   const { data: person } = useQuery({
     queryKey: entityKeys.person(personId!),
-    queryFn: () => personsApi.get(personId!),
+    queryFn: () => crmApi.getContact(personId!),
     enabled: !!personId,
     staleTime: 5 * 60 * 1000,
   });
@@ -294,12 +294,12 @@ export function BreadcrumbNav({ onToggleFullscreen, isFullscreen }: BreadcrumbNa
     }
 
     // Person detail page
-    if (personId && location.pathname.startsWith('/people/')) {
+    if (personId && (location.pathname.startsWith('/contacts/') || location.pathname.startsWith('/people/'))) {
       const name = person
-        ? person.full_name || person.email || 'Person'
+        ? person.full_name || person.email || 'Contact'
         : undefined;
       if (name) {
-        items.push({ label: name.length > 50 ? `${name.substring(0, 50)}...` : name, href: `/people/${personId}` });
+        items.push({ label: name.length > 50 ? `${name.substring(0, 50)}...` : name, href: `/contacts/${personId}` });
       }
     }
 

@@ -1,13 +1,13 @@
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     routing::{delete, get, post},
+    Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
     models::{
         company::{Company, CreateCompany, UpdateCompany},
-        person_association::{CompanyContactMethod, CreateCompanyContactMethod},
+        contact_association::{CompanyContactMethod, CreateCompanyContactMethod},
         proposal::Proposal,
     },
 };
@@ -18,8 +18,8 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use crate::{
-    DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param,
-    routes::nora::get_nora_instance,
+    error::ApiError, helpers::uuid_params::parse_db_uuid_param, routes::nora::get_nora_instance,
+    DeploymentImpl,
 };
 
 #[derive(Debug, Deserialize)]
@@ -107,22 +107,21 @@ async fn list_company_proposals(
     Ok(Json(ApiResponse::success(proposals)))
 }
 
-/// GET /companies/:id/persons — persons (contacts) at this company (via junction table)
-async fn list_company_persons(
+/// GET /companies/:id/contacts — contacts at this company
+async fn list_company_contacts(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
-) -> Result<Json<ApiResponse<Vec<db::models::person::Person>>>, ApiError> {
+) -> Result<Json<ApiResponse<Vec<db::models::crm_contact::CrmContact>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let persons = sqlx::query_as::<_, db::models::person::Person>(
-        r#"SELECT p.* FROM persons p
-           JOIN person_company_roles pcr ON pcr.person_id = p.id
-           WHERE pcr.company_id = ?
-           ORDER BY pcr.is_primary DESC, p.full_name ASC"#,
+    let contacts = sqlx::query_as::<_, db::models::crm_contact::CrmContact>(
+        r#"SELECT * FROM crm_contacts
+           WHERE company_id = ?
+           ORDER BY full_name ASC"#,
     )
     .bind(&id)
     .fetch_all(pool)
     .await?;
-    Ok(Json(ApiResponse::success(persons)))
+    Ok(Json(ApiResponse::success(contacts)))
 }
 
 // ---------------------------------------------------------------------------
@@ -545,7 +544,7 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         )
         .route("/companies/{id}/research", post(trigger_company_research))
         .route("/companies/{id}/proposals", get(list_company_proposals))
-        .route("/companies/{id}/persons", get(list_company_persons))
+        .route("/companies/{id}/contacts", get(list_company_contacts))
         .route(
             "/companies/{id}/contact-methods",
             get(list_contact_methods).post(add_contact_method),

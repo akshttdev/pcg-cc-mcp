@@ -1,5 +1,6 @@
 import { makeRequest, handleApiResponse } from './client';
-import type { PersonRecord, CompanyContactMethod, InvoiceRecord, OrgBrandProfile } from './communication';
+import type { CompanyContactMethod, InvoiceRecord, OrgBrandProfile } from './communication';
+import type { CrmContactRecord } from './crm';
 
 // ── Proposals ─────────────────────────────────────────────────────────────────
 
@@ -401,9 +402,9 @@ export const companiesApi = {
     return handleApiResponse<ProposalRecord[]>(response);
   },
 
-  listPersons: async (id: string): Promise<PersonRecord[]> => {
-    const response = await makeRequest(`/api/companies/${id}/persons`);
-    return handleApiResponse<PersonRecord[]>(response);
+  listContacts: async (id: string): Promise<CrmContactRecord[]> => {
+    const response = await makeRequest(`/api/companies/${id}/contacts`);
+    return handleApiResponse<CrmContactRecord[]>(response);
   },
 
   getIntelligenceStatus: async (id: string): Promise<{ status: string; summary?: string; confidence: number; agent?: string; last_run_at?: string }> => {

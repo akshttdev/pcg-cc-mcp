@@ -1,6 +1,6 @@
 use std::{collections::HashMap, env, fs, path::Path};
 
-use schemars::{JsonSchema, Schema, SchemaGenerator, generate::SchemaSettings};
+use schemars::{generate::SchemaSettings, JsonSchema, Schema, SchemaGenerator};
 use ts_rs::TS;
 
 fn generate_types_content() -> String {
@@ -292,6 +292,10 @@ fn generate_types_content() -> String {
         db::models::orchestration_context::ContextEntryType::decl(),
         db::models::orchestration_context::ContextEntryStatus::decl(),
         db::models::orchestration_context::ContextPriority::decl(),
+        // CRM contact sub-resource types
+        db::models::contact_note::ContactNote::decl(),
+        db::models::contact_research_pass::ContactResearchPass::decl(),
+        db::models::contact_social_profile::ContactSocialProfile::decl(),
     ];
 
     let body = decls

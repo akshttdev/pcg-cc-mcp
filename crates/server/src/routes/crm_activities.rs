@@ -3,9 +3,9 @@
 //! Handles activity listing and creation for the CRM timeline.
 
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     routing::{delete, get, post},
+    Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -16,7 +16,7 @@ use serde::Deserialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 #[derive(Debug, Deserialize)]
 pub struct ListActivitiesQuery {

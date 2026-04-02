@@ -121,7 +121,7 @@ function StagingRedirect() {
 
 function PersonsRedirect({ suffix = '' }: { suffix?: string }) {
   const { personId } = useParams<{ personId: string }>();
-  return <Navigate to={`/people/${personId}${suffix}`} replace />;
+  return <Navigate to={`/contacts/${personId}${suffix}`} replace />;
 }
 
 function App() {
@@ -337,13 +337,16 @@ function App() {
             element={<RoleRoute minRole="org_viewer"><PeoplePage /></RoleRoute>}
           />
           <Route
-            path="/people/:personId"
+            path="/contacts/:personId"
             element={<RoleRoute minRole="org_viewer"><PersonProfilePage /></RoleRoute>}
           />
           <Route
-            path="/people/:personId/intel"
+            path="/contacts/:personId/intel"
             element={<RoleRoute minRole="org_viewer"><PersonIntelPage /></RoleRoute>}
           />
+          {/* Legacy /people/:id routes redirect to /contacts/:id */}
+          <Route path="/people/:personId" element={<PersonsRedirect />} />
+          <Route path="/people/:personId/intel" element={<PersonsRedirect suffix="/intel" />} />
           <Route
             path="/proposals"
             element={<RoleRoute minRole="org_viewer"><ProposalsPage /></RoleRoute>}

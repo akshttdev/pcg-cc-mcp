@@ -723,36 +723,45 @@ async fn resolve_review_assignee(
         struct UserIdRow {
             id: DbUuid,
         }
-        if let Some(user) = sqlx::query_as::<_, UserIdRow>(
+        match sqlx::query_as::<_, UserIdRow>(
             "SELECT id FROM users WHERE username = ? OR display_name = ? LIMIT 1",
         )
         .bind(username)
         .bind(username)
         .fetch_optional(pool)
         .await
-        .ok()
-        .flatten()
         {
-            return Some(user.id.to_string());
+            Ok(Some(user)) => return Some(user.id.to_string()),
+            Ok(None) => tracing::warn!(
+                "[resolve_review_assignee] Config review_assignee '{}' not found in users table",
+                username
+            ),
+            Err(e) => tracing::error!(
+                "[resolve_review_assignee] DB error looking up assignee '{}': {}",
+                username,
+                e
+            ),
         }
-        tracing::warn!(
-            "[resolve_review_assignee] Config review_assignee '{}' not found in users table",
-            username
-        );
     }
 
     // 2. Fallback: org owner
     if let Some(ref org_id) = deal.organization_id {
-        let owner_id: Option<String> =
-            sqlx::query_scalar("SELECT owner_id FROM organizations WHERE id = ? LIMIT 1")
-                .bind(org_id)
-                .fetch_optional(pool)
-                .await
-                .ok()
-                .flatten();
-
-        if let Some(oid) = owner_id {
-            return Some(oid);
+        match sqlx::query_scalar::<_, String>(
+            "SELECT owner_id FROM organizations WHERE id = ? LIMIT 1",
+        )
+        .bind(org_id)
+        .fetch_optional(pool)
+        .await
+        {
+            Ok(Some(oid)) => return Some(oid),
+            Ok(None) => tracing::warn!(
+                "[resolve_review_assignee] No owner found for org {}",
+                org_id
+            ),
+            Err(e) => tracing::error!(
+                "[resolve_review_assignee] DB error looking up org owner: {}",
+                e
+            ),
         }
     }
 

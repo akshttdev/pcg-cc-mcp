@@ -1,8 +1,8 @@
 use axum::{
-    Router,
     extract::{Path, Query},
     response::Json as ResponseJson,
     routing::{get, post},
+    Router,
 };
 use serde::Deserialize;
 use services::services::aptos::{
@@ -11,7 +11,7 @@ use services::services::aptos::{
 };
 use utils::response::ApiResponse;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()

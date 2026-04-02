@@ -2,13 +2,13 @@
 
 use std::sync::Arc;
 
-use axum::{Json, extract::State};
+use axum::{extract::State, Json};
 use chrono::Utc;
 use cinematics::{CinematicsConfig, CinematicsService};
 use db::models::project::Project;
 use nora::{
-    NoraConfig,
     voice::{TTSConfig, VoiceConfig},
+    NoraConfig,
 };
 
 use super::{

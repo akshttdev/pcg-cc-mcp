@@ -12,9 +12,9 @@ pub mod voice;
 use std::sync::Arc;
 
 use axum::{
-    Json, Router,
     extract::{Path, State},
     routing::{get, patch, post},
+    Json, Router,
 };
 use chrono::{DateTime, Utc};
 use db::models::{
@@ -23,7 +23,6 @@ use db::models::{
 };
 use deployment::Deployment;
 use nora::{
-    NoraAgent, NoraConfig, NoraError,
     agent::{
         NoraRequest, NoraRequestType, NoraResponse, RapidPlaybookRequest, RapidPlaybookResult,
         RequestPriority,
@@ -34,22 +33,23 @@ use nora::{
     personality::PersonalityConfig,
     tools::{NoraExecutiveTool, ToolExecutionResult},
     voice::{SpeechResponse, VoiceConfig, VoiceEngine, VoiceError, VoiceInteraction},
+    NoraAgent, NoraConfig, NoraError,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx;
-use tokio::sync::{RwLock, broadcast};
+use tokio::sync::{broadcast, RwLock};
 use ts_rs::TS;
 use uuid::Uuid;
 
 // Re-export items used by sub-modules and external modules
 pub use self::coordination::emit_coordination_event;
+pub use self::{config::NoraModeSummary, initialization::initialize_nora_on_startup};
 pub(crate) use self::{
     config::NORA_MODE_PRESETS,
     rate_limiter::{get_chat_rate_limiter, get_voice_rate_limiter},
 };
-pub use self::{config::NoraModeSummary, initialization::initialize_nora_on_startup};
-use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 /// Global Nora agent instance
 pub(crate) static NORA_INSTANCE: tokio::sync::OnceCell<Arc<RwLock<Option<NoraAgent>>>> =

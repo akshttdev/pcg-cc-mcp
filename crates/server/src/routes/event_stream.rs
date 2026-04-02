@@ -1,10 +1,10 @@
 use std::{convert::Infallible, time::Duration};
 
 use axum::{
-    Router,
     extract::{Path, Query, State},
     response::sse::{Event, Sse},
     routing::get,
+    Router,
 };
 use chrono::{DateTime, Utc};
 use db::{db_uuid::DbUuid, models::agent_flow_event::AgentFlowEvent};

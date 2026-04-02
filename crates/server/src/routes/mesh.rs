@@ -13,14 +13,14 @@
 //! Dashboard mesh routes  -->  apn-client  -->  APN Core (localhost:8000)
 //! ```
 
-use axum::{Router, extract::State, response::Json as ResponseJson, routing::get};
+use axum::{extract::State, response::Json as ResponseJson, routing::get, Router};
 use chrono::{DateTime, Utc};
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 /// Mesh network statistics
 #[derive(Debug, Clone, Serialize, Deserialize)]

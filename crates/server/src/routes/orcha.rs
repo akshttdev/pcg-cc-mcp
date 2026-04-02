@@ -6,14 +6,14 @@
 //!
 //! The orchestrator delegates to sub-agents found via `parent_agent_id`.
 
-use axum::{Json, Router, extract::State, routing::get};
+use axum::{extract::State, routing::get, Json, Router};
 use db::models::agent::{Agent, AgentStatus, AutonomyLevel, CreateAgent};
 use deployment::Deployment;
 use serde::Serialize;
 use sqlx::SqlitePool;
 use ts_rs::TS;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::access_control::get_current_user};
+use crate::{error::ApiError, middleware::access_control::get_current_user, DeploymentImpl};
 
 /// Response for GET /orcha/status
 #[derive(Debug, Serialize, TS)]
