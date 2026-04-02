@@ -1,4 +1,4 @@
-import { makeRequest, handleApiResponse } from './client';
+import { handleApiResponse, makeRequest } from './client';
 import type { CrmContactRecord } from './crm';
 
 // ============================================================================
@@ -38,7 +38,12 @@ export interface EmailInboxStats {
   unread: number;
   starred: number;
   needs_response: number;
-  by_account: Array<{ account_id: string; email_address: string; total: number; unread: number }>;
+  by_account: Array<{
+    account_id: string;
+    email_address: string;
+    total: number;
+    unread: number;
+  }>;
 }
 
 export const emailMessagesApi = {
@@ -51,28 +56,39 @@ export const emailMessagesApi = {
     limit?: number;
   }): Promise<EmailMessageRecord[]> => {
     const qs = new URLSearchParams({ project_id: params.project_id });
-    if (params.email_account_id) qs.set('email_account_id', params.email_account_id);
+    if (params.email_account_id)
+      qs.set('email_account_id', params.email_account_id);
     if (params.is_read !== undefined) qs.set('is_read', String(params.is_read));
-    if (params.is_starred !== undefined) qs.set('is_starred', String(params.is_starred));
-    if (params.needs_response !== undefined) qs.set('needs_response', String(params.needs_response));
+    if (params.is_starred !== undefined)
+      qs.set('is_starred', String(params.is_starred));
+    if (params.needs_response !== undefined)
+      qs.set('needs_response', String(params.needs_response));
     if (params.limit) qs.set('limit', String(params.limit));
     const response = await makeRequest(`/api/email/messages?${qs}`);
     return handleApiResponse<EmailMessageRecord[]>(response);
   },
   getInboxStats: async (projectId: string): Promise<EmailInboxStats> => {
-    const response = await makeRequest(`/api/email/messages/stats/${projectId}`);
+    const response = await makeRequest(
+      `/api/email/messages/stats/${projectId}`
+    );
     return handleApiResponse<EmailInboxStats>(response);
   },
   markAsRead: async (id: string): Promise<void> => {
-    const response = await makeRequest(`/api/email/messages/${id}/read`, { method: 'POST' });
+    const response = await makeRequest(`/api/email/messages/${id}/read`, {
+      method: 'POST',
+    });
     return handleApiResponse<void>(response);
   },
   toggleStar: async (id: string): Promise<void> => {
-    const response = await makeRequest(`/api/email/messages/${id}/star`, { method: 'POST' });
+    const response = await makeRequest(`/api/email/messages/${id}/star`, {
+      method: 'POST',
+    });
     return handleApiResponse<void>(response);
   },
   moveToTrash: async (id: string): Promise<void> => {
-    const response = await makeRequest(`/api/email/messages/${id}/trash`, { method: 'POST' });
+    const response = await makeRequest(`/api/email/messages/${id}/trash`, {
+      method: 'POST',
+    });
     return handleApiResponse<void>(response);
   },
 };
@@ -142,7 +158,7 @@ export interface PersonWithSocials extends CrmContactRecord {
 
 export interface PersonNote {
   id: string;
-  person_id: string;
+  crm_contact_id: string | null;
   author_id?: string;
   text: string;
   status: string;
@@ -215,14 +231,21 @@ export const personsApi = {
     const response = await makeRequest(`/api/crm/contacts/${id}/notes`);
     return handleApiResponse<PersonNote[]>(response);
   },
-  createNote: async (id: string, text: string, status?: string): Promise<PersonNote> => {
+  createNote: async (
+    id: string,
+    text: string,
+    status?: string
+  ): Promise<PersonNote> => {
     const response = await makeRequest(`/api/crm/contacts/${id}/notes`, {
       method: 'POST',
       body: JSON.stringify({ text, status: status ?? 'open' }),
     });
     return handleApiResponse<PersonNote>(response);
   },
-  updateNote: async (noteId: string, data: { text?: string; status?: string }): Promise<PersonNote> => {
+  updateNote: async (
+    noteId: string,
+    data: { text?: string; status?: string }
+  ): Promise<PersonNote> => {
     const response = await makeRequest(`/api/crm/contact-notes/${noteId}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -230,12 +253,16 @@ export const personsApi = {
     return handleApiResponse<PersonNote>(response);
   },
   deleteNote: async (noteId: string): Promise<void> => {
-    const response = await makeRequest(`/api/crm/contact-notes/${noteId}`, { method: 'DELETE' });
+    const response = await makeRequest(`/api/crm/contact-notes/${noteId}`, {
+      method: 'DELETE',
+    });
     return handleApiResponse<void>(response);
   },
 
   listSocialProfiles: async (id: string): Promise<PersonSocialProfile[]> => {
-    const response = await makeRequest(`/api/crm/contacts/${id}/social-profiles`);
+    const response = await makeRequest(
+      `/api/crm/contacts/${id}/social-profiles`
+    );
     return handleApiResponse<PersonSocialProfile[]>(response);
   },
 
