@@ -21,6 +21,78 @@ use super::{
 
 // ── Stage 1: Extract structure ────────────────────────────────────────────────
 
+/// Email classification result — determines how an incoming email is handled.
+#[derive(Debug, PartialEq)]
+pub(crate) enum EmailClass {
+    /// A new discovery call or new lead introduction — run full auto-pipeline
+    DiscoveryCall,
+    /// An update about an existing client relationship — log only, no new pipeline
+    OngoingClient,
+    /// Not actionable (marketing, notification, admin) — skip
+    Other,
+}
+
+/// Classify an inbound email from a trusted sender (e.g. sirak@sirakstudios.com)
+/// using a lightweight Claude call. Returns in ~1-2s.
+pub(crate) async fn classify_email(subject: &str, body: &str) -> EmailClass {
+    let api_key = match std::env::var("ANTHROPIC_API_KEY") {
+        Ok(k) => k,
+        Err(_) => return EmailClass::Other,
+    };
+
+    let prompt = format!(
+        r#"Classify this email from a client into exactly one category.
+
+Subject: {}
+Body (first 2000 chars): {}
+
+Reply with ONLY one of these words — nothing else:
+- DISCOVERY  (a new prospective client or discovery call being shared)
+- ONGOING    (an update, follow-up, or note about an existing client relationship)
+- OTHER      (administrative, notifications, marketing, or unrelated)
+
+Classification:"#,
+        subject,
+        &body[..body.len().min(2000)]
+    );
+
+    let client = reqwest::Client::new();
+    let res = client
+        .post("https://api.anthropic.com/v1/messages")
+        .header("x-api-key", &api_key)
+        .header("anthropic-version", "2023-06-01")
+        .header("content-type", "application/json")
+        .json(&serde_json::json!({
+            "model": "claude-haiku-4-5-20251001",
+            "max_tokens": 10,
+            "messages": [{"role": "user", "content": prompt}]
+        }))
+        .send()
+        .await;
+
+    let label = match res {
+        Ok(r) => r
+            .json::<serde_json::Value>()
+            .await
+            .ok()
+            .and_then(|b| {
+                b["content"][0]["text"]
+                    .as_str()
+                    .map(|s| s.trim().to_uppercase())
+            })
+            .unwrap_or_default(),
+        Err(_) => return EmailClass::Other,
+    };
+
+    if label.contains("DISCOVERY") {
+        EmailClass::DiscoveryCall
+    } else if label.contains("ONGOING") {
+        EmailClass::OngoingClient
+    } else {
+        EmailClass::Other
+    }
+}
+
 pub(super) async fn extract_intake_structure(raw: &str) -> anyhow::Result<ExtractedIntake> {
     let api_key = std::env::var("ANTHROPIC_API_KEY")
         .map_err(|_| anyhow::anyhow!("ANTHROPIC_API_KEY not set"))?;
@@ -697,4 +769,282 @@ Return a JSON object with these EXACT fields (all required):
     })?;
 
     Ok(report)
+}
+
+// ── Phase II: Deep research from company KG intel ────────────────────────────
+
+/// Triggered after human review approval.
+/// Loads company KG intel → runs Astra deep analysis → creates BusinessReport + deliverable.
+pub async fn run_phase2_from_company_intel(
+    pool: sqlx::SqlitePool,
+    company_id: &str,
+    client_id: Option<&str>,
+    deal_id: Option<&str>,
+    approved_by: &str,
+) -> anyhow::Result<()> {
+    #[derive(sqlx::FromRow)]
+    struct CompanyRow {
+        name: String,
+        intelligence_summary: Option<String>,
+        intelligence_raw: Option<String>,
+        website: Option<String>,
+        industry: Option<String>,
+    }
+
+    // companies.id is BLOB — query by hex match
+    let company = sqlx::query_as::<_, CompanyRow>(
+        r#"SELECT name, intelligence_summary, intelligence_raw, website, industry
+           FROM companies
+           WHERE lower(hex(substr(id,1,4)) || '-' || hex(substr(id,5,2)) || '-' ||
+                 hex(substr(id,7,2)) || '-' || hex(substr(id,9,2)) || '-' || hex(substr(id,11,6))) = ?
+              OR id = ?"#,
+    )
+    .bind(company_id)
+    .bind(company_id)
+    .fetch_optional(&pool)
+    .await?
+    .ok_or_else(|| anyhow::anyhow!("Company not found: {}", company_id))?;
+
+    let raw: serde_json::Value = company
+        .intelligence_raw
+        .as_deref()
+        .and_then(|r| serde_json::from_str(r).ok())
+        .unwrap_or_default();
+
+    // Build research context from Phase I intel
+    let intel_summary = company
+        .intelligence_summary
+        .as_deref()
+        .unwrap_or("No prior research.");
+
+    let company_research_ctx = format!(
+        "Industry: {}\nWebsite: {}\n\nPhase I Scout Research:\n{}",
+        company.industry.as_deref().unwrap_or("Unknown"),
+        company.website.as_deref().unwrap_or("Unknown"),
+        serde_json::to_string_pretty(&raw).unwrap_or_default(),
+    );
+
+    let biz_list = format!(
+        "- {} ({}): {}",
+        company.name,
+        company.website.as_deref().unwrap_or("no website"),
+        company.intelligence_summary.as_deref().unwrap_or("")
+    );
+
+    // Determine primary contact name from linked client/person if available
+    let person_name = if let Some(cid) = client_id {
+        sqlx::query_scalar::<_, Option<String>>(
+            "SELECT p.full_name FROM clients cl JOIN persons p ON p.id = cl.primary_person_id WHERE cl.id = ?"
+        )
+        .bind(cid)
+        .fetch_optional(&pool)
+        .await
+        .ok()
+        .flatten()
+        .flatten()
+        .unwrap_or_else(|| company.name.clone())
+    } else {
+        company.name.clone()
+    };
+
+    // Pull discovery call content from intake items for this company (by company_name match)
+    // This ensures the actual meeting notes/transcript are included in the report context
+    let call_context = {
+        #[derive(sqlx::FromRow)]
+        struct IntakeRow {
+            call_summary: Option<String>,
+            raw_content: Option<String>,
+        }
+        let rows: Vec<IntakeRow> = sqlx::query_as(
+            "SELECT call_summary, raw_content FROM call_intake_items
+             WHERE extracted_businesses LIKE ? OR extracted_businesses LIKE ?
+             ORDER BY created_at DESC LIMIT 3",
+        )
+        .bind(format!("%\"{}%", company.name))
+        .bind(format!("%{}%", company.name))
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default();
+
+        let mut ctx = String::new();
+        for row in &rows {
+            if let Some(summary) = &row.call_summary {
+                ctx.push_str(&format!("Discovery Call Summary:\n{}\n\n", summary));
+            }
+            if let Some(raw) = &row.raw_content {
+                // Include up to 4000 chars of the raw email/transcript content
+                ctx.push_str(&format!(
+                    "Call/Email Content:\n{}\n\n",
+                    &raw[..raw.len().min(4000)]
+                ));
+            }
+        }
+        if ctx.is_empty() {
+            "No call context available.".to_string()
+        } else {
+            ctx
+        }
+    };
+
+    info!(
+        "[Phase II] Generating Astra deep research report for {}",
+        company.name
+    );
+
+    let generated = generate_report_with_claude(
+        &person_name,
+        &company.name,
+        intel_summary,
+        &call_context,
+        &company_research_ctx,
+        &biz_list,
+        "",
+        "business_audit",
+    )
+    .await?;
+
+    // Create BusinessReport record
+    let report = BusinessReport::create(
+        &pool,
+        CreateBusinessReport {
+            title: generated.title.clone(),
+            report_type: Some("business_audit".into()),
+            executive_summary: Some(generated.executive_summary),
+            company_overview: Some(generated.company_overview),
+            pain_points: Some(
+                serde_json::to_string(&generated.pain_points).unwrap_or_else(|_| "[]".into()),
+            ),
+            opportunities: Some(
+                serde_json::to_string(&generated.opportunities).unwrap_or_else(|_| "[]".into()),
+            ),
+            recommended_services: Some(
+                serde_json::to_string(&generated.recommended_services)
+                    .unwrap_or_else(|_| "[]".into()),
+            ),
+            next_steps: Some(
+                serde_json::to_string(&generated.next_steps).unwrap_or_else(|_| "[]".into()),
+            ),
+            full_report_md: Some(generated.full_report_md),
+            individual_profiles: Some(
+                serde_json::to_string(&generated.individual_profiles)
+                    .unwrap_or_else(|_| "[]".into()),
+            ),
+            market_analysis: Some(generated.market_analysis),
+            competitor_analysis: Some(
+                serde_json::to_string(&generated.competitor_analysis)
+                    .unwrap_or_else(|_| "[]".into()),
+            ),
+            target_clients: Some(generated.target_clients),
+            brand_positioning: Some(generated.brand_positioning),
+            digital_presence: Some(generated.digital_presence),
+            sources: Some(
+                serde_json::to_string(&generated.sources).unwrap_or_else(|_| "[]".into()),
+            ),
+            intake_item_ids: Some("[]".into()),
+            call_log_ids: Some("[]".into()),
+            company_id: None,
+            person_id: None,
+            created_by: None,
+        },
+    )
+    .await?;
+
+    let report_id_str = report.id.to_string();
+
+    // Link to client, deal, approved_by
+    let _ = sqlx::query(
+        "UPDATE business_reports SET
+         client_id = COALESCE(?, client_id),
+         crm_deal_id = COALESCE(?, crm_deal_id),
+         reviewed_by = ?,
+         reviewed_at = datetime('now','subsec'),
+         review_status = 'approved'
+         WHERE id = ?",
+    )
+    .bind(client_id)
+    .bind(deal_id)
+    .bind(approved_by)
+    .bind(&report_id_str)
+    .execute(&pool)
+    .await;
+
+    BusinessReport::mark_ready(&pool, &report_id_str).await?;
+
+    // Create PDF deliverable on deal's project board if deal_id is set
+    if let Some(did) = deal_id {
+        let project_id: Option<String> =
+            sqlx::query_scalar("SELECT project_id FROM crm_deals WHERE id = ?")
+                .bind(did)
+                .fetch_optional(&pool)
+                .await
+                .ok()
+                .flatten()
+                .flatten();
+
+        if let Some(pid) = project_id {
+            let del_id = Uuid::new_v4().to_string();
+            let pdf_url = format!("/api/business-reports/{}/pdf", report_id_str);
+            let _ = sqlx::query(
+                "INSERT INTO deliverables (id, project_id, title, description, status,
+                 final_link, business_report_id, deliverable_type, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, 'done', ?, ?, 'report', datetime('now','subsec'), datetime('now','subsec'))",
+            )
+            .bind(&del_id)
+            .bind(&pid)
+            .bind(format!("Business Analysis Report: {}", company.name))
+            .bind("Phase II Astra deep research — Fortune 100-level business analysis report.")
+            .bind(&pdf_url)
+            .bind(&report_id_str)
+            .execute(&pool)
+            .await;
+
+            info!("[Phase II] Created PDF deliverable on project {}", pid);
+        }
+    }
+
+    // ── Auto-pipeline task transitions ────────────────────────────────────────
+    use crate::routes::intake::pipeline::SIRAK_CONFIG;
+
+    // Mark Phase II (Astra Report) task done
+    let _ = sqlx::query(
+        "UPDATE tasks SET status = 'done', updated_at = datetime('now','subsec')
+         WHERE workflow_type = 'phase2_astra' AND entity_id = ? AND status != 'done'",
+    )
+    .bind(company_id)
+    .execute(&pool)
+    .await;
+
+    // Create Phase III review task assigned to the human operator (Sirak)
+    let task3_id = Uuid::new_v4().to_string();
+    let task3_title = format!("Review: {} Business Report", company.name);
+    let task3_desc = format!(
+        "Phase III — Human review of Astra deep research business analysis.\n\
+         Report ID: {}\n\
+         Company: {}\n\
+         Action: Review the report, make edits if needed, then mark approved to close the pipeline.",
+        report_id_str, company.name
+    );
+    let _ = sqlx::query(
+        "INSERT INTO tasks (id, project_id, title, description, status, priority,
+         assignee_id, created_by, tags, workflow_type, entity_type, entity_id,
+         crm_deal_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'todo', 'high', ?, 'auto-pipeline',
+         '[\"phase3\",\"review\",\"auto-pipeline\"]', 'phase3_review', 'business_report', ?,
+         ?, datetime('now','subsec'), datetime('now','subsec'))",
+    )
+    .bind(&task3_id)
+    .bind(SIRAK_CONFIG.project_id)
+    .bind(&task3_title)
+    .bind(&task3_desc)
+    .bind(SIRAK_CONFIG.sirak_user_id)
+    .bind(&report_id_str)
+    .bind(deal_id)
+    .execute(&pool)
+    .await;
+
+    info!(
+        "[Phase II] Complete for {} — report {} — Phase III review task created",
+        company.name, report_id_str
+    );
+    Ok(())
 }

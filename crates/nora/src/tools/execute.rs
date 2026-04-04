@@ -663,6 +663,176 @@ impl ExecutiveTools {
             required_permissions: vec![Permission::Execute],
             estimated_duration: Some("1-5 minutes".to_string()),
         });
+
+        // Image Generation tool (fal.ai FLUX Pro Ultra)
+        self.add_tool_definition(ToolDefinition {
+            name: "generate_image".to_string(),
+            description: "Generate a high-quality AI image using fal.ai FLUX Pro Ultra. Supports text-to-image and image-to-image (reference_image_url). Use raw_mode=true for photorealistic portraits. Costs 50 VIBE per image.".to_string(),
+            category: ToolCategory::Production,
+            parameters: vec![
+                ToolParameter {
+                    name: "prompt".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "Text prompt describing the desired image".to_string(),
+                    required: true,
+                    default_value: None,
+                },
+                ToolParameter {
+                    name: "reference_image_url".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "Optional URL to a reference image for img2img mode".to_string(),
+                    required: false,
+                    default_value: None,
+                },
+                ToolParameter {
+                    name: "aspect_ratio".to_string(),
+                    parameter_type: ParameterType::Enum(vec![
+                        "1:1".to_string(),
+                        "16:9".to_string(),
+                        "9:16".to_string(),
+                        "4:3".to_string(),
+                        "3:4".to_string(),
+                        "21:9".to_string(),
+                    ]),
+                    description: "Output aspect ratio (default 3:4 for portraits)".to_string(),
+                    required: false,
+                    default_value: Some(serde_json::json!("3:4")),
+                },
+                ToolParameter {
+                    name: "raw_mode".to_string(),
+                    parameter_type: ParameterType::Boolean,
+                    description: "Enable raw photographic mode for ultra-realistic output (recommended for portraits)".to_string(),
+                    required: false,
+                    default_value: Some(serde_json::json!(true)),
+                },
+                ToolParameter {
+                    name: "seed".to_string(),
+                    parameter_type: ParameterType::Number,
+                    description: "Optional seed for reproducibility".to_string(),
+                    required: false,
+                    default_value: None,
+                },
+                ToolParameter {
+                    name: "model".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "fal.ai model ID (default: fal-ai/flux-pro/v1.1-ultra)".to_string(),
+                    required: false,
+                    default_value: Some(serde_json::json!("fal-ai/flux-pro/v1.1-ultra")),
+                },
+                ToolParameter {
+                    name: "output_filename".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "Output filename (without extension). Saved to dev_assets/video_gen/portraits/".to_string(),
+                    required: false,
+                    default_value: None,
+                },
+                ToolParameter {
+                    name: "task_id".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "Optional task UUID to log this generation against".to_string(),
+                    required: false,
+                    default_value: None,
+                },
+                ToolParameter {
+                    name: "project_id".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "Optional project UUID for VIBE billing context".to_string(),
+                    required: false,
+                    default_value: None,
+                },
+            ],
+            required_permissions: vec![Permission::Execute],
+            estimated_duration: Some("20-60 seconds".to_string()),
+        });
+
+        // Apply Video Effect tool (FFmpeg presets)
+        self.add_tool_definition(ToolDefinition {
+            name: "apply_video_effect".to_string(),
+            description: "Apply a cinematic post-processing effect to a video file using FFmpeg. Presets: hologram_glitch (cyberpunk RGB split + scanlines + blue tint + fade), color_grade (cinematic LUT), vignette (soft edge darkening). Costs 100 VIBE per render.".to_string(),
+            category: ToolCategory::Production,
+            parameters: vec![
+                ToolParameter {
+                    name: "input_path".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "Path to the input video file".to_string(),
+                    required: true,
+                    default_value: None,
+                },
+                ToolParameter {
+                    name: "effect".to_string(),
+                    parameter_type: ParameterType::Enum(vec![
+                        "hologram_glitch".to_string(),
+                        "color_grade".to_string(),
+                        "vignette".to_string(),
+                    ]),
+                    description: "Effect preset to apply".to_string(),
+                    required: true,
+                    default_value: None,
+                },
+                ToolParameter {
+                    name: "output_path".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "Output video path (defaults to input_path with _fx suffix)".to_string(),
+                    required: false,
+                    default_value: None,
+                },
+                ToolParameter {
+                    name: "task_id".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "Optional task UUID to log this render against".to_string(),
+                    required: false,
+                    default_value: None,
+                },
+                ToolParameter {
+                    name: "project_id".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "Optional project UUID for VIBE billing context".to_string(),
+                    required: false,
+                    default_value: None,
+                },
+            ],
+            required_permissions: vec![Permission::Execute],
+            estimated_duration: Some("1-5 minutes depending on video length".to_string()),
+        });
+
+        // Post-Process Video Job tool (chained effects on HeyGen output)
+        self.add_tool_definition(ToolDefinition {
+            name: "post_process_video_job".to_string(),
+            description: "Apply a chain of post-processing effects to a completed HeyGen video job. Looks up the video_job by ID, downloads the output, applies effects sequentially, and saves the final deliverable. Costs 100 VIBE per effect applied.".to_string(),
+            category: ToolCategory::Production,
+            parameters: vec![
+                ToolParameter {
+                    name: "video_job_id".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "UUID of the completed VideoJob record".to_string(),
+                    required: true,
+                    default_value: None,
+                },
+                ToolParameter {
+                    name: "effects".to_string(),
+                    parameter_type: ParameterType::Array,
+                    description: "Ordered list of effects to apply (e.g. [\"hologram_glitch\", \"vignette\"])".to_string(),
+                    required: true,
+                    default_value: None,
+                },
+                ToolParameter {
+                    name: "task_id".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "Optional task UUID to log this pipeline against".to_string(),
+                    required: false,
+                    default_value: None,
+                },
+                ToolParameter {
+                    name: "project_id".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "Optional project UUID for VIBE billing context".to_string(),
+                    required: false,
+                    default_value: None,
+                },
+            ],
+            required_permissions: vec![Permission::Execute, Permission::Executive],
+            estimated_duration: Some("2-10 minutes depending on video length and effect count".to_string()),
+        });
     }
 
     fn add_tool_definition(&mut self, tool_def: ToolDefinition) {
@@ -719,6 +889,10 @@ impl ExecutiveTools {
             NoraExecutiveTool::PreviewMusicTrack { .. } => "preview_music_track".to_string(),
             NoraExecutiveTool::GetMusicTrackDetails { .. } => "get_music_track_details".to_string(),
             NoraExecutiveTool::AnalyzeMusicTrack { .. } => "analyze_music_track".to_string(),
+
+            NoraExecutiveTool::GenerateImage { .. } => "generate_image".to_string(),
+            NoraExecutiveTool::ApplyVideoEffect { .. } => "apply_video_effect".to_string(),
+            NoraExecutiveTool::PostProcessVideoJob { .. } => "post_process_video_job".to_string(),
 
             // Add more mappings...
             _ => "unknown_tool".to_string(),

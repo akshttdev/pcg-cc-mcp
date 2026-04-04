@@ -8,7 +8,15 @@ use axum::{
     extract::{Path, State},
     Extension, Json,
 };
-use db::{db_uuid::DbUuid, models::crm_deal::CrmDeal};
+use db::{
+    db_uuid::DbUuid,
+    models::{
+        crm_deal::CrmDeal,
+        project_knowledge_source::{
+            KnowledgeOwnerScope, KnowledgeSourceType, ProjectKnowledgeSource,
+        },
+    },
+};
 use deployment::Deployment;
 use utils::response::ApiResponse;
 
@@ -421,38 +429,86 @@ pub async fn generate_phase1_business_report(
         .as_ref()
         .and_then(|c| c.intelligence_summary.clone());
 
-    let executive_summary = match (person_summary.as_deref(), company_summary.as_deref()) {
-        (Some(ps), Some(cs)) => Some(format!(
-            "## Person Intelligence\n{}\n\n## Company Intelligence\n{}",
-            ps, cs
-        )),
-        (Some(ps), None) => Some(format!("## Person Intelligence\n{}", ps)),
-        (None, Some(cs)) => Some(format!("## Company Intelligence\n{}", cs)),
-        (None, None) => None,
-    };
-
-    let individual_profile = if let Some(ref pi) = person_intel {
+    // Build raw intel context for Astra
+    let mut raw_intel_parts: Vec<String> = Vec::new();
+    if let Some(ref pi) = person_intel {
         let mut parts = Vec::new();
         if let Some(ref name) = pi.full_name {
-            parts.push(format!("**Name:** {}", name));
+            parts.push(format!("Name: {}", name));
         }
         if let Some(ref email) = pi.email {
-            parts.push(format!("**Email:** {}", email));
+            parts.push(format!("Email: {}", email));
         }
         if let Some(ref title) = pi.job_title {
-            parts.push(format!("**Title:** {}", title));
+            parts.push(format!("Title: {}", title));
         }
-        if let Some(ref summary) = pi.intelligence_summary {
-            parts.push(format!("\n{}", summary));
+        if let Some(ref s) = person_summary {
+            parts.push(s.clone());
         }
-        if parts.is_empty() {
-            None
-        } else {
-            Some(parts.join("\n"))
+        if !parts.is_empty() {
+            raw_intel_parts.push(format!("## Contact Intelligence\n{}", parts.join("\n")));
         }
+    }
+    if let Some(ref ci) = company_intel {
+        let mut parts = Vec::new();
+        if let Some(ref industry) = ci.industry {
+            parts.push(format!("Industry: {}", industry));
+        }
+        if let Some(ref desc) = ci.description {
+            parts.push(format!("Overview: {}", desc));
+        }
+        if let Some(ref s) = company_summary {
+            parts.push(s.clone());
+        }
+        if !parts.is_empty() {
+            raw_intel_parts.push(format!("## Company Intelligence\n{}", parts.join("\n")));
+        }
+    }
+
+    // Call Astra to generate a proper Phase 1 analysis (if we have intel data)
+    let astra_system = "You are Astra, a business intelligence analyst at Sirak Studios (a PowerClub Global company). Your role is to synthesise raw intelligence into actionable business analysis for the sales team.\n\nGiven the available intel on a prospect, produce a structured Phase 1 Business Analysis with these sections:\n\n## Executive Summary\nA concise 2-3 paragraph overview: who they are, where they are in their business, and the core opportunity for Sirak Studios.\n\n## Pain Points\n3-5 specific challenges this prospect likely faces (based on their situation).\n\n## Opportunities for Sirak Studios\n3-5 concrete ways we can create value — be specific about services that would fit.\n\n## Recommended Services\nRanked list of recommended service packages with brief justification and estimated value tier.\n\n## Strategic Notes\nKey context the account manager needs: relationship signals, timing considerations, likely objections, competitive threats.\n\nBe analytical, specific, and direct. No fluff. The AM should be able to walk into a discovery call fully prepared.";
+
+    let (executive_summary, report_status) = if raw_intel_parts.is_empty() {
+        (None, "draft")
     } else {
-        None
+        let raw_intel = raw_intel_parts.join("\n\n---\n\n");
+        let user_msg = format!(
+            "Generate a Phase 1 business analysis for this prospect.\n\nDeal: {}\n\n{}",
+            contact_name, raw_intel
+        );
+        match call_llm(astra_system, &user_msg).await {
+            Ok(analysis) => {
+                tracing::info!("[generate_phase1_business_report] Astra generated Phase 1 analysis for deal {}", deal_id);
+                (Some(analysis), "ready")
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "[generate_phase1_business_report] Astra call failed, storing raw intel: {}",
+                    e
+                );
+                // Fallback: store raw intel concatenation
+                let fallback = raw_intel_parts.join("\n\n");
+                (Some(fallback), "draft")
+            }
+        }
     };
+
+    let individual_profiles_json = person_intel
+        .as_ref()
+        .map(|pi| {
+            let profile_parts: Vec<String> = [
+                pi.full_name.as_deref().map(|s| format!("Name: {}", s)),
+                pi.email.as_deref().map(|s| format!("Email: {}", s)),
+                pi.job_title.as_deref().map(|s| format!("Title: {}", s)),
+                pi.intelligence_summary.as_deref().map(|s| s.to_string()),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+            serde_json::json!([{"name": contact_name, "profile": profile_parts.join("\n")}])
+                .to_string()
+        })
+        .unwrap_or_else(|| "[]".to_string());
 
     let company_overview = company_intel.as_ref().map(|c| {
         let mut parts = Vec::new();
@@ -463,25 +519,18 @@ pub async fn generate_phase1_business_report(
             parts.push(format!("**Overview:** {}", desc));
         }
         if let Some(ref summary) = c.intelligence_summary {
-            parts.push(format!("\n{}", summary));
+            parts.push(summary.clone());
         }
         parts.join("\n")
     });
 
-    let title = format!(
-        "Phase 1 Business Analysis: {} / {}",
-        contact_name, company_display
-    );
+    let title = format!("Business Analytics: {} — {}", company_display, contact_name);
     // BLOB-column binding: business_reports.id/person_id/company_id/crm_deal_id are BLOB
-    // Phase C TODO: migrate these columns to TEXT so we can bind DbUuid directly
     let person_uuid = person_intel.as_ref().map(|p| p.id.to_uuid());
     let company_uuid = company_intel.as_ref().map(|c| c.id.to_uuid());
     let deal_uuid = Some(deal_id.to_uuid());
 
     let report_id = DbUuid::new().to_uuid();
-    let individual_profiles_json = individual_profile
-        .map(|p| serde_json::json!([{"name": contact_name, "profile": p}]).to_string())
-        .unwrap_or_else(|| "[]".to_string());
 
     let res = sqlx::query(
         r#"INSERT INTO business_reports
@@ -489,13 +538,14 @@ pub async fn generate_phase1_business_report(
             executive_summary, company_overview, individual_profiles,
             pain_points, opportunities, recommended_services, next_steps,
             competitor_analysis, intake_item_ids, call_log_ids)
-           VALUES (?, ?, ?, ?, 'phase1_analysis', ?, 'draft', ?, ?, ?, '[]', '[]', '[]', '[]', '[]', '[]', '[]')"#,
+           VALUES (?, ?, ?, ?, 'phase1_analysis', ?, ?, ?, ?, ?, '[]', '[]', '[]', '[]', '[]', '[]', '[]')"#,
     )
     .bind(report_id)
     .bind(person_uuid)
     .bind(company_uuid)
     .bind(deal_uuid)
     .bind(&title)
+    .bind(report_status)
     .bind(&executive_summary)
     .bind(&company_overview)
     .bind(&individual_profiles_json)
@@ -738,7 +788,7 @@ pub async fn trigger_deep_research_pass2(pool: &sqlx::SqlitePool, deal_id: DbUui
         context_parts.push(format!("## Deal Notes\n{}", desc));
     }
 
-    let astra_system = "You are Astra, a business intelligence analyst at PowerClub Global. Your task is to enhance an existing business analysis report with new discovery context from client conversations. Synthesize all available intelligence into a comprehensive, actionable business report. Include: Executive Summary, Client Pain Points, Opportunities, Recommended Services (with estimated value ranges), Competitive Landscape, and Strategic Recommendations. Be specific and data-driven.";
+    let astra_system = "You are Astra, a senior business intelligence analyst at Sirak Studios (a PowerClub Global company). You're preparing the final briefing document that Cash (our proposal agent) will use to write the proposal — so every insight needs to be actionable and specific.\n\nYour job: synthesise all available intelligence (prior report + discovery transcripts + operator notes + person/company intel) into an enhanced business analysis.\n\nOutput these sections:\n\n## Executive Summary\n2-3 paragraphs: who the client is, their current situation, and the core opportunity. Updated with discovery learnings.\n\n## Client Pain Points\nSpecific, discovery-validated pain points. Quote or reference what was said in the discovery call where possible.\n\n## Strategic Opportunities\nConcrete service opportunities ranked by fit and value. Include estimated value ranges.\n\n## Recommended Services\nFinal ranked list of recommended deliverables with pricing tier guidance.\n\n## Competitive Context\nAny known alternatives, DIY solutions, or competitors the client mentioned.\n\n## Proposal Guidance for Cash\nKey angles, messaging hooks, and pricing considerations Cash should factor into the proposal. What will close this deal?\n\nBe direct, specific, and analytical. The AM should not need to fill in gaps.";
     let user_msg = format!(
         "Enhance this business report with the discovery context below. Deal: {}\n\n{}",
         deal.name,
@@ -901,9 +951,9 @@ async fn generate_proposal_core(pool: &sqlx::SqlitePool, id: &DbUuid) -> Result<
         context_parts.join("\n\n---\n\n")
     };
 
-    let cash_system = "You are Cash, a razor-sharp sales strategist and proposal architect at PowerClub Global, a creative production and brand strategy agency. You transform business intelligence into irresistible, tailored proposals. Every word earns its place. Write proposals in clear, compelling markdown with these sections: Executive Summary, Client Situation, Proposed Solution, Deliverables, Timeline, Investment, and Next Steps. IMPORTANT: At the very end, include a JSON block with the deliverables list using this exact format:\n\n```json\n[{\"title\": \"Deliverable Name\", \"description\": \"Brief description\"}]\n```\n\nBe bold, specific, and value-driven. British English optional.";
+    let cash_system = "You are Cash, a razor-sharp sales strategist and proposal architect at Sirak Studios (a PowerClub Global company), a premium creative production and brand strategy agency.\n\nYour proposals close deals. Every section earns its place. Be specific, bold, and value-driven — speak to the client's actual situation.\n\nPRICING TIERS (use these as your guide):\n- Tier 1 (Essentials): $3,500–6,500 — Logo, 1-page site, brand colours, social kit\n- Tier 2 (Strategic Brand): $8,500–18,000 — Full brand identity, landing page + VSL, ICP research, email automation, funnel strategy\n- Tier 3 (Growth Engine): $20,000–45,000 — Full rebrand, multi-page site, paid ad creative, content system, 90-day growth roadmap\n- Tier 4 (Enterprise Partnership): $50,000+ — White-glove multi-channel strategy, custom dev, retained advisory\n\nPer-deliverable pricing benchmarks:\n- Brand Kit / Identity System: $3,500–7,500\n- Landing Page + VSL Strategy: $4,000–8,000\n- ICP Research (3 profiles): $1,500–3,000\n- Email Sequence + Automation: $2,500–5,000\n- Funnel Mapping: $1,500–3,000\n- Lead Generation Strategy: $2,000–4,000\n- Investor / Pitch Deck: $5,000–12,000\n- Social Media Content System: $3,000–6,000\n- Video Production (per video): $2,000–8,000\n\nWrite proposals in clear, compelling markdown with these exact sections:\n## Executive Summary\n## Client Situation\n## Proposed Solution\n## Deliverables\n## Timeline\n## Investment\n## Next Steps\n\nIn the Deliverables section, list each deliverable with a brief description and its individual price.\nIn the Investment section, show the total, any available payment options, and what makes this transformative.\n\nIMPORTANT: At the very end of the proposal, include a JSON block with the deliverables list:\n\n```json\n[{\"title\": \"Deliverable Name\", \"description\": \"Brief description\", \"estimated_value\": 5000}]\n```\n\nThe estimated_value must be a number (no $ sign, no quotes). The sum of all estimated_values should equal the total in the Investment section.";
     let user_prompt = format!(
-        "Write a professional proposal for the following deal.\n\n{}",
+        "Write a tailored, high-converting proposal for the following client engagement.\n\n{}",
         context
     );
 
@@ -1102,7 +1152,7 @@ async fn generate_deck_core(pool: &sqlx::SqlitePool, id: &DbUuid) -> Result<CrmD
     };
 
     let proposal = deal.proposal_text.as_deref().unwrap_or("");
-    let lux_system = "You are Lux, a master presentation designer. You transform proposals into structured, high-impact slide decks. Output a complete slide-by-slide script in markdown, with each slide on a --- separator. Each slide has: SLIDE TITLE, KEY MESSAGE (1 sentence), VISUAL SUGGESTION, and SPEAKER NOTES. Design for clarity, impact, and brand alignment. Slides: Cover, Agenda, Client Situation, Our Solution, Deliverables, Timeline, Investment, Why Us, Next Steps, Close.";
+    let lux_system = "You are Lux, a world-class presentation strategist at Sirak Studios. You transform approved proposals into compelling, slide-by-slide deck scripts that close deals.\n\nOutput a complete deck script in markdown. Separate each slide with ---.\n\nFor each slide use this structure:\n## [Slide Title]\n**Key Message:** One punchy sentence the audience must remember.\n**Visuals:** Concrete art direction (colours, imagery, layout).\n**Speaker Notes:** What the presenter says verbatim — confident, conversational, persuasive.\n\nSlide flow: Cover → About Us → Client Situation & Pain Points → The Opportunity → Our Solution → Deliverables (one per slide for key items) → Timeline → Investment → Why Sirak Studios → Social Proof → Next Steps → Close\n\nTone: premium, direct, human. No corporate fluff. The client should feel understood and excited.";
     let user_prompt = match brand_context {
         Some(ref bc) => format!(
             "Create a sales deck for this proposal.\n\nBrand context:\n{}\n\n---\n\nProposal:\n{}",
@@ -1322,6 +1372,18 @@ pub async fn provision_won_deal(
             cid
         }
     };
+
+    // Promote existing client to client_since (first payment/won)
+    let _ = sqlx::query(
+        "UPDATE clients SET
+         client_since = COALESCE(client_since, datetime('now','subsec')),
+         prospect_at = COALESCE(prospect_at, datetime('now','subsec')),
+         updated_at = datetime('now','subsec')
+         WHERE id = ?",
+    )
+    .bind(&client_id)
+    .execute(pool)
+    .await;
 
     // ── Create Project ───────────────────────────────────────────────────────
     // Check if project already linked (idempotent)
@@ -1603,6 +1665,27 @@ pub async fn link_deal_transcript(
     .await
     .map_err(|e| ApiError::BadRequest(format!("DB error: {}", e)))?;
 
+    // Register transcript in deal's knowledge graph
+    {
+        let kg_pool = pool.clone();
+        let kg_deal_id = deal_id.to_string();
+        let kg_trans_id = transcript_id.to_string();
+        let kg_summary = body.summary.clone();
+        tokio::spawn(async move {
+            let _ = ProjectKnowledgeSource::upsert_owner_scoped(
+                &kg_pool,
+                &KnowledgeOwnerScope::Deal,
+                &kg_deal_id,
+                &KnowledgeSourceType::Conversation,
+                &kg_trans_id,
+                "Deal Transcript",
+                kg_summary.as_deref(),
+                0.6,
+            )
+            .await;
+        });
+    }
+
     Ok(Json(ApiResponse::success(record)))
 }
 
@@ -1651,6 +1734,26 @@ pub async fn link_deal_data_source(
     .fetch_one(pool)
     .await
     .map_err(|e| ApiError::BadRequest(format!("DB error: {}", e)))?;
+
+    // Register data source in deal's knowledge graph
+    {
+        let kg_pool = pool.clone();
+        let kg_deal_id = deal_id.to_string();
+        let kg_source_id = data_source_id.to_string();
+        tokio::spawn(async move {
+            let _ = ProjectKnowledgeSource::upsert_owner_scoped(
+                &kg_pool,
+                &KnowledgeOwnerScope::Deal,
+                &kg_deal_id,
+                &KnowledgeSourceType::Artifact,
+                &kg_source_id,
+                "Deal Data Source",
+                None,
+                0.5,
+            )
+            .await;
+        });
+    }
 
     Ok(Json(ApiResponse::success(record)))
 }
@@ -1750,4 +1853,29 @@ pub async fn generate_deal_invite(
         "contact_email": contact_email,
         "status": "pending",
     }))))
+}
+
+/// Register a deal in the knowledge graph (called after deal updates).
+pub async fn register_deal_in_kg_pub(pool: &sqlx::SqlitePool, deal_id: &DbUuid) {
+    let deal = match CrmDeal::find_by_id(pool, deal_id).await {
+        Ok(d) => d,
+        _ => return,
+    };
+    let title = format!("Deal: {}", deal.name);
+    let summary = deal.proposal_text.as_deref().unwrap_or("").to_string();
+    let _ = ProjectKnowledgeSource::upsert_owner_scoped(
+        pool,
+        &KnowledgeOwnerScope::Deal,
+        &deal_id.to_string(),
+        &KnowledgeSourceType::Artifact,
+        &deal_id.to_string(),
+        &title,
+        if summary.is_empty() {
+            None
+        } else {
+            Some(&summary)
+        },
+        0.5,
+    )
+    .await;
 }

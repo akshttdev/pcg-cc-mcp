@@ -5,6 +5,7 @@ import {
   Code,
   Copy,
   Edit,
+  ExternalLink,
   FileText,
   Image,
   Loader2,
@@ -182,19 +183,47 @@ function ArtifactPreview({
         </div>
       );
 
-    case 'document':
+    case 'document': {
+      const filePath = artifact.file_path;
+      const fileLabel = filePath?.toLowerCase().includes('.pdf')
+        ? 'PDF'
+        : filePath?.toLowerCase().includes('.docx')
+          ? 'DOCX'
+          : filePath?.includes('docs.google.com')
+            ? 'Doc'
+            : filePath?.includes('dropbox.com')
+              ? 'File'
+              : filePath
+                ? 'Link'
+                : null;
       return (
         <div className="bg-gray-50 dark:bg-gray-900 rounded-md p-2 max-h-20 overflow-hidden">
-          <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 truncate">
-            {artifact.title}
+          <div className="flex items-center gap-1.5 mb-1">
+            <FileText className="h-3 w-3 text-muted-foreground shrink-0" />
+            <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate flex-1">
+              {artifact.title}
+            </span>
+            {filePath && fileLabel && (
+              <a
+                href={filePath}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="flex items-center gap-0.5 shrink-0 text-[10px] font-semibold text-primary/80 bg-primary/10 hover:bg-primary/20 rounded px-1 py-0.5 transition-colors"
+              >
+                <ExternalLink className="h-2.5 w-2.5" />
+                {fileLabel}
+              </a>
+            )}
           </div>
           {content && (
-            <div className="text-[9px] text-gray-500 dark:text-gray-400 line-clamp-3 leading-relaxed">
-              {content.substring(0, 200)}...
+            <div className="text-[9px] text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed">
+              {content.substring(0, 150)}
             </div>
           )}
         </div>
       );
+    }
 
     case 'media': {
       const isVideoEdit = VIDEO_EDIT_TYPES.includes(artifact.artifact_type);

@@ -1,0 +1,1159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PCG Graphics Library — Tech Briefing Package</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --gold:     #AF9041;
+      --gold-lt:  #D4B96A;
+      --gold-xlt: #EDE0B8;
+      --gold-dk:  #7A6228;
+      --gold-glow:rgba(175,144,65,0.22);
+      --red:      #C0392B;
+      --red-dk:   #8B1A1A;
+      --glass:    rgba(6,6,8,0.58);
+      --glass-dk: rgba(4,4,6,0.82);
+      --white:    #FFFFFF;
+      --off:      rgba(255,255,255,0.82);
+      --muted:    rgba(255,255,255,0.42);
+    }
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:#060608;font-family:'Inter',sans-serif;padding:36px;color:#fff;}
+
+    h1{font-family:'Cinzel',serif;color:var(--gold);font-size:15px;letter-spacing:.22em;text-transform:uppercase;margin-bottom:4px;}
+    .sub{color:#3a3a3a;font-size:10px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:28px;}
+
+    /* Section headers */
+    .section{margin:44px 0 16px;}
+    .section h2{font-family:'Cinzel',serif;font-size:10px;font-weight:700;letter-spacing:.3em;text-transform:uppercase;color:var(--gold-dk);border-bottom:1px solid #141416;padding-bottom:8px;}
+    .section .desc{font-size:10px;color:#333;letter-spacing:.08em;margin-top:5px;}
+
+    /* Grids */
+    .g3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+    .g4{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;}
+    .g2{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;}
+
+    .card{display:flex;flex-direction:column;gap:6px;}
+    .lbl{font-size:9px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:#2e2e2e;}
+
+    /* ── 16:9 Canvas ── */
+    .cv{
+      width:100%;aspect-ratio:16/9;position:relative;overflow:hidden;
+      border:1px solid #141416;container-type:inline-size;
+      background:linear-gradient(135deg,#0a0a10 0%,#08080e 55%,#050508 100%);
+    }
+    /* Tech grid */
+    .cv::before{
+      content:'';position:absolute;inset:0;pointer-events:none;z-index:0;
+      background-image:
+        linear-gradient(rgba(175,144,65,.028) 1px,transparent 1px),
+        linear-gradient(90deg,rgba(175,144,65,.028) 1px,transparent 1px);
+      background-size:6.25cqw 6.25cqw;
+    }
+
+    /* ── Shared utilities ── */
+
+    /* Gradient gold text */
+    .gold-text{
+      background:linear-gradient(135deg,var(--gold-xlt),var(--gold),var(--gold-dk));
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+      background-clip:text;
+    }
+
+    /* Gold rule */
+    .rule{height:1px;background:linear-gradient(90deg,var(--gold-lt),var(--gold),transparent);}
+    .rule-v{width:1px;background:linear-gradient(180deg,var(--gold-lt),var(--gold),transparent);}
+
+    /* Glass panel */
+    .glass{
+      background:var(--glass);
+      backdrop-filter:blur(20px) saturate(140%);
+      -webkit-backdrop-filter:blur(20px) saturate(140%);
+    }
+
+    /* Gradient gold bar */
+    .gold-bar{background:linear-gradient(180deg,var(--gold-lt),var(--gold),var(--gold-dk));}
+
+    /* PCG Logo bug */
+    .bug{
+      position:absolute;top:5%;left:3%;z-index:50;
+      display:flex;align-items:center;gap:1.2cqw;
+    }
+    .bug img{width:5cqw;height:5cqw;object-fit:contain;filter:drop-shadow(0 0 4px rgba(175,144,65,.4));}
+    .bug-text{display:flex;flex-direction:column;gap:.2cqw;}
+    .bug-title{font-family:'Cinzel',serif;font-size:1.4cqw;font-weight:700;letter-spacing:.2em;color:var(--gold);text-transform:uppercase;line-height:1;}
+    .bug-sub{font-family:'Inter',sans-serif;font-size:.9cqw;font-weight:400;letter-spacing:.18em;color:var(--muted);text-transform:uppercase;}
+
+    /* ══════════════════════════════════════
+       A — PERSISTENT BRANDING (DOG/BUG)
+    ══════════════════════════════════════ */
+
+    /* A1: Standard corner bug */
+    /* uses .bug above */
+
+    /* A2: Episode badge — top right */
+    .ep-badge{
+      position:absolute;top:5%;right:3%;z-index:50;
+      display:flex;align-items:center;gap:0;
+    }
+    .ep-num{
+      background:linear-gradient(135deg,var(--gold-lt),var(--gold));
+      font-family:'Cinzel',serif;font-size:1.4cqw;font-weight:700;
+      letter-spacing:.15em;color:#000;padding:.8cqw 1.5cqw;
+      text-transform:uppercase;
+    }
+    .ep-label{
+      background:rgba(0,0,0,.75);backdrop-filter:blur(12px);
+      border:1px solid rgba(175,144,65,.2);border-left:none;
+      font-family:'Inter',sans-serif;font-size:.9cqw;font-weight:400;
+      letter-spacing:.2em;color:var(--gold);padding:.8cqw 1.4cqw;
+      text-transform:uppercase;
+    }
+
+    /* A3: Persistent watermark (centre-right, 50% opacity) */
+    .watermark{
+      position:absolute;top:50%;right:5%;transform:translateY(-50%);
+      z-index:5;opacity:.07;pointer-events:none;
+    }
+    .watermark img{width:18cqw;height:18cqw;object-fit:contain;}
+
+    /* ══════════════════════════════════════
+       B — SPEAKER IDENTITY / LOWER THIRDS
+    ══════════════════════════════════════ */
+
+    /* B1: Standard 2-tier */
+    .lt-standard{
+      position:absolute;left:0;bottom:12%;
+      display:flex;align-items:stretch;z-index:20;
+    }
+    .lt-standard .accent{width:.5cqw;background:linear-gradient(180deg,var(--gold-lt),var(--gold),var(--gold-dk));}
+    .lt-standard .body{
+      background:var(--glass-dk);
+      backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);
+      padding:1.8cqw 3cqw 1.8cqw 2cqw;
+      display:flex;flex-direction:column;gap:.7cqw;
+      border-top:1px solid rgba(212,185,106,.3);
+      border-bottom:1px solid rgba(212,185,106,.15);
+    }
+    .lt-name{font-family:'Cinzel',serif;font-size:3.8cqw;font-weight:700;color:var(--white);letter-spacing:.07em;text-transform:uppercase;line-height:1;}
+    .lt-title{font-family:'Inter',sans-serif;font-size:1.6cqw;font-weight:400;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;}
+    .lt-org{font-family:'Inter',sans-serif;font-size:1.2cqw;font-weight:300;color:var(--muted);letter-spacing:.08em;}
+
+    /* B2: 3-tier extended */
+    .lt-ext{
+      position:absolute;left:0;bottom:0;
+      display:flex;align-items:stretch;z-index:20;width:55%;
+    }
+    .lt-ext .accent{width:.5cqw;background:linear-gradient(180deg,var(--gold-lt),var(--gold),var(--gold-dk));}
+    .lt-ext .body{
+      flex:1;
+      background:linear-gradient(90deg,rgba(4,4,6,.95) 70%,rgba(4,4,6,.6) 100%);
+      backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);
+      padding:2cqw 3cqw 2cqw 2cqw;
+      border-top:2px solid var(--gold);
+    }
+    .lt-ext .series-tag{
+      font-family:'Inter',sans-serif;font-size:1cqw;font-weight:700;
+      letter-spacing:.28em;color:var(--gold-dk);text-transform:uppercase;
+      margin-bottom:.8cqw;
+    }
+
+    /* B3: AIgent identifier — gold name treatment */
+    .lt-agent{
+      position:absolute;left:0;bottom:12%;
+      display:flex;align-items:stretch;z-index:20;
+    }
+    .lt-agent .accent{
+      width:1cqw;
+      background:linear-gradient(180deg,var(--gold-xlt),var(--gold),var(--gold-dk));
+      box-shadow:2px 0 12px rgba(175,144,65,.35);
+    }
+    .lt-agent .body{
+      background:linear-gradient(90deg,rgba(4,4,6,.92) 0%,rgba(175,144,65,.04) 100%);
+      backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);
+      padding:1.8cqw 3.5cqw 1.8cqw 2.5cqw;
+      display:flex;flex-direction:column;gap:.6cqw;
+      border-top:1px solid rgba(212,185,106,.4);
+      border-bottom:1px solid rgba(212,185,106,.15);
+    }
+    .lt-agent .agent-tag{
+      font-family:'Inter',sans-serif;font-size:1cqw;font-weight:700;
+      letter-spacing:.3em;color:var(--gold-dk);text-transform:uppercase;
+    }
+    .lt-agent .agent-name{
+      font-family:'Cinzel',serif;font-size:3.8cqw;font-weight:700;
+      letter-spacing:.07em;text-transform:uppercase;line-height:1;
+      background:linear-gradient(135deg,var(--gold-xlt),var(--gold),var(--gold-dk));
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+    }
+    .lt-agent .agent-role{font-family:'Inter',sans-serif;font-size:1.5cqw;font-weight:400;color:var(--off);letter-spacing:.1em;text-transform:uppercase;}
+
+    /* B4: L-bar (full left sidebar) */
+    .lbar{
+      position:absolute;left:0;top:0;bottom:0;width:28%;z-index:20;
+      background:linear-gradient(90deg,rgba(4,4,6,.96) 0%,rgba(4,4,6,.7) 100%);
+      backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+      border-right:1px solid rgba(175,144,65,.25);
+      display:flex;flex-direction:column;
+      padding:6% 6% 6% 5%;
+    }
+    .lbar-logo{width:8cqw;height:8cqw;margin-bottom:4%;}
+    .lbar-logo img{width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 0 6px rgba(175,144,65,.4));}
+    .lbar-series{font-family:'Inter',sans-serif;font-size:1cqw;font-weight:700;letter-spacing:.3em;color:var(--gold-dk);text-transform:uppercase;margin-bottom:6%;}
+    .lbar-title{font-family:'Cinzel',serif;font-size:2.8cqw;font-weight:700;color:var(--white);letter-spacing:.06em;text-transform:uppercase;line-height:1.2;margin-bottom:4%;}
+    .lbar-rule{height:1px;background:linear-gradient(90deg,var(--gold),transparent);margin-bottom:4%;}
+    .lbar-ep{font-family:'Inter',sans-serif;font-size:1.1cqw;font-weight:300;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;}
+    .lbar-name{font-family:'Cinzel',serif;font-size:1.8cqw;font-weight:700;color:var(--white);letter-spacing:.08em;text-transform:uppercase;margin-top:auto;}
+    .lbar-role{font-family:'Inter',sans-serif;font-size:1cqw;color:var(--gold);letter-spacing:.12em;text-transform:uppercase;margin-top:1%;}
+
+    /* ══════════════════════════════════════
+       C — OVER THE SHOULDER (OTS)
+    ══════════════════════════════════════ */
+    .ots-wrap{position:absolute;right:4%;top:10%;z-index:20;width:30%;}
+    .ots-label{
+      font-family:'Inter',sans-serif;font-size:1.2cqw;font-weight:700;
+      letter-spacing:.25em;color:var(--gold);text-transform:uppercase;
+      background:rgba(0,0,0,.7);border-top:1px solid rgba(175,144,65,.4);
+      padding:.8cqw 1.5cqw;display:block;
+    }
+    .ots-box{
+      width:100%;aspect-ratio:4/3;position:relative;overflow:hidden;
+      background:var(--glass);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+      border:1px solid rgba(175,144,65,.22);
+      border-top:2px solid var(--gold);
+      display:flex;align-items:center;justify-content:center;
+    }
+    /* Diagonal accent on OTS left edge */
+    .ots-box::before{
+      content:'';position:absolute;left:0;top:0;bottom:0;width:6%;
+      background:linear-gradient(180deg,rgba(175,144,65,.5),rgba(175,144,65,.15),transparent);
+      clip-path:polygon(0 0,80% 0,100% 100%,0 100%);
+    }
+    .ots-icon{font-size:8cqw;opacity:.35;line-height:1;}
+    .ots-topic{
+      position:absolute;bottom:0;left:0;right:0;
+      background:rgba(0,0,0,.88);backdrop-filter:blur(12px);
+      padding:1.2cqw 1.8cqw;
+      border-top:1px solid rgba(175,144,65,.25);
+    }
+    .ots-topic-text{font-family:'Cinzel',serif;font-size:2.2cqw;font-weight:700;color:var(--white);letter-spacing:.05em;text-transform:uppercase;line-height:1.2;}
+
+    /* ══════════════════════════════════════
+       D — SEGMENT STRUCTURE
+    ══════════════════════════════════════ */
+
+    /* D1: Cold open title card */
+    .cold-open{position:absolute;inset:0;z-index:20;
+      background:linear-gradient(180deg,transparent 25%,rgba(0,0,0,.75) 60%,rgba(0,0,0,.97) 100%);}
+    .cold-open .inner{
+      position:absolute;left:5%;bottom:12%;
+      display:flex;flex-direction:column;gap:1.5cqw;
+    }
+    .cold-tag{
+      display:inline-flex;align-self:flex-start;
+      font-family:'Cinzel',serif;font-size:1.4cqw;font-weight:700;
+      letter-spacing:.25em;color:#000;
+      background:linear-gradient(135deg,var(--gold-lt),var(--gold));
+      padding:.7cqw 2cqw;text-transform:uppercase;
+      box-shadow:0 2px 16px rgba(175,144,65,.35);
+    }
+    .cold-eyebrow{font-family:'Inter',sans-serif;font-size:1.2cqw;font-weight:300;letter-spacing:.3em;color:var(--gold);text-transform:uppercase;}
+    .cold-title{font-family:'Cinzel',serif;font-size:7cqw;font-weight:900;color:var(--white);letter-spacing:.04em;text-transform:uppercase;line-height:1.0;text-shadow:0 2px 24px rgba(0,0,0,.9);}
+    .cold-rule{width:8cqw;height:2px;background:linear-gradient(90deg,var(--gold-lt),var(--gold-dk));}
+    .cold-sub{font-family:'Inter',sans-serif;font-size:1.6cqw;font-weight:300;color:rgba(255,255,255,.55);letter-spacing:.14em;text-transform:uppercase;}
+
+    /* D2: Chapter marker (top banner) */
+    .chapter{
+      position:absolute;top:0;left:0;right:0;z-index:20;
+      display:flex;align-items:stretch;
+    }
+    .ch-num{
+      background:linear-gradient(135deg,var(--gold-lt),var(--gold));
+      font-family:'Cinzel',serif;font-size:2.2cqw;font-weight:700;
+      letter-spacing:.1em;color:#000;padding:1.2cqw 2.5cqw;white-space:nowrap;flex-shrink:0;
+    }
+    .ch-body{
+      flex:1;padding:1.2cqw 2.5cqw;
+      background:rgba(0,0,0,.88);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+      border-bottom:1px solid rgba(175,144,65,.3);
+      display:flex;flex-direction:column;justify-content:center;gap:.4cqw;
+    }
+    .ch-label{font-family:'Inter',sans-serif;font-size:1cqw;font-weight:700;letter-spacing:.28em;color:var(--gold);text-transform:uppercase;}
+    .ch-name{font-family:'Cinzel',serif;font-size:2.4cqw;font-weight:700;color:var(--white);letter-spacing:.06em;text-transform:uppercase;}
+
+    /* D3: Bumper stamp (centre screen) */
+    .bumper{
+      position:absolute;inset:0;z-index:20;
+      display:flex;align-items:center;justify-content:center;
+      background:rgba(0,0,0,.7);backdrop-filter:blur(4px);
+    }
+    .bumper-inner{
+      display:flex;flex-direction:column;align-items:center;gap:2cqw;
+      padding:4cqw 6cqw;
+      border:1px solid rgba(175,144,65,.25);
+      background:rgba(4,4,6,.85);
+      box-shadow:0 0 40px rgba(175,144,65,.12),0 0 80px rgba(0,0,0,.8);
+    }
+    .bumper-inner img{width:10cqw;height:10cqw;object-fit:contain;filter:drop-shadow(0 0 8px rgba(175,144,65,.5));}
+    .bumper-line{width:16cqw;height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent);}
+    .bumper-text{font-family:'Cinzel',serif;font-size:1.4cqw;font-weight:700;letter-spacing:.4em;color:var(--gold);text-transform:uppercase;}
+
+    /* D4: "Coming up" tease (bottom right) */
+    .coming-up{
+      position:absolute;right:3%;bottom:10%;z-index:20;
+      width:32%;
+    }
+    .cup-header{
+      background:linear-gradient(135deg,var(--gold-lt),var(--gold));
+      font-family:'Cinzel',serif;font-size:1.2cqw;font-weight:700;
+      letter-spacing:.25em;color:#000;padding:.8cqw 1.5cqw;text-transform:uppercase;
+    }
+    .cup-body{
+      background:rgba(0,0,0,.9);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+      border:1px solid rgba(175,144,65,.18);border-top:none;
+      padding:1.8cqw 2cqw;display:flex;flex-direction:column;gap:.8cqw;
+    }
+    .cup-topic{font-family:'Cinzel',serif;font-size:2.4cqw;font-weight:700;color:var(--white);letter-spacing:.05em;text-transform:uppercase;line-height:1.2;}
+    .cup-sub{font-family:'Inter',sans-serif;font-size:1.1cqw;font-weight:300;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;}
+
+    /* ══════════════════════════════════════
+       E — INFORMATION GRAPHICS
+    ══════════════════════════════════════ */
+
+    /* E1: Mega stat (center-left) */
+    .stat-mega{
+      position:absolute;left:5%;top:50%;transform:translateY(-50%);
+      z-index:20;display:flex;flex-direction:column;gap:1cqw;max-width:45%;
+    }
+    .sm-label{font-family:'Inter',sans-serif;font-size:1.1cqw;font-weight:700;letter-spacing:.3em;color:var(--gold);text-transform:uppercase;}
+    .sm-number{
+      font-family:'Cinzel',serif;font-size:14cqw;font-weight:900;line-height:.85;
+      background:linear-gradient(135deg,var(--gold-xlt),var(--gold),var(--gold-dk));
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+      filter:drop-shadow(0 0 20px rgba(175,144,65,.3));
+    }
+    .sm-rule{height:1px;background:linear-gradient(90deg,var(--gold-lt),transparent);width:80%;}
+    .sm-desc{font-family:'Inter',sans-serif;font-size:1.6cqw;font-weight:300;color:var(--off);letter-spacing:.04em;line-height:1.5;}
+
+    /* E2: Comparison panel */
+    .compare{
+      position:absolute;left:5%;right:5%;bottom:12%;z-index:20;
+      display:flex;align-items:stretch;gap:0;
+      border:1px solid rgba(175,144,65,.18);overflow:hidden;
+    }
+    .cmp-col{flex:1;display:flex;flex-direction:column;background:rgba(4,4,6,.85);backdrop-filter:blur(18px);}
+    .cmp-col + .cmp-col{border-left:1px solid rgba(175,144,65,.15);}
+    .cmp-head{
+      padding:1.2cqw 1.8cqw;
+      font-family:'Cinzel',serif;font-size:1.6cqw;font-weight:700;
+      letter-spacing:.12em;text-transform:uppercase;color:#000;
+      background:linear-gradient(135deg,var(--gold-lt),var(--gold));
+    }
+    .cmp-head.dark{background:rgba(20,20,22,.95);color:var(--muted);}
+    .cmp-row{padding:.9cqw 1.8cqw;display:flex;flex-direction:column;gap:.3cqw;border-bottom:1px solid rgba(175,144,65,.06);}
+    .cmp-field{font-family:'Inter',sans-serif;font-size:.9cqw;font-weight:600;letter-spacing:.2em;color:var(--gold-dk);text-transform:uppercase;}
+    .cmp-val{font-family:'Inter',sans-serif;font-size:1.6cqw;font-weight:500;color:var(--white);}
+    .cmp-val.gold{color:var(--gold-lt);}
+
+    /* E3: Timeline */
+    .timeline{
+      position:absolute;left:5%;right:5%;top:50%;transform:translateY(-50%);
+      z-index:20;display:flex;flex-direction:column;gap:0;
+      background:rgba(4,4,6,.82);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+      border:1px solid rgba(175,144,65,.15);border-left:3px solid var(--gold);
+    }
+    .tl-header{
+      padding:1.2cqw 2cqw;
+      border-bottom:1px solid rgba(175,144,65,.12);
+      font-family:'Cinzel',serif;font-size:1.6cqw;font-weight:700;
+      letter-spacing:.15em;color:var(--gold);text-transform:uppercase;
+    }
+    .tl-item{
+      display:flex;align-items:flex-start;gap:2cqw;
+      padding:1.2cqw 2cqw;
+      border-bottom:1px solid rgba(175,144,65,.07);
+    }
+    .tl-item:last-child{border-bottom:none;}
+    .tl-date{
+      font-family:'Cinzel',serif;font-size:1.2cqw;font-weight:700;
+      color:var(--gold);letter-spacing:.08em;white-space:nowrap;
+      min-width:7cqw;padding-top:.1cqw;
+    }
+    .tl-dot{
+      width:1.2cqw;height:1.2cqw;border-radius:50%;
+      background:var(--gold);flex-shrink:0;
+      margin-top:.4cqw;
+      box-shadow:0 0 6px var(--gold-glow);
+    }
+    .tl-text{font-family:'Inter',sans-serif;font-size:1.4cqw;font-weight:400;color:var(--off);letter-spacing:.04em;line-height:1.4;}
+
+    /* E4: Progress / completion */
+    .progress-panel{
+      position:absolute;left:5%;right:5%;bottom:12%;z-index:20;
+      background:rgba(4,4,6,.85);backdrop-filter:blur(18px);
+      border:1px solid rgba(175,144,65,.15);border-top:2px solid var(--gold);
+      padding:2cqw 2.5cqw;display:flex;flex-direction:column;gap:1.4cqw;
+    }
+    .pp-title{font-family:'Cinzel',serif;font-size:1.8cqw;font-weight:700;color:var(--white);letter-spacing:.08em;text-transform:uppercase;}
+    .pp-item{display:flex;flex-direction:column;gap:.5cqw;}
+    .pp-label-row{display:flex;justify-content:space-between;align-items:center;}
+    .pp-label{font-family:'Inter',sans-serif;font-size:1.1cqw;font-weight:500;color:var(--off);letter-spacing:.08em;}
+    .pp-pct{font-family:'Cinzel',serif;font-size:1.1cqw;font-weight:700;color:var(--gold);}
+    .pp-track{height:.6cqw;background:rgba(175,144,65,.12);border-radius:.3cqw;overflow:hidden;}
+    .pp-fill{height:100%;background:linear-gradient(90deg,var(--gold-lt),var(--gold));border-radius:.3cqw;box-shadow:0 0 6px rgba(175,144,65,.4);}
+
+    /* ══════════════════════════════════════
+       F — ALERT & EMPHASIS
+    ══════════════════════════════════════ */
+
+    /* F1: Breaking alert */
+    .breaking{
+      position:absolute;left:0;right:0;bottom:12%;z-index:20;
+      display:flex;align-items:stretch;
+    }
+    .brk-badge{
+      background:linear-gradient(135deg,var(--red),var(--red-dk));
+      display:flex;align-items:center;padding:0 2.5cqw;
+      font-family:'Cinzel',serif;font-size:1.4cqw;font-weight:700;
+      letter-spacing:.2em;color:#fff;white-space:nowrap;flex-shrink:0;
+      box-shadow:0 0 20px rgba(192,57,43,.5);
+    }
+    /* Pulse animation for breaking */
+    @keyframes pulse{0%,100%{box-shadow:0 0 20px rgba(192,57,43,.5);}50%{box-shadow:0 0 35px rgba(192,57,43,.9);}}
+    .brk-badge{animation:pulse 2s ease-in-out infinite;}
+    .brk-body{
+      flex:1;padding:1.6cqw 2.5cqw;
+      background:rgba(4,4,6,.92);backdrop-filter:blur(18px);
+      border-top:1px solid rgba(192,57,43,.4);
+      display:flex;flex-direction:column;justify-content:center;gap:.5cqw;
+    }
+    .brk-headline{font-family:'Cinzel',serif;font-size:2.8cqw;font-weight:700;color:var(--white);letter-spacing:.05em;text-transform:uppercase;line-height:1.1;}
+    .brk-sub{font-family:'Inter',sans-serif;font-size:1.2cqw;font-weight:300;color:var(--muted);letter-spacing:.1em;}
+
+    /* F2: Key insight callout */
+    .insight{
+      position:absolute;right:5%;top:50%;transform:translateY(-50%);
+      z-index:20;width:35%;
+      background:rgba(4,4,6,.88);backdrop-filter:blur(20px);
+      border:1px solid rgba(175,144,65,.2);border-top:2px solid var(--gold);
+      padding:2.5cqw 2.5cqw;
+      display:flex;flex-direction:column;gap:1.4cqw;
+      box-shadow:0 0 30px rgba(175,144,65,.08),0 8px 32px rgba(0,0,0,.7);
+    }
+    .ins-tag{font-family:'Inter',sans-serif;font-size:.9cqw;font-weight:700;letter-spacing:.3em;color:var(--gold);text-transform:uppercase;}
+    .ins-rule{height:1px;background:linear-gradient(90deg,var(--gold-lt),transparent);}
+    .ins-text{font-family:'Cinzel',serif;font-size:2cqw;font-weight:600;color:var(--white);letter-spacing:.04em;line-height:1.4;}
+    .ins-attr{font-family:'Inter',sans-serif;font-size:1.1cqw;font-weight:400;color:var(--gold);letter-spacing:.12em;text-transform:uppercase;}
+
+    /* F3: Quote pull */
+    .quote{
+      position:absolute;left:5%;right:5%;top:50%;transform:translateY(-50%);
+      z-index:20;
+      background:rgba(4,4,6,.85);backdrop-filter:blur(20px);
+      border-left:3px solid var(--gold);
+      padding:2.5cqw 3cqw;display:flex;flex-direction:column;gap:1.2cqw;
+    }
+    .q-mark{font-family:'Cinzel',serif;font-size:7cqw;font-weight:900;color:var(--gold);opacity:.2;line-height:.7;}
+    .q-text{font-family:'Cinzel',serif;font-size:3cqw;font-weight:600;color:var(--white);letter-spacing:.03em;line-height:1.4;}
+    .q-rule{width:5cqw;height:1px;background:linear-gradient(90deg,var(--gold-lt),var(--gold-dk));}
+    .q-attr{font-family:'Inter',sans-serif;font-size:1.2cqw;font-weight:500;color:var(--gold);letter-spacing:.15em;text-transform:uppercase;}
+
+    /* ══════════════════════════════════════
+       G — B-ROLL SUPPORT
+    ══════════════════════════════════════ */
+
+    /* G1: Location tag */
+    .location{
+      position:absolute;left:5%;bottom:12%;z-index:20;
+      display:flex;align-items:center;gap:1.5cqw;
+      background:rgba(4,4,6,.85);backdrop-filter:blur(16px);
+      border:1px solid rgba(175,144,65,.15);border-left:3px solid var(--gold);
+      padding:1.2cqw 2cqw;
+    }
+    .loc-pin{font-size:2.5cqw;color:var(--gold);line-height:1;flex-shrink:0;}
+    .loc-text{display:flex;flex-direction:column;gap:.3cqw;}
+    .loc-city{font-family:'Cinzel',serif;font-size:2.2cqw;font-weight:700;color:var(--white);letter-spacing:.06em;text-transform:uppercase;}
+    .loc-country{font-family:'Inter',sans-serif;font-size:1.1cqw;font-weight:300;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;}
+
+    /* G2: Source citation */
+    .citation{
+      position:absolute;right:3%;bottom:12%;z-index:20;
+      background:rgba(4,4,6,.82);backdrop-filter:blur(16px);
+      border:1px solid rgba(175,144,65,.12);
+      padding:1.2cqw 1.8cqw;display:flex;flex-direction:column;gap:.4cqw;
+    }
+    .cit-tag{font-family:'Inter',sans-serif;font-size:.85cqw;font-weight:700;letter-spacing:.28em;color:var(--gold-dk);text-transform:uppercase;}
+    .cit-source{font-family:'Inter',sans-serif;font-size:1.2cqw;font-weight:400;color:var(--off);letter-spacing:.04em;}
+    .cit-date{font-family:'Inter',sans-serif;font-size:.85cqw;font-weight:300;color:var(--muted);letter-spacing:.1em;}
+
+    /* G3: Definition box */
+    .definition{
+      position:absolute;right:4%;top:15%;z-index:20;width:30%;
+      background:rgba(4,4,6,.9);backdrop-filter:blur(20px);
+      border:1px solid rgba(175,144,65,.18);border-top:2px solid var(--gold);
+      padding:2cqw 2.2cqw;display:flex;flex-direction:column;gap:1cqw;
+    }
+    .def-term{
+      font-family:'Cinzel',serif;font-size:2cqw;font-weight:700;
+      letter-spacing:.06em;text-transform:uppercase;
+      background:linear-gradient(135deg,var(--gold-xlt),var(--gold));
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+    }
+    .def-rule{height:1px;background:linear-gradient(90deg,var(--gold),transparent);}
+    .def-body{font-family:'Inter',sans-serif;font-size:1.3cqw;font-weight:300;color:var(--off);letter-spacing:.03em;line-height:1.6;}
+    .def-src{font-family:'Inter',sans-serif;font-size:.9cqw;font-weight:600;letter-spacing:.2em;color:var(--gold-dk);text-transform:uppercase;}
+
+    /* G4: Ticker crawl */
+    .ticker{
+      position:absolute;left:0;right:0;bottom:0;z-index:20;
+      display:flex;align-items:stretch;
+    }
+    .tick-bug{
+      background:linear-gradient(135deg,var(--gold-lt),var(--gold));
+      display:flex;align-items:center;padding:0 1.8cqw;flex-shrink:0;
+      gap:1cqw;
+    }
+    .tick-bug img{width:3.5cqw;height:3.5cqw;object-fit:contain;}
+    .tick-bug-text{font-family:'Cinzel',serif;font-size:1.2cqw;font-weight:700;letter-spacing:.15em;color:#000;white-space:nowrap;}
+    .tick-body{
+      flex:1;padding:1.2cqw 2cqw;
+      background:rgba(4,4,6,.95);backdrop-filter:blur(16px);
+      border-top:1px solid rgba(175,144,65,.4);
+      display:flex;align-items:center;gap:3cqw;
+      font-family:'Inter',sans-serif;font-size:1.4cqw;font-weight:300;
+      color:var(--off);letter-spacing:.04em;
+    }
+    .tick-dot{color:var(--gold);font-size:.8cqw;flex-shrink:0;}
+    .tick-hi{color:var(--gold-lt);font-weight:600;}
+
+    /* ══════════════════════════════════════
+       H — SOCIAL & ENGAGEMENT
+    ══════════════════════════════════════ */
+
+    /* H1: Social follow CTA */
+    .social-cta{
+      position:absolute;right:5%;bottom:12%;z-index:20;
+      display:flex;align-items:center;gap:0;
+      box-shadow:0 4px 20px rgba(0,0,0,.6);
+    }
+    .soc-icon-wrap{
+      background:linear-gradient(135deg,var(--gold-lt),var(--gold));
+      padding:1.5cqw;display:flex;align-items:center;justify-content:center;
+      font-size:3cqw;line-height:1;
+    }
+    .soc-body{
+      background:rgba(4,4,6,.92);backdrop-filter:blur(16px);
+      border:1px solid rgba(175,144,65,.2);border-left:none;
+      padding:1.2cqw 2cqw;display:flex;flex-direction:column;gap:.4cqw;
+    }
+    .soc-action{font-family:'Inter',sans-serif;font-size:1cqw;font-weight:700;letter-spacing:.25em;color:var(--gold);text-transform:uppercase;}
+    .soc-handle{font-family:'Cinzel',serif;font-size:2cqw;font-weight:700;color:var(--white);letter-spacing:.06em;}
+
+    /* H2: Hashtag feature */
+    .hashtag{
+      position:absolute;left:5%;bottom:12%;z-index:20;
+      display:flex;align-items:center;gap:1.5cqw;
+      background:rgba(4,4,6,.85);backdrop-filter:blur(16px);
+      border:1px solid rgba(175,144,65,.15);border-top:2px solid var(--gold);
+      padding:1.2cqw 2.2cqw;
+    }
+    .ht-hash{
+      font-family:'Cinzel',serif;font-size:4cqw;font-weight:900;
+      color:var(--gold);opacity:.4;line-height:1;
+    }
+    .ht-text{display:flex;flex-direction:column;gap:.4cqw;}
+    .ht-label{font-family:'Inter',sans-serif;font-size:.9cqw;font-weight:700;letter-spacing:.28em;color:var(--gold-dk);text-transform:uppercase;}
+    .ht-tag{font-family:'Cinzel',serif;font-size:2.2cqw;font-weight:700;color:var(--white);letter-spacing:.08em;}
+
+    /* H3: Subscribe/CTA strip */
+    .cta-strip{
+      position:absolute;left:0;right:0;bottom:0;z-index:20;
+      display:flex;align-items:stretch;
+    }
+    .cta-badge{
+      background:linear-gradient(135deg,var(--gold-lt),var(--gold));
+      display:flex;align-items:center;padding:0 2.5cqw;
+      font-family:'Cinzel',serif;font-size:1.3cqw;font-weight:700;
+      letter-spacing:.2em;color:#000;white-space:nowrap;flex-shrink:0;
+    }
+    .cta-body{
+      flex:1;padding:1.4cqw 2cqw;
+      background:rgba(4,4,6,.96);backdrop-filter:blur(16px);
+      border-top:1px solid rgba(175,144,65,.35);
+      display:flex;align-items:center;justify-content:space-between;gap:2cqw;
+    }
+    .cta-main{font-family:'Cinzel',serif;font-size:2cqw;font-weight:700;color:var(--white);letter-spacing:.06em;text-transform:uppercase;}
+    .cta-sub{font-family:'Inter',sans-serif;font-size:1.1cqw;font-weight:300;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;}
+    .cta-btn{
+      background:linear-gradient(135deg,var(--gold-lt),var(--gold));
+      font-family:'Cinzel',serif;font-size:1.1cqw;font-weight:700;
+      letter-spacing:.2em;color:#000;padding:.8cqw 2cqw;
+      white-space:nowrap;flex-shrink:0;text-transform:uppercase;
+    }
+
+  </style>
+</head>
+<body>
+  <h1>PCG Tech Briefing — Master Graphics Library</h1>
+  <p class="sub">16:9 Broadcast Format · Complete Package · Black / White / Gold #AF9041 · Cinzel + Inter</p>
+
+  <!-- ══════════════════════════════════════════
+       A — PERSISTENT BRANDING
+  ══════════════════════════════════════════ -->
+  <div class="section">
+    <h2>A — Persistent Branding (DOG / Bug / Watermark)</h2>
+    <p class="desc">Always-on screen identifiers. DOG = Digital On-Screen Graphic — sits in corner throughout broadcast.</p>
+  </div>
+  <div class="g3">
+
+    <div class="card">
+      <div class="lbl">A1 — Standard Corner Bug (DOG)</div>
+      <div class="cv">
+        <div class="bug">
+          <img src="pcg-logo.png" alt="PCG"/>
+          <div class="bug-text">
+            <div class="bug-title">PCG</div>
+            <div class="bug-sub">Tech Briefing</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">A2 — Episode Badge (top right)</div>
+      <div class="cv">
+        <div class="bug"><img src="pcg-logo.png" alt="PCG"/><div class="bug-text"><div class="bug-title">PCG</div><div class="bug-sub">Tech Briefing</div></div></div>
+        <div class="ep-badge">
+          <div class="ep-num">EP 12</div>
+          <div class="ep-label">March 2026</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">A3 — Watermark + Bug Combined</div>
+      <div class="cv">
+        <div class="bug"><img src="pcg-logo.png" alt="PCG"/><div class="bug-text"><div class="bug-title">PCG</div><div class="bug-sub">Tech Briefing</div></div></div>
+        <div class="ep-badge"><div class="ep-num">LIVE</div><div class="ep-label">powerclubglobal.com</div></div>
+        <div class="watermark"><img src="pcg-logo.png" alt=""/></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       B — SPEAKER IDENTITY
+  ══════════════════════════════════════════ -->
+  <div class="section">
+    <h2>B — Speaker Identity / Overlays</h2>
+    <p class="desc">Chyrons, name straps, astons. 2-tier standard, 3-tier extended, AIgent treatment, and L-bar.</p>
+  </div>
+  <div class="g4">
+
+    <div class="card">
+      <div class="lbl">B1 — 2-Tier Standard</div>
+      <div class="cv">
+        <div class="bug"><img src="pcg-logo.png" alt="PCG"/></div>
+        <div class="lt-standard">
+          <div class="accent"></div>
+          <div class="body">
+            <div class="lt-name">Jessy Artman</div>
+            <div class="lt-title">Founder & CEO — Power Club Global</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">B2 — 3-Tier Extended</div>
+      <div class="cv">
+        <div class="bug"><img src="pcg-logo.png" alt="PCG"/></div>
+        <div class="lt-ext">
+          <div class="accent"></div>
+          <div class="body">
+            <div class="series-tag">PCG Tech Briefing · Ep. 12</div>
+            <div class="lt-name">Jessy Artman</div>
+            <div class="lt-title">Founder & CEO</div>
+            <div class="lt-org">Power Club Global · powerclubglobal.com</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">B3 — AIgent Identifier</div>
+      <div class="cv">
+        <div class="bug"><img src="pcg-logo.png" alt="PCG"/></div>
+        <div class="lt-agent">
+          <div class="accent"></div>
+          <div class="body">
+            <div class="agent-tag">PCG AIgent</div>
+            <div class="agent-name">Nora</div>
+            <div class="agent-role">AI Technology Director</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">B4 — L-Bar (Full Left Strip)</div>
+      <div class="cv">
+        <div class="lbar">
+          <div class="lbar-logo"><img src="pcg-logo.png" alt="PCG"/></div>
+          <div class="lbar-series">Tech Briefing</div>
+          <div class="lbar-title">AI Video &amp; The Open Source Era</div>
+          <div class="lbar-rule"></div>
+          <div class="lbar-ep">Episode 12 · March 2026</div>
+          <div class="lbar-name">Jessy Artman</div>
+          <div class="lbar-role">Founder & CEO</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       C — OVER THE SHOULDER (OTS)
+  ══════════════════════════════════════════ -->
+  <div class="section">
+    <h2>C — Over-The-Shoulder (OTS)</h2>
+    <p class="desc">Topic graphic box appears beside the speaker. Contains visual aid for the story being discussed.</p>
+  </div>
+  <div class="g3">
+
+    <div class="card">
+      <div class="lbl">C1 — Topic OTS (AI Model)</div>
+      <div class="cv">
+        <div class="bug"><img src="pcg-logo.png" alt="PCG"/></div>
+        <div class="lt-standard">
+          <div class="accent"></div>
+          <div class="body"><div class="lt-name">Jessy Artman</div><div class="lt-title">Founder — PCG</div></div>
+        </div>
+        <div class="ots-wrap">
+          <div class="ots-label">Technology</div>
+          <div class="ots-box">
+            <div class="ots-icon">🤖</div>
+            <div class="ots-topic"><div class="ots-topic-text">LTX2<br>Video Model</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">C2 — Market Data OTS</div>
+      <div class="cv">
+        <div class="bug"><img src="pcg-logo.png" alt="PCG"/></div>
+        <div class="lt-standard">
+          <div class="accent"></div>
+          <div class="body"><div class="lt-name">Jessy Artman</div><div class="lt-title">Founder — PCG</div></div>
+        </div>
+        <div class="ots-wrap">
+          <div class="ots-label">Market Intelligence</div>
+          <div class="ots-box" style="flex-direction:column;align-items:flex-start;padding:1.5cqw;justify-content:center;gap:.8cqw;">
+            <div style="font-family:'Inter',sans-serif;font-size:1.2cqw;font-weight:700;letter-spacing:.2em;color:var(--gold);text-transform:uppercase;">AI Video Market</div>
+            <div style="font-family:'Cinzel',serif;font-size:5.5cqw;font-weight:900;color:var(--white);line-height:.9;background:linear-gradient(135deg,#EDE0B8,#AF9041,#7A6228);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">$47B</div>
+            <div style="font-family:'Inter',sans-serif;font-size:1.1cqw;color:var(--muted);letter-spacing:.06em;">Projected by 2030</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">C3 — Breaking News OTS</div>
+      <div class="cv">
+        <div class="bug"><img src="pcg-logo.png" alt="PCG"/></div>
+        <div class="lt-standard">
+          <div class="accent"></div>
+          <div class="body"><div class="lt-name">Jessy Artman</div><div class="lt-title">Founder — PCG</div></div>
+        </div>
+        <div class="ots-wrap">
+          <div class="ots-label" style="background:rgba(192,57,43,.85);color:#fff;border-top:1px solid rgba(192,57,43,.8);">⚡ Breaking</div>
+          <div class="ots-box">
+            <div class="ots-icon">📡</div>
+            <div class="ots-topic" style="border-top:1px solid rgba(192,57,43,.4);">
+              <div class="ots-topic-text">Open Source<br>Model Released</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       D — SEGMENT STRUCTURE
+  ══════════════════════════════════════════ -->
+  <div class="section">
+    <h2>D — Segment Structure</h2>
+    <p class="desc">Title cards, bumpers, chapter markers, coming-up teases. Structural navigation of the show.</p>
+  </div>
+  <div class="g4">
+
+    <div class="card">
+      <div class="lbl">D1 — Cold Open Title Card</div>
+      <div class="cv">
+        <div class="cold-open">
+          <div class="inner">
+            <div class="cold-tag">Tech Briefing</div>
+            <div class="cold-eyebrow">PCG · March 2026</div>
+            <div class="cold-title">The Open<br>Source Era</div>
+            <div class="cold-rule"></div>
+            <div class="cold-sub">How LTX2 changes brand content forever</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">D2 — Chapter Marker</div>
+      <div class="cv">
+        <div class="bug"><img src="pcg-logo.png" alt="PCG"/></div>
+        <div class="chapter">
+          <div class="ch-num">02</div>
+          <div class="ch-body">
+            <div class="ch-label">Now Covering</div>
+            <div class="ch-name">Open Source Video Models</div>
+          </div>
+        </div>
+        <div class="lt-standard" style="bottom:12%;">
+          <div class="accent"></div>
+          <div class="body"><div class="lt-name">Jessy Artman</div><div class="lt-title">PCG · Host</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">D3 — Bumper / Sting</div>
+      <div class="cv">
+        <div class="bumper">
+          <div class="bumper-inner">
+            <img src="pcg-logo.png" alt="PCG"/>
+            <div class="bumper-line"></div>
+            <div class="bumper-text">Tech Briefing</div>
+            <div class="bumper-line"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">D4 — "Coming Up" Tease</div>
+      <div class="cv">
+        <div class="bug"><img src="pcg-logo.png" alt="PCG"/></div>
+        <div class="lt-standard">
+          <div class="accent"></div>
+          <div class="body"><div class="lt-name">Jessy Artman</div><div class="lt-title">PCG · Host</div></div>
+        </div>
+        <div class="coming-up">
+          <div class="cup-header">Coming Up Next</div>
+          <div class="cup-body">
+            <div class="cup-topic">AIgent Avatar Pipeline</div>
+            <div class="cup-sub">How PCG builds agent visual identity</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       E — INFORMATION GRAPHICS
+  ══════════════════════════════════════════ -->
+  <div class="section">
+    <h2>E — Information Graphics</h2>
+    <p class="desc">Data visualization overlays. Stats, comparisons, timelines, progress indicators.</p>
+  </div>
+  <div class="g4">
+
+    <div class="card">
+      <div class="lbl">E1 — Mega Stat</div>
+      <div class="cv">
+        <div class="bug"><img src="pcg-logo.png" alt="PCG"/></div>
+        <div class="stat-mega">
+          <div class="sm-label">AI Video Market · 2030</div>
+          <div class="sm-number">$47B</div>
+          <div class="sm-rule"></div>
+          <div class="sm-desc">Global projection for AI-generated<br>video content market</div>
+        </div>
+        <div class="citation"><div class="cit-tag">Source</div><div class="cit-source">Grand View Research · 2026</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">E2 — Comparison (A vs B)</div>
+      <div class="cv">
+        <div class="bug"><img src="pcg-logo.png" alt="PCG"/></div>
+        <div class="compare">
+          <div class="cmp-col">
+            <div class="cmp-head">LTX2</div>
+            <div class="cmp-row"><div class="cmp-field">Cost</div><div class="cmp-val gold">Free / Open</div></div>
+            <div class="cmp-row"><div class="cmp-field">Data</div><div class="cmp-val gold">Local · Private</div></div>
+            <div class="cmp-row"><div class="cmp-field">Quality</div><div class="cmp-val gold">4K · 50 FPS</div></div>
+            <div class="cmp-row"><div class="cmp-field">LoRA</div><div class="cmp-val gold">Supported</div></div>
+          </div>
+          <div class="cmp-col">
+            <div class="cmp-head dark">Runway Gen-3</div>
+            <div class="cmp-row"><div class="cmp-field">Cost</div><div class="cmp-val">$35 / month</div></div>
+            <div class="cmp-row"><div class="cmp-field">Data</div><div class="cmp-val">Cloud Upload</div></div>
+            <div class="cmp-row"><div class="cmp-field">Quality</div><div class="cmp-val">1080p · 24 FPS</div></div>
+            <div class="cmp-row"><div class="cmp-field">LoRA</div><div class="cmp-val">Limited</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">E3 — Timeline</div>
+      <div class="cv">
+        <div class="bug"><img src="pcg-logo.png" alt="PCG"/></div>
+        <div class="timeline">
+          <div class="tl-header">AIgent Avatar Roadmap</div>
+          <div class="tl-item">
+            <div class="tl-date">Wk 1–2</div>
+            <div class="tl-dot"></div>
+            <div class="tl-text">LTX2 setup · Agent identity schema · LoRA training</div>
+          </div>
+          <div class="tl-item">
+            <div class="tl-date">Wk 3–4</div>
+            <div class="tl-dot"></div>
+            <div class="tl-text">DAM integration · APN node registration · Admin UI</div>
+          </div>
+          <div class="tl-item">
+            <div class="tl-date">Wk 5–6</div>
+            <div class="tl-dot"></div>
+            <div class="tl-text">Dealflow auto-trigger · Client LoRA generation</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">E4 — Progress / Pipeline Status</div>
+      <div class="cv">
+        <div class="bug"><img src="pcg-logo.png" alt="PCG"/></div>
+        <div class="progress-panel">
+          <div class="pp-title">Dealflow Pipeline — Q1 2026</div>
+          <div class="pp-item">
+            <div class="pp-label-row"><div class="pp-label">Intel &amp; Research</div><div class="pp-pct">92%</div></div>
+            <div class="pp-track"><div class="pp-fill" style="width:92%"></div></div>
+          </div>
+          <div class="pp-item">
+            <div class="pp-label-row"><div class="pp-label">Proposal Stage</div><div class="pp-pct">67%</div></div>
+            <div class="pp-track"><div class="pp-fill" style="width:67%"></div></div>
+          </div>
+          <div class="pp-item">
+            <div class="pp-label-row"><div class="pp-label">AIgent Pipeline</div><div class="pp-pct">38%</div></div>
+            <div class="pp-track"><div class="pp-fill" style="width:38%"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       F — ALERT & EMPHASIS
+  ══════════════════════════════════════════ -->
+  <div class="section">
+    <h2>F — Alert & Emphasis</h2>
+    <p class="desc">Breaking alerts (animated pulse), key insight callouts, pull quotes. Draw attention to critical information.</p>
+  </div>
+  <div class="g3">
+
+    <div class="card">
+      <div class="lbl">F1 — Breaking Alert (animated pulse)</div>
+      <div class="cv">
+        <div class="bug"><img src="pcg-logo.png" alt="PCG"/></div>
+        <div class="breaking">
+          <div class="brk-badge">⚡ Breaking</div>
+          <div class="brk-body">
+            <div class="brk-headline">LTX2 Released as Open Source</div>
+            <div class="brk-sub">Lightricks · March 2026 · Highest benchmarking open-weights video model</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">F2 — Key Insight Callout</div>
+      <div class="cv">
+        <div class="bug"><img src="pcg-logo.png" alt="PCG"/></div>
+        <div class="lt-standard">
+          <div class="accent"></div>
+          <div class="body"><div class="lt-name">Jessy Artman</div><div class="lt-title">PCG · Founder</div></div>
+        </div>
+        <div class="insight">
+          <div class="ins-tag">Key Insight</div>
+          <div class="ins-rule"></div>
+          <div class="ins-text">"LoRA fine-tuning means every AIgent gets a consistent visual identity — forever."</div>
+          <div class="ins-attr">Jessy Artman · PCG Tech Briefing</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">F3 — Pull Quote</div>
+      <div class="cv">
+        <div class="bug"><img src="pcg-logo.png" alt="PCG"/></div>
+        <div class="quote">
+          <div class="q-mark">"</div>
+          <div class="q-text">Open source is the new subscription model killer.</div>
+          <div class="q-rule"></div>
+          <div class="q-attr">Jessy Artman — Power Club Global</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       G — B-ROLL SUPPORT
+  ══════════════════════════════════════════ -->
+  <div class="section">
+    <h2>G — B-Roll Support</h2>
+    <p class="desc">Location tags, source citations, definition boxes, and the news ticker crawl. Factual grounding overlays.</p>
+  </div>
+  <div class="g4">
+
+    <div class="card">
+      <div class="lbl">G1 — Location Tag</div>
+      <div class="cv">
+        <div class="bug"><img src="pcg-logo.png" alt="PCG"/></div>
+        <div class="location">
+          <div class="loc-pin">📍</div>
+          <div class="loc-text">
+            <div class="loc-city">Tel Aviv</div>
+            <div class="loc-country">Israel · Lightricks HQ</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">G2 — Source Citation</div>
+      <div class="cv">
+        <div class="bug"><img src="pcg-logo.png" alt="PCG"/></div>
+        <div class="lt-standard">
+          <div class="accent"></div>
+          <div class="body"><div class="lt-name">Jessy Artman</div><div class="lt-title">PCG · Host</div></div>
+        </div>
+        <div class="citation">
+          <div class="cit-tag">Source</div>
+          <div class="cit-source">Lightricks Research · LTX2 Technical Report</div>
+          <div class="cit-date">March 2026 · github.com/Lightricks/LTX-Video</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">G3 — Definition Box</div>
+      <div class="cv">
+        <div class="bug"><img src="pcg-logo.png" alt="PCG"/></div>
+        <div class="definition">
+          <div class="def-term">LoRA</div>
+          <div class="def-rule"></div>
+          <div class="def-body">Low-Rank Adaptation — a fine-tuning technique that trains an AI model to recognize and replicate specific visual styles without retraining from scratch.</div>
+          <div class="def-src">PCG Tech Briefing Glossary</div>
+        </div>
+        <div class="lt-standard">
+          <div class="accent"></div>
+          <div class="body"><div class="lt-name">Jessy Artman</div><div class="lt-title">PCG · Host</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">G4 — News Ticker Crawl</div>
+      <div class="cv">
+        <div class="bug"><img src="pcg-logo.png" alt="PCG"/></div>
+        <div class="lt-standard">
+          <div class="accent"></div>
+          <div class="body"><div class="lt-name">Jessy Artman</div><div class="lt-title">PCG · Host</div></div>
+        </div>
+        <div class="ticker">
+          <div class="tick-bug">
+            <img src="pcg-logo.png" alt="PCG"/>
+            <div class="tick-bug-text">PCG Intel</div>
+          </div>
+          <div class="tick-body">
+            <span class="tick-hi">LTX2</span> released open-source by Lightricks
+            <span class="tick-dot">◆</span>
+            PCG AIgent avatar pipeline enters Phase 1
+            <span class="tick-dot">◆</span>
+            APN Marketplace video node registration underway
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       H — SOCIAL & ENGAGEMENT
+  ══════════════════════════════════════════ -->
+  <div class="section">
+    <h2>H — Social & Engagement</h2>
+    <p class="desc">Social handles, hashtag features, CTA strips. Drive audience action at the close of segments.</p>
+  </div>
+  <div class="g3">
+
+    <div class="card">
+      <div class="lbl">H1 — Social Follow CTA</div>
+      <div class="cv">
+        <div class="bug"><img src="pcg-logo.png" alt="PCG"/></div>
+        <div class="lt-standard">
+          <div class="accent"></div>
+          <div class="body"><div class="lt-name">Jessy Artman</div><div class="lt-title">PCG · Founder</div></div>
+        </div>
+        <div class="social-cta">
+          <div class="soc-icon-wrap">◈</div>
+          <div class="soc-body">
+            <div class="soc-action">Follow on Instagram</div>
+            <div class="soc-handle">@powerclubglobal</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">H2 — Hashtag Feature</div>
+      <div class="cv">
+        <div class="bug"><img src="pcg-logo.png" alt="PCG"/></div>
+        <div class="lt-standard">
+          <div class="accent"></div>
+          <div class="body"><div class="lt-name">Jessy Artman</div><div class="lt-title">PCG · Host</div></div>
+        </div>
+        <div class="hashtag">
+          <div class="ht-hash">#</div>
+          <div class="ht-text">
+            <div class="ht-label">Join the conversation</div>
+            <div class="ht-tag">PCGTechBriefing</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">H3 — Subscribe / CTA Strip</div>
+      <div class="cv">
+        <div class="bug"><img src="pcg-logo.png" alt="PCG"/></div>
+        <div class="cta-strip">
+          <div class="cta-badge">New Episodes</div>
+          <div class="cta-body">
+            <div>
+              <div class="cta-main">PCG Tech Briefing</div>
+              <div class="cta-sub">Every Monday · powerclubglobal.com</div>
+            </div>
+            <div class="cta-btn">Subscribe ›</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>

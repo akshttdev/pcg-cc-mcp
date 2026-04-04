@@ -1,10 +1,19 @@
-import { useMutation,useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Edit3, FileText, Loader2, Save, Wand2, X } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  CheckCircle2,
+  Edit3,
+  FileText,
+  Loader2,
+  Save,
+  Wand2,
+  X,
+} from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import MarkdownRenderer from '@/components/ui/markdown-renderer';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Textarea } from '@/components/ui/textarea';
 import { crmDealsApi } from '@/lib/api/crm';
@@ -30,10 +39,14 @@ export function ProposalTab({ deal }: ProposalTabProps) {
       if (updatedDeal.proposal_text) {
         toast.success('Proposal generated successfully');
       } else {
-        toast.error('Proposal generation returned empty — the agent may need more context (intel, transcripts, or operator notes).');
+        toast.error(
+          'Proposal generation returned empty — the agent may need more context (intel, transcripts, or operator notes).'
+        );
       }
       // Update all kanban caches (legacy + org) so the panel re-renders with proposal text
-      const patchKanban = (old: { stages: Array<{ deals: CrmDealWithContact[] }> } | undefined) => {
+      const patchKanban = (
+        old: { stages: Array<{ deals: CrmDealWithContact[] }> } | undefined
+      ) => {
         if (!old) return old;
         return {
           ...old,
@@ -41,7 +54,11 @@ export function ProposalTab({ deal }: ProposalTabProps) {
             ...s,
             deals: s.deals.map((d) =>
               d.id === deal.id
-                ? { ...d, proposal_text: updatedDeal.proposal_text, proposal_status: updatedDeal.proposal_status }
+                ? {
+                    ...d,
+                    proposal_text: updatedDeal.proposal_text,
+                    proposal_status: updatedDeal.proposal_status,
+                  }
                 : d
             ),
           })),
@@ -52,14 +69,19 @@ export function ProposalTab({ deal }: ProposalTabProps) {
       qc.setQueriesData({ queryKey: crmKeys.kanbanLegacy() }, patchKanban);
       qc.invalidateQueries({ queryKey: crmKeys.dealLegacy(deal.id) });
     },
-    onError: () => toast.error('Proposal generation failed — check that the LLM backend is available and try again.'),
+    onError: () =>
+      toast.error(
+        'Proposal generation failed — check that the LLM backend is available and try again.'
+      ),
   });
 
   const approve = useMutation({
     mutationFn: () => crmDealsApi.approveProposal(deal.id),
     onSuccess: () => {
       toast.success('Proposal approved — ready for Polish');
-      const patchApprove = (old: { stages: Array<{ deals: CrmDealWithContact[] }> } | undefined) => {
+      const patchApprove = (
+        old: { stages: Array<{ deals: CrmDealWithContact[] }> } | undefined
+      ) => {
         if (!old) return old;
         return {
           ...old,
@@ -79,11 +101,14 @@ export function ProposalTab({ deal }: ProposalTabProps) {
   });
 
   const save = useMutation({
-    mutationFn: () => crmDealsApi.updateDeal(deal.id, { proposal_text: editText }),
+    mutationFn: () =>
+      crmDealsApi.updateDeal(deal.id, { proposal_text: editText }),
     onSuccess: () => {
       toast.success('Proposal saved');
       setEditing(false);
-      const patchSave = (old: { stages: Array<{ deals: CrmDealWithContact[] }> } | undefined) => {
+      const patchSave = (
+        old: { stages: Array<{ deals: CrmDealWithContact[] }> } | undefined
+      ) => {
         if (!old) return old;
         return {
           ...old,
@@ -118,17 +143,40 @@ export function ProposalTab({ deal }: ProposalTabProps) {
         </div>
         <div className="flex items-center gap-1.5">
           {deal.proposal_text && !editing && (
-            <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => { setEditText(deal.proposal_text ?? ''); setEditing(true); }}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 text-xs"
+              onClick={() => {
+                setEditText(deal.proposal_text ?? '');
+                setEditing(true);
+              }}
+            >
               <Edit3 className="h-3 w-3" /> Edit
             </Button>
           )}
           {editing && (
             <>
-              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => setEditing(false)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 text-xs"
+                onClick={() => setEditing(false)}
+              >
                 <X className="h-3 w-3" /> Cancel
               </Button>
-              <Button size="sm" className="h-7 gap-1 text-xs" onClick={() => save.mutate()} disabled={save.isPending}>
-                {save.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} Save
+              <Button
+                size="sm"
+                className="h-7 gap-1 text-xs"
+                onClick={() => save.mutate()}
+                disabled={save.isPending}
+              >
+                {save.isPending ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Save className="h-3 w-3" />
+                )}{' '}
+                Save
               </Button>
             </>
           )}
@@ -144,15 +192,18 @@ export function ProposalTab({ deal }: ProposalTabProps) {
           icon={FileText}
           title="No proposal yet"
           description="The proposal agent will synthesize a proposal from the business report, discovery transcript, and intel wikis."
-          action={{ label: generate.isPending ? 'Generating...' : 'Generate Proposal', onClick: () => generate.mutate() }}
+          action={{
+            label: generate.isPending ? 'Generating...' : 'Generate Proposal',
+            onClick: () => generate.mutate(),
+          }}
         />
       )}
 
       {/* Proposal text — view mode */}
       {deal.proposal_text && !editing && (
         <div className="space-y-3">
-          <div className="rounded-lg border bg-muted/30 p-4 text-xs leading-relaxed font-mono whitespace-pre-wrap max-h-[420px] overflow-y-auto">
-            {deal.proposal_text}
+          <div className="rounded-lg border bg-muted/30 p-4 text-xs leading-relaxed max-h-[520px] overflow-y-auto space-y-2">
+            <MarkdownRenderer content={deal.proposal_text} enableCopyButton />
           </div>
 
           <div className="flex items-center gap-2">
@@ -163,7 +214,11 @@ export function ProposalTab({ deal }: ProposalTabProps) {
               onClick={() => generate.mutate()}
               disabled={generate.isPending}
             >
-              {generate.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
+              {generate.isPending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Wand2 className="h-3 w-3" />
+              )}
               Regenerate
             </Button>
             {status !== 'approved' && (
@@ -173,13 +228,18 @@ export function ProposalTab({ deal }: ProposalTabProps) {
                 onClick={() => approve.mutate()}
                 disabled={approve.isPending}
               >
-                {approve.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                {approve.isPending ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-3 w-3" />
+                )}
                 Approve Proposal
               </Button>
             )}
             {status === 'approved' && (
               <p className="text-xs text-green-500 flex items-center gap-1">
-                <CheckCircle2 className="h-3 w-3" /> Approved — ready for deck generation
+                <CheckCircle2 className="h-3 w-3" /> Approved — ready for deck
+                generation
               </p>
             )}
           </div>

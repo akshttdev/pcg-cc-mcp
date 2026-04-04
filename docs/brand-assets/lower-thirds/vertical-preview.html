@@ -1,0 +1,1204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PCG Vertical Graphics — Tech Briefing</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --gold:      #AF9041;
+      --gold-lt:   #D4B96A;
+      --gold-dk:   #7A6228;
+      --gold-glow: rgba(175,144,65,0.25);
+      --glass-bg:  rgba(8,8,8,0.55);
+      --glass-bg2: rgba(12,12,12,0.72);
+      --white:     #FFFFFF;
+      --off-white: rgba(255,255,255,0.85);
+      --muted:     rgba(255,255,255,0.45);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #080808;
+      font-family: 'Inter', sans-serif;
+      padding: 36px;
+      color: #fff;
+    }
+
+    h1 { font-family:'Cinzel',serif; color:var(--gold); font-size:14px; letter-spacing:0.22em; text-transform:uppercase; margin-bottom:4px; }
+    .sub { color:#444; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; margin-bottom:10px; }
+    .section-title { font-family:'Cinzel',serif; color:var(--gold-dk); font-size:10px; letter-spacing:0.25em; text-transform:uppercase; margin:36px 0 14px; border-bottom:1px solid #1a1a1a; padding-bottom:8px; }
+
+    .controls { margin-bottom:24px; }
+    .toggle-btn { background:none; border:1px solid #2a2a2a; color:var(--gold); font-family:'Inter',sans-serif; font-size:10px; font-weight:600; letter-spacing:0.18em; text-transform:uppercase; padding:5px 14px; cursor:pointer; transition:background 0.15s; }
+    .toggle-btn.on { background:rgba(175,144,65,0.12); border-color:var(--gold-dk); }
+
+    /* Grid */
+    .grid { display:grid; grid-template-columns:repeat(4,1fr); gap:20px; }
+    .grid-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; }
+    .card { display:flex; flex-direction:column; gap:7px; }
+    .card-label { font-size:9px; font-weight:600; letter-spacing:0.18em; text-transform:uppercase; color:#383838; }
+
+    /* ── Canvas ── */
+    .canvas {
+      width:100%; aspect-ratio:9/16;
+      position:relative; overflow:hidden;
+      border:1px solid #1e1e1e;
+      container-type:inline-size;
+      background: linear-gradient(145deg, #0f1117 0%, #0a0e18 50%, #080b10 100%);
+    }
+
+    /* Subtle tech grid on all canvases */
+    .canvas::before {
+      content:'';
+      position:absolute; inset:0;
+      background-image:
+        linear-gradient(rgba(175,144,65,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(175,144,65,0.03) 1px, transparent 1px);
+      background-size: 10cqw 10cqw;
+      pointer-events:none; z-index:0;
+    }
+
+    /* Safe zone overlay */
+    .sz { display:none; position:absolute; inset:0; pointer-events:none; z-index:999; }
+    .sz.on { display:block; }
+    .sz-top    { position:absolute; top:0;    left:0; right:0; height:6.3%;  background:rgba(200,40,40,0.15); border-bottom:1px dashed rgba(200,40,40,0.5); }
+    .sz-bot    { position:absolute; bottom:0; left:0; right:0; height:16.7%; background:rgba(200,40,40,0.15); border-top:1px dashed rgba(200,40,40,0.5); }
+    .sz-right  { position:absolute; top:0;   right:0; bottom:0; width:11.1%;  background:rgba(200,100,0,0.1);  border-left:1px dashed rgba(200,100,0,0.4); }
+
+    /* ════════════════════════════════════════
+       SHARED COMPONENTS
+    ════════════════════════════════════════ */
+
+    /* PCG Corner Bug — top left: bare floating, no box */
+    .pcg-logo {
+      position:absolute; top:5%; left:4cqw; z-index:50;
+      display:flex; align-items:center; gap:2cqw;
+    }
+    .pcg-logo img { width:9cqw; height:9cqw; object-fit:contain; flex-shrink:0; filter:drop-shadow(0 0 5px rgba(175,144,65,.5)); }
+    .pcg-logo-text { display:flex; flex-direction:column; gap:.3cqw; }
+    .pcg-logo-show { font-family:'Cinzel',serif; font-size:2.8cqw; font-weight:700; letter-spacing:.2em; color:var(--gold); text-transform:uppercase; line-height:1; text-shadow:0 0 12px rgba(175,144,65,.4); }
+    .pcg-logo-name { font-family:'Inter',sans-serif; font-size:1.6cqw; font-weight:400; letter-spacing:.2em; color:rgba(255,255,255,.45); text-transform:uppercase; }
+
+    /* Episode Badge — top right: two-pill (gold block + dark glass block) */
+    .ep-bug {
+      position:absolute; top:5%; right:4%; z-index:50;
+      display:flex; align-items:center; gap:0;
+    }
+    .ep-num {
+      background:linear-gradient(135deg, var(--gold-lt), var(--gold));
+      font-family:'Cinzel',serif; font-size:2cqw; font-weight:700;
+      letter-spacing:.12em; color:#000; padding:1cqw 2cqw;
+      text-transform:uppercase; white-space:nowrap;
+    }
+    .ep-date {
+      background:rgba(0,0,0,.75); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+      border:1px solid rgba(175,144,65,.25); border-left:none;
+      font-family:'Inter',sans-serif; font-size:1.6cqw; font-weight:400;
+      letter-spacing:.18em; color:var(--gold); padding:1cqw 1.8cqw;
+      text-transform:uppercase; white-space:nowrap;
+    }
+
+    /* Person-ID logo circle */
+    .pid-circle {
+      width:10cqw; height:10cqw; border-radius:50%; flex-shrink:0;
+      display:flex; align-items:center; justify-content:center;
+      background:rgba(0,0,0,0.7);
+      box-shadow:
+        0 0 0 0.18cqw rgba(212,185,106,0.9),
+        0 0 0 0.4cqw  rgba(175,144,65,0.25),
+        0 0 0 0.7cqw  rgba(175,144,65,0.08);
+    }
+    .pid-circle img { width:60%; height:60%; object-fit:contain; filter:drop-shadow(0 0 3px rgba(175,144,65,0.6)); }
+
+    /* Gold gradient line utility */
+    .gold-line {
+      background: linear-gradient(90deg, var(--gold-lt), var(--gold), var(--gold-dk));
+      height: 1px;
+    }
+    .gold-line-v {
+      background: linear-gradient(180deg, var(--gold-lt), var(--gold), transparent);
+      width: 0.5cqw;
+    }
+
+    /* Glassmorphism panel */
+    .glass {
+      background: var(--glass-bg);
+      backdrop-filter: blur(18px) saturate(140%);
+      -webkit-backdrop-filter: blur(18px) saturate(140%);
+      border: 1px solid rgba(175,144,65,0.12);
+    }
+    .glass-dark {
+      background: var(--glass-bg2);
+      backdrop-filter: blur(24px) saturate(120%);
+      -webkit-backdrop-filter: blur(24px) saturate(120%);
+    }
+
+    /* ════════════════════════════════════════
+       TALKING HEAD CIRCLE
+    ════════════════════════════════════════ */
+    .th {
+      position:absolute;
+      left:4cqw; bottom:18.5%;
+      width:20cqw; aspect-ratio:1;
+      border-radius:50%;
+      z-index:20;
+      /* Multi-layer gold ring */
+      box-shadow:
+        0 0 0 0.6cqw rgba(212,185,106,0.9),
+        0 0 0 1.2cqw rgba(175,144,65,0.3),
+        0 0 0 1.8cqw rgba(175,144,65,0.1),
+        0 4px 20px rgba(0,0,0,0.8),
+        inset 0 0 12px rgba(0,0,0,0.5);
+      overflow:hidden;
+    }
+    .th-fill {
+      width:100%; height:100%;
+      background:radial-gradient(circle at 38% 32%, #2a2a2a 0%, #0d0d0d 100%);
+      display:flex; align-items:center; justify-content:center;
+    }
+    .th-initials { font-family:'Cinzel',serif; font-size:6cqw; font-weight:700; color:var(--gold); opacity:0.4; }
+
+    /* Name strip — right of TH */
+    .namestrip {
+      position:absolute;
+      left:27cqw; right:12%;
+      bottom:18.5%;
+      height:20cqw;
+      display:flex; flex-direction:column; justify-content:center;
+      padding:0 3cqw 0 3cqw;
+      gap:1.2cqw;
+      background: linear-gradient(90deg, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.4) 100%);
+      backdrop-filter:blur(12px);
+      -webkit-backdrop-filter:blur(12px);
+      border-left:0.5cqw solid var(--gold);
+      z-index:20;
+    }
+    .ns-name { font-family:'Cinzel',serif; font-size:5.5cqw; font-weight:700; color:var(--white); letter-spacing:0.06em; text-transform:uppercase; line-height:1.1; }
+    .ns-title { font-family:'Inter',sans-serif; font-size:2.8cqw; font-weight:400; color:var(--gold); letter-spacing:0.12em; text-transform:uppercase; line-height:1.2; }
+    .ns-org { font-family:'Inter',sans-serif; font-size:2.4cqw; font-weight:300; color:var(--muted); letter-spacing:0.06em; }
+
+    /* ════════════════════════════════════════
+       01 — B-ROLL REPORTER (base layout)
+    ════════════════════════════════════════ */
+    /* Uses .th + .namestrip */
+
+    /* ════════════════════════════════════════
+       02 — SEGMENT STRIP
+    ════════════════════════════════════════ */
+    .seg-strip {
+      position:absolute; left:0; right:0; bottom:16.7%;
+      padding:2.5cqw 12% 2.5cqw 4cqw;
+      display:flex; align-items:center; gap:3cqw;
+      background:linear-gradient(90deg, rgba(0,0,0,0.9) 60%, rgba(0,0,0,0.5) 100%);
+      backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+      border-top:1px solid rgba(212,185,106,0.5);
+      z-index:20;
+    }
+    .seg-pill {
+      font-family:'Cinzel',serif; font-size:2.5cqw; font-weight:700;
+      letter-spacing:0.2em; color:#000;
+      background:linear-gradient(135deg, var(--gold-lt), var(--gold));
+      padding:1cqw 2.5cqw; white-space:nowrap; flex-shrink:0;
+      box-shadow:0 2px 10px rgba(175,144,65,0.3);
+    }
+    .seg-div { width:0.3cqw; height:7cqw; background:rgba(175,144,65,0.3); flex-shrink:0; }
+    .seg-info { display:flex; flex-direction:column; gap:0.8cqw; min-width:0; }
+    .seg-topic { font-family:'Cinzel',serif; font-size:3.8cqw; font-weight:700; color:var(--white); letter-spacing:0.05em; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .seg-ep { font-family:'Inter',sans-serif; font-size:2.4cqw; font-weight:300; color:var(--muted); letter-spacing:0.14em; text-transform:uppercase; }
+
+    /* ════════════════════════════════════════
+       03 — ON-CAMERA PERSON ID
+    ════════════════════════════════════════ */
+    .person-id {
+      position:absolute; left:0; right:0; bottom:16.7%;
+      display:flex; align-items:center; gap:3cqw;
+      padding:3cqw 12% 3cqw 4cqw;
+      background:linear-gradient(90deg, rgba(0,0,0,0.92) 70%, transparent 100%);
+      backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+      border-top:1px solid rgba(212,185,106,0.45);
+      z-index:20;
+    }
+    .pid-bar { width:0.5cqw; height:9cqw; flex-shrink:0; background:linear-gradient(180deg, var(--gold-lt), var(--gold), var(--gold-dk)); }
+    .pid-text { display:flex; flex-direction:column; gap:1.2cqw; }
+    .pid-name { font-family:'Cinzel',serif; font-size:5cqw; font-weight:700; color:var(--white); letter-spacing:0.07em; text-transform:uppercase; line-height:1; }
+    .pid-title { font-family:'Inter',sans-serif; font-size:2.8cqw; font-weight:400; color:var(--gold); letter-spacing:0.12em; text-transform:uppercase; }
+
+    /* ════════════════════════════════════════
+       04 — STAT CALLOUT
+    ════════════════════════════════════════ */
+    .stat-box {
+      position:absolute; left:4cqw; bottom:40%;
+      max-width:58cqw;
+      padding:3cqw 4cqw 3cqw 3.5cqw;
+      display:flex; flex-direction:column; gap:1.2cqw;
+      background:var(--glass-bg);
+      backdrop-filter:blur(20px) saturate(150%); -webkit-backdrop-filter:blur(20px);
+      border-left:0.6cqw solid var(--gold);
+      border-top:1px solid rgba(212,185,106,0.2);
+      border-right:1px solid rgba(212,185,106,0.06);
+      border-bottom:1px solid rgba(212,185,106,0.06);
+      box-shadow:0 8px 32px rgba(0,0,0,0.6), 0 0 20px rgba(175,144,65,0.08);
+      z-index:20;
+    }
+    .sb-label { font-family:'Inter',sans-serif; font-size:2.2cqw; font-weight:600; letter-spacing:0.28em; color:var(--gold); text-transform:uppercase; }
+    .sb-num { font-family:'Cinzel',serif; font-size:13cqw; font-weight:700; color:var(--white); line-height:0.9; letter-spacing:-0.01em; }
+    .sb-desc { font-family:'Inter',sans-serif; font-size:2.5cqw; font-weight:300; color:var(--muted); letter-spacing:0.04em; line-height:1.4; }
+
+    /* ════════════════════════════════════════
+       05 — PULL QUOTE
+    ════════════════════════════════════════ */
+    .quote-box {
+      position:absolute; left:4cqw; right:12%; bottom:40%;
+      padding:3.5cqw 4cqw;
+      display:flex; flex-direction:column; gap:2cqw;
+      background:var(--glass-bg);
+      backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+      border-left:0.6cqw solid var(--gold);
+      border-top:1px solid rgba(212,185,106,0.18);
+      border-right:1px solid rgba(212,185,106,0.06);
+      border-bottom:1px solid rgba(212,185,106,0.06);
+      box-shadow:0 8px 32px rgba(0,0,0,0.5), 0 0 20px rgba(175,144,65,0.06);
+      z-index:20;
+    }
+    .q-mark { font-family:'Cinzel',serif; font-size:8cqw; font-weight:700; color:var(--gold); opacity:0.25; line-height:0.6; }
+    .q-text { font-family:'Cinzel',serif; font-size:4.8cqw; font-weight:600; color:var(--white); letter-spacing:0.03em; line-height:1.4; }
+    .q-rule { width:8cqw; height:1px; background:linear-gradient(90deg, var(--gold-lt), var(--gold-dk)); }
+    .q-attr { font-family:'Inter',sans-serif; font-size:2.4cqw; font-weight:500; color:var(--gold); letter-spacing:0.14em; text-transform:uppercase; }
+
+    /* ════════════════════════════════════════
+       06 — SEGMENT OPENER TITLE CARD
+    ════════════════════════════════════════ */
+    .title-grad {
+      position:absolute; inset:0;
+      background:linear-gradient(180deg, transparent 30%, rgba(0,0,0,0.7) 58%, rgba(0,0,0,0.96) 100%);
+    }
+    .title-content {
+      position:absolute; left:4cqw; right:12%;
+      bottom:calc(16.7% + 3cqw);
+      display:flex; flex-direction:column; gap:2cqw; z-index:20;
+    }
+    .t-tag { display:inline-flex; align-self:flex-start; font-family:'Cinzel',serif; font-size:2.5cqw; font-weight:700; letter-spacing:0.25em; color:#000; background:linear-gradient(135deg,var(--gold-lt),var(--gold)); padding:1.2cqw 3cqw; text-transform:uppercase; box-shadow:0 2px 12px rgba(175,144,65,0.3); }
+    .t-eyebrow { font-family:'Inter',sans-serif; font-size:2.5cqw; font-weight:300; letter-spacing:0.3em; color:var(--gold); text-transform:uppercase; }
+    .t-main { font-family:'Cinzel',serif; font-size:10.5cqw; font-weight:700; color:var(--white); letter-spacing:0.04em; text-transform:uppercase; line-height:1.05; text-shadow:0 2px 20px rgba(0,0,0,0.8); }
+    .t-rule { width:10cqw; height:1.5px; background:linear-gradient(90deg,var(--gold-lt),var(--gold-dk)); }
+    .t-sub { font-family:'Inter',sans-serif; font-size:3cqw; font-weight:300; color:rgba(255,255,255,0.55); letter-spacing:0.14em; text-transform:uppercase; line-height:1.5; }
+
+    /* ════════════════════════════════════════
+       07 — BREAKING / ALERT STRIP
+    ════════════════════════════════════════ */
+    .alert-strip {
+      position:absolute; left:0; right:0; bottom:16.7%;
+      display:flex; align-items:stretch; z-index:20;
+    }
+    .alert-badge {
+      background:linear-gradient(135deg, #b51a00, #8a1200);
+      display:flex; align-items:center; padding:0 3cqw;
+      font-family:'Cinzel',serif; font-size:2.5cqw; font-weight:700; letter-spacing:0.2em; color:#fff; white-space:nowrap; flex-shrink:0;
+      box-shadow:0 0 16px rgba(181,26,0,0.5);
+    }
+    .alert-content {
+      flex:1; padding:2.5cqw 12% 2.5cqw 3cqw;
+      background:rgba(0,0,0,0.92); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+      border-top:1px solid rgba(181,26,0,0.5);
+      display:flex; flex-direction:column; justify-content:center; gap:1cqw;
+    }
+    .alert-headline { font-family:'Cinzel',serif; font-size:4cqw; font-weight:700; color:var(--white); letter-spacing:0.05em; text-transform:uppercase; line-height:1.1; }
+    .alert-sub { font-family:'Inter',sans-serif; font-size:2.4cqw; font-weight:300; color:var(--muted); letter-spacing:0.1em; }
+
+    /* ════════════════════════════════════════
+       08 — KEY POINTS / BULLET LIST
+    ════════════════════════════════════════ */
+    .keypoints {
+      position:absolute; left:4cqw; right:12%; bottom:38%;
+      padding:3cqw 4cqw;
+      background:var(--glass-bg); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+      border:1px solid rgba(175,144,65,0.12);
+      border-left:0.6cqw solid var(--gold);
+      box-shadow:0 8px 32px rgba(0,0,0,0.5);
+      display:flex; flex-direction:column; gap:2.5cqw; z-index:20;
+    }
+    .kp-heading { font-family:'Cinzel',serif; font-size:3cqw; font-weight:700; color:var(--gold); letter-spacing:0.15em; text-transform:uppercase; }
+    .kp-rule { height:1px; background:linear-gradient(90deg,var(--gold-lt),transparent); margin:0.5cqw 0; }
+    .kp-item { display:flex; align-items:flex-start; gap:2cqw; }
+    .kp-dot { width:1.2cqw; height:1.2cqw; border-radius:50%; background:var(--gold); margin-top:1cqw; flex-shrink:0; box-shadow:0 0 4px var(--gold-glow); }
+    .kp-text { font-family:'Inter',sans-serif; font-size:2.8cqw; font-weight:400; color:var(--off-white); letter-spacing:0.04em; line-height:1.4; }
+
+    /* ════════════════════════════════════════
+       09 — SOURCE / CITATION
+    ════════════════════════════════════════ */
+    .citation {
+      position:absolute; left:4cqw; right:12%; bottom:20%;
+      padding:2cqw 3cqw;
+      display:flex; align-items:center; gap:2.5cqw;
+      background:var(--glass-bg); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+      border:1px solid rgba(175,144,65,0.1);
+      z-index:20;
+    }
+    .cite-icon { font-size:5cqw; opacity:0.4; flex-shrink:0; }
+    .cite-text { display:flex; flex-direction:column; gap:0.8cqw; }
+    .cite-label { font-family:'Inter',sans-serif; font-size:2cqw; font-weight:600; letter-spacing:0.25em; color:var(--gold); text-transform:uppercase; }
+    .cite-source { font-family:'Inter',sans-serif; font-size:2.8cqw; font-weight:300; color:var(--off-white); letter-spacing:0.04em; }
+
+    /* ════════════════════════════════════════
+       10 — SOCIAL HANDLE CALLOUT
+    ════════════════════════════════════════ */
+    .social-strip {
+      position:absolute; left:4cqw; right:12%; bottom:20%;
+      padding:2.5cqw 3.5cqw;
+      display:flex; align-items:center; gap:3cqw;
+      background:var(--glass-bg); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+      border:1px solid rgba(175,144,65,0.12);
+      border-top:0.5cqw solid var(--gold);
+      z-index:20;
+    }
+    .social-icon { font-size:6cqw; color:var(--gold); flex-shrink:0; line-height:1; }
+    .social-info { display:flex; flex-direction:column; gap:0.8cqw; }
+    .social-platform { font-family:'Inter',sans-serif; font-size:2.2cqw; font-weight:600; letter-spacing:0.25em; color:var(--gold); text-transform:uppercase; }
+    .social-handle { font-family:'Cinzel',serif; font-size:4.5cqw; font-weight:700; color:var(--white); letter-spacing:0.06em; }
+
+    /* ════════════════════════════════════════
+       11 — CHAPTER / TIMESTAMP MARKER
+    ════════════════════════════════════════ */
+    .chapter {
+      position:absolute; left:0; right:0; top:8%;
+      display:flex; align-items:center; z-index:20;
+    }
+    .chapter-num {
+      padding:2cqw 4cqw;
+      background:linear-gradient(135deg,var(--gold-lt),var(--gold));
+      font-family:'Cinzel',serif; font-size:3.5cqw; font-weight:700;
+      color:#000; letter-spacing:0.1em; white-space:nowrap; flex-shrink:0;
+    }
+    .chapter-text {
+      padding:2cqw 3cqw; flex:1;
+      background:rgba(0,0,0,0.82); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+      border-bottom:1px solid rgba(175,144,65,0.3);
+    }
+    .ch-label { font-family:'Inter',sans-serif; font-size:2cqw; font-weight:600; letter-spacing:0.25em; color:var(--gold); text-transform:uppercase; }
+    .ch-name { font-family:'Cinzel',serif; font-size:4cqw; font-weight:700; color:var(--white); letter-spacing:0.06em; text-transform:uppercase; }
+
+    /* ════════════════════════════════════════
+       12 — CORNER TICKER BUG (persistent)
+    ════════════════════════════════════════ */
+    .corner-bug {
+      position:absolute; top:7%; right:12%; z-index:50;
+      display:flex; flex-direction:column; align-items:flex-end; gap:1cqw;
+    }
+    .cb-logo { width:10cqw; height:10cqw; }
+    .cb-logo img { width:100%; height:100%; object-fit:contain; filter:drop-shadow(0 0 4px rgba(175,144,65,0.35)); }
+    .cb-text { font-family:'Cinzel',serif; font-size:2.2cqw; font-weight:700; letter-spacing:0.3em; color:var(--gold); text-align:right; text-shadow:0 0 8px rgba(175,144,65,0.4); }
+
+    /* ════════════════════════════════════════
+       13 — COMPARISON STRIP (two items)
+    ════════════════════════════════════════ */
+    .compare {
+      position:absolute; left:4cqw; right:12%; bottom:38%;
+      display:flex; flex-direction:column; gap:0; z-index:20;
+      border:1px solid rgba(175,144,65,0.15);
+      overflow:hidden;
+      backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+    }
+    .cmp-header {
+      background:linear-gradient(90deg,var(--gold-dk),var(--gold));
+      padding:1.5cqw 3cqw;
+      font-family:'Cinzel',serif; font-size:2.5cqw; font-weight:700; letter-spacing:0.2em; color:#000; text-transform:uppercase;
+    }
+    .cmp-row {
+      display:flex; align-items:center; gap:0;
+      border-bottom:1px solid rgba(175,144,65,0.1);
+    }
+    .cmp-row:last-child { border-bottom:none; }
+    .cmp-label { padding:2cqw 3cqw; font-family:'Inter',sans-serif; font-size:2.4cqw; font-weight:300; color:var(--muted); width:30%; background:rgba(0,0,0,0.6); letter-spacing:0.06em; }
+    .cmp-a { flex:1; padding:2cqw 2.5cqw; font-family:'Inter',sans-serif; font-size:2.6cqw; font-weight:500; color:var(--white); background:rgba(0,0,0,0.4); border-right:1px solid rgba(175,144,65,0.15); }
+    .cmp-b { flex:1; padding:2cqw 2.5cqw; font-family:'Inter',sans-serif; font-size:2.6cqw; font-weight:500; color:var(--gold-lt); background:rgba(175,144,65,0.06); }
+
+    /* ════════════════════════════════════════
+       SECTION 6 — RUN ORDER: THUMBNAIL
+    ════════════════════════════════════════ */
+    .thumb-frame {
+      position:absolute; inset:0;
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      gap:3.5cqw; z-index:10; padding:8%;
+      background:radial-gradient(ellipse at 50% 40%, rgba(175,144,65,0.06) 0%, transparent 65%);
+    }
+    .thumb-kicker { font-family:'Inter',sans-serif; font-size:2cqw; font-weight:600; letter-spacing:0.4em; color:var(--gold); text-transform:uppercase; }
+    .thumb-logo { width:18cqw; height:18cqw; object-fit:contain; filter:drop-shadow(0 0 14px rgba(175,144,65,0.55)); }
+    .thumb-show { font-family:'Cinzel',serif; font-size:4.5cqw; font-weight:700; letter-spacing:0.28em; color:var(--white); text-align:center; line-height:1.15; }
+    .thumb-rule { width:38%; height:1px; background:linear-gradient(90deg,transparent,var(--gold),transparent); }
+    .thumb-headline { font-family:'Inter',sans-serif; font-size:3.8cqw; font-weight:300; color:var(--gold-lt); text-align:center; letter-spacing:0.06em; line-height:1.4; }
+    .thumb-ep { font-family:'Inter',sans-serif; font-size:2.2cqw; font-weight:400; letter-spacing:0.22em; color:var(--muted); text-transform:uppercase; }
+    .thumb-host { font-family:'Cinzel',serif; font-size:3.2cqw; font-weight:600; letter-spacing:0.22em; color:var(--gold); text-transform:uppercase; }
+
+    /* ════════════════════════════════════════
+       SECTION 6 — RUN ORDER: B-ROLL PiP PREVIEW
+    ════════════════════════════════════════ */
+    /* Circular talking-head placeholder (mirrors v11 ffmpeg PiP position) */
+    .broll-pip {
+      position:absolute; bottom:18%; left:4.2cqw; z-index:30;
+      width:24cqw; height:24cqw; border-radius:50%;
+      background:radial-gradient(circle at 38% 32%, #252525 0%, #0a0a0a 100%);
+      display:flex; align-items:center; justify-content:center;
+      box-shadow:
+        0 0 0 0.35cqw rgba(212,185,106,0.92),
+        0 0 0 0.8cqw  rgba(175,144,65,0.22),
+        0 0 0 1.4cqw  rgba(175,144,65,0.07),
+        0 6px 24px rgba(0,0,0,0.7);
+    }
+    .broll-pip-init { font-family:'Cinzel',serif; font-size:7cqw; font-weight:700; color:var(--gold-dk); opacity:0.55; }
+
+    /* Context label strip — right of PiP, same bottom anchor */
+    .broll-ctx {
+      position:absolute; bottom:18%; left:31cqw; right:12%;
+      z-index:30; padding:2cqw 2.5cqw;
+      background:rgba(0,0,0,0.74); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+      border-left:0.35cqw solid var(--gold);
+      display:flex; flex-direction:column; gap:1.2cqw;
+    }
+    .broll-ctx-tag { font-family:'Inter',sans-serif; font-size:1.7cqw; font-weight:600; letter-spacing:0.35em; color:var(--gold); text-transform:uppercase; }
+    .broll-ctx-line { font-family:'Inter',sans-serif; font-size:2.5cqw; font-weight:300; color:var(--off-white); letter-spacing:0.04em; line-height:1.3; }
+
+    /* ════════════════════════════════════════
+       14 — LOWER TICKER (B-roll info)
+    ════════════════════════════════════════ */
+    .ticker {
+      position:absolute; left:0; right:0; bottom:16.7%;
+      display:flex; align-items:stretch; z-index:20;
+    }
+    .ticker-bug {
+      background:linear-gradient(135deg,var(--gold-lt),var(--gold));
+      padding:0 3cqw; display:flex; align-items:center; flex-shrink:0;
+    }
+    .ticker-bug img { width:7cqw; height:7cqw; object-fit:contain; }
+    .ticker-body {
+      flex:1; padding:2cqw 12% 2cqw 3cqw;
+      background:rgba(0,0,0,0.9); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+      border-top:1px solid rgba(175,144,65,0.4);
+      display:flex; flex-direction:column; justify-content:center; gap:0.8cqw;
+    }
+    .ticker-tag { font-family:'Inter',sans-serif; font-size:2cqw; font-weight:600; letter-spacing:0.25em; color:var(--gold); text-transform:uppercase; }
+    .ticker-text { font-family:'Inter',sans-serif; font-size:2.8cqw; font-weight:300; color:var(--off-white); letter-spacing:0.04em; }
+
+    /* ════════════════════════════════════════
+       SECTION 6 — INTRO ANIMATIONS
+    ════════════════════════════════════════ */
+    @keyframes logoReveal {
+      0%   { opacity:0; transform:scale(0.82); filter:drop-shadow(0 0 0px rgba(175,144,65,0)); }
+      65%  { opacity:1; transform:scale(1.03); filter:drop-shadow(0 0 22px rgba(175,144,65,0.85)); }
+      100% { opacity:1; transform:scale(1);    filter:drop-shadow(0 0 12px rgba(175,144,65,0.5)); }
+    }
+    @keyframes goldRingPulse {
+      0%,100% { box-shadow: 0 0 0 0.35cqw rgba(212,185,106,0.75), 0 0 0 0.8cqw rgba(175,144,65,0.18), 0 0 0 1.4cqw rgba(175,144,65,0.06); }
+      50%     { box-shadow: 0 0 0 0.5cqw  rgba(212,185,106,1),    0 0 0 1.2cqw rgba(175,144,65,0.35), 0 0 0 2.2cqw rgba(175,144,65,0.12), 0 0 28px rgba(175,144,65,0.22); }
+    }
+    @keyframes slideUp {
+      from { opacity:0; transform:translateY(3cqw); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity:0; } to { opacity:1; }
+    }
+    @keyframes ruleExpand {
+      from { width:0; opacity:0; } to { width:40%; opacity:1; }
+    }
+
+    /* Animated intro layout */
+    .intro-frame {
+      position:absolute; inset:0;
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      gap:4cqw; z-index:20; padding:8%;
+    }
+    .intro-ring {
+      width:28cqw; height:28cqw; border-radius:50%;
+      background:radial-gradient(circle at 38% 32%, #1e1e1e 0%, #080808 100%);
+      display:flex; align-items:center; justify-content:center;
+      animation: goldRingPulse 2.8s ease-in-out infinite;
+    }
+    .intro-ring img {
+      width:60%; height:60%; object-fit:contain;
+      animation: logoReveal 1.2s cubic-bezier(0.16,1,0.3,1) both;
+    }
+    .intro-show {
+      font-family:'Cinzel',serif; font-size:4.2cqw; font-weight:700; letter-spacing:0.3em;
+      color:var(--white); text-align:center; text-transform:uppercase; line-height:1.15;
+      animation: slideUp 0.9s 0.3s cubic-bezier(0.16,1,0.3,1) both;
+    }
+    .intro-rule {
+      height:1px; background:linear-gradient(90deg,transparent,var(--gold),transparent);
+      animation: ruleExpand 0.8s 0.7s ease both;
+    }
+    .intro-ep {
+      font-family:'Inter',sans-serif; font-size:2.2cqw; font-weight:400; letter-spacing:0.35em;
+      color:var(--gold); text-transform:uppercase;
+      animation: fadeIn 0.7s 1s ease both;
+    }
+    .intro-host {
+      font-family:'Cinzel',serif; font-size:3cqw; font-weight:600; letter-spacing:0.2em;
+      color:var(--muted); text-transform:uppercase;
+      animation: fadeIn 0.7s 1.2s ease both;
+    }
+
+    /* Outro CTA full-frame */
+    .outro-frame {
+      position:absolute; inset:0;
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      gap:0; z-index:20; padding:0 8% 16.7%;
+    }
+    .outro-logo { width:16cqw; height:16cqw; object-fit:contain; filter:drop-shadow(0 0 12px rgba(175,144,65,0.55)); margin-bottom:3cqw; }
+    .outro-cta { font-family:'Cinzel',serif; font-size:5cqw; font-weight:700; letter-spacing:0.22em; color:var(--white); text-align:center; margin-bottom:1.5cqw; }
+    .outro-rule { width:50%; height:1px; background:linear-gradient(90deg,transparent,var(--gold),transparent); margin-bottom:4cqw; }
+    .outro-socials { width:100%; display:flex; flex-direction:column; gap:0; }
+    .outro-row {
+      display:flex; align-items:center; gap:0;
+      border-bottom:1px solid rgba(175,144,65,0.1);
+    }
+    .outro-row:last-child { border-bottom:none; }
+    .outro-platform {
+      padding:2.2cqw 2.5cqw; width:34%;
+      font-family:'Inter',sans-serif; font-size:2cqw; font-weight:600; letter-spacing:0.22em;
+      color:var(--gold); text-transform:uppercase;
+      background:rgba(175,144,65,0.06);
+      border-right:1px solid rgba(175,144,65,0.15);
+    }
+    .outro-handle {
+      padding:2.2cqw 2.5cqw; flex:1;
+      font-family:'Inter',sans-serif; font-size:2.5cqw; font-weight:400; letter-spacing:0.06em;
+      color:var(--off-white);
+      background:rgba(0,0,0,0.55);
+    }
+    .outro-tagline {
+      font-family:'Inter',sans-serif; font-size:2.2cqw; font-weight:300; letter-spacing:0.12em;
+      color:var(--muted); text-align:center; margin-top:4cqw;
+    }
+
+  </style>
+</head>
+<body>
+
+  <h1>PCG Tech Briefing — Vertical Graphics System</h1>
+  <p class="sub">9:16 · TikTok / Reels / Shorts · Glassmorphism · PCG Logo · No Live Tags</p>
+
+  <div class="controls">
+    <button class="toggle-btn" id="tzBtn" onclick="toggleZones()">Show Safe Zones</button>
+  </div>
+
+  <!-- ══ SECTION 1: REPORTER OVERLAYS ══ -->
+  <div class="section-title">Section 1 — Reporter & Identity</div>
+  <div class="grid">
+
+    <!-- 01: B-ROLL REPORTER -->
+    <div class="card">
+      <div class="card-label">01 — B-Roll Reporter</div>
+      <div class="canvas">
+        <div class="sz" id="z1"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <!-- Logo top-left -->
+        <div class="pcg-logo"><img src="pcg-logo.png" alt="PCG" /><div class="pcg-logo-text"><div class="pcg-logo-show">PCG</div><div class="pcg-logo-name">Tech Briefing</div></div></div>
+        <div class="ep-bug"><div class="ep-num">EP. 09</div><div class="ep-date">Mar 2026</div></div>
+        <!-- Talking head -->
+        <div class="th"><div class="th-fill"><div class="th-initials">JA</div></div></div>
+        <!-- Name strip -->
+        <div class="namestrip">
+          <div class="ns-name">Jessy Artman</div>
+          <div class="ns-title">Founder & CEO</div>
+          <div class="ns-org">Power Club Global</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 02: ON-CAMERA PERSON ID -->
+    <div class="card">
+      <div class="card-label">02 — On-Camera Person ID</div>
+      <div class="canvas">
+        <div class="sz" id="z2"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <div class="pcg-logo"><img src="pcg-logo.png" alt="PCG" /><div class="pcg-logo-text"><div class="pcg-logo-show">PCG</div><div class="pcg-logo-name">Tech Briefing</div></div></div>
+        <div class="ep-bug"><div class="ep-num">EP. 09</div><div class="ep-date">Mar 2026</div></div>
+        <div class="person-id">
+          <div class="pid-circle"><img src="pcg-logo.png" alt="PCG" /></div>
+          <div class="pid-bar"></div>
+          <div class="pid-text">
+            <div class="pid-name">Jessy Artman</div>
+            <div class="pid-title">Founder & CEO — Power Club Global</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 03: GUEST EXPERT -->
+    <div class="card">
+      <div class="card-label">03 — Guest Expert</div>
+      <div class="canvas">
+        <div class="sz" id="z3"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <div class="pcg-logo"><img src="pcg-logo.png" alt="PCG" /><div class="pcg-logo-text"><div class="pcg-logo-show">PCG</div><div class="pcg-logo-name">Tech Briefing</div></div></div>
+        <div class="ep-bug"><div class="ep-num">EP. 09</div><div class="ep-date">Mar 2026</div></div>
+        <div class="th"><div class="th-fill"><div class="th-initials">MW</div></div></div>
+        <div class="namestrip">
+          <div class="ns-name" style="font-size:4.5cqw">Dr. Marcus Webb</div>
+          <div class="ns-title" style="font-size:2.4cqw">Head of AI Research</div>
+          <div class="ns-org">Lightricks · Tel Aviv</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 04: HOST WITHOUT TH (full on-cam) -->
+    <div class="card">
+      <div class="card-label">04 — AIgent Identifier</div>
+      <div class="canvas">
+        <div class="sz" id="z4"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <div class="pcg-logo"><img src="pcg-logo.png" alt="PCG" /><div class="pcg-logo-text"><div class="pcg-logo-show">PCG</div><div class="pcg-logo-name">Tech Briefing</div></div></div>
+        <div class="ep-bug"><div class="ep-num">EP. 09</div><div class="ep-date">Mar 2026</div></div>
+        <div class="person-id">
+          <div class="pid-circle"><img src="pcg-logo.png" alt="PCG" /></div>
+          <div class="pid-bar"></div>
+          <div class="pid-text">
+            <div class="pid-name" style="color:var(--gold)">Nora</div>
+            <div class="pid-title">AI Technology Director</div>
+            <div style="font-family:'Inter',sans-serif;font-size:2.2cqw;font-weight:300;color:var(--muted);letter-spacing:0.08em;margin-top:0.5cqw;">PCG AIgent · Tech Briefing</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══ SECTION 2: SEGMENT OPENERS ══ -->
+  <div class="section-title">Section 2 — Segment Openers & Banners</div>
+  <div class="grid">
+
+    <!-- 05: SEGMENT STRIP + TH -->
+    <div class="card">
+      <div class="card-label">05 — Segment + Reporter</div>
+      <div class="canvas">
+        <div class="sz" id="z5"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <div class="pcg-logo"><img src="pcg-logo.png" alt="PCG" /><div class="pcg-logo-text"><div class="pcg-logo-show">PCG</div><div class="pcg-logo-name">Tech Briefing</div></div></div>
+        <div class="ep-bug"><div class="ep-num">EP. 09</div><div class="ep-date">Mar 2026</div></div>
+        <div class="th"><div class="th-fill"><div class="th-initials">JA</div></div></div>
+        <div class="namestrip"><div class="ns-name">Jessy Artman</div><div class="ns-title">PCG · Host</div></div>
+        <div class="seg-strip" style="bottom:32%">
+          <div class="seg-pill">Tech Briefing</div>
+          <div class="seg-div"></div>
+          <div class="seg-info"><div class="seg-topic">AI Video & Agents</div><div class="seg-ep">Ep. 12 · March 2026</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 06: TITLE CARD -->
+    <div class="card">
+      <div class="card-label">06 — Segment Opener</div>
+      <div class="canvas">
+        <div class="sz" id="z6"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <div class="title-grad"></div>
+        <div class="pcg-logo"><img src="pcg-logo.png" alt="PCG" /><div class="pcg-logo-text"><div class="pcg-logo-show">PCG</div><div class="pcg-logo-name">Tech Briefing</div></div></div>
+        <div class="ep-bug"><div class="ep-num">EP. 09</div><div class="ep-date">Mar 2026</div></div>
+        <div class="title-content">
+          <div class="t-tag">Tech Briefing</div>
+          <div class="t-eyebrow">PCG · March 2026</div>
+          <div class="t-main">The Open<br>Source Era</div>
+          <div class="t-rule"></div>
+          <div class="t-sub">LTX2 & the future<br>of brand content</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 07: CHAPTER MARKER -->
+    <div class="card">
+      <div class="card-label">07 — Chapter Marker</div>
+      <div class="canvas">
+        <div class="sz" id="z7"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <div class="pcg-logo"><img src="pcg-logo.png" alt="PCG" /><div class="pcg-logo-text"><div class="pcg-logo-show">PCG</div><div class="pcg-logo-name">Tech Briefing</div></div></div>
+        <div class="ep-bug"><div class="ep-num">EP. 09</div><div class="ep-date">Mar 2026</div></div>
+        <div class="chapter">
+          <div class="chapter-num">02</div>
+          <div class="chapter-text">
+            <div class="ch-label">Now Covering</div>
+            <div class="ch-name">Open Source Models</div>
+          </div>
+        </div>
+        <div class="th"><div class="th-fill"><div class="th-initials">JA</div></div></div>
+        <div class="namestrip"><div class="ns-name">Jessy Artman</div><div class="ns-title">PCG · Host</div></div>
+      </div>
+    </div>
+
+    <!-- 08: BREAKING ALERT -->
+    <div class="card">
+      <div class="card-label">08 — Breaking Alert</div>
+      <div class="canvas">
+        <div class="sz" id="z8"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <div class="pcg-logo"><img src="pcg-logo.png" alt="PCG" /><div class="pcg-logo-text"><div class="pcg-logo-show">PCG</div><div class="pcg-logo-name">Tech Briefing</div></div></div>
+        <div class="ep-bug"><div class="ep-num">EP. 09</div><div class="ep-date">Mar 2026</div></div>
+        <div class="alert-strip">
+          <div class="alert-badge">Breaking</div>
+          <div class="alert-content">
+            <div class="alert-headline">LTX2 Released Open Source</div>
+            <div class="alert-sub">Lightricks · March 2026</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══ SECTION 3: INFO OVERLAYS ══ -->
+  <div class="section-title">Section 3 — Data & Information Overlays</div>
+  <div class="grid">
+
+    <!-- 09: STAT + REPORTER -->
+    <div class="card">
+      <div class="card-label">09 — Stat Callout + Reporter</div>
+      <div class="canvas">
+        <div class="sz" id="z9"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <div class="pcg-logo"><img src="pcg-logo.png" alt="PCG" /><div class="pcg-logo-text"><div class="pcg-logo-show">PCG</div><div class="pcg-logo-name">Tech Briefing</div></div></div>
+        <div class="ep-bug"><div class="ep-num">EP. 09</div><div class="ep-date">Mar 2026</div></div>
+        <div class="stat-box">
+          <div class="sb-label">Market Size</div>
+          <div class="sb-num">$47B</div>
+          <div class="sb-desc">AI video generation<br>market by 2030</div>
+        </div>
+        <div class="th"><div class="th-fill"><div class="th-initials">JA</div></div></div>
+        <div class="namestrip"><div class="ns-name">Jessy Artman</div><div class="ns-title">PCG · Founder</div></div>
+      </div>
+    </div>
+
+    <!-- 10: KEY POINTS -->
+    <div class="card">
+      <div class="card-label">10 — Key Points</div>
+      <div class="canvas">
+        <div class="sz" id="z10"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <div class="pcg-logo"><img src="pcg-logo.png" alt="PCG" /><div class="pcg-logo-text"><div class="pcg-logo-show">PCG</div><div class="pcg-logo-name">Tech Briefing</div></div></div>
+        <div class="ep-bug"><div class="ep-num">EP. 09</div><div class="ep-date">Mar 2026</div></div>
+        <div class="keypoints">
+          <div class="kp-heading">Why LTX2 Matters</div>
+          <div class="kp-rule"></div>
+          <div class="kp-item"><div class="kp-dot"></div><div class="kp-text">No subscription — fully open weights</div></div>
+          <div class="kp-item"><div class="kp-dot"></div><div class="kp-text">Runs locally on RTX GPU</div></div>
+          <div class="kp-item"><div class="kp-dot"></div><div class="kp-text">Native 4K · 50 FPS</div></div>
+          <div class="kp-item"><div class="kp-dot"></div><div class="kp-text">LoRA fine-tuning supported</div></div>
+        </div>
+        <div class="th"><div class="th-fill"><div class="th-initials">JA</div></div></div>
+        <div class="namestrip"><div class="ns-name">Jessy Artman</div><div class="ns-title">PCG · Host</div></div>
+      </div>
+    </div>
+
+    <!-- 11: COMPARISON -->
+    <div class="card">
+      <div class="card-label">11 — Comparison Table</div>
+      <div class="canvas">
+        <div class="sz" id="z11"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <div class="pcg-logo"><img src="pcg-logo.png" alt="PCG" /><div class="pcg-logo-text"><div class="pcg-logo-show">PCG</div><div class="pcg-logo-name">Tech Briefing</div></div></div>
+        <div class="ep-bug"><div class="ep-num">EP. 09</div><div class="ep-date">Mar 2026</div></div>
+        <div class="compare">
+          <div class="cmp-header">LTX2 vs. Runway</div>
+          <div class="cmp-row">
+            <div class="cmp-label">Cost</div>
+            <div class="cmp-a">Free</div>
+            <div class="cmp-b">$35/mo</div>
+          </div>
+          <div class="cmp-row">
+            <div class="cmp-label">Data</div>
+            <div class="cmp-a">Local / Private</div>
+            <div class="cmp-b">Cloud Upload</div>
+          </div>
+          <div class="cmp-row">
+            <div class="cmp-label">Quality</div>
+            <div class="cmp-a">4K · 50 FPS</div>
+            <div class="cmp-b">1080p · 24 FPS</div>
+          </div>
+        </div>
+        <div class="th"><div class="th-fill"><div class="th-initials">JA</div></div></div>
+        <div class="namestrip"><div class="ns-name">Jessy Artman</div><div class="ns-title">PCG · Host</div></div>
+      </div>
+    </div>
+
+    <!-- 12: PULL QUOTE + REPORTER -->
+    <div class="card">
+      <div class="card-label">12 — Pull Quote + Reporter</div>
+      <div class="canvas">
+        <div class="sz" id="z12"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <div class="pcg-logo"><img src="pcg-logo.png" alt="PCG" /><div class="pcg-logo-text"><div class="pcg-logo-show">PCG</div><div class="pcg-logo-name">Tech Briefing</div></div></div>
+        <div class="ep-bug"><div class="ep-num">EP. 09</div><div class="ep-date">Mar 2026</div></div>
+        <div class="quote-box">
+          <div class="q-mark">"</div>
+          <div class="q-text">Open source is the subscription killer.</div>
+          <div class="q-rule"></div>
+          <div class="q-attr">Jessy Artman · PCG</div>
+        </div>
+        <div class="th"><div class="th-fill"><div class="th-initials">JA</div></div></div>
+        <div class="namestrip"><div class="ns-name">Jessy Artman</div><div class="ns-title">PCG · Founder</div></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══ SECTION 4: SUPPLEMENTARY ══ -->
+  <div class="section-title">Section 4 — Supplementary Elements</div>
+  <div class="grid">
+
+    <!-- 13: SOURCE CITATION -->
+    <div class="card">
+      <div class="card-label">13 — Source Citation</div>
+      <div class="canvas">
+        <div class="sz" id="z13"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <div class="pcg-logo"><img src="pcg-logo.png" alt="PCG" /><div class="pcg-logo-text"><div class="pcg-logo-show">PCG</div><div class="pcg-logo-name">Tech Briefing</div></div></div>
+        <div class="ep-bug"><div class="ep-num">EP. 09</div><div class="ep-date">Mar 2026</div></div>
+        <div class="citation" style="bottom:33%">
+          <div class="cite-icon">📄</div>
+          <div class="cite-text">
+            <div class="cite-label">Source</div>
+            <div class="cite-source">Lightricks Research Report · 2026</div>
+          </div>
+        </div>
+        <div class="th"><div class="th-fill"><div class="th-initials">JA</div></div></div>
+        <div class="namestrip"><div class="ns-name">Jessy Artman</div><div class="ns-title">PCG · Host</div></div>
+      </div>
+    </div>
+
+    <!-- 14: SOCIAL HANDLE -->
+    <div class="card">
+      <div class="card-label">14 — Social Handle</div>
+      <div class="canvas">
+        <div class="sz" id="z14"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <div class="pcg-logo"><img src="pcg-logo.png" alt="PCG" /><div class="pcg-logo-text"><div class="pcg-logo-show">PCG</div><div class="pcg-logo-name">Tech Briefing</div></div></div>
+        <div class="ep-bug"><div class="ep-num">EP. 09</div><div class="ep-date">Mar 2026</div></div>
+        <div class="social-strip" style="bottom:33%">
+          <div class="social-icon">◈</div>
+          <div class="social-info">
+            <div class="social-platform">Instagram</div>
+            <div class="social-handle">@powerclubglobal</div>
+          </div>
+        </div>
+        <div class="th"><div class="th-fill"><div class="th-initials">JA</div></div></div>
+        <div class="namestrip"><div class="ns-name">Jessy Artman</div><div class="ns-title">PCG · Host</div></div>
+      </div>
+    </div>
+
+    <!-- 15: TICKER WITH LOGO -->
+    <div class="card">
+      <div class="card-label">15 — Ticker Strip</div>
+      <div class="canvas">
+        <div class="sz" id="z15"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <div class="pcg-logo"><img src="pcg-logo.png" alt="PCG" /><div class="pcg-logo-text"><div class="pcg-logo-show">PCG</div><div class="pcg-logo-name">Tech Briefing</div></div></div>
+        <div class="ep-bug"><div class="ep-num">EP. 09</div><div class="ep-date">Mar 2026</div></div>
+        <div class="ticker">
+          <div class="ticker-bug"><img src="pcg-logo.png" alt="PCG" /></div>
+          <div class="ticker-body">
+            <div class="ticker-tag">PCG Intel</div>
+            <div class="ticker-text">LTX2 drops — highest benchmarking open-weights video model</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 16: CORNER BUG ONLY (persistent watermark) -->
+    <div class="card">
+      <div class="card-label">16 — Persistent Watermark</div>
+      <div class="canvas">
+        <div class="sz" id="z16"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <!-- Logo top-left -->
+        <div class="pcg-logo"><img src="pcg-logo.png" alt="PCG" /><div class="pcg-logo-text"><div class="pcg-logo-show">PCG</div><div class="pcg-logo-name">Tech Briefing</div></div></div>
+        <div class="ep-bug"><div class="ep-num">EP. 09</div><div class="ep-date">Mar 2026</div></div>
+        <!-- Right-side minimal wordmark -->
+        <div style="position:absolute; top:8%; right:13%; z-index:50; display:flex; flex-direction:column; align-items:flex-end; gap:1cqw;">
+          <div style="font-family:'Cinzel',serif; font-size:2.5cqw; font-weight:700; letter-spacing:0.3em; color:var(--gold); opacity:0.7; text-shadow:0 0 8px rgba(175,144,65,0.4);">PCG</div>
+          <div style="font-family:'Inter',sans-serif; font-size:1.8cqw; font-weight:300; letter-spacing:0.2em; color:var(--muted); text-transform:uppercase;">Tech Briefing</div>
+        </div>
+        <div class="person-id">
+          <div class="pid-circle"><img src="pcg-logo.png" alt="PCG" /></div>
+          <div class="pid-bar"></div>
+          <div class="pid-text">
+            <div class="pid-name">Jessy Artman</div>
+            <div class="pid-title">Founder — PCG</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══ SECTION 5: PCG BRAND CLOSERS (from Tech Briefing v10/v11) ══ -->
+  <div class="section-title">Section 5 — PCG Brand Closers</div>
+  <div class="grid-3">
+
+    <!-- 17: EPISODE BADGE (corner bug) -->
+    <div class="card">
+      <div class="card-label">17 — Episode Badge</div>
+      <div class="canvas">
+        <div class="sz" id="z17"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <div class="pcg-logo"><img src="pcg-logo.png" alt="PCG" /><div class="pcg-logo-text"><div class="pcg-logo-show">PCG</div><div class="pcg-logo-name">Tech Briefing</div></div></div>
+        <div class="ep-bug"><div class="ep-num">EP. 09</div><div class="ep-date">Mar 2026</div></div>
+        <div class="th"><div class="th-fill"><div class="th-initials">SS</div></div></div>
+        <div class="namestrip"><div class="ns-name">Sami Satoshi</div><div class="ns-title">Digital Asset Strategist</div></div>
+      </div>
+    </div>
+
+    <!-- 18: PCG POSITIONING CARD -->
+    <div class="card">
+      <div class="card-label">18 — PCG Positioning</div>
+      <div class="canvas">
+        <div class="sz" id="z18"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <div class="pcg-logo"><img src="pcg-logo.png" alt="PCG" /><div class="pcg-logo-text"><div class="pcg-logo-show">PCG</div><div class="pcg-logo-name">Tech Briefing</div></div></div>
+        <div class="ep-bug"><div class="ep-num">EP. 09</div><div class="ep-date">Mar 2026</div></div>
+        <!-- Positioning card -->
+        <div style="position:absolute; left:4cqw; right:4cqw; bottom:32%;
+             background:var(--glass-bg2); backdrop-filter:blur(20px) saturate(140%);
+             border:1px solid rgba(175,144,65,0.18); border-radius:3cqw;
+             overflow:hidden; z-index:40;">
+          <!-- Gold top rule -->
+          <div style="height:0.5cqw; background:linear-gradient(90deg,var(--gold-lt),var(--gold),var(--gold-dk));"></div>
+          <div style="padding:3cqw 3.5cqw;">
+            <!-- Header row — no logo here, show bug handles branding -->
+            <div style="margin-bottom:2cqw;">
+              <div style="font-family:'Cinzel',serif; font-size:3.8cqw; font-weight:700;
+                   letter-spacing:0.1em; color:var(--white); line-height:1.1;">POWERCLUB GLOBAL</div>
+              <div style="font-family:'Inter',sans-serif; font-size:2.2cqw; font-weight:300;
+                   color:var(--gold-lt); letter-spacing:0.12em; margin-top:0.8cqw;">The Sovereign Intelligence Layer</div>
+            </div>
+            <!-- Gold rule -->
+            <div style="height:1px; background:linear-gradient(90deg,var(--gold),transparent); margin-bottom:2.5cqw;"></div>
+            <!-- Three pillars -->
+            <div style="display:flex; flex-direction:column; gap:2cqw;">
+              <div style="display:flex; align-items:center; gap:2cqw;">
+                <div style="width:1.5cqw; height:1.5cqw; border-radius:50%; background:var(--gold); flex-shrink:0;"></div>
+                <div style="font-family:'Inter',sans-serif; font-size:2.8cqw; color:rgba(255,255,255,0.85);">Intelligent Agents</div>
+              </div>
+              <div style="display:flex; align-items:center; gap:2cqw;">
+                <div style="width:1.5cqw; height:1.5cqw; border-radius:50%; background:var(--gold); flex-shrink:0;"></div>
+                <div style="font-family:'Inter',sans-serif; font-size:2.8cqw; color:rgba(255,255,255,0.85);">Sovereign Infrastructure</div>
+              </div>
+              <div style="display:flex; align-items:center; gap:2cqw;">
+                <div style="width:1.5cqw; height:1.5cqw; border-radius:50%; background:var(--gold); flex-shrink:0;"></div>
+                <div style="font-family:'Inter',sans-serif; font-size:2.8cqw; color:rgba(255,255,255,0.85);">Tokenized Incentive Design</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="th"><div class="th-fill"><div class="th-initials">SS</div></div></div>
+        <div class="namestrip"><div class="ns-name">Sami Satoshi</div><div class="ns-title">Digital Asset Strategist</div></div>
+      </div>
+    </div>
+
+    <!-- 19: CTA OVERLAY -->
+    <div class="card">
+      <div class="card-label">19 — CTA Overlay</div>
+      <div class="canvas">
+        <div class="sz" id="z19"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <!-- CTA card — centered in safe zone -->
+        <div style="position:absolute; left:4cqw; right:4cqw; bottom:32%;
+             background:var(--glass-bg2); backdrop-filter:blur(20px) saturate(140%);
+             border:1px solid rgba(175,144,65,0.22); border-radius:3cqw;
+             overflow:hidden; z-index:40;">
+          <div style="height:0.5cqw; background:linear-gradient(90deg,var(--gold-lt),var(--gold),var(--gold-dk));"></div>
+          <div style="padding:4cqw 3cqw; display:flex; flex-direction:column; align-items:center; gap:2cqw; text-align:center;">
+            <img src="pcg-logo.png" alt="PCG"
+                 style="width:14cqw; height:14cqw; object-fit:contain;
+                 filter:drop-shadow(0 0 8px rgba(175,144,65,0.5));" />
+            <div style="font-family:'Cinzel',serif; font-size:5cqw; font-weight:700;
+                 letter-spacing:0.25em; color:var(--white);">STAY SHARP</div>
+            <div style="height:1px; width:60%; background:linear-gradient(90deg,transparent,var(--gold),transparent);"></div>
+            <div style="font-family:'Inter',sans-serif; font-size:3cqw; font-weight:400;
+                 color:var(--gold-lt); letter-spacing:0.1em;">@powerclubglobal</div>
+            <div style="font-family:'Inter',sans-serif; font-size:2.2cqw; font-weight:300;
+                 color:var(--muted); letter-spacing:0.08em;">New drops every week · Subscribe now</div>
+          </div>
+        </div>
+        <div class="th"><div class="th-fill"><div class="th-initials">SS</div></div></div>
+        <div class="namestrip"><div class="ns-name">Sami Satoshi</div><div class="ns-title">Digital Asset Strategist</div></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══ SECTION 6: SAMI SATOSHI EP. 01 — RUN ORDER ══ -->
+  <div class="section-title">Section 6 — Sami Satoshi Ep. 01 · Run Order</div>
+  <div class="grid">
+
+    <!-- A: THUMBNAIL — cinematic full-frame with title overlay -->
+    <div class="card">
+      <div class="card-label">A — Thumbnail (Pre-Video)</div>
+      <div class="canvas" style="background:linear-gradient(165deg, #0e1118 0%, #0a0c14 35%, #060810 65%, #0d0e0a 100%);">
+        <div class="sz" id="z20"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <!-- Cinematic light leak -->
+        <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 30% 25%, rgba(175,144,65,0.09) 0%, transparent 55%);pointer-events:none;z-index:1;"></div>
+        <!-- Bottom fade for text legibility -->
+        <div style="position:absolute;inset:0;background:linear-gradient(180deg, transparent 25%, rgba(0,0,0,0.5) 55%, rgba(0,0,0,0.92) 100%);z-index:2;"></div>
+        <!-- Show bug top-left (no EP badge on thumbnail) -->
+        <div class="pcg-logo" style="z-index:10;"><img src="pcg-logo.png" alt="PCG" /><div class="pcg-logo-text"><div class="pcg-logo-show">PCG</div><div class="pcg-logo-name">Tech Briefing</div></div></div>
+        <!-- Thumbnail content bottom-anchored -->
+        <div style="position:absolute; left:4cqw; right:4cqw; bottom:18%; z-index:10; display:flex; flex-direction:column; gap:2.5cqw;">
+          <div style="font-family:'Inter',sans-serif; font-size:2cqw; font-weight:600; letter-spacing:0.4em; color:var(--gold); text-transform:uppercase;">Episode 01 · March 2026</div>
+          <div style="font-family:'Cinzel',serif; font-size:9.5cqw; font-weight:700; letter-spacing:0.04em; color:var(--white); line-height:1.05; text-shadow:0 2px 24px rgba(0,0,0,0.9);">AI · Crypto<br>Sovereignty</div>
+          <div style="height:1.5px; width:35%; background:linear-gradient(90deg,var(--gold),var(--gold-dk));"></div>
+          <div style="font-family:'Cinzel',serif; font-size:3.2cqw; font-weight:600; letter-spacing:0.18em; color:var(--gold-lt);">Sami Satoshi</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- B: PERSISTENT BUG — show open, no person ID yet -->
+    <div class="card">
+      <div class="card-label">B — Show Open Bug (Persistent)</div>
+      <div class="canvas">
+        <div class="sz" id="z21"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <div class="pcg-logo"><img src="pcg-logo.png" alt="PCG" /><div class="pcg-logo-text"><div class="pcg-logo-show">PCG</div><div class="pcg-logo-name">Tech Briefing</div></div></div>
+        <div class="ep-bug"><div class="ep-num">EP. 01</div><div class="ep-date">Mar 2026</div></div>
+      </div>
+    </div>
+
+    <!-- C: HOST PERSON ID — Sami intro & returns from B-roll -->
+    <div class="card">
+      <div class="card-label">C — Host ID · Sami Satoshi</div>
+      <div class="canvas">
+        <div class="sz" id="z22"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <div class="pcg-logo"><img src="pcg-logo.png" alt="PCG" /><div class="pcg-logo-text"><div class="pcg-logo-show">PCG</div><div class="pcg-logo-name">Tech Briefing</div></div></div>
+        <div class="ep-bug"><div class="ep-num">EP. 01</div><div class="ep-date">Mar 2026</div></div>
+        <div class="person-id">
+          <div class="pid-circle"><img src="pcg-logo.png" alt="PCG" /></div>
+          <div class="pid-bar"></div>
+          <div class="pid-text">
+            <div class="pid-name">Sami Satoshi</div>
+            <div class="pid-title">Host · PCG Technology Briefing</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- D: ANIMATED LOGO INTRO -->
+    <div class="card">
+      <div class="card-label">D — Animated Logo Intro</div>
+      <div class="canvas">
+        <div class="sz" id="z23"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <!-- Radial glow behind logo -->
+        <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 42%, rgba(175,144,65,0.1) 0%, transparent 60%);pointer-events:none;z-index:1;"></div>
+        <div class="intro-frame">
+          <div class="intro-ring"><img src="pcg-logo.png" alt="PCG" /></div>
+          <div class="intro-show">Technology<br>Briefing</div>
+          <div class="intro-rule"></div>
+          <div class="intro-ep">Episode 01 · March 2026</div>
+          <div class="intro-host">Sami Satoshi</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <div class="grid" style="margin-top:20px">
+
+    <!-- E: AI B-ROLL + TALKING HEAD PiP -->
+    <div class="card">
+      <div class="card-label">E — AI B-Roll · Inference Chips</div>
+      <div class="canvas">
+        <div class="sz" id="z24"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <div class="pcg-logo"><img src="pcg-logo.png" alt="PCG" /><div class="pcg-logo-text"><div class="pcg-logo-show">PCG</div><div class="pcg-logo-name">Tech Briefing</div></div></div>
+        <div class="ep-bug"><div class="ep-num">EP. 01</div><div class="ep-date">Mar 2026</div></div>
+        <div class="broll-pip"><div class="broll-pip-init">SS</div></div>
+        <div class="broll-ctx">
+          <div class="broll-ctx-tag">Artificial Intelligence</div>
+          <div class="broll-ctx-line">Next-Gen Inference Chips<br>3× Compute Density</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- F: CRYPTO B-ROLL + TALKING HEAD PiP -->
+    <div class="card">
+      <div class="card-label">F — Crypto B-Roll · Tokenized Settlement</div>
+      <div class="canvas">
+        <div class="sz" id="z25"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <div class="pcg-logo"><img src="pcg-logo.png" alt="PCG" /><div class="pcg-logo-text"><div class="pcg-logo-show">PCG</div><div class="pcg-logo-name">Tech Briefing</div></div></div>
+        <div class="ep-bug"><div class="ep-num">EP. 01</div><div class="ep-date">Mar 2026</div></div>
+        <div class="broll-pip"><div class="broll-pip-init">SS</div></div>
+        <div class="broll-ctx">
+          <div class="broll-ctx-tag">Blockchain</div>
+          <div class="broll-ctx-line">Tokenized Treasury Settlement<br>Top 10 Asset Managers · Live Capital</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- G: PCG B-ROLL + TALKING HEAD PiP -->
+    <div class="card">
+      <div class="card-label">G — PCG B-Roll · Sovereign Infrastructure</div>
+      <div class="canvas">
+        <div class="sz" id="z26"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <div class="pcg-logo"><img src="pcg-logo.png" alt="PCG" /><div class="pcg-logo-text"><div class="pcg-logo-show">PCG</div><div class="pcg-logo-name">Tech Briefing</div></div></div>
+        <div class="ep-bug"><div class="ep-num">EP. 01</div><div class="ep-date">Mar 2026</div></div>
+        <div class="broll-pip"><div class="broll-pip-init">SS</div></div>
+        <div class="broll-ctx">
+          <div class="broll-ctx-tag">Power Club Global</div>
+          <div class="broll-ctx-line">Sovereign Infrastructure<br>Agents · Tokenized Incentive Design</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- H: SIGN-OFF — clean camera, no popup -->
+    <div class="card">
+      <div class="card-label">H — Sign-Off (Clean Camera)</div>
+      <div class="canvas">
+        <div class="sz" id="z27"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <div class="pcg-logo"><img src="pcg-logo.png" alt="PCG" /><div class="pcg-logo-text"><div class="pcg-logo-show">PCG</div><div class="pcg-logo-name">Tech Briefing</div></div></div>
+        <div class="ep-bug"><div class="ep-num">EP. 01</div><div class="ep-date">Mar 2026</div></div>
+        <div class="person-id">
+          <div class="pid-circle"><img src="pcg-logo.png" alt="PCG" /></div>
+          <div class="pid-bar"></div>
+          <div class="pid-text">
+            <div class="pid-name">Sami Satoshi</div>
+            <div class="pid-title">Host · PCG Technology Briefing</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <div class="grid-3" style="margin-top:20px">
+
+    <!-- I: OUTRO — follow / subscribe CTA with PCG contact info -->
+    <div class="card" style="grid-column:2">
+      <div class="card-label">I — Outro · Follow & Subscribe</div>
+      <div class="canvas">
+        <div class="sz" id="z28"><div class="sz-top"></div><div class="sz-bot"></div><div class="sz-right"></div></div>
+        <!-- Subtle radial glow -->
+        <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 30%, rgba(175,144,65,0.07) 0%, transparent 60%);pointer-events:none;z-index:1;"></div>
+        <div class="outro-frame">
+          <img class="outro-logo" src="pcg-logo.png" alt="PCG" />
+          <div class="outro-cta">Follow & Subscribe</div>
+          <div class="outro-rule"></div>
+          <div class="outro-socials">
+            <div class="outro-row">
+              <div class="outro-platform">TikTok</div>
+              <div class="outro-handle">@powerclubglobal</div>
+            </div>
+            <div class="outro-row">
+              <div class="outro-platform">Instagram</div>
+              <div class="outro-handle">@powerclubglobal</div>
+            </div>
+            <div class="outro-row">
+              <div class="outro-platform">YouTube</div>
+              <div class="outro-handle">Power Club Global</div>
+            </div>
+            <div class="outro-row">
+              <div class="outro-platform">X</div>
+              <div class="outro-handle">@powerclubglobal</div>
+            </div>
+            <div class="outro-row">
+              <div class="outro-platform">Web</div>
+              <div class="outro-handle">powerclubglobal.com</div>
+            </div>
+          </div>
+          <div class="outro-tagline">New episodes every week · Stay Sharp</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    let on = false;
+    function toggleZones() {
+      on = !on;
+      for (let i = 1; i <= 28; i++) {
+        const el = document.getElementById('z'+i);
+        if (el) el.classList.toggle('on', on);
+      }
+      const b = document.getElementById('tzBtn');
+      b.textContent = on ? 'Hide Safe Zones' : 'Show Safe Zones';
+      b.classList.toggle('on', on);
+    }
+  </script>
+</body>
+</html>

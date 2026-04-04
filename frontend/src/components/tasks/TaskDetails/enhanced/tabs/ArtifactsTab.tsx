@@ -1,6 +1,8 @@
-import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import type { ExecutionArtifact } from 'shared/types';
+
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Skeleton } from '@/components/ui/skeleton';
+
 import { ArtifactGallery } from '../../ArtifactGallery';
 
 interface ArtifactsTabProps {
@@ -8,6 +10,7 @@ interface ArtifactsTabProps {
   artifactsLoading: boolean;
   artifactsError: string | null;
   onArtifactDownload: (artifact: ExecutionArtifact) => void;
+  onArtifactUploadComplete?: () => void;
 }
 
 export function ArtifactsTab({
@@ -15,6 +18,7 @@ export function ArtifactsTab({
   artifactsLoading,
   artifactsError,
   onArtifactDownload,
+  onArtifactUploadComplete,
 }: ArtifactsTabProps) {
   if (artifactsLoading) {
     return (
@@ -47,6 +51,7 @@ export function ArtifactsTab({
       artifacts={artifacts}
       className="h-full"
       onDownload={onArtifactDownload}
+      onArtifactUploadComplete={onArtifactUploadComplete}
       onUpload={async () => {
         // TODO: Implement file upload
       }}

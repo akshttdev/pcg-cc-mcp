@@ -1,5 +1,5 @@
-import { Download, Package, X } from 'lucide-react';
-import { useEffect, useMemo,useState } from 'react';
+import { Download, ExternalLink, Package, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import type {
   AgentFlowEvent,
   ArtifactType,
@@ -23,7 +23,12 @@ import { TimeTrackerWidget } from '@/components/time-tracking/TimeTrackerWidget'
 import { AskTopsiButton } from '@/components/topsi/AskTopsiButton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { IconButton } from '@/components/ui/icon-button';
 import { SectionHeader } from '@/components/ui/section-header';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -33,10 +38,15 @@ import { ReviewProvider } from '@/contexts/ReviewProvider';
 import { TabNavContext } from '@/contexts/TabNavigationContext';
 import { useExecutionSummary } from '@/hooks';
 import { useTaskViewManager } from '@/hooks/useTaskViewManager.ts';
-import type {
-  ExecutionArtifact as ApiExecutionArtifact,
+import type { ExecutionArtifact as ApiExecutionArtifact } from '@/lib/api';
+import {
+  agentFlowsApi,
+  agentsApi,
+  artifactContentApi,
+  editronApi,
+  resolveApiUrl,
+  taskArtifactsApi,
 } from '@/lib/api';
-import { agentFlowsApi, agentsApi, artifactContentApi, editronApi,resolveApiUrl, taskArtifactsApi } from '@/lib/api';
 import {
   getBackdropClasses,
   getTaskPanelClasses,
@@ -114,6 +124,8 @@ export function TaskDetailsPanel({
   const [artifacts, setArtifacts] = useState<ExecutionArtifact[]>([]);
   const [artifactsLoading, setArtifactsLoading] = useState(false);
   const [artifactsError, setArtifactsError] = useState<string | null>(null);
+  const [artifactsRefetchKey, setArtifactsRefetchKey] = useState(0);
+  const refetchArtifacts = () => setArtifactsRefetchKey((k) => k + 1);
   const [workflowEvents, setWorkflowEvents] = useState<AgentFlowEvent[]>([]);
   const [workflowLoading, setWorkflowLoading] = useState(false);
   const [workflowError, setWorkflowError] = useState<string | null>(null);
@@ -154,17 +166,21 @@ export function TaskDetailsPanel({
         if (cancelled) return;
         const executionArtifacts = data
           .map((item) => item.artifact)
-          .filter((artifact): artifact is ApiExecutionArtifact => Boolean(artifact));
-        const normalized: ExecutionArtifact[] = executionArtifacts.map((artifact) => ({
-          id: artifact.id,
-          execution_process_id: artifact.execution_process_id ?? '',
-          artifact_type: artifact.artifact_type as ArtifactType,
-          title: artifact.title ?? 'Untitled',
-          content: artifact.content ?? null,
-          file_path: artifact.file_path ?? null,
-          metadata: artifact.metadata ?? null,
-          created_at: artifact.created_at,
-        }));
+          .filter((artifact): artifact is ApiExecutionArtifact =>
+            Boolean(artifact)
+          );
+        const normalized: ExecutionArtifact[] = executionArtifacts.map(
+          (artifact) => ({
+            id: artifact.id,
+            execution_process_id: artifact.execution_process_id ?? '',
+            artifact_type: artifact.artifact_type as ArtifactType,
+            title: artifact.title ?? 'Untitled',
+            content: artifact.content ?? null,
+            file_path: artifact.file_path ?? null,
+            metadata: artifact.metadata ?? null,
+            created_at: artifact.created_at,
+          })
+        );
         setArtifacts(normalized);
       })
       .catch((error) => {
@@ -185,7 +201,7 @@ export function TaskDetailsPanel({
     return () => {
       cancelled = true;
     };
-  }, [task?.id]);
+  }, [task?.id, artifactsRefetchKey]);
 
   useEffect(() => {
     if (!task?.id) {
@@ -260,6 +276,7 @@ export function TaskDetailsPanel({
         onDownload={handleArtifactDownload}
         onPreview={handleArtifactPreview}
         onExportXml={handleExportXml}
+        onFileUploaded={() => refetchArtifacts()}
         className="shadow-none border"
       />
     );
@@ -281,7 +298,10 @@ export function TaskDetailsPanel({
   }, [workflowEvents]);
 
   // Handler to send messages regarding workflow - routes to agent directly if available
-  const handleSendWorkflowMessage = async (message: string, agentName?: string): Promise<string> => {
+  const handleSendWorkflowMessage = async (
+    message: string,
+    agentName?: string
+  ): Promise<string> => {
     if (!task) throw new Error('No task selected');
 
     // Try to route to the executing agent by looking up their UUID
@@ -309,7 +329,10 @@ export function TaskDetailsPanel({
         return response.content;
       } catch (error) {
         // Fall back to Nora if agent lookup or chat fails
-        console.warn(`Agent chat failed for ${targetAgentName}, falling back to Nora:`, error);
+        console.warn(
+          `Agent chat failed for ${targetAgentName}, falling back to Nora:`,
+          error
+        );
       }
     }
 
@@ -337,7 +360,9 @@ export function TaskDetailsPanel({
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to send message${agentName ? ` to ${agentName}` : ''}`);
+      throw new Error(
+        `Failed to send message${agentName ? ` to ${agentName}` : ''}`
+      );
     }
 
     // Parse the response to get the reply
@@ -383,7 +408,12 @@ export function TaskDetailsPanel({
   const handleArtifactDownload = (artifact: ExecutionArtifact) => {
     // For artifacts with file_path directories containing media files,
     // try to download the first video file from the content metadata
-    if (artifact.content && ['render_deliverable', 'video_edit_session'].includes(artifact.artifact_type)) {
+    if (
+      artifact.content &&
+      ['render_deliverable', 'video_edit_session'].includes(
+        artifact.artifact_type
+      )
+    ) {
       try {
         const data = JSON.parse(artifact.content);
         const files = data.deliverables || data.edits || [];
@@ -392,17 +422,20 @@ export function TaskDetailsPanel({
           if (file) {
             triggerDownload(
               artifactContentApi.getFileUrl(artifact.id, file),
-              file,
+              file
             );
             return;
           }
         }
-      } catch { /* fall through */ }
+      } catch {
+        /* fall through */
+      }
     }
     triggerDownload(artifactContentApi.getDownloadUrl(artifact.id));
   };
 
-  const [previewArtifact, setPreviewArtifact] = useState<ExecutionArtifact | null>(null);
+  const [previewArtifact, setPreviewArtifact] =
+    useState<ExecutionArtifact | null>(null);
 
   const handleArtifactPreview = (artifact: ExecutionArtifact) => {
     setPreviewArtifact(artifact);
@@ -435,7 +468,10 @@ export function TaskDetailsPanel({
                 >
                   <div className={getTaskPanelInnerClasses()}>
                     {isFullScreen && (
-                      <BreadcrumbNav onToggleFullscreen={toggleFullscreen} isFullscreen={isFullScreen} />
+                      <BreadcrumbNav
+                        onToggleFullscreen={toggleFullscreen}
+                        isFullscreen={isFullScreen}
+                      />
                     )}
                     {!inIframe() && (
                       <TaskDetailsHeader
@@ -490,7 +526,9 @@ export function TaskDetailsPanel({
                           {/* Execution Summary */}
                           {executionSummary && (
                             <div className="p-3">
-                              <ExecutionSummaryCard summary={executionSummary} />
+                              <ExecutionSummaryCard
+                                summary={executionSummary}
+                              />
                             </div>
                           )}
 
@@ -535,7 +573,10 @@ export function TaskDetailsPanel({
 
                           {/* Agent artifacts */}
                           <div className="p-3 space-y-2">
-                            <SectionHeader title="Agent Artifacts" icon={Package} />
+                            <SectionHeader
+                              title="Agent Artifacts"
+                              icon={Package}
+                            />
                             {renderArtifactsBody()}
                           </div>
 
@@ -576,13 +617,17 @@ export function TaskDetailsPanel({
                                     attemptId={selectedAttempt?.id}
                                   />
                                 ) : activeTab === 'workflows' ? (
-                                  <div className="p-4">{renderWorkflowBody()}</div>
+                                  <div className="p-4">
+                                    {renderWorkflowBody()}
+                                  </div>
                                 ) : activeTab === 'activity' ? (
                                   <div className="p-4">
                                     <ActivityTimeline taskId={task.id} />
                                   </div>
                                 ) : activeTab === 'artifacts' ? (
-                                  <div className="p-4">{renderArtifactsBody()}</div>
+                                  <div className="p-4">
+                                    {renderArtifactsBody()}
+                                  </div>
                                 ) : (
                                   <LogsTab selectedAttempt={selectedAttempt} />
                                 )}
@@ -621,9 +666,7 @@ export function TaskDetailsPanel({
                             />
                             {/* Show WorkflowTerminal as main content for workflow tasks (no code attempts) */}
                             {workflowEvents.length > 0 && (
-                              <div className="mt-4">
-                                {renderWorkflowBody()}
-                              </div>
+                              <div className="mt-4">{renderWorkflowBody()}</div>
                             )}
                           </>
                         ) : (
@@ -651,14 +694,18 @@ export function TaskDetailsPanel({
                               ) : activeTab === 'processes' ? (
                                 <ProcessesTab attemptId={selectedAttempt?.id} />
                               ) : activeTab === 'workflows' ? (
-                                <div className="p-4">{renderWorkflowBody()}</div>
+                                <div className="p-4">
+                                  {renderWorkflowBody()}
+                                </div>
                               ) : activeTab === 'activity' ? (
                                 <div className="p-4 space-y-4">
                                   <AgentWatcherPanel taskId={task.id} />
                                   <ActivityTimeline taskId={task.id} />
                                 </div>
                               ) : activeTab === 'artifacts' ? (
-                                <div className="p-4">{renderArtifactsBody()}</div>
+                                <div className="p-4">
+                                  {renderArtifactsBody()}
+                                </div>
                               ) : selectedAttempt ? (
                                 <LogsTab selectedAttempt={selectedAttempt} />
                               ) : null}
@@ -702,7 +749,9 @@ function ArtifactPreviewModal({
   onClose: () => void;
   onDownload: (artifact: ExecutionArtifact) => void;
 }) {
-  const isVideoType = ['video_edit_session', 'render_deliverable'].includes(artifact.artifact_type);
+  const isVideoType = ['video_edit_session', 'render_deliverable'].includes(
+    artifact.artifact_type
+  );
 
   // Parse video file list from content
   const videoFiles = useMemo(() => {
@@ -712,21 +761,41 @@ function ArtifactPreviewModal({
       const items = data.deliverables || data.edits || [];
       return items
         .map((item: Record<string, unknown>) => {
-          const file = (item.file as string) || (item.path as string)?.split('/').pop();
-          return file ? {
-            name: file,
-            url: artifactContentApi.getFileUrl(artifact.id, file),
-            duration: item.duration_seconds as number,
-            size: item.size_bytes as number,
-          } : null;
+          const file =
+            (item.file as string) || (item.path as string)?.split('/').pop();
+          return file
+            ? {
+                name: file,
+                url: artifactContentApi.getFileUrl(artifact.id, file),
+                duration: item.duration_seconds as number,
+                size: item.size_bytes as number,
+              }
+            : null;
         })
-        .filter(Boolean) as Array<{ name: string; url: string; duration?: number; size?: number }>;
+        .filter(Boolean) as Array<{
+        name: string;
+        url: string;
+        duration?: number;
+        size?: number;
+      }>;
     } catch {
       return [];
     }
   }, [artifact, isVideoType]);
 
   const [selectedVideo, setSelectedVideo] = useState(0);
+
+  const isPdf = artifact.file_path?.toLowerCase().includes('.pdf');
+  const isDropbox = artifact.file_path?.includes('dropbox.com');
+  const embedUrl =
+    isDropbox && isPdf
+      ? artifact
+          .file_path!.replace('www.dropbox.com', 'dl.dropboxusercontent.com')
+          .replace('?dl=0', '')
+          .replace('&dl=0', '')
+      : isPdf
+        ? artifact.file_path
+        : null;
 
   // JSON content for non-video types
   const jsonContent = useMemo(() => {
@@ -746,13 +815,37 @@ function ArtifactPreviewModal({
             <DialogTitle className="text-lg">{artifact.title}</DialogTitle>
             <div className="flex items-center gap-2">
               <Badge variant="outline">{artifact.artifact_type}</Badge>
+              {isVideoType && (
+                <>
+                  <a
+                    href={editronApi.getApnXmlUrl(artifact.id)}
+                    download
+                    className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded px-2.5 py-1.5 text-xs font-medium transition-colors"
+                    title="Requires APN Drive mounted. XML uses /Volumes/PCG APN/ — Premiere opens with all media linked instantly."
+                  >
+                    <Package className="h-3.5 w-3.5" />
+                    Open in Premiere (APN Drive)
+                  </a>
+                  <a
+                    href={editronApi.getPackageUrl(artifact.id)}
+                    download
+                    className="flex items-center gap-1.5 border border-border hover:bg-muted text-foreground rounded px-2.5 py-1.5 text-xs font-medium transition-colors"
+                    title="Download ZIP with XML + video. Unzip, open XML — relink media once."
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Package ZIP
+                  </a>
+                </>
+              )}
               <IconButton
-                variant="ghost" onClick={() => onDownload(artifact)}
+                variant="ghost"
+                onClick={() => onDownload(artifact)}
                 icon={Download}
-                label="Download"
+                label="Download video"
               />
               <IconButton
-                variant="ghost" onClick={onClose}
+                variant="ghost"
+                onClick={onClose}
                 icon={X}
                 label="Close"
               />
@@ -760,8 +853,52 @@ function ArtifactPreviewModal({
           </div>
         </DialogHeader>
 
+        {/* Premiere instructions */}
+        {isVideoType && (
+          <div className="flex items-center gap-2 px-1 pb-3 border-b border-border/40 text-xs text-muted-foreground">
+            <Package className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+            <span>
+              <strong className="text-foreground">APN Drive (best):</strong>{' '}
+              mount drive in Settings → APN Drive, then click "Open in Premiere"
+              — all media links instantly. &nbsp;
+              <strong className="text-foreground">No drive?</strong> use
+              "Package ZIP" → unzip → open XML → relink once.
+            </span>
+          </div>
+        )}
+
+        {/* External file link (only for non-server-side paths like Dropbox/HTTP URLs) */}
+        {!isVideoType &&
+          artifact.file_path &&
+          (artifact.file_path.startsWith('http') ||
+            artifact.file_path.startsWith('https')) && (
+            <div className="flex items-center gap-2 px-1 pb-3 border-b border-border/40">
+              <a
+                href={artifact.file_path}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-sm text-primary hover:underline"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Open {isPdf ? 'PDF' : 'file'} in new tab
+              </a>
+            </div>
+          )}
+
         <div className="flex-1 min-h-0 overflow-auto">
-          {isVideoType && videoFiles.length > 0 ? (
+          {isPdf && embedUrl ? (
+            <div
+              className="w-full rounded overflow-hidden border border-border/40"
+              style={{ height: '65vh' }}
+            >
+              <iframe
+                src={embedUrl}
+                title={artifact.title}
+                className="w-full h-full"
+                style={{ border: 'none' }}
+              />
+            </div>
+          ) : isVideoType && videoFiles.length > 0 ? (
             <div className="space-y-4">
               {/* Video player */}
               <div className="bg-black rounded-lg overflow-hidden">
@@ -795,7 +932,9 @@ function ArtifactPreviewModal({
                         <span className="font-medium truncate">{vf.name}</span>
                         <span className="text-xs text-muted-foreground shrink-0 ml-2">
                           {vf.duration ? `${vf.duration}s` : ''}
-                          {vf.size ? ` · ${(vf.size / 1024 / 1024).toFixed(1)} MB` : ''}
+                          {vf.size
+                            ? ` · ${(vf.size / 1024 / 1024).toFixed(1)} MB`
+                            : ''}
                         </span>
                       </button>
                     ))}
@@ -807,6 +946,10 @@ function ArtifactPreviewModal({
             <pre className="bg-muted rounded-lg p-4 text-xs overflow-auto max-h-[60vh] whitespace-pre-wrap">
               {jsonContent}
             </pre>
+          ) : artifact.file_path ? (
+            <p className="text-muted-foreground text-center py-8 text-sm">
+              Use the link above to open this file.
+            </p>
           ) : (
             <p className="text-muted-foreground text-center py-8">
               No previewable content

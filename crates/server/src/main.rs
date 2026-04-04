@@ -1,14 +1,14 @@
 use anyhow::{self, Error as AnyhowError};
 use deployment::{Deployment, DeploymentError};
-use server::{DeploymentImpl, routes};
+use server::{routes, DeploymentImpl};
 use sqlx::Error as SqlxError;
 use strip_ansi_escapes::strip;
 use thiserror::Error;
-use tracing_subscriber::{EnvFilter, prelude::*};
+use tracing_subscriber::{prelude::*, EnvFilter};
 use utils::{
     assets::asset_dir,
     browser::open_browser,
-    external_services::{ExternalServicesConfig, initialize_external_services},
+    external_services::{initialize_external_services, ExternalServicesConfig},
     port_file::write_port_file,
     sentry::sentry_layer,
 };
@@ -361,10 +361,12 @@ async fn main() -> Result<(), VibeKanbanError> {
         )
         .await;
 
-    // VIBE deposit watcher — migrated to BackgroundWorker (workers/background_tasks.rs)
-
-    // VIBE withdrawal executor — migrated to BackgroundWorker (workers/background_tasks.rs)
-    // Meeting stale-session cleanup — migrated to BackgroundWorker (workers/background_tasks.rs)
+    // Nora inbox poller — monitors nora@powerclubglobal.com, routes to intake pipeline
+    registry
+        .spawn_worker(server::workers::background_tasks::NoraInboxPoller::new(
+            deployment.db().pool.clone(),
+        ))
+        .await;
 
     let app_router = routes::router(deployment);
 

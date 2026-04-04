@@ -15,6 +15,7 @@ use services::services::editron::{
     edit_assembly::{AssembledEdit, TimelineClip},
     premiere_xml::PremiereXmlExporter,
 };
+use utils::assets::asset_dir;
 use uuid::Uuid;
 
 use crate::{error::ApiError, DeploymentImpl};
@@ -22,11 +23,17 @@ use crate::{error::ApiError, DeploymentImpl};
 #[derive(Debug, Deserialize)]
 pub struct ExportQuery {
     pub format: Option<String>,
+    /// Pass mode=apn to get XML with /Volumes/PCG APN/ paths for APN Drive mount
+    pub mode: Option<String>,
 }
 
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/editron/export/{artifact_id}", get(export_artifact))
+        .route(
+            "/editron/export/{artifact_id}/package",
+            get(download_premiere_package),
+        )
         .with_state(deployment.clone())
 }
 
@@ -72,7 +79,13 @@ async fn export_artifact(
     // Build an AssembledEdit from the artifact's edit data
     let edit = build_assembled_edit(&artifact.title, &edit_data)?;
 
-    let exporter = PremiereXmlExporter::new(edit.frame_rate);
+    let apn_mode = query.mode.as_deref() == Some("apn");
+    let exporter = if apn_mode {
+        PremiereXmlExporter::new(edit.frame_rate)
+            .with_media_root(crate::routes::dav::APN_MOUNT_PATH)
+    } else {
+        PremiereXmlExporter::new(edit.frame_rate)
+    };
     let xml = exporter.generate_xml(&edit);
 
     let filename = format!(
@@ -91,6 +104,185 @@ async fn export_artifact(
             format!("attachment; filename=\"{}\"", filename),
         )
         .body(Body::from(xml))
+        .map_err(|e| ApiError::InternalError(e.to_string()))
+}
+
+/// GET /api/editron/export/{artifact_id}/package
+/// Returns a ZIP archive containing the FCP XML + the rendered MP4 file.
+/// The XML uses filename-only paths so Premiere auto-links when both files
+/// are in the same folder.
+async fn download_premiere_package(
+    State(deployment): State<DeploymentImpl>,
+    Path(artifact_id): Path<Uuid>,
+) -> Result<Response, ApiError> {
+    let pool = &deployment.db().pool;
+    let artifact = ExecutionArtifact::find_by_id(pool, artifact_id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("Artifact {} not found", artifact_id)))?;
+
+    match artifact.artifact_type {
+        ArtifactType::VideoEditSession | ArtifactType::RenderDeliverable => {}
+        _ => {
+            return Err(ApiError::BadRequest(
+                "Only video_edit_session and render_deliverable artifacts can be packaged".into(),
+            ));
+        }
+    }
+
+    // If file_path is already an XML file, serve it directly (no re-generation needed)
+    if let Some(ref fp) = artifact.file_path {
+        let is_xml = fp.to_lowercase().ends_with(".xml");
+        if is_xml {
+            let p = if std::path::Path::new(fp).is_absolute() {
+                std::path::PathBuf::from(fp)
+            } else {
+                asset_dir().join(fp)
+            };
+            if p.is_file() {
+                let xml_bytes = tokio::fs::read(&p)
+                    .await
+                    .map_err(|e| ApiError::BadRequest(format!("Failed to read XML: {e}")))?;
+                let filename = p
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "sequence.xml".to_string());
+                return Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, "application/xml")
+                    .header(
+                        header::CONTENT_DISPOSITION,
+                        format!("attachment; filename=\"{}\"", filename),
+                    )
+                    .header(header::CONTENT_LENGTH, xml_bytes.len())
+                    .body(Body::from(xml_bytes))
+                    .map_err(|e| ApiError::InternalError(e.to_string()));
+            }
+        }
+    }
+
+    let content = artifact
+        .content
+        .as_deref()
+        .ok_or_else(|| ApiError::BadRequest("Artifact has no content".into()))?;
+
+    let edit_data: serde_json::Value = serde_json::from_str(content)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid artifact JSON: {}", e)))?;
+
+    // Resolve the actual media file path
+    let media_path: Option<PathBuf> = artifact.file_path.as_deref().and_then(|fp| {
+        let p = std::path::Path::new(fp);
+        if p.is_absolute() {
+            Some(p.to_path_buf())
+        } else {
+            Some(asset_dir().join(fp))
+        }
+    });
+
+    // Build XML using filename-only path so Premiere can relink from same folder
+    let media_filename = media_path
+        .as_ref()
+        .and_then(|p| p.file_name())
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "video.mp4".to_string());
+
+    // Inject filename into content for XML generation
+    let mut edit_data_for_xml = edit_data.clone();
+    let key = if edit_data_for_xml.get("deliverables").is_some() {
+        "deliverables"
+    } else {
+        "edits"
+    };
+    if let Some(arr) = edit_data_for_xml
+        .get_mut(key)
+        .and_then(|v| v.as_array_mut())
+    {
+        if let Some(first) = arr.first_mut() {
+            if let Some(obj) = first.as_object_mut() {
+                obj.insert(
+                    "file".to_string(),
+                    serde_json::Value::String(media_filename.clone()),
+                );
+            }
+        }
+    }
+
+    let edit = build_assembled_edit(&artifact.title, &edit_data_for_xml)?;
+    let exporter = PremiereXmlExporter::new(edit.frame_rate);
+    let xml_content = exporter.generate_xml(&edit);
+
+    let safe_title = artifact
+        .title
+        .replace(' ', "-")
+        .replace([':', '/', '\\', '(', ')'], "");
+    let xml_filename = format!("{}.xml", safe_title);
+    let zip_filename = format!("{}_Premiere-Package.zip", safe_title);
+
+    // Write XML and media to a temp dir, then zip
+    let tmp_dir = std::env::temp_dir().join(format!("premiere-pkg-{}", artifact_id));
+    tokio::fs::create_dir_all(&tmp_dir)
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("Failed to create tmp dir: {e}")))?;
+
+    let xml_path = tmp_dir.join(&xml_filename);
+    tokio::fs::write(&xml_path, xml_content.as_bytes())
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("Failed to write XML: {e}")))?;
+
+    let zip_path = tmp_dir.join(&zip_filename);
+
+    // If we have a media file, include it in the zip
+    if let Some(ref mp) = media_path {
+        if mp.is_file() {
+            let media_dest = tmp_dir.join(&media_filename);
+            tokio::fs::copy(mp, &media_dest)
+                .await
+                .map_err(|e| ApiError::BadRequest(format!("Failed to copy media: {e}")))?;
+
+            // zip XML + media
+            tokio::process::Command::new("zip")
+                .arg("-j") // junk paths (store just filename)
+                .arg(&zip_path)
+                .arg(&xml_path)
+                .arg(&media_dest)
+                .output()
+                .await
+                .map_err(|e| ApiError::BadRequest(format!("zip command failed: {e}")))?;
+        } else {
+            // zip XML only
+            tokio::process::Command::new("zip")
+                .arg("-j")
+                .arg(&zip_path)
+                .arg(&xml_path)
+                .output()
+                .await
+                .map_err(|e| ApiError::BadRequest(format!("zip command failed: {e}")))?;
+        }
+    } else {
+        tokio::process::Command::new("zip")
+            .arg("-j")
+            .arg(&zip_path)
+            .arg(&xml_path)
+            .output()
+            .await
+            .map_err(|e| ApiError::BadRequest(format!("zip command failed: {e}")))?;
+    }
+
+    let zip_bytes = tokio::fs::read(&zip_path)
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("Failed to read zip: {e}")))?;
+
+    // Cleanup temp files
+    let _ = tokio::fs::remove_dir_all(&tmp_dir).await;
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/zip")
+        .header(
+            header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"{}\"", zip_filename),
+        )
+        .header(header::CONTENT_LENGTH, zip_bytes.len())
+        .body(Body::from(zip_bytes))
         .map_err(|e| ApiError::InternalError(e.to_string()))
 }
 

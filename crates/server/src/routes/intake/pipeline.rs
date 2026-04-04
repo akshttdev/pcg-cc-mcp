@@ -138,6 +138,66 @@ pub async fn run_intake_pipeline(
     )
     .await;
 
+    // Stage 4c: Create workflow tracking tasks for intel research + lead review
+    // These appear on the project board for the team to track pipeline progress.
+    // Runs for ALL intakes (not just trusted senders).
+    {
+        // Resolve primary company — from person's company_name or first extracted business
+        let primary_company_name = extracted.businesses.first().map(|b| b.name.as_str());
+        let primary_company_id: Option<Uuid> = if let Some(cname) = primary_company_name {
+            Company::find_or_create(&pool, cname, organization_id.map(DbUuid::from), None)
+                .await
+                .ok()
+                .and_then(|c| Uuid::parse_str(c.id.as_str()).ok())
+        } else {
+            None
+        };
+        let person_name = primary_person_id
+            .and_then(|_| extracted.participants.first().map(|p| p.name.as_str()))
+            .unwrap_or("Unknown");
+        create_workflow_tasks(
+            &pool,
+            primary_person_id,
+            person_name,
+            primary_company_id,
+            primary_company_name,
+            crm_deal_id,
+            organization_id,
+        )
+        .await;
+
+        // Trigger company intel research now (queue it)
+        if let Some(cid) = primary_company_id {
+            trigger_company_research_if_needed(&pool, cid).await;
+        }
+
+        // Ensure a prospect client record exists for this company in the org
+        if let (Some(org_id), Some(cid), Some(cname)) =
+            (organization_id, primary_company_id, primary_company_name)
+        {
+            upsert_prospect_client(&pool, org_id, cid, cname, primary_person_id).await;
+        }
+
+        // Create CRM deal if we don't have one yet (handles new leads where
+        // primary_person_id was None at Stage 2b because they didn't exist yet)
+        if crm_deal_id.is_none() {
+            if let Some(pid) = primary_person_id {
+                let new_deal_id = ensure_crm_deal_for_person(
+                    &pool,
+                    pid,
+                    item_id,
+                    organization_id,
+                    &extracted.call_summary,
+                    "Lead",
+                )
+                .await;
+                if new_deal_id.is_some() {
+                    info!("Created CRM deal (post-person-creation) for person {}", pid);
+                }
+            }
+        }
+    }
+
     // Stage 5 & 6: Run company research passes, then generate comprehensive report
     // This runs in background so intake item is already marked processed
     let businesses = extracted.businesses.clone();
@@ -187,6 +247,10 @@ pub async fn run_intake_pipeline(
                                     .execute(&pool_clone)
                                     .await;
                                 }
+                            }
+                            // Queue company intel research for all non-internal companies
+                            if let Ok(cid) = Uuid::parse_str(co.id.as_str()) {
+                                trigger_company_research_if_needed(&pool_clone, cid).await;
                             }
                             info!("Ensured company record for '{}' ({})", biz.name, co.id);
                         }
@@ -826,64 +890,80 @@ async fn ensure_crm_deal_for_person(
     stage_name: &str,
 ) -> Option<Uuid> {
     let org_id = organization_id?;
+    let org_id_str = org_id.hyphenated().to_string();
 
     // Find the Acquisition (sales) pipeline for this org
+    // Use string binding — crm_pipelines.organization_id is TEXT (UUID with dashes)
     #[derive(sqlx::FromRow)]
     struct PipelineRow {
-        id: Uuid,
+        id: String,
     }
 
     let pipeline = sqlx::query_as::<_, PipelineRow>(
         "SELECT id FROM crm_pipelines WHERE organization_id = ? AND pipeline_type = 'sales'
          AND project_id IS NULL LIMIT 1",
     )
-    .bind(org_id)
+    .bind(&org_id_str)
     .fetch_optional(pool)
     .await
     .ok()
     .flatten();
 
-    let pipeline_id = pipeline.map(|p| p.id)?;
+    let pipeline_id_str = pipeline.map(|p| p.id)?;
 
-    // Find the named stage in this pipeline
+    // Find the stage: try by name first, fall back to lowest position (first stage)
+    // Use string binding — crm_pipeline_stages.pipeline_id is TEXT (UUID with dashes)
     #[derive(sqlx::FromRow)]
     struct StageRow {
-        id: Vec<u8>,
+        id: String,
     }
 
     let stage = sqlx::query_as::<_, StageRow>(
-        "SELECT id FROM crm_pipeline_stages WHERE pipeline_id = ? AND name = ? LIMIT 1",
+        "SELECT id FROM crm_pipeline_stages WHERE pipeline_id = ? AND lower(name) = lower(?) LIMIT 1",
     )
-    .bind(pipeline_id)
+    .bind(&pipeline_id_str)
     .bind(stage_name)
     .fetch_optional(pool)
     .await
     .ok()
     .flatten();
 
-    let stage_id = stage.and_then(|s| Uuid::from_slice(&s.id).ok())?;
+    let stage_id = stage.and_then(|s| Uuid::parse_str(&s.id).ok())?;
+    let pipeline_id = Uuid::parse_str(&pipeline_id_str).ok()?;
 
-    // Look up person name + contact for dedup check
+    // Look up contact name + company for dedup check
     #[derive(sqlx::FromRow)]
-    struct PersonRow {
-        full_name: String,
+    struct ContactRow {
+        full_name: Option<String>,
+        company_name: Option<String>,
     }
 
-    let person_name = sqlx::query_as::<_, PersonRow>("SELECT COALESCE(full_name, 'Unknown') as full_name FROM crm_contacts WHERE CAST(id AS TEXT) = ?")
-        .bind(person_id.to_string())
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten()
-        .map(|r| r.full_name)
-        .unwrap_or_else(|| "Unknown".to_string());
+    let contact = sqlx::query_as::<_, ContactRow>(
+        "SELECT full_name, company_name FROM crm_contacts WHERE CAST(id AS TEXT) = ?",
+    )
+    .bind(person_id.to_string())
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
 
-    let deal_name = format!("{} — Discovery Lead", person_name);
+    let person_name = contact
+        .as_ref()
+        .and_then(|r| r.full_name.as_deref())
+        .unwrap_or("Unknown");
+    let company_name = contact.as_ref().and_then(|r| r.company_name.as_deref());
 
-    // Check for existing deal with same name in this org (dedup)
+    // Deal name: use company name if available (prevents one deal per person at same company)
+    let deal_name = if let Some(co) = company_name {
+        format!("{} — Discovery Lead", co)
+    } else {
+        format!("{} — Discovery Lead", person_name)
+    };
+
+    // Check for existing deal with same company/name in this org (dedup)
     let org_db_id = DbUuid::from(org_id);
     if let Ok(Some(existing)) = CrmDeal::find_by_name_and_org(pool, &deal_name, &org_db_id).await {
-        // Link intake item to existing deal
+        // Link intake item to existing deal (call_intake_items.id is BLOB — bind Uuid)
         let _ = sqlx::query("UPDATE call_intake_items SET crm_deal_id = ? WHERE id = ?")
             .bind(existing.id.as_str())
             .bind(intake_item_id)
@@ -893,7 +973,7 @@ async fn ensure_crm_deal_for_person(
     }
 
     // person_id IS the contact id in the unified contacts model
-    let contact_id = Some(person_id);
+    let contact_id = Some(DbUuid::from(person_id));
 
     // Create the deal
     let deal_result = CrmDeal::create(
@@ -901,7 +981,7 @@ async fn ensure_crm_deal_for_person(
         CreateCrmDeal {
             organization_id: org_db_id,
             client_id: None,
-            crm_contact_id: contact_id.map(DbUuid::from),
+            crm_contact_id: contact_id,
             crm_pipeline_id: Some(DbUuid::from(pipeline_id)),
             crm_stage_id: Some(DbUuid::from(stage_id)),
             name: deal_name,
@@ -921,7 +1001,7 @@ async fn ensure_crm_deal_for_person(
                 "Auto-created CRM deal {} for person {} in pipeline {}",
                 deal.id, person_id, pipeline_id
             );
-            // Link intake item to deal
+            // Link intake item to deal (call_intake_items.id is BLOB — bind Uuid)
             let _ = sqlx::query("UPDATE call_intake_items SET crm_deal_id = ? WHERE id = ?")
                 .bind(deal.id.as_str())
                 .bind(intake_item_id)
@@ -976,25 +1056,28 @@ pub(super) async fn advance_deal_stage(pool: &sqlx::SqlitePool, deal_id: Uuid, s
 /// Trusted sender → user/agent mapping for task assignment.
 /// When an email from a trusted sender contains action items referencing these
 /// names, we create PCG tasks and assign them to the appropriate user or agent.
-struct TaskAssignmentConfig {
+pub(crate) struct TaskAssignmentConfig {
     /// Sirak Studios org ID
-    org_id: &'static str,
+    pub org_id: &'static str,
     /// Default project for Sirak Studios tasks
-    project_id: &'static str,
+    pub project_id: &'static str,
     /// Nora agent ID (for tasks Nora should execute)
-    nora_agent_id: &'static str,
+    pub nora_agent_id: &'static str,
     /// Bodhi user ID (Jessy = Bodhi in the system)
-    bodhi_user_id: &'static str,
+    pub bodhi_user_id: &'static str,
     /// Josh user ID
-    josh_user_id: &'static str,
+    pub josh_user_id: &'static str,
+    /// Sirak's own user ID (human operator for Phase III review)
+    pub sirak_user_id: &'static str,
 }
 
-const SIRAK_CONFIG: TaskAssignmentConfig = TaskAssignmentConfig {
+pub(crate) const SIRAK_CONFIG: TaskAssignmentConfig = TaskAssignmentConfig {
     org_id: "02020202-0202-0202-0202-020202020202",
     project_id: "b0b1b2b3-b4b5-b6b7-b8b9-babbbcbdbebf",
     nora_agent_id: "0907dc4f-3f7f-4c40-93cf-f36a833eaa78",
     bodhi_user_id: "7970fc60-f694-4b4d-a7b6-0dae5023bd6c",
     josh_user_id: "80ab1230-627a-4859-af9a-1e02c2a26639",
+    sirak_user_id: "93ee4745-203b-4fed-8f91-84315e5c3b3b",
 };
 
 /// Trusted senders whose emails automatically create tasks.
@@ -1115,6 +1198,254 @@ async fn create_tasks_from_action_items(
     }
 }
 
+/// Create workflow tracking tasks for agentic + human-review steps triggered by intake.
+///
+/// For Sirak Studios org (auto-pipeline): creates exactly 1 task — Phase I Scout (in_progress).
+/// Phase II (Astra Report) and Phase III (Human Review) tasks are created automatically
+/// by `intelligence.rs` and `report.rs` when each phase completes.
+///
+/// For other orgs: creates 3 standard tasks (Person Intel, Company Intel, Qualify Lead).
+pub(super) async fn create_workflow_tasks(
+    pool: &sqlx::SqlitePool,
+    person_id: Option<Uuid>,
+    person_name: &str,
+    company_id: Option<Uuid>,
+    company_name: Option<&str>,
+    crm_deal_id: Option<Uuid>,
+    organization_id: Option<Uuid>,
+) {
+    let project_id = SIRAK_CONFIG.project_id;
+    let nora_agent = SIRAK_CONFIG.nora_agent_id;
+
+    let is_auto_pipeline = organization_id
+        .map(|id| id.to_string() == SIRAK_CONFIG.org_id)
+        .unwrap_or(false);
+
+    if is_auto_pipeline {
+        // ── Auto-pipeline (Sirak Studios): Phase I Scout task only ─────────────
+        // Phase II and Phase III tasks are created when each phase completes.
+        if let (Some(cid), Some(cname)) = (company_id, company_name) {
+            // Dedup: skip if a phase1_scout task for this company already exists
+            let exists: bool = sqlx::query_scalar(
+                "SELECT COUNT(*) > 0 FROM tasks WHERE workflow_type = 'phase1_scout' AND entity_id = ?",
+            )
+            .bind(cid.to_string())
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or(false);
+
+            if !exists {
+                let task_id = Uuid::new_v4();
+                let title = format!("Scout: {}", cname);
+                let desc = format!(
+                    "Phase I — Automated Scout research for {}.\n\
+                     Company ID: {}\n\
+                     Auto-pipeline: upon completion, Astra Phase II will be triggered automatically.",
+                    cname, cid
+                );
+                let _ = sqlx::query(
+                    "INSERT INTO tasks (id, project_id, title, description, status, priority,
+                     agent_id, created_by, tags, workflow_type, entity_type, entity_id,
+                     created_at, updated_at)
+                     VALUES (?, ?, ?, ?, 'inprogress', 'high', ?, 'intake-pipeline',
+                     '[\"phase1\",\"auto-pipeline\"]', 'phase1_scout', 'company', ?,
+                     datetime('now','subsec'), datetime('now','subsec'))",
+                )
+                .bind(task_id.to_string())
+                .bind(project_id)
+                .bind(&title)
+                .bind(&desc)
+                .bind(nora_agent)
+                .bind(cid.to_string())
+                .execute(pool)
+                .await;
+                info!(
+                    "Auto-pipeline: created Phase I Scout task '{}' for company '{}'",
+                    task_id, cname
+                );
+            }
+        }
+        return;
+    }
+
+    // ── Standard pipeline: 3 tasks ─────────────────────────────────────────────
+    async fn insert_task(
+        pool: &sqlx::SqlitePool,
+        project_id: &str,
+        title: &str,
+        description: &str,
+        priority: &str,
+        assignee_id: Option<&str>,
+        agent_id: Option<&str>,
+        workflow_type: &str,
+        entity_type: &str,
+        entity_id: &str,
+    ) {
+        let exists: bool =
+            sqlx::query_scalar("SELECT COUNT(*) > 0 FROM tasks WHERE project_id = ? AND title = ?")
+                .bind(project_id)
+                .bind(title)
+                .fetch_optional(pool)
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or(false);
+        if exists {
+            return;
+        }
+        let task_id = Uuid::new_v4();
+        let _ = sqlx::query(
+            "INSERT INTO tasks (id, project_id, title, description, status, priority,
+             assignee_id, agent_id, created_by, tags, workflow_type, entity_type, entity_id,
+             created_at, updated_at)
+             VALUES (?, ?, ?, ?, 'todo', ?, ?, ?, 'intake-pipeline',
+             '[\"intel\",\"auto\"]', ?, ?, ?, datetime('now','subsec'), datetime('now','subsec'))",
+        )
+        .bind(task_id.to_string())
+        .bind(project_id)
+        .bind(title)
+        .bind(description)
+        .bind(priority)
+        .bind(assignee_id)
+        .bind(agent_id)
+        .bind(workflow_type)
+        .bind(entity_type)
+        .bind(entity_id)
+        .execute(pool)
+        .await;
+        info!("Created workflow task: {}", title);
+    }
+
+    // 1. Person Intel task
+    if let Some(pid) = person_id {
+        let title = format!("Person Intel: {}", person_name);
+        let desc = format!(
+            "Run deep research pass on {} to build person intel profile.\n\
+             Person ID: {}\n\
+             Scope: background, social presence, roles, network, personality, PCG opportunity.",
+            person_name, pid
+        );
+        insert_task(
+            pool,
+            project_id,
+            &title,
+            &desc,
+            "high",
+            None,
+            Some(nora_agent),
+            "person_research",
+            "person",
+            &pid.to_string(),
+        )
+        .await;
+    }
+
+    // 2. Company Intel task
+    if let (Some(cid), Some(cname)) = (company_id, company_name) {
+        let title = format!("Company Intel: {}", cname);
+        let desc = format!(
+            "Run company research on {} to build brand intel profile.\n\
+             Company ID: {}\n\
+             Scope: brand position, market, competitors, content strategy, logo, key people.",
+            cname, cid
+        );
+        insert_task(
+            pool,
+            project_id,
+            &title,
+            &desc,
+            "high",
+            None,
+            Some(nora_agent),
+            "company_research",
+            "company",
+            &cid.to_string(),
+        )
+        .await;
+    }
+
+    // 3. Human review task
+    if let Some(deal_id) = crm_deal_id {
+        let title = format!("Qualify Lead: {}", person_name);
+        let desc = format!(
+            "Review the intake and qualify {} as a potential client.\n\
+             CRM Deal ID: {}\n\
+             Steps: review business report, confirm tier fit, advance deal stage.",
+            person_name, deal_id
+        );
+        let _ = sqlx::query(
+            "INSERT INTO tasks (id, project_id, title, description, status, priority,
+             assignee_id, created_by, tags, workflow_type, entity_type, entity_id,
+             created_at, updated_at)
+             SELECT ?, ?, ?, ?, 'todo', 'high', id, 'intake-pipeline',
+             '[\"lead-review\",\"crm\"]', 'lead_qualify', 'person', ?
+             FROM users WHERE username = 'Sirak' LIMIT 1",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(project_id)
+        .bind(&title)
+        .bind(&desc)
+        .bind(deal_id.to_string())
+        .execute(pool)
+        .await
+        .ok();
+        info!("Created lead qualification task: {}", title);
+    }
+
+    let _ = organization_id;
+}
+
+/// Trigger company intelligence research for a given company ID.
+/// Spawns `run_company_research_direct` immediately so Scout runs without waiting for the automation loop.
+pub(super) async fn trigger_company_research_if_needed(pool: &sqlx::SqlitePool, company_id: Uuid) {
+    #[derive(sqlx::FromRow)]
+    struct Row {
+        intelligence_status: Option<String>,
+        name: String,
+    }
+
+    // companies.id is BLOB-declared but stored as TEXT — bind as string for compatibility
+    let company = sqlx::query_as::<_, Row>(
+        "SELECT intelligence_status, name FROM companies WHERE CAST(id AS TEXT) = ? OR id = ?",
+    )
+    .bind(company_id.to_string())
+    .bind(company_id.to_string())
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    let Some(row) = company else { return };
+    let status = row.intelligence_status.as_deref().unwrap_or("idle");
+
+    if matches!(status, "idle" | "failed") {
+        let _ = sqlx::query(
+            "UPDATE companies SET intelligence_status = 'queued', \
+             intelligence_agent = 'scout', updated_at = datetime('now','subsec') \
+             WHERE CAST(id AS TEXT) = ? OR id = ?",
+        )
+        .bind(company_id.to_string())
+        .bind(company_id.to_string())
+        .execute(pool)
+        .await;
+
+        info!(
+            "Spawning Scout research for company '{}' ({})",
+            row.name, company_id
+        );
+        let pool2 = pool.clone();
+        let name = row.name.clone();
+        tokio::spawn(async move {
+            crate::routes::intelligence::run_company_research_direct(
+                &pool2, company_id, &name, None,
+            )
+            .await;
+        });
+    }
+}
+
 /// Map owner name references to user IDs and agent IDs.
 /// Returns (assignee_id, agent_id, created_by).
 fn resolve_task_assignee(
@@ -1138,4 +1469,95 @@ fn resolve_task_assignee(
         // External person (client action) — create but don't assign internally
         (None, None, "nora-intake")
     }
+}
+
+/// Ensure a prospect client record exists for the intake company.
+/// Called for all intakes where we have a company + org. Creates the client as a
+/// prospect (prospect_at set, client_since NULL) and links to the companies KG entry.
+pub(super) async fn upsert_prospect_client(
+    pool: &sqlx::SqlitePool,
+    organization_id: Uuid,
+    company_id: Uuid,
+    company_name: &str,
+    primary_person_id: Option<Uuid>,
+) {
+    let client_id = Uuid::new_v4();
+    // INSERT OR IGNORE: won't overwrite if a client with the same name+org already exists
+    // slug = lowercased name with spaces replaced by hyphens
+    let slug = company_name
+        .to_lowercase()
+        .replace(|c: char| !c.is_alphanumeric(), "-");
+    let _ = sqlx::query(
+        "INSERT OR IGNORE INTO clients
+         (id, organization_id, name, slug, company_id, primary_person_id, prospect_at,
+          is_active, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, datetime('now','subsec'), 1,
+         datetime('now','subsec'), datetime('now','subsec'))",
+    )
+    .bind(client_id)
+    .bind(organization_id)
+    .bind(company_name)
+    .bind(&slug)
+    .bind(company_id.to_string())
+    .bind(primary_person_id)
+    .execute(pool)
+    .await;
+
+    // Backfill company_id on any existing client record that matches by name but lacks it
+    let _ = sqlx::query(
+        "UPDATE clients SET
+         company_id = COALESCE(company_id, ?),
+         primary_person_id = COALESCE(primary_person_id, ?),
+         updated_at = datetime('now','subsec')
+         WHERE organization_id = ? AND lower(name) = lower(?) AND company_id IS NULL",
+    )
+    .bind(company_id.to_string())
+    .bind(primary_person_id)
+    .bind(organization_id)
+    .bind(company_name)
+    .execute(pool)
+    .await;
+
+    // Get the resolved client id (either the one we just inserted or an existing one)
+    #[derive(sqlx::FromRow)]
+    struct ClientIdRow {
+        id: String,
+    }
+    let resolved_client = sqlx::query_as::<_, ClientIdRow>(
+        "SELECT id FROM clients WHERE organization_id = ? AND lower(name) = lower(?) AND deleted_at IS NULL LIMIT 1"
+    )
+    .bind(organization_id)
+    .bind(company_name)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    // Link any unlinked deals for this company/person to this client
+    if let Some(cl) = resolved_client {
+        let _ = sqlx::query(
+            "UPDATE crm_deals SET client_id = ?, updated_at = datetime('now','subsec')
+             WHERE client_id IS NULL
+               AND (name LIKE ? OR crm_contact_id IN (
+                   SELECT id FROM crm_contacts
+                   WHERE organization_id = ? AND (full_name LIKE ? OR full_name LIKE ?)
+               ))",
+        )
+        .bind(&cl.id)
+        .bind(format!("%{}%", company_name))
+        .bind(organization_id)
+        .bind(format!("%{}%", company_name))
+        .bind(
+            primary_person_id
+                .map(|p| format!("%{}%", p))
+                .unwrap_or_default(),
+        )
+        .execute(pool)
+        .await;
+    }
+
+    info!(
+        "Upserted prospect client '{}' (company_id: {})",
+        company_name, company_id
+    );
 }

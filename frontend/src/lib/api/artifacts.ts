@@ -1,4 +1,4 @@
-import { makeRequest, handleApiResponse, resolveApiUrl } from './client';
+import { handleApiResponse, makeRequest, resolveApiUrl } from './client';
 
 // ============================================
 // Artifact Review APIs
@@ -240,12 +240,16 @@ export const artifactContentApi = {
     resolveApiUrl(`/api/artifacts/${artifactId}/download`),
 
   getFileUrl: (artifactId: string, filename: string): string =>
-    resolveApiUrl(`/api/artifacts/${artifactId}/files/${encodeURIComponent(filename)}`),
+    resolveApiUrl(
+      `/api/artifacts/${artifactId}/files/${encodeURIComponent(filename)}`
+    ),
 
   getContent: async (artifactId: string): Promise<unknown> => {
     const response = await makeRequest(`/api/artifacts/${artifactId}/content`);
     if (!response.ok) {
-      throw new Error(`Failed to fetch artifact content: ${response.statusText}`);
+      throw new Error(
+        `Failed to fetch artifact content: ${response.statusText}`
+      );
     }
     return response.json();
   },
@@ -258,4 +262,9 @@ export const artifactContentApi = {
 export const editronApi = {
   getExportXmlUrl: (artifactId: string): string =>
     resolveApiUrl(`/api/editron/export/${artifactId}?format=xml`),
+  getPackageUrl: (artifactId: string): string =>
+    resolveApiUrl(`/api/editron/export/${artifactId}/package`),
+  /** APN Drive XML — paths use /Volumes/PCG APN/, opens in Premiere without relinking */
+  getApnXmlUrl: (artifactId: string): string =>
+    resolveApiUrl(`/api/editron/export/${artifactId}?format=xml&mode=apn`),
 };

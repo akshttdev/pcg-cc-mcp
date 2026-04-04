@@ -16,7 +16,6 @@ import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import {
   type DragEndEvent,
   KanbanBoard,
@@ -408,176 +407,177 @@ export function CrmPipelineBoard({
         </div>
       </div>
 
-      {/* Kanban Board */}
-      <ScrollArea className="flex-1">
-        <TooltipProvider delayDuration={300}>
-          <KanbanProvider onDragEnd={handleDragEnd}>
-            {kanbanData.stages.map((stageData) => {
-              const stage = stageData.stage;
-              const owner = getStageOwner(stage.name, stage.stage_config);
-              const progress =
-                pipelineType === 'delivery'
-                  ? getProgressForStage(stage.name)
-                  : undefined;
+      {/* Kanban Board — direction:rtl puts scrollbar at top; inner ltr restores reading order */}
+      <div className="flex-1 overflow-auto" style={{ direction: 'rtl' }}>
+        <div style={{ direction: 'ltr' }}>
+          <TooltipProvider delayDuration={300}>
+            <KanbanProvider onDragEnd={handleDragEnd}>
+              {kanbanData.stages.map((stageData) => {
+                const stage = stageData.stage;
+                const owner = getStageOwner(stage.name, stage.stage_config);
+                const progress =
+                  pipelineType === 'delivery'
+                    ? getProgressForStage(stage.name)
+                    : undefined;
 
-              return (
-                <KanbanBoard
-                  key={stage.id}
-                  id={stage.id}
-                  data-testid={tid.stageColumn(stage.name)}
-                >
-                  <KanbanHeader>
-                    <div
-                      className="sticky top-0 z-20 flex shrink-0 flex-col gap-1 p-3 border-b border-dashed bg-background"
-                      style={{
-                        backgroundImage: `linear-gradient(${stage.color}08, ${stage.color}08)`,
-                      }}
-                    >
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="h-2 w-2 rounded-full shrink-0"
-                          style={{
-                            backgroundColor: stage.color,
-                            boxShadow: `0 0 6px 1px ${stage.color}60`,
-                          }}
-                        />
-                        {STAGE_DESCRIPTIONS[stage.name.toLowerCase()] ? (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <p className="m-0 text-sm font-medium flex-1 truncate cursor-help border-b border-dashed border-muted-foreground/30">
-                                {stage.name}
-                              </p>
-                            </TooltipTrigger>
-                            <TooltipContent
-                              side="bottom"
-                              className="max-w-[220px] text-xs"
-                            >
-                              <p>
-                                {STAGE_DESCRIPTIONS[stage.name.toLowerCase()]}
-                              </p>
-                              {owner && (
-                                <p className="mt-1 text-muted-foreground">
-                                  Managed by: {owner.label}
-                                </p>
-                              )}
-                            </TooltipContent>
-                          </Tooltip>
-                        ) : (
-                          <p className="m-0 text-sm font-medium flex-1 truncate">
-                            {stage.name}
-                          </p>
-                        )}
-                        <span className="text-xs text-muted-foreground tabular-nums">
-                          {stageData.deals.length}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between pl-4">
-                        {owner ? <StageOwnerBadge owner={owner} /> : <span />}
-                        {stageData.total_amount > 0 && (
-                          <span className="text-xs text-muted-foreground">
-                            {formatCurrencyFull(stageData.total_amount)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </KanbanHeader>
-                  <KanbanCards>
-                    {stageData.deals.map((deal, index) => {
-                      const boardProgressInfo =
-                        progress && progress.totalAssets > 0
-                          ? {
-                              boardName: progress.boardName,
-                              completedAssets: progress.completedAssets,
-                              totalAssets: progress.totalAssets,
-                              percentage: progress.percentage,
-                            }
-                          : undefined;
-
-                      return (
-                        <KanbanCard
-                          key={deal.id}
-                          id={deal.id}
-                          name={deal.name}
-                          index={index}
-                          parent={stage.id}
-                          data-testid={dealTid.card(deal.id)}
-                          onClick={() => {
-                            setSelectedDeal(deal);
-                            setSelectedDealStage(stage.name);
-                          }}
-                          isOpen={selectedDeal?.id === deal.id}
-                          className="mx-2 my-1.5 p-0 rounded-lg border border-border/60 hover:border-border hover:shadow-sm transition-all"
-                        >
-                          <CrmDealCard
-                            deal={deal}
-                            stageName={stage.name}
-                            stageColor={stage.color}
-                            onEdit={handleEditDeal}
-                            onDelete={handleDeleteDeal}
-                            onMoveTo={(d, stageId) => {
-                              const targetSD = kanbanData.stages.find(
-                                (s) => s.stage.id === stageId
-                              );
-                              moveDeal.mutate({
-                                dealId: d.id,
-                                data: {
-                                  stage_id: stageId,
-                                  position: targetSD?.deals.length ?? 0,
-                                },
-                              });
+                return (
+                  <KanbanBoard
+                    key={stage.id}
+                    id={stage.id}
+                    data-testid={tid.stageColumn(stage.name)}
+                  >
+                    <KanbanHeader>
+                      <div
+                        className="sticky top-0 z-20 flex shrink-0 flex-col gap-1 p-3 border-b border-dashed bg-background"
+                        style={{
+                          backgroundImage: `linear-gradient(${stage.color}08, ${stage.color}08)`,
+                        }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="h-2 w-2 rounded-full shrink-0"
+                            style={{
+                              backgroundColor: stage.color,
+                              boxShadow: `0 0 6px 1px ${stage.color}60`,
                             }}
-                            stages={stages.map((s) => ({
-                              id: s.id,
-                              name: s.name,
-                            }))}
-                            boardProgress={boardProgressInfo}
                           />
-                        </KanbanCard>
-                      );
-                    })}
-                    {stageData.deals.length === 0 &&
-                    totalDeals === 0 &&
-                    stageData.stage.id === kanbanData.stages[0]?.stage.id ? (
-                      <div className="mx-2 my-3 p-4 rounded-lg border border-dashed border-primary/30 bg-primary/5 text-center space-y-2">
-                        <Target className="h-8 w-8 mx-auto text-primary/40" />
-                        <p className="text-sm font-medium">
-                          Start your pipeline
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Add your first deal to start tracking prospects
-                          through your sales process.
-                        </p>
+                          {STAGE_DESCRIPTIONS[stage.name.toLowerCase()] ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <p className="m-0 text-sm font-medium flex-1 truncate cursor-help border-b border-dashed border-muted-foreground/30">
+                                  {stage.name}
+                                </p>
+                              </TooltipTrigger>
+                              <TooltipContent
+                                side="bottom"
+                                className="max-w-[220px] text-xs"
+                              >
+                                <p>
+                                  {STAGE_DESCRIPTIONS[stage.name.toLowerCase()]}
+                                </p>
+                                {owner && (
+                                  <p className="mt-1 text-muted-foreground">
+                                    Managed by: {owner.label}
+                                  </p>
+                                )}
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            <p className="m-0 text-sm font-medium flex-1 truncate">
+                              {stage.name}
+                            </p>
+                          )}
+                          <span className="text-xs text-muted-foreground tabular-nums">
+                            {stageData.deals.length}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between pl-4">
+                          {owner ? <StageOwnerBadge owner={owner} /> : <span />}
+                          {stageData.total_amount > 0 && (
+                            <span className="text-xs text-muted-foreground">
+                              {formatCurrencyFull(stageData.total_amount)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </KanbanHeader>
+                    <KanbanCards>
+                      {stageData.deals.map((deal, index) => {
+                        const boardProgressInfo =
+                          progress && progress.totalAssets > 0
+                            ? {
+                                boardName: progress.boardName,
+                                completedAssets: progress.completedAssets,
+                                totalAssets: progress.totalAssets,
+                                percentage: progress.percentage,
+                              }
+                            : undefined;
+
+                        return (
+                          <KanbanCard
+                            key={deal.id}
+                            id={deal.id}
+                            name={deal.name}
+                            index={index}
+                            parent={stage.id}
+                            data-testid={dealTid.card(deal.id)}
+                            onClick={() => {
+                              setSelectedDeal(deal);
+                              setSelectedDealStage(stage.name);
+                            }}
+                            isOpen={selectedDeal?.id === deal.id}
+                            className="mx-2 my-1.5 p-0 rounded-lg border border-border/60 hover:border-border hover:shadow-sm transition-all"
+                          >
+                            <CrmDealCard
+                              deal={deal}
+                              stageName={stage.name}
+                              stageColor={stage.color}
+                              onEdit={handleEditDeal}
+                              onDelete={handleDeleteDeal}
+                              onMoveTo={(d, stageId) => {
+                                const targetSD = kanbanData.stages.find(
+                                  (s) => s.stage.id === stageId
+                                );
+                                moveDeal.mutate({
+                                  dealId: d.id,
+                                  data: {
+                                    stage_id: stageId,
+                                    position: targetSD?.deals.length ?? 0,
+                                  },
+                                });
+                              }}
+                              stages={stages.map((s) => ({
+                                id: s.id,
+                                name: s.name,
+                              }))}
+                              boardProgress={boardProgressInfo}
+                            />
+                          </KanbanCard>
+                        );
+                      })}
+                      {stageData.deals.length === 0 &&
+                      totalDeals === 0 &&
+                      stageData.stage.id === kanbanData.stages[0]?.stage.id ? (
+                        <div className="mx-2 my-3 p-4 rounded-lg border border-dashed border-primary/30 bg-primary/5 text-center space-y-2">
+                          <Target className="h-8 w-8 mx-auto text-primary/40" />
+                          <p className="text-sm font-medium">
+                            Start your pipeline
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Add your first deal to start tracking prospects
+                            through your sales process.
+                          </p>
+                          <Button
+                            size="sm"
+                            variant="default"
+                            onClick={() => handleAddDeal(stageData.stage.id)}
+                          >
+                            <Plus className="h-3.5 w-3.5 mr-1" /> Add Deal
+                          </Button>
+                        </div>
+                      ) : stageData.deals.length === 0 ? (
+                        <div className="mx-2 my-3 py-8 rounded-lg border border-dashed border-border/40 text-center text-xs text-muted-foreground/40">
+                          No deals
+                        </div>
+                      ) : null}
+                      <div className="px-2 py-1.5">
                         <Button
+                          variant="ghost"
                           size="sm"
-                          variant="default"
-                          onClick={() => handleAddDeal(stageData.stage.id)}
+                          className="w-full h-7 text-xs text-muted-foreground hover:text-foreground justify-start gap-1.5"
+                          onClick={() => handleAddDeal(stage.id)}
                         >
-                          <Plus className="h-3.5 w-3.5 mr-1" /> Add Deal
+                          + Add deal
                         </Button>
                       </div>
-                    ) : stageData.deals.length === 0 ? (
-                      <div className="mx-2 my-3 py-8 rounded-lg border border-dashed border-border/40 text-center text-xs text-muted-foreground/40">
-                        No deals
-                      </div>
-                    ) : null}
-                    <div className="px-2 py-1.5">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="w-full h-7 text-xs text-muted-foreground hover:text-foreground justify-start gap-1.5"
-                        onClick={() => handleAddDeal(stage.id)}
-                      >
-                        + Add deal
-                      </Button>
-                    </div>
-                  </KanbanCards>
-                </KanbanBoard>
-              );
-            })}
-          </KanbanProvider>
-        </TooltipProvider>
-        <ScrollBar orientation="horizontal" />
-      </ScrollArea>
+                    </KanbanCards>
+                  </KanbanBoard>
+                );
+              })}
+            </KanbanProvider>
+          </TooltipProvider>
+        </div>
+      </div>
 
       {/* Deal Form Dialog */}
       {pipeline && (

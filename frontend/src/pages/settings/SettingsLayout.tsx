@@ -1,14 +1,41 @@
+import {
+  Activity,
+  ArrowLeft,
+  Bot,
+  Boxes,
+  Building2,
+  Code2,
+  Cpu,
+  CreditCard,
+  FolderKanban,
+  HardDrive,
+  Key,
+  Layout,
+  Network,
+  Palette,
+  Plug,
+  Server,
+  Settings,
+  Shield,
+  User,
+  Users,
+  Wallet,
+} from 'lucide-react';
 import { useCallback } from 'react';
-import { NavLink, Outlet, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Settings, Cpu, Server, ArrowLeft, User, Shield, Activity, Wallet, Users, FolderKanban, Boxes, Network, Building2, Key, Code2, Plug, CreditCard, Palette, Layout, Bot } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
+import { NavLink, Outlet, useSearchParams } from 'react-router-dom';
+
 import { Badge } from '@/components/ui/badge';
-import { usePreviousPath } from '@/hooks/usePreviousPath';
+import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEffectiveRole } from '@/hooks/useEffectiveRole';
-import { type SettingsScope, SETTINGS_SCOPE_LABELS, ROLE_LEVEL } from '@/lib/roles';
+import { usePreviousPath } from '@/hooks/usePreviousPath';
+import {
+  ROLE_LEVEL,
+  SETTINGS_SCOPE_LABELS,
+  type SettingsScope,
+} from '@/lib/roles';
+import { cn } from '@/lib/utils';
 
 interface SettingsNavItem {
   path: string;
@@ -134,6 +161,14 @@ const settingsNavigation: SettingsNavItem[] = [
     description: 'APN identity, mesh monitoring, and capabilities',
     scopes: ['org', 'system'],
   },
+  {
+    path: 'apn-drive',
+    icon: HardDrive,
+    label: 'APN Drive',
+    description:
+      'Mount media files in Finder — open XML sequences directly in Premiere',
+    scopes: ['user', 'org', 'system'],
+  },
   // ─── Client scope ────────────────────────────────────────────
   {
     path: 'pulse',
@@ -193,14 +228,18 @@ const settingsNavigation: SettingsNavItem[] = [
     planned: true,
   },
   // ─── Dev-only ────────────────────────────────────────────────
-  ...(import.meta.env.MODE === 'development' ? [{
-    path: 'developer',
-    icon: Code2,
-    label: 'Developer',
-    description: 'Development-only tools and bypasses',
-    adminOnly: true,
-    scopes: ['system'] as SettingsScope[],
-  }] : []),
+  ...(import.meta.env.MODE === 'development'
+    ? [
+        {
+          path: 'developer',
+          icon: Code2,
+          label: 'Developer',
+          description: 'Development-only tools and bypasses',
+          adminOnly: true,
+          scopes: ['system'] as SettingsScope[],
+        },
+      ]
+    : []),
 ];
 
 export function SettingsLayout() {
@@ -215,28 +254,41 @@ export function SettingsLayout() {
   // Determine which tabs are visible
   const visibleTabs: { scope: SettingsScope; label: string }[] = [
     { scope: 'user', label: SETTINGS_SCOPE_LABELS.user },
-    ...(canSeeAdminPlatforms ? [{ scope: 'system' as const, label: SETTINGS_SCOPE_LABELS.system }] : []),
-    ...(canManageOrg || level >= ROLE_LEVEL.org_editor ? [{ scope: 'org' as const, label: SETTINGS_SCOPE_LABELS.org }] : []),
-    ...(level >= ROLE_LEVEL.client_editor || canSeeAdminPlatforms ? [{ scope: 'client' as const, label: SETTINGS_SCOPE_LABELS.client }] : []),
+    ...(canSeeAdminPlatforms
+      ? [{ scope: 'system' as const, label: SETTINGS_SCOPE_LABELS.system }]
+      : []),
+    ...(canManageOrg || level >= ROLE_LEVEL.org_editor
+      ? [{ scope: 'org' as const, label: SETTINGS_SCOPE_LABELS.org }]
+      : []),
+    ...(level >= ROLE_LEVEL.client_editor || canSeeAdminPlatforms
+      ? [{ scope: 'client' as const, label: SETTINGS_SCOPE_LABELS.client }]
+      : []),
   ];
 
   // Read scope from URL param, validate against visible tabs (permission guard)
   const urlScope = searchParams.get('scope') as SettingsScope | null;
-  const effectiveScope = urlScope && visibleTabs.some((t) => t.scope === urlScope)
-    ? urlScope
-    : visibleTabs[0]?.scope ?? 'user';
+  const effectiveScope =
+    urlScope && visibleTabs.some((t) => t.scope === urlScope)
+      ? urlScope
+      : (visibleTabs[0]?.scope ?? 'user');
 
-  const setActiveScope = useCallback((scope: SettingsScope) => {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      if (scope === 'user') {
-        next.delete('scope');
-      } else {
-        next.set('scope', scope);
-      }
-      return next;
-    }, { replace: true });
-  }, [setSearchParams]);
+  const setActiveScope = useCallback(
+    (scope: SettingsScope) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (scope === 'user') {
+            next.delete('scope');
+          } else {
+            next.set('scope', scope);
+          }
+          return next;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
 
   // Filter navigation items by active scope and admin status
   const allVisible = settingsNavigation.filter((item) => {
@@ -319,7 +371,9 @@ export function SettingsLayout() {
                 <>
                   <div className="pt-3 pb-1 px-3">
                     <div className="border-t border-border/40" />
-                    <p className="text-xs font-medium text-muted-foreground/40 uppercase tracking-wider mt-2">Planned</p>
+                    <p className="text-xs font-medium text-muted-foreground/40 uppercase tracking-wider mt-2">
+                      Planned
+                    </p>
                   </div>
                   {plannedNavigation.map((item) => {
                     const Icon = item.icon;
@@ -332,7 +386,10 @@ export function SettingsLayout() {
                         <div className="flex-1 min-w-0">
                           <div className="font-medium flex items-center gap-2">
                             {item.label}
-                            <Badge variant="outline" className="text-[9px] px-1 py-0 font-normal text-muted-foreground/40 border-muted-foreground/20">
+                            <Badge
+                              variant="outline"
+                              className="text-[9px] px-1 py-0 font-normal text-muted-foreground/40 border-muted-foreground/20"
+                            >
                               Coming soon
                             </Badge>
                           </div>

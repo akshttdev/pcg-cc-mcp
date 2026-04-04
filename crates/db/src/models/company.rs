@@ -120,14 +120,17 @@ pub struct UpdateCompany {
 
 impl Company {
     pub async fn find_by_id(pool: &SqlitePool, id: &DbUuid) -> Result<Option<Self>, CompanyError> {
-        // Companies store id as BLOB; DbUuid encodes as TEXT so direct `= ?` misses.
-        // Use hex(id) comparison which works for both BLOB and TEXT storage.
-        let hex_no_dashes = id.to_string().replace('-', "");
-        let row =
-            sqlx::query_as::<_, Self>("SELECT * FROM companies WHERE lower(hex(id)) = lower(?)")
-                .bind(&hex_no_dashes)
-                .fetch_optional(pool)
-                .await?;
+        // id is stored as TEXT (UUID with dashes). Direct comparison works.
+        // Also try hex(id) for any legacy BLOB rows.
+        let id_str = id.to_string();
+        let hex_no_dashes = id_str.replace('-', "");
+        let row = sqlx::query_as::<_, Self>(
+            "SELECT * FROM companies WHERE id = ? OR lower(hex(id)) = lower(?)",
+        )
+        .bind(&id_str)
+        .bind(&hex_no_dashes)
+        .fetch_optional(pool)
+        .await?;
         Ok(row)
     }
 
@@ -390,9 +393,13 @@ impl Company {
         if let Some(v) = input.intelligence_status {
             qb.push(", intelligence_status = ").push_bind(v);
         }
-        let hex_no_dashes = id.to_string().replace('-', "");
-        qb.push(" WHERE lower(hex(id)) = lower(?)")
-            .push_bind(hex_no_dashes);
+        let id_str = id.to_string();
+        let hex_no_dashes = id_str.replace('-', "");
+        qb.push(" WHERE id = ")
+            .push_bind(id_str)
+            .push(" OR lower(hex(id)) = lower(")
+            .push_bind(hex_no_dashes)
+            .push(")");
         qb.build().execute(pool).await?;
         Self::find_by_id(pool, id).await
     }

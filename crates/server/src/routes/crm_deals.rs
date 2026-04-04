@@ -571,6 +571,13 @@ async fn update_deal(
     let id = parse_db_uuid_param(&id, "deal ID")?;
     require_deal_org_access(&access_context, pool, &id).await?;
     let deal = CrmDeal::update(pool, &id, data).await?;
+    {
+        let pool_bg = pool.clone();
+        let deal_id = deal.id.clone();
+        tokio::spawn(async move {
+            crm_deal_automations::register_deal_in_kg_pub(&pool_bg, &deal_id).await;
+        });
+    }
     Ok(Json(ApiResponse::success(deal)))
 }
 

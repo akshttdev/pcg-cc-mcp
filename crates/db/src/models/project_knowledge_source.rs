@@ -10,6 +10,29 @@ use sqlx::{FromRow, SqlitePool};
 use ts_rs::TS;
 use uuid::Uuid;
 
+/// Polymorphic owner scope for knowledge sources
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KnowledgeOwnerScope {
+    Project,
+    Organization,
+    Company,
+    User,
+    Deal,
+}
+
+impl std::fmt::Display for KnowledgeOwnerScope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Project => write!(f, "project"),
+            Self::Organization => write!(f, "organization"),
+            Self::Company => write!(f, "company"),
+            Self::User => write!(f, "user"),
+            Self::Deal => write!(f, "deal"),
+        }
+    }
+}
+
 /// Knowledge source type
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
@@ -174,6 +197,116 @@ impl ProjectKnowledgeSource {
         .execute(pool)
         .await?;
         Ok(())
+    }
+
+    /// Upsert a knowledge source with polymorphic owner (project/org/company/user scope).
+    /// Falls back to `upsert_source` for Project scope; uses owner_type/owner_id for other scopes.
+    pub async fn upsert_scoped(
+        pool: &SqlitePool,
+        scope: &KnowledgeOwnerScope,
+        owner_id: &str,
+        project_id: Option<Uuid>,
+        source_type: &KnowledgeSourceType,
+        source_id: &str,
+        source_title: &str,
+        source_summary: Option<&str>,
+        coverage_score: f64,
+    ) -> Result<(), sqlx::Error> {
+        let id = Uuid::new_v4().to_string();
+        let st = source_type.to_string();
+        let owner_type = scope.to_string();
+        let proj_id = project_id.as_ref().map(|p| p.to_string());
+
+        sqlx::query(
+            r#"INSERT INTO project_knowledge_sources (
+                id, project_id, owner_type, owner_id, source_type, source_id,
+                source_title, source_summary, coverage_score, auto_registered
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            ON CONFLICT(project_id, source_type, source_id) DO UPDATE SET
+                source_title = excluded.source_title,
+                source_summary = COALESCE(excluded.source_summary, source_summary),
+                coverage_score = excluded.coverage_score,
+                owner_type = excluded.owner_type,
+                owner_id = excluded.owner_id,
+                updated_at = datetime('now', 'subsec')"#,
+        )
+        .bind(&id)
+        .bind(&proj_id)
+        .bind(&owner_type)
+        .bind(owner_id)
+        .bind(&st)
+        .bind(source_id)
+        .bind(source_title)
+        .bind(source_summary)
+        .bind(coverage_score)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Upsert a knowledge source scoped purely to a non-project owner (org, company, user, deal).
+    /// Uses the partial-index conflict target that fires when project_id IS NULL.
+    pub async fn upsert_owner_scoped(
+        pool: &SqlitePool,
+        scope: &KnowledgeOwnerScope,
+        owner_id: &str,
+        source_type: &KnowledgeSourceType,
+        source_id: &str,
+        source_title: &str,
+        source_summary: Option<&str>,
+        coverage_score: f64,
+    ) -> Result<(), sqlx::Error> {
+        let id = Uuid::new_v4().to_string();
+        let st = source_type.to_string();
+        let owner_type = scope.to_string();
+
+        sqlx::query(
+            r#"INSERT INTO project_knowledge_sources (
+                id, project_id, owner_type, owner_id, source_type, source_id,
+                source_title, source_summary, coverage_score, auto_registered
+            )
+            VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, 1)
+            ON CONFLICT(owner_type, owner_id, source_type, source_id)
+            DO UPDATE SET
+                source_title    = excluded.source_title,
+                source_summary  = COALESCE(excluded.source_summary, source_summary),
+                coverage_score  = excluded.coverage_score,
+                updated_at      = datetime('now', 'subsec')"#,
+        )
+        .bind(&id)
+        .bind(&owner_type)
+        .bind(owner_id)
+        .bind(&st)
+        .bind(source_id)
+        .bind(source_title)
+        .bind(source_summary)
+        .bind(coverage_score)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Find all knowledge sources for an owner scope (org / company / user / deal)
+    pub async fn find_by_owner(
+        pool: &SqlitePool,
+        scope: &KnowledgeOwnerScope,
+        owner_id: &str,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        let owner_type = scope.to_string();
+        sqlx::query_as::<_, Self>(
+            r#"SELECT
+                id, project_id, source_type, source_id, source_title, source_summary,
+                coverage_score, is_active, is_stale, auto_registered,
+                last_refreshed_at, created_at, updated_at
+            FROM project_knowledge_sources
+            WHERE owner_type = ? AND owner_id = ? AND is_active = 1
+            ORDER BY source_type, updated_at DESC"#,
+        )
+        .bind(&owner_type)
+        .bind(owner_id)
+        .fetch_all(pool)
+        .await
     }
 
     /// Mark a source as stale

@@ -10,6 +10,23 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
+/// Structured data extracted from a scraped web page
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ScrapedPage {
+    pub url: String,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub og_image: Option<String>,
+    pub favicon: Option<String>,
+    pub text: String,
+    pub images: Vec<String>,
+    pub logos: Vec<String>,
+    pub emails: Vec<String>,
+    pub phones: Vec<String>,
+    pub social_links: HashMap<String, String>,
+    pub brand_colors: Vec<String>,
+}
+
 /// Research context passed between stages
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResearchContext {
@@ -165,6 +182,93 @@ impl ResearchTools {
         let results: Vec<SearchResult> = serde_json::from_str(content).unwrap_or_default();
 
         Ok(results)
+    }
+
+    /// Scrape a URL and return structured assets (images, logos, contact info, social links, colors).
+    /// Tries Playwright for JS-heavy sites, falls back to static HTTP.
+    pub async fn scrape_url(&self, url: &str) -> Result<ScrapedPage, String> {
+        tracing::info!("[RESEARCH_TOOLS] Scraping URL: {}", url);
+
+        // Try static fetch first
+        let html = match self
+            .http_client
+            .get(url)
+            .header(
+                "User-Agent",
+                "Mozilla/5.0 (compatible; Scout/1.0; Research Agent)",
+            )
+            .timeout(std::time::Duration::from_secs(15))
+            .send()
+            .await
+        {
+            Ok(r) => r.text().await.unwrap_or_default(),
+            Err(e) => return Err(format!("Failed to fetch {}: {}", url, e)),
+        };
+
+        // Detect if the page needs JS rendering (empty body or SPA markers)
+        let needs_js = html.len() < 2000
+            || html.contains("__NEXT_DATA__")
+            || html.contains("data-reactroot")
+            || html.contains("ng-app")
+            || (html.contains("<noscript>") && html.len() < 5000);
+
+        let html = if needs_js {
+            tracing::info!("[RESEARCH_TOOLS] JS rendering needed for {}", url);
+            // Try render-page.js Playwright script
+            let script_path = [
+                "/home/pythia/pcg-cc-mcp/scripts/render-page.js",
+                "scripts/render-page.js",
+                "./scripts/render-page.js",
+            ]
+            .iter()
+            .find(|p| std::path::Path::new(*p).exists())
+            .map(|p| p.to_string());
+
+            let playwright_ok = tokio::task::spawn_blocking(|| {
+                std::process::Command::new("node")
+                    .args(["-e", "require('playwright')"])
+                    .output()
+            })
+            .await
+            .ok()
+            .and_then(|r| r.ok())
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+
+            if let (Some(script), true) = (script_path, playwright_ok) {
+                let url_owned = url.to_string();
+                let out = tokio::task::spawn_blocking(move || {
+                    std::process::Command::new("node")
+                        .args([&script, &url_owned, "30000"])
+                        .output()
+                })
+                .await
+                .ok()
+                .and_then(|r| r.ok());
+                if let Some(out) = out {
+                    if out.status.success() {
+                        serde_json::from_slice::<Value>(&out.stdout)
+                            .ok()
+                            .and_then(|v| {
+                                v.get("html")
+                                    .and_then(|h| h.as_str())
+                                    .map(|s| s.to_string())
+                            })
+                            .unwrap_or(html)
+                    } else {
+                        html
+                    }
+                } else {
+                    html
+                }
+            } else {
+                html
+            }
+        } else {
+            html
+        };
+
+        Ok(extract_page_assets(&html, url))
     }
 
     /// Fetch and extract content from a URL
@@ -345,6 +449,9 @@ Return ONLY valid JSON, no markdown formatting."#;
             "Account Discovery" => self.execute_discovery_stage(context).await,
             "Content Analysis" => self.execute_analysis_stage(context).await,
             "Insight Synthesis" => self.execute_synthesis_stage(context).await,
+            "Website Scrape" | "Asset Collection" | "Brand Audit" => {
+                self.execute_scrape_stage(context).await
+            }
             _ => {
                 // Generic stage execution
                 self.execute_generic_stage(stage_name, stage_description, expected_output, context)
@@ -540,6 +647,126 @@ Return ONLY valid JSON."#,
         }))
     }
 
+    /// Website Scrape / Asset Collection / Brand Audit stage
+    /// Looks for a `website_url` in context findings or extracts it from the research brief.
+    async fn execute_scrape_stage(&self, context: &mut ResearchContext) -> Result<Value, String> {
+        // Extract URL from context — check findings first, then target (if it looks like a URL)
+        let url = context
+            .findings
+            .get("website_url")
+            .and_then(|v| v.as_str())
+            .map(String::from)
+            .or_else(|| {
+                context
+                    .findings
+                    .get("discovery")
+                    .and_then(|v| v.get("website"))
+                    .and_then(|u| u.as_str())
+                    .map(String::from)
+            })
+            .or_else(|| {
+                // Try to extract URL from target or research_brief
+                let re = regex::Regex::new(r"https?://[^\s<>]+").ok()?;
+                let combined = format!("{} {}", context.target, context.research_brief);
+                re.find(&combined).map(|m| m.as_str().to_string())
+            });
+
+        let url = match url {
+            Some(u) => u,
+            None => {
+                // Fall back to a web search for the company's website
+                let search_query = format!("{} official website", context.target);
+                tracing::info!(
+                    "[RESEARCH_EXECUTOR] No URL in context, searching for: {}",
+                    search_query
+                );
+                let results = self.tools.web_search(&search_query, 3).await?;
+                match results.first() {
+                    Some(r) => r.url.clone(),
+                    None => {
+                        return Ok(serde_json::json!({
+                            "stage": "Website Scrape",
+                            "status": "skipped",
+                            "reason": "No website URL found in research context",
+                        }))
+                    }
+                }
+            }
+        };
+
+        tracing::info!("[RESEARCH_EXECUTOR] Scraping website: {}", url);
+        let scraped = self.tools.scrape_url(&url).await?;
+
+        // Use LLM to synthesise brand intelligence from the scraped content
+        let system_prompt = format!(
+            r#"You are Scout, a brand intelligence analyst. You just scraped {}'s website.
+
+Analyse the scraped data and extract key brand intelligence.
+
+Return a JSON object with:
+- brand_summary: 2-3 sentence description of the company/brand
+- key_offerings: Array of main products or services
+- tone_and_voice: Description of brand personality
+- target_audience: Who this brand serves
+- visual_identity: {{primary_color, secondary_colors, logo_found: bool, imagery_style}}
+- contact_summary: Human-readable contact info found
+- social_presence: Which platforms they're on
+- data_quality: How complete/useful the scraped data was (0-100)
+- recommendations: Array of follow-up research actions
+
+Return ONLY valid JSON."#,
+            context.target
+        );
+
+        let scraped_summary = format!(
+            "Title: {}\nDescription: {}\nText excerpt: {}\nImages found: {}\nLogos found: {}\nEmails: {}\nPhones: {}\nSocial links: {}\nBrand colors: {}",
+            scraped.title.as_deref().unwrap_or("N/A"),
+            scraped.description.as_deref().unwrap_or("N/A"),
+            scraped.text.chars().take(3000).collect::<String>(),
+            scraped.images.len(),
+            scraped.logos.len(),
+            scraped.emails.join(", "),
+            scraped.phones.join(", "),
+            scraped.social_links.iter().map(|(k, v)| format!("{}: {}", k, v)).collect::<Vec<_>>().join(", "),
+            scraped.brand_colors.join(", "),
+        );
+
+        let analysis = self
+            .tools
+            .research_llm(&system_prompt, &scraped_summary)
+            .await
+            .unwrap_or_else(|e| format!("{{\"error\": \"{}\"}}", e));
+        let analysis_json: Value = serde_json::from_str(&analysis)
+            .unwrap_or_else(|_| serde_json::json!({"raw": analysis}));
+
+        let output = serde_json::json!({
+            "scraped_url": url,
+            "title": scraped.title,
+            "description": scraped.description,
+            "og_image": scraped.og_image,
+            "favicon": scraped.favicon,
+            "images": scraped.images,
+            "logos": scraped.logos,
+            "contact": {
+                "emails": scraped.emails,
+                "phones": scraped.phones,
+            },
+            "social_links": scraped.social_links,
+            "brand_colors": scraped.brand_colors,
+            "intelligence": analysis_json,
+        });
+
+        context
+            .findings
+            .insert("website_scrape".to_string(), output.clone());
+
+        Ok(serde_json::json!({
+            "stage": "Website Scrape",
+            "status": "completed",
+            "output": output,
+        }))
+    }
+
     /// Generic stage execution for custom stages
     async fn execute_generic_stage(
         &self,
@@ -591,6 +818,201 @@ Return a JSON object with your findings."#,
             "status": "completed",
             "output": output
         }))
+    }
+}
+
+/// Extract structured brand assets from raw HTML
+pub fn extract_page_assets(html: &str, url: &str) -> ScrapedPage {
+    use std::collections::HashSet;
+
+    let title = regex::Regex::new(r"(?i)<title[^>]*>([^<]+)</title>")
+        .ok()
+        .and_then(|re| re.captures(html))
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str().trim().to_string());
+
+    let description = {
+        let r1 = regex::Regex::new(
+            r#"(?i)<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']"#,
+        )
+        .ok();
+        let r2 = regex::Regex::new(
+            r#"(?i)<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']"#,
+        )
+        .ok();
+        let r3 = regex::Regex::new(
+            r#"(?i)<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']"#,
+        )
+        .ok();
+        [r1, r2, r3]
+            .into_iter()
+            .flatten()
+            .find_map(|re| re.captures(html))
+            .and_then(|c| c.get(1))
+            .map(|m| m.as_str().trim().to_string())
+    };
+
+    let og_image = {
+        let r1 = regex::Regex::new(
+            r#"(?i)<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']"#,
+        )
+        .ok();
+        let r2 = regex::Regex::new(
+            r#"(?i)<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']"#,
+        )
+        .ok();
+        [r1, r2]
+            .into_iter()
+            .flatten()
+            .find_map(|re| re.captures(html))
+            .and_then(|c| c.get(1))
+            .map(|m| m.as_str().trim().to_string())
+    };
+
+    let favicon = {
+        let r1 = regex::Regex::new(
+            r#"(?i)<link[^>]+rel=["'][^"']*icon[^"']*["'][^>]+href=["']([^"']+)["']"#,
+        )
+        .ok();
+        let r2 = regex::Regex::new(
+            r#"(?i)<link[^>]+href=["']([^"']+)["'][^>]+rel=["'][^"']*icon[^"']*["']"#,
+        )
+        .ok();
+        [r1, r2]
+            .into_iter()
+            .flatten()
+            .find_map(|re| re.captures(html))
+            .and_then(|c| c.get(1))
+            .map(|m| m.as_str().trim().to_string())
+    };
+
+    let text = html_to_text(html).chars().take(8000).collect::<String>();
+
+    let images: Vec<String> = regex::Regex::new(r#"(?i)<img[^>]+src=["']([^"']+)["']"#)
+        .map(|re| {
+            re.captures_iter(html)
+                .filter_map(|c| c.get(1))
+                .map(|m| m.as_str().to_string())
+                .filter(|s| !s.starts_with("data:"))
+                .collect::<HashSet<_>>()
+                .into_iter()
+                .take(30)
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let logos: Vec<String> = regex::Regex::new(r#"(?i)<img[^>]+(logo|brand)[^>]*>"#)
+        .map(|re| {
+            let src_re = regex::Regex::new(r#"(?i)src=["']([^"']+)["']"#).unwrap();
+            re.find_iter(html)
+                .filter_map(|m| src_re.captures(m.as_str()))
+                .filter_map(|c| c.get(1))
+                .map(|m| m.as_str().to_string())
+                .filter(|s| !s.starts_with("data:"))
+                .collect::<HashSet<_>>()
+                .into_iter()
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let emails: Vec<String> =
+        regex::Regex::new(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")
+            .map(|re| {
+                re.find_iter(&text)
+                    .map(|m| m.as_str().to_string())
+                    .filter(|e| {
+                        !e.ends_with(".png") && !e.ends_with(".jpg") && !e.ends_with(".svg")
+                    })
+                    .collect::<HashSet<_>>()
+                    .into_iter()
+                    .take(5)
+                    .collect()
+            })
+            .unwrap_or_default();
+
+    let phones: Vec<String> = regex::Regex::new(r"\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}")
+        .map(|re| {
+            re.find_iter(&text)
+                .map(|m| m.as_str().trim().to_string())
+                .collect::<HashSet<_>>()
+                .into_iter()
+                .take(5)
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let all_links: Vec<String> = regex::Regex::new(r#"(?i)href=["']([^"']+)["']"#)
+        .map(|re| {
+            re.captures_iter(html)
+                .filter_map(|c| c.get(1))
+                .map(|m| m.as_str().to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let mut social_links = HashMap::new();
+    for (key, domain) in &[
+        ("instagram", "instagram.com"),
+        ("twitter", "twitter.com"),
+        ("tiktok", "tiktok.com"),
+        ("facebook", "facebook.com"),
+        ("linkedin", "linkedin.com"),
+        ("youtube", "youtube.com"),
+        ("threads", "threads.net"),
+    ] {
+        if let Some(link) = all_links.iter().find(|l| l.contains(domain)) {
+            social_links.insert(key.to_string(), link.clone());
+        }
+    }
+
+    let brand_colors = {
+        let mut style_content = String::new();
+        if let Ok(re) = regex::Regex::new(r"(?is)<style[^>]*>(.*?)</style>") {
+            for cap in re.captures_iter(html) {
+                if let Some(m) = cap.get(1) {
+                    style_content.push_str(m.as_str());
+                }
+            }
+        }
+        if let Ok(re) = regex::Regex::new(r#"(?i)style=["']([^"']+)["']"#) {
+            for cap in re.captures_iter(html) {
+                if let Some(m) = cap.get(1) {
+                    style_content.push_str(m.as_str());
+                }
+            }
+        }
+        regex::Regex::new(r"#([0-9A-Fa-f]{6})\b")
+            .map(|re| {
+                let mut colors: Vec<String> = re
+                    .find_iter(&style_content)
+                    .map(|m| m.as_str().to_uppercase())
+                    .filter(|c| {
+                        !["#000000", "#FFFFFF", "#FAFAFA", "#F0F0F0", "#EEEEEE"]
+                            .contains(&c.as_str())
+                    })
+                    .collect::<HashSet<_>>()
+                    .into_iter()
+                    .take(10)
+                    .collect();
+                colors.sort();
+                colors
+            })
+            .unwrap_or_default()
+    };
+
+    ScrapedPage {
+        url: url.to_string(),
+        title,
+        description,
+        og_image,
+        favicon,
+        text,
+        images,
+        logos,
+        emails,
+        phones,
+        social_links,
+        brand_colors,
     }
 }
 

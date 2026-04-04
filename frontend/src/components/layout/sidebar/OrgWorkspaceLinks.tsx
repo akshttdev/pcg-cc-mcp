@@ -1,34 +1,35 @@
+import {
+  BarChart2,
+  Brain,
+  Briefcase,
+  ChevronDown,
+  ChevronRight,
+  // Calendar, — used only by commented-out CrmSidebarLinks
+  Database,
+  FileText,
+  GitBranch,
+  Inbox,
+  LayoutGrid,
+  Network,
+  Package,
+  Radio,
+  Share2,
+  TrendingUp,
+  Users,
+  // BarChart3, — used only by commented-out CrmSidebarLinks
+} from 'lucide-react';
 import { /* useMemo, */ useState } from 'react';
 import { Link, type useLocation } from 'react-router-dom';
+
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import {
-  ChevronDown,
-  ChevronRight,
-  Users,
-  Building2,
-  TrendingUp,
-  Package,
-  LayoutGrid,
-  Brain,
-  Share2,
-  // Calendar, — used only by commented-out CrmSidebarLinks
-  Database,
-  FileText,
-  BarChart2,
-  Inbox,
-  Radio,
-  Network,
-  GitBranch,
-  // BarChart3, — used only by commented-out CrmSidebarLinks
-} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ============================================================================
-// OrgCrmSection — collapsible CRM with Overview/Contacts/Pipeline/Deliverables/Social
+// OrgCrmSection — collapsible CRM with Overview/Pipeline/Clients/Deliverables
 // ============================================================================
 
 export function OrgCrmSection({
@@ -55,17 +56,44 @@ export function OrgCrmSection({
         >
           <Users className="h-3 w-3 shrink-0 text-primary" />
           <span className="flex-1 text-left">CRM</span>
-          {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          {open ? (
+            <ChevronDown className="h-3 w-3" />
+          ) : (
+            <ChevronRight className="h-3 w-3" />
+          )}
         </button>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="pl-4 space-y-0.5 py-0.5">
           {[
-            { label: 'Overview',     to: `${orgBase}/crm`,              icon: LayoutGrid, color: 'text-muted-foreground',        match: location.pathname === `${orgBase}/crm` },
-            { label: 'Contacts',     to: `${orgBase}/crm/contacts`,     icon: Users,      color: 'text-primary',                 match: location.pathname === `${orgBase}/crm/contacts` },
-            { label: 'Companies',    to: `${orgBase}/crm/companies`,    icon: Building2,  color: 'text-purple-500',              match: location.pathname === `${orgBase}/crm/companies` },
-            { label: 'Pipeline',     to: `${orgBase}/crm/pipeline`,     icon: TrendingUp, color: 'text-[hsl(var(--warning))]',   match: location.pathname === `${orgBase}/crm/pipeline` },
-            { label: 'Deliverables', to: `${orgBase}/crm/deliverables`, icon: Package,    color: 'text-[hsl(var(--success))]',   match: location.pathname === `${orgBase}/crm/deliverables` },
+            {
+              label: 'Overview',
+              to: `${orgBase}/crm`,
+              icon: LayoutGrid,
+              color: 'text-muted-foreground',
+              match: location.pathname === `${orgBase}/crm`,
+            },
+            {
+              label: 'Pipeline',
+              to: `${orgBase}/crm/pipeline`,
+              icon: TrendingUp,
+              color: 'text-[hsl(var(--warning))]',
+              match: location.pathname === `${orgBase}/crm/pipeline`,
+            },
+            {
+              label: 'Clients',
+              to: `${orgBase}/clients`,
+              icon: Briefcase,
+              color: 'text-indigo-400',
+              match: location.pathname.startsWith(`${orgBase}/clients`),
+            },
+            {
+              label: 'Deliverables',
+              to: `${orgBase}/crm/deliverables`,
+              icon: Package,
+              color: 'text-[hsl(var(--success))]',
+              match: location.pathname === `${orgBase}/crm/deliverables`,
+            },
           ].map(({ label, to, icon: Icon, color, match }) => (
             <Link
               key={label}
@@ -99,15 +127,32 @@ export function OrgSocialSection({
   const orgBase = `/organizations/${orgId}`;
   const sp = new URLSearchParams(location.search);
   const socialBase = `${orgBase}/social`;
-  const isOnSocial = location.pathname === socialBase || (location.pathname === orgBase && sp.get('tab') === 'social');
+  const isOnSocial =
+    location.pathname === socialBase ||
+    (location.pathname === orgBase && sp.get('tab') === 'social');
   const [open, setOpen] = useState(isOnSocial);
 
   const socialViews = [
-    { label: 'Overview',  sv: '',          icon: LayoutGrid,  color: 'text-muted-foreground' },
-    { label: 'Accounts',  sv: 'accounts',  icon: Share2,      color: 'text-pink-500' },
-    { label: 'Content',   sv: 'content',   icon: FileText,    color: 'text-purple-500' },
-    { label: 'Inbox',     sv: 'inbox',     icon: Inbox,       color: 'text-amber-500' },
-    { label: 'Analytics', sv: 'analytics', icon: BarChart2,   color: 'text-blue-500' },
+    {
+      label: 'Overview',
+      sv: '',
+      icon: LayoutGrid,
+      color: 'text-muted-foreground',
+    },
+    { label: 'Accounts', sv: 'accounts', icon: Share2, color: 'text-pink-500' },
+    {
+      label: 'Content',
+      sv: 'content',
+      icon: FileText,
+      color: 'text-purple-500',
+    },
+    { label: 'Inbox', sv: 'inbox', icon: Inbox, color: 'text-amber-500' },
+    {
+      label: 'Analytics',
+      sv: 'analytics',
+      icon: BarChart2,
+      color: 'text-blue-500',
+    },
   ];
 
   return (
@@ -121,15 +166,17 @@ export function OrgSocialSection({
         >
           <Share2 className="h-3 w-3 shrink-0 text-pink-500" />
           <span className="flex-1 text-left">Social</span>
-          {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          {open ? (
+            <ChevronDown className="h-3 w-3" />
+          ) : (
+            <ChevronRight className="h-3 w-3" />
+          )}
         </button>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="pl-4 space-y-0.5 py-0.5">
           {socialViews.map(({ label, sv, icon: Icon, color }) => {
-            const to = sv
-              ? `${socialBase}?sv=${sv}`
-              : socialBase;
+            const to = sv ? `${socialBase}?sv=${sv}` : socialBase;
             const isActive = isOnSocial && (sp.get('sv') || '') === sv;
             return (
               <Link
@@ -177,18 +224,59 @@ export function OrgIntelligenceSection({
         >
           <Brain className="h-3 w-3 shrink-0 text-[hsl(var(--success))]" />
           <span className="flex-1 text-left">Intelligence</span>
-          {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          {open ? (
+            <ChevronDown className="h-3 w-3" />
+          ) : (
+            <ChevronRight className="h-3 w-3" />
+          )}
         </button>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="pl-4 space-y-0.5 py-0.5">
           {[
-            { label: 'Overview',      icon: Brain,         color: 'text-[hsl(var(--success))]', to: `${orgBase}/intelligence`,              match: location.pathname === `${orgBase}/intelligence` },
-            { label: 'Data Sources',  icon: Database,       color: 'text-primary',                to: `${orgBase}/intelligence/data-sources`, match: location.pathname === `${orgBase}/intelligence/data-sources` },
-            { label: 'Artifacts',     icon: FileText,      color: 'text-[hsl(var(--brand))]',    to: `${orgBase}/intelligence/artifacts`,    match: location.pathname === `${orgBase}/intelligence/artifacts` },
-            { label: 'Workflows',     icon: GitBranch,     color: 'text-purple-500',             to: `${orgBase}/intelligence/workflows`,    match: location.pathname === `${orgBase}/intelligence/workflows` },
-            { label: 'Pulse',         icon: Radio,         color: 'text-[hsl(var(--warning))]',  to: `${orgBase}/intelligence/pulse`,        match: location.pathname === `${orgBase}/intelligence/pulse` },
-            { label: 'Topology',      icon: Network,       color: 'text-[hsl(var(--info))]',     to: `${orgBase}/intelligence/topology`,     match: location.pathname === `${orgBase}/intelligence/topology` },
+            {
+              label: 'Overview',
+              icon: Brain,
+              color: 'text-[hsl(var(--success))]',
+              to: `${orgBase}/intelligence`,
+              match: location.pathname === `${orgBase}/intelligence`,
+            },
+            {
+              label: 'Data Sources',
+              icon: Database,
+              color: 'text-primary',
+              to: `${orgBase}/intelligence/data-sources`,
+              match:
+                location.pathname === `${orgBase}/intelligence/data-sources`,
+            },
+            {
+              label: 'Artifacts',
+              icon: FileText,
+              color: 'text-[hsl(var(--brand))]',
+              to: `${orgBase}/intelligence/artifacts`,
+              match: location.pathname === `${orgBase}/intelligence/artifacts`,
+            },
+            {
+              label: 'Workflows',
+              icon: GitBranch,
+              color: 'text-purple-500',
+              to: `${orgBase}/intelligence/workflows`,
+              match: location.pathname === `${orgBase}/intelligence/workflows`,
+            },
+            {
+              label: 'Pulse',
+              icon: Radio,
+              color: 'text-[hsl(var(--warning))]',
+              to: `${orgBase}/intelligence/pulse`,
+              match: location.pathname === `${orgBase}/intelligence/pulse`,
+            },
+            {
+              label: 'Topology',
+              icon: Network,
+              color: 'text-[hsl(var(--info))]',
+              to: `${orgBase}/intelligence/topology`,
+              match: location.pathname === `${orgBase}/intelligence/topology`,
+            },
           ].map(({ label, to, icon: Icon, color, match }) => (
             <Link
               key={label}

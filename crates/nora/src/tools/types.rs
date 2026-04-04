@@ -306,6 +306,16 @@ pub enum NoraExecutiveTool {
         url: String,
         include_html: bool,
     },
+    /// Deep scrape a web page: renders JS if needed, extracts structured assets
+    /// (images, logos, contact info, social links, brand colors). Ideal for
+    /// prospect research, brand audits, and company intelligence gathering.
+    ScrapePage {
+        url: String,
+        /// Use Playwright for JS-heavy sites (Wix, React, etc.). Slower but thorough.
+        use_js: bool,
+        /// Extract images, logos, social links, contact info, and brand colors.
+        extract_assets: bool,
+    },
     SummarizeContent {
         content: String,
         max_length: u32,
@@ -499,6 +509,69 @@ pub enum NoraExecutiveTool {
     AnalyzeMusicTrack {
         audio_path: String,
         bpm_hint: Option<f64>,
+    },
+
+    // ── AI Image Generation (fal.ai) ────────────────────────────────────────
+    /// Generate a photorealistic image via fal.ai FLUX Pro Ultra.
+    /// Used by Editron for avatar portraits, character references, and visual assets.
+    GenerateImage {
+        /// Text prompt describing the image to generate
+        prompt: String,
+        /// Optional reference image URL or data URI for img2img / style transfer
+        reference_image_url: Option<String>,
+        /// Aspect ratio: "1:1", "3:4", "4:3", "16:9", "9:16"
+        aspect_ratio: Option<String>,
+        /// Strength of reference image influence (0.0-1.0). Only used with reference_image_url.
+        reference_strength: Option<f64>,
+        /// Enable raw photographic mode (less AI polish, more camera-like)
+        raw_mode: Option<bool>,
+        /// Fixed seed for reproducible results
+        seed: Option<u64>,
+        /// fal.ai model endpoint. Defaults to "fal-ai/flux-pro/v1.1-ultra"
+        model: Option<String>,
+        /// Output filename (saved to dev_assets/video_gen/portraits/)
+        output_filename: Option<String>,
+        /// Task to attach the generated image artifact to
+        task_id: Option<String>,
+        /// Project for VIBE billing
+        project_id: Option<String>,
+    },
+
+    // ── Video Post-Processing ────────────────────────────────────────────────
+    /// Apply a visual effect preset to a video file using FFmpeg.
+    /// Editron's post-production finishing tool for HeyGen outputs.
+    ApplyVideoEffect {
+        /// Path to input video file, or video_job_id to look up automatically
+        input_path: String,
+        /// Effect preset to apply:
+        /// "hologram_glitch" — RGB split + scanlines + pixel dissolve on outro
+        /// "color_grade"     — Cinematic LUT + contrast enhancement
+        /// "vignette"        — Dark studio vignette overlay
+        /// "captions"        — Burn-in captions from SRT file
+        effect: String,
+        /// Output filename (saved alongside input if not specified)
+        output_path: Option<String>,
+        /// Effect-specific parameters as JSON (e.g. glitch start time, LUT name)
+        effect_params: Option<serde_json::Value>,
+        /// Task to attach the processed video artifact to
+        task_id: Option<String>,
+        /// Project for VIBE billing
+        project_id: Option<String>,
+    },
+
+    /// Run the full post-production chain on a completed HeyGen video job.
+    /// Fetches the raw video, applies effect chain, saves final deliverable.
+    PostProcessVideoJob {
+        /// video_jobs.id UUID
+        video_job_id: String,
+        /// Ordered list of effects to apply: ["hologram_glitch", "color_grade"]
+        effects: Vec<String>,
+        /// Effect parameters keyed by effect name
+        effect_params: Option<serde_json::Value>,
+        /// Task to attach the final deliverable artifact to
+        task_id: Option<String>,
+        /// Project for VIBE billing
+        project_id: Option<String>,
     },
 }
 

@@ -132,6 +132,7 @@ pub mod tag;
 pub mod topsi_user_settings;
 pub mod trigger_execution;
 pub mod user_profile;
+pub mod video_job;
 pub mod workflow_run;
 pub mod workflow_staging;
 pub mod workflow_template;

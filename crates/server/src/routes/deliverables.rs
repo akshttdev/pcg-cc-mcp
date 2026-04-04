@@ -1,13 +1,16 @@
 use axum::{
     extract::{Path, State},
-    routing::{get, patch},
+    routing::{get, patch, post},
     Json, Router,
 };
+use cinematics::{CinematicsConfig, CinematicsService, Cinematographer};
 use db::{
     db_uuid::DbUuid,
     models::{
+        cinematic_brief::CreateCinematicBrief,
         deliverable::{CreateDeliverable, Deliverable, UpdateDeliverable},
         project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource},
+        review_comment::ReviewComment,
         review_token::ReviewToken,
     },
 };
@@ -147,6 +150,168 @@ async fn get_review_link(
     }))))
 }
 
+/// GET /api/deliverables/:id/comments — return all review comments for a deliverable
+/// Comments may be stored under deliverable_id or artifact_id (review page uses artifact_id as scope)
+async fn get_deliverable_comments(
+    State(d): State<DeploymentImpl>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<Vec<ReviewComment>>>, ApiError> {
+    let id = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
+    let pool = &d.db().pool;
+
+    // Try comments by deliverable_id first
+    let mut comments = ReviewComment::find_by_deliverable(pool, id).await?;
+
+    // If none found, check if deliverable has an artifact_id and search by that
+    // (the review page stores comments under artifact_id as the scope)
+    if comments.is_empty() {
+        let row: Option<(Vec<u8>,)> =
+            sqlx::query_as("SELECT artifact_id FROM deliverables WHERE id = ?")
+                .bind(id)
+                .fetch_optional(pool)
+                .await?;
+
+        if let Some((artifact_bytes,)) = row {
+            if artifact_bytes.len() == 16 {
+                if let Ok(artifact_id) = uuid::Uuid::from_slice(&artifact_bytes) {
+                    comments = ReviewComment::find_by_deliverable(pool, artifact_id).await?;
+                }
+            }
+        }
+    }
+
+    Ok(Json(ApiResponse::success(comments)))
+}
+
+/// POST /api/deliverables/:id/dispatch-revision
+/// Collects review comments, builds a revision brief, dispatches Editron, and moves status to revision.
+async fn dispatch_revision(
+    State(d): State<DeploymentImpl>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
+    let id = DbUuid::parse(&id)
+        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
+        .to_uuid();
+    let pool = &d.db().pool;
+
+    // Load deliverable
+    let deliverable = Deliverable::find_by_id(pool, id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Deliverable not found".into()))?;
+
+    // Gather comments (try deliverable_id, fall back to artifact_id)
+    let mut comments = ReviewComment::find_by_deliverable(pool, id).await?;
+    if comments.is_empty() {
+        let row: Option<(Vec<u8>,)> =
+            sqlx::query_as("SELECT artifact_id FROM deliverables WHERE id = ?")
+                .bind(id)
+                .fetch_optional(pool)
+                .await?;
+        if let Some((artifact_bytes,)) = row {
+            if artifact_bytes.len() == 16 {
+                if let Ok(artifact_id) = uuid::Uuid::from_slice(&artifact_bytes) {
+                    comments = ReviewComment::find_by_deliverable(pool, artifact_id).await?;
+                }
+            }
+        }
+    }
+
+    // Build revision script from comments
+    let revision_notes: Vec<String> = comments
+        .iter()
+        .map(|c| {
+            let tc = c
+                .timecode_seconds
+                .map(|s| {
+                    let m = (s as u64) / 60;
+                    let sec = (s as u64) % 60;
+                    format!("[{m}:{sec:02}] ")
+                })
+                .unwrap_or_else(|| "[General] ".to_string());
+            format!("{}{}", tc, c.content)
+        })
+        .collect();
+
+    let next_version = deliverable.revision_rounds_used + 2; // current is v2, next is v3 etc
+    let brief_title = format!("REVISION: {} — v{}", deliverable.title, next_version);
+    let brief_summary = format!(
+        "Revision pass for: {}\n\nOperator feedback:\n{}\n\nSirak Studios colour philosophy: enhance reality, not fabricate it.",
+        deliverable.title,
+        revision_notes.join("\n")
+    );
+
+    // Parse source_clips to extract asset IDs
+    let asset_ids: Vec<uuid::Uuid> = {
+        let clips_raw: Option<(String,)> =
+            sqlx::query_as("SELECT source_clips FROM deliverables WHERE id = ?")
+                .bind(id)
+                .fetch_optional(pool)
+                .await?;
+
+        if let Some((clips_json,)) = clips_raw {
+            serde_json::from_str::<serde_json::Value>(&clips_json)
+                .ok()
+                .and_then(|v| v.as_array().cloned())
+                .unwrap_or_default()
+                .iter()
+                .filter_map(|clip| {
+                    clip["proxy"].as_str().and_then(|p| {
+                        // extract artifact UUID from /api/artifacts/{uuid}/files/...
+                        p.split('/')
+                            .nth(3)
+                            .and_then(|s| uuid::Uuid::parse_str(s).ok())
+                    })
+                })
+                .collect::<std::collections::HashSet<_>>()
+                .into_iter()
+                .collect()
+        } else {
+            vec![]
+        }
+    };
+
+    // Dispatch Editron via CinematicsService
+    let svc = CinematicsService::new(pool.clone(), CinematicsConfig::default());
+    let brief = svc
+        .create_brief(CreateCinematicBrief {
+            project_id: deliverable.project_id,
+            requester_id: "editron".to_string(),
+            nora_session_id: None,
+            title: brief_title.clone(),
+            summary: brief_summary,
+            script: None,
+            asset_ids,
+            duration_seconds: None,
+            fps: None,
+            style_tags: vec!["revision".to_string(), "interview".to_string()],
+            metadata: Some(serde_json::json!({
+                "deliverable_id": id.to_string(),
+                "revision_round": deliverable.revision_rounds_used + 1,
+                "source": "review_comments",
+            })),
+        })
+        .await
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+
+    // Auto-trigger render
+    let brief = svc
+        .trigger_render(brief.id)
+        .await
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+
+    // Move deliverable to revision (increments revision counter)
+    Deliverable::move_status(pool, id, "revision").await?;
+
+    Ok(Json(ApiResponse::success(serde_json::json!({
+        "brief_id": brief.id,
+        "brief_title": brief_title,
+        "status": brief.status,
+        "comment_count": comments.len(),
+    }))))
+}
+
 /// DELETE /api/deliverables/:id
 async fn delete_deliverable(
     State(d): State<DeploymentImpl>,
@@ -181,5 +346,10 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         )
         .route("/deliverables/{id}/status", patch(move_deliverable_status))
         .route("/deliverables/{id}/review-link", get(get_review_link))
+        .route("/deliverables/{id}/comments", get(get_deliverable_comments))
+        .route(
+            "/deliverables/{id}/dispatch-revision",
+            post(dispatch_revision),
+        )
         .with_state(deployment.clone())
 }

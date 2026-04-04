@@ -18,8 +18,12 @@ import {
   User,
   Video,
 } from 'lucide-react';
-import { useMemo,useState } from 'react';
-import type { ArtifactPhase,ArtifactType, ExecutionArtifact } from 'shared/types';
+import { useMemo, useState } from 'react';
+import type {
+  ArtifactPhase,
+  ArtifactType,
+  ExecutionArtifact,
+} from 'shared/types';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -38,8 +42,10 @@ import { cn } from '@/lib/utils';
 
 import { ArtifactPreviewCard } from '../ArtifactPreviewCard';
 
-
-const VIDEO_EDIT_TYPES: ArtifactType[] = ['video_edit_session', 'render_deliverable'];
+const VIDEO_EDIT_TYPES: ArtifactType[] = [
+  'video_edit_session',
+  'render_deliverable',
+];
 
 type ViewMode = 'grid' | 'list';
 type SortField = 'date' | 'name' | 'type';
@@ -54,6 +60,7 @@ interface ArtifactGalleryProps {
   onDownload?: (artifact: ExecutionArtifact) => void;
   onUpload?: (file: File) => Promise<void>;
   onLinkAdd?: (url: string, name: string) => Promise<void>;
+  onArtifactUploadComplete?: () => void;
   className?: string;
   defaultView?: ViewMode;
   showHeader?: boolean;
@@ -77,9 +84,12 @@ const typeIcons: Partial<Record<ArtifactType, React.ReactNode>> = {
 
 // Phase colors
 const phaseColors: Record<ArtifactPhase, string> = {
-  planning: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
-  execution: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300',
-  verification: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
+  planning:
+    'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
+  execution:
+    'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300',
+  verification:
+    'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
 };
 
 function ArtifactListItem({
@@ -127,13 +137,20 @@ function ArtifactListItem({
             {artifact.artifact_type.replace(/_/g, ' ')}
           </Badge>
           {phase && (
-            <Badge variant="outline" className={cn('text-xs h-4', phaseColors[phase])}>
+            <Badge
+              variant="outline"
+              className={cn('text-xs h-4', phaseColors[phase])}
+            >
               {phase}
             </Badge>
           )}
           {createdBy && (
             <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
-              {createdBy === 'agent' ? <Bot className="h-3 w-3" /> : <User className="h-3 w-3" />}
+              {createdBy === 'agent' ? (
+                <Bot className="h-3 w-3" />
+              ) : (
+                <User className="h-3 w-3" />
+              )}
             </span>
           )}
         </div>
@@ -152,15 +169,23 @@ function ArtifactListItem({
             onClick={async (e) => {
               e.stopPropagation();
               try {
-                const res = await fetch(`/api/artifacts/${artifact.id}/review-link`, {
-                  method: 'POST',
-                  credentials: 'include',
-                });
+                const res = await fetch(
+                  `/api/artifacts/${artifact.id}/review-link`,
+                  {
+                    method: 'POST',
+                    credentials: 'include',
+                  }
+                );
                 const data = await res.json();
                 if (data?.data?.token) {
-                  window.open(`${window.location.origin}/review/${data.data.token}`, '_blank');
+                  window.open(
+                    `${window.location.origin}/review/${data.data.token}`,
+                    '_blank'
+                  );
                 }
-              } catch { /* ignore */ }
+              } catch {
+                /* ignore */
+              }
             }}
             className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 transition-colors"
           >
@@ -170,7 +195,8 @@ function ArtifactListItem({
         )}
         {onDownload && (artifact.file_path || artifact.content) && (
           <IconButton
-            variant="ghost" className="h-7 w-7"
+            variant="ghost"
+            className="h-7 w-7"
             onClick={(e) => {
               e.stopPropagation();
               onDownload();
@@ -182,7 +208,8 @@ function ArtifactListItem({
         )}
         {onPin && (
           <IconButton
-            variant="ghost" className={cn('h-7 w-7', isPinned && 'text-primary')}
+            variant="ghost"
+            className={cn('h-7 w-7', isPinned && 'text-primary')}
             onClick={(e) => {
               e.stopPropagation();
               onPin();
@@ -205,6 +232,7 @@ export function ArtifactGallery({
   onDownload,
   onUpload,
   onLinkAdd,
+  onArtifactUploadComplete,
   className,
   defaultView = 'grid',
   showHeader = true,
@@ -253,7 +281,8 @@ export function ArtifactGallery({
       let comparison = 0;
       switch (sortField) {
         case 'date':
-          comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          comparison =
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
           break;
         case 'name':
           comparison = a.title.localeCompare(b.title);
@@ -269,8 +298,12 @@ export function ArtifactGallery({
   }, [artifacts, searchQuery, filterPhase, sortField, sortDirection]);
 
   // Separate pinned artifacts
-  const pinnedArtifacts = filteredArtifacts.filter((a) => pinnedIds.includes(a.id));
-  const unpinnedArtifacts = filteredArtifacts.filter((a) => !pinnedIds.includes(a.id));
+  const pinnedArtifacts = filteredArtifacts.filter((a) =>
+    pinnedIds.includes(a.id)
+  );
+  const unpinnedArtifacts = filteredArtifacts.filter(
+    (a) => !pinnedIds.includes(a.id)
+  );
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -356,22 +389,22 @@ export function ArtifactGallery({
 
             {/* View toggle */}
             <div className="flex items-center border rounded-md">
-            <Button
-              variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
-              size="sm"
-              className="h-8 w-8 p-0 rounded-r-none"
-              onClick={() => setViewMode('grid')}
-            >
-              <Grid3X3 className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={viewMode === 'list' ? 'secondary' : 'ghost'}
-              size="sm"
-              className="h-8 w-8 p-0 rounded-l-none"
-              onClick={() => setViewMode('list')}
-            >
-              <List className="h-4 w-4" />
-            </Button>
+              <Button
+                variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-8 w-8 p-0 rounded-r-none"
+                onClick={() => setViewMode('grid')}
+              >
+                <Grid3X3 className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-8 w-8 p-0 rounded-l-none"
+                onClick={() => setViewMode('list')}
+              >
+                <List className="h-4 w-4" />
+              </Button>
             </div>
           </div>
         </div>
@@ -380,47 +413,69 @@ export function ArtifactGallery({
       {/* Toolbar */}
       {showHeader && (
         <div className="flex items-center gap-2 p-3 border-b">
-        {/* Search */}
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search artifacts..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-8 h-8"
-          />
-        </div>
+          {/* Search */}
+          <div className="relative flex-1 max-w-xs">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search artifacts..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-8 h-8"
+            />
+          </div>
 
-        {/* Phase filter */}
-        <Tabs value={filterPhase} onValueChange={(v) => setFilterPhase(v as FilterPhase)}>
-          <TabsList className="h-8">
-            <TabsTrigger value="all" className="text-xs h-6 px-2">All</TabsTrigger>
-            <TabsTrigger value="planning" className="text-xs h-6 px-2">Planning</TabsTrigger>
-            <TabsTrigger value="execution" className="text-xs h-6 px-2">Execution</TabsTrigger>
-            <TabsTrigger value="user" className="text-xs h-6 px-2">Uploads</TabsTrigger>
-          </TabsList>
-        </Tabs>
+          {/* Phase filter */}
+          <Tabs
+            value={filterPhase}
+            onValueChange={(v) => setFilterPhase(v as FilterPhase)}
+          >
+            <TabsList className="h-8">
+              <TabsTrigger value="all" className="text-xs h-6 px-2">
+                All
+              </TabsTrigger>
+              <TabsTrigger value="planning" className="text-xs h-6 px-2">
+                Planning
+              </TabsTrigger>
+              <TabsTrigger value="execution" className="text-xs h-6 px-2">
+                Execution
+              </TabsTrigger>
+              <TabsTrigger value="user" className="text-xs h-6 px-2">
+                Uploads
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
 
-        {/* Sort */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="gap-1 h-8">
-              {sortDirection === 'asc' ? <SortAsc className="h-3.5 w-3.5" /> : <SortDesc className="h-3.5 w-3.5" />}
-              {sortField === 'date' ? 'Date' : sortField === 'name' ? 'Name' : 'Type'}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => toggleSort('date')}>
-              Sort by Date {sortField === 'date' && (sortDirection === 'asc' ? '↑' : '↓')}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => toggleSort('name')}>
-              Sort by Name {sortField === 'name' && (sortDirection === 'asc' ? '↑' : '↓')}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => toggleSort('type')}>
-              Sort by Type {sortField === 'type' && (sortDirection === 'asc' ? '↑' : '↓')}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+          {/* Sort */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1 h-8">
+                {sortDirection === 'asc' ? (
+                  <SortAsc className="h-3.5 w-3.5" />
+                ) : (
+                  <SortDesc className="h-3.5 w-3.5" />
+                )}
+                {sortField === 'date'
+                  ? 'Date'
+                  : sortField === 'name'
+                    ? 'Name'
+                    : 'Type'}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => toggleSort('date')}>
+                Sort by Date{' '}
+                {sortField === 'date' && (sortDirection === 'asc' ? '↑' : '↓')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => toggleSort('name')}>
+                Sort by Name{' '}
+                {sortField === 'name' && (sortDirection === 'asc' ? '↑' : '↓')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => toggleSort('type')}>
+                Sort by Type{' '}
+                {sortField === 'type' && (sortDirection === 'asc' ? '↑' : '↓')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       )}
 
@@ -440,10 +495,18 @@ export function ArtifactGallery({
               onChange={(e) => setLinkName(e.target.value)}
               className="h-8 flex-1"
             />
-            <Button size="sm" onClick={handleLinkSubmit} disabled={!linkUrl.trim() || isUploading}>
+            <Button
+              size="sm"
+              onClick={handleLinkSubmit}
+              disabled={!linkUrl.trim() || isUploading}
+            >
               Add
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setShowUploadForm(false)}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowUploadForm(false)}
+            >
               Cancel
             </Button>
           </div>
@@ -468,7 +531,10 @@ export function ArtifactGallery({
                       artifact={artifact}
                       size="md"
                       showCreator
-                      onDownload={onDownload ? () => onDownload(artifact) : undefined}
+                      onDownload={
+                        onDownload ? () => onDownload(artifact) : undefined
+                      }
+                      onUploadComplete={onArtifactUploadComplete}
                     />
                   ))}
                 </div>
@@ -480,7 +546,9 @@ export function ArtifactGallery({
                       artifact={artifact}
                       isPinned
                       onPin={onUnpin ? () => onUnpin(artifact.id) : undefined}
-                      onDownload={onDownload ? () => onDownload(artifact) : undefined}
+                      onDownload={
+                        onDownload ? () => onDownload(artifact) : undefined
+                      }
                     />
                   ))}
                 </div>
@@ -498,7 +566,9 @@ export function ArtifactGallery({
                     artifact={artifact}
                     size="md"
                     showCreator
-                    onDownload={onDownload ? () => onDownload(artifact) : undefined}
+                    onDownload={
+                      onDownload ? () => onDownload(artifact) : undefined
+                    }
                   />
                 ))}
               </div>
@@ -509,7 +579,9 @@ export function ArtifactGallery({
                     key={artifact.id}
                     artifact={artifact}
                     onPin={onPin ? () => onPin(artifact.id) : undefined}
-                    onDownload={onDownload ? () => onDownload(artifact) : undefined}
+                    onDownload={
+                      onDownload ? () => onDownload(artifact) : undefined
+                    }
                   />
                 ))}
               </div>
@@ -523,7 +595,9 @@ export function ArtifactGallery({
             <div className="text-center py-8 text-muted-foreground">
               <FolderOpen className="h-12 w-12 mx-auto mb-2 opacity-50" />
               <p>No artifacts yet</p>
-              <p className="text-xs mt-1">Artifacts will appear here as work progresses</p>
+              <p className="text-xs mt-1">
+                Artifacts will appear here as work progresses
+              </p>
             </div>
           ) : null}
         </div>

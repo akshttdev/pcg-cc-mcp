@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PCG Overlays — Tech Briefing</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --pcg-black:   #000000;
+      --pcg-white:   #FFFFFF;
+      --pcg-gold:    #AF9041;
+      --pcg-gold-lt: #D4B96A;
+      --pcg-gold-dk: #7A6228;
+      --pcg-dark:    #0D0D0D;
+      --pcg-mid:     #1A1A1A;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #111;
+      font-family: 'Inter', sans-serif;
+      padding: 40px;
+      color: #fff;
+    }
+
+    h1 {
+      font-family: 'Cinzel', serif;
+      color: var(--pcg-gold);
+      font-size: 18px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: #888;
+      font-size: 13px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 48px;
+    }
+
+    .variant-group {
+      margin-bottom: 64px;
+    }
+
+    .variant-label {
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: #555;
+      margin-bottom: 16px;
+    }
+
+    /* ─── CANVAS ─── */
+    .canvas {
+      width: 100%;
+      aspect-ratio: 16/9;
+      background: #222 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Crect width='40' height='40' fill='%23222'/%3E%3Cline x1='0' y1='0' x2='40' y2='40' stroke='%23333' stroke-width='0.5'/%3E%3Cline x1='40' y1='0' x2='0' y2='40' stroke='%23333' stroke-width='0.5'/%3E%3C/svg%3E");
+      position: relative;
+      overflow: hidden;
+      border: 1px solid #333;
+    }
+
+    /* ─── SHARED LOWER THIRD WRAPPER ─── */
+    .lt-base {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+    }
+
+    /* ══════════════════════════════════════════════════════
+       VARIANT 1 — PERSON IDENTIFIER (Standard)
+    ══════════════════════════════════════════════════════ */
+    .lt-person {
+      bottom: 8%;
+      left: 0; right: 0;
+      position: absolute;
+      display: flex;
+      align-items: stretch;
+    }
+
+    .lt-person .gold-bar {
+      width: 0.4%;
+      background: var(--pcg-gold);
+      flex-shrink: 0;
+    }
+
+    .lt-person .content {
+      background: rgba(0,0,0,0.88);
+      padding: 1.6% 2.4% 1.6% 1.8%;
+      border-top: 1px solid rgba(175,144,65,0.3);
+      border-bottom: 1px solid rgba(175,144,65,0.3);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 0.3%;
+    }
+
+    .lt-person .name {
+      font-family: 'Cinzel', serif;
+      font-weight: 700;
+      font-size: 2.2vw;
+      color: var(--pcg-white);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      line-height: 1;
+    }
+
+    .lt-person .title {
+      font-family: 'Inter', sans-serif;
+      font-weight: 400;
+      font-size: 1.1vw;
+      color: var(--pcg-gold);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+    .lt-person .org-tag {
+      position: absolute;
+      right: 3%;
+      bottom: 8%;
+      transform: translateY(50%);
+      font-family: 'Cinzel', serif;
+      font-size: 0.9vw;
+      font-weight: 600;
+      letter-spacing: 0.25em;
+      color: var(--pcg-gold);
+      text-transform: uppercase;
+      opacity: 0.85;
+    }
+
+    /* ══════════════════════════════════════════════════════
+       VARIANT 2 — SEGMENT BANNER (Tech Briefing Opener)
+    ══════════════════════════════════════════════════════ */
+    .lt-segment {
+      bottom: 0; left: 0; right: 0;
+      position: absolute;
+      background: rgba(0,0,0,0.92);
+      border-top: 2px solid var(--pcg-gold);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.4% 3%;
+    }
+
+    .lt-segment .left {
+      display: flex;
+      align-items: center;
+      gap: 2%;
+    }
+
+    .lt-segment .series-tag {
+      font-family: 'Cinzel', serif;
+      font-size: 0.85vw;
+      font-weight: 600;
+      letter-spacing: 0.3em;
+      color: var(--pcg-gold);
+      text-transform: uppercase;
+      background: var(--pcg-gold-dk);
+      padding: 0.3em 0.8em;
+      border: 1px solid var(--pcg-gold);
+    }
+
+    .lt-segment .divider {
+      width: 1px;
+      height: 2.5vw;
+      background: rgba(175,144,65,0.4);
+      margin: 0 1.5%;
+    }
+
+    .lt-segment .topic {
+      font-family: 'Cinzel', serif;
+      font-size: 1.8vw;
+      font-weight: 700;
+      color: var(--pcg-white);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .lt-segment .episode {
+      font-family: 'Inter', sans-serif;
+      font-size: 0.85vw;
+      font-weight: 400;
+      color: #888;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+    .lt-segment .right {
+      font-family: 'Cinzel', serif;
+      font-size: 1vw;
+      font-weight: 600;
+      letter-spacing: 0.3em;
+      color: var(--pcg-gold);
+    }
+
+    /* ══════════════════════════════════════════════════════
+       VARIANT 3 — KEY DATA / STAT CALLOUT
+    ══════════════════════════════════════════════════════ */
+    .lt-stat {
+      bottom: 7%;
+      left: 3%;
+      position: absolute;
+      background: rgba(0,0,0,0.9);
+      border-left: 3px solid var(--pcg-gold);
+      border-top: 1px solid rgba(175,144,65,0.25);
+      border-bottom: 1px solid rgba(175,144,65,0.25);
+      padding: 1.5% 2.5% 1.5% 2%;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4%;
+    }
+
+    .lt-stat .stat-label {
+      font-family: 'Inter', sans-serif;
+      font-size: 0.75vw;
+      font-weight: 600;
+      letter-spacing: 0.25em;
+      color: var(--pcg-gold);
+      text-transform: uppercase;
+    }
+
+    .lt-stat .stat-number {
+      font-family: 'Cinzel', serif;
+      font-size: 3.5vw;
+      font-weight: 900;
+      color: var(--pcg-white);
+      line-height: 1;
+      letter-spacing: 0.02em;
+    }
+
+    .lt-stat .stat-desc {
+      font-family: 'Inter', sans-serif;
+      font-size: 0.85vw;
+      font-weight: 400;
+      color: #BDBDBD;
+      letter-spacing: 0.05em;
+      max-width: 20vw;
+    }
+
+    .lt-stat .pcg-bug {
+      position: absolute;
+      top: -0.6vw;
+      right: -0.5vw;
+      font-family: 'Cinzel', serif;
+      font-size: 0.65vw;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      color: var(--pcg-gold);
+      background: #000;
+      border: 1px solid var(--pcg-gold-dk);
+      padding: 0.2em 0.5em;
+    }
+
+    /* ══════════════════════════════════════════════════════
+       VARIANT 4 — GUEST / EXPERT (Two-line with org)
+    ══════════════════════════════════════════════════════ */
+    .lt-guest {
+      bottom: 8%;
+      left: 0;
+      position: absolute;
+      display: flex;
+      align-items: stretch;
+    }
+
+    .lt-guest .accent-block {
+      background: var(--pcg-gold);
+      width: 1%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      writing-mode: vertical-rl;
+      font-family: 'Cinzel', serif;
+      font-size: 0.6vw;
+      font-weight: 700;
+      letter-spacing: 0.3em;
+      color: #000;
+      text-transform: uppercase;
+      padding: 1.5% 0;
+    }
+
+    .lt-guest .content {
+      background: rgba(0,0,0,0.9);
+      padding: 1.4% 2.8% 1.4% 1.6%;
+      border-top: 1px solid rgba(175,144,65,0.3);
+      border-bottom: 1px solid rgba(175,144,65,0.3);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 0.2%;
+    }
+
+    .lt-guest .guest-tag {
+      font-family: 'Inter', sans-serif;
+      font-size: 0.7vw;
+      font-weight: 700;
+      letter-spacing: 0.3em;
+      color: var(--pcg-gold);
+      text-transform: uppercase;
+    }
+
+    .lt-guest .name {
+      font-family: 'Cinzel', serif;
+      font-weight: 700;
+      font-size: 2vw;
+      color: var(--pcg-white);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      line-height: 1;
+    }
+
+    .lt-guest .role {
+      font-family: 'Inter', sans-serif;
+      font-size: 0.85vw;
+      font-weight: 400;
+      color: #BDBDBD;
+      letter-spacing: 0.1em;
+    }
+
+    .lt-guest .org {
+      font-family: 'Inter', sans-serif;
+      font-size: 0.75vw;
+      font-weight: 600;
+      color: var(--pcg-gold);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+    /* ══════════════════════════════════════════════════════
+       VARIANT 5 — TOPIC TICKER / LOWER STRIP
+    ══════════════════════════════════════════════════════ */
+    .lt-ticker {
+      bottom: 0; left: 0; right: 0;
+      position: absolute;
+      display: flex;
+      align-items: stretch;
+      height: 7%;
+    }
+
+    .lt-ticker .ticker-label {
+      background: var(--pcg-gold);
+      display: flex;
+      align-items: center;
+      padding: 0 2%;
+      font-family: 'Cinzel', serif;
+      font-size: 0.85vw;
+      font-weight: 700;
+      letter-spacing: 0.25em;
+      color: #000;
+      text-transform: uppercase;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .lt-ticker .ticker-content {
+      background: rgba(0,0,0,0.95);
+      flex: 1;
+      display: flex;
+      align-items: center;
+      padding: 0 2%;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.85vw;
+      font-weight: 400;
+      color: var(--pcg-white);
+      letter-spacing: 0.05em;
+      border-top: 1px solid rgba(175,144,65,0.4);
+    }
+
+    .lt-ticker .ticker-dot {
+      color: var(--pcg-gold);
+      margin: 0 1.5%;
+      font-size: 0.6vw;
+    }
+
+    .lt-ticker .right-bug {
+      background: rgba(0,0,0,0.95);
+      border-top: 1px solid rgba(175,144,65,0.4);
+      border-left: 1px solid rgba(175,144,65,0.2);
+      display: flex;
+      align-items: center;
+      padding: 0 2%;
+      font-family: 'Cinzel', serif;
+      font-size: 0.75vw;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      color: var(--pcg-gold);
+      white-space: nowrap;
+    }
+
+    /* ══════════════════════════════════════════════════════
+       VARIANT 6 — FULL-WIDTH TITLE CARD (Segment intro)
+    ══════════════════════════════════════════════════════ */
+    .lt-title-card {
+      bottom: 0; left: 0; right: 0; top: 0;
+      position: absolute;
+      display: flex;
+      align-items: flex-end;
+      padding-bottom: 8%;
+      background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.5) 40%, transparent 70%);
+    }
+
+    .lt-title-card .inner {
+      padding: 0 4%;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6%;
+    }
+
+    .lt-title-card .eyebrow {
+      font-family: 'Inter', sans-serif;
+      font-size: 0.9vw;
+      font-weight: 600;
+      letter-spacing: 0.35em;
+      color: var(--pcg-gold);
+      text-transform: uppercase;
+    }
+
+    .lt-title-card .main-title {
+      font-family: 'Cinzel', serif;
+      font-size: 4.5vw;
+      font-weight: 900;
+      color: var(--pcg-white);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      line-height: 1.0;
+    }
+
+    .lt-title-card .gold-rule {
+      width: 8%;
+      height: 2px;
+      background: var(--pcg-gold);
+      margin: 0.8% 0;
+    }
+
+    .lt-title-card .subtitle-text {
+      font-family: 'Inter', sans-serif;
+      font-size: 1.1vw;
+      font-weight: 300;
+      color: rgba(255,255,255,0.75);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>PCG — Tech Briefing</h1>
+  <p class="subtitle">Overlay Graphics System · Brand: Black / White / Gold #AF9041 · Cinzel + Inter</p>
+
+  <!-- ─── VARIANT 1 ─── -->
+  <div class="variant-group">
+    <div class="variant-label">01 — Person Identifier (Standard)</div>
+    <div class="canvas">
+      <div class="lt-person">
+        <div class="gold-bar"></div>
+        <div class="content">
+          <div class="name">Jessy Artman</div>
+          <div class="title">Founder & Chief Executive — Power Club Global</div>
+        </div>
+      </div>
+      <div class="org-tag">PCG</div>
+    </div>
+  </div>
+
+  <!-- ─── VARIANT 2 ─── -->
+  <div class="variant-group">
+    <div class="variant-label">02 — Segment Banner (Tech Briefing Opener)</div>
+    <div class="canvas">
+      <div class="lt-segment">
+        <div class="left">
+          <div class="series-tag">Tech Briefing</div>
+          <div class="divider"></div>
+          <div style="display:flex;flex-direction:column;gap:0.3%;">
+            <div class="topic">AI Video Generation & Agent Avatars</div>
+            <div class="episode">Episode 12 · March 2026</div>
+          </div>
+        </div>
+        <div class="right">PCG</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── VARIANT 3 ─── -->
+  <div class="variant-group">
+    <div class="variant-label">03 — Key Data / Stat Callout</div>
+    <div class="canvas">
+      <div class="lt-stat" style="position:absolute;">
+        <div class="pcg-bug">PCG</div>
+        <div class="stat-label">Market Insight</div>
+        <div class="stat-number">$47B</div>
+        <div class="stat-desc">Global AI video generation market projected by 2030</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── VARIANT 4 ─── -->
+  <div class="variant-group">
+    <div class="variant-label">04 — Guest / Expert Overlay</div>
+    <div class="canvas">
+      <div class="lt-guest">
+        <div class="accent-block">Guest</div>
+        <div class="content">
+          <div class="guest-tag">Special Guest</div>
+          <div class="name">Dr. Marcus Webb</div>
+          <div class="role">Head of Generative AI Research</div>
+          <div class="org">Lightricks · Tel Aviv</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── VARIANT 5 ─── -->
+  <div class="variant-group">
+    <div class="variant-label">05 — Topic Ticker Strip</div>
+    <div class="canvas">
+      <div class="lt-ticker">
+        <div class="ticker-label">PCG Intel</div>
+        <div class="ticker-content">
+          LTX2 open-source video model drops — highest benchmarking open-weights text-to-video
+          <span class="ticker-dot">◆</span>
+          PCG AIgent avatar pipeline enters Phase 1 implementation
+          <span class="ticker-dot">◆</span>
+          APN Marketplace video node registration underway
+        </div>
+        <div class="right-bug">powerclubglobal.com</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── VARIANT 6 ─── -->
+  <div class="variant-group">
+    <div class="variant-label">06 — Full-Width Title Card (Cinematic Segment Intro)</div>
+    <div class="canvas">
+      <div class="lt-title-card">
+        <div class="inner">
+          <div class="eyebrow">PCG Tech Briefing · March 2026</div>
+          <div class="main-title">The Open-Source<br>Video Revolution</div>
+          <div class="gold-rule"></div>
+          <div class="subtitle-text">How LTX2 changes everything for brand content production</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

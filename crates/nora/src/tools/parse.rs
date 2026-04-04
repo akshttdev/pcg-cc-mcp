@@ -604,6 +604,22 @@ impl ExecutiveTools {
                     .unwrap_or(true);
                 Some(NoraExecutiveTool::FetchWebPage { url, extract_text })
             }
+            "scrape_page" => {
+                let url = arguments.get("url")?.as_str()?.to_string();
+                let use_js = arguments
+                    .get("use_js")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let extract_assets = arguments
+                    .get("extract_assets")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                Some(NoraExecutiveTool::ScrapePage {
+                    url,
+                    use_js,
+                    extract_assets,
+                })
+            }
             _ => None,
         }
     }

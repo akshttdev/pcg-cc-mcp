@@ -366,6 +366,14 @@ impl ExecutiveTools {
                     "text": ""
                 })
             }
+            "scrape_page" => {
+                let url = arguments.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                serde_json::json!({
+                    "success": false,
+                    "message": format!("Scraping '{}' requires admin tool access", url),
+                    "error": "scrape_page is an executive tool — invoke via Nora or a research workflow"
+                })
+            }
             _ => {
                 serde_json::json!({"success": false, "error": format!("Unknown tool: {}", name)})
             }

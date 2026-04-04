@@ -25,6 +25,7 @@ pub mod collaboration;
 pub mod comments;
 pub mod config;
 pub mod containers;
+pub mod dav;
 pub mod editron_export;
 pub mod filesystem;
 // pub mod github;
@@ -257,6 +258,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(artifacts::router(&deployment))
         .merge(review::protected_router(&deployment))
         .merge(editron_export::router(&deployment))
+        .merge(dav::router(&deployment))
         .merge(token_usage::router(&deployment))
         .merge(system_metrics::router(&deployment))
         .merge(event_stream::router(&deployment))
