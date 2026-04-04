@@ -17,9 +17,13 @@ pub struct PremiereXmlExporter {
     /// Timebase (frames per second as integer, e.g., 24 for 23.976)
     timebase: u32,
     /// Actual frame rate
-    frame_rate: f32,
+    pub frame_rate: f32,
     /// NTSC flag (for drop-frame timecode)
     ntsc: bool,
+    /// Optional root to prepend to media paths.
+    /// None  → use path as-is (filename only for packages)
+    /// Some  → prepend this prefix, e.g. "/Volumes/PCG APN"
+    media_root: Option<String>,
 }
 
 impl PremiereXmlExporter {
@@ -38,7 +42,44 @@ impl PremiereXmlExporter {
             timebase,
             frame_rate,
             ntsc,
+            media_root: None,
         }
+    }
+
+    /// Set a media root so all pathurls are prefixed with this path.
+    /// Use "/Volumes/PCG APN" to generate APN Drive-compatible XML.
+    pub fn with_media_root(mut self, root: impl Into<String>) -> Self {
+        self.media_root = Some(root.into());
+        self
+    }
+
+    /// Build a file:// URL for a media path, applying media_root if set.
+    fn media_url(&self, path: &Path) -> String {
+        let path_str = path.to_string_lossy();
+        let full = if let Some(ref root) = self.media_root {
+            // If the path is just a filename, join with root
+            if path.is_absolute() {
+                // Replace any existing prefix with the configured root
+                // (handles server-side absolute paths stored in DB)
+                let fname = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| path_str.to_string());
+                format!("{}/{}", root.trim_end_matches('/'), fname)
+            } else {
+                format!(
+                    "{}/{}",
+                    root.trim_end_matches('/'),
+                    path_str.trim_start_matches('/')
+                )
+            }
+        } else {
+            path_str.to_string()
+        };
+        format!(
+            "file://localhost/{}",
+            full.trim_start_matches('/').replace(' ', "%20")
+        )
     }
 
     /// Convert seconds to frame count
@@ -235,11 +276,7 @@ impl PremiereXmlExporter {
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "Unknown".to_string());
 
-        // Convert path to file:// URL
-        let file_url = format!(
-            "file://localhost{}",
-            path.to_string_lossy().replace(" ", "%20")
-        );
+        let file_url = self.media_url(path);
 
         xml.push_str(&format!(r#"                    <file id="{}">"#, file_id));
         xml.push('\n');
@@ -432,10 +469,7 @@ impl PremiereXmlExporter {
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "Unknown".to_string());
 
-        let file_url = format!(
-            "file://localhost{}",
-            clip.source.to_string_lossy().replace(" ", "%20")
-        );
+        let file_url = self.media_url(&clip.source);
 
         xml.push_str(&format!(r#"              <clipitem id="{}">"#, clipitem_id));
         xml.push('\n');
@@ -674,10 +708,7 @@ impl PremiereXmlExporter {
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "Unknown".to_string());
 
-        let file_url = format!(
-            "file://localhost{}",
-            clip.source.to_string_lossy().replace(" ", "%20")
-        );
+        let file_url = self.media_url(&clip.source);
 
         xml.push_str(&format!(
             r#"              <clipitem id="{}_{}">"#,

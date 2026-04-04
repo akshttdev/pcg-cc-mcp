@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Sami Satoshi v9 — PCG Tech Briefing Overlay Package</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --gold:    #AF9041;
+      --gold-lt: #D4B96A;
+      --gold-xlt:#EDE0B8;
+      --gold-dk: #7A6228;
+      --red:     #C0392B;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+
+    body {
+      background:#000;
+      display:flex;
+      gap:40px;
+      padding:36px;
+      font-family:'Inter',sans-serif;
+      color:#fff;
+      flex-wrap:wrap;
+      align-items:flex-start;
+    }
+
+    h2 {
+      font-family:'Cinzel',serif;
+      color:var(--gold);
+      font-size:11px;
+      letter-spacing:.25em;
+      text-transform:uppercase;
+      margin-bottom:8px;
+    }
+
+    .col { display:flex; flex-direction:column; gap:8px; }
+    .lbl { font-size:9px; font-weight:600; letter-spacing:.18em; text-transform:uppercase; color:#333; }
+
+    /* ─── 9:16 Stage ─── */
+    .stage {
+      width:360px;
+      aspect-ratio:9/16;
+      position:relative;
+      overflow:hidden;
+      background:#000;
+      flex-shrink:0;
+      container-type:inline-size;
+    }
+
+    .stage video {
+      position:absolute;
+      inset:0;
+      width:100%;
+      height:100%;
+      object-fit:cover;
+    }
+
+    /* Hide sync.so watermark with our own element in that zone */
+    .sync-cover {
+      position:absolute;
+      top:0; right:0;
+      width:32%; height:8%;
+      background:transparent;
+      z-index:30;
+    }
+
+    /* ══════════════════════════════
+       INTRO ANIMATION (0–4s)
+    ══════════════════════════════ */
+    .intro {
+      position:absolute;
+      inset:0;
+      z-index:100;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      background:#000;
+      animation: introFade 0.6s ease-out 3.8s forwards;
+    }
+    @keyframes introFade { to { opacity:0; pointer-events:none; } }
+
+    .intro-bg {
+      position:absolute; inset:0;
+      background:
+        radial-gradient(ellipse 60% 40% at 50% 50%, rgba(175,144,65,.08) 0%, transparent 70%),
+        linear-gradient(180deg, #000 0%, #06060a 100%);
+    }
+    /* Subtle grid on intro */
+    .intro-bg::before {
+      content:'';
+      position:absolute; inset:0;
+      background-image:
+        linear-gradient(rgba(175,144,65,.04) 1px,transparent 1px),
+        linear-gradient(90deg,rgba(175,144,65,.04) 1px,transparent 1px);
+      background-size:10% 10%;
+    }
+
+    .intro-logo {
+      width:28cqw; height:28cqw;
+      object-fit:contain;
+      filter:drop-shadow(0 0 20px rgba(175,144,65,.6));
+      opacity:0;
+      transform:scale(0.7);
+      animation: logoIn 0.7s cubic-bezier(0.34,1.56,0.64,1) 0.3s forwards;
+      position:relative; z-index:2;
+    }
+    @keyframes logoIn { to { opacity:1; transform:scale(1); } }
+
+    .intro-rule {
+      width:0; height:1px;
+      background:linear-gradient(90deg, transparent, var(--gold-lt), var(--gold), transparent);
+      margin:5cqw 0 4cqw;
+      animation: ruleIn 0.6s ease-out 0.9s forwards;
+      position:relative; z-index:2;
+    }
+    @keyframes ruleIn { to { width:60cqw; } }
+
+    .intro-series {
+      font-family:'Cinzel',serif;
+      font-size:4cqw;
+      font-weight:700;
+      letter-spacing:.35em;
+      color:var(--gold);
+      text-transform:uppercase;
+      opacity:0;
+      transform:translateY(8px);
+      animation: slideUp 0.5s ease-out 1.3s forwards;
+      position:relative; z-index:2;
+    }
+    .intro-divider {
+      font-family:'Inter',sans-serif;
+      font-size:2cqw;
+      font-weight:300;
+      letter-spacing:.25em;
+      color:rgba(255,255,255,.3);
+      text-transform:uppercase;
+      opacity:0;
+      margin-top:2cqw;
+      animation: slideUp 0.5s ease-out 1.6s forwards;
+      position:relative; z-index:2;
+    }
+    .intro-presenter {
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:1cqw;
+      margin-top:4cqw;
+      opacity:0;
+      animation: slideUp 0.5s ease-out 2s forwards;
+      position:relative; z-index:2;
+    }
+    .intro-with {
+      font-family:'Inter',sans-serif;
+      font-size:2cqw;
+      font-weight:300;
+      letter-spacing:.3em;
+      color:rgba(255,255,255,.4);
+      text-transform:uppercase;
+    }
+    .intro-name {
+      font-family:'Cinzel',serif;
+      font-size:6.5cqw;
+      font-weight:700;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+      background:linear-gradient(135deg,var(--gold-xlt),var(--gold),var(--gold-dk));
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+      background-clip:text;
+    }
+    .intro-role {
+      font-family:'Inter',sans-serif;
+      font-size:2.2cqw;
+      font-weight:400;
+      letter-spacing:.18em;
+      color:rgba(255,255,255,.6);
+      text-transform:uppercase;
+    }
+
+    @keyframes slideUp { to { opacity:1; transform:translateY(0); } }
+
+    /* ══════════════════════════════
+       PERSISTENT: CORNER BUG
+    ══════════════════════════════ */
+    .corner-bug {
+      position:absolute;
+      top:5%; left:4%;
+      z-index:50;
+      display:flex;
+      align-items:center;
+      gap:2cqw;
+      opacity:0;
+      animation: fadeIn 0.4s ease-out 4.2s forwards;
+    }
+    @keyframes fadeIn { to { opacity:1; } }
+
+    .bug-logo { width:9cqw; height:9cqw; object-fit:contain; filter:drop-shadow(0 0 5px rgba(175,144,65,.5)); }
+    .bug-text { display:flex; flex-direction:column; gap:.3cqw; }
+    .bug-name { font-family:'Cinzel',serif; font-size:2.8cqw; font-weight:700; letter-spacing:.2em; color:var(--gold); text-transform:uppercase; line-height:1; text-shadow:0 0 12px rgba(175,144,65,.4); }
+    .bug-sub  { font-family:'Inter',sans-serif; font-size:1.6cqw; font-weight:400; letter-spacing:.2em; color:rgba(255,255,255,.45); text-transform:uppercase; }
+
+    /* Cover sync.so zone — episode badge */
+    .ep-badge {
+      position:absolute;
+      top:5%; right:4%;
+      z-index:50;
+      display:flex;
+      align-items:center;
+      gap:0;
+      opacity:0;
+      animation: fadeIn 0.4s ease-out 4.2s forwards;
+    }
+    .ep-num {
+      background:linear-gradient(135deg,var(--gold-lt),var(--gold));
+      font-family:'Cinzel',serif; font-size:2cqw; font-weight:700;
+      letter-spacing:.12em; color:#000; padding:1cqw 2cqw;
+      text-transform:uppercase;
+    }
+    .ep-label {
+      background:rgba(0,0,0,.75); backdrop-filter:blur(12px);
+      border:1px solid rgba(175,144,65,.25); border-left:none;
+      font-family:'Inter',sans-serif; font-size:1.6cqw; font-weight:400;
+      letter-spacing:.18em; color:var(--gold); padding:1cqw 1.8cqw;
+      text-transform:uppercase;
+    }
+
+    /* ══════════════════════════════
+       LOWER THIRD — SAMI IDENTIFIER
+       Slides in at 4.5s, stays permanent
+    ══════════════════════════════ */
+    .overlay {
+      position:absolute;
+      left:0; right:0;
+      bottom:19%;
+      display:flex;
+      align-items:stretch;
+      transform:translateX(-100%);
+      animation: slideRight 0.6s cubic-bezier(0.22,1,0.36,1) 4.5s forwards;
+      z-index:40;
+    }
+    @keyframes slideRight { to { transform:translateX(0); } }
+
+    .lt-accent {
+      width:1.2cqw;
+      background:linear-gradient(180deg,var(--gold-lt),var(--gold),var(--gold-dk));
+      box-shadow:2px 0 10px rgba(175,144,65,.3);
+      flex-shrink:0;
+    }
+    .lt-body {
+      background:linear-gradient(90deg,rgba(0,0,0,.92) 0%,rgba(0,0,0,.7) 100%);
+      backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px);
+      padding:2.5cqw 4cqw 2.5cqw 3cqw;
+      border-top:1px solid rgba(212,185,106,.4);
+      border-bottom:1px solid rgba(212,185,106,.15);
+      display:flex; flex-direction:column; gap:1cqw;
+    }
+    .lt-tag {
+      font-family:'Inter',sans-serif; font-size:1.8cqw; font-weight:700;
+      letter-spacing:.28em; color:var(--gold-dk); text-transform:uppercase;
+    }
+    .lt-name {
+      font-family:'Cinzel',serif; font-size:6.5cqw; font-weight:700;
+      color:#fff; letter-spacing:.06em; text-transform:uppercase; line-height:1;
+    }
+    .lt-title {
+      font-family:'Inter',sans-serif; font-size:2.6cqw; font-weight:400;
+      color:var(--gold); letter-spacing:.14em; text-transform:uppercase;
+    }
+
+    /* ══════════════════════════════
+       TICKER CRAWL — bottom
+    ══════════════════════════════ */
+    .ticker {
+      position:absolute;
+      left:0; right:0; bottom:0;
+      display:flex;
+      align-items:stretch;
+      z-index:40;
+      opacity:0;
+      animation: fadeIn 0.5s ease-out 5.2s forwards;
+    }
+    .tick-bug {
+      background:linear-gradient(135deg,var(--gold-lt),var(--gold));
+      display:flex; align-items:center; padding:0 3cqw; flex-shrink:0; gap:1.5cqw;
+    }
+    .tick-bug img { width:5cqw; height:5cqw; object-fit:contain; }
+    .tick-bug-txt { font-family:'Cinzel',serif; font-size:2cqw; font-weight:700; letter-spacing:.15em; color:#000; white-space:nowrap; }
+    .tick-body {
+      flex:1; padding:1.8cqw 3cqw;
+      background:rgba(0,0,0,.94); backdrop-filter:blur(16px);
+      border-top:1px solid rgba(175,144,65,.45);
+      overflow:hidden; white-space:nowrap;
+    }
+    .tick-inner {
+      display:inline-block;
+      font-family:'Inter',sans-serif; font-size:2.2cqw; font-weight:400;
+      color:rgba(255,255,255,.88); letter-spacing:.04em;
+      animation: scroll 28s linear 5.5s infinite;
+    }
+    @keyframes scroll { 0%{transform:translateX(100%)} 100%{transform:translateX(-100%)} }
+    .tick-hi { color:var(--gold-lt); font-weight:600; }
+    .tick-sep { color:var(--gold); margin:0 2cqw; opacity:.5; }
+
+    /* ══════════════════════════════
+       POP-UP OVERLAYS (timed)
+    ══════════════════════════════ */
+
+    /* Base pop-up style */
+    .popup {
+      position:absolute;
+      left:4%; right:12%;
+      z-index:45;
+      opacity:0;
+      transform:translateY(12px);
+      pointer-events:none;
+    }
+    .popup.active {
+      animation: popIn 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards,
+                 popOut 0.3s ease-in var(--dur, 5s) forwards;
+    }
+    @keyframes popIn { to { opacity:1; transform:translateY(0); } }
+    @keyframes popOut { to { opacity:0; transform:translateY(-8px); } }
+
+    /* POPUP 1 — 3× chip density — 17s: "three times the compute density" */
+    #popup1 {
+      top:32%;
+      animation: popIn 0.4s cubic-bezier(0.34,1.56,0.64,1) 17s forwards,
+                 popOut 0.3s ease-in 31s forwards;
+    }
+    /* POPUP 2 — Live tokenized treasury — 46s: "live tokenized treasury positions" */
+    #popup2 {
+      top:30%;
+      animation: popIn 0.4s cubic-bezier(0.34,1.56,0.64,1) 46s forwards,
+                 popOut 0.3s ease-in 57s forwards;
+    }
+    /* POPUP 3 — Data sovereignty def — 64s: "data sovereignty conversation" */
+    #popup3 {
+      top:28%;
+      animation: popIn 0.4s cubic-bezier(0.34,1.56,0.64,1) 64s forwards,
+                 popOut 0.3s ease-in 76s forwards;
+    }
+    /* POPUP 4 — Quote — 79s: "most defensible competitive asset" */
+    #popup4 {
+      top:26%;
+      animation: popIn 0.4s cubic-bezier(0.34,1.56,0.64,1) 79s forwards,
+                 popOut 0.3s ease-in 90s forwards;
+    }
+    /* POPUP 5 — PCG positioning — 87s: "intelligent agents, sovereign infrastructure..." */
+    #popup5 {
+      top:28%;
+      animation: popIn 0.4s cubic-bezier(0.34,1.56,0.64,1) 87s forwards,
+                 popOut 0.3s ease-in 96s forwards;
+    }
+    /* POPUP 6 — CTA — 101s: "Stay sharp" outro */
+    #popup6 {
+      top:30%;
+      animation: popIn 0.4s cubic-bezier(0.34,1.56,0.64,1) 101s forwards,
+                 popOut 0.3s ease-in 105s forwards;
+    }
+
+    /* Stat popup */
+    .pop-stat {
+      background:rgba(4,4,6,.88);
+      backdrop-filter:blur(22px); -webkit-backdrop-filter:blur(22px);
+      border-left:1.2cqw solid var(--gold);
+      border-top:1px solid rgba(212,185,106,.25);
+      border-right:1px solid rgba(212,185,106,.08);
+      border-bottom:1px solid rgba(212,185,106,.08);
+      padding:3cqw 4cqw;
+      display:flex; flex-direction:column; gap:1.2cqw;
+      box-shadow:0 8px 32px rgba(0,0,0,.7), 0 0 24px rgba(175,144,65,.08);
+    }
+    .ps-label { font-family:'Inter',sans-serif; font-size:2cqw; font-weight:700; letter-spacing:.28em; color:var(--gold); text-transform:uppercase; }
+    .ps-number {
+      font-family:'Cinzel',serif; font-size:14cqw; font-weight:900; line-height:.85;
+      background:linear-gradient(135deg,var(--gold-xlt),var(--gold),var(--gold-dk));
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+      filter:drop-shadow(0 0 16px rgba(175,144,65,.3));
+    }
+    .ps-desc { font-family:'Inter',sans-serif; font-size:2.4cqw; font-weight:300; color:rgba(255,255,255,.7); letter-spacing:.04em; line-height:1.4; }
+
+    /* Breaking popup */
+    .pop-breaking {
+      display:flex; align-items:stretch; overflow:hidden;
+      box-shadow:0 4px 24px rgba(0,0,0,.8), 0 0 20px rgba(192,57,43,.2);
+    }
+    .pb-badge {
+      background:linear-gradient(135deg,var(--red),#8B1A1A);
+      display:flex; align-items:center; padding:0 3cqw;
+      font-family:'Cinzel',serif; font-size:2.2cqw; font-weight:700;
+      letter-spacing:.18em; color:#fff; white-space:nowrap; flex-shrink:0;
+      animation:pulseBrk 1.8s ease-in-out infinite;
+    }
+    @keyframes pulseBrk{0%,100%{box-shadow:0 0 16px rgba(192,57,43,.5)}50%{box-shadow:0 0 28px rgba(192,57,43,.9)}}
+    .pb-body {
+      flex:1; padding:2.5cqw 3cqw;
+      background:rgba(4,4,6,.92); backdrop-filter:blur(20px);
+      border:1px solid rgba(192,57,43,.3); border-left:none;
+      display:flex; flex-direction:column; gap:1cqw;
+    }
+    .pb-head { font-family:'Cinzel',serif; font-size:4cqw; font-weight:700; color:#fff; letter-spacing:.05em; text-transform:uppercase; line-height:1.15; }
+    .pb-sub  { font-family:'Inter',sans-serif; font-size:2.2cqw; font-weight:300; color:rgba(255,255,255,.5); letter-spacing:.08em; }
+
+    /* Definition popup */
+    .pop-def {
+      background:rgba(4,4,6,.9);
+      backdrop-filter:blur(22px); -webkit-backdrop-filter:blur(22px);
+      border:1px solid rgba(175,144,65,.18);
+      border-top:2px solid var(--gold);
+      padding:3cqw 3.5cqw;
+      display:flex; flex-direction:column; gap:1.5cqw;
+      box-shadow:0 8px 32px rgba(0,0,0,.7);
+    }
+    .pd-term {
+      font-family:'Cinzel',serif; font-size:4cqw; font-weight:700;
+      letter-spacing:.06em; text-transform:uppercase;
+      background:linear-gradient(135deg,var(--gold-xlt),var(--gold));
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+    }
+    .pd-rule { height:1px; background:linear-gradient(90deg,var(--gold),transparent); }
+    .pd-body { font-family:'Inter',sans-serif; font-size:2.4cqw; font-weight:300; color:rgba(255,255,255,.75); letter-spacing:.03em; line-height:1.6; }
+    .pd-src  { font-family:'Inter',sans-serif; font-size:1.8cqw; font-weight:700; letter-spacing:.22em; color:var(--gold-dk); text-transform:uppercase; }
+
+    /* Quote popup */
+    .pop-quote {
+      background:rgba(4,4,6,.86);
+      backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+      border-left:1.5cqw solid var(--gold);
+      padding:3cqw 3.5cqw;
+      display:flex; flex-direction:column; gap:1.5cqw;
+      box-shadow:0 8px 32px rgba(0,0,0,.6);
+    }
+    .pq-mark { font-family:'Cinzel',serif; font-size:9cqw; font-weight:900; color:var(--gold); opacity:.2; line-height:.65; }
+    .pq-text { font-family:'Cinzel',serif; font-size:4.2cqw; font-weight:600; color:#fff; letter-spacing:.03em; line-height:1.4; }
+    .pq-rule { width:10cqw; height:1px; background:linear-gradient(90deg,var(--gold-lt),var(--gold-dk)); }
+    .pq-attr { font-family:'Inter',sans-serif; font-size:2.2cqw; font-weight:500; color:var(--gold); letter-spacing:.14em; text-transform:uppercase; }
+
+    /* CTA popup */
+    .pop-cta {
+      display:flex; align-items:stretch; overflow:hidden;
+      box-shadow:0 4px 24px rgba(0,0,0,.7), 0 0 16px rgba(175,144,65,.1);
+    }
+    .pc-icon {
+      background:linear-gradient(135deg,var(--gold-lt),var(--gold));
+      display:flex; align-items:center; justify-content:center;
+      padding:0 3.5cqw; font-size:6cqw; flex-shrink:0;
+    }
+    .pc-body {
+      flex:1; padding:2.5cqw 3cqw;
+      background:rgba(4,4,6,.92); backdrop-filter:blur(20px);
+      border:1px solid rgba(175,144,65,.2); border-left:none;
+      display:flex; flex-direction:column; gap:1cqw;
+    }
+    .pc-action { font-family:'Inter',sans-serif; font-size:2cqw; font-weight:700; letter-spacing:.25em; color:var(--gold); text-transform:uppercase; }
+    .pc-handle { font-family:'Cinzel',serif; font-size:4.5cqw; font-weight:700; color:#fff; letter-spacing:.06em; }
+
+  </style>
+</head>
+<body>
+
+  <!-- THUMBNAIL COLUMN -->
+  <div class="col">
+    <h2>Thumbnail Card</h2>
+    <div class="lbl">9:16 · Social Preview</div>
+    <div class="stage" style="position:relative;">
+      <!-- Background frame -->
+      <img src="sami-frame.jpg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"/>
+      <!-- Gradient overlay for thumbnail treatment -->
+      <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.15) 0%,rgba(0,0,0,.05) 40%,rgba(0,0,0,.6) 72%,rgba(0,0,0,.96) 100%);"></div>
+      <!-- Gold horizontal accent line -->
+      <div style="position:absolute;left:0;right:0;top:67%;height:2px;background:linear-gradient(90deg,var(--gold-lt),var(--gold),var(--gold-dk));"></div>
+      <!-- PCG logo top left -->
+      <div style="position:absolute;top:5%;left:4%;display:flex;align-items:center;gap:2cqw;">
+        <img src="pcg-logo.png" style="width:10cqw;height:10cqw;object-fit:contain;filter:drop-shadow(0 0 6px rgba(175,144,65,.5));" alt="PCG"/>
+        <div>
+          <div style="font-family:'Cinzel',serif;font-size:2.8cqw;font-weight:700;letter-spacing:.22em;color:var(--gold);text-transform:uppercase;line-height:1;text-shadow:0 0 12px rgba(175,144,65,.4);">PCG</div>
+          <div style="font-family:'Inter',sans-serif;font-size:1.6cqw;font-weight:400;letter-spacing:.2em;color:rgba(255,255,255,.45);text-transform:uppercase;">Tech Briefing</div>
+        </div>
+      </div>
+      <!-- Episode badge top right -->
+      <div style="position:absolute;top:5%;right:4%;display:flex;align-items:center;">
+        <div style="background:linear-gradient(135deg,var(--gold-lt),var(--gold));font-family:'Cinzel',serif;font-size:2cqw;font-weight:700;letter-spacing:.12em;color:#000;padding:1cqw 2cqw;text-transform:uppercase;">LIVE</div>
+        <div style="background:rgba(0,0,0,.8);backdrop-filter:blur(12px);border:1px solid rgba(175,144,65,.25);border-left:none;font-family:'Inter',sans-serif;font-size:1.6cqw;font-weight:400;letter-spacing:.18em;color:var(--gold);padding:1cqw 1.8cqw;text-transform:uppercase;">March 2026</div>
+      </div>
+      <!-- Lower content block -->
+      <div style="position:absolute;left:0;right:0;bottom:18%;padding:0 4% 0 4%;">
+        <div style="font-family:'Inter',sans-serif;font-size:2cqw;font-weight:700;letter-spacing:.28em;color:var(--gold);text-transform:uppercase;margin-bottom:1.5cqw;">PCG Technology Correspondent</div>
+        <div style="font-family:'Cinzel',serif;font-size:9.5cqw;font-weight:900;color:#fff;letter-spacing:.04em;text-transform:uppercase;line-height:.95;text-shadow:0 4px 24px rgba(0,0,0,.8);margin-bottom:3cqw;">SAMI<br>SATOSHI</div>
+        <div style="height:1px;background:linear-gradient(90deg,var(--gold-lt),var(--gold),transparent);margin-bottom:2.5cqw;width:70%;"></div>
+        <div style="display:flex;flex-direction:column;gap:1.5cqw;">
+          <div style="display:flex;align-items:center;gap:2cqw;">
+            <div style="width:1.5cqw;height:1.5cqw;border-radius:50%;background:var(--gold);box-shadow:0 0 6px rgba(175,144,65,.6);flex-shrink:0;"></div>
+            <div style="font-family:'Inter',sans-serif;font-size:2.4cqw;font-weight:400;color:rgba(255,255,255,.8);letter-spacing:.06em;">NVIDIA Next-Gen Chips · 3× Density</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:2cqw;">
+            <div style="width:1.5cqw;height:1.5cqw;border-radius:50%;background:var(--gold);box-shadow:0 0 6px rgba(175,144,65,.6);flex-shrink:0;"></div>
+            <div style="font-family:'Inter',sans-serif;font-size:2.4cqw;font-weight:400;color:rgba(255,255,255,.8);letter-spacing:.06em;">State Street Tokenized Treasury</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:2cqw;">
+            <div style="width:1.5cqw;height:1.5cqw;border-radius:50%;background:var(--gold);box-shadow:0 0 6px rgba(175,144,65,.6);flex-shrink:0;"></div>
+            <div style="font-family:'Inter',sans-serif;font-size:2.4cqw;font-weight:400;color:rgba(255,255,255,.8);letter-spacing:.06em;">Data Sovereignty · On-Premise AI</div>
+          </div>
+        </div>
+      </div>
+      <!-- Bottom ticker -->
+      <div style="position:absolute;left:0;right:0;bottom:0;display:flex;align-items:stretch;">
+        <div style="background:linear-gradient(135deg,var(--gold-lt),var(--gold));display:flex;align-items:center;padding:0 3%;flex-shrink:0;">
+          <img src="pcg-logo.png" style="width:5cqw;height:5cqw;object-fit:contain;" alt="PCG"/>
+        </div>
+        <div style="flex:1;padding:2cqw 3cqw;background:rgba(0,0,0,.95);border-top:1px solid rgba(175,144,65,.45);">
+          <span style="font-family:'Inter',sans-serif;font-size:2cqw;font-weight:400;color:rgba(255,255,255,.85);letter-spacing:.04em;">
+            <span style="color:var(--gold-lt);font-weight:600;">PCG INTEL</span>
+            <span style="color:var(--gold);margin:0 2cqw;">◆</span>
+            powerclubglobal.com
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LIVE OVERLAY COLUMN -->
+  <div class="col">
+    <h2>Live Overlay Preview</h2>
+    <div class="lbl">Hit play — all elements animate in on cue</div>
+    <div class="stage">
+      <video src="file:///home/pythia/pcg-cc-mcp/dev_assets/video_gen/video/sami_pcg_techbrief_v9.mp4"
+             controls autoplay muted playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"></video>
+
+      <!-- Cover sync.so watermark -->
+      <div class="sync-cover"></div>
+
+      <!-- ── INTRO ANIMATION ── -->
+      <div class="intro">
+        <div class="intro-bg"></div>
+        <img class="intro-logo" src="pcg-logo.png" alt="PCG"/>
+        <div class="intro-rule"></div>
+        <div class="intro-series">Tech Briefing</div>
+        <div class="intro-divider">Power Club Global · March 2026</div>
+        <div class="intro-presenter">
+          <div class="intro-with">with</div>
+          <div class="intro-name">Sami Satoshi</div>
+          <div class="intro-role">PCG Technology Correspondent</div>
+        </div>
+      </div>
+
+      <!-- ── CORNER BUG ── -->
+      <div class="corner-bug">
+        <img class="bug-logo" src="pcg-logo.png" alt="PCG"/>
+        <div class="bug-text">
+          <div class="bug-name">PCG</div>
+          <div class="bug-sub">Tech Briefing</div>
+        </div>
+      </div>
+
+      <!-- ── EPISODE BADGE (covers sync.so) ── -->
+      <div class="ep-badge">
+        <div class="ep-num">EP 01</div>
+        <div class="ep-label">March 2026</div>
+      </div>
+
+      <!-- ── LOWER THIRD ── -->
+      <div class="overlay">
+        <div class="lt-accent"></div>
+        <div class="lt-body">
+          <div class="lt-tag">PCG Tech Briefing</div>
+          <div class="lt-name">Sami Satoshi</div>
+          <div class="lt-title">Technology Correspondent</div>
+        </div>
+      </div>
+
+      <!-- ── TICKER ── -->
+      <div class="ticker">
+        <div class="tick-bug">
+          <img src="pcg-logo.png" alt="PCG"/>
+          <div class="tick-bug-txt">PCG Intel</div>
+        </div>
+        <div class="tick-body">
+          <div class="tick-inner">
+            <span class="tick-hi">NVIDIA NEXT-GEN CHIPS</span> — 3× Density · 2-Year Compressed Timeline
+            <span class="tick-sep">◆</span>
+            <span class="tick-hi">CRYPTO SETTLEMENT</span> — Major Exchange Reaches Agreement
+            <span class="tick-sep">◆</span>
+            <span class="tick-hi">STATE STREET</span> — Tokenized Treasury Goes Live
+            <span class="tick-sep">◆</span>
+            <span class="tick-hi">DATA SOVEREIGNTY</span> — On-Premise AI Mandate Grows
+            <span class="tick-sep">◆</span>
+            Sovereign Infrastructure · Tokenized Incentive Design
+            <span class="tick-sep">◆</span>
+            powerclubglobal.com
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+          </div>
+        </div>
+      </div>
+
+      <!-- ── POP-UP 1: 3× chip density — 17s ── -->
+      <div class="popup" id="popup1">
+        <div class="pop-stat">
+          <div class="ps-label">Next-Gen Inference Chips · Compute Density</div>
+          <div class="ps-number">3×</div>
+          <div class="ps-desc">Compresses general-purpose AI deployment timeline by at least 2 years</div>
+        </div>
+      </div>
+
+      <!-- ── POP-UP 2: LIVE TOKENIZED TREASURY — 46s ── -->
+      <div class="popup" id="popup2">
+        <div class="pop-breaking">
+          <div class="pb-badge">⚡ Live</div>
+          <div class="pb-body">
+            <div class="pb-head">3 of Top 10<br>Asset Managers</div>
+            <div class="pb-sub">Live tokenized treasury positions · Permissioned ledgers · Real capital</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── POP-UP 3: DATA SOVEREIGNTY DEFINITION — 64s ── -->
+      <div class="popup" id="popup3">
+        <div class="pop-def">
+          <div class="pd-term">Data Sovereignty</div>
+          <div class="pd-rule"></div>
+          <div class="pd-body">Sovereign compute clusters, on-premise AI inference, and private knowledge graphs — now boardroom priorities as proprietary data becomes the most defensible competitive asset.</div>
+          <div class="pd-src">PCG Tech Briefing · March 2026</div>
+        </div>
+      </div>
+
+      <!-- ── POP-UP 4: PULL QUOTE — 79s ── -->
+      <div class="popup" id="popup4">
+        <div class="pop-quote">
+          <div class="pq-mark">"</div>
+          <div class="pq-text">Their proprietary data is their most defensible competitive asset.</div>
+          <div class="pq-rule"></div>
+          <div class="pq-attr">Sami Satoshi · PCG Tech Briefing</div>
+        </div>
+      </div>
+
+      <!-- ── POP-UP 5: PCG POSITIONING — 87s ── -->
+      <div class="popup" id="popup5">
+        <div class="pop-def">
+          <div class="pd-term">PCG Is Building At<br>The Intersection</div>
+          <div class="pd-rule"></div>
+          <div class="pd-body">
+            <span style="color:var(--gold-lt);font-weight:600;">Intelligent Agents</span> ·
+            <span style="color:var(--gold-lt);font-weight:600;">Sovereign Infrastructure</span> ·
+            <span style="color:var(--gold-lt);font-weight:600;">Tokenized Incentive Design</span>
+          </div>
+          <div class="pd-src">powerclubglobal.com</div>
+        </div>
+      </div>
+
+      <!-- ── POP-UP 6: CTA — 101s ── -->
+      <div class="popup" id="popup6">
+        <div class="pop-cta">
+          <div class="pc-icon">◈</div>
+          <div class="pc-body">
+            <div class="pc-action">Stay Sharp · Follow PCG</div>
+            <div class="pc-handle">@powerclubglobal</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <div style="font-size:9px;color:#2a2a2a;letter-spacing:.1em;text-transform:uppercase;margin-top:4px;">
+      Intro 0–4s · Lower third slides at 4.5s · Pop-ups auto-timed to content
+    </div>
+  </div>
+
+</body>
+</html>

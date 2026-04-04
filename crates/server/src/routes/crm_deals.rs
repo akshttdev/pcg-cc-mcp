@@ -5,9 +5,9 @@
 //! AI automations (research, proposals, decks) are in `crm_deal_automations`.
 
 use axum::{
-    Extension, Json, Router,
     extract::{Path, Query, State},
     routing::{delete, get, patch, post},
+    Extension, Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -23,8 +23,8 @@ use uuid::Uuid;
 
 use super::{crm_deal_automations, crm_deal_transitions};
 use crate::{
-    DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param,
-    middleware::access_control::AccessContext,
+    error::ApiError, helpers::uuid_params::parse_db_uuid_param,
+    middleware::access_control::AccessContext, DeploymentImpl,
 };
 
 #[derive(Debug, Serialize)]
@@ -573,6 +573,15 @@ async fn create_deal(
     .execute(pool)
     .await?;
 
+    // Always register deal in knowledge graph (unconditional)
+    {
+        let pool_bg = pool.clone();
+        let deal_id = deal.id.clone();
+        tokio::spawn(async move {
+            crm_deal_automations::register_deal_in_kg_pub(&pool_bg, &deal_id).await;
+        });
+    }
+
     // Auto-trigger stage-entry hooks if deal starts in Intel stage
     if let Some(ref stage_id) = deal.crm_stage_id {
         if let Ok(stage) =
@@ -616,6 +625,13 @@ async fn update_deal(
     let id = parse_db_uuid_param(&id, "deal ID")?;
     require_deal_org_access(&access_context, pool, &id).await?;
     let deal = CrmDeal::update(pool, &id, data).await?;
+    {
+        let pool_bg = pool.clone();
+        let deal_id = deal.id.clone();
+        tokio::spawn(async move {
+            crm_deal_automations::register_deal_in_kg_pub(&pool_bg, &deal_id).await;
+        });
+    }
     Ok(Json(ApiResponse::success(deal)))
 }
 

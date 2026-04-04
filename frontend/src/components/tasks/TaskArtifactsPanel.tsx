@@ -1,17 +1,21 @@
 import {
   Download,
   Eye,
-  FileOutput,
   FileText,
   FolderOpen,
   Image,
   Link2,
+  Package,
   Pin,
   Upload,
   Video,
 } from 'lucide-react';
-import { useCallback,useState } from 'react';
-import type { ArtifactPhase,ArtifactType, ExecutionArtifact } from 'shared/types';
+import { useCallback, useState } from 'react';
+import type {
+  ArtifactPhase,
+  ArtifactType,
+  ExecutionArtifact,
+} from 'shared/types';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -20,6 +24,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { editronApi } from '@/lib/api';
 import { formatDate } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 
@@ -81,32 +86,42 @@ function ArtifactCard({
   const metadata = artifact.metadata ? JSON.parse(artifact.metadata) : {};
   const phase = metadata.phase as ArtifactPhase | undefined;
 
-  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await fetch(`/api/artifacts/${artifact.id}/upload`, {
-        method: 'POST',
-        credentials: 'include',
-        body: fd,
-      });
-      const data = await res.json();
-      if (data.success) {
-        onFileUploaded?.(artifact.id, data.file_path);
+  const handleFileUpload = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      setUploading(true);
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch(`/api/artifacts/${artifact.id}/upload`, {
+          method: 'POST',
+          credentials: 'include',
+          body: fd,
+        });
+        const data = await res.json();
+        if (data.success) {
+          onFileUploaded?.(artifact.id, data.file_path);
+        }
+      } finally {
+        setUploading(false);
+        e.target.value = '';
       }
-    } finally {
-      setUploading(false);
-      e.target.value = '';
-    }
-  }, [artifact.id, onFileUploaded]);
+    },
+    [artifact.id, onFileUploaded]
+  );
 
   const isPreviewable = [
-    'screenshot', 'visual_brief', 'walkthrough', 'browser_recording',
-    'media_ingest_manifest', 'media_analysis_report', 'video_edit_session',
-    'render_deliverable', 'research_report', 'strategy_document',
+    'screenshot',
+    'visual_brief',
+    'walkthrough',
+    'browser_recording',
+    'media_ingest_manifest',
+    'media_analysis_report',
+    'video_edit_session',
+    'render_deliverable',
+    'research_report',
+    'strategy_document',
   ].includes(artifact.artifact_type);
 
   const isExportable = ['video_edit_session', 'render_deliverable'].includes(
@@ -114,12 +129,19 @@ function ArtifactCard({
   );
 
   return (
-    <Card className={cn('transition-all hover:shadow-md', isPinned && 'ring-2 ring-primary')}>
+    <Card
+      className={cn(
+        'transition-all hover:shadow-md',
+        isPinned && 'ring-2 ring-primary'
+      )}
+    >
       <CardContent className="p-3">
         <div className="flex items-start gap-3">
           {/* Icon */}
           <div className="p-2 rounded-lg bg-muted">
-            {artifactTypeIcons[artifact.artifact_type] || <FileText className="h-4 w-4" />}
+            {artifactTypeIcons[artifact.artifact_type] || (
+              <FileText className="h-4 w-4" />
+            )}
           </div>
 
           {/* Content */}
@@ -136,7 +158,10 @@ function ArtifactCard({
                 {artifact.artifact_type}
               </Badge>
               {phase && (
-                <Badge variant="outline" className={cn('text-xs', phaseConfig[phase].color)}>
+                <Badge
+                  variant="outline"
+                  className={cn('text-xs', phaseConfig[phase].color)}
+                >
                   {phaseConfig[phase].label}
                 </Badge>
               )}
@@ -151,7 +176,9 @@ function ArtifactCard({
           <div className="flex items-center gap-1">
             {isPreviewable && onPreview && (
               <IconButton
-                variant="ghost" onClick={onPreview} className="h-7 w-7"
+                variant="ghost"
+                onClick={onPreview}
+                className="h-7 w-7"
                 icon={Eye}
                 label="Preview"
                 iconClassName="h-3.5 w-3.5"
@@ -159,7 +186,9 @@ function ArtifactCard({
             )}
             {onDownload && (artifact.file_path || artifact.content) && (
               <IconButton
-                variant="ghost" onClick={onDownload} className="h-7 w-7"
+                variant="ghost"
+                onClick={onDownload}
+                className="h-7 w-7"
                 icon={Download}
                 label="Download"
                 iconClassName="h-3.5 w-3.5"
@@ -183,17 +212,24 @@ function ArtifactCard({
                 />
               )}
             </div>
-            {isExportable && onExportXml && (
-              <IconButton
-                variant="ghost" onClick={onExportXml} className="h-7 w-7"
-                icon={FileOutput}
-                label="Export XML"
-                iconClassName="h-3.5 w-3.5"
-              />
+            {isExportable && (
+              <a
+                href={editronApi.getPackageUrl(artifact.id)}
+                download
+                title="Download Premiere Package (XML + video) — unzip and open the XML in Premiere Pro"
+                className="h-7 w-7 flex items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-blue-500 transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onExportXml?.();
+                }}
+              >
+                <Package className="h-3.5 w-3.5" />
+              </a>
             )}
             {onPin && (
               <IconButton
-                variant="ghost" onClick={onPin}
+                variant="ghost"
+                onClick={onPin}
                 className={cn('h-7 w-7', isPinned && 'text-primary')}
                 icon={Pin}
                 label={isPinned ? 'Unpin' : 'Pin'}
@@ -248,7 +284,12 @@ function UploadSection({
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         {onUpload && (
-          <Button variant="outline" size="sm" className="relative" disabled={isUploading}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="relative"
+            disabled={isUploading}
+          >
             <Upload className="h-4 w-4 mr-1" />
             {isUploading ? 'Uploading...' : 'Upload File'}
             <input
@@ -296,7 +337,11 @@ function UploadSection({
               <Button size="sm" onClick={handleLinkSubmit} disabled={!linkUrl}>
                 Add
               </Button>
-              <Button size="sm" variant="outline" onClick={() => setShowLinkForm(false)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowLinkForm(false)}
+              >
                 Cancel
               </Button>
             </div>
@@ -375,9 +420,13 @@ export function TaskArtifactsPanel({
                   artifact={artifact}
                   isPinned
                   onPin={onUnpin ? () => onUnpin(artifact.id) : undefined}
-                  onDownload={onDownload ? () => onDownload(artifact) : undefined}
+                  onDownload={
+                    onDownload ? () => onDownload(artifact) : undefined
+                  }
                   onPreview={onPreview ? () => onPreview(artifact) : undefined}
-                  onExportXml={onExportXml ? () => onExportXml(artifact) : undefined}
+                  onExportXml={
+                    onExportXml ? () => onExportXml(artifact) : undefined
+                  }
                   onFileUploaded={onFileUploaded}
                 />
               ))}
@@ -415,9 +464,13 @@ export function TaskArtifactsPanel({
                         ? () => onPin(artifact.id)
                         : undefined
                   }
-                  onDownload={onDownload ? () => onDownload(artifact) : undefined}
+                  onDownload={
+                    onDownload ? () => onDownload(artifact) : undefined
+                  }
                   onPreview={onPreview ? () => onPreview(artifact) : undefined}
-                  onExportXml={onExportXml ? () => onExportXml(artifact) : undefined}
+                  onExportXml={
+                    onExportXml ? () => onExportXml(artifact) : undefined
+                  }
                   onFileUploaded={onFileUploaded}
                 />
               ))
@@ -433,7 +486,9 @@ export function TaskArtifactsPanel({
                 onPin={onPin ? () => onPin(artifact.id) : undefined}
                 onDownload={onDownload ? () => onDownload(artifact) : undefined}
                 onPreview={onPreview ? () => onPreview(artifact) : undefined}
-                onExportXml={onExportXml ? () => onExportXml(artifact) : undefined}
+                onExportXml={
+                  onExportXml ? () => onExportXml(artifact) : undefined
+                }
               />
             ))}
             {groupedArtifacts.planning.length === 0 && (
@@ -452,7 +507,9 @@ export function TaskArtifactsPanel({
                 onPin={onPin ? () => onPin(artifact.id) : undefined}
                 onDownload={onDownload ? () => onDownload(artifact) : undefined}
                 onPreview={onPreview ? () => onPreview(artifact) : undefined}
-                onExportXml={onExportXml ? () => onExportXml(artifact) : undefined}
+                onExportXml={
+                  onExportXml ? () => onExportXml(artifact) : undefined
+                }
               />
             ))}
             {groupedArtifacts.execution.length === 0 && (
@@ -471,7 +528,9 @@ export function TaskArtifactsPanel({
                 onPin={onPin ? () => onPin(artifact.id) : undefined}
                 onDownload={onDownload ? () => onDownload(artifact) : undefined}
                 onPreview={onPreview ? () => onPreview(artifact) : undefined}
-                onExportXml={onExportXml ? () => onExportXml(artifact) : undefined}
+                onExportXml={
+                  onExportXml ? () => onExportXml(artifact) : undefined
+                }
               />
             ))}
             {groupedArtifacts.user.length === 0 && (

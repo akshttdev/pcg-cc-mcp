@@ -1,13 +1,13 @@
 use axum::{
-    Router,
-    http::{Method, StatusCode, header},
+    http::{header, Method, StatusCode},
     middleware,
     response::IntoResponse,
-    routing::{IntoMakeService, get},
+    routing::{get, IntoMakeService},
+    Router,
 };
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
-use crate::{DeploymentImpl, middleware as app_middleware};
+use crate::{middleware as app_middleware, DeploymentImpl};
 
 pub mod activity;
 pub mod agent_flow_events;
@@ -25,6 +25,7 @@ pub mod collaboration;
 pub mod comments;
 pub mod config;
 pub mod containers;
+pub mod dav;
 pub mod editron_export;
 pub mod filesystem;
 // pub mod github;
@@ -55,7 +56,6 @@ pub mod email_accounts;
 pub mod entity_conversion;
 pub mod event_stream;
 pub mod events;
-pub mod pipeline_events;
 pub mod execution_processes;
 pub mod execution_summaries;
 pub mod feedback;
@@ -92,6 +92,7 @@ pub mod pcg_router;
 pub mod peer_rewards;
 pub mod permissions;
 pub mod persons;
+pub mod pipeline_events;
 pub mod project_boards;
 pub mod project_controllers;
 pub mod project_folders;
@@ -257,6 +258,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(artifacts::router(&deployment))
         .merge(review::protected_router(&deployment))
         .merge(editron_export::router(&deployment))
+        .merge(dav::router(&deployment))
         .merge(token_usage::router(&deployment))
         .merge(system_metrics::router(&deployment))
         .merge(event_stream::router(&deployment))

@@ -1,7 +1,7 @@
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     routing::{delete, get, post},
+    Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -18,8 +18,8 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use crate::{
-    DeploymentImpl, error::ApiError, helpers::uuid_params::parse_db_uuid_param,
-    routes::nora::get_nora_instance,
+    error::ApiError, helpers::uuid_params::parse_db_uuid_param, routes::nora::get_nora_instance,
+    DeploymentImpl,
 };
 
 #[derive(Debug, Deserialize)]
@@ -395,8 +395,10 @@ fn extract_text_from_response(resp: &serde_json::Value) -> String {
 // ── Company Brand Profile ────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct CompanyBrandProfile {
     pub id: DbUuid,
+    #[serde(rename = "organizationId")]
     pub company_id: DbUuid,
     pub tagline: Option<String>,
     pub primary_color: String,
@@ -437,11 +439,13 @@ async fn get_company_brand_profile(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<Option<CompanyBrandProfile>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id = parse_db_uuid_param(&id, "company ID")?;
+    let uuid =
+        Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid company ID".into()))?;
+    let id_bytes = uuid.as_bytes().to_vec();
     let profile = sqlx::query_as::<_, CompanyBrandProfile>(
         "SELECT * FROM company_brand_profiles WHERE company_id = ?",
     )
-    .bind(&id)
+    .bind(&id_bytes)
     .fetch_optional(pool)
     .await
     .map_err(|e| ApiError::BadRequest(format!("DB error: {}", e)))?;
@@ -455,7 +459,9 @@ async fn upsert_company_brand_profile(
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<ApiResponse<CompanyBrandProfile>>, ApiError> {
     let pool = &deployment.db().pool;
-    let id = parse_db_uuid_param(&id, "company ID")?;
+    let uuid =
+        Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest("Invalid company ID".into()))?;
+    let id_bytes = uuid.as_bytes().to_vec();
 
     // Upsert: insert or update on conflict
     sqlx::query(
@@ -491,34 +497,34 @@ async fn upsert_company_brand_profile(
            founding_year = COALESCE(excluded.founding_year, founding_year),
            updated_at = datetime('now','subsec')",
     )
-    .bind(&id)
+    .bind(&id_bytes)
     .bind(body["tagline"].as_str())
-    .bind(body["primary_color"].as_str())
-    .bind(body["secondary_color"].as_str())
-    .bind(body["accent_color"].as_str())
-    .bind(body["typography_heading"].as_str())
-    .bind(body["typography_body"].as_str())
-    .bind(body["logo_url"].as_str())
+    .bind(body["primaryColor"].as_str().or(body["primary_color"].as_str()))
+    .bind(body["secondaryColor"].as_str().or(body["secondary_color"].as_str()))
+    .bind(body["accentColor"].as_str().or(body["accent_color"].as_str()))
+    .bind(body["typographyHeading"].as_str().or(body["typography_heading"].as_str()))
+    .bind(body["typographyBody"].as_str().or(body["typography_body"].as_str()))
+    .bind(body["logoUrl"].as_str().or(body["logo_url"].as_str()))
     .bind(body["industry"].as_str())
-    .bind(body["market_position"].as_str())
-    .bind(body["unique_value_proposition"].as_str())
-    .bind(body["mission_statement"].as_str())
-    .bind(body["vision_statement"].as_str())
-    .bind(body["brand_values"].as_str())
-    .bind(body["brand_voice"].as_str())
-    .bind(body["brand_archetype"].as_str())
-    .bind(body["target_audience"].as_str())
-    .bind(body["icp_description"].as_str())
-    .bind(body["competitor_brands"].as_str())
+    .bind(body["marketPosition"].as_str().or(body["market_position"].as_str()))
+    .bind(body["uniqueValueProposition"].as_str().or(body["unique_value_proposition"].as_str()))
+    .bind(body["missionStatement"].as_str().or(body["mission_statement"].as_str()))
+    .bind(body["visionStatement"].as_str().or(body["vision_statement"].as_str()))
+    .bind(body["brandValues"].as_str().or(body["brand_values"].as_str()))
+    .bind(body["brandVoice"].as_str().or(body["brand_voice"].as_str()))
+    .bind(body["brandArchetype"].as_str().or(body["brand_archetype"].as_str()))
+    .bind(body["targetAudience"].as_str().or(body["target_audience"].as_str()))
+    .bind(body["icpDescription"].as_str().or(body["icp_description"].as_str()))
+    .bind(body["competitorBrands"].as_str().or(body["competitor_brands"].as_str()))
     .bind(body["differentiators"].as_str())
-    .bind(body["content_pillars"].as_str())
-    .bind(body["content_tone"].as_str())
-    .bind(body["website_url"].as_str())
-    .bind(body["social_instagram"].as_str())
-    .bind(body["social_twitter"].as_str())
-    .bind(body["social_linkedin"].as_str())
-    .bind(body["founder_name"].as_str())
-    .bind(body["founding_year"].as_str())
+    .bind(body["contentPillars"].as_str().or(body["content_pillars"].as_str()))
+    .bind(body["contentTone"].as_str().or(body["content_tone"].as_str()))
+    .bind(body["websiteUrl"].as_str().or(body["website_url"].as_str()))
+    .bind(body["socialInstagram"].as_str().or(body["social_instagram"].as_str()))
+    .bind(body["socialTwitter"].as_str().or(body["social_twitter"].as_str()))
+    .bind(body["socialLinkedin"].as_str().or(body["social_linkedin"].as_str()))
+    .bind(body["founderName"].as_str().or(body["founder_name"].as_str()))
+    .bind(body["foundingYear"].as_str().or(body["founding_year"].as_str()))
     .execute(pool)
     .await
     .map_err(|e| ApiError::BadRequest(format!("DB error: {}", e)))?;
@@ -526,7 +532,7 @@ async fn upsert_company_brand_profile(
     let profile = sqlx::query_as::<_, CompanyBrandProfile>(
         "SELECT * FROM company_brand_profiles WHERE company_id = ?",
     )
-    .bind(&id)
+    .bind(&id_bytes)
     .fetch_one(pool)
     .await
     .map_err(|e| ApiError::BadRequest(format!("DB error: {}", e)))?;

@@ -1215,3 +1215,89 @@ Kubernetes Manifests (Future):
 ---
 
 *This Priority Release Plan is a living document. Update weekly based on progress and learnings.*
+
+---
+
+## 🔄 Workflow Session Notes — April 2026
+
+**Session Date:** 2026-04-03 / 2026-04-04
+**Context:** Nora Orchestration & Real-Time Client Workflow sprint
+
+### What We Were Building
+
+The core goal of this session was to close the loop on two end-to-end workflows that Bodhi/admin should be able to trigger from any channel (phone, SMS, Discord, dashboard):
+
+1. **"Research this company and build a profile"** — Nora dispatches Scout, Scout scrapes the prospect's website, results flow into the CRM as a company record + brand guide.
+2. **"Spin up a landing page for this client"** — Research → generate site code → push to GitHub → deploy to Vercel → return preview URL.
+
+### What Was Completed This Session
+
+#### Scout Scraping Capability (`crates/nora/`)
+Scout previously had only `SearchWeb` (Exa) and `FetchWebPage` (static HTTP, no JS). Three problems blocked real prospect research:
+- Wix/React/SPA sites returned empty HTML on static fetch
+- No structured asset extraction (logos, colors, contact info, social links)
+- Scrape results written directly to `persons.intelligence_raw` with no CRM write-back
+
+**Changes made:**
+- `tools/types.rs` — Added `ScrapePage { url, use_js, extract_assets }` variant
+- `tools/schemas.rs` — Added `scrape_page` to both `get_openai_tool_schemas()` (Nora) and `get_user_tool_schemas()`
+- `tools/parse.rs` — Parse `"scrape_page"` tool call from Claude's function calling
+- `tools/execute_impl.rs` — Full `execute_scrape_page()`: Playwright → static fallback, extracts title/description/og:image/all-images/logos/favicon/emails/phones/social links/hex brand colors from CSS
+- `tools/user_scoped.rs` — Stub returning informative error (executive-only)
+- `execution/research.rs` — `ScrapedPage` struct, `extract_page_assets()` helper, `ResearchTools::scrape_url()`, and new "Website Scrape" / "Asset Collection" / "Brand Audit" stage handler in `ResearchExecutor` that auto-detects URL from context, renders via Playwright if needed, and synthesises brand intelligence via LLM
+
+**Modi Nochi case study (same session):** Validated the workflow end-to-end manually — audited modinochi.com, created PCG company/client/person records, generated brand guide, then rebuilt the entire website as Next.js 16 with real images/content. Deployed to Vercel at `modi-nochi-eta.vercel.app`, pushed to public GitHub at `https://github.com/Bodhi1998/modi-nochi`.
+
+#### Company model fix (`crates/db/src/models/company.rs`)
+- `find_by_id()` — Fixed TEXT vs BLOB UUID mismatch: `WHERE id = ? OR lower(hex(id)) = lower(?)`
+- `update()` — Restructured WHERE clause that was producing invalid SQL in same dual-format pattern
+
+### Remaining Gaps — What Needs to Be Built Next
+
+#### Gap 1: Nora → CRM Bridge (HIGH PRIORITY)
+Nora has no tools to read or write CRM records directly. Scout research results don't automatically create company/person/client records. Required tools:
+- `lookup_or_create_company(name, website)` → `Company::find_or_create()`
+- `lookup_or_create_person(name, company_name)` → `Person::find_or_create()`
+- `create_client(org_id, company_id)` → client record in `clients` table
+- `trigger_brand_research(org_id)` → calls existing `POST /api/organizations/:id/brand-research`
+- `create_intake_item(person_id, notes)` → intake pipeline entry
+
+Without these, the SMS/phone intake flow ("Nora, research Modi Nochi") cannot automatically create a client profile. The user must visit the dashboard and trigger it manually.
+
+#### Gap 2: Scout → Automatic CRM Write-back (HIGH PRIORITY)
+After a "Website Scrape" stage completes, Scout should:
+1. Call `Company::find_or_create()` with scraped name/website
+2. Write intelligence fields (`intelligence_summary`, `intelligence_raw`, `intelligence_status='done'`)
+3. Store logos/images as `ProjectKnowledgeSource` artifacts
+
+Currently: results sit in `persons.intelligence_raw` only.
+
+#### Gap 3: Auri Execution Environment (MEDIUM PRIORITY — enables landing page spin-up)
+`ExecuteCode` in `execute_impl.rs` returns "requires sandboxed environment" (line 3925). Auri is recognized as `"CLAUDE_CODE"` in the agent routing but has no actual execution path. Required:
+- Sandboxed shell container (Docker) with `git`, `gh`, `vercel`, `node`, `cargo` available
+- `ExecuteShellCommand(command, cwd, timeout)` tool that pipes to that container
+- Nora dispatches Auri with a `create_next_app` + `vercel deploy` workflow
+- Returns preview URL as task output
+
+This is what closes the "spin up a landing page in real time" use case.
+
+#### Gap 4: Channel Round-Trips
+| Channel | Inbound | Outbound | Gap |
+|---------|---------|----------|-----|
+| Dashboard | ✅ | ✅ | None |
+| Phone (voice) | ✅ | ✅ | None |
+| SMS | ✅ `twilio/sms.rs` | ✅ | Nora tool calls during SMS not streaming back to conversation |
+| Discord | ✅ `routes/discord.rs` | ✅ `send_discord_message` tool | Session continuity — no persistent thread-to-session mapping |
+
+#### Gap 5: Nora Admin Context (LOW — cleanup)
+Nora's RBAC enforcement (admin/Bodhi gets full tool access vs. client gets limited) should be derived from `AccessContext.is_admin` at the agent level. Currently the system prompt enforces this at the text level but the tool schema returned is the same regardless of user role.
+
+### Onboarding Notes for New Team Members
+
+**Workflow to understand first:** `crates/nora/src/agent.rs` → `crates/nora/src/tools/execute_impl.rs` → `crates/nora/src/execution/` (engine, research, crawler, artifact)
+
+**The intake pipeline:** `POST /api/call-intake/email` → auto-creates tasks from trusted sender emails. See `memory/intake-pipeline.md`.
+
+**Key quirk:** UUID storage is inconsistent — some rows are TEXT (dashes), some are BLOB (hex). All queries on `companies`, `agents`, `deliverables` should use `WHERE id = ? OR lower(hex(id)) = lower(?)`. See `crates/db/src/models/company.rs` for the canonical pattern.
+
+**Branch status:** This session's work (Scout scraping, company model fixes) is uncommitted on `sloperation329`. To be merged to `main` before new team member onboarding.

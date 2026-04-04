@@ -747,6 +747,31 @@ impl ExecutiveTools {
                     }
                 }
             }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "scrape_page",
+                    "description": "Deep-scrape a web page and extract structured brand/company intelligence: images, logos, contact info, social links, brand colors, and page text. Use this for prospect research, brand audits, and competitor intelligence. For Wix/React/SPA sites pass use_js=true to render JavaScript first.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "url": {
+                                "type": "string",
+                                "description": "The URL to scrape"
+                            },
+                            "use_js": {
+                                "type": "boolean",
+                                "description": "Use a real browser (Playwright) to render JavaScript before scraping. Required for Wix, React, Angular, and other JS-heavy sites. Slower but gets full page content."
+                            },
+                            "extract_assets": {
+                                "type": "boolean",
+                                "description": "Extract structured assets: images, logos, contact info, social media links, and brand colors. Defaults to true."
+                            }
+                        },
+                        "required": ["url"]
+                    }
+                }
+            }),
         ]
     }
 
@@ -904,6 +929,31 @@ impl ExecutiveTools {
                             "include_html": {
                                 "type": "boolean",
                                 "description": "Whether to include the full rendered HTML in the response (default: false — text only)"
+                            }
+                        },
+                        "required": ["url"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "scrape_page",
+                    "description": "Deep-scrape a web page and extract structured brand/company intelligence: images, logos, contact info, social links, brand colors, and page text. Use this for prospect research, brand audits, and competitor intelligence. For Wix/React/SPA sites pass use_js=true.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "url": {
+                                "type": "string",
+                                "description": "The URL to scrape"
+                            },
+                            "use_js": {
+                                "type": "boolean",
+                                "description": "Use a real browser (Playwright) to render JavaScript before scraping. Required for Wix, React, Angular, and other JS-heavy sites."
+                            },
+                            "extract_assets": {
+                                "type": "boolean",
+                                "description": "Extract structured assets: images, logos, contact info, social links, brand colors. Defaults to true."
                             }
                         },
                         "required": ["url"]

@@ -1,5 +1,10 @@
-import { makeRequest, handleApiResponse } from './client';
-import type { PersonRecord, CompanyContactMethod, InvoiceRecord, OrgBrandProfile } from './communication';
+import { handleApiResponse, makeRequest } from './client';
+import type {
+  CompanyContactMethod,
+  InvoiceRecord,
+  OrgBrandProfile,
+  PersonRecord,
+} from './communication';
 
 // ── Proposals ─────────────────────────────────────────────────────────────────
 
@@ -70,11 +75,14 @@ export const proposalsApi = {
     organization_id?: string;
     limit?: number;
   }): Promise<ProposalRecord[]> => {
-    const qs = params ? '?' + new URLSearchParams(
-      Object.entries(params)
-        .filter(([, v]) => v != null)
-        .map(([k, v]) => [k, String(v)])
-    ) : '';
+    const qs = params
+      ? '?' +
+        new URLSearchParams(
+          Object.entries(params)
+            .filter(([, v]) => v != null)
+            .map(([k, v]) => [k, String(v)])
+        )
+      : '';
     const response = await makeRequest(`/api/proposals${qs}`);
     return handleApiResponse<ProposalRecord[]>(response);
   },
@@ -93,7 +101,10 @@ export const proposalsApi = {
     return handleApiResponse<ProposalRecord>(response);
   },
 
-  update: async (id: string, data: UpdateProposalInput): Promise<ProposalRecord> => {
+  update: async (
+    id: string,
+    data: UpdateProposalInput
+  ): Promise<ProposalRecord> => {
     const response = await makeRequest(`/api/proposals/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -102,7 +113,10 @@ export const proposalsApi = {
     return handleApiResponse<ProposalRecord>(response);
   },
 
-  moveStatus: async (id: string, status: ProposalStatus): Promise<ProposalRecord> => {
+  moveStatus: async (
+    id: string,
+    status: ProposalStatus
+  ): Promise<ProposalRecord> => {
     const response = await makeRequest(`/api/proposals/${id}/status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -112,7 +126,9 @@ export const proposalsApi = {
   },
 
   delete: async (id: string): Promise<void> => {
-    const response = await makeRequest(`/api/proposals/${id}`, { method: 'DELETE' });
+    const response = await makeRequest(`/api/proposals/${id}`, {
+      method: 'DELETE',
+    });
     return handleApiResponse<void>(response);
   },
 
@@ -124,26 +140,47 @@ export const proposalsApi = {
       location?: string;
       agenda?: string;
       channel?: string;
-      invitees: Array<{ person_id: string; channel?: string; channel_address?: string }>;
+      invitees: Array<{
+        person_id: string;
+        channel?: string;
+        channel_address?: string;
+      }>;
     }
-  ): Promise<{ meeting: ScheduledMeetingRecord; dispatched: InviteDispatchResult[] }> => {
-    const response = await makeRequest(`/api/proposals/${id}/schedule-meeting`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
+  ): Promise<{
+    meeting: ScheduledMeetingRecord;
+    dispatched: InviteDispatchResult[];
+  }> => {
+    const response = await makeRequest(
+      `/api/proposals/${id}/schedule-meeting`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      }
+    );
     return handleApiResponse(response);
   },
 
-  listScheduledMeetings: async (id: string): Promise<ScheduledMeetingRecord[]> => {
-    const response = await makeRequest(`/api/proposals/${id}/scheduled-meetings`);
+  listScheduledMeetings: async (
+    id: string
+  ): Promise<ScheduledMeetingRecord[]> => {
+    const response = await makeRequest(
+      `/api/proposals/${id}/scheduled-meetings`
+    );
     return handleApiResponse(response);
   },
 };
 
 // ── Deliverables ──────────────────────────────────────────────────────────────
 
-export type DeliverableType = 'video' | 'audio' | 'graphic' | 'copy' | 'code' | 'document' | 'other';
+export type DeliverableType =
+  | 'video'
+  | 'audio'
+  | 'graphic'
+  | 'copy'
+  | 'code'
+  | 'document'
+  | 'other';
 export type DeliverableStatus =
   | 'working'
   | 'internal_review'
@@ -168,6 +205,7 @@ export interface DeliverableRecord {
   delivered_at?: string;
   created_at: string;
   updated_at: string;
+  cinematic_brief_id?: string | null;
 }
 
 export interface CreateDeliverableInput {
@@ -183,20 +221,28 @@ export interface CreateDeliverableInput {
 
 export const deliverablesApi = {
   listForProject: async (projectId: string): Promise<DeliverableRecord[]> => {
-    const response = await makeRequest(`/api/projects/${projectId}/deliverables`);
+    const response = await makeRequest(
+      `/api/projects/${projectId}/deliverables`
+    );
     return handleApiResponse<DeliverableRecord[]>(response);
   },
 
   create: async (data: CreateDeliverableInput): Promise<DeliverableRecord> => {
-    const response = await makeRequest(`/api/projects/${data.project_id}/deliverables`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
+    const response = await makeRequest(
+      `/api/projects/${data.project_id}/deliverables`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      }
+    );
     return handleApiResponse<DeliverableRecord>(response);
   },
 
-  update: async (id: string, data: Partial<CreateDeliverableInput> & { final_link?: string }): Promise<DeliverableRecord> => {
+  update: async (
+    id: string,
+    data: Partial<CreateDeliverableInput> & { final_link?: string }
+  ): Promise<DeliverableRecord> => {
     const response = await makeRequest(`/api/deliverables/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -205,7 +251,10 @@ export const deliverablesApi = {
     return handleApiResponse<DeliverableRecord>(response);
   },
 
-  moveStatus: async (id: string, status: DeliverableStatus): Promise<DeliverableRecord> => {
+  moveStatus: async (
+    id: string,
+    status: DeliverableStatus
+  ): Promise<DeliverableRecord> => {
     const response = await makeRequest(`/api/deliverables/${id}/status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -215,34 +264,89 @@ export const deliverablesApi = {
   },
 
   delete: async (id: string): Promise<void> => {
-    const response = await makeRequest(`/api/deliverables/${id}`, { method: 'DELETE' });
+    const response = await makeRequest(`/api/deliverables/${id}`, {
+      method: 'DELETE',
+    });
     return handleApiResponse<void>(response);
   },
+
+  getComments: async (id: string): Promise<DeliverableComment[]> => {
+    const response = await makeRequest(`/api/deliverables/${id}/comments`);
+    return handleApiResponse<DeliverableComment[]>(response);
+  },
+
+  dispatchRevision: async (
+    id: string
+  ): Promise<{
+    brief_id: string;
+    brief_title: string;
+    status: string;
+    comment_count: number;
+  }> => {
+    const response = await makeRequest(
+      `/api/deliverables/${id}/dispatch-revision`,
+      { method: 'POST' }
+    );
+    return handleApiResponse(response);
+  },
 };
+
+export interface DeliverableComment {
+  id: string;
+  deliverable_id: string;
+  timecode_seconds?: number | null;
+  author_name: string;
+  author_email?: string | null;
+  content: string;
+  is_resolved: boolean;
+  resolved_by?: string | null;
+  resolved_at?: string | null;
+  created_at: string;
+}
 
 // ── Command Center ────────────────────────────────────────────────────────────
 
 export interface CommandCenterSnapshot {
   overdue_tasks: Array<{
-    id: string; title: string; project_name: string; due_date: string; assignee_name?: string;
+    id: string;
+    title: string;
+    project_name: string;
+    due_date: string;
+    assignee_name?: string;
   }>;
   deliverables_due_this_week: Array<{
-    id: string; title: string; deliverable_type: string; project_name: string;
-    status: string; due_date: string;
+    id: string;
+    title: string;
+    deliverable_type: string;
+    project_name: string;
+    status: string;
+    due_date: string;
   }>;
   waiting_on_client_projects: Array<{
-    id: string; name: string; client_name?: string; updated_at: string;
+    id: string;
+    name: string;
+    client_name?: string;
+    updated_at: string;
   }>;
   follow_up_required: Array<{
-    id: string; full_name: string; email?: string;
-    follow_up_attempts: number; lifecycle_stage: string;
+    id: string;
+    full_name: string;
+    email?: string;
+    follow_up_attempts: number;
+    lifecycle_stage: string;
   }>;
   proposals_awaiting_approval: Array<{
-    id: string; title: string; lead_name?: string;
-    quote_amount_vibe: number; created_at: string;
+    id: string;
+    title: string;
+    lead_name?: string;
+    quote_amount_vibe: number;
+    created_at: string;
   }>;
   closed_unpaid_projects: Array<{
-    id: string; name: string; client_name?: string; updated_at: string;
+    id: string;
+    name: string;
+    client_name?: string;
+    updated_at: string;
   }>;
 }
 
@@ -272,8 +376,23 @@ export interface CreateInvoiceInput {
 }
 
 export const invoicesApi = {
-  list: async (params?: { invoice_type?: string; status?: string; person_id?: string; project_id?: string; limit?: number }): Promise<InvoiceRecord[]> => {
-    const qs = params ? '?' + new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]))).toString() : '';
+  list: async (params?: {
+    invoice_type?: string;
+    status?: string;
+    person_id?: string;
+    project_id?: string;
+    limit?: number;
+  }): Promise<InvoiceRecord[]> => {
+    const qs = params
+      ? '?' +
+        new URLSearchParams(
+          Object.fromEntries(
+            Object.entries(params)
+              .filter(([, v]) => v != null)
+              .map(([k, v]) => [k, String(v)])
+          )
+        ).toString()
+      : '';
     const response = await makeRequest(`/api/invoices${qs}`);
     return handleApiResponse<InvoiceRecord[]>(response);
   },
@@ -292,7 +411,10 @@ export const invoicesApi = {
     return handleApiResponse<InvoiceRecord>(response);
   },
 
-  update: async (id: string, data: Partial<CreateInvoiceInput>): Promise<InvoiceRecord> => {
+  update: async (
+    id: string,
+    data: Partial<CreateInvoiceInput>
+  ): Promise<InvoiceRecord> => {
     const response = await makeRequest(`/api/invoices/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -311,7 +433,9 @@ export const invoicesApi = {
   },
 
   delete: async (id: string): Promise<void> => {
-    const response = await makeRequest(`/api/invoices/${id}`, { method: 'DELETE' });
+    const response = await makeRequest(`/api/invoices/${id}`, {
+      method: 'DELETE',
+    });
     return handleApiResponse<void>(response);
   },
 };
@@ -361,11 +485,17 @@ export interface CompanyRecord {
 }
 
 export const companiesApi = {
-  list: async (params?: { limit?: number; has_platform_org?: boolean; created_by_org_id?: string }): Promise<CompanyRecord[]> => {
+  list: async (params?: {
+    limit?: number;
+    has_platform_org?: boolean;
+    created_by_org_id?: string;
+  }): Promise<CompanyRecord[]> => {
     const qs = new URLSearchParams();
     if (params?.limit != null) qs.set('limit', String(params.limit));
-    if (params?.has_platform_org != null) qs.set('has_platform_org', String(params.has_platform_org));
-    if (params?.created_by_org_id != null) qs.set('created_by_org_id', params.created_by_org_id);
+    if (params?.has_platform_org != null)
+      qs.set('has_platform_org', String(params.has_platform_org));
+    if (params?.created_by_org_id != null)
+      qs.set('created_by_org_id', params.created_by_org_id);
     const response = await makeRequest(`/api/companies?${qs.toString()}`);
     return handleApiResponse<CompanyRecord[]>(response);
   },
@@ -375,7 +505,14 @@ export const companiesApi = {
     return handleApiResponse<CompanyRecord>(response);
   },
 
-  create: async (data: { name: string; website?: string; industry?: string; description?: string; headquarters?: string; created_by_org_id?: string }): Promise<CompanyRecord> => {
+  create: async (data: {
+    name: string;
+    website?: string;
+    industry?: string;
+    description?: string;
+    headquarters?: string;
+    created_by_org_id?: string;
+  }): Promise<CompanyRecord> => {
     const response = await makeRequest('/api/companies', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -383,7 +520,10 @@ export const companiesApi = {
     return handleApiResponse<CompanyRecord>(response);
   },
 
-  update: async (id: string, data: Partial<CompanyRecord>): Promise<CompanyRecord> => {
+  update: async (
+    id: string,
+    data: Partial<CompanyRecord>
+  ): Promise<CompanyRecord> => {
     const response = await makeRequest(`/api/companies/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -392,7 +532,9 @@ export const companiesApi = {
   },
 
   delete: async (id: string): Promise<void> => {
-    const response = await makeRequest(`/api/companies/${id}`, { method: 'DELETE' });
+    const response = await makeRequest(`/api/companies/${id}`, {
+      method: 'DELETE',
+    });
     return handleApiResponse<void>(response);
   },
 
@@ -406,7 +548,15 @@ export const companiesApi = {
     return handleApiResponse<PersonRecord[]>(response);
   },
 
-  getIntelligenceStatus: async (id: string): Promise<{ status: string; summary?: string; confidence: number; agent?: string; last_run_at?: string }> => {
+  getIntelligenceStatus: async (
+    id: string
+  ): Promise<{
+    status: string;
+    summary?: string;
+    confidence: number;
+    agent?: string;
+    last_run_at?: string;
+  }> => {
     const company = await companiesApi.get(id);
     return {
       status: company.intelligence_status,
@@ -417,7 +567,9 @@ export const companiesApi = {
     };
   },
 
-  research: async (id: string): Promise<{ status: string; message: string }> => {
+  research: async (
+    id: string
+  ): Promise<{ status: string; message: string }> => {
     const response = await makeRequest(`/api/companies/${id}/research`, {
       method: 'POST',
       body: JSON.stringify({}),
@@ -432,7 +584,9 @@ export const companiesApi = {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = companyName ? `PCG_Analysis_${companyName.replace(/\s+/g, '_')}.md` : 'PCG_Analysis.md';
+    a.download = companyName
+      ? `PCG_Analysis_${companyName.replace(/\s+/g, '_')}.md`
+      : 'PCG_Analysis.md';
     a.click();
     URL.revokeObjectURL(url);
   },
@@ -441,7 +595,15 @@ export const companiesApi = {
     const response = await makeRequest(`/api/companies/${id}/contact-methods`);
     return handleApiResponse<CompanyContactMethod[]>(response);
   },
-  addContactMethod: async (id: string, data: { method_type: string; label?: string; value: string; is_primary?: boolean }): Promise<CompanyContactMethod> => {
+  addContactMethod: async (
+    id: string,
+    data: {
+      method_type: string;
+      label?: string;
+      value: string;
+      is_primary?: boolean;
+    }
+  ): Promise<CompanyContactMethod> => {
     const response = await makeRequest(`/api/companies/${id}/contact-methods`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -449,7 +611,10 @@ export const companiesApi = {
     return handleApiResponse<CompanyContactMethod>(response);
   },
   removeContactMethod: async (id: string, method_id: string): Promise<void> => {
-    const response = await makeRequest(`/api/companies/${id}/contact-methods/${method_id}`, { method: 'DELETE' });
+    const response = await makeRequest(
+      `/api/companies/${id}/contact-methods/${method_id}`,
+      { method: 'DELETE' }
+    );
     return handleApiResponse<void>(response);
   },
 
@@ -458,7 +623,10 @@ export const companiesApi = {
     return handleApiResponse<OrgBrandProfile | null>(response);
   },
 
-  upsertBrandProfile: async (id: string, data: Partial<OrgBrandProfile>): Promise<OrgBrandProfile> => {
+  upsertBrandProfile: async (
+    id: string,
+    data: Partial<OrgBrandProfile>
+  ): Promise<OrgBrandProfile> => {
     const response = await makeRequest(`/api/companies/${id}/brand-profile`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -513,12 +681,19 @@ export const meetingsApi = {
       attendee_person_ids?: string[];
       source_title?: string;
     }
-  ): Promise<{ session_id: string; knowledge_source_id: string; message: string }> => {
-    const response = await makeRequest(`/api/topsi/meeting/${sessionId}/publish`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
+  ): Promise<{
+    session_id: string;
+    knowledge_source_id: string;
+    message: string;
+  }> => {
+    const response = await makeRequest(
+      `/api/topsi/meeting/${sessionId}/publish`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      }
+    );
     return handleApiResponse(response);
   },
 };
@@ -604,18 +779,34 @@ export const discordApi = {
     return handleApiResponse<DiscordSessionSummary[]>(response);
   },
 
-  archivedSessions: async (params?: { limit?: number; offset?: number }): Promise<DiscordArchivedSession[]> => {
-    const qs = params ? '?' + new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]))).toString() : '';
+  archivedSessions: async (params?: {
+    limit?: number;
+    offset?: number;
+  }): Promise<DiscordArchivedSession[]> => {
+    const qs = params
+      ? '?' +
+        new URLSearchParams(
+          Object.fromEntries(
+            Object.entries(params)
+              .filter(([, v]) => v != null)
+              .map(([k, v]) => [k, String(v)])
+          )
+        ).toString()
+      : '';
     const response = await makeRequest(`/api/discord/archive${qs}`);
     return handleApiResponse<DiscordArchivedSession[]>(response);
   },
 
   getTranscript: async (sessionId: string): Promise<DiscordTranscript> => {
-    const response = await makeRequest(`/api/discord/sessions/${sessionId}/transcript`);
+    const response = await makeRequest(
+      `/api/discord/sessions/${sessionId}/transcript`
+    );
     return handleApiResponse<DiscordTranscript>(response);
   },
 
-  leave: async (guildId: string): Promise<{ success: boolean; meeting_session_id: string }> => {
+  leave: async (
+    guildId: string
+  ): Promise<{ success: boolean; meeting_session_id: string }> => {
     const response = await makeRequest('/api/discord/leave', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

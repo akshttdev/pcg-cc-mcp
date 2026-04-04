@@ -93,6 +93,8 @@ services:
       # The apn-bridge container handles mesh networking instead
       - AUTO_START_APN=${AUTO_START_APN:-false}
       - APN_DEVICE_NAME=${APN_DEVICE_NAME:-dashboard}
+      # Admin API Key (used for WebDAV APN Drive auth)
+      - ADMIN_API_KEY=${ADMIN_API_KEY:-}
     volumes:
       # Persist database
       - ./dev_assets:/app/dev_assets

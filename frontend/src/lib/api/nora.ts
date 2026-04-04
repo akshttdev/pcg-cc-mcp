@@ -1,12 +1,26 @@
-import type { GraphPlan, GraphPlanSummary, GraphNodeStatus } from 'shared/types';
-import { makeRequest, ApiError, type NoraModeSummary, type RapidPlaybookResult } from './client';
+import type {
+  GraphNodeStatus,
+  GraphPlan,
+  GraphPlanSummary,
+} from 'shared/types';
+
+import {
+  ApiError,
+  makeRequest,
+  type NoraModeSummary,
+  type RapidPlaybookResult,
+} from './client';
 
 export const syncNoraContext = async () => {
   const response = await makeRequest('/api/nora/context/sync', {
     method: 'POST',
   });
   if (!response.ok) {
-    throw new ApiError('Failed to sync Nora context', response.status, response);
+    throw new ApiError(
+      'Failed to sync Nora context',
+      response.status,
+      response
+    );
   }
   return (await response.json()) as { projects_refreshed: number };
 };
@@ -48,7 +62,11 @@ export const runRapidPlaybook = async (
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
-    throw new ApiError('Failed to run rapid playbook', response.status, response);
+    throw new ApiError(
+      'Failed to run rapid playbook',
+      response.status,
+      response
+    );
   }
   return (await response.json()) as RapidPlaybookResult;
 };
@@ -56,7 +74,11 @@ export const runRapidPlaybook = async (
 export const fetchNoraPlans = async (): Promise<GraphPlanSummary[]> => {
   const response = await makeRequest('/api/nora/graph/plans');
   if (!response.ok) {
-    throw new ApiError('Failed to load orchestration plans', response.status, response);
+    throw new ApiError(
+      'Failed to load orchestration plans',
+      response.status,
+      response
+    );
   }
   return (await response.json()) as GraphPlanSummary[];
 };
@@ -82,7 +104,11 @@ export const updateNoraPlanNode = async (
     }
   );
   if (!response.ok) {
-    throw new ApiError('Failed to update node status', response.status, response);
+    throw new ApiError(
+      'Failed to update node status',
+      response.status,
+      response
+    );
   }
   return (await response.json()) as GraphPlan;
 };
@@ -92,7 +118,11 @@ export const noraWorkflowsApi = {
   list: async (): Promise<unknown[]> => {
     const response = await makeRequest('/api/nora/workflows');
     if (!response.ok) {
-      throw new ApiError('Failed to load Nora workflows', response.status, response);
+      throw new ApiError(
+        'Failed to load Nora workflows',
+        response.status,
+        response
+      );
     }
     const data = await response.json();
     return Array.isArray(data) ? data : [];
@@ -100,14 +130,34 @@ export const noraWorkflowsApi = {
 };
 
 // Nora Cinematics Briefs
+export interface CinematicBriefRecord {
+  id: string;
+  title: string;
+  status: string;
+  summary: string;
+  created_at: string;
+}
+
 export const cinematicBriefsApi = {
   list: async (): Promise<unknown[]> => {
     const response = await makeRequest('/api/nora/cinematics/briefs');
     if (!response.ok) {
-      throw new ApiError('Failed to load cinematic briefs', response.status, response);
+      throw new ApiError(
+        'Failed to load cinematic briefs',
+        response.status,
+        response
+      );
     }
     const res = await response.json();
     return Array.isArray(res?.data ?? res) ? (res?.data ?? res) : [];
+  },
+
+  getById: async (id: string): Promise<CinematicBriefRecord> => {
+    const response = await makeRequest(`/api/nora/cinematics/briefs/${id}`);
+    if (!response.ok)
+      throw new ApiError('Failed to load brief', response.status, response);
+    const res = await response.json();
+    return res?.data ?? res;
   },
 };
 

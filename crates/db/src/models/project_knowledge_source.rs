@@ -245,6 +245,70 @@ impl ProjectKnowledgeSource {
         Ok(())
     }
 
+    /// Upsert a knowledge source scoped purely to a non-project owner (org, company, user, deal).
+    /// Uses the partial-index conflict target that fires when project_id IS NULL.
+    pub async fn upsert_owner_scoped(
+        pool: &SqlitePool,
+        scope: &KnowledgeOwnerScope,
+        owner_id: &str,
+        source_type: &KnowledgeSourceType,
+        source_id: &str,
+        source_title: &str,
+        source_summary: Option<&str>,
+        coverage_score: f64,
+    ) -> Result<(), sqlx::Error> {
+        let id = Uuid::new_v4().to_string();
+        let st = source_type.to_string();
+        let owner_type = scope.to_string();
+
+        sqlx::query(
+            r#"INSERT INTO project_knowledge_sources (
+                id, project_id, owner_type, owner_id, source_type, source_id,
+                source_title, source_summary, coverage_score, auto_registered
+            )
+            VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, 1)
+            ON CONFLICT(owner_type, owner_id, source_type, source_id)
+            DO UPDATE SET
+                source_title    = excluded.source_title,
+                source_summary  = COALESCE(excluded.source_summary, source_summary),
+                coverage_score  = excluded.coverage_score,
+                updated_at      = datetime('now', 'subsec')"#,
+        )
+        .bind(&id)
+        .bind(&owner_type)
+        .bind(owner_id)
+        .bind(&st)
+        .bind(source_id)
+        .bind(source_title)
+        .bind(source_summary)
+        .bind(coverage_score)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Find all knowledge sources for an owner scope (org / company / user / deal)
+    pub async fn find_by_owner(
+        pool: &SqlitePool,
+        scope: &KnowledgeOwnerScope,
+        owner_id: &str,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        let owner_type = scope.to_string();
+        sqlx::query_as::<_, Self>(
+            r#"SELECT
+                id, project_id, source_type, source_id, source_title, source_summary,
+                coverage_score, is_active, is_stale, auto_registered,
+                last_refreshed_at, created_at, updated_at
+            FROM project_knowledge_sources
+            WHERE owner_type = ? AND owner_id = ? AND is_active = 1
+            ORDER BY source_type, updated_at DESC"#,
+        )
+        .bind(&owner_type)
+        .bind(owner_id)
+        .fetch_all(pool)
+        .await
+    }
+
     /// Mark a source as stale
     pub async fn mark_stale(pool: &SqlitePool, id: Uuid) -> Result<(), sqlx::Error> {
         let id_bytes = id.to_string();

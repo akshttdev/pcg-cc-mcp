@@ -306,6 +306,16 @@ pub enum NoraExecutiveTool {
         url: String,
         include_html: bool,
     },
+    /// Deep scrape a web page: renders JS if needed, extracts structured assets
+    /// (images, logos, contact info, social links, brand colors). Ideal for
+    /// prospect research, brand audits, and company intelligence gathering.
+    ScrapePage {
+        url: String,
+        /// Use Playwright for JS-heavy sites (Wix, React, etc.). Slower but thorough.
+        use_js: bool,
+        /// Extract images, logos, social links, contact info, and brand colors.
+        extract_assets: bool,
+    },
     SummarizeContent {
         content: String,
         max_length: u32,
@@ -502,7 +512,6 @@ pub enum NoraExecutiveTool {
     },
 
     // ── AI Image Generation (fal.ai) ────────────────────────────────────────
-
     /// Generate a photorealistic image via fal.ai FLUX Pro Ultra.
     /// Used by Editron for avatar portraits, character references, and visual assets.
     GenerateImage {
@@ -529,7 +538,6 @@ pub enum NoraExecutiveTool {
     },
 
     // ── Video Post-Processing ────────────────────────────────────────────────
-
     /// Apply a visual effect preset to a video file using FFmpeg.
     /// Editron's post-production finishing tool for HeyGen outputs.
     ApplyVideoEffect {

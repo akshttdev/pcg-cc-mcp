@@ -29,6 +29,9 @@ pub struct Deliverable {
     pub delivered_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+
+    /// ID of the active Editron cinematic brief, if one has been dispatched
+    pub cinematic_brief_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, TS)]
