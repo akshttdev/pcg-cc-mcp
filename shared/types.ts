@@ -834,7 +834,15 @@ export type ArtifactPhase = "planning" | "execution" | "verification";
 
 export type ArtifactReviewStatus = "none" | "pending" | "approved" | "rejected" | "revision_requested";
 
-export type ExecutionArtifact = { id: string, execution_process_id: string | null, artifact_type: ArtifactType, title: string, content: string | null, file_path: string | null, metadata: string | null, created_at: string, };
+export type ExecutionArtifact = { id: string, execution_process_id: string | null, artifact_type: ArtifactType, title: string, content: string | null, file_path: string | null, metadata: string | null, 
+/**
+ * Direct link to the task that produced this artifact (added in 20260427)
+ */
+task_id: string | null, 
+/**
+ * Direct link to the task attempt that produced this artifact (added in 20260427)
+ */
+task_attempt_id: string | null, created_at: string, };
 
 export type BrandVoice = "formal" | "casual" | "playful" | "authoritative";
 

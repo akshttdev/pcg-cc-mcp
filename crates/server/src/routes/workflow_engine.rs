@@ -257,6 +257,8 @@ pub async fn execute_workflow_nodes(
                     content: Some(output.clone()),
                     file_path: None,
                     metadata: Some(artifact_metadata),
+                    task_id: None,
+                    task_attempt_id: None,
                 },
             )
             .await

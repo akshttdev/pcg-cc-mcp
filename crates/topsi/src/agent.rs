@@ -1047,6 +1047,8 @@ impl TopsiAgent {
                 | "list_organizations"
                 | "get_project_detail"
                 | "create_task"
+                | "list_boards"
+                | "create_tasks_parallel"
                 | "start_task_execution"
                 | "get_task_status"
                 | "update_task"
@@ -1081,6 +1083,18 @@ impl TopsiAgent {
                             }
                             "create_task" => {
                                 pds.create_task(&call.arguments, user_context, scope).await
+                            }
+                            "list_boards" => {
+                                let project_id = call
+                                    .arguments
+                                    .get("project_id")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("");
+                                pds.list_boards(project_id).await
+                            }
+                            "create_tasks_parallel" => {
+                                pds.create_tasks_parallel(&call.arguments, user_context, scope)
+                                    .await
                             }
                             "start_task_execution" => {
                                 pds.start_task_execution(&call.arguments, user_context, scope)

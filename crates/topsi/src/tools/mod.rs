@@ -285,9 +285,70 @@ pub fn get_tool_schemas() -> Vec<Value> {
                         "status": {
                             "type": "string",
                             "description": "Initial status: 'todo', 'inprogress', or 'done'. Defaults to 'todo'."
+                        },
+                        "board_id": {
+                            "type": "string",
+                            "description": "ID of the board to place the task on. Use list_boards to find valid board IDs."
+                        },
+                        "pod_id": {
+                            "type": "string",
+                            "description": "ID of the pod/group within the board."
+                        },
+                        "priority": {
+                            "type": "string",
+                            "enum": ["low", "medium", "high", "urgent"],
+                            "description": "Task priority level."
                         }
                     },
                     "required": ["title", "description"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "list_boards",
+                "description": "List all project boards to find valid board_id values for task creation.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "project_id": {
+                            "type": "string",
+                            "description": "The project ID to list boards for."
+                        }
+                    },
+                    "required": ["project_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "create_tasks_parallel",
+                "description": "Create multiple tasks simultaneously for parallel execution. Use when work can be decomposed into independent workstreams.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "tasks": {
+                            "type": "array",
+                            "description": "Array of task definitions to create in parallel.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "title": {"type": "string"},
+                                    "description": {"type": "string"},
+                                    "project_id": {"type": "string"},
+                                    "board_id": {"type": "string"},
+                                    "pod_id": {"type": "string"},
+                                    "assignee_id": {"type": "string"},
+                                    "priority": {"type": "string", "enum": ["low","medium","high","urgent"]},
+                                    "due_date": {"type": "string"}
+                                },
+                                "required": ["title", "project_id"]
+                            }
+                        }
+                    },
+                    "required": ["tasks"]
                 }
             }
         }),

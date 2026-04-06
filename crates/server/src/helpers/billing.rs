@@ -15,6 +15,40 @@ use uuid::Uuid;
 
 use crate::error::ApiError;
 
+/// Check whether the client linked to a project has exceeded its VIBE budget.
+/// Returns `Err(ApiError::BadRequest(...))` if the budget is exceeded.
+/// Returns `Ok(())` if there is no client, no budget set, or budget not yet exceeded.
+pub async fn check_client_vibe_budget(pool: &SqlitePool, project_id: Uuid) -> Result<(), ApiError> {
+    // Look up the project's client_id
+    let client_id: Option<String> =
+        sqlx::query_scalar("SELECT client_id FROM projects WHERE id = ?")
+            .bind(project_id.to_string())
+            .fetch_optional(pool)
+            .await
+            .unwrap_or(None)
+            .flatten();
+
+    let Some(cid) = client_id else {
+        return Ok(());
+    };
+
+    // Look up vibe_budget_limit and vibe_spent_amount on the client
+    let row: Option<(Option<f64>, f64)> =
+        sqlx::query_as("SELECT vibe_budget_limit, vibe_spent_amount FROM clients WHERE id = ?")
+            .bind(&cid)
+            .fetch_optional(pool)
+            .await
+            .unwrap_or(None);
+
+    if let Some((Some(limit), spent)) = row {
+        if spent >= limit {
+            return Err(ApiError::BadRequest("Client VIBE budget exceeded".into()));
+        }
+    }
+
+    Ok(())
+}
+
 /// Pre-chat: check VIBE balance via the deposit ledger, returning
 /// `Err(ApiError::PaymentRequired)` when the project has no remaining balance.
 ///
@@ -85,6 +119,28 @@ pub async fn record_llm_vibe_usage(
                 Project::adjust_vibe_spent(pool, &project_id.to_string(), tx.amount_vibe).await
             {
                 tracing::error!("[VIBE] Failed to update project spent amount: {}", e);
+            }
+            // Roll up spend to the client if one is linked to the project
+            let client_id: Option<String> =
+                sqlx::query_scalar("SELECT client_id FROM projects WHERE id = ?")
+                    .bind(project_id.to_string())
+                    .fetch_optional(pool)
+                    .await
+                    .ok()
+                    .flatten()
+                    .flatten();
+            if let Some(cid) = client_id {
+                let vibe_as_f64 = tx.amount_vibe as f64;
+                if let Err(e) = sqlx::query(
+                    "UPDATE clients SET vibe_spent_amount = vibe_spent_amount + ? WHERE id = ?",
+                )
+                .bind(vibe_as_f64)
+                .bind(&cid)
+                .execute(pool)
+                .await
+                {
+                    tracing::error!("[VIBE] Failed to update client vibe_spent_amount: {}", e);
+                }
             }
             tracing::info!(
                 "[VIBE] {} recorded {} VIBE for project {}",

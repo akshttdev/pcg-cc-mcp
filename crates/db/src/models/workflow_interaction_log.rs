@@ -6,9 +6,10 @@ use uuid::Uuid;
 
 // ── Enums ─────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum InteractionActorType {
+    #[default]
     Human,
     Agent,
     System,
@@ -24,9 +25,10 @@ impl InteractionActorType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum InteractionActionType {
+    #[default]
     Message,
     Response,
     ToolCall,

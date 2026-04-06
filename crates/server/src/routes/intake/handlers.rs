@@ -2,6 +2,7 @@
 
 use axum::{
     extract::{Path, State},
+    response::Redirect,
     Extension, Json,
 };
 use db::{
@@ -18,8 +19,10 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use super::{
-    pipeline::run_intake_pipeline, report::run_report_generation, EmailIntakePayload,
-    GenerateReportRequest, RevisionRequest, UploadIntakePayload,
+    pipeline::run_intake_pipeline,
+    report::{run_phase2_from_company_intel, run_report_generation},
+    EmailIntakePayload, GenerateReportRequest, Phase2ReportRequest, RevisionRequest,
+    UploadIntakePayload,
 };
 use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 

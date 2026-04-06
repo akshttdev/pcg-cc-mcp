@@ -1544,6 +1544,49 @@ pub(crate) async fn update_collaborator(
     Ok(ResponseJson(ApiResponse::success(())))
 }
 
+/// GET /tasks/:id/artifacts — list execution artifacts for a task
+async fn get_task_artifacts(
+    State(state): State<DeploymentImpl>,
+    axum::extract::Path(task_id): axum::extract::Path<String>,
+) -> Result<ResponseJson<serde_json::Value>, ApiError> {
+    let pool = state.db().pool.clone();
+    #[derive(sqlx::FromRow, serde::Serialize)]
+    struct ArtifactRow {
+        id: String,
+        task_id: Option<String>,
+        task_attempt_id: Option<String>,
+        artifact_type: String,
+        name: String,
+        content: Option<String>,
+        file_path: Option<String>,
+        created_at: chrono::DateTime<chrono::Utc>,
+    }
+    let artifacts: Vec<ArtifactRow> = sqlx::query_as(
+        "SELECT id, task_id, task_attempt_id, artifact_type, name, content, file_path, created_at FROM execution_artifacts WHERE task_id = ? ORDER BY created_at DESC"
+    )
+    .bind(&task_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| ApiError::InternalError(format!("DB error: {}", e)))?;
+    Ok(ResponseJson(
+        serde_json::json!({ "artifacts": artifacts, "count": artifacts.len() }),
+    ))
+}
+
+/// GET /tasks/:id/interaction-log — list workflow interaction log entries for a task
+async fn get_task_interaction_log(
+    State(state): State<DeploymentImpl>,
+    axum::extract::Path(task_id): axum::extract::Path<String>,
+) -> Result<ResponseJson<serde_json::Value>, ApiError> {
+    let pool = state.db().pool.clone();
+    let entries = db::models::workflow_interaction_log::find_by_task(&pool, &task_id, 100)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("DB error: {}", e)))?;
+    Ok(ResponseJson(
+        serde_json::json!({ "entries": entries, "count": entries.len() }),
+    ))
+}
+
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     // Task-ID routes with load_task_middleware — defined as explicit routes
     // instead of .nest() to avoid Axum 0.8 path parameter shadowing static routes
@@ -1578,6 +1621,8 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/assigned-to-me", get(get_assigned_to_me))
         .route("/created-by-me", get(get_created_by_me))
         .route("/watched", get(get_watched_tasks))
+        .route("/{task_id}/artifacts", get(get_task_artifacts))
+        .route("/{task_id}/interaction-log", get(get_task_interaction_log))
         .merge(task_id_routes);
 
     // mount under /tasks

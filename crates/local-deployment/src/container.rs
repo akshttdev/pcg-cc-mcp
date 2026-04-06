@@ -3,8 +3,8 @@ use std::{
     io,
     path::{Path, PathBuf},
     sync::{
-        Arc,
         atomic::{AtomicUsize, Ordering},
+        Arc,
     },
     time::Duration,
 };
@@ -15,7 +15,6 @@ use async_trait::async_trait;
 use axum::response::sse::Event;
 use command_group::AsyncGroupChild;
 use db::{
-    DBService,
     models::{
         activity::{ActivityLog, ActorType, CreateActivityLog},
         agent_flow::{AgentFlow, AgentPhase, CreateAgentFlow, FlowType},
@@ -36,19 +35,20 @@ use db::{
         task_attempt::TaskAttempt,
         vibe_transaction::VibeTransaction,
     },
+    DBService,
 };
 use deployment::DeploymentError;
 use executors::{
     actions::{Executable, ExecutorAction},
     logs::{
-        NormalizedEntryType,
         utils::{
-            ConversationPatch,
             patch::{escape_json_pointer_segment, extract_normalized_entry_from_patch},
+            ConversationPatch,
         },
+        NormalizedEntryType,
     },
 };
-use futures::{FutureExt, StreamExt, TryStreamExt, stream::select};
+use futures::{stream::select, FutureExt, StreamExt, TryStreamExt};
 use notify_debouncer_full::DebouncedEvent;
 use serde_json::json;
 use services::services::{
@@ -67,7 +67,7 @@ use services::services::{
 use tokio::{sync::RwLock, task::JoinHandle};
 use tokio_util::io::ReaderStream;
 use utils::{
-    diff::{DiffChangeKind, create_unified_diff_hunk},
+    diff::{create_unified_diff_hunk, DiffChangeKind},
     log_msg::LogMsg,
     msg_store::MsgStore,
     text::{git_branch_id, short_uuid},
@@ -2326,6 +2326,8 @@ impl LocalContainerService {
                             "additions": diff_stats.additions,
                             "deletions": diff_stats.deletions,
                         })),
+                        task_id: None,
+                        task_attempt_id: None,
                     })
                     .await
                 {
@@ -2373,6 +2375,8 @@ impl LocalContainerService {
                         "executor": ctx.task_attempt.executor,
                         "status": format!("{:?}", ctx.execution_process.status),
                     })),
+                    task_id: None,
+                    task_attempt_id: None,
                 })
                 .await
             {

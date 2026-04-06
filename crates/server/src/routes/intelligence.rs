@@ -22,7 +22,9 @@ use db::{
     db_uuid::DbUuid,
     models::{
         crm_contact::CrmContact,
-        project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource},
+        project_knowledge_source::{
+            KnowledgeOwnerScope, KnowledgeSourceType, ProjectKnowledgeSource,
+        },
     },
 };
 use deployment::Deployment;
@@ -307,7 +309,7 @@ async fn run_research_direct(
             .unwrap_or_default()
             .into_iter()
             .filter(|s| {
-                s.source_type == "entity" && s.source_id == person.id.as_ref() && !s.is_stale
+                s.source_type == "entity" && s.source_id == contact.id.as_ref() && !s.is_stale
             })
             .filter_map(|s| s.source_summary)
             .collect::<Vec<_>>()

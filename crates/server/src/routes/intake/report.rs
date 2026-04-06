@@ -968,8 +968,7 @@ pub async fn run_phase2_from_company_intel(
     .execute(&pool)
     .await;
 
-    let report_uuid = Uuid::parse_str(&report_id_str).unwrap_or_default();
-    BusinessReport::mark_ready(&pool, report_uuid).await?;
+    BusinessReport::mark_ready(&pool, &report_id_str).await?;
 
     // Create PDF deliverable on deal's project board if deal_id is set
     if let Some(did) = deal_id {

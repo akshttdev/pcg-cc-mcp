@@ -414,6 +414,24 @@ async fn credit_provider_node(pool: &sqlx::SqlitePool, node_id: &str, wallet: &s
     if let Err(e) = PeerReward::create(pool, reward_data).await {
         tracing::error!("Failed to credit provider node {}: {}", node_id, e);
     }
+
+    // Credit the owning organization's vibe_balance if the node belongs to one
+    if let Some(org_id) = &peer.organization_id {
+        if let Err(e) =
+            sqlx::query("UPDATE organizations SET vibe_balance = vibe_balance + ? WHERE id = ?")
+                .bind(amount)
+                .bind(org_id)
+                .execute(pool)
+                .await
+        {
+            tracing::error!(
+                "Failed to credit org {} vibe_balance for node {}: {}",
+                org_id,
+                node_id,
+                e
+            );
+        }
+    }
 }
 
 // ─── Protected: Listings CRUD ────────────────────────────────────────────────

@@ -16,7 +16,7 @@ use db::models::{
     merge::Merge,
     project::Project,
     task::{
-        ACTOR_TYPE_AGENT_WATCHER, Task, TaskCollaborator, TaskStatus, WATCHER_ACTION_QA_FAIL,
+        Task, TaskCollaborator, TaskStatus, ACTOR_TYPE_AGENT_WATCHER, WATCHER_ACTION_QA_FAIL,
         WATCHER_ACTION_QA_NEEDS_CHANGES, WATCHER_ACTION_QA_PASS, WATCHER_ACTION_TRIGGERED,
         WATCHER_ACTION_WATCHING,
     },
@@ -255,6 +255,8 @@ async fn spawn_single_watcher_review<C: ContainerService + Sync>(
                 "agent_watcher_id": agent_id,
                 "type": "qa_review_instructions",
             })),
+            task_id: None,
+            task_attempt_id: None,
         },
     )
     .await
@@ -376,6 +378,8 @@ async fn trigger_single_watcher<C: ContainerService + Sync>(
                 "agent_watcher_id": agent_id,
                 "type": "qa_review_instructions",
             })),
+            task_id: None,
+            task_attempt_id: None,
         },
     )
     .await

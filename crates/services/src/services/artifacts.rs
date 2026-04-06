@@ -1,5 +1,4 @@
 use db::{
-    DBService,
     models::{
         agent_task_plan::{
             AgentTaskPlan, AgentTaskPlanError, CreateAgentTaskPlan, PlanStatus, PlanStep,
@@ -8,6 +7,7 @@ use db::{
             ArtifactType, CreateExecutionArtifact, ExecutionArtifact, ExecutionArtifactError,
         },
     },
+    DBService,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -189,6 +189,8 @@ impl ArtifactService {
                 content: Some(plan_content),
                 file_path: None,
                 metadata: steps.as_ref().map(|s| serde_json::to_value(s).unwrap()),
+                task_id: None,
+                task_attempt_id: None,
             })
             .await?;
 
@@ -229,6 +231,8 @@ impl ArtifactService {
                 content: None,
                 file_path: Some(file_path),
                 metadata,
+                task_id: None,
+                task_attempt_id: None,
             })
             .await?;
 
@@ -251,6 +255,8 @@ impl ArtifactService {
                 content: Some(error_content),
                 file_path: None,
                 metadata,
+                task_id: None,
+                task_attempt_id: None,
             })
             .await?;
 

@@ -66,7 +66,7 @@ pub async fn chat_with_topsi(
 
     // Record VIBE cost
     if let Some(project_id) = billing_project_id {
-        crate::helpers::billing::record_llm_vibe_usage(
+        let vibe_spent = crate::helpers::billing::record_llm_vibe_usage(
             &pool,
             project_id,
             "claude-sonnet-4-20250514",
@@ -76,6 +76,17 @@ pub async fn chat_with_topsi(
             None,
             None,
             "Topsi",
+        )
+        .await;
+        let _ = db::models::workflow_interaction_log::log_cost(
+            &pool,
+            None,
+            Some(&session_id),
+            "Topsi",
+            "claude-sonnet-4-20250514",
+            response.input_tokens.unwrap_or(0),
+            response.output_tokens.unwrap_or(0),
+            vibe_spent as f64,
         )
         .await;
     }

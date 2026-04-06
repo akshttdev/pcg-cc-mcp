@@ -928,7 +928,7 @@ async fn ensure_crm_deal_for_person(
     .ok()
     .flatten();
 
-    let stage_id = stage.and_then(|s| Uuid::from_slice(&s.id).ok())?;
+    let stage_id = stage.and_then(|s| Uuid::parse_str(&s.id).ok())?;
     let pipeline_id = Uuid::parse_str(&pipeline_id_str).ok()?;
 
     // Look up person name + contact for dedup check (unified contacts model)
@@ -972,7 +972,7 @@ async fn ensure_crm_deal_for_person(
     }
 
     // person_id IS the contact id in the unified contacts model
-    let contact_id = Some(person_id);
+    let contact_id = Some(DbUuid::from(person_id));
 
     // Create the deal
     let deal_result = CrmDeal::create(

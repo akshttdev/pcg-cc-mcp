@@ -152,6 +152,8 @@ pub async fn create_and_link_artifact(
             content,
             file_path,
             metadata: Some(meta),
+            task_id: None,
+            task_attempt_id: None,
         },
     )
     .await?;

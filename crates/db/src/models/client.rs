@@ -41,6 +41,10 @@ pub struct Client {
     pub prospect_at: Option<String>,
     /// When first payment received / deal won (becomes a client)
     pub client_since: Option<String>,
+    #[sqlx(default)]
+    pub vibe_budget_limit: Option<f64>,
+    #[sqlx(default)]
+    pub vibe_spent_amount: f64,
 }
 
 /// Client with inherited intel from the Knowledge Graph
@@ -335,6 +339,8 @@ impl Client {
             primary_person_id: Option<String>,
             prospect_at: Option<String>,
             client_since: Option<String>,
+            vibe_budget_limit: Option<f64>,
+            vibe_spent_amount: f64,
             // company intel
             company_intel_status: Option<String>,
             company_intel_summary: Option<String>,
@@ -344,7 +350,7 @@ impl Client {
             company_logo_url: Option<String>,
             company_industry: Option<String>,
             company_employee_count: Option<String>,
-            // person intel
+            // person intel (from crm_contacts)
             person_intel_summary: Option<String>,
             person_full_name: Option<String>,
             person_title: Option<String>,
@@ -357,6 +363,8 @@ impl Client {
                 c.logo_url, c.website, c.crm_contact_id, c.is_active,
                 c.created_at, c.updated_at, c.deleted_at, c.deleted_by,
                 c.company_id, c.primary_person_id, c.prospect_at, c.client_since,
+                COALESCE(c.vibe_budget_limit, NULL) AS vibe_budget_limit,
+                COALESCE(c.vibe_spent_amount, 0.0) AS vibe_spent_amount,
                 co.intelligence_status AS company_intel_status,
                 co.intelligence_summary AS company_intel_summary,
                 co.intelligence_raw AS company_intel_raw,
@@ -365,14 +373,14 @@ impl Client {
                 co.logo_url AS company_logo_url,
                 co.industry AS company_industry,
                 co.employee_count AS company_employee_count,
-                p.intelligence_summary AS person_intel_summary,
-                p.full_name AS person_full_name,
-                p.job_title AS person_title,
-                p.website AS person_linkedin_url
+                cc.intelligence_summary AS person_intel_summary,
+                cc.full_name AS person_full_name,
+                cc.job_title AS person_title,
+                cc.linkedin_url AS person_linkedin_url
                FROM clients c
                LEFT JOIN companies co ON lower(hex(substr(co.id,1,4)) || '-' || hex(substr(co.id,5,2)) || '-' ||
                    hex(substr(co.id,7,2)) || '-' || hex(substr(co.id,9,2)) || '-' || hex(substr(co.id,11,6))) = c.company_id
-               LEFT JOIN persons p ON p.id = c.primary_person_id
+               LEFT JOIN crm_contacts cc ON cc.id = c.crm_contact_id
                WHERE c.id = ? AND c.deleted_at IS NULL"#,
         )
         .bind(id)
@@ -398,6 +406,8 @@ impl Client {
                 primary_person_id: r.primary_person_id,
                 prospect_at: r.prospect_at,
                 client_since: r.client_since,
+                vibe_budget_limit: r.vibe_budget_limit,
+                vibe_spent_amount: r.vibe_spent_amount,
             },
             company_intel_status: r.company_intel_status,
             company_intel_summary: r.company_intel_summary,

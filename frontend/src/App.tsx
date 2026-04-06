@@ -299,6 +299,9 @@ const PersonIntelPage = lazy(() =>
 const LeadsPage = lazy(() =>
   import('@/pages/leads').then((m) => ({ default: m.LeadsPage }))
 );
+const VideoStudioPage = lazy(() =>
+  import('@/pages/video-studio').then((m) => ({ default: m.VideoStudioPage }))
+);
 
 const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
 
@@ -898,6 +901,14 @@ function App() {
             }
           />
           <Route path="/review/:token" element={<ReviewPage />} />
+          <Route
+            path="/video-studio"
+            element={
+              <ProtectedRoute>
+                <VideoStudioPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/oss-library-listener"
             element={

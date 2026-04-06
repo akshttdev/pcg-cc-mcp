@@ -29,6 +29,8 @@ pub struct PeerNode {
     pub created_at: DateTime<Utc>,
     #[ts(type = "Date")]
     pub updated_at: DateTime<Utc>,
+    #[sqlx(default)]
+    pub organization_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -283,5 +285,18 @@ impl PeerNode {
         .await?;
 
         Ok(result.rows_affected() as i64)
+    }
+
+    /// Find all active peer nodes owned by an organization
+    pub async fn find_by_organization(
+        pool: &SqlitePool,
+        organization_id: &str,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as::<_, PeerNode>(
+            "SELECT * FROM peer_nodes WHERE organization_id = ? AND is_active = 1 ORDER BY last_heartbeat_at DESC"
+        )
+        .bind(organization_id)
+        .fetch_all(pool)
+        .await
     }
 }

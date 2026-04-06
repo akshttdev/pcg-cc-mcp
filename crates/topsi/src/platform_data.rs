@@ -641,21 +641,42 @@ impl PlatformDataService {
             task::{CreateTask, Task},
         };
 
-        let default_board_id =
+        // Use provided board_id if given, otherwise get/create default board
+        let board_id_arg = args
+            .get("board_id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let pod_id_arg = args
+            .get("pod_id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let priority_arg = args.get("priority").and_then(|v| v.as_str()).and_then(|s| {
+            match s.to_lowercase().as_str() {
+                "critical" => Some(db::models::task::Priority::Critical),
+                "high" => Some(db::models::task::Priority::High),
+                "low" => Some(db::models::task::Priority::Low),
+                _ => Some(db::models::task::Priority::Medium),
+            }
+        });
+
+        let resolved_board_id = if board_id_arg.is_some() {
+            board_id_arg
+        } else {
             ProjectBoard::ensure_default_board(&self.pool, &project_id.to_string())
                 .await
                 .ok()
-                .and_then(|b| Uuid::parse_str(&b.id).ok());
+                .map(|b| b.id)
+        };
 
         let create_task = CreateTask {
             project_id: project_id.to_string(),
-            pod_id: None,
-            board_id: default_board_id.map(|id| id.to_string()),
+            pod_id: pod_id_arg,
+            board_id: resolved_board_id,
             title: title.to_string(),
             description: Some(description.to_string()),
             parent_task_attempt: None,
             image_ids: None,
-            priority: None,
+            priority: priority_arg,
             assignee_id: None,
             assignee_type: None,
             assigned_agent: agent_name.map(|s| s.to_string()),
@@ -679,6 +700,33 @@ impl PlatformDataService {
         let task = Task::create(&self.pool, &create_task, &task_id.to_string())
             .await
             .map_err(|e| TopsiError::ToolError(format!("Failed to create task: {}", e)))?;
+
+        // Log task creation to interaction log (non-blocking)
+        {
+            use db::models::workflow_interaction_log::{self, InteractionActorType};
+            let pool_log = self.pool.clone();
+            let tid = task.id.clone();
+            let ttitle = task.title.clone();
+            let actor_id = user_context.user_id.clone();
+            let agent_assigned = agent_name.map(|s| s.to_string());
+            let session_id_opt = args
+                .get("session_id")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            tokio::spawn(async move {
+                let _ = workflow_interaction_log::log_task_created(
+                    &pool_log,
+                    &tid,
+                    session_id_opt.as_deref(),
+                    &actor_id,
+                    "Topsi",
+                    InteractionActorType::Agent,
+                    &ttitle,
+                    agent_assigned.as_deref(),
+                )
+                .await;
+            });
+        }
 
         // Auto-execute: if an agent was assigned, automatically start task execution
         let auto_execute = args
@@ -751,6 +799,72 @@ impl PlatformDataService {
         }
 
         Ok(response)
+    }
+
+    /// List boards for a project (so tools can find valid board_id values)
+    pub async fn list_boards(&self, project_id: &str) -> Result<serde_json::Value> {
+        use db::models::project_board::ProjectBoard;
+        let boards = sqlx::query_as::<_, ProjectBoard>(
+            "SELECT * FROM project_boards WHERE project_id = ? ORDER BY created_at ASC",
+        )
+        .bind(project_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| TopsiError::ToolError(format!("Failed to list boards: {}", e)))?;
+        Ok(serde_json::json!({ "boards": boards, "count": boards.len() }))
+    }
+
+    /// Create multiple tasks in parallel
+    pub async fn create_tasks_parallel(
+        &self,
+        args: &serde_json::Value,
+        user_context: &UserContext,
+        scope: &AccessScope,
+    ) -> Result<serde_json::Value> {
+        let tasks_arr = args
+            .get("tasks")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| TopsiError::ToolError("Missing 'tasks' array".to_string()))?
+            .clone();
+
+        let mut handles = Vec::new();
+        for task_def in tasks_arr {
+            let pool = self.pool.clone();
+            let execution_bridge = self.execution_bridge.clone();
+            let user_context_owned = UserContext {
+                user_id: user_context.user_id.clone(),
+                is_admin: user_context.is_admin,
+                email: user_context.email.clone(),
+                session_id: user_context.session_id.clone(),
+            };
+            let scope_owned = scope.clone();
+
+            handles.push(tokio::spawn(async move {
+                let pds = PlatformDataService {
+                    pool,
+                    execution_bridge,
+                };
+                pds.create_task(&task_def, &user_context_owned, &scope_owned)
+                    .await
+            }));
+        }
+
+        let mut results = Vec::new();
+        for handle in handles {
+            match handle.await {
+                Ok(Ok(val)) => results.push(val),
+                Ok(Err(e)) => results.push(serde_json::json!({ "error": e.to_string() })),
+                Err(e) => {
+                    results.push(serde_json::json!({ "error": format!("Task panicked: {}", e) }))
+                }
+            }
+        }
+
+        Ok(serde_json::json!({
+            "success": true,
+            "created": results.len(),
+            "tasks": results,
+        }))
     }
 
     /// Start executing a task by spawning a coding agent

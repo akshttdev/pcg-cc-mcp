@@ -1,24 +1,23 @@
+use std::{collections::HashMap, path::PathBuf};
+
 use axum::{
-    Extension, Router,
     body::Body,
     extract::{Path, Query, State},
-    http::{StatusCode, header},
+    http::{header, StatusCode},
     response::Response,
     routing::{delete, get, post},
-    Json,
+    Extension, Json, Router,
 };
 use db::models::{
     avatar_profile::{AvatarProfile, CreateAvatarProfile, UpdateAvatarProfile},
     video_job::{CreateVideoJob, VideoJob},
 };
+use deployment::Deployment;
 use serde::Deserialize;
-use std::{collections::HashMap, path::PathBuf};
 use tokio::fs;
 use uuid::Uuid;
 
-use deployment::Deployment;
-
-use crate::{DeploymentImpl, error::ApiError, middleware::AccessContext};
+use crate::{error::ApiError, middleware::AccessContext, DeploymentImpl};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -73,9 +72,7 @@ async fn list_avatars(
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<Vec<AvatarProfile>>, ApiError> {
     let pool = &deployment.db().pool;
-    let org_id = params
-        .get("org_id")
-        .and_then(|s| Uuid::parse_str(s).ok());
+    let org_id = params.get("org_id").and_then(|s| Uuid::parse_str(s).ok());
     let avatars = AvatarProfile::list(pool, org_id)
         .await
         .map_err(ApiError::Database)?;
@@ -182,7 +179,9 @@ async fn create_job(
     let background_url = job.background_url.clone();
 
     tokio::spawn(async move {
-        if let Err(e) = produce_job(&pool2, job_id, &avatar, &script, background_url.as_deref()).await {
+        if let Err(e) =
+            produce_job(&pool2, job_id, &avatar, &script, background_url.as_deref()).await
+        {
             tracing::error!("video pipeline failed for job {}: {}", job_id, e);
             let _ = VideoJob::update_status(&pool2, job_id, "failed", Some(&e.to_string())).await;
         }
@@ -264,7 +263,7 @@ async fn produce_job(
     tracing::info!("video job {}: generating TTS with timestamps", job_id);
     VideoJob::update_status(pool, job_id, "tts_generating", None).await?;
 
-    let tts = video_gen::tts::generate_tts(&el_key, &avatar.elevenlabs_voice_id, script).await?;
+    let tts = tts::generate_tts(&el_key, &avatar.elevenlabs_voice_id, script).await?;
 
     tracing::info!(
         "video job {}: {} words aligned over {} bytes",
@@ -285,11 +284,15 @@ async fn produce_job(
     let wav_path = audio_dir().join(format!("{}.wav", job_id));
     let ffmpeg_out = tokio::process::Command::new("ffmpeg")
         .args([
-            "-y", "-i",
+            "-y",
+            "-i",
             audio_path.to_str().unwrap(),
-            "-ar", "16000",   // 16 kHz — optimal for speech recognition
-            "-ac", "1",       // mono
-            "-f", "wav",
+            "-ar",
+            "16000", // 16 kHz — optimal for speech recognition
+            "-ac",
+            "1", // mono
+            "-f",
+            "wav",
             wav_path.to_str().unwrap(),
         ])
         .output()
@@ -301,10 +304,14 @@ async fn produce_job(
     }
 
     let wav_bytes = fs::read(&wav_path).await?;
-    tracing::info!("video job {}: WAV {} bytes, uploading to HeyGen CDN", job_id, wav_bytes.len());
+    tracing::info!(
+        "video job {}: WAV {} bytes, uploading to HeyGen CDN",
+        job_id,
+        wav_bytes.len()
+    );
 
     // Upload WAV to HeyGen CDN
-    let audio_url = video_gen::heygen::upload_audio_wav(&hg_key, wav_bytes).await?;
+    let audio_url = heygen::upload_audio_wav(&hg_key, wav_bytes).await?;
 
     VideoJob::update_tts_done(pool, job_id, &audio_url).await?;
     tracing::info!("video job {}: TTS done, audio at {}", job_id, audio_url);
@@ -317,8 +324,7 @@ async fn produce_job(
 
     tracing::info!("video job {}: submitting to HeyGen", job_id);
     let heygen_video_id =
-        video_gen::heygen::generate_with_audio(&hg_key, heygen_avatar_id, &audio_url, background_url)
-            .await?;
+        heygen::generate_with_audio(&hg_key, heygen_avatar_id, &audio_url, background_url).await?;
 
     VideoJob::update_heygen_started(pool, job_id, &heygen_video_id).await?;
     tracing::info!(
@@ -333,7 +339,7 @@ async fn produce_job(
         tokio::time::sleep(tokio::time::Duration::from_secs(20)).await;
         attempts += 1;
 
-        let status = video_gen::heygen::poll_status(&hg_key, &heygen_video_id).await?;
+        let status = heygen::poll_status(&hg_key, &heygen_video_id).await?;
         tracing::debug!("video job {} poll {}: {}", job_id, attempts, status.status);
 
         match status.status.as_str() {
@@ -354,8 +360,8 @@ async fn produce_job(
                 VideoJob::update_completed(
                     pool,
                     job_id,
-                    &video_url,  // final_video_url = HeyGen CDN
-                    &video_url,  // raw_video_url = same
+                    &video_url, // final_video_url = HeyGen CDN
+                    &video_url, // raw_video_url = same
                     status.thumbnail_url.as_deref(),
                     status.duration,
                 )
@@ -375,5 +381,322 @@ async fn produce_job(
                 // still processing
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TTS integration (ElevenLabs)
+// ---------------------------------------------------------------------------
+
+mod tts {
+    use serde::Deserialize;
+
+    pub struct TtsResult {
+        pub audio_bytes: Vec<u8>,
+        pub word_alignment: Vec<WordAlignment>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    pub struct WordAlignment {
+        pub word: String,
+        pub start_time: f64,
+        pub end_time: f64,
+    }
+
+    /// Generate TTS audio with word-level timestamps from ElevenLabs.
+    pub async fn generate_tts(
+        api_key: &str,
+        voice_id: &str,
+        text: &str,
+    ) -> anyhow::Result<TtsResult> {
+        let client = reqwest::Client::new();
+        let url = format!(
+            "https://api.elevenlabs.io/v1/text-to-speech/{}/with-timestamps",
+            voice_id
+        );
+
+        #[derive(serde::Serialize)]
+        struct Req<'a> {
+            text: &'a str,
+            model_id: &'a str,
+        }
+
+        let resp = client
+            .post(&url)
+            .header("xi-api-key", api_key)
+            .header("Content-Type", "application/json")
+            .json(&Req {
+                text,
+                model_id: "eleven_multilingual_v2",
+            })
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("ElevenLabs TTS error {}: {}", status, body);
+        }
+
+        #[derive(Deserialize)]
+        struct ElevenLabsResp {
+            audio_base64: String,
+            alignment: Option<AlignmentData>,
+        }
+
+        #[derive(Deserialize)]
+        struct AlignmentData {
+            characters: Vec<String>,
+            character_start_times_seconds: Vec<f64>,
+            character_end_times_seconds: Vec<f64>,
+        }
+
+        let data: ElevenLabsResp = resp.json().await?;
+        let audio_bytes = base64_decode(&data.audio_base64)?;
+
+        // Convert character-level alignment to approximate word-level
+        let word_alignment = if let Some(align) = data.alignment {
+            build_word_alignment(
+                &align.characters,
+                &align.character_start_times_seconds,
+                &align.character_end_times_seconds,
+            )
+        } else {
+            vec![]
+        };
+
+        Ok(TtsResult {
+            audio_bytes,
+            word_alignment,
+        })
+    }
+
+    fn base64_decode(s: &str) -> anyhow::Result<Vec<u8>> {
+        use std::io::Read;
+        let mut decoder = base64::read::DecoderReader::new(
+            s.as_bytes(),
+            &base64::engine::general_purpose::STANDARD,
+        );
+        let mut buf = Vec::new();
+        decoder.read_to_end(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn build_word_alignment(chars: &[String], starts: &[f64], ends: &[f64]) -> Vec<WordAlignment> {
+        let mut words = Vec::new();
+        let mut current_word = String::new();
+        let mut word_start = 0.0f64;
+        let mut last_end = 0.0f64;
+
+        for ((ch, &start), &end) in chars.iter().zip(starts.iter()).zip(ends.iter()) {
+            if ch == " " || ch == "\n" {
+                if !current_word.is_empty() {
+                    words.push(WordAlignment {
+                        word: current_word.clone(),
+                        start_time: word_start,
+                        end_time: last_end,
+                    });
+                    current_word.clear();
+                }
+            } else {
+                if current_word.is_empty() {
+                    word_start = start;
+                }
+                current_word.push_str(ch);
+                last_end = end;
+            }
+        }
+        if !current_word.is_empty() {
+            words.push(WordAlignment {
+                word: current_word,
+                start_time: word_start,
+                end_time: last_end,
+            });
+        }
+        words
+    }
+}
+
+// ---------------------------------------------------------------------------
+// HeyGen integration
+// ---------------------------------------------------------------------------
+
+mod heygen {
+    use serde::{Deserialize, Serialize};
+
+    pub struct HeyGenStatus {
+        pub status: String,
+        pub video_url: Option<String>,
+        pub thumbnail_url: Option<String>,
+        pub duration: Option<f64>,
+        pub error: Option<String>,
+    }
+
+    /// Upload a WAV file to HeyGen's asset CDN and return the public URL.
+    pub async fn upload_audio_wav(api_key: &str, wav_bytes: Vec<u8>) -> anyhow::Result<String> {
+        let client = reqwest::Client::new();
+        let part = reqwest::multipart::Part::bytes(wav_bytes)
+            .file_name("audio.wav")
+            .mime_str("audio/wav")?;
+        let form = reqwest::multipart::Form::new().part("file", part);
+
+        let resp = client
+            .post("https://upload.heygen.com/v1/asset")
+            .header("X-Api-Key", api_key)
+            .multipart(form)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("HeyGen upload error {}: {}", status, body);
+        }
+
+        #[derive(Deserialize)]
+        struct UploadResp {
+            data: UploadData,
+        }
+        #[derive(Deserialize)]
+        struct UploadData {
+            url: String,
+        }
+
+        let data: UploadResp = resp.json().await?;
+        Ok(data.data.url)
+    }
+
+    /// Submit a video generation job to HeyGen and return the video_id.
+    pub async fn generate_with_audio(
+        api_key: &str,
+        avatar_id: &str,
+        audio_url: &str,
+        background_url: Option<&str>,
+    ) -> anyhow::Result<String> {
+        let client = reqwest::Client::new();
+
+        #[derive(Serialize)]
+        struct VideoInputs {
+            character: CharacterConfig,
+            voice: VoiceConfig,
+            background: Option<BackgroundConfig>,
+        }
+
+        #[derive(Serialize)]
+        struct CharacterConfig {
+            r#type: &'static str,
+            avatar_id: String,
+        }
+
+        #[derive(Serialize)]
+        struct VoiceConfig {
+            r#type: &'static str,
+            audio_url: String,
+        }
+
+        #[derive(Serialize)]
+        struct BackgroundConfig {
+            r#type: &'static str,
+            url: String,
+        }
+
+        #[derive(Serialize)]
+        struct GenerateReq {
+            video_inputs: Vec<VideoInputs>,
+            dimension: Dimension,
+        }
+
+        #[derive(Serialize)]
+        struct Dimension {
+            width: u32,
+            height: u32,
+        }
+
+        let body = GenerateReq {
+            video_inputs: vec![VideoInputs {
+                character: CharacterConfig {
+                    r#type: "avatar",
+                    avatar_id: avatar_id.to_string(),
+                },
+                voice: VoiceConfig {
+                    r#type: "audio",
+                    audio_url: audio_url.to_string(),
+                },
+                background: background_url.map(|url| BackgroundConfig {
+                    r#type: "image",
+                    url: url.to_string(),
+                }),
+            }],
+            dimension: Dimension {
+                width: 1280,
+                height: 720,
+            },
+        };
+
+        let resp = client
+            .post("https://api.heygen.com/v2/video/generate")
+            .header("X-Api-Key", api_key)
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("HeyGen generate error {}: {}", status, body);
+        }
+
+        #[derive(Deserialize)]
+        struct GenerateResp {
+            data: GenerateData,
+        }
+        #[derive(Deserialize)]
+        struct GenerateData {
+            video_id: String,
+        }
+
+        let data: GenerateResp = resp.json().await?;
+        Ok(data.data.video_id)
+    }
+
+    /// Poll HeyGen for video status.
+    pub async fn poll_status(api_key: &str, video_id: &str) -> anyhow::Result<HeyGenStatus> {
+        let client = reqwest::Client::new();
+        let resp = client
+            .get(format!(
+                "https://api.heygen.com/v1/video_status.get?video_id={}",
+                video_id
+            ))
+            .header("X-Api-Key", api_key)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("HeyGen poll error {}: {}", status, body);
+        }
+
+        #[derive(Deserialize)]
+        struct PollResp {
+            data: PollData,
+        }
+        #[derive(Deserialize)]
+        struct PollData {
+            status: String,
+            video_url: Option<String>,
+            thumbnail_url: Option<String>,
+            duration: Option<f64>,
+            error: Option<String>,
+        }
+
+        let data: PollResp = resp.json().await?;
+        Ok(HeyGenStatus {
+            status: data.data.status,
+            video_url: data.data.video_url,
+            thumbnail_url: data.data.thumbnail_url,
+            duration: data.data.duration,
+            error: data.data.error,
+        })
     }
 }
