@@ -2,7 +2,6 @@
 
 use axum::{
     extract::{Path, State},
-    response::Redirect,
     Extension, Json,
 };
 use db::{
@@ -19,10 +18,8 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use super::{
-    pipeline::run_intake_pipeline,
-    report::{run_phase2_from_company_intel, run_report_generation},
-    EmailIntakePayload, GenerateReportRequest, Phase2ReportRequest, RevisionRequest,
-    UploadIntakePayload,
+    pipeline::run_intake_pipeline, report::run_report_generation, EmailIntakePayload,
+    GenerateReportRequest, RevisionRequest, UploadIntakePayload,
 };
 use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
@@ -281,10 +278,8 @@ pub async fn get_report(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<BusinessReport>>, ApiError> {
     use deployment::Deployment;
-    let id = DbUuid::parse(&id)
-        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
-        .to_uuid();
-    let report = BusinessReport::find_by_id(&d.db().pool, id)
+    DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let report = BusinessReport::find_by_id(&d.db().pool, &id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Report not found".into()))?;
     Ok(Json(ApiResponse::success(report)))
@@ -297,10 +292,8 @@ pub async fn patch_report(
     Json(body): Json<PatchBusinessReport>,
 ) -> Result<Json<ApiResponse<BusinessReport>>, ApiError> {
     use deployment::Deployment;
-    let id = DbUuid::parse(&id)
-        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
-        .to_uuid();
-    let report = BusinessReport::patch(&d.db().pool, id, body)
+    DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
+    let report = BusinessReport::patch(&d.db().pool, &id, body)
         .await?
         .ok_or_else(|| ApiError::NotFound("Report not found".into()))?;
     Ok(Json(ApiResponse::success(report)))
@@ -313,9 +306,7 @@ pub async fn approve_business_report(
     Extension(access_context): Extension<AccessContext>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
-    let id = DbUuid::parse(&id)
-        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
-        .to_uuid();
+    DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
     use deployment::Deployment;
     let pool = &d.db().pool;
     let user_id = &access_context.user_id;
@@ -323,7 +314,7 @@ pub async fn approve_business_report(
         .map_err(|e| ApiError::InternalError(format!("Invalid user UUID: {e}")))?
         .to_uuid();
 
-    let report = BusinessReport::find_by_id(pool, id)
+    let report = BusinessReport::find_by_id(pool, &id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Report not found".into()))?;
 
@@ -334,7 +325,7 @@ pub async fn approve_business_report(
          WHERE id = ?",
     )
     .bind(user_id.as_str())
-    .bind(id)
+    .bind(&id)
     .execute(pool)
     .await?;
 
@@ -391,7 +382,7 @@ pub async fn approve_business_report(
                 company_name: Option<String>,
             }
             let person_info = sqlx::query_as::<_, NameRow>(
-                "SELECT full_name, company_name FROM persons WHERE id = ?",
+                "SELECT COALESCE(full_name, 'Unknown') as full_name, company_name FROM crm_contacts WHERE CAST(id AS TEXT) = ?",
             )
             .bind(person_id.as_str())
             .fetch_optional(pool)
@@ -415,7 +406,7 @@ pub async fn approve_business_report(
                 organization_id: Uuid,
             }
             let org_id = sqlx::query_as::<_, OrgRow>(
-                "SELECT organization_id FROM person_organization_contacts WHERE person_id = ? LIMIT 1",
+                "SELECT organization_id FROM contact_organization_links WHERE person_id = ? LIMIT 1",
             )
             .bind(person_id.as_str())
             .fetch_optional(pool)
@@ -460,7 +451,7 @@ pub async fn approve_business_report(
         }
     }
 
-    let updated = BusinessReport::find_by_id(pool, id).await?.unwrap();
+    let updated = BusinessReport::find_by_id(pool, &id).await?.unwrap();
     Ok(Json(ApiResponse::success(serde_json::json!({
         "report": updated,
         "deal": deal_json,
@@ -475,14 +466,12 @@ pub async fn request_revision(
     Path(id): Path<String>,
     Json(body): Json<RevisionRequest>,
 ) -> Result<Json<ApiResponse<BusinessReport>>, ApiError> {
-    let id = DbUuid::parse(&id)
-        .map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?
-        .to_uuid();
+    DbUuid::parse(&id).map_err(|_| ApiError::BadRequest("Invalid UUID".into()))?;
     use deployment::Deployment;
     let pool = &d.db().pool;
     let user_id = &access_context.user_id;
 
-    let report = BusinessReport::find_by_id(pool, id)
+    let report = BusinessReport::find_by_id(pool, &id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Report not found".into()))?;
 
@@ -495,7 +484,7 @@ pub async fn request_revision(
     )
     .bind(user_id.as_str())
     .bind(&body.notes)
-    .bind(id)
+    .bind(&id)
     .execute(pool)
     .await?;
 
@@ -520,7 +509,7 @@ pub async fn request_revision(
         }
     }
 
-    let updated = BusinessReport::find_by_id(pool, id)
+    let updated = BusinessReport::find_by_id(pool, &id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Report not found after update".into()))?;
 
@@ -535,11 +524,10 @@ pub async fn generate_report_handler(
     use deployment::Deployment;
     let pool = &d.db().pool;
 
-    use db::models::person::Person;
-    // Verify person exists
-    Person::find_by_id(pool, body.person_id)
-        .await?
-        .ok_or_else(|| ApiError::NotFound("Person not found".into()))?;
+    use db::{db_uuid::DbUuid, models::crm_contact::CrmContact};
+    // Verify contact exists
+    let contact_id = DbUuid::from_string(body.person_id.to_string());
+    CrmContact::find_by_id(pool, &contact_id).await?;
 
     let person_id = body.person_id;
     let report_type = body.report_type.unwrap_or_else(|| "business_audit".into());
@@ -593,7 +581,7 @@ pub async fn generate_report_handler(
     Ok(Json(ApiResponse::success(serde_json::json!({
         "status": "queued",
         "person_id": person_id,
-        "message": "Report generation started — poll GET /api/persons/:id/reports"
+        "message": "Report generation started — poll GET /api/crm/contacts/:id/reports"
     }))))
 }
 

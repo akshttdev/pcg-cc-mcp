@@ -1,21 +1,19 @@
 use db::models::{
     comment::{AuthorType, CommentType, CreateTaskComment, TaskComment},
-    person::{ListPersonsQuery, Person},
     project::Project,
     project_knowledge_source::ProjectKnowledgeSource,
     task::Task,
 };
 use rmcp::{
-    ErrorData,
     handler::server::tool::Parameters,
     model::{CallToolResult, Content},
-    tool,
+    tool, ErrorData,
 };
 use serde_json::Value;
 use services::services::pcg_policy::{self, PolicyAction, PolicyCheckContext};
 use uuid::Uuid;
 
-use super::{TaskServer, helpers::*, types::*};
+use super::{helpers::*, types::*, TaskServer};
 
 impl TaskServer {
     #[tool(description = "Evaluate PCG governance policies for a task before execution.")]
@@ -141,7 +139,7 @@ impl TaskServer {
     }
 
     #[tool(
-        description = "Search across projects, tasks, knowledge sources, and persons in a single query. Returns categorized results. Use entity_types to narrow scope."
+        description = "Search across projects, tasks, knowledge sources, and contacts in a single query. Returns categorized results. Use entity_types to narrow scope."
     )]
     pub(super) async fn unified_search(
         &self,
@@ -159,7 +157,9 @@ impl TaskServer {
         let search_projects = search_all || types.contains(&"projects".to_string());
         let search_tasks = search_all || types.contains(&"tasks".to_string());
         let search_knowledge = search_all || types.contains(&"knowledge".to_string());
-        let search_persons = search_all || types.contains(&"persons".to_string());
+        let search_contacts = search_all
+            || types.contains(&"contacts".to_string())
+            || types.contains(&"persons".to_string());
 
         let mut results = serde_json::json!({ "query": req.query });
 
@@ -335,40 +335,47 @@ impl TaskServer {
             });
         }
 
-        // Search persons
-        if search_persons {
-            let persons: Vec<Value> = match Person::list(
-                &self.pool,
-                &ListPersonsQuery {
-                    person_type: None,
-                    financial_role: None,
-                    lifecycle_stage: None,
-                    organization_id: None,
-                    query: Some(req.query.clone()),
-                    limit: Some(limit as i64),
-                    offset: None,
-                },
+        // Search contacts
+        if search_contacts {
+            #[derive(sqlx::FromRow)]
+            struct ContactRow {
+                id: String,
+                full_name: Option<String>,
+                email: Option<String>,
+                person_type: Option<String>,
+                company_name: Option<String>,
+                job_title: Option<String>,
+            }
+            let search_pattern = format!("%{}%", req.query);
+            let contacts: Vec<Value> = match sqlx::query_as::<_, ContactRow>(
+                "SELECT CAST(id AS TEXT) as id, full_name, email, person_type, company_name, job_title \
+                 FROM crm_contacts \
+                 WHERE full_name LIKE ?1 OR email LIKE ?1 OR company_name LIKE ?1 \
+                 ORDER BY full_name ASC LIMIT ?2",
             )
+            .bind(&search_pattern)
+            .bind(limit as i64)
+            .fetch_all(&self.pool)
             .await
             {
-                Ok(people) => people
+                Ok(rows) => rows
                     .iter()
-                    .map(|p| {
+                    .map(|c| {
                         serde_json::json!({
-                            "id": p.id.to_string(),
-                            "full_name": p.full_name,
-                            "email": p.email,
-                            "person_type": p.person_type,
-                            "company_name": p.company_name,
-                            "job_title": p.job_title,
+                            "id": c.id,
+                            "full_name": c.full_name,
+                            "email": c.email,
+                            "person_type": c.person_type,
+                            "company_name": c.company_name,
+                            "job_title": c.job_title,
                         })
                     })
                     .collect(),
                 Err(_) => vec![],
             };
-            results["persons"] = serde_json::json!({
-                "count": persons.len(),
-                "results": persons,
+            results["contacts"] = serde_json::json!({
+                "count": contacts.len(),
+                "results": contacts,
             });
         }
 

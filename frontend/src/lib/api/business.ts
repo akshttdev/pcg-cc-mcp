@@ -3,8 +3,8 @@ import type {
   CompanyContactMethod,
   InvoiceRecord,
   OrgBrandProfile,
-  PersonRecord,
 } from './communication';
+import type { CrmContactRecord } from './crm';
 
 // ── Proposals ─────────────────────────────────────────────────────────────────
 
@@ -543,9 +543,9 @@ export const companiesApi = {
     return handleApiResponse<ProposalRecord[]>(response);
   },
 
-  listPersons: async (id: string): Promise<PersonRecord[]> => {
-    const response = await makeRequest(`/api/companies/${id}/persons`);
-    return handleApiResponse<PersonRecord[]>(response);
+  listContacts: async (id: string): Promise<CrmContactRecord[]> => {
+    const response = await makeRequest(`/api/companies/${id}/contacts`);
+    return handleApiResponse<CrmContactRecord[]>(response);
   },
 
   getIntelligenceStatus: async (

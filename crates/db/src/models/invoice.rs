@@ -14,6 +14,7 @@ pub struct Invoice {
     pub invoice_number: String,
 
     pub person_id: Option<Uuid>,
+    pub crm_contact_id: Option<String>,
     pub organization_id: Option<Uuid>,
     pub project_id: Option<Uuid>,
 

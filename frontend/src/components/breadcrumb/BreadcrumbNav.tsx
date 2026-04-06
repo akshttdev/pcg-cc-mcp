@@ -1,19 +1,38 @@
-import { ChevronRight, Home, ChevronsUpDown, Minimize2, Maximize2 } from 'lucide-react';
-import { Link, useParams, useNavigate, useLocation } from 'react-router-dom';
-import { useProject } from '@/contexts/project-context';
-import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
-import { tasksApi, organizationsApi, dataSourcesApi, personsApi, companiesApi } from '@/lib/api';
-import type { SidebarProject, SidebarClient } from '@/lib/api';
-import { sidebarKeys, taskKeys, dataSourceKeys, entityKeys, organizationKeys } from '@/lib/query-keys';
-import { cn } from '@/lib/utils';
+import {
+  ChevronRight,
+  ChevronsUpDown,
+  Home,
+  Maximize2,
+  Minimize2,
+} from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+
+import { Input } from '@/components/ui/input';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { useState, useMemo } from 'react';
-import { Input } from '@/components/ui/input';
+import { useAuth } from '@/contexts/AuthContext';
+import { useProject } from '@/contexts/project-context';
+import type { SidebarClient, SidebarProject } from '@/lib/api';
+import {
+  companiesApi,
+  crmApi,
+  dataSourcesApi,
+  organizationsApi,
+  tasksApi,
+} from '@/lib/api';
+import {
+  dataSourceKeys,
+  entityKeys,
+  organizationKeys,
+  sidebarKeys,
+  taskKeys,
+} from '@/lib/query-keys';
+import { cn } from '@/lib/utils';
 import { useViewStore } from '@/stores/useViewStore';
 
 interface BreadcrumbItem {
@@ -27,9 +46,20 @@ interface BreadcrumbNavProps {
   isFullscreen?: boolean;
 }
 
-export function BreadcrumbNav({ onToggleFullscreen, isFullscreen }: BreadcrumbNavProps = {}) {
+export function BreadcrumbNav({
+  onToggleFullscreen,
+  isFullscreen,
+}: BreadcrumbNavProps = {}) {
   const { contentFullscreen, toggleContentFullscreen } = useViewStore();
-  const { projectId, taskId, orgId, dataSourceId, clientId, personId, companyId } = useParams<{
+  const {
+    projectId,
+    taskId,
+    orgId,
+    dataSourceId,
+    clientId,
+    personId,
+    companyId,
+  } = useParams<{
     projectId?: string;
     taskId?: string;
     orgId?: string;
@@ -72,7 +102,7 @@ export function BreadcrumbNav({ onToggleFullscreen, isFullscreen }: BreadcrumbNa
   // Fetch person if personId is present
   const { data: person } = useQuery({
     queryKey: entityKeys.person(personId!),
-    queryFn: () => personsApi.get(personId!),
+    queryFn: () => crmApi.getContact(personId!),
     enabled: !!personId,
     staleTime: 5 * 60 * 1000,
   });
@@ -99,22 +129,30 @@ export function BreadcrumbNav({ onToggleFullscreen, isFullscreen }: BreadcrumbNa
     ? [...(sidebarTree.owned_orgs || []), ...(sidebarTree.member_orgs || [])]
     : [];
 
-  const currentOrg = allOrgs.find((org) => {
-    if (orgId) return org.id === orgId;
-    if (project && projectId) {
-      const findProject = (projects: SidebarProject[]): boolean =>
-        projects.some((p) => p.id === projectId || findProject(p.children || []));
-      return (
-        findProject(org.internal_projects) ||
-        org.clients.some((c: SidebarClient) => findProject(c.projects))
-      );
-    }
-    return false;
-  })
+  const currentOrg =
+    allOrgs.find((org) => {
+      if (orgId) return org.id === orgId;
+      if (project && projectId) {
+        const findProject = (projects: SidebarProject[]): boolean =>
+          projects.some(
+            (p) => p.id === projectId || findProject(p.children || [])
+          );
+        return (
+          findProject(org.internal_projects) ||
+          org.clients.some((c: SidebarClient) => findProject(c.projects))
+        );
+      }
+      return false;
+    }) ??
     // Fall back to user's home org, then first org from auth, then first from sidebar
-    ?? allOrgs.find((org) => user?.home_organization_id && org.id === user.home_organization_id)
-    ?? allOrgs.find((org) => user?.organizations?.[0] && org.id === user.organizations[0].id)
-    ?? (allOrgs.length > 0 ? allOrgs[0] : undefined);
+    allOrgs.find(
+      (org) =>
+        user?.home_organization_id && org.id === user.home_organization_id
+    ) ??
+    allOrgs.find(
+      (org) => user?.organizations?.[0] && org.id === user.organizations[0].id
+    ) ??
+    (allOrgs.length > 0 ? allOrgs[0] : undefined);
 
   // Build breadcrumb items — always start with org
   const items: BreadcrumbItem[] = [];
@@ -133,7 +171,11 @@ export function BreadcrumbNav({ onToggleFullscreen, isFullscreen }: BreadcrumbNa
     });
   }
 
-  if (project && projectId && (taskId || location.pathname.includes('/tasks'))) {
+  if (
+    project &&
+    projectId &&
+    (taskId || location.pathname.includes('/tasks'))
+  ) {
     items.push({
       label: 'Tasks',
       href: `/projects/${projectId}/tasks`,
@@ -142,7 +184,10 @@ export function BreadcrumbNav({ onToggleFullscreen, isFullscreen }: BreadcrumbNa
 
   if (task) {
     items.push({
-      label: task.title.length > 50 ? `${task.title.substring(0, 50)}...` : task.title,
+      label:
+        task.title.length > 50
+          ? `${task.title.substring(0, 50)}...`
+          : task.title,
       href: `/projects/${projectId}/tasks/${taskId}`,
     });
   }
@@ -153,7 +198,10 @@ export function BreadcrumbNav({ onToggleFullscreen, isFullscreen }: BreadcrumbNa
     if (location.pathname.includes('/knowledge')) {
       items.push({ label: 'Knowledge', href: `${projectBase}/knowledge` });
     } else if (location.pathname.includes('/deliverables')) {
-      items.push({ label: 'Deliverables', href: `${projectBase}/deliverables` });
+      items.push({
+        label: 'Deliverables',
+        href: `${projectBase}/deliverables`,
+      });
     } else if (location.pathname.includes('/control')) {
       items.push({ label: 'Controller', href: `${projectBase}/control` });
     } else if (location.pathname.includes('/pulse')) {
@@ -162,7 +210,7 @@ export function BreadcrumbNav({ onToggleFullscreen, isFullscreen }: BreadcrumbNa
       items.push({ label: 'Media Library', href: `${projectBase}/media` });
     } else if (location.pathname.includes('/social')) {
       items.push({ label: 'Social', href: `${projectBase}/social` });
-    // CRM breadcrumbs removed from project scope — CRM is org-level
+      // CRM breadcrumbs removed from project scope — CRM is org-level
     }
   }
 
@@ -178,9 +226,10 @@ export function BreadcrumbNav({ onToggleFullscreen, isFullscreen }: BreadcrumbNa
         href: `/organizations/${orgId}/intelligence/data-sources`,
       });
       if (dataSource) {
-        const title = dataSource.title.length > 50
-          ? `${dataSource.title.substring(0, 50)}...`
-          : dataSource.title;
+        const title =
+          dataSource.title.length > 50
+            ? `${dataSource.title.substring(0, 50)}...`
+            : dataSource.title;
         items.push({
           label: title,
           href: `/organizations/${orgId}/data-sources/${dataSourceId}`,
@@ -189,42 +238,87 @@ export function BreadcrumbNav({ onToggleFullscreen, isFullscreen }: BreadcrumbNa
     } else if (location.pathname.includes('/crm')) {
       items.push({ label: 'CRM', href: `/organizations/${orgId}/crm` });
       if (location.pathname.includes('/crm/contacts')) {
-        items.push({ label: 'Contacts', href: `/organizations/${orgId}/crm/contacts` });
+        items.push({
+          label: 'Contacts',
+          href: `/organizations/${orgId}/crm/contacts`,
+        });
       } else if (location.pathname.includes('/crm/companies')) {
-        items.push({ label: 'Companies', href: `/organizations/${orgId}/crm/companies` });
+        items.push({
+          label: 'Companies',
+          href: `/organizations/${orgId}/crm/companies`,
+        });
       } else if (location.pathname.includes('/crm/pipeline')) {
-        items.push({ label: 'Pipeline', href: `/organizations/${orgId}/crm/pipeline` });
+        items.push({
+          label: 'Pipeline',
+          href: `/organizations/${orgId}/crm/pipeline`,
+        });
       } else if (location.pathname.includes('/crm/deliverables')) {
-        items.push({ label: 'Deliverables', href: `/organizations/${orgId}/crm/deliverables` });
+        items.push({
+          label: 'Deliverables',
+          href: `/organizations/${orgId}/crm/deliverables`,
+        });
       }
     } else if (location.pathname.includes('/intelligence')) {
-      items.push({ label: 'Intelligence', href: `/organizations/${orgId}/intelligence` });
+      items.push({
+        label: 'Intelligence',
+        href: `/organizations/${orgId}/intelligence`,
+      });
       if (location.pathname.includes('/intelligence/data-sources')) {
-        items.push({ label: 'Data Sources', href: `/organizations/${orgId}/intelligence/data-sources` });
+        items.push({
+          label: 'Data Sources',
+          href: `/organizations/${orgId}/intelligence/data-sources`,
+        });
       } else if (location.pathname.includes('/intelligence/artifacts')) {
-        items.push({ label: 'Artifacts', href: `/organizations/${orgId}/intelligence/artifacts` });
+        items.push({
+          label: 'Artifacts',
+          href: `/organizations/${orgId}/intelligence/artifacts`,
+        });
       } else if (location.pathname.includes('/intelligence/workflows')) {
-        items.push({ label: 'Workflows', href: `/organizations/${orgId}/intelligence/workflows` });
+        items.push({
+          label: 'Workflows',
+          href: `/organizations/${orgId}/intelligence/workflows`,
+        });
       } else if (location.pathname.includes('/intelligence/pulse')) {
-        items.push({ label: 'Pulse', href: `/organizations/${orgId}/intelligence/pulse` });
+        items.push({
+          label: 'Pulse',
+          href: `/organizations/${orgId}/intelligence/pulse`,
+        });
       } else if (location.pathname.includes('/intelligence/topology')) {
-        items.push({ label: 'Topology', href: `/organizations/${orgId}/intelligence/topology` });
+        items.push({
+          label: 'Topology',
+          href: `/organizations/${orgId}/intelligence/topology`,
+        });
       }
     } else if (location.pathname.includes('/social')) {
       items.push({ label: 'Social', href: `/organizations/${orgId}/social` });
     } else if (location.pathname.includes('/members')) {
       items.push({ label: 'Members', href: `/organizations/${orgId}/members` });
     } else if (location.pathname.includes('/projects')) {
-      items.push({ label: 'Projects', href: `/organizations/${orgId}/projects` });
+      items.push({
+        label: 'Projects',
+        href: `/organizations/${orgId}/projects`,
+      });
     } else if (location.pathname.includes('/integrations')) {
-      items.push({ label: 'Integrations', href: `/organizations/${orgId}/integrations` });
+      items.push({
+        label: 'Integrations',
+        href: `/organizations/${orgId}/integrations`,
+      });
     } else if (location.pathname.includes('/clients/')) {
-      items.push({ label: 'Clients', href: `/organizations/${orgId}/crm/companies` });
+      items.push({
+        label: 'Clients',
+        href: `/organizations/${orgId}/crm/companies`,
+      });
       if (clientId && clientName) {
-        items.push({ label: clientName, href: `/organizations/${orgId}/clients/${clientId}` });
+        items.push({
+          label: clientName,
+          href: `/organizations/${orgId}/clients/${clientId}`,
+        });
       }
     } else if (location.pathname.includes('/brand-guide')) {
-      items.push({ label: 'Brand Guide', href: `/organizations/${orgId}/brand-guide` });
+      items.push({
+        label: 'Brand Guide',
+        href: `/organizations/${orgId}/brand-guide`,
+      });
     }
   }
 
@@ -287,19 +381,31 @@ export function BreadcrumbNav({ onToggleFullscreen, isFullscreen }: BreadcrumbNa
         '/settings/mcp': 'MCP Servers',
         '/settings/network': 'Network & Mesh',
       };
-      const matchedSettings = Object.keys(settingsLabels).find((p) => location.pathname === p);
+      const matchedSettings = Object.keys(settingsLabels).find(
+        (p) => location.pathname === p
+      );
       if (matchedSettings) {
-        items.push({ label: settingsLabels[matchedSettings], href: matchedSettings });
+        items.push({
+          label: settingsLabels[matchedSettings],
+          href: matchedSettings,
+        });
       }
     }
 
     // Person detail page
-    if (personId && location.pathname.startsWith('/people/')) {
+    if (
+      personId &&
+      (location.pathname.startsWith('/contacts/') ||
+        location.pathname.startsWith('/people/'))
+    ) {
       const name = person
-        ? person.full_name || person.email || 'Person'
+        ? person.full_name || person.email || 'Contact'
         : undefined;
       if (name) {
-        items.push({ label: name.length > 50 ? `${name.substring(0, 50)}...` : name, href: `/people/${personId}` });
+        items.push({
+          label: name.length > 50 ? `${name.substring(0, 50)}...` : name,
+          href: `/contacts/${personId}`,
+        });
       }
     }
 
@@ -307,7 +413,10 @@ export function BreadcrumbNav({ onToggleFullscreen, isFullscreen }: BreadcrumbNa
     if (companyId && location.pathname.startsWith('/companies/')) {
       const name = company?.name;
       if (name) {
-        items.push({ label: name.length > 50 ? `${name.substring(0, 50)}...` : name, href: `/companies/${companyId}` });
+        items.push({
+          label: name.length > 50 ? `${name.substring(0, 50)}...` : name,
+          href: `/companies/${companyId}`,
+        });
       }
     }
 
@@ -344,10 +453,14 @@ export function BreadcrumbNav({ onToggleFullscreen, isFullscreen }: BreadcrumbNa
 
         {items.map((item, index) => {
           const isLast = index === items.length - 1;
-          const isOrgItem = currentOrg && item.href === `/organizations/${currentOrg.id}`;
+          const isOrgItem =
+            currentOrg && item.href === `/organizations/${currentOrg.id}`;
 
           return (
-            <div key={item.href} className="flex items-center space-x-1 min-w-0">
+            <div
+              key={item.href}
+              className="flex items-center space-x-1 min-w-0"
+            >
               <ChevronRight className="h-4 w-4 shrink-0" />
               {isOrgItem && allOrgs.length > 1 ? (
                 <OrgSwitcher
@@ -419,11 +532,19 @@ function OrgSwitcher({
 
   const filteredOrgs = useMemo(() => {
     const q = search.toLowerCase().trim();
-    return allOrgs.filter((org) => org.id && (!q || org.name.toLowerCase().includes(q)));
+    return allOrgs.filter(
+      (org) => org.id && (!q || org.name.toLowerCase().includes(q))
+    );
   }, [allOrgs, search]);
 
   return (
-    <Popover open={open} onOpenChange={(v) => { setOpen(v); if (!v) setSearch(''); }}>
+    <Popover
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        if (!v) setSearch('');
+      }}
+    >
       <PopoverTrigger asChild>
         <button
           className={cn(
@@ -448,7 +569,9 @@ function OrgSwitcher({
         </div>
         <div className="max-h-[200px] overflow-y-auto p-1">
           {filteredOrgs.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-3">No organizations found.</p>
+            <p className="text-sm text-muted-foreground text-center py-3">
+              No organizations found.
+            </p>
           ) : (
             filteredOrgs.map((org) => (
               <button

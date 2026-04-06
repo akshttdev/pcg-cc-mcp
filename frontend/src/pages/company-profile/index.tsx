@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 const ProposalCreateModal = lazy(() =>
-  import('@/components/dialogs/ProposalCreateModal').then((m) => ({ default: m.ProposalCreateModal }))
+  import('@/components/dialogs/ProposalCreateModal').then((m) => ({
+    default: m.ProposalCreateModal,
+  }))
 );
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
@@ -14,32 +15,41 @@ import {
   Plus,
   RefreshCw,
 } from 'lucide-react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
+
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
-import { entityKeys, businessKeys } from '@/lib/query-keys';
 import { companiesApi } from '@/lib/api';
-import { StarRating, IntelBadge } from './components/helpers';
+import { businessKeys, entityKeys } from '@/lib/query-keys';
+import { cn } from '@/lib/utils';
+
+import { IntelBadge, StarRating } from './components/helpers';
+import { ContactsTab } from './tabs/ContactsTab';
+import { EditTab } from './tabs/EditTab';
+import { IntelligenceTab } from './tabs/IntelligenceTab';
 import { OverviewTab } from './tabs/OverviewTab';
 import { ProposalsTab } from './tabs/ProposalsTab';
-import { ContactsTab } from './tabs/ContactsTab';
-import { IntelligenceTab } from './tabs/IntelligenceTab';
 import { WikiTab } from './tabs/WikiTab';
-import { EditTab } from './tabs/EditTab';
 
 // ── Tab types ─────────────────────────────────────────────────────────────────
 
-export type Tab = 'overview' | 'proposals' | 'contacts' | 'intelligence' | 'wiki' | 'edit';
+export type Tab =
+  | 'overview'
+  | 'proposals'
+  | 'contacts'
+  | 'intelligence'
+  | 'wiki'
+  | 'edit';
 
 const TABS: { key: Tab; label: string }[] = [
-  { key: 'overview',     label: 'Overview' },
-  { key: 'proposals',    label: 'Proposals' },
-  { key: 'contacts',     label: 'Contacts' },
+  { key: 'overview', label: 'Overview' },
+  { key: 'proposals', label: 'Proposals' },
+  { key: 'contacts', label: 'Contacts' },
   { key: 'intelligence', label: 'Intelligence' },
-  { key: 'wiki',         label: 'Wiki' },
-  { key: 'edit',         label: 'Edit' },
+  { key: 'wiki', label: 'Wiki' },
+  { key: 'edit', label: 'Edit' },
 ];
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -55,7 +65,11 @@ export function CompanyProfilePage() {
   const [showCreateProposal, setShowCreateProposal] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
-  const { data: company, isLoading, refetch: refetchCompany } = useQuery({
+  const {
+    data: company,
+    isLoading,
+    refetch: refetchCompany,
+  } = useQuery({
     queryKey: entityKeys.company(companyId!),
     queryFn: () => companiesApi.get(companyId!),
     enabled: !!companyId,
@@ -69,7 +83,7 @@ export function CompanyProfilePage() {
 
   const { data: contacts = [] } = useQuery({
     queryKey: entityKeys.companyContacts(companyId!),
-    queryFn: () => companiesApi.listPersons(companyId!),
+    queryFn: () => companiesApi.listContacts(companyId!),
     enabled: !!companyId,
   });
 
@@ -91,7 +105,9 @@ export function CompanyProfilePage() {
     refetchMethods();
   }
 
-  function setTab(tab: Tab) { setSearchParams({ tab }); }
+  function setTab(tab: Tab) {
+    setSearchParams({ tab });
+  }
 
   // Auto-poll during research
   useEffect(() => {
@@ -100,18 +116,29 @@ export function CompanyProfilePage() {
         setIsPolling(true);
         pollRef.current = setInterval(async () => {
           const updated = await refetchIntel();
-          if (updated.data?.status !== 'running' && updated.data?.status !== 'queued') {
+          if (
+            updated.data?.status !== 'running' &&
+            updated.data?.status !== 'queued'
+          ) {
             clearInterval(pollRef.current!);
             pollRef.current = null;
             setIsPolling(false);
-            queryClient.invalidateQueries({ queryKey: entityKeys.company(companyId!) });
+            queryClient.invalidateQueries({
+              queryKey: entityKeys.company(companyId!),
+            });
           }
         }, 3000);
       }
     } else {
-      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; setIsPolling(false); }
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+        setIsPolling(false);
+      }
     }
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, [intel?.status, companyId, refetchIntel, queryClient]);
 
   async function handleRunResearch() {
@@ -120,15 +147,21 @@ export function CompanyProfilePage() {
       await companiesApi.research(companyId);
       toast.success('Research queued');
       refetchIntel();
-    } catch { toast.error('Failed to queue research'); }
+    } catch {
+      toast.error('Failed to queue research');
+    }
   }
 
   async function handleExportAnalysis() {
     if (!companyId || !company) return;
     setIsExporting(true);
-    try { await companiesApi.exportAnalysis(companyId, company.name); }
-    catch { toast.error('Export failed'); }
-    finally { setIsExporting(false); }
+    try {
+      await companiesApi.exportAnalysis(companyId, company.name);
+    } catch {
+      toast.error('Export failed');
+    } finally {
+      setIsExporting(false);
+    }
   }
 
   async function handlePersonResearch(personId: string) {
@@ -136,7 +169,9 @@ export function CompanyProfilePage() {
       const { intelligenceApi } = await import('@/lib/api');
       await intelligenceApi.triggerResearch(personId);
       toast.success('Contact research queued');
-    } catch { toast.error('Failed to queue contact research'); }
+    } catch {
+      toast.error('Failed to queue contact research');
+    }
   }
 
   if (isLoading) {
@@ -150,11 +185,15 @@ export function CompanyProfilePage() {
   }
 
   if (!company) {
-    return <div className="flex items-center justify-center h-full text-muted-foreground">Company not found.</div>;
+    return (
+      <div className="flex items-center justify-center h-full text-muted-foreground">
+        Company not found.
+      </div>
+    );
   }
 
   const totalRevenue = proposals
-    .filter(p => p.status === 'contract_signed')
+    .filter((p) => p.status === 'contract_signed')
     .reduce((sum, p) => sum + (p.quote_amount_vibe ?? 0) / 100, 0);
 
   return (
@@ -186,11 +225,17 @@ export function CompanyProfilePage() {
             </button>
           </div>
 
-          <div className={`flex items-start gap-4 ${company.cover_image_url ? '-mt-14' : ''}`}>
+          <div
+            className={`flex items-start gap-4 ${company.cover_image_url ? '-mt-14' : ''}`}
+          >
             {/* Logo */}
             <div className="h-14 w-14 rounded-xl border-2 border-background bg-card shadow-sm flex items-center justify-center overflow-hidden shrink-0">
               {company.logo_url ? (
-                <img src={company.logo_url} alt={company.name} className="h-full w-full object-contain p-1" />
+                <img
+                  src={company.logo_url}
+                  alt={company.name}
+                  className="h-full w-full object-contain p-1"
+                />
               ) : (
                 <Building2 className="h-7 w-7 text-muted-foreground" />
               )}
@@ -215,13 +260,24 @@ export function CompanyProfilePage() {
                     onClick={handleRunResearch}
                     disabled={isPolling}
                   >
-                    {isPolling
-                      ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Researching…</>
-                      : <><RefreshCw className="h-3.5 w-3.5" />Research</>
-                    }
+                    {isPolling ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Researching…
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        Research
+                      </>
+                    )}
                   </Button>
                   <Link to={`/companies/${companyId}/brand-guide`}>
-                    <Button variant="outline" size="sm" className="text-xs gap-1.5">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs gap-1.5"
+                    >
                       <BookOpen className="h-3.5 w-3.5" />
                       Brand Guide
                     </Button>
@@ -235,10 +291,24 @@ export function CompanyProfilePage() {
                     <Brain className="h-3.5 w-3.5" />
                     Intel
                   </Button>
-                  <Button size="sm" variant="outline" className="text-xs" onClick={handleExportAnalysis} disabled={isExporting}>
-                    {isExporting ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs"
+                    onClick={handleExportAnalysis}
+                    disabled={isExporting}
+                  >
+                    {isExporting ? (
+                      <RefreshCw className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Download className="h-3 w-3" />
+                    )}
                   </Button>
-                  <Button size="sm" className="text-xs" onClick={() => setShowCreateProposal(true)}>
+                  <Button
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => setShowCreateProposal(true)}
+                  >
                     <Plus className="h-3 w-3 mr-0.5" />
                     Proposal
                   </Button>
@@ -246,14 +316,32 @@ export function CompanyProfilePage() {
               </div>
               <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap mt-1">
                 {company.industry && <span>{company.industry}</span>}
-                {company.city && <><span>·</span><span>{company.city}</span></>}
-                {company.headquarters && !company.city && <><span>·</span><span>{company.headquarters}</span></>}
+                {company.city && (
+                  <>
+                    <span>·</span>
+                    <span>{company.city}</span>
+                  </>
+                )}
+                {company.headquarters && !company.city && (
+                  <>
+                    <span>·</span>
+                    <span>{company.headquarters}</span>
+                  </>
+                )}
                 {company.gmb_rating != null && (
-                  <><span>·</span><StarRating rating={company.gmb_rating} count={company.gmb_review_count} /></>
+                  <>
+                    <span>·</span>
+                    <StarRating
+                      rating={company.gmb_rating}
+                      count={company.gmb_review_count}
+                    />
+                  </>
                 )}
                 {company.organization_id && (
                   <button
-                    onClick={() => navigate(`/organizations/${company.organization_id}`)}
+                    onClick={() =>
+                      navigate(`/organizations/${company.organization_id}`)
+                    }
                     className="text-xs px-2 py-0.5 rounded-full bg-indigo-100/10 text-indigo-400 hover:bg-indigo-100/20 transition-colors font-medium border border-indigo-500/30"
                   >
                     View Org →
@@ -273,15 +361,19 @@ export function CompanyProfilePage() {
                   'px-4 py-2 text-sm font-medium border-b-2 transition-colors',
                   activeTab === t.key
                     ? 'border-primary text-primary'
-                    : 'border-transparent text-muted-foreground hover:text-foreground',
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
                 )}
               >
                 {t.label}
                 {t.key === 'proposals' && proposals.length > 0 && (
-                  <span className="ml-1.5 text-xs text-muted-foreground">({proposals.length})</span>
+                  <span className="ml-1.5 text-xs text-muted-foreground">
+                    ({proposals.length})
+                  </span>
                 )}
                 {t.key === 'contacts' && contacts.length > 0 && (
-                  <span className="ml-1.5 text-xs text-muted-foreground">({contacts.length})</span>
+                  <span className="ml-1.5 text-xs text-muted-foreground">
+                    ({contacts.length})
+                  </span>
                 )}
               </button>
             ))}
@@ -302,7 +394,10 @@ export function CompanyProfilePage() {
           />
         )}
         {activeTab === 'proposals' && (
-          <ProposalsTab proposals={proposals} onNewProposal={() => setShowCreateProposal(true)} />
+          <ProposalsTab
+            proposals={proposals}
+            onNewProposal={() => setShowCreateProposal(true)}
+          />
         )}
         {activeTab === 'contacts' && (
           <ContactsTab contacts={contacts} onResearch={handlePersonResearch} />
@@ -316,10 +411,7 @@ export function CompanyProfilePage() {
           />
         )}
         {activeTab === 'wiki' && (
-          <WikiTab
-            company={company}
-            onSaved={() => refetchCompany()}
-          />
+          <WikiTab company={company} onSaved={() => refetchCompany()} />
         )}
         {activeTab === 'edit' && (
           <EditTab

@@ -1,7 +1,7 @@
 use axum::{
     extract::{Path, Query, State},
     routing::{get, post, put},
-    Json, Router,
+    Extension, Json, Router,
 };
 use db::models::{
     data_source::DataSource,
@@ -23,7 +23,7 @@ pub use services::services::workflow_execution::{
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 // Legacy step type for backwards compat with run_workflow
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -471,6 +471,267 @@ fn content_pipeline_workflow() -> WorkflowDefinition {
     }
 }
 
+// ── Demo Sprint: CRM-focused workflow templates ─────────────────────────────
+
+/// Sales Conversation: Extract prospects, opportunities, and next steps from call transcripts
+fn sales_conversation_workflow() -> WorkflowDefinition {
+    WorkflowDefinition {
+        id: "sales_conversation".to_string(),
+        name: "Sales Conversation Analysis".to_string(),
+        description: Some(
+            "Extract prospects, deals, and action items from sales call transcripts or meeting notes."
+                .to_string(),
+        ),
+        nodes: vec![
+            WorkflowNode {
+                id: "extract_participants".to_string(),
+                name: "Extract Participants".to_string(),
+                node_type: "llm_extract".to_string(),
+                parameters: json!({
+                    "prompt_template": concat!(
+                        "Analyze this sales conversation transcript. Extract every person mentioned or participating.\n",
+                        "For each person, provide:\n",
+                        "- first_name: First/given name\n",
+                        "- last_name: Last/family name\n",
+                        "- email: Email if mentioned, null otherwise\n",
+                        "- phone: Phone if mentioned, null otherwise\n",
+                        "- company_name: Their company/organization\n",
+                        "- job_title: Role or title if mentioned\n",
+                        "- role_in_conversation: buyer, seller, decision_maker, influencer, technical_contact\n\n",
+                        "Output as JSON with a top-level \"contacts\" array.\n\n",
+                        "Transcript:\n{{content}}"
+                    ),
+                    "output_schema": "contacts[]"
+                }),
+                position: NodePosition { x: 100.0, y: 100.0 },
+            },
+            WorkflowNode {
+                id: "extract_opportunities".to_string(),
+                name: "Extract Opportunities".to_string(),
+                node_type: "llm_analyze".to_string(),
+                parameters: json!({
+                    "prompt_template": concat!(
+                        "Analyze this sales conversation for business opportunities.\n",
+                        "For each opportunity discussed, provide:\n",
+                        "- name: Short deal name (e.g. 'Acme Corp Brand Refresh')\n",
+                        "- description: What was discussed, key requirements, pain points\n",
+                        "- amount: Estimated deal value if mentioned, null otherwise\n",
+                        "- currency: USD unless stated otherwise\n",
+                        "- contact_name: Primary contact for this opportunity\n",
+                        "- contact_email: Their email if mentioned\n",
+                        "- type: project, retainer, partnership, referral, or other\n",
+                        "- urgency: hot, warm, cold based on conversation tone\n",
+                        "- next_steps: Array of concrete follow-up actions with owners\n\n",
+                        "Also consider participants extracted previously.\n\n",
+                        "Output as JSON with a top-level \"opportunities\" array.\n\n",
+                        "Transcript:\n{{content}}\n\n",
+                        "Participants:\n{{previous_results}}"
+                    ),
+                    "output_schema": "opportunities[]"
+                }),
+                position: NodePosition { x: 500.0, y: 100.0 },
+            },
+            WorkflowNode {
+                id: "create_follow_up_tasks".to_string(),
+                name: "Create Follow-up Tasks".to_string(),
+                node_type: "output_tasks".to_string(),
+                parameters: json!({}),
+                position: NodePosition { x: 900.0, y: 100.0 },
+            },
+        ],
+        connections: vec![
+            WorkflowConnection {
+                source: "extract_participants".to_string(),
+                target: "extract_opportunities".to_string(),
+                source_output: Some(0),
+                target_input: Some(0),
+            },
+            WorkflowConnection {
+                source: "extract_opportunities".to_string(),
+                target: "create_follow_up_tasks".to_string(),
+                source_output: Some(0),
+                target_input: Some(0),
+            },
+        ],
+        is_system: true,
+        owner_type: "system".to_string(),
+        owner_id: None,
+        default_model: None,
+    }
+}
+
+/// Prospect List: Parse CSV/text lists of potential clients into CRM contacts
+fn prospect_list_workflow() -> WorkflowDefinition {
+    WorkflowDefinition {
+        id: "prospect_list".to_string(),
+        name: "Prospect List Import".to_string(),
+        description: Some(
+            "Parse a list of prospects (CSV, text, or pasted data) into structured CRM contacts with companies."
+                .to_string(),
+        ),
+        nodes: vec![
+            WorkflowNode {
+                id: "parse_prospects".to_string(),
+                name: "Parse Prospect Data".to_string(),
+                node_type: "llm_extract".to_string(),
+                parameters: json!({
+                    "prompt_template": concat!(
+                        "Parse this prospect list into structured contacts. The input may be CSV, ",
+                        "tab-separated, a pasted table, or free-form text with contact information.\n\n",
+                        "For each prospect, extract:\n",
+                        "- first_name: First/given name\n",
+                        "- last_name: Last/family name\n",
+                        "- email: Email address if available\n",
+                        "- phone: Phone number if available\n",
+                        "- company_name: Company or organization\n",
+                        "- job_title: Title or role\n",
+                        "- department: Department if mentioned\n",
+                        "- linkedin_url: LinkedIn URL if available\n",
+                        "- source: Where this prospect came from (infer from context)\n",
+                        "- notes: Any additional context about this prospect\n\n",
+                        "Be thorough — extract every person mentioned, even if some fields are missing.\n\n",
+                        "Output as JSON with a top-level \"contacts\" array.\n\n",
+                        "Prospect Data:\n{{content}}"
+                    ),
+                    "output_schema": "contacts[]"
+                }),
+                position: NodePosition { x: 100.0, y: 200.0 },
+            },
+            WorkflowNode {
+                id: "deduplicate_companies".to_string(),
+                name: "Identify Companies".to_string(),
+                node_type: "llm_analyze".to_string(),
+                parameters: json!({
+                    "prompt_template": concat!(
+                        "From the extracted contacts below, identify unique companies.\n",
+                        "For each company, provide:\n",
+                        "- name: Canonical company name (normalize variations)\n",
+                        "- context: How many contacts from this company, their roles\n",
+                        "- relationship: potential_client (default for prospect lists)\n\n",
+                        "Also flag any duplicate contacts (same person listed twice with variations).\n\n",
+                        "Output as JSON with \"companies\" and \"duplicates\" arrays.\n\n",
+                        "Contacts:\n{{previous_results}}"
+                    ),
+                    "output_schema": "companies[]"
+                }),
+                position: NodePosition { x: 500.0, y: 200.0 },
+            },
+            WorkflowNode {
+                id: "create_crm_contacts".to_string(),
+                name: "Create CRM Contacts".to_string(),
+                node_type: "output_crm_contacts".to_string(),
+                parameters: json!({}),
+                position: NodePosition { x: 900.0, y: 200.0 },
+            },
+        ],
+        connections: vec![
+            WorkflowConnection {
+                source: "parse_prospects".to_string(),
+                target: "deduplicate_companies".to_string(),
+                source_output: Some(0),
+                target_input: Some(0),
+            },
+            WorkflowConnection {
+                source: "deduplicate_companies".to_string(),
+                target: "create_crm_contacts".to_string(),
+                source_output: Some(0),
+                target_input: Some(0),
+            },
+        ],
+        is_system: true,
+        owner_type: "system".to_string(),
+        owner_id: None,
+        default_model: None,
+    }
+}
+
+/// Company Research: Extract company profile and competitive intel from articles or web content
+fn company_research_workflow() -> WorkflowDefinition {
+    WorkflowDefinition {
+        id: "company_research".to_string(),
+        name: "Company Research Brief".to_string(),
+        description: Some(
+            "Extract a structured company profile from an article, press release, or web content."
+                .to_string(),
+        ),
+        nodes: vec![
+            WorkflowNode {
+                id: "extract_company_profile".to_string(),
+                name: "Extract Company Profile".to_string(),
+                node_type: "llm_extract".to_string(),
+                parameters: json!({
+                    "prompt_template": concat!(
+                        "Analyze this content and extract a comprehensive company profile.\n",
+                        "Provide:\n",
+                        "- name: Company name\n",
+                        "- website: Company website if mentioned\n",
+                        "- industry: Primary industry/sector\n",
+                        "- description: 2-3 sentence company description\n",
+                        "- founded: Year founded if mentioned\n",
+                        "- headquarters: Location if mentioned\n",
+                        "- size: Employee count or size category if mentioned\n",
+                        "- revenue: Revenue or funding if mentioned\n",
+                        "- key_people: Array of {name, title} for leadership mentioned\n",
+                        "- products_services: Array of main offerings\n",
+                        "- target_market: Who they serve\n\n",
+                        "Output as JSON with a top-level \"company\" object.\n\n",
+                        "Content:\n{{content}}"
+                    ),
+                    "output_schema": "company"
+                }),
+                position: NodePosition { x: 100.0, y: 200.0 },
+            },
+            WorkflowNode {
+                id: "competitive_analysis".to_string(),
+                name: "Competitive & Opportunity Analysis".to_string(),
+                node_type: "llm_analyze".to_string(),
+                parameters: json!({
+                    "prompt_template": concat!(
+                        "Based on this company profile, provide a competitive and opportunity analysis ",
+                        "for a creative agency (Power Club Global) considering this company as a client.\n\n",
+                        "Provide:\n",
+                        "- opportunities: Array of potential service offerings (branding, content, digital, events)\n",
+                        "- pain_points: Likely challenges this company faces that PCG can solve\n",
+                        "- competitors: Known competitors in their space\n",
+                        "- partnership_angle: How PCG could position a pitch\n",
+                        "- recommended_contacts: Which key people to reach out to and why\n",
+                        "- deal_estimate: Estimated deal size range and type (project vs retainer)\n\n",
+                        "Output as JSON.\n\n",
+                        "Company Profile:\n{{previous_results}}"
+                    ),
+                    "output_schema": "analysis"
+                }),
+                position: NodePosition { x: 500.0, y: 200.0 },
+            },
+            WorkflowNode {
+                id: "create_research_tasks".to_string(),
+                name: "Create Research Tasks".to_string(),
+                node_type: "output_tasks".to_string(),
+                parameters: json!({}),
+                position: NodePosition { x: 900.0, y: 200.0 },
+            },
+        ],
+        connections: vec![
+            WorkflowConnection {
+                source: "extract_company_profile".to_string(),
+                target: "competitive_analysis".to_string(),
+                source_output: Some(0),
+                target_input: Some(0),
+            },
+            WorkflowConnection {
+                source: "competitive_analysis".to_string(),
+                target: "create_research_tasks".to_string(),
+                source_output: Some(0),
+                target_input: Some(0),
+            },
+        ],
+        is_system: true,
+        owner_type: "system".to_string(),
+        owner_id: None,
+        default_model: None,
+    }
+}
+
 // ── DB helpers ───────────────────────────────────────────────────────────────
 
 /// Serialize workflow to DB JSON column
@@ -490,6 +751,9 @@ pub(crate) async fn seed_defaults(pool: &sqlx::SqlitePool) {
         sprint_planning_workflow(),
         client_onboarding_workflow(),
         content_pipeline_workflow(),
+        sales_conversation_workflow(),
+        prospect_list_workflow(),
+        company_research_workflow(),
     ];
 
     for wf in &workflows {
@@ -655,6 +919,7 @@ struct RunWorkflowRequest {
 /// Extract individual records from LLM output JSON
 /// POST /api/data-sources/:id/workflows/:workflow_id/run
 async fn run_workflow(
+    Extension(access_context): Extension<AccessContext>,
     Path((data_source_id, workflow_id)): Path<(Uuid, String)>,
     State(deployment): State<DeploymentImpl>,
     body: Option<Json<RunWorkflowRequest>>,
@@ -671,6 +936,11 @@ async fn run_workflow(
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to look up data source: {e}")))?
         .ok_or_else(|| ApiError::NotFound("Data source not found".to_string()))?;
+
+    // Verify caller has access to the org that owns this data source
+    if let Some(ref org_id) = data_source.organization_id {
+        access_context.require_org_membership(pool, org_id).await?;
+    }
 
     let workflow = load_workflow(pool, &workflow_id)
         .await
@@ -1003,10 +1273,16 @@ struct ArtifactRecentParams {
 }
 
 async fn list_recent_artifacts(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Query(params): Query<ArtifactRecentParams>,
 ) -> Result<Json<ApiResponse<Vec<ExecutionArtifact>>>, ApiError> {
     let pool = &deployment.db().pool;
+
+    // Verify caller belongs to the requested org before scoping results
+    if let Some(ref org_id) = params.organization_id {
+        access_context.require_org_membership(pool, org_id).await?;
+    }
 
     let artifacts = if let Some(ref org_id) = params.organization_id {
         // Scope artifacts to those created from data sources owned by this org.

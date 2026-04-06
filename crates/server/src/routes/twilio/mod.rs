@@ -312,7 +312,7 @@ async fn send_outbound_sms(to: &str, body: &str) -> Result<(), anyhow::Error> {
     }
 }
 
-/// Look up person context from the persons table by phone number.
+/// Look up contact context from the crm_contacts table by phone number.
 /// Returns a JSON Value with `name`, `email` if found.
 async fn lookup_sms_sender_context(
     pool: &sqlx::SqlitePool,
@@ -331,16 +331,15 @@ async fn lookup_sms_sender_context(
 
     #[derive(sqlx::FromRow)]
     struct Row {
-        full_name: String,
+        full_name: Option<String>,
         email: Option<String>,
     }
-    // phones column is a JSON array of {value, label} objects; search for the phone in it
     let row: Option<Row> = sqlx::query_as(
-        "SELECT full_name, email FROM persons \
-         WHERE phones LIKE ? OR phones LIKE ? \
+        "SELECT full_name, email FROM crm_contacts \
+         WHERE phone LIKE ? OR mobile LIKE ? \
          LIMIT 1",
     )
-    .bind(format!("%\"{}%", phone))
+    .bind(format!("%{}%", phone))
     .bind(format!("%{}%", phone))
     .fetch_optional(pool)
     .await
@@ -349,7 +348,7 @@ async fn lookup_sms_sender_context(
 
     row.map(|r| {
         serde_json::json!({
-            "name": r.full_name,
+            "name": r.full_name.unwrap_or_default(),
             "email": r.email,
             "phone": phone,
             "caller_type": "client",

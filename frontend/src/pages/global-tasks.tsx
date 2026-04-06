@@ -10,7 +10,7 @@ import {
   List,
   Search,
 } from 'lucide-react';
-import { useMemo,useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { TaskWithAttemptStatus } from 'shared/types';
 
@@ -53,8 +53,10 @@ export function GlobalTasksPage() {
 
   const { data: projects = [], isLoading: projectsLoading } = useProjectList();
 
-  const { data: allTasks = [], isLoading: tasksLoading } = useQuery<GlobalTask[]>({
-    queryKey: taskKeys.global(projects.map(p => p.id)),
+  const { data: allTasks = [], isLoading: tasksLoading } = useQuery<
+    GlobalTask[]
+  >({
+    queryKey: taskKeys.global(projects.map((p) => p.id)),
     queryFn: async () => {
       const taskPromises = projects.map(async (project) => {
         try {
@@ -87,17 +89,19 @@ export function GlobalTasksPage() {
         }
       }
       if (statusFilter !== 'all' && task.status !== statusFilter) return false;
-      if (priorityFilter !== 'all' && task.priority !== priorityFilter) return false;
-      if (projectFilter !== 'all' && task.project_id !== projectFilter) return false;
+      if (priorityFilter !== 'all' && task.priority !== priorityFilter)
+        return false;
+      if (projectFilter !== 'all' && task.project_id !== projectFilter)
+        return false;
       return true;
     });
   }, [allTasks, searchQuery, statusFilter, priorityFilter, projectFilter]);
 
   const stats = useMemo(() => {
     const total = allTasks.length;
-    const todo = allTasks.filter(t => t.status === 'todo').length;
-    const inProgress = allTasks.filter(t => t.status === 'inprogress').length;
-    const completed = allTasks.filter(t => t.status === 'done').length;
+    const todo = allTasks.filter((t) => t.status === 'todo').length;
+    const inProgress = allTasks.filter((t) => t.status === 'inprogress').length;
+    const completed = allTasks.filter((t) => t.status === 'done').length;
     return { total, todo, inProgress, completed };
   }, [allTasks]);
 
@@ -183,7 +187,9 @@ export function GlobalTasksPage() {
           </div>
           <div className="stat-card">
             <AlertCircle className="stat-card-icon" />
-            <div className="stat-card-value text-muted-foreground">{stats.todo}</div>
+            <div className="stat-card-value text-muted-foreground">
+              {stats.todo}
+            </div>
             <div className="stat-card-label">To Do</div>
           </div>
           <div className="stat-card">
@@ -193,7 +199,9 @@ export function GlobalTasksPage() {
           </div>
           <div className="stat-card">
             <CheckCircle2 className="stat-card-icon" />
-            <div className="stat-card-value text-success">{stats.completed}</div>
+            <div className="stat-card-value text-success">
+              {stats.completed}
+            </div>
             <div className="stat-card-label">Completed</div>
           </div>
         </div>
@@ -202,56 +210,56 @@ export function GlobalTasksPage() {
       {/* Filters */}
       <div className="border-b border-border/40">
         <div className="action-bar px-4 sm:px-6 lg:px-8 py-4 max-w-[1600px] mx-auto">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search tasks..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-          />
-        </div>
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search tasks..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
+          </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <Select value={projectFilter} onValueChange={setProjectFilter}>
-            <SelectTrigger className="w-[180px]">
-              <Filter className="h-4 w-4 mr-2" />
-              <SelectValue placeholder="All Projects" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Projects</SelectItem>
-              {projects.map((project) => (
-                <SelectItem key={project.id} value={project.id}>
-                  {project.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select value={projectFilter} onValueChange={setProjectFilter}>
+              <SelectTrigger className="w-[180px]">
+                <Filter className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="All Projects" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Projects</SelectItem>
+                {projects.map((project) => (
+                  <SelectItem key={project.id} value={project.id}>
+                    {project.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="All Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="todo">To Do</SelectItem>
-              <SelectItem value="inprogress">In Progress</SelectItem>
-              <SelectItem value="done">Done</SelectItem>
-            </SelectContent>
-          </Select>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue placeholder="All Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="todo">To Do</SelectItem>
+                <SelectItem value="inprogress">In Progress</SelectItem>
+                <SelectItem value="done">Done</SelectItem>
+              </SelectContent>
+            </Select>
 
-          <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="All Priority" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Priority</SelectItem>
-              <SelectItem value="critical">Critical</SelectItem>
-              <SelectItem value="high">High</SelectItem>
-              <SelectItem value="medium">Medium</SelectItem>
-              <SelectItem value="low">Low</SelectItem>
-            </SelectContent>
-          </Select>
+            <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue placeholder="All Priority" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Priority</SelectItem>
+                <SelectItem value="critical">Critical</SelectItem>
+                <SelectItem value="high">High</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="low">Low</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </div>
@@ -262,9 +270,14 @@ export function GlobalTasksPage() {
           <EmptyState
             icon={FolderKanban}
             title="No tasks found"
-            description={searchQuery || statusFilter !== 'all' || priorityFilter !== 'all' || projectFilter !== 'all'
-              ? 'Try adjusting your filters'
-              : 'No tasks have been created yet'}
+            description={
+              searchQuery ||
+              statusFilter !== 'all' ||
+              priorityFilter !== 'all' ||
+              projectFilter !== 'all'
+                ? 'Try adjusting your filters'
+                : 'No tasks have been created yet'
+            }
           />
         ) : viewMode === 'table' ? (
           <Card className="card-elevated overflow-hidden">
@@ -273,9 +286,13 @@ export function GlobalTasksPage() {
                 <TableRow>
                   <TableHead className="w-10">Status</TableHead>
                   <TableHead>Title</TableHead>
-                  <TableHead className="hidden md:table-cell">Project</TableHead>
+                  <TableHead className="hidden md:table-cell">
+                    Project
+                  </TableHead>
                   <TableHead>Priority</TableHead>
-                  <TableHead className="hidden sm:table-cell">Due Date</TableHead>
+                  <TableHead className="hidden sm:table-cell">
+                    Due Date
+                  </TableHead>
                   <TableHead className="text-right w-20">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -293,7 +310,12 @@ export function GlobalTasksPage() {
                       <Badge variant="outline">{task.project_name}</Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge className={cn('text-xs', getPriorityColor(task.priority))}>
+                      <Badge
+                        className={cn(
+                          'text-xs',
+                          getPriorityColor(task.priority)
+                        )}
+                      >
                         {task.priority}
                       </Badge>
                     </TableCell>
@@ -307,8 +329,18 @@ export function GlobalTasksPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Link to={`/projects/${task.project_id}/tasks/${task.id}`}>
-                        <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Link
+                        to={
+                          task.project_id && task.project_id.length > 0
+                            ? `/projects/${task.project_id}/tasks/${task.id}`
+                            : '/my-tasks'
+                        }
+                      >
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
                           View
                           <ArrowRight className="h-4 w-4 ml-1" />
                         </Button>
@@ -320,11 +352,19 @@ export function GlobalTasksPage() {
             </Table>
           </Card>
         ) : (
-          <CardGrid columns={{ sm: 2, lg: 3 }} gap={4} className="animate-stagger">
+          <CardGrid
+            columns={{ sm: 2, lg: 3 }}
+            gap={4}
+            className="animate-stagger"
+          >
             {filteredTasks.map((task) => (
               <Link
                 key={task.id}
-                to={`/projects/${task.project_id}/tasks/${task.id}`}
+                to={
+                  task.project_id && task.project_id.length > 0
+                    ? `/projects/${task.project_id}/tasks/${task.id}`
+                    : '/my-tasks'
+                }
               >
                 <Card className="card-interactive h-full">
                   <CardHeader className="pb-2">
@@ -335,11 +375,18 @@ export function GlobalTasksPage() {
                           {task.project_name}
                         </Badge>
                       </div>
-                      <Badge className={cn('text-xs', getPriorityColor(task.priority))}>
+                      <Badge
+                        className={cn(
+                          'text-xs',
+                          getPriorityColor(task.priority)
+                        )}
+                      >
                         {task.priority}
                       </Badge>
                     </div>
-                    <CardTitle className="text-base mt-2">{task.title}</CardTitle>
+                    <CardTitle className="text-base mt-2">
+                      {task.title}
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     {task.description && (
@@ -349,7 +396,9 @@ export function GlobalTasksPage() {
                     )}
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       {task.due_date ? (
-                        <span>Due: {new Date(task.due_date).toLocaleDateString()}</span>
+                        <span>
+                          Due: {new Date(task.due_date).toLocaleDateString()}
+                        </span>
                       ) : (
                         <span>No due date</span>
                       )}

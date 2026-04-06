@@ -257,12 +257,12 @@ pub async fn invite_info(
     })))
 }
 
-/// GET /api/organizations/:id/persons — persons directly in org + bridged via crm_contacts
+/// GET /api/organizations/:id/persons — contacts in this org
 pub async fn get_org_persons(
     Path(id): Path<String>,
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-) -> Result<Json<ApiResponse<Vec<Person>>>, ApiError> {
+) -> Result<Json<ApiResponse<Vec<CrmContact>>>, ApiError> {
     let pool = &deployment.db().pool;
 
     if !access_context.is_admin {
@@ -274,23 +274,14 @@ pub async fn get_org_persons(
         }
     }
 
-    // Return persons directly in org UNION persons bridged via crm_contacts
-    let id_str = id.clone();
-    let persons = sqlx::query_as::<_, Person>(
-        "SELECT * FROM persons WHERE organization_id = ?
-         UNION
-         SELECT p.* FROM persons p
-         INNER JOIN crm_contacts cc ON cc.person_id = p.id
-         WHERE cc.organization_id = ? AND (p.organization_id IS NULL OR p.organization_id != ?)
-         ORDER BY full_name ASC",
+    let contacts = sqlx::query_as::<_, CrmContact>(
+        "SELECT * FROM crm_contacts WHERE organization_id = ? ORDER BY full_name ASC",
     )
-    .bind(&id_str)
-    .bind(&id_str)
-    .bind(&id_str)
+    .bind(&id)
     .fetch_all(pool)
     .await?;
 
-    Ok(Json(ApiResponse::success(persons)))
+    Ok(Json(ApiResponse::success(contacts)))
 }
 
 /// GET /api/data-sources?organization_id=<uuid>
@@ -375,42 +366,39 @@ pub async fn list_org_data_sources(
     Ok(Json(ApiResponse::success(rows)))
 }
 
-/// GET /organizations/:id/person-contacts — junction table entries (for context badges)
+/// GET /organizations/:id/contact-links — junction table entries (for context badges)
 pub async fn list_org_person_contacts(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
-) -> Result<Json<ApiResponse<Vec<PersonOrgContact>>>, ApiError> {
-    let id = DbUuid::parse(&id)
-        .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
-        .to_uuid();
+) -> Result<Json<ApiResponse<Vec<ContactOrgLink>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let contacts = PersonOrgContact::list_for_org(pool, id).await?;
+    let contacts = ContactOrgLink::list_for_org(pool, &id).await?;
     Ok(Json(ApiResponse::success(contacts)))
 }
 
 #[derive(Debug, serde::Deserialize)]
-pub struct AddOrgPersonContactBody {
-    person_id: Uuid,
+pub struct AddOrgContactLinkBody {
+    crm_contact_id: String,
     context: Option<String>,
     notes: Option<String>,
 }
 
-/// POST /organizations/:id/person-contacts — link an existing person to this org
+/// POST /organizations/:id/contact-links — link an existing contact to this org
 pub async fn add_org_person_contact(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<String>,
-    Json(data): Json<AddOrgPersonContactBody>,
-) -> Result<Json<ApiResponse<PersonOrgContact>>, ApiError> {
-    let id = DbUuid::parse(&id)
+    Json(data): Json<AddOrgContactLinkBody>,
+) -> Result<Json<ApiResponse<ContactOrgLink>>, ApiError> {
+    let org_id = DbUuid::parse(&id)
         .map_err(|e| ApiError::BadRequest(format!("Invalid UUID: {}", e)))?
         .to_uuid();
     let pool = &deployment.db().pool;
-    let upsert_data = UpsertPersonOrgContact {
-        organization_id: id,
+    let upsert_data = UpsertContactOrgLink {
+        organization_id: org_id,
         context: data.context,
         notes: data.notes,
     };
-    let contact = PersonOrgContact::upsert(pool, data.person_id, upsert_data).await?;
+    let contact = ContactOrgLink::upsert(pool, &data.crm_contact_id, upsert_data).await?;
     Ok(Json(ApiResponse::success(contact)))
 }
 

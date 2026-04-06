@@ -32,10 +32,10 @@ use std::{fmt, ops::Deref};
 
 use serde::{Deserialize, Serialize};
 use sqlx::{
-    Decode, Encode, Sqlite, Type, TypeInfo, ValueRef,
     encode::IsNull,
     error::BoxDynError,
     sqlite::{SqliteArgumentValue, SqliteTypeInfo, SqliteValueRef},
+    Decode, Encode, Sqlite, Type, TypeInfo, ValueRef,
 };
 
 /// A UUID that transparently decodes both BLOB and TEXT from SQLite.
@@ -184,6 +184,8 @@ impl Decode<'_, Sqlite> for DbUuid {
         // Inspect the SQLite type to decide how to decode.
         // TEXT path: direct string (most common for new data).
         // BLOB path: 16-byte raw UUID from legacy tables.
+        // Hybrid: BLOB-declared columns may contain TEXT strings after normalization
+        //         migration (SQLite can't ALTER COLUMN type). Detect by length.
         let type_info = value.type_info();
         let type_name = type_info.name();
         if type_name == "TEXT" {
@@ -191,8 +193,15 @@ impl Decode<'_, Sqlite> for DbUuid {
             Ok(Self(text))
         } else {
             let bytes = <Vec<u8> as Decode<Sqlite>>::decode(value)?;
-            let parsed = uuid::Uuid::from_slice(&bytes)?;
-            Ok(Self(parsed.hyphenated().to_string()))
+            if bytes.len() == 16 {
+                // True 16-byte BLOB UUID
+                let parsed = uuid::Uuid::from_slice(&bytes)?;
+                Ok(Self(parsed.hyphenated().to_string()))
+            } else {
+                // BLOB column containing TEXT string (post-normalization)
+                let text = String::from_utf8(bytes)?;
+                Ok(Self(text))
+            }
         }
     }
 }

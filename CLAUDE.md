@@ -2,6 +2,20 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Session Handoff
+
+If `planning/SESSION-HANDOFF.md` exists, **read it first** — it contains the previous session's work state and remaining tasks. After reading, delete the file and continue with the remaining work. Use `/handoff` to create one before clearing context.
+
+## Code Style — Modular & Composable
+
+Write **small, pure, composable functions** that do one thing well:
+- **Pure by default**: Functions should take inputs and return outputs. Minimize side effects — isolate I/O (database, network, filesystem) at the boundaries, keep business logic pure.
+- **Compose, don't nest**: Build complex behavior by composing small functions, not by nesting control flow. A 50-line function with 4 levels of nesting should become 3-4 named functions piped together.
+- **Immutability first**: Prefer transforming data over mutating it. Create new values instead of modifying existing ones. Mutation is acceptable only when performance requires it.
+- **Data pipelines**: Express multi-step transformations as chains/pipelines — each step is a small function that receives data and returns transformed data.
+- **Declarative over imperative**: Describe *what* the result should be, not *how* to compute it step-by-step. Prefer `filter`/`map`/`reduce` over manual loops with accumulators.
+- **Single responsibility**: Each function does exactly one thing. If you're naming it `do_x_and_y`, split it.
+
 ## Worktree Awareness
 
 This repo may use **git worktrees** for parallel development. Before making changes:

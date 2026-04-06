@@ -68,7 +68,8 @@ export function ContactDetailModal({
     website: contact.website ?? '',
   });
 
-  const stageInfo = LIFECYCLE_STAGE_INFO[contact.lifecycle_stage as LifecycleStage];
+  const stageInfo =
+    LIFECYCLE_STAGE_INFO[contact.lifecycle_stage as LifecycleStage];
 
   const { data: deals = [] } = useQuery({
     queryKey: crmKeys.contactDeals(contact.id),
@@ -79,7 +80,11 @@ export function ContactDetailModal({
 
   const { data: activities = [] } = useQuery<CrmActivityRecord[]>({
     queryKey: crmKeys.contactActivities(contact.id),
-    queryFn: () => crmActivitiesApi.listActivities({ organization_id: orgId, contact_id: contact.id }),
+    queryFn: () =>
+      crmActivitiesApi.listActivities({
+        organization_id: orgId,
+        contact_id: contact.id,
+      }),
     enabled: open,
     staleTime: 30_000,
   });
@@ -110,17 +115,29 @@ export function ContactDetailModal({
         <DialogHeader>
           <div className="flex items-center justify-between">
             <DialogTitle className="text-lg">
-              {contact.full_name || `${contact.first_name ?? ''} ${contact.last_name ?? ''}`.trim() || 'Unnamed Contact'}
+              {contact.full_name ||
+                `${contact.first_name ?? ''} ${contact.last_name ?? ''}`.trim() ||
+                'Unnamed Contact'}
             </DialogTitle>
             <div className="flex items-center gap-1.5 flex-wrap">
               {personId && (
                 <>
-                  <Button size="sm" variant="outline" className="gap-1.5 text-xs h-7" asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 text-xs h-7"
+                    asChild
+                  >
                     <Link to={`/people/${personId}`} onClick={onClose}>
                       <User className="h-3 w-3" /> Profile
                     </Link>
                   </Button>
-                  <Button size="sm" variant="outline" className="gap-1.5 text-xs h-7 border-indigo-700 text-indigo-400 hover:bg-indigo-950/40" asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 text-xs h-7 border-indigo-700 text-indigo-400 hover:bg-indigo-950/40"
+                    asChild
+                  >
                     <Link to={`/people/${personId}/intel`} onClick={onClose}>
                       <Brain className="h-3 w-3" /> Intel
                       <ExternalLink className="h-2.5 w-2.5 ml-0.5" />
@@ -128,12 +145,22 @@ export function ContactDetailModal({
                   </Button>
                 </>
               )}
-              <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setIsEditing(!isEditing)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0"
+                onClick={() => setIsEditing(!isEditing)}
+              >
                 <Pencil className="h-3.5 w-3.5" />
               </Button>
-              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive" onClick={() => {
-                if (confirm('Delete this contact?')) deleteMutation.mutate();
-              }}>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0 text-destructive"
+                onClick={() => {
+                  if (confirm('Delete this contact?')) deleteMutation.mutate();
+                }}
+              >
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </div>
@@ -144,32 +171,82 @@ export function ContactDetailModal({
           {isEditing ? (
             <div className="grid grid-cols-2 gap-3">
               <FormField label="First Name">
-                <Input value={editData.first_name} onChange={(e) => setEditData(d => ({ ...d, first_name: e.target.value }))} />
+                <Input
+                  value={editData.first_name}
+                  onChange={(e) =>
+                    setEditData((d) => ({ ...d, first_name: e.target.value }))
+                  }
+                />
               </FormField>
               <FormField label="Last Name">
-                <Input value={editData.last_name} onChange={(e) => setEditData(d => ({ ...d, last_name: e.target.value }))} />
+                <Input
+                  value={editData.last_name}
+                  onChange={(e) =>
+                    setEditData((d) => ({ ...d, last_name: e.target.value }))
+                  }
+                />
               </FormField>
               <FormField label="Email">
-                <Input value={editData.email} onChange={(e) => setEditData(d => ({ ...d, email: e.target.value }))} />
+                <Input
+                  value={editData.email}
+                  onChange={(e) =>
+                    setEditData((d) => ({ ...d, email: e.target.value }))
+                  }
+                />
               </FormField>
               <FormField label="Phone">
-                <Input value={editData.phone} onChange={(e) => setEditData(d => ({ ...d, phone: e.target.value }))} />
+                <Input
+                  value={editData.phone}
+                  onChange={(e) =>
+                    setEditData((d) => ({ ...d, phone: e.target.value }))
+                  }
+                />
               </FormField>
               <FormField label="Company">
-                <Input value={editData.company_name} onChange={(e) => setEditData(d => ({ ...d, company_name: e.target.value }))} />
+                <Input
+                  value={editData.company_name}
+                  onChange={(e) =>
+                    setEditData((d) => ({ ...d, company_name: e.target.value }))
+                  }
+                />
               </FormField>
               <FormField label="Job Title">
-                <Input value={editData.job_title} onChange={(e) => setEditData(d => ({ ...d, job_title: e.target.value }))} />
+                <Input
+                  value={editData.job_title}
+                  onChange={(e) =>
+                    setEditData((d) => ({ ...d, job_title: e.target.value }))
+                  }
+                />
               </FormField>
               <FormField label="Department">
-                <Input value={editData.department} onChange={(e) => setEditData(d => ({ ...d, department: e.target.value }))} />
+                <Input
+                  value={editData.department}
+                  onChange={(e) =>
+                    setEditData((d) => ({ ...d, department: e.target.value }))
+                  }
+                />
               </FormField>
               <FormField label="LinkedIn URL">
-                <Input value={editData.linkedin_url} onChange={(e) => setEditData(d => ({ ...d, linkedin_url: e.target.value }))} />
+                <Input
+                  value={editData.linkedin_url}
+                  onChange={(e) =>
+                    setEditData((d) => ({ ...d, linkedin_url: e.target.value }))
+                  }
+                />
               </FormField>
               <div className="col-span-2 flex gap-2 justify-end">
-                <Button size="sm" variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
-                <Button size="sm" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIsEditing(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => updateMutation.mutate()}
+                  disabled={updateMutation.isPending}
+                >
                   {updateMutation.isPending ? 'Saving...' : 'Save'}
                 </Button>
               </div>
@@ -178,7 +255,13 @@ export function ContactDetailModal({
             <div className="space-y-3">
               <div className="flex items-center gap-3 flex-wrap">
                 {stageInfo && (
-                  <Badge variant="secondary" style={{ backgroundColor: stageInfo.color + '20', color: stageInfo.color }}>
+                  <Badge
+                    variant="secondary"
+                    style={{
+                      backgroundColor: stageInfo.color + '20',
+                      color: stageInfo.color,
+                    }}
+                  >
                     {stageInfo.label}
                   </Badge>
                 )}
@@ -186,7 +269,9 @@ export function ContactDetailModal({
                   <Badge variant="outline">Score: {contact.lead_score}</Badge>
                 )}
                 {contact.source && (
-                  <Badge variant="outline" className="capitalize">{contact.source}</Badge>
+                  <Badge variant="outline" className="capitalize">
+                    {contact.source}
+                  </Badge>
                 )}
               </div>
 
@@ -194,7 +279,12 @@ export function ContactDetailModal({
                 {contact.email && (
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Mail className="h-3.5 w-3.5 shrink-0" />
-                    <a href={`mailto:${contact.email}`} className="truncate hover:text-foreground">{contact.email}</a>
+                    <a
+                      href={`mailto:${contact.email}`}
+                      className="truncate hover:text-foreground"
+                    >
+                      {contact.email}
+                    </a>
                   </div>
                 )}
                 {contact.phone && (
@@ -207,7 +297,11 @@ export function ContactDetailModal({
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Building2 className="h-3.5 w-3.5 shrink-0" />
                     {companyId ? (
-                      <Link to={`/companies/${companyId}`} onClick={onClose} className="truncate hover:text-primary transition-colors">
+                      <Link
+                        to={`/companies/${companyId}`}
+                        onClick={onClose}
+                        className="truncate hover:text-primary transition-colors"
+                      >
                         {contact.company_name}
                       </Link>
                     ) : (
@@ -230,45 +324,131 @@ export function ContactDetailModal({
                 {contact.linkedin_url && (
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Linkedin className="h-3.5 w-3.5 shrink-0" />
-                    <a href={contact.linkedin_url} target="_blank" rel="noreferrer" className="truncate hover:text-foreground">LinkedIn</a>
+                    <a
+                      href={contact.linkedin_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="truncate hover:text-foreground"
+                    >
+                      LinkedIn
+                    </a>
                   </div>
                 )}
                 {(contact.city || contact.country) && (
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <MapPin className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{[contact.city, contact.state, contact.country].filter(Boolean).join(', ')}</span>
+                    <span className="truncate">
+                      {[contact.city, contact.state, contact.country]
+                        .filter(Boolean)
+                        .join(', ')}
+                    </span>
                   </div>
                 )}
                 {contact.website && (
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Globe className="h-3.5 w-3.5 shrink-0" />
-                    <a href={contact.website} target="_blank" rel="noreferrer" className="truncate hover:text-foreground">{contact.website}</a>
+                    <a
+                      href={contact.website}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="truncate hover:text-foreground"
+                    >
+                      {contact.website}
+                    </a>
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* Deals */}
-          {deals.length > 0 && (
-            <div>
-              <h4 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Deals ({deals.length})</h4>
-              <div className="space-y-1.5">
-                {deals.map((deal: { id: string; name: string; amount?: number | null; currency?: string; stage?: string }) => (
-                  <div key={deal.id} className="flex items-center justify-between p-2 rounded-lg bg-muted/30 text-sm">
-                    <span className="truncate">{deal.name}</span>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {deal.amount != null && (
-                        <span className="text-xs font-medium">
-                          {new Intl.NumberFormat('en-US', { style: 'currency', currency: deal.currency || 'USD' }).format(deal.amount)}
+          {/* Intelligence */}
+          {contact.intelligence_status &&
+            contact.intelligence_status !== 'idle' && (
+              <div>
+                <h4 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider flex items-center gap-1.5">
+                  <Brain className="h-3.5 w-3.5" /> Intelligence
+                </h4>
+                <div className="p-3 rounded-lg bg-muted/30 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Badge variant="secondary" className="text-xs capitalize">
+                      {contact.intelligence_status === 'done'
+                        ? 'Complete'
+                        : contact.intelligence_status}
+                    </Badge>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      {contact.intelligence_confidence > 0 && (
+                        <span>
+                          {Math.round(contact.intelligence_confidence * 100)}%
+                          confidence
                         </span>
                       )}
-                      {deal.stage && (
-                        <Badge variant="outline" className="text-xs">{deal.stage}</Badge>
+                      {contact.research_pass_count > 0 && (
+                        <span>
+                          {contact.research_pass_count}{' '}
+                          {contact.research_pass_count === 1
+                            ? 'pass'
+                            : 'passes'}
+                        </span>
                       )}
                     </div>
                   </div>
-                ))}
+                  {contact.intelligence_summary && (
+                    <p className="text-sm leading-relaxed">
+                      {contact.intelligence_summary}
+                    </p>
+                  )}
+                  {contact.intelligence_last_run_at && (
+                    <p className="text-xs text-muted-foreground">
+                      Last researched{' '}
+                      {new Date(
+                        contact.intelligence_last_run_at
+                      ).toLocaleDateString()}
+                      {contact.intelligence_agent &&
+                        ` by ${contact.intelligence_agent}`}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+          {/* Deals */}
+          {deals.length > 0 && (
+            <div>
+              <h4 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">
+                Deals ({deals.length})
+              </h4>
+              <div className="space-y-1.5">
+                {deals.map(
+                  (deal: {
+                    id: string;
+                    name: string;
+                    amount?: number | null;
+                    currency?: string;
+                    stage?: string;
+                  }) => (
+                    <div
+                      key={deal.id}
+                      className="flex items-center justify-between p-2 rounded-lg bg-muted/30 text-sm"
+                    >
+                      <span className="truncate">{deal.name}</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {deal.amount != null && (
+                          <span className="text-xs font-medium">
+                            {new Intl.NumberFormat('en-US', {
+                              style: 'currency',
+                              currency: deal.currency || 'USD',
+                            }).format(deal.amount)}
+                          </span>
+                        )}
+                        {deal.stage && (
+                          <Badge variant="outline" className="text-xs">
+                            {deal.stage}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  )
+                )}
               </div>
             </div>
           )}
@@ -276,13 +456,20 @@ export function ContactDetailModal({
           {/* Recent Activity */}
           {activities.length > 0 && (
             <div>
-              <h4 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Recent Activity</h4>
+              <h4 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">
+                Recent Activity
+              </h4>
               <div className="space-y-1.5 max-h-40 overflow-y-auto">
                 {activities.slice(0, 10).map((activity) => (
-                  <div key={activity.id} className="flex items-center justify-between p-2 rounded-lg bg-muted/30 text-sm">
+                  <div
+                    key={activity.id}
+                    className="flex items-center justify-between p-2 rounded-lg bg-muted/30 text-sm"
+                  >
                     <div className="flex items-center gap-2 min-w-0">
                       <Activity className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                      <span className="truncate">{activity.subject || activity.activity_type}</span>
+                      <span className="truncate">
+                        {activity.subject || activity.activity_type}
+                      </span>
                     </div>
                     <span className="text-xs text-muted-foreground shrink-0">
                       {new Date(activity.activity_at).toLocaleDateString()}
@@ -295,9 +482,14 @@ export function ContactDetailModal({
 
           {/* Metadata */}
           <div className="text-xs text-muted-foreground pt-2 border-t border-border/50 flex items-center justify-between">
-            <span>Created {new Date(contact.created_at).toLocaleDateString()}</span>
+            <span>
+              Created {new Date(contact.created_at).toLocaleDateString()}
+            </span>
             {contact.last_activity_at && (
-              <span>Last active {new Date(contact.last_activity_at).toLocaleDateString()}</span>
+              <span>
+                Last active{' '}
+                {new Date(contact.last_activity_at).toLocaleDateString()}
+              </span>
             )}
           </div>
         </div>

@@ -67,6 +67,7 @@ pub mod intake;
 pub mod intelligence;
 pub mod invitations;
 pub mod invite_dispatch;
+pub mod invoices;
 pub mod knowledge;
 pub mod marketplace;
 pub mod media_library;
@@ -91,7 +92,6 @@ pub mod output_schemas;
 pub mod pcg_router;
 pub mod peer_rewards;
 pub mod permissions;
-pub mod persons;
 pub mod pipeline_events;
 pub mod project_boards;
 pub mod project_controllers;
@@ -196,7 +196,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(notifications::router())
         .merge(workflow_templates::router(&deployment))
         .merge(companies::router(&deployment))
-        .merge(persons::router(&deployment))
+        .merge(invoices::router(&deployment))
         .merge(proposals::router(&deployment))
         .merge(deliverables::router(&deployment))
         .merge(command_center::router(&deployment))

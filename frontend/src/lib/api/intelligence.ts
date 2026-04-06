@@ -1,10 +1,15 @@
-import { makeRequest, handleApiResponse, ApiError, resolveApiUrl } from './client';
 import type { ExecutionArtifact } from './artifacts';
+import {
+  ApiError,
+  handleApiResponse,
+  makeRequest,
+  resolveApiUrl,
+} from './client';
 
 // ── Intelligence ──────────────────────────────────────────────────────────────
 
 export interface IntelligenceStatus {
-  person_id: string;
+  contact_id: string;
   status: 'idle' | 'queued' | 'running' | 'done' | 'failed';
   summary?: string;
   confidence: number;
@@ -21,36 +26,85 @@ export const automationsApi = {
 };
 
 export const intelligenceApi = {
-  triggerResearch: async (personId: string, opts?: { project_id?: string; agent_preference?: string }): Promise<{ person_id: string; status: string; message: string }> => {
-    const response = await makeRequest(`/api/persons/${personId}/research`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(opts ?? {}),
-    });
+  triggerResearch: async (
+    contactId: string,
+    opts?: { project_id?: string; agent_preference?: string }
+  ): Promise<{ contact_id: string; status: string; message: string }> => {
+    const response = await makeRequest(
+      `/api/crm/contacts/${contactId}/research`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(opts ?? {}),
+      }
+    );
     return handleApiResponse(response);
   },
 
-  getStatus: async (personId: string): Promise<IntelligenceStatus> => {
-    const response = await makeRequest(`/api/persons/${personId}/intelligence-status`);
+  /** Trigger research for a CRM contact (canonical — no person bridge needed) */
+  triggerContactResearch: async (
+    contactId: string,
+    opts?: { project_id?: string; agent_preference?: string }
+  ): Promise<{ contact_id: string; status: string; message: string }> => {
+    const response = await makeRequest(
+      `/api/crm/contacts/${contactId}/research`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(opts ?? {}),
+      }
+    );
+    return handleApiResponse(response);
+  },
+
+  getStatus: async (contactId: string): Promise<IntelligenceStatus> => {
+    const response = await makeRequest(
+      `/api/crm/contacts/${contactId}/intelligence-status`
+    );
     return handleApiResponse<IntelligenceStatus>(response);
   },
 
-  listResearchPasses: async (personId: string): Promise<ResearchPass[]> => {
-    const response = await makeRequest(`/api/persons/${personId}/research-passes`);
+  /** Get intelligence status from CRM contact (canonical) */
+  getContactStatus: async (contactId: string): Promise<IntelligenceStatus> => {
+    const response = await makeRequest(
+      `/api/crm/contacts/${contactId}/intelligence-status`
+    );
+    return handleApiResponse<IntelligenceStatus>(response);
+  },
+
+  listResearchPasses: async (contactId: string): Promise<ResearchPass[]> => {
+    const response = await makeRequest(
+      `/api/crm/contacts/${contactId}/research-passes`
+    );
     return handleApiResponse<ResearchPass[]>(response);
   },
 
-  triggerNextPass: async (personId: string, opts?: { focus?: string; project_id?: string }): Promise<{ pass_id: string; pass_number: number; focus: string; status: string }> => {
-    const response = await makeRequest(`/api/persons/${personId}/research-passes/next`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(opts ?? {}),
-    });
+  triggerNextPass: async (
+    contactId: string,
+    opts?: { focus?: string; project_id?: string }
+  ): Promise<{
+    pass_id: string;
+    pass_number: number;
+    focus: string;
+    status: string;
+  }> => {
+    const response = await makeRequest(
+      `/api/crm/contacts/${contactId}/research-passes/next`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(opts ?? {}),
+      }
+    );
     return handleApiResponse(response);
   },
 
-  listPersonReports: async (personId: string): Promise<BusinessReportRecord[]> => {
-    const response = await makeRequest(`/api/persons/${personId}/reports`);
+  listContactReports: async (
+    contactId: string
+  ): Promise<BusinessReportRecord[]> => {
+    const response = await makeRequest(
+      `/api/crm/contacts/${contactId}/reports`
+    );
     return handleApiResponse<BusinessReportRecord[]>(response);
   },
 };
@@ -66,7 +120,10 @@ export const reportsApi = {
     return handleApiResponse<BusinessReportRecord>(response);
   },
 
-  patch: async (id: string, data: Partial<BusinessReportRecord>): Promise<BusinessReportRecord> => {
+  patch: async (
+    id: string,
+    data: Partial<BusinessReportRecord>
+  ): Promise<BusinessReportRecord> => {
     const response = await makeRequest(`/api/business-reports/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -75,7 +132,10 @@ export const reportsApi = {
     return handleApiResponse<BusinessReportRecord>(response);
   },
 
-  generate: async (personId: string, reportType?: string): Promise<{ status: string; person_id: string }> => {
+  generate: async (
+    personId: string,
+    reportType?: string
+  ): Promise<{ status: string; person_id: string }> => {
     const response = await makeRequest('/api/business-reports/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -84,26 +144,38 @@ export const reportsApi = {
     return handleApiResponse(response);
   },
 
-  approve: async (id: string): Promise<{ report: BusinessReportRecord; deal: unknown; proposal: unknown }> => {
+  approve: async (
+    id: string
+  ): Promise<{
+    report: BusinessReportRecord;
+    deal: unknown;
+    proposal: unknown;
+  }> => {
     const response = await makeRequest(`/api/business-reports/${id}/approve`, {
       method: 'POST',
     });
     return handleApiResponse(response);
   },
 
-  requestRevision: async (id: string, notes: string): Promise<BusinessReportRecord> => {
-    const response = await makeRequest(`/api/business-reports/${id}/request-revision`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ notes }),
-    });
+  requestRevision: async (
+    id: string,
+    notes: string
+  ): Promise<BusinessReportRecord> => {
+    const response = await makeRequest(
+      `/api/business-reports/${id}/request-revision`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes }),
+      }
+    );
     return handleApiResponse<BusinessReportRecord>(response);
   },
 };
 
 export interface ResearchPass {
   id: string;
-  person_id: string;
+  contact_id: string;
   pass_number: number;
   research_focus: string;
   status: string;
@@ -229,12 +301,16 @@ export const dataSourcesApi = {
   },
 
   listByOrganization: async (orgId: string): Promise<DataSourceRecord[]> => {
-    const response = await makeRequest(`/api/organizations/${orgId}/data-sources`);
+    const response = await makeRequest(
+      `/api/organizations/${orgId}/data-sources`
+    );
     return handleApiResponse<DataSourceRecord[]>(response);
   },
 
   listByProject: async (projectId: string): Promise<DataSourceRecord[]> => {
-    const response = await makeRequest(`/api/projects/${projectId}/data-sources`);
+    const response = await makeRequest(
+      `/api/projects/${projectId}/data-sources`
+    );
     return handleApiResponse<DataSourceRecord[]>(response);
   },
 
@@ -259,13 +335,20 @@ export const dataSourcesApi = {
     });
     if (!response.ok) {
       const errorText = await response.text();
-      throw new ApiError(`Failed to upload data source: ${errorText}`, response.status, response);
+      throw new ApiError(
+        `Failed to upload data source: ${errorText}`,
+        response.status,
+        response
+      );
     }
     const result = await response.json();
     return result.data as DataSourceRecord;
   },
 
-  update: async (id: string, data: UpdateDataSourceRequest): Promise<DataSourceRecord> => {
+  update: async (
+    id: string,
+    data: UpdateDataSourceRequest
+  ): Promise<DataSourceRecord> => {
     const response = await makeRequest(`/api/data-sources/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -280,41 +363,68 @@ export const dataSourcesApi = {
     await handleApiResponse<void>(response);
   },
 
-  getMetadataTemplate: async (dataType: string): Promise<Record<string, unknown>> => {
-    const response = await makeRequest(`/api/data-sources/metadata-template/${dataType}`);
+  getMetadataTemplate: async (
+    dataType: string
+  ): Promise<Record<string, unknown>> => {
+    const response = await makeRequest(
+      `/api/data-sources/metadata-template/${dataType}`
+    );
     return handleApiResponse<Record<string, unknown>>(response);
   },
 
   getWorkflows: async (dataSourceId: string) => {
-    const response = await makeRequest(`/api/data-sources/${dataSourceId}/workflows`);
+    const response = await makeRequest(
+      `/api/data-sources/${dataSourceId}/workflows`
+    );
     return handleApiResponse<WorkflowDefinition[]>(response);
   },
 
-  runWorkflow: async (dataSourceId: string, workflowId: string, model?: string, force?: boolean) => {
-    const response = await makeRequest(`/api/data-sources/${dataSourceId}/workflows/${workflowId}/run`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, force }),
-    });
-    return handleApiResponse<{ workflow_run_id: string; staged_records: number }>(response);
+  runWorkflow: async (
+    dataSourceId: string,
+    workflowId: string,
+    model?: string,
+    force?: boolean
+  ) => {
+    const response = await makeRequest(
+      `/api/data-sources/${dataSourceId}/workflows/${workflowId}/run`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, force }),
+      }
+    );
+    return handleApiResponse<{
+      workflow_run_id: string;
+      staged_records: number;
+    }>(response);
   },
 
   getArtifacts: async (dataSourceId: string) => {
-    const response = await makeRequest(`/api/data-sources/${dataSourceId}/artifacts`);
+    const response = await makeRequest(
+      `/api/data-sources/${dataSourceId}/artifacts`
+    );
     return handleApiResponse<ExecutionArtifact[]>(response);
   },
 
   download: async (id: string): Promise<Blob> => {
-    const response = await fetch(resolveApiUrl(`/api/data-sources/${id}/download`), {
-      credentials: 'include',
-    });
+    const response = await fetch(
+      resolveApiUrl(`/api/data-sources/${id}/download`),
+      {
+        credentials: 'include',
+      }
+    );
     if (!response.ok) {
-      throw new ApiError(`Download failed: ${response.statusText}`, response.status, response);
+      throw new ApiError(
+        `Download failed: ${response.statusText}`,
+        response.status,
+        response
+      );
     }
     return response.blob();
   },
 
-  downloadUrl: (id: string): string => resolveApiUrl(`/api/data-sources/${id}/download`),
+  downloadUrl: (id: string): string =>
+    resolveApiUrl(`/api/data-sources/${id}/download`),
 };
 
 // ── Workflow types ──────────────────────────────────────────────────────────
@@ -347,7 +457,7 @@ export interface WorkflowDefinition {
   nodes: WorkflowNode[];
   connections: WorkflowConnection[];
   is_system: boolean;
-  owner_type: string;  // "system", "organization", "user"
+  owner_type: string; // "system", "organization", "user"
   owner_id?: string;
   default_model?: string;
 }
@@ -400,7 +510,9 @@ export const workflowsApi = {
     return handleApiResponse<WorkflowDefinition[]>(response);
   },
 
-  createDefinition: async (data: CreateWorkflowRequest): Promise<WorkflowDefinition> => {
+  createDefinition: async (
+    data: CreateWorkflowRequest
+  ): Promise<WorkflowDefinition> => {
     const response = await makeRequest('/api/workflows/definitions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -409,7 +521,10 @@ export const workflowsApi = {
     return handleApiResponse<WorkflowDefinition>(response);
   },
 
-  updateDefinition: async (id: string, data: UpdateWorkflowRequest): Promise<WorkflowDefinition> => {
+  updateDefinition: async (
+    id: string,
+    data: UpdateWorkflowRequest
+  ): Promise<WorkflowDefinition> => {
     const response = await makeRequest(`/api/workflows/definitions/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -425,7 +540,11 @@ export const workflowsApi = {
     return handleApiResponse<void>(response);
   },
 
-  previewWorkflow: async (data: { nodes: WorkflowNode[]; connections: WorkflowConnection[]; content?: string }): Promise<PreviewNodeResult[]> => {
+  previewWorkflow: async (data: {
+    nodes: WorkflowNode[];
+    connections: WorkflowConnection[];
+    content?: string;
+  }): Promise<PreviewNodeResult[]> => {
     const response = await makeRequest('/api/workflows/preview', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -445,13 +564,21 @@ export const workflowsApi = {
     return handleApiResponse<AvailableModel[]>(response);
   },
 
-  listRecentRuns: async (params?: { workflow_id?: string; organization_id?: string; limit?: number }): Promise<WorkflowRun[]> => {
+  listRecentRuns: async (params?: {
+    workflow_id?: string;
+    organization_id?: string;
+    limit?: number;
+  }): Promise<WorkflowRun[]> => {
     const searchParams = new URLSearchParams();
-    if (params?.workflow_id) searchParams.set('workflow_id', params.workflow_id);
-    if (params?.organization_id) searchParams.set('organization_id', params.organization_id);
+    if (params?.workflow_id)
+      searchParams.set('workflow_id', params.workflow_id);
+    if (params?.organization_id)
+      searchParams.set('organization_id', params.organization_id);
     if (params?.limit) searchParams.set('limit', String(params.limit));
     const qs = searchParams.toString();
-    const response = await makeRequest(`/api/workflows/runs/recent${qs ? `?${qs}` : ''}`);
+    const response = await makeRequest(
+      `/api/workflows/runs/recent${qs ? `?${qs}` : ''}`
+    );
     return handleApiResponse<WorkflowRun[]>(response);
   },
 
@@ -519,11 +646,15 @@ export interface WorkflowTrigger {
   workflow_id: string;
   name: string;
   enabled: boolean;
-  trigger_type: 'data_source_created' | 'data_source_updated' | 'schedule' | 'webhook';
-  filter_data_source_types: string | null;  // JSON array
+  trigger_type:
+    | 'data_source_created'
+    | 'data_source_updated'
+    | 'schedule'
+    | 'webhook';
+  filter_data_source_types: string | null; // JSON array
   filter_organization_id: string | null;
   filter_project_id: string | null;
-  filter_tags: string | null;  // JSON array
+  filter_tags: string | null; // JSON array
   model_override: string | null;
   auto_approve: boolean;
   // Webhook-specific
@@ -588,7 +719,9 @@ export interface UpdateWorkflowTrigger {
 
 export const triggersApi = {
   list: async (workflowId?: string): Promise<WorkflowTrigger[]> => {
-    const params = workflowId ? `?workflow_id=${encodeURIComponent(workflowId)}` : '';
+    const params = workflowId
+      ? `?workflow_id=${encodeURIComponent(workflowId)}`
+      : '';
     const response = await makeRequest(`/api/workflows/triggers${params}`);
     return handleApiResponse<WorkflowTrigger[]>(response);
   },
@@ -606,7 +739,10 @@ export const triggersApi = {
     return handleApiResponse<WorkflowTrigger>(response);
   },
 
-  update: async (id: string, data: UpdateWorkflowTrigger): Promise<WorkflowTrigger> => {
+  update: async (
+    id: string,
+    data: UpdateWorkflowTrigger
+  ): Promise<WorkflowTrigger> => {
     const response = await makeRequest(`/api/workflows/triggers/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -637,7 +773,9 @@ export const triggersApi = {
   },
 
   listExecutions: async (triggerId: string): Promise<TriggerExecution[]> => {
-    const response = await makeRequest(`/api/workflows/triggers/${triggerId}/executions`);
+    const response = await makeRequest(
+      `/api/workflows/triggers/${triggerId}/executions`
+    );
     return handleApiResponse<TriggerExecution[]>(response);
   },
 };
@@ -659,7 +797,9 @@ export interface TargetSchema {
 }
 
 export const schemasApi = {
-  list: async (): Promise<{ target_type: string; description: string; icon: string }[]> => {
+  list: async (): Promise<
+    { target_type: string; description: string; icon: string }[]
+  > => {
     const response = await makeRequest('/api/schemas');
     return response.json();
   },
@@ -679,7 +819,7 @@ export interface WorkflowStagingRecord {
   organization_id: string | null;
   project_id: string | null;
   target_type: 'crm_contact' | 'company' | 'crm_deal' | 'task';
-  record_data: string;  // JSON string
+  record_data: string; // JSON string
   status: 'pending_review' | 'approved' | 'rejected' | 'committed' | 'error';
   duplicate_of_id: string | null;
   duplicate_of_type: string | null;
@@ -688,7 +828,7 @@ export interface WorkflowStagingRecord {
   reviewed_by: string | null;
   reviewed_at: string | null;
   committed_at: string | null;
-  validation_errors: string | null;  // JSON array string of validation error messages, or null
+  validation_errors: string | null; // JSON array string of validation error messages, or null
   created_at: string;
   updated_at: string;
 }
@@ -707,13 +847,21 @@ export interface BatchCommitResult {
 }
 
 export const stagingApi = {
-  listByRun: async (workflowRunId: string): Promise<WorkflowStagingRecord[]> => {
-    const response = await makeRequest(`/api/workflow-staging?workflow_run_id=${workflowRunId}`);
+  listByRun: async (
+    workflowRunId: string
+  ): Promise<WorkflowStagingRecord[]> => {
+    const response = await makeRequest(
+      `/api/workflow-staging?workflow_run_id=${workflowRunId}`
+    );
     return handleApiResponse<WorkflowStagingRecord[]>(response);
   },
 
-  listPending: async (organizationId: string): Promise<WorkflowStagingRecord[]> => {
-    const response = await makeRequest(`/api/workflow-staging/pending?organization_id=${organizationId}`);
+  listPending: async (
+    organizationId: string
+  ): Promise<WorkflowStagingRecord[]> => {
+    const response = await makeRequest(
+      `/api/workflow-staging/pending?organization_id=${organizationId}`
+    );
     return handleApiResponse<WorkflowStagingRecord[]>(response);
   },
 
@@ -722,7 +870,10 @@ export const stagingApi = {
     return handleApiResponse<WorkflowStagingRecord>(response);
   },
 
-  update: async (id: string, data: { status?: string; record_data?: unknown }): Promise<WorkflowStagingRecord> => {
+  update: async (
+    id: string,
+    data: { status?: string; record_data?: unknown }
+  ): Promise<WorkflowStagingRecord> => {
     const response = await makeRequest(`/api/workflow-staging/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -731,7 +882,10 @@ export const stagingApi = {
     return handleApiResponse<WorkflowStagingRecord>(response);
   },
 
-  batchAction: async (ids: string[], action: 'approve' | 'reject'): Promise<void> => {
+  batchAction: async (
+    ids: string[],
+    action: 'approve' | 'reject'
+  ): Promise<void> => {
     const response = await makeRequest('/api/workflow-staging/batch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -765,12 +919,17 @@ export const stagingApi = {
     return handleApiResponse<{ affected: number }>(response);
   },
 
-  rejectDuplicates: async (workflowRunId: string): Promise<{ affected: number }> => {
-    const response = await makeRequest('/api/workflow-staging/reject-duplicates', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workflow_run_id: workflowRunId }),
-    });
+  rejectDuplicates: async (
+    workflowRunId: string
+  ): Promise<{ affected: number }> => {
+    const response = await makeRequest(
+      '/api/workflow-staging/reject-duplicates',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workflow_run_id: workflowRunId }),
+      }
+    );
     return handleApiResponse<{ affected: number }>(response);
   },
 };

@@ -1,7 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use uuid::Uuid;
 
 use crate::db_uuid::DbUuid;
 
@@ -10,6 +9,7 @@ pub struct BusinessReport {
     pub id: DbUuid,
     pub person_id: Option<DbUuid>,
     pub company_id: Option<DbUuid>,
+    pub crm_contact_id: Option<DbUuid>,
     pub report_type: String,
     pub title: String,
     pub status: String,
@@ -44,8 +44,8 @@ pub struct BusinessReport {
 
 #[derive(Debug, Deserialize)]
 pub struct CreateBusinessReport {
-    pub person_id: Option<Uuid>,
-    pub company_id: Option<Uuid>,
+    pub person_id: Option<DbUuid>,
+    pub company_id: Option<DbUuid>,
     pub report_type: Option<String>,
     pub title: String,
     pub executive_summary: Option<String>,
@@ -64,7 +64,7 @@ pub struct CreateBusinessReport {
     pub sources: Option<String>,
     pub intake_item_ids: Option<String>,
     pub call_log_ids: Option<String>,
-    pub created_by: Option<Uuid>,
+    pub created_by: Option<DbUuid>,
 }
 
 /// Fields that can be patched on a business report (all optional)
@@ -93,7 +93,7 @@ impl BusinessReport {
         pool: &sqlx::SqlitePool,
         data: CreateBusinessReport,
     ) -> Result<Self, sqlx::Error> {
-        let id = Uuid::new_v4().to_string();
+        let id = DbUuid::new().to_string();
         sqlx::query_as::<_, Self>(
             "INSERT INTO business_reports
              (id, person_id, company_id, report_type, title, status,
@@ -133,7 +133,7 @@ impl BusinessReport {
 
     pub async fn find_by_id(
         pool: &sqlx::SqlitePool,
-        id: Uuid,
+        id: &str,
     ) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as::<_, Self>("SELECT * FROM business_reports WHERE id = ?")
             .bind(id.to_string())
@@ -151,17 +151,29 @@ impl BusinessReport {
 
     pub async fn list_by_person(
         pool: &sqlx::SqlitePool,
-        person_id: Uuid,
+        person_id: &str,
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, Self>(
             "SELECT * FROM business_reports WHERE person_id = ? ORDER BY created_at DESC",
         )
-        .bind(person_id.to_string())
+        .bind(person_id)
         .fetch_all(pool)
         .await
     }
 
-    pub async fn mark_ready(pool: &sqlx::SqlitePool, id: Uuid) -> Result<(), sqlx::Error> {
+    pub async fn list_by_contact(
+        pool: &sqlx::SqlitePool,
+        contact_id: &str,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as::<_, Self>(
+            "SELECT * FROM business_reports WHERE crm_contact_id = ? ORDER BY created_at DESC",
+        )
+        .bind(contact_id)
+        .fetch_all(pool)
+        .await
+    }
+
+    pub async fn mark_ready(pool: &sqlx::SqlitePool, id: &str) -> Result<(), sqlx::Error> {
         sqlx::query(
             "UPDATE business_reports SET status = 'ready', updated_at = datetime('now','subsec') WHERE id = ?",
         )
@@ -173,7 +185,7 @@ impl BusinessReport {
 
     pub async fn patch(
         pool: &sqlx::SqlitePool,
-        id: Uuid,
+        id: &str,
         data: PatchBusinessReport,
     ) -> Result<Option<Self>, sqlx::Error> {
         // Build SET clause dynamically — only update fields that were provided

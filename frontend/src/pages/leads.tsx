@@ -1,8 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
 import {
-Building2, ChevronRight, Clock,
-Layers,
-Loader2, Mail, Radio,   RefreshCw, Search, TrendingUp,   Users, } from 'lucide-react';
+  Building2,
+  ChevronRight,
+  Clock,
+  Layers,
+  Loader2,
+  Mail,
+  Radio,
+  RefreshCw,
+  Search,
+  TrendingUp,
+  Users,
+} from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -10,41 +19,50 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
-import { type PersonRecord,personsApi } from '@/lib/api';
+import { crmApi, type CrmContactRecord } from '@/lib/api';
 import { entityKeys } from '@/lib/query-keys';
-
 
 // Sirak Studios org ID (fixed seed)
 const SIRAK_ORG = '02020202-0202-0202-0202-020202020202';
-const PCG_ORG   = '01010101-0101-0101-0101-010101010101';
+const PCG_ORG = '01010101-0101-0101-0101-010101010101';
 
 const ORG_LABELS: Record<string, { label: string; color: string }> = {
-  [SIRAK_ORG]: { label: 'Sirak Studios', color: 'border-violet-700 text-violet-400' },
-  [PCG_ORG]:   { label: 'PCG',           color: 'border-blue-700 text-blue-400' },
+  [SIRAK_ORG]: {
+    label: 'Sirak Studios',
+    color: 'border-violet-700 text-violet-400',
+  },
+  [PCG_ORG]: { label: 'PCG', color: 'border-blue-700 text-blue-400' },
 };
 
 function researchColor(depth: string | undefined) {
-  if (depth === 'deep')     return 'text-emerald-400';
+  if (depth === 'deep') return 'text-emerald-400';
   if (depth === 'moderate') return 'text-amber-400';
   return 'text-slate-500';
 }
 
 function statusIcon(status: string | undefined) {
-  if (status === 'done' || status === 'running')  return <Radio className="w-3 h-3 text-emerald-500 animate-pulse" />;
-  if (status === 'queued')  return <Clock className="w-3 h-3 text-amber-500" />;
-  if (status === 'failed')  return <Radio className="w-3 h-3 text-red-500" />;
+  if (status === 'done' || status === 'running')
+    return <Radio className="w-3 h-3 text-emerald-500 animate-pulse" />;
+  if (status === 'queued') return <Clock className="w-3 h-3 text-amber-500" />;
+  if (status === 'failed') return <Radio className="w-3 h-3 text-red-500" />;
   return <Clock className="w-3 h-3 text-slate-600" />;
 }
 
-function initials(name: string) {
-  return name.split(' ').slice(0, 2).map(w => w[0]?.toUpperCase() ?? '').join('');
+function initials(name: string | null) {
+  return (name ?? '')
+    .split(' ')
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('');
 }
 
-function LeadCard({ person }: { person: PersonRecord }) {
-  const orgEntry = person.organization_id ? ORG_LABELS[person.organization_id] : null;
+function LeadCard({ person }: { person: CrmContactRecord }) {
+  const orgEntry = person.organization_id
+    ? ORG_LABELS[person.organization_id]
+    : null;
 
   return (
-    <Link to={`/people/${person.id}`} className="block group">
+    <Link to={`/contacts/${person.id}`} className="block group">
       <div className="rounded-xl border border-slate-800 bg-slate-900/50 hover:border-indigo-700/50 hover:bg-slate-900 transition-all p-4">
         <div className="flex items-start gap-4">
           {/* Avatar */}
@@ -56,17 +74,25 @@ function LeadCard({ person }: { person: PersonRecord }) {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 mb-0.5 flex-wrap">
               <p className="font-semibold text-slate-200 group-hover:text-white transition-colors">
-                {person.full_name}
+                {person.full_name ?? 'Unnamed Contact'}
               </p>
-              <Badge variant="outline" className={`text-xs shrink-0 ${
-                person.person_type === 'lead'   ? 'border-amber-700 text-amber-400' :
-                person.person_type === 'client' ? 'border-emerald-700 text-emerald-400' :
-                'border-slate-700 text-slate-500'
-              }`}>
-                {person.person_type}
+              <Badge
+                variant="outline"
+                className={`text-xs shrink-0 ${
+                  person.lifecycle_stage === 'lead'
+                    ? 'border-amber-700 text-amber-400'
+                    : person.lifecycle_stage === 'customer'
+                      ? 'border-emerald-700 text-emerald-400'
+                      : 'border-slate-700 text-slate-500'
+                }`}
+              >
+                {person.lifecycle_stage}
               </Badge>
               {orgEntry && (
-                <Badge variant="outline" className={`text-xs shrink-0 ${orgEntry.color}`}>
+                <Badge
+                  variant="outline"
+                  className={`text-xs shrink-0 ${orgEntry.color}`}
+                >
                   {orgEntry.label}
                 </Badge>
               )}
@@ -91,9 +117,12 @@ function LeadCard({ person }: { person: PersonRecord }) {
             {/* Research & report status row */}
             <div className="flex items-center gap-3 mt-2 text-xs">
               {/* Research depth */}
-              <span className={`flex items-center gap-1 ${researchColor(person.research_depth)}`}>
+              <span
+                className={`flex items-center gap-1 ${researchColor(person.research_depth)}`}
+              >
                 <Layers className="w-3 h-3" />
-                {person.research_pass_count ?? 0} passes · {person.research_depth ?? 'shallow'}
+                {person.research_pass_count ?? 0} passes ·{' '}
+                {person.research_depth ?? 'shallow'}
               </span>
 
               {/* Intel status */}
@@ -102,9 +131,11 @@ function LeadCard({ person }: { person: PersonRecord }) {
                 {person.intelligence_status ?? 'idle'}
               </span>
 
-              {/* Onboarding channel */}
-              {person.onboarding_channel && (
-                <span className="text-slate-600 capitalize">{person.onboarding_channel}</span>
+              {/* Source */}
+              {person.source && (
+                <span className="text-slate-600 capitalize">
+                  {person.source}
+                </span>
               )}
             </div>
           </div>
@@ -121,23 +152,28 @@ export function LeadsPage() {
   const [orgFilter, setOrgFilter] = useState<string | undefined>(undefined);
   const [typeFilter, setTypeFilter] = useState<string | undefined>('lead');
 
-  const { data: persons = [], isLoading, refetch, isFetching } = useQuery({
+  const {
+    data: persons = [],
+    isLoading,
+    refetch,
+    isFetching,
+  } = useQuery({
     queryKey: entityKeys.leads(orgFilter, typeFilter, search),
-    queryFn: () => personsApi.list({
-      person_type: typeFilter,
-      organization_id: orgFilter,
-      q: search || undefined,
-      limit: 200,
-    }),
+    queryFn: () =>
+      crmApi.searchContacts(orgFilter ?? '', search || undefined, {
+        lifecycleStage: typeFilter,
+        limit: 200,
+      }),
     refetchInterval: 30000,
   });
 
   // Separate by org
-  const sirakLeads = persons.filter(p =>
-    p.organization_id === SIRAK_ORG ||
-    (!p.organization_id && orgFilter === SIRAK_ORG)
+  const sirakLeads = persons.filter(
+    (p) =>
+      p.organization_id === SIRAK_ORG ||
+      (!p.organization_id && orgFilter === SIRAK_ORG)
   );
-  const otherLeads = persons.filter(p => p.organization_id !== SIRAK_ORG);
+  const otherLeads = persons.filter((p) => p.organization_id !== SIRAK_ORG);
 
   const showGrouped = !orgFilter && !search;
 
@@ -151,12 +187,21 @@ export function LeadsPage() {
           </div>
           <div>
             <h1 className="text-xl font-bold text-white">Leads</h1>
-            <p className="text-xs text-slate-500">{persons.length} contact{persons.length !== 1 ? 's' : ''}</p>
+            <p className="text-xs text-slate-500">
+              {persons.length} contact{persons.length !== 1 ? 's' : ''}
+            </p>
           </div>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => refetch()} disabled={isFetching}
-          className="gap-2 text-slate-400">
-          <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="gap-2 text-slate-400"
+        >
+          <RefreshCw
+            className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`}
+          />
         </Button>
       </div>
 
@@ -167,17 +212,17 @@ export function LeadsPage() {
           <Input
             placeholder="Search leads..."
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={(e) => setSearch(e.target.value)}
             className="pl-9 bg-slate-900 border-slate-700 text-slate-200"
           />
         </div>
         <div className="flex gap-2">
           {[
-            { value: undefined,  label: 'All Types' },
-            { value: 'lead',     label: 'Leads' },
-            { value: 'client',   label: 'Clients' },
+            { value: undefined, label: 'All Types' },
+            { value: 'lead', label: 'Leads' },
+            { value: 'client', label: 'Clients' },
             { value: 'prospect', label: 'Prospects' },
-          ].map(f => (
+          ].map((f) => (
             <button
               key={f.label}
               onClick={() => setTypeFilter(f.value)}
@@ -193,10 +238,10 @@ export function LeadsPage() {
         </div>
         <div className="flex gap-2">
           {[
-            { value: undefined,  label: 'All Orgs' },
+            { value: undefined, label: 'All Orgs' },
             { value: SIRAK_ORG, label: 'Sirak Studios' },
-            { value: PCG_ORG,   label: 'PCG' },
-          ].map(f => (
+            { value: PCG_ORG, label: 'PCG' },
+          ].map((f) => (
             <button
               key={f.label}
               onClick={() => setOrgFilter(f.value)}
@@ -235,7 +280,9 @@ export function LeadsPage() {
                 </p>
               </div>
               <div className="space-y-2">
-                {sirakLeads.map(p => <LeadCard key={p.id} person={p} />)}
+                {sirakLeads.map((p) => (
+                  <LeadCard key={p.id} person={p} />
+                ))}
               </div>
             </div>
           )}
@@ -248,14 +295,18 @@ export function LeadsPage() {
                 </p>
               </div>
               <div className="space-y-2">
-                {otherLeads.map(p => <LeadCard key={p.id} person={p} />)}
+                {otherLeads.map((p) => (
+                  <LeadCard key={p.id} person={p} />
+                ))}
               </div>
             </div>
           )}
         </>
       ) : (
         <div className="space-y-2">
-          {persons.map(p => <LeadCard key={p.id} person={p} />)}
+          {persons.map((p) => (
+            <LeadCard key={p.id} person={p} />
+          ))}
         </div>
       )}
     </div>

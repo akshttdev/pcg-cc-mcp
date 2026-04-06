@@ -27,7 +27,9 @@ export function CallSchedulingSection({
   customFields,
   invalidateKanban,
 }: CallSchedulingSectionProps) {
-  const [editing, setEditing] = useState<'discovery' | 'presentation' | null>(null);
+  const [editing, setEditing] = useState<'discovery' | 'presentation' | null>(
+    null
+  );
 
   const saveMutation = useMutation({
     mutationFn: (fields: Record<string, unknown>) => {
@@ -41,13 +43,16 @@ export function CallSchedulingSection({
       setEditing(null);
       invalidateKanban();
     },
-    onError: () => toast.error('Failed to save call schedule'),
+    onError: () => {
+      toast.error('Failed to save call schedule');
+      // editing state is not cleared on error — form stays open so user can retry
+    },
   });
 
   const renderCallRow = (
     type: 'discovery' | 'presentation',
     label: string,
-    icon: React.ElementType,
+    icon: React.ElementType
   ) => {
     const Icon = icon;
     const dateKey = `${type}_call_date`;
@@ -68,7 +73,9 @@ export function CallSchedulingSection({
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-xs text-muted-foreground uppercase">Date</label>
+                <label className="text-xs text-muted-foreground uppercase">
+                  Date
+                </label>
                 <input
                   type="date"
                   defaultValue={date || ''}
@@ -78,7 +85,9 @@ export function CallSchedulingSection({
                 />
               </div>
               <div>
-                <label className="text-xs text-muted-foreground uppercase">Method</label>
+                <label className="text-xs text-muted-foreground uppercase">
+                  Method
+                </label>
                 <select
                   defaultValue={method}
                   className="w-full h-8 px-2 text-sm border rounded bg-background"
@@ -86,13 +95,17 @@ export function CallSchedulingSection({
                   data-testid={tid.method(type)}
                 >
                   {CALL_METHODS.map((m) => (
-                    <option key={m} value={m}>{m}</option>
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
                   ))}
                 </select>
               </div>
             </div>
             <div>
-              <label className="text-xs text-muted-foreground uppercase">Status</label>
+              <label className="text-xs text-muted-foreground uppercase">
+                Status
+              </label>
               <select
                 defaultValue={status}
                 className="w-full h-8 px-2 text-sm border rounded bg-background"
@@ -100,7 +113,9 @@ export function CallSchedulingSection({
                 data-testid={tid.status(type)}
               >
                 {CALL_STATUSES.map((s) => (
-                  <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                  <option key={s} value={s}>
+                    {s.charAt(0).toUpperCase() + s.slice(1)}
+                  </option>
                 ))}
               </select>
             </div>
@@ -111,9 +126,15 @@ export function CallSchedulingSection({
                 data-testid={tid.save(type)}
                 disabled={saveMutation.isPending}
                 onClick={() => {
-                  const dateEl = document.getElementById(`${type}-date`) as HTMLInputElement;
-                  const methodEl = document.getElementById(`${type}-method`) as HTMLSelectElement;
-                  const statusEl = document.getElementById(`${type}-status`) as HTMLSelectElement;
+                  const dateEl = document.getElementById(
+                    `${type}-date`
+                  ) as HTMLInputElement;
+                  const methodEl = document.getElementById(
+                    `${type}-method`
+                  ) as HTMLSelectElement;
+                  const statusEl = document.getElementById(
+                    `${type}-status`
+                  ) as HTMLSelectElement;
                   saveMutation.mutate({
                     [dateKey]: dateEl?.value || null,
                     [methodKey]: methodEl?.value || 'Video',
@@ -123,7 +144,12 @@ export function CallSchedulingSection({
               >
                 Save
               </Button>
-              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditing(null)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs"
+                onClick={() => setEditing(null)}
+              >
                 Cancel
               </Button>
             </div>

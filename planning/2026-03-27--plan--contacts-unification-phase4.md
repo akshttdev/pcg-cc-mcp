@@ -116,3 +116,10 @@ Search and replace across the codebase:
 3. Full E2E: create deal → Intel → Scout → review → advance → Won
 4. Database: `SELECT COUNT(*) FROM persons` → table doesn't exist
 5. All existing functionality still works (intake, pipeline, intelligence)
+
+
+---
+
+## Status: PARTIALLY IMPLEMENTED (2026-03-27)
+
+Commit: `46c958a13` (user_profiles + custom_fields migration). Persons table NOT dropped — 15+ files still reference it. Tracked as PC-6 in backlog.

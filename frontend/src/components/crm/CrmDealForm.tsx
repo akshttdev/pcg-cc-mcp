@@ -1,5 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Loader2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -8,10 +11,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -19,10 +20,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2 } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
 import { crmApi } from '@/lib/api';
 import { crmKeys } from '@/lib/query-keys';
-import type { CrmDealWithContact, CrmPipelineStage, CreateCrmDeal, UpdateCrmDeal } from '@/types/crm';
+import type {
+  CreateCrmDeal,
+  CrmDealWithContact,
+  CrmPipelineStage,
+  UpdateCrmDeal,
+} from '@/types/crm';
 
 interface CrmDealFormProps {
   open: boolean;
@@ -48,20 +54,26 @@ export function CrmDealForm({
   const isEditing = !!deal;
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const getInitialFormData = useCallback(() => ({
-    name: deal?.name ?? '',
-    description: deal?.description ?? '',
-    amount: deal?.amount != null && Number.isFinite(deal.amount) ? deal.amount.toString() : '',
-    currency: deal?.currency ?? 'USD',
-    stageId: deal?.crm_stage_id ?? initialStageId ?? stages[0]?.id ?? '',
-    contactId: deal?.crm_contact_id ?? '',
-    expectedCloseDate: deal?.expected_close_date
-      ? new Date(deal.expected_close_date).toISOString().split('T')[0]
-      : '',
-    tags: deal?.tags ? (typeof deal.tags === 'string' ? deal.tags : '') : '',
-    lostReason: deal?.lost_reason ?? '',
-    winReason: deal?.win_reason ?? '',
-  }), [deal, initialStageId, stages]);
+  const getInitialFormData = useCallback(
+    () => ({
+      name: deal?.name ?? '',
+      description: deal?.description ?? '',
+      amount:
+        deal?.amount != null && Number.isFinite(deal.amount)
+          ? deal.amount.toString()
+          : '',
+      currency: deal?.currency ?? 'USD',
+      stageId: deal?.crm_stage_id ?? initialStageId ?? stages[0]?.id ?? '',
+      contactId: deal?.crm_contact_id ?? '',
+      expectedCloseDate: deal?.expected_close_date
+        ? new Date(deal.expected_close_date).toISOString().split('T')[0]
+        : '',
+      tags: deal?.tags ? (typeof deal.tags === 'string' ? deal.tags : '') : '',
+      lostReason: deal?.lost_reason ?? '',
+      winReason: deal?.win_reason ?? '',
+    }),
+    [deal, initialStageId, stages]
+  );
 
   const [formData, setFormData] = useState(getInitialFormData);
 
@@ -69,6 +81,7 @@ export function CrmDealForm({
   useEffect(() => {
     if (open) {
       setFormData(getInitialFormData());
+      setContactSearch('');
     }
   }, [open, deal?.id, getInitialFormData]);
 
@@ -79,80 +92,102 @@ export function CrmDealForm({
     enabled: open && !!organizationId,
   });
 
+  const [contactSearch, setContactSearch] = useState('');
+  const filteredContacts = useMemo(() => {
+    if (!contactSearch) return contacts;
+    const q = contactSearch.toLowerCase();
+    return contacts.filter(
+      (c) =>
+        c.full_name?.toLowerCase().includes(q) ||
+        c.email?.toLowerCase().includes(q) ||
+        c.company_name?.toLowerCase().includes(q)
+    );
+  }, [contacts, contactSearch]);
+
   const handleFieldChange = useCallback(
-    (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      setFormData((prev) => ({ ...prev, [field]: e.target.value }));
-    },
-    [],
+    (field: string) =>
+      (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        setFormData((prev) => ({ ...prev, [field]: e.target.value }));
+      },
+    []
   );
 
   const handleSelectChange = useCallback(
     (field: string) => (value: string) => {
       setFormData((prev) => ({ ...prev, [field]: value }));
     },
-    [],
+    []
   );
 
   const handleContactChange = useCallback((value: string) => {
-    setFormData((prev) => ({ ...prev, contactId: value === '__none__' ? '' : value }));
+    setFormData((prev) => ({
+      ...prev,
+      contactId: value === '__none__' ? '' : value,
+    }));
   }, []);
 
   const handleCancel = useCallback(() => {
     onOpenChange(false);
   }, [onOpenChange]);
 
-  const handleSubmit = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
+  const handleSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      setIsSubmitting(true);
 
-    const parseAmount = (value: string): number | undefined => {
-      if (!value) return undefined;
-      const num = parseFloat(value);
-      if (!Number.isFinite(num)) return undefined;
-      return num;
-    };
+      const parseAmount = (value: string): number | undefined => {
+        if (!value) return undefined;
+        const num = parseFloat(value);
+        if (!Number.isFinite(num)) return undefined;
+        return num;
+      };
 
-    try {
-      const parsedTags = formData.tags
-        ? formData.tags.split(',').map((t) => t.trim()).filter(Boolean)
-        : undefined;
+      try {
+        const parsedTags = formData.tags
+          ? formData.tags
+              .split(',')
+              .map((t) => t.trim())
+              .filter(Boolean)
+          : undefined;
 
-      if (isEditing) {
-        const updateData: UpdateCrmDeal = {
-          name: formData.name || undefined,
-          description: formData.description || undefined,
-          amount: parseAmount(formData.amount),
-          currency: formData.currency || undefined,
-          crm_stage_id: formData.stageId || undefined,
-          crm_contact_id: formData.contactId || undefined,
-          expected_close_date: formData.expectedCloseDate || undefined,
-          tags: parsedTags,
-          lost_reason: formData.lostReason || undefined,
-          win_reason: formData.winReason || undefined,
-        };
-        await onSubmit(updateData);
-      } else {
-        const createData: CreateCrmDeal = {
-          organization_id: organizationId,
-          crm_pipeline_id: pipelineId,
-          crm_stage_id: formData.stageId || undefined,
-          crm_contact_id: formData.contactId || undefined,
-          name: formData.name,
-          description: formData.description || undefined,
-          amount: parseAmount(formData.amount),
-          currency: formData.currency || undefined,
-          expected_close_date: formData.expectedCloseDate || undefined,
-          tags: parsedTags,
-        };
-        await onSubmit(createData);
+        if (isEditing) {
+          const updateData: UpdateCrmDeal = {
+            name: formData.name || undefined,
+            description: formData.description || undefined,
+            amount: parseAmount(formData.amount),
+            currency: formData.currency || undefined,
+            crm_stage_id: formData.stageId || undefined,
+            crm_contact_id: formData.contactId || undefined,
+            expected_close_date: formData.expectedCloseDate || undefined,
+            tags: parsedTags,
+            lost_reason: formData.lostReason || undefined,
+            win_reason: formData.winReason || undefined,
+          };
+          await onSubmit(updateData);
+        } else {
+          const createData: CreateCrmDeal = {
+            organization_id: organizationId,
+            crm_pipeline_id: pipelineId,
+            crm_stage_id: formData.stageId || undefined,
+            crm_contact_id: formData.contactId || undefined,
+            name: formData.name,
+            description: formData.description || undefined,
+            amount: parseAmount(formData.amount),
+            currency: formData.currency || undefined,
+            expected_close_date: formData.expectedCloseDate || undefined,
+            tags: parsedTags,
+          };
+          await onSubmit(createData);
+        }
+        onOpenChange(false);
+      } catch (error) {
+        console.error('Failed to save deal:', error);
+      } finally {
+        setIsSubmitting(false);
       }
-      onOpenChange(false);
-    } catch (error) {
-      console.error('Failed to save deal:', error);
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [formData, isEditing, organizationId, pipelineId, onSubmit, onOpenChange]);
+    },
+    [formData, isEditing, organizationId, pipelineId, onSubmit, onOpenChange]
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -166,7 +201,10 @@ export function CrmDealForm({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-4 max-h-[60vh] overflow-y-auto pr-1"
+        >
           {/* Deal Name */}
           <div className="space-y-2">
             <Label htmlFor="name">Deal Name *</Label>
@@ -250,8 +288,17 @@ export function CrmDealForm({
                 <SelectValue placeholder="Select contact (optional)" />
               </SelectTrigger>
               <SelectContent>
+                <div className="px-2 pb-2">
+                  <Input
+                    placeholder="Search contacts..."
+                    value={contactSearch}
+                    onChange={(e) => setContactSearch(e.target.value)}
+                    className="h-8"
+                    onKeyDown={(e) => e.stopPropagation()}
+                  />
+                </div>
                 <SelectItem value="__none__">No contact</SelectItem>
-                {contacts.map((contact) => (
+                {filteredContacts.map((contact) => (
                   <SelectItem key={contact.id} value={contact.id}>
                     {contact.full_name || contact.email || 'Unknown'}
                     {contact.company_name ? ` (${contact.company_name})` : ''}
@@ -324,7 +371,9 @@ export function CrmDealForm({
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting || !formData.name}>
-              {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {isSubmitting && (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              )}
               {isEditing ? 'Save Changes' : 'Create Deal'}
             </Button>
           </DialogFooter>

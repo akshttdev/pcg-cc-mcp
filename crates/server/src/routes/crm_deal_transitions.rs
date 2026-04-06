@@ -115,39 +115,21 @@ pub async fn get_advance_requirements(
     .flatten()
     .map(|r| r.name);
 
-    // Get intel status for the linked person (if any)
+    // Get intel status directly from crm_contacts (no persons table)
     let intel_status: Option<String> = if let Some(ref contact_id) = deal.crm_contact_id {
         #[derive(sqlx::FromRow)]
         struct IntelRow {
             intelligence_status: Option<String>,
         }
-        // Try crm_contacts.person_id → persons
-        let status = sqlx::query_as::<_, IntelRow>(
-            "SELECT p.intelligence_status FROM persons p
-             JOIN crm_contacts c ON c.person_id = p.id
-             WHERE c.id = ? LIMIT 1",
+        sqlx::query_as::<_, IntelRow>(
+            "SELECT intelligence_status FROM crm_contacts WHERE id = ? LIMIT 1",
         )
         .bind(contact_id)
         .fetch_optional(pool)
         .await
         .ok()
         .flatten()
-        .and_then(|r| r.intelligence_status);
-
-        if status.is_some() {
-            status
-        } else {
-            // Fallback: persons.crm_contact_id
-            sqlx::query_as::<_, IntelRow>(
-                "SELECT intelligence_status FROM persons WHERE crm_contact_id = ? LIMIT 1",
-            )
-            .bind(contact_id)
-            .fetch_optional(pool)
-            .await
-            .ok()
-            .flatten()
-            .and_then(|r| r.intelligence_status)
-        }
+        .and_then(|r| r.intelligence_status)
     } else {
         None
     };
@@ -197,13 +179,21 @@ pub async fn advance_deal(
             .await
             .map_err(|_| ApiError::NotFound("Current stage not found".to_string()))?;
     let current_stage_name_lower = current_stage.name.to_lowercase();
-    let review_prefix = format!("Review & approve: {}%", current_stage_name_lower);
+    let review_prefix = format!(
+        "{} {}%",
+        db::models::crm_deal::REVIEW_TASK_PREFIX,
+        current_stage_name_lower
+    );
 
+    let review_like = format!("{}%", db::models::crm_deal::REVIEW_TASK_PREFIX);
+    let review_like_spaced = format!("{} %", db::models::crm_deal::REVIEW_TASK_PREFIX);
     let pending_tasks: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM tasks WHERE crm_deal_id = ? AND (title LIKE ? OR (title LIKE 'Review & approve:%' AND title NOT LIKE 'Review & approve: %')) AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL",
+        "SELECT COUNT(*) FROM tasks WHERE crm_deal_id = ? AND (title LIKE ? OR (title LIKE ? AND title NOT LIKE ?)) AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL",
     )
     .bind(&id)
     .bind(&review_prefix)
+    .bind(&review_like)
+    .bind(&review_like_spaced)
     .fetch_one(pool)
     .await
     .unwrap_or(0);
@@ -228,17 +218,16 @@ pub async fn advance_deal(
             }));
         }
 
-        // Check person intelligence_status via crm_contact_id (use CAST for BLOB/TEXT compat)
+        // Check contact intelligence_status directly (no persons table)
         let person_intel_status: Option<String> = if let Some(ref cid) = deal.crm_contact_id {
             #[derive(sqlx::FromRow)]
-            struct PersonIntelStatus {
+            struct ContactIntelStatus {
                 intelligence_status: Option<String>,
             }
-            sqlx::query_as::<_, PersonIntelStatus>(
-                "SELECT intelligence_status FROM persons WHERE crm_contact_id = ? OR CAST(crm_contact_id AS TEXT) = ? LIMIT 1"
+            sqlx::query_as::<_, ContactIntelStatus>(
+                "SELECT intelligence_status FROM crm_contacts WHERE id = ? LIMIT 1",
             )
             .bind(cid)
-            .bind(cid.to_string())
             .fetch_optional(pool)
             .await
             .ok()
@@ -258,17 +247,16 @@ pub async fn advance_deal(
             }));
         }
 
-        // Check company intelligence_status via person.company_name (CAST for BLOB/TEXT compat)
+        // Check company intelligence_status via crm_contacts.company_name → companies (no persons table)
         let company_intel_status: Option<String> = if let Some(ref cid) = deal.crm_contact_id {
             #[derive(sqlx::FromRow)]
             struct CompanyIntelStatus {
                 intelligence_status: Option<String>,
             }
             sqlx::query_as::<_, CompanyIntelStatus>(
-                "SELECT co.intelligence_status FROM companies co JOIN persons p ON lower(p.company_name) = lower(co.name) WHERE p.crm_contact_id = ? OR CAST(p.crm_contact_id AS TEXT) = ? LIMIT 1"
+                "SELECT co.intelligence_status FROM companies co JOIN crm_contacts c ON lower(c.company_name) = lower(co.name) WHERE c.id = ? LIMIT 1",
             )
             .bind(cid)
-            .bind(cid.to_string())
             .fetch_optional(pool)
             .await
             .ok()
@@ -352,6 +340,7 @@ pub async fn manage_stage_review_tasks(
 }
 
 /// Create review tasks with optional stage_config for assignee routing.
+/// `initial_status` controls task status: "todo" (default) or "waiting" (agent still running).
 pub async fn manage_stage_review_tasks_with_config(
     pool: &sqlx::SqlitePool,
     deal: &CrmDeal,
@@ -359,12 +348,30 @@ pub async fn manage_stage_review_tasks_with_config(
     stage_name: &str,
     stage_config: Option<&crate::stage_transition::StageConfig>,
 ) {
+    manage_stage_review_tasks_full(pool, deal, description, stage_name, stage_config, "todo").await;
+}
+
+/// Inner implementation with explicit initial_status.
+pub async fn manage_stage_review_tasks_full(
+    pool: &sqlx::SqlitePool,
+    deal: &CrmDeal,
+    description: &str,
+    stage_name: &str,
+    stage_config: Option<&crate::stage_transition::StageConfig>,
+    initial_status: &str,
+) {
     // Cancel review tasks from previous stages
-    let current_prefix = format!("Review & approve: {} —", stage_name);
+    let current_prefix = format!(
+        "{} {} —",
+        db::models::crm_deal::REVIEW_TASK_PREFIX,
+        stage_name
+    );
+    let all_review_like = format!("{}%", db::models::crm_deal::REVIEW_TASK_PREFIX);
     if let Err(e) = sqlx::query(
-        "UPDATE tasks SET status = 'cancelled', updated_at = datetime('now','subsec') WHERE crm_deal_id = ? AND title LIKE 'Review & approve:%' AND title NOT LIKE ? AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL",
+        "UPDATE tasks SET status = 'cancelled', updated_at = datetime('now','subsec') WHERE crm_deal_id = ? AND title LIKE ? AND title NOT LIKE ? AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL",
     )
     .bind(&deal.id)
+    .bind(&all_review_like)
     .bind(format!("{}%", current_prefix))
     .execute(pool)
     .await
@@ -384,7 +391,12 @@ pub async fn manage_stage_review_tasks_with_config(
 
     if existing_count == 0 {
         let task_id = DbUuid::new();
-        let task_title = format!("Review & approve: {} — {}", stage_name, deal.name);
+        let task_title = format!(
+            "{} {} — {}",
+            db::models::crm_deal::REVIEW_TASK_PREFIX,
+            stage_name,
+            deal.name
+        );
         // Default assignee: first admin user (so tasks show up in My Tasks)
         let default_assignee: Option<String> =
             sqlx::query_scalar::<_, String>("SELECT hex(id) FROM users WHERE is_admin = 1 LIMIT 1")
@@ -411,12 +423,13 @@ pub async fn manage_stage_review_tasks_with_config(
         if let Err(e) = sqlx::query(
             r#"
             INSERT INTO tasks (id, title, description, status, crm_deal_id, project_id, assignee_id, created_at, updated_at)
-            VALUES (?, ?, ?, 'todo', ?, ?, ?, datetime('now','subsec'), datetime('now','subsec'))
+            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','subsec'), datetime('now','subsec'))
             "#,
         )
         .bind(&task_id)
         .bind(&task_title)
         .bind(description)
+        .bind(initial_status)
         .bind(&deal.id)
         .bind(&deal.project_id)
         .bind(&default_assignee)
@@ -710,36 +723,45 @@ async fn resolve_review_assignee(
         struct UserIdRow {
             id: DbUuid,
         }
-        if let Some(user) = sqlx::query_as::<_, UserIdRow>(
+        match sqlx::query_as::<_, UserIdRow>(
             "SELECT id FROM users WHERE username = ? OR display_name = ? LIMIT 1",
         )
         .bind(username)
         .bind(username)
         .fetch_optional(pool)
         .await
-        .ok()
-        .flatten()
         {
-            return Some(user.id.to_string());
+            Ok(Some(user)) => return Some(user.id.to_string()),
+            Ok(None) => tracing::warn!(
+                "[resolve_review_assignee] Config review_assignee '{}' not found in users table",
+                username
+            ),
+            Err(e) => tracing::error!(
+                "[resolve_review_assignee] DB error looking up assignee '{}': {}",
+                username,
+                e
+            ),
         }
-        tracing::warn!(
-            "[resolve_review_assignee] Config review_assignee '{}' not found in users table",
-            username
-        );
     }
 
     // 2. Fallback: org owner
     if let Some(ref org_id) = deal.organization_id {
-        let owner_id: Option<String> =
-            sqlx::query_scalar("SELECT owner_id FROM organizations WHERE id = ? LIMIT 1")
-                .bind(org_id)
-                .fetch_optional(pool)
-                .await
-                .ok()
-                .flatten();
-
-        if let Some(oid) = owner_id {
-            return Some(oid);
+        match sqlx::query_scalar::<_, String>(
+            "SELECT owner_id FROM organizations WHERE id = ? LIMIT 1",
+        )
+        .bind(org_id)
+        .fetch_optional(pool)
+        .await
+        {
+            Ok(Some(oid)) => return Some(oid),
+            Ok(None) => tracing::warn!(
+                "[resolve_review_assignee] No owner found for org {}",
+                org_id
+            ),
+            Err(e) => tracing::error!(
+                "[resolve_review_assignee] DB error looking up org owner: {}",
+                e
+            ),
         }
     }
 

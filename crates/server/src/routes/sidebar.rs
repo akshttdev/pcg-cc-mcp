@@ -319,7 +319,7 @@ pub async fn get_sidebar_tree(
                 r#"SELECT c.id, c.name, c.slug, c.crm_contact_id,
                           p.intelligence_confidence as crm_confidence
                    FROM clients c
-                   LEFT JOIN persons p ON p.id = c.crm_contact_id
+                   LEFT JOIN crm_contacts p ON p.id = c.crm_contact_id
                    WHERE c.organization_id = ? AND c.deleted_at IS NULL AND c.is_active = 1
                    ORDER BY c.name ASC"#,
             )
@@ -333,7 +333,7 @@ pub async fn get_sidebar_tree(
                           p.intelligence_confidence as crm_confidence
                    FROM clients c
                    INNER JOIN client_members cm ON cm.client_id = c.id AND cm.user_id = ?
-                   LEFT JOIN persons p ON p.id = c.crm_contact_id
+                   LEFT JOIN crm_contacts p ON p.id = c.crm_contact_id
                    WHERE c.organization_id = ? AND c.deleted_at IS NULL AND c.is_active = 1
                    ORDER BY c.name ASC"#,
             )

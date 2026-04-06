@@ -15,7 +15,7 @@ import type {
   UpdateCrmPipelineStage,
 } from '@/types/crm';
 
-import { handleApiResponse,makeRequest } from './client';
+import { handleApiResponse, makeRequest } from './client';
 
 // =============================================================================
 // CRM Contact Records
@@ -66,6 +66,14 @@ export interface CrmContactRecord {
   meeting_count: number;
   deal_count: number;
   total_revenue: number;
+  intelligence_summary: string | null;
+  intelligence_raw: string | null;
+  intelligence_status: string;
+  intelligence_confidence: number;
+  intelligence_last_run_at: string | null;
+  intelligence_agent: string | null;
+  research_pass_count: number;
+  research_depth: string;
   created_at: string;
   updated_at: string;
 }
@@ -167,7 +175,9 @@ export interface QBConnectionStatus {
 
 export const quickbooksApi = {
   getStatus: async (organizationId: string): Promise<QBConnectionStatus> => {
-    const response = await makeRequest(`/api/quickbooks/status?organization_id=${organizationId}`);
+    const response = await makeRequest(
+      `/api/quickbooks/status?organization_id=${organizationId}`
+    );
     return handleApiResponse<QBConnectionStatus>(response);
   },
 
@@ -176,20 +186,29 @@ export const quickbooksApi = {
   },
 
   disconnect: async (accountId: string): Promise<void> => {
-    const response = await makeRequest(`/api/quickbooks/accounts/${accountId}`, { method: 'DELETE' });
+    const response = await makeRequest(
+      `/api/quickbooks/accounts/${accountId}`,
+      { method: 'DELETE' }
+    );
     return handleApiResponse<void>(response);
   },
 
   refreshToken: async (accountId: string): Promise<void> => {
-    const response = await makeRequest(`/api/quickbooks/accounts/${accountId}/refresh`, { method: 'POST' });
+    const response = await makeRequest(
+      `/api/quickbooks/accounts/${accountId}/refresh`,
+      { method: 'POST' }
+    );
     return handleApiResponse<void>(response);
   },
 
   triggerSync: async (accountId: string): Promise<void> => {
-    const response = await makeRequest(`/api/quickbooks/accounts/${accountId}/sync`, {
-      method: 'POST',
-      body: JSON.stringify({}),
-    });
+    const response = await makeRequest(
+      `/api/quickbooks/accounts/${accountId}/sync`,
+      {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }
+    );
     return handleApiResponse<void>(response);
   },
 };
@@ -201,9 +220,12 @@ export const crmApi = {
   ): Promise<CrmContactRecord[]> => {
     const searchParams = new URLSearchParams();
     searchParams.set('organization_id', organizationId);
-    if (options?.lifecycleStage) searchParams.set('lifecycle_stage', options.lifecycleStage);
+    if (options?.lifecycleStage)
+      searchParams.set('lifecycle_stage', options.lifecycleStage);
     if (options?.limit) searchParams.set('limit', options.limit.toString());
-    const response = await makeRequest(`/api/crm/contacts?${searchParams.toString()}`);
+    const response = await makeRequest(
+      `/api/crm/contacts?${searchParams.toString()}`
+    );
     return handleApiResponse<CrmContactRecord[]>(response);
   },
 
@@ -221,12 +243,17 @@ export const crmApi = {
     const searchParams = new URLSearchParams();
     searchParams.set('organization_id', organizationId);
     if (query) searchParams.set('query', query);
-    if (options?.lifecycleStage) searchParams.set('lifecycle_stage', options.lifecycleStage);
-    if (options?.companyName) searchParams.set('company_name', options.companyName);
-    if (options?.minLeadScore) searchParams.set('min_lead_score', options.minLeadScore.toString());
+    if (options?.lifecycleStage)
+      searchParams.set('lifecycle_stage', options.lifecycleStage);
+    if (options?.companyName)
+      searchParams.set('company_name', options.companyName);
+    if (options?.minLeadScore)
+      searchParams.set('min_lead_score', options.minLeadScore.toString());
     if (options?.limit) searchParams.set('limit', options.limit.toString());
     if (options?.offset) searchParams.set('offset', options.offset.toString());
-    const response = await makeRequest(`/api/crm/contacts/search?${searchParams.toString()}`);
+    const response = await makeRequest(
+      `/api/crm/contacts/search?${searchParams.toString()}`
+    );
     return handleApiResponse<CrmContactRecord[]>(response);
   },
 
@@ -235,12 +262,19 @@ export const crmApi = {
     return handleApiResponse<CrmContactRecord>(response);
   },
 
-  getContactByEmail: async (projectId: string, email: string): Promise<CrmContactRecord | null> => {
-    const response = await makeRequest(`/api/crm/contacts/by-email/${projectId}/${encodeURIComponent(email)}`);
+  getContactByEmail: async (
+    projectId: string,
+    email: string
+  ): Promise<CrmContactRecord | null> => {
+    const response = await makeRequest(
+      `/api/crm/contacts/by-email/${projectId}/${encodeURIComponent(email)}`
+    );
     return handleApiResponse<CrmContactRecord | null>(response);
   },
 
-  createContact: async (data: CreateCrmContactRequest): Promise<CrmContactRecord> => {
+  createContact: async (
+    data: CreateCrmContactRequest
+  ): Promise<CrmContactRecord> => {
     const response = await makeRequest('/api/crm/contacts', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -248,7 +282,10 @@ export const crmApi = {
     return handleApiResponse<CrmContactRecord>(response);
   },
 
-  updateContact: async (id: string, data: UpdateCrmContactRequest): Promise<CrmContactRecord> => {
+  updateContact: async (
+    id: string,
+    data: UpdateCrmContactRequest
+  ): Promise<CrmContactRecord> => {
     const response = await makeRequest(`/api/crm/contacts/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -264,7 +301,9 @@ export const crmApi = {
   },
 
   getContactStats: async (organizationId: string): Promise<CrmContactStats> => {
-    const response = await makeRequest(`/api/crm/contacts/stats/${organizationId}`);
+    const response = await makeRequest(
+      `/api/crm/contacts/stats/${organizationId}`
+    );
     return handleApiResponse<CrmContactStats>(response);
   },
 
@@ -289,7 +328,10 @@ export const crmApi = {
     await handleApiResponse<void>(response);
   },
 
-  updateLeadScore: async (id: string, scoreDelta: number): Promise<CrmContactRecord> => {
+  updateLeadScore: async (
+    id: string,
+    scoreDelta: number
+  ): Promise<CrmContactRecord> => {
     const response = await makeRequest(`/api/crm/contacts/${id}/lead-score`, {
       method: 'POST',
       body: JSON.stringify({ score_delta: scoreDelta }),
@@ -326,14 +368,19 @@ export const crmPipelinesApi = {
   ): Promise<CrmPipeline[]> => {
     const params = new URLSearchParams();
     params.set('organization_id', organizationId);
-    if (options?.pipelineType) params.set('pipeline_type', options.pipelineType);
-    const response = await makeRequest(`/api/crm/pipelines?${params.toString()}`);
+    if (options?.pipelineType)
+      params.set('pipeline_type', options.pipelineType);
+    const response = await makeRequest(
+      `/api/crm/pipelines?${params.toString()}`
+    );
     return handleApiResponse<CrmPipeline[]>(response);
   },
 
   /** List pipelines for an organization */
   listOrgPipelines: async (orgId: string): Promise<CrmPipeline[]> => {
-    const response = await makeRequest(`/api/organizations/${orgId}/crm/pipelines`);
+    const response = await makeRequest(
+      `/api/organizations/${orgId}/crm/pipelines`
+    );
     return handleApiResponse<CrmPipeline[]>(response);
   },
 
@@ -344,7 +391,10 @@ export const crmPipelinesApi = {
   },
 
   /** Get a pipeline with stages under an org (by pipeline id) */
-  getOrgPipeline: async (orgId: string, pipelineId: string): Promise<CrmPipelineWithStages> => {
+  getOrgPipeline: async (
+    orgId: string,
+    pipelineId: string
+  ): Promise<CrmPipelineWithStages> => {
     const response = await makeRequest(
       `/api/organizations/${orgId}/crm/pipelines/${pipelineId}`
     );
@@ -359,7 +409,10 @@ export const crmPipelinesApi = {
     return handleApiResponse<CrmPipeline>(response);
   },
 
-  updatePipeline: async (id: string, data: UpdateCrmPipeline): Promise<CrmPipeline> => {
+  updatePipeline: async (
+    id: string,
+    data: UpdateCrmPipeline
+  ): Promise<CrmPipeline> => {
     const response = await makeRequest(`/api/crm/pipelines/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -368,12 +421,16 @@ export const crmPipelinesApi = {
   },
 
   deletePipeline: async (id: string): Promise<void> => {
-    const response = await makeRequest(`/api/crm/pipelines/${id}`, { method: 'DELETE' });
+    const response = await makeRequest(`/api/crm/pipelines/${id}`, {
+      method: 'DELETE',
+    });
     await handleApiResponse<void>(response);
   },
 
   listStages: async (pipelineId: string): Promise<CrmPipelineStage[]> => {
-    const response = await makeRequest(`/api/crm/pipelines/${pipelineId}/stages`);
+    const response = await makeRequest(
+      `/api/crm/pipelines/${pipelineId}/stages`
+    );
     return handleApiResponse<CrmPipelineStage[]>(response);
   },
 
@@ -381,10 +438,13 @@ export const crmPipelinesApi = {
     pipelineId: string,
     data: Omit<CreateCrmPipelineStage, 'pipeline_id'>
   ): Promise<CrmPipelineStage> => {
-    const response = await makeRequest(`/api/crm/pipelines/${pipelineId}/stages`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+    const response = await makeRequest(
+      `/api/crm/pipelines/${pipelineId}/stages`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    );
     return handleApiResponse<CrmPipelineStage>(response);
   },
 
@@ -412,10 +472,13 @@ export const crmPipelinesApi = {
     pipelineId: string,
     stageIds: string[]
   ): Promise<CrmPipelineStage[]> => {
-    const response = await makeRequest(`/api/crm/pipelines/${pipelineId}/stages/reorder`, {
-      method: 'POST',
-      body: JSON.stringify({ stage_ids: stageIds }),
-    });
+    const response = await makeRequest(
+      `/api/crm/pipelines/${pipelineId}/stages/reorder`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ stage_ids: stageIds }),
+      }
+    );
     return handleApiResponse<CrmPipelineStage[]>(response);
   },
 };
@@ -455,7 +518,8 @@ export const crmDealsApi = {
     contact_id?: string;
   }): Promise<CrmDealRecord[]> => {
     const params = new URLSearchParams();
-    if (options.organization_id) params.set('organization_id', options.organization_id);
+    if (options.organization_id)
+      params.set('organization_id', options.organization_id);
     if (options.pipeline_id) params.set('pipeline_id', options.pipeline_id);
     if (options.stage_id) params.set('stage_id', options.stage_id);
     if (options.contact_id) params.set('contact_id', options.contact_id);
@@ -476,7 +540,10 @@ export const crmDealsApi = {
     return handleApiResponse<CrmDealRecord>(response);
   },
 
-  updateDeal: async (id: string, data: UpdateCrmDeal): Promise<CrmDealRecord> => {
+  updateDeal: async (
+    id: string,
+    data: UpdateCrmDeal
+  ): Promise<CrmDealRecord> => {
     const response = await makeRequest(`/api/crm/deals/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -484,7 +551,10 @@ export const crmDealsApi = {
     return handleApiResponse<CrmDealRecord>(response);
   },
 
-  moveDeal: async (dealId: string, data: MoveDealRequest): Promise<import('@/types/crm').TransitionResult> => {
+  moveDeal: async (
+    dealId: string,
+    data: MoveDealRequest
+  ): Promise<import('@/types/crm').TransitionResult> => {
     const response = await makeRequest(`/api/crm/deals/${dealId}/stage`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -493,28 +563,71 @@ export const crmDealsApi = {
   },
 
   advanceDeal: async (dealId: string): Promise<CrmDealRecord> => {
-    const response = await makeRequest(`/api/crm/deals/${dealId}/advance`, { method: 'POST' });
+    const response = await makeRequest(`/api/crm/deals/${dealId}/advance`, {
+      method: 'POST',
+    });
     return handleApiResponse<CrmDealRecord>(response);
   },
 
-  cancelDealAgent: async (dealId: string): Promise<{ cancelled: boolean; message: string }> => {
-    const response = await makeRequest(`/api/crm/deals/${dealId}/cancel-agent`, { method: 'POST' });
+  cancelDealAgent: async (
+    dealId: string
+  ): Promise<{ cancelled: boolean; message: string }> => {
+    const response = await makeRequest(
+      `/api/crm/deals/${dealId}/cancel-agent`,
+      { method: 'POST' }
+    );
     return handleApiResponse<{ cancelled: boolean; message: string }>(response);
   },
 
-  approveDealAgent: async (dealId: string): Promise<{ approved: boolean; message: string }> => {
-    const response = await makeRequest(`/api/crm/deals/${dealId}/approve-agent`, { method: 'POST' });
+  approveDealAgent: async (
+    dealId: string
+  ): Promise<{ approved: boolean; message: string }> => {
+    const response = await makeRequest(
+      `/api/crm/deals/${dealId}/approve-agent`,
+      { method: 'POST' }
+    );
     return handleApiResponse<{ approved: boolean; message: string }>(response);
   },
 
-  retriggerDealAgent: async (dealId: string): Promise<{ retriggered: boolean; agent_flow_id: string; agent: string; cancel_deadline?: string; message: string }> => {
-    const response = await makeRequest(`/api/crm/deals/${dealId}/retrigger-agent`, { method: 'POST' });
-    return handleApiResponse<{ retriggered: boolean; agent_flow_id: string; agent: string; message: string }>(response);
+  retriggerDealAgent: async (
+    dealId: string
+  ): Promise<{
+    retriggered: boolean;
+    agent_flow_id: string;
+    agent: string;
+    cancel_deadline?: string;
+    message: string;
+  }> => {
+    const response = await makeRequest(
+      `/api/crm/deals/${dealId}/retrigger-agent`,
+      { method: 'POST' }
+    );
+    return handleApiResponse<{
+      retriggered: boolean;
+      agent_flow_id: string;
+      agent: string;
+      message: string;
+    }>(response);
   },
 
-  generateInvite: async (dealId: string): Promise<{ invite_url: string; token: string; contact_email?: string; status: string }> => {
-    const response = await makeRequest(`/api/crm/deals/${dealId}/generate-invite`, { method: 'POST' });
-    return handleApiResponse<{ invite_url: string; token: string; contact_email?: string; status: string }>(response);
+  generateInvite: async (
+    dealId: string
+  ): Promise<{
+    invite_url: string;
+    token: string;
+    contact_email?: string;
+    status: string;
+  }> => {
+    const response = await makeRequest(
+      `/api/crm/deals/${dealId}/generate-invite`,
+      { method: 'POST' }
+    );
+    return handleApiResponse<{
+      invite_url: string;
+      token: string;
+      contact_email?: string;
+      status: string;
+    }>(response);
   },
 
   getDealRich: async (dealId: string): Promise<CrmDealRich> => {
@@ -523,11 +636,16 @@ export const crmDealsApi = {
   },
 
   deleteDeal: async (id: string): Promise<void> => {
-    const response = await makeRequest(`/api/crm/deals/${id}`, { method: 'DELETE' });
+    const response = await makeRequest(`/api/crm/deals/${id}`, {
+      method: 'DELETE',
+    });
     await handleApiResponse<void>(response);
   },
 
-  getMetrics: async (organizationId: string, pipelineId?: string): Promise<PipelineMetricsRecord> => {
+  getMetrics: async (
+    organizationId: string,
+    pipelineId?: string
+  ): Promise<PipelineMetricsRecord> => {
     const params = new URLSearchParams({ organization_id: organizationId });
     if (pipelineId) params.set('pipeline_id', pipelineId);
     const response = await makeRequest(`/api/crm/deals/metrics?${params}`);
@@ -541,7 +659,10 @@ export const crmDealsApi = {
   },
 
   /** Get Kanban board for an org-scoped pipeline */
-  getOrgKanbanData: async (orgId: string, pipelineId: string): Promise<KanbanBoardData> => {
+  getOrgKanbanData: async (
+    orgId: string,
+    pipelineId: string
+  ): Promise<KanbanBoardData> => {
     const response = await makeRequest(
       `/api/organizations/${orgId}/crm/pipelines/${pipelineId}/kanban`
     );
@@ -556,33 +677,51 @@ export const crmDealsApi = {
 
   /** Generate proposal text via Cash agent */
   generateProposal: async (dealId: string): Promise<CrmDealRecord> => {
-    const response = await makeRequest(`/api/crm/deals/${dealId}/generate-proposal`, { method: 'POST' });
+    const response = await makeRequest(
+      `/api/crm/deals/${dealId}/generate-proposal`,
+      { method: 'POST' }
+    );
     return handleApiResponse<CrmDealRecord>(response);
   },
 
   /** Approve the proposal, advancing proposal_status → 'approved' */
   approveProposal: async (dealId: string): Promise<CrmDealRecord> => {
-    const response = await makeRequest(`/api/crm/deals/${dealId}/approve-proposal`, { method: 'POST' });
+    const response = await makeRequest(
+      `/api/crm/deals/${dealId}/approve-proposal`,
+      { method: 'POST' }
+    );
     return handleApiResponse<CrmDealRecord>(response);
   },
 
   /** Generate deck script via Lux agent */
   generateDeck: async (dealId: string): Promise<CrmDealRecord> => {
-    const response = await makeRequest(`/api/crm/deals/${dealId}/generate-deck`, { method: 'POST' });
+    const response = await makeRequest(
+      `/api/crm/deals/${dealId}/generate-deck`,
+      { method: 'POST' }
+    );
     return handleApiResponse<CrmDealRecord>(response);
   },
 
   /** Send invoice from Present stage */
-  sendInvoice: async (dealId: string, opts?: { notes?: string; due_days?: number }): Promise<import('@/types/crm').SendInvoiceResult> => {
-    const response = await makeRequest(`/api/crm/deals/${dealId}/send-invoice`, {
-      method: 'POST',
-      body: JSON.stringify(opts ?? {}),
-    });
+  sendInvoice: async (
+    dealId: string,
+    opts?: { notes?: string; due_days?: number }
+  ): Promise<import('@/types/crm').SendInvoiceResult> => {
+    const response = await makeRequest(
+      `/api/crm/deals/${dealId}/send-invoice`,
+      {
+        method: 'POST',
+        body: JSON.stringify(opts ?? {}),
+      }
+    );
     return handleApiResponse<import('@/types/crm').SendInvoiceResult>(response);
   },
 
   /** Mark deal as won — triggers full automation chain */
-  markWon: async (dealId: string, winReason?: string): Promise<import('@/types/crm').MarkWonResult> => {
+  markWon: async (
+    dealId: string,
+    winReason?: string
+  ): Promise<import('@/types/crm').MarkWonResult> => {
     const response = await makeRequest(`/api/crm/deals/${dealId}/mark-won`, {
       method: 'POST',
       body: JSON.stringify({ win_reason: winReason }),
@@ -591,19 +730,24 @@ export const crmDealsApi = {
   },
 
   /** List transcripts linked to a deal */
-  listTranscripts: async (dealId: string): Promise<import('@/types/crm').DealTranscript[]> => {
+  listTranscripts: async (
+    dealId: string
+  ): Promise<import('@/types/crm').DealTranscript[]> => {
     const response = await makeRequest(`/api/crm/deals/${dealId}/transcripts`);
     return handleApiResponse<import('@/types/crm').DealTranscript[]>(response);
   },
 
   /** Link a transcript to a deal */
-  linkTranscript: async (dealId: string, data: {
-    intake_item_id?: string;
-    call_log_id?: string;
-    transcript_text?: string;
-    summary?: string;
-    matched_by?: string;
-  }): Promise<import('@/types/crm').DealTranscript> => {
+  linkTranscript: async (
+    dealId: string,
+    data: {
+      intake_item_id?: string;
+      call_log_id?: string;
+      transcript_text?: string;
+      summary?: string;
+      matched_by?: string;
+    }
+  ): Promise<import('@/types/crm').DealTranscript> => {
     const response = await makeRequest(`/api/crm/deals/${dealId}/transcripts`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -612,17 +756,29 @@ export const crmDealsApi = {
   },
 
   /** List data sources linked to a deal */
-  listDataSources: async (dealId: string): Promise<import('@/types/crm').DealDataSource[]> => {
+  listDataSources: async (
+    dealId: string
+  ): Promise<import('@/types/crm').DealDataSource[]> => {
     const response = await makeRequest(`/api/crm/deals/${dealId}/data-sources`);
     return handleApiResponse<import('@/types/crm').DealDataSource[]>(response);
   },
 
   /** Link a data source to a deal with optional agent/stage scoping */
-  linkDataSource: async (dealId: string, data: { data_source_id: string; relevant_stages?: string[]; relevant_agents?: string[] }): Promise<import('@/types/crm').DealDataSource> => {
-    const response = await makeRequest(`/api/crm/deals/${dealId}/data-sources`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+  linkDataSource: async (
+    dealId: string,
+    data: {
+      data_source_id: string;
+      relevant_stages?: string[];
+      relevant_agents?: string[];
+    }
+  ): Promise<import('@/types/crm').DealDataSource> => {
+    const response = await makeRequest(
+      `/api/crm/deals/${dealId}/data-sources`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    );
     return handleApiResponse<import('@/types/crm').DealDataSource>(response);
   },
 };
@@ -680,7 +836,8 @@ export const crmActivitiesApi = {
     limit?: number;
   }): Promise<CrmActivityRecord[]> => {
     const params = new URLSearchParams();
-    if (options.organization_id) params.set('organization_id', options.organization_id);
+    if (options.organization_id)
+      params.set('organization_id', options.organization_id);
     if (options.contact_id) params.set('contact_id', options.contact_id);
     if (options.deal_id) params.set('deal_id', options.deal_id);
     if (options.limit) params.set('limit', options.limit.toString());
@@ -708,7 +865,9 @@ export const crmActivitiesApi = {
   },
 
   deleteActivity: async (id: string): Promise<void> => {
-    const response = await makeRequest(`/api/crm/activities/${id}`, { method: 'DELETE' });
+    const response = await makeRequest(`/api/crm/activities/${id}`, {
+      method: 'DELETE',
+    });
     await handleApiResponse<void>(response);
   },
 };

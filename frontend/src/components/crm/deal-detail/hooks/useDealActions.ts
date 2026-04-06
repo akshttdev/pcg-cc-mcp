@@ -1,9 +1,10 @@
-import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { reportsApi, crmDealsApi, intelligenceApi, tasksApi } from '@/lib/api';
-import { crmKeys } from '@/lib/query-keys';
-import { showConfirm } from '@/lib/modals';
+import { useState } from 'react';
 import { toast } from 'sonner';
+
+import { crmDealsApi, intelligenceApi, reportsApi, tasksApi } from '@/lib/api';
+import { showConfirm } from '@/lib/modals';
+import { crmKeys } from '@/lib/query-keys';
 
 /**
  * Consolidates all deal-panel mutations (advance stage, trigger research,
@@ -36,13 +37,22 @@ export function useDealActions() {
     }
   };
 
-  const triggerResearch = async (personId: string) => {
+  const triggerResearch = async (
+    contactOrPersonId: string,
+    useContactApi = false
+  ) => {
     setResearchLoading(true);
     try {
-      await intelligenceApi.triggerResearch(personId);
+      if (useContactApi) {
+        await intelligenceApi.triggerContactResearch(contactOrPersonId);
+      } else {
+        await intelligenceApi.triggerResearch(contactOrPersonId);
+      }
       toast.success('Research triggered — gathering intel on this contact');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to trigger research');
+      toast.error(
+        e instanceof Error ? e.message : 'Failed to trigger research'
+      );
     } finally {
       setResearchLoading(false);
     }
@@ -84,7 +94,9 @@ export function useDealActions() {
       queryClient.invalidateQueries({ queryKey: crmKeys.kanbanAll() });
       queryClient.invalidateQueries({ queryKey: crmKeys.orgKanbanAll() });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to complete review task');
+      toast.error(
+        e instanceof Error ? e.message : 'Failed to complete review task'
+      );
     } finally {
       setCompleteLoading(false);
     }

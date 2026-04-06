@@ -43,7 +43,8 @@ export const crmKeys = {
   contact: (contactId: string) => ['crm', 'contact', contactId] as const,
   contactLegacy: (contactId: string) => ['crm-contact', contactId] as const,
   contactDeals: (contactId: string) => ['contact-deals', contactId] as const,
-  contactActivities: (contactId: string) => ['contact-activities', contactId] as const,
+  contactActivities: (contactId: string) =>
+    ['contact-activities', contactId] as const,
   dealTranscripts: (dealId: string) => ['deal-transcripts', dealId] as const,
   dealDataSources: (dealId: string) => ['deal-data-sources', dealId] as const,
   dealLegacy: (dealId: string) => ['crm-deal', dealId] as const,
@@ -52,12 +53,14 @@ export const crmKeys = {
   callLogsDeal: (dealId: string) => ['call-logs-deal', dealId] as const,
 
   // Pipelines (project-scoped)
-  pipelines: (organizationId: string) => ['crm', 'pipelines', organizationId] as const,
+  pipelines: (organizationId: string) =>
+    ['crm', 'pipelines', organizationId] as const,
   pipelinesByType: (organizationId: string, type: PipelineType) =>
     ['crm', 'pipelines', organizationId, type] as const,
   pipeline: (id: string) => ['crm', 'pipeline', id] as const,
   pipelinesLegacy: () => ['crmPipelines'] as const,
-  pipelineStages: (pipelineId: string) => ['crmPipelineStages', pipelineId] as const,
+  pipelineStages: (pipelineId: string) =>
+    ['crmPipelineStages', pipelineId] as const,
 
   // Pipelines (org-scoped)
   orgPipelines: (orgId: string) => ['crm', 'org-pipelines', orgId] as const,
@@ -73,14 +76,16 @@ export const crmKeys = {
   deals: (organizationId: string) => ['crm', 'deals', organizationId] as const,
   dealsAll: () => ['crm', 'deals'] as const,
   deal: (id: string) => ['crm', 'deal', id] as const,
-  dealsByContact: (contactId: string) => ['crm', 'deals', 'contact', contactId] as const,
+  dealsByContact: (contactId: string) =>
+    ['crm', 'deals', 'contact', contactId] as const,
 
   // Activities
   activitiesAll: () => ['crm', 'activities'] as const,
   activities: (projectId: string) => ['crm', 'activities', projectId] as const,
   activitiesByContact: (contactId: string) =>
     ['crm', 'activities', 'contact', contactId] as const,
-  activitiesByDeal: (dealId: string) => ['crm', 'activities', 'deal', dealId] as const,
+  activitiesByDeal: (dealId: string) =>
+    ['crm', 'activities', 'deal', dealId] as const,
 
   // Metrics & Stats
   metrics: (projectId: string, pipelineId?: string) =>
@@ -117,7 +122,8 @@ export const organizationKeys = {
   deliverables: (orgId: string, projectIds: string[]) =>
     ['orgDeliverables', orgId, projectIds] as const,
   onboarding: (orgId: string) => ['org-onboarding', orgId] as const,
-  memberAssignments: (orgId: string, userId: string) => ['member-assignments', orgId, userId] as const,
+  memberAssignments: (orgId: string, userId: string) =>
+    ['member-assignments', orgId, userId] as const,
   projectsList: (orgId: string) => ['org-projects-list', orgId] as const,
   deals: (orgId: string) => ['org-deals', orgId] as const,
   dealsEnriched: (orgId: string) => ['crm-deals-org-enriched', orgId] as const,
@@ -130,8 +136,10 @@ export const organizationKeys = {
 export const sidebarKeys = {
   tree: () => ['sidebarTree'] as const,
   treeLegacy: () => ['sidebar-tree'] as const,
-  projectBoards: (projectId: string) => ['projectBoardsSidebar', projectId] as const,
-  stagingPendingCount: (orgId: string) => ['stagingPendingCount', orgId] as const,
+  projectBoards: (projectId: string) =>
+    ['projectBoardsSidebar', projectId] as const,
+  stagingPendingCount: (orgId: string) =>
+    ['stagingPendingCount', orgId] as const,
 };
 
 // ── Agents ─────────────────────────────────────────────────────────────────
@@ -142,7 +150,8 @@ export const agentKeys = {
   detail: (agentId: string) => ['agents', agentId] as const,
   byName: (name: string) => ['agents', 'by-name', name] as const,
   list: () => ['agents-list'] as const,
-  executionConfig: (agentId: string) => ['agent-execution-config', agentId] as const,
+  executionConfig: (agentId: string) =>
+    ['agent-execution-config', agentId] as const,
   executionProfiles: () => ['execution-profiles'] as const,
   wallets: () => ['agent-wallets'] as const,
 };
@@ -160,12 +169,18 @@ export const workflowKeys = {
   runsBuilder: () => ['workflow-runs-builder'] as const,
   systemAutomations: () => ['system-automations'] as const,
   status: (workflowId: string) => ['workflow-status', workflowId] as const,
-  statusPoll: (workflowId: string) => ['workflow-status-poll', workflowId] as const,
-  artifacts: (workflowId: string) => ['workflow-artifacts', workflowId] as const,
-  runsByWorkflow: (workflowId: string) => ['workflowRunsByWf', workflowId] as const,
-  dataSourceNamesForRuns: (dsIds: string[]) => ['ds-names-for-runs', dsIds] as const,
-  dataSourceNamesForRunsTab: (dsIds: string[]) => ['ds-names-for-runs-tab', dsIds] as const,
-  stagingPendingByWorkflow: (workflowId: string) => ['stagingPendingByWf', workflowId] as const,
+  statusPoll: (workflowId: string) =>
+    ['workflow-status-poll', workflowId] as const,
+  artifacts: (workflowId: string) =>
+    ['workflow-artifacts', workflowId] as const,
+  runsByWorkflow: (workflowId: string) =>
+    ['workflowRunsByWf', workflowId] as const,
+  dataSourceNamesForRuns: (dsIds: string[]) =>
+    ['ds-names-for-runs', dsIds] as const,
+  dataSourceNamesForRunsTab: (dsIds: string[]) =>
+    ['ds-names-for-runs-tab', dsIds] as const,
+  stagingPendingByWorkflow: (workflowId: string) =>
+    ['stagingPendingByWf', workflowId] as const,
   orgDataSources: (orgId: string) => ['orgDataSources', orgId] as const,
   staging: (workflowRunId?: string) => ['staging', workflowRunId] as const,
   stagingPending: () => ['stagingPending'] as const,
@@ -178,7 +193,8 @@ export const workflowKeys = {
 export const dataSourceKeys = {
   all: ['dataSources'] as const,
   personal: () => ['dataSources', 'personal'] as const,
-  list: (orgId?: string, projectId?: string) => ['dataSources', orgId, projectId] as const,
+  list: (orgId?: string, projectId?: string) =>
+    ['dataSources', orgId, projectId] as const,
   detail: (id: string) => ['dataSource', id] as const,
   workflows: (id: string) => ['dataSourceWorkflows', id] as const,
   artifacts: (id: string) => ['dataSourceArtifacts', id] as const,
@@ -195,7 +211,8 @@ export const userKeys = {
   list: (filters?: unknown) => ['users', filters] as const,
   search: (query: string) => ['users-search', query] as const,
   profiles: () => ['profiles'] as const,
-  projectMembers: (projectId: string) => ['project-members', projectId] as const,
+  projectMembers: (projectId: string) =>
+    ['project-members', projectId] as const,
   clientMembers: (clientId: string) => ['client-members', clientId] as const,
 };
 
@@ -218,7 +235,8 @@ export const executionKeys = {
 
 export const businessKeys = {
   proposals: () => ['proposals'] as const,
-  companyProposals: (companyId: string) => ['company-proposals', companyId] as const,
+  companyProposals: (companyId: string) =>
+    ['company-proposals', companyId] as const,
   invoices: (filter?: string) => ['invoices', filter] as const,
   invoicesAll: () => ['invoices'] as const,
   deliverables: (projectId: string) => ['deliverables', projectId] as const,
@@ -234,7 +252,8 @@ export const entityKeys = {
   company: (id: string) => ['company', id] as const,
   companyContacts: (id: string) => ['company-contacts', id] as const,
   companyIntel: (id: string) => ['company-intel', id] as const,
-  companyContactMethods: (id: string) => ['company-contact-methods', id] as const,
+  companyContactMethods: (id: string) =>
+    ['company-contact-methods', id] as const,
   companyBrandProfile: (id: string) => ['companyBrandProfile', id] as const,
   person: (id: string) => ['person', id] as const,
   researchPasses: (personId: string) => ['research-passes', personId] as const,
@@ -256,10 +275,12 @@ export const pulseKeys = {
   statsAll: () => ['pulse', 'stats'] as const,
   sources: (projectId: string) => ['pulse', 'sources', projectId] as const,
   alerts: (projectId: string) => ['pulse', 'alerts', projectId] as const,
-  alertRules: (projectId: string) => ['pulse', 'alert-rules', projectId] as const,
+  alertRules: (projectId: string) =>
+    ['pulse', 'alert-rules', projectId] as const,
   tracking: (projectId: string) => ['pulse', 'tracking', projectId] as const,
   projects: () => ['pulse', 'projects'] as const,
-  contentLatest: (projectId: string) => ['pulse', 'content', 'latest', projectId] as const,
+  contentLatest: (projectId: string) =>
+    ['pulse', 'content', 'latest', projectId] as const,
   contentLegacy: () => ['pulse', 'content', 'legacy'] as const,
   alertsOrg: (orgId: string) => ['pulse-alerts-org', orgId] as const,
   contentOrg: (orgId: string) => ['pulse-content-org', orgId] as const,
@@ -277,7 +298,8 @@ export const commsKeys = {
   emailAccounts: (ownerType?: string, ownerId?: string) =>
     ['email-accounts', ownerType, ownerId] as const,
   emailAccountsAll: () => ['email-accounts'] as const,
-  emailInboxStats: (projectId: string) => ['email-inbox-stats', projectId] as const,
+  emailInboxStats: (projectId: string) =>
+    ['email-inbox-stats', projectId] as const,
   emailMessages: (projectId?: string, accountId?: string, filter?: string) =>
     ['email-messages', projectId, accountId, filter] as const,
   emailMessagesAll: () => ['email-messages'] as const,
@@ -307,7 +329,8 @@ export const settingsKeys = {
 // ── Project Controller ─────────────────────────────────────────────────────
 
 export const controllerKeys = {
-  config: (projectId: string) => ['project-controller-config', projectId] as const,
+  config: (projectId: string) =>
+    ['project-controller-config', projectId] as const,
   conversations: (projectId: string) =>
     ['project-controller-conversations', projectId] as const,
   conversation: (projectId: string, conversationId: string) =>
@@ -349,7 +372,8 @@ export const integrationKeys = {
 
 export const mediaKeys = {
   library: (projectId: string) => ['media', projectId] as const,
-  search: (projectId: string, query: string) => ['media', projectId, query] as const,
+  search: (projectId: string, query: string) =>
+    ['media', projectId, query] as const,
 };
 
 // ── Knowledge ──────────────────────────────────────────────────────────────
@@ -363,13 +387,19 @@ export const knowledgeKeys = {
 export const autonomyKeys = {
   all: ['autonomy'] as const,
   taskMode: (taskId: string) => ['autonomy', 'task', taskId, 'mode'] as const,
-  checkpointDefinitions: (projectId: string) => ['autonomy', 'checkpoints', 'definitions', projectId] as const,
-  executionCheckpoints: (executionId: string) => ['autonomy', 'checkpoints', executionId] as const,
-  pendingCheckpoints: (executionId: string) => ['autonomy', 'checkpoints', executionId, 'pending'] as const,
-  projectGates: (projectId: string) => ['autonomy', 'gates', projectId] as const,
-  pendingGates: (executionId: string) => ['autonomy', 'gates', executionId, 'pending'] as const,
+  checkpointDefinitions: (projectId: string) =>
+    ['autonomy', 'checkpoints', 'definitions', projectId] as const,
+  executionCheckpoints: (executionId: string) =>
+    ['autonomy', 'checkpoints', executionId] as const,
+  pendingCheckpoints: (executionId: string) =>
+    ['autonomy', 'checkpoints', executionId, 'pending'] as const,
+  projectGates: (projectId: string) =>
+    ['autonomy', 'gates', projectId] as const,
+  pendingGates: (executionId: string) =>
+    ['autonomy', 'gates', executionId, 'pending'] as const,
   pendingSummary: () => ['autonomy', 'pending-summary'] as const,
-  canProceed: (executionId: string) => ['autonomy', 'can-proceed', executionId] as const,
+  canProceed: (executionId: string) =>
+    ['autonomy', 'can-proceed', executionId] as const,
 };
 
 // ── Bowser (Browser Automation) ─────────────────────────────────────────────
@@ -379,10 +409,14 @@ export const bowserKeys = {
   summary: () => ['bowser', 'summary'] as const,
   sessionsActive: () => ['bowser', 'sessions', 'active'] as const,
   session: (sessionId: string) => ['bowser', 'session', sessionId] as const,
-  sessionDetails: (sessionId: string) => ['bowser', 'session', sessionId, 'details'] as const,
-  screenshots: (sessionId: string) => ['bowser', 'session', sessionId, 'screenshots'] as const,
-  screenshotsDiffs: (sessionId: string) => ['bowser', 'session', sessionId, 'screenshots', 'diffs'] as const,
-  actions: (sessionId: string) => ['bowser', 'session', sessionId, 'actions'] as const,
+  sessionDetails: (sessionId: string) =>
+    ['bowser', 'session', sessionId, 'details'] as const,
+  screenshots: (sessionId: string) =>
+    ['bowser', 'session', sessionId, 'screenshots'] as const,
+  screenshotsDiffs: (sessionId: string) =>
+    ['bowser', 'session', sessionId, 'screenshots', 'diffs'] as const,
+  actions: (sessionId: string) =>
+    ['bowser', 'session', sessionId, 'actions'] as const,
   allowlist: (projectId: string) => ['bowser', 'allowlist', projectId] as const,
 };
 
@@ -392,7 +426,8 @@ export const topiclipsKeys = {
   all: ['topiclips'] as const,
   gallery: (projectId: string) => ['topiclips', 'gallery', projectId] as const,
   symbols: () => ['topiclips', 'symbols'] as const,
-  timeline: (sessionId: string) => ['topiclips', 'timeline', sessionId] as const,
+  timeline: (sessionId: string) =>
+    ['topiclips', 'timeline', sessionId] as const,
 };
 
 // ── Topsi ──────────────────────────────────────────────────────────────────
@@ -403,7 +438,8 @@ export const topsiKeys = {
   topology: () => ['topsi', 'topology'] as const,
   issues: () => ['topsi', 'issues'] as const,
   projects: () => ['topsi', 'projects'] as const,
-  recommendations: (projectId?: string) => ['topsi', 'recommendations', projectId ?? 'all'] as const,
+  recommendations: (projectId?: string) =>
+    ['topsi', 'recommendations', projectId ?? 'all'] as const,
 };
 
 // ── Collaboration ───────────────────────────────────────────────────────────
@@ -411,21 +447,29 @@ export const topsiKeys = {
 export const collaborationKeys = {
   all: ['collaboration'] as const,
   state: (executionId: string) => ['collaboration', executionId] as const,
-  pauseHistory: (executionId: string) => ['collaboration', executionId, 'pause-history'] as const,
-  handoffs: (executionId: string) => ['collaboration', executionId, 'handoffs'] as const,
-  injections: (executionId: string) => ['collaboration', executionId, 'injections'] as const,
-  pendingInjections: (executionId: string) => ['collaboration', executionId, 'pending-injections'] as const,
+  pauseHistory: (executionId: string) =>
+    ['collaboration', executionId, 'pause-history'] as const,
+  handoffs: (executionId: string) =>
+    ['collaboration', executionId, 'handoffs'] as const,
+  injections: (executionId: string) =>
+    ['collaboration', executionId, 'injections'] as const,
+  pendingInjections: (executionId: string) =>
+    ['collaboration', executionId, 'pending-injections'] as const,
 };
 
 // ── Social ──────────────────────────────────────────────────────────────────
 
 export const socialKeys = {
-  accounts: (projectId?: string | null) => ['social-accounts', projectId] as const,
+  accounts: (projectId?: string | null) =>
+    ['social-accounts', projectId] as const,
   postsAll: () => ['social-posts'] as const,
   posts: (projectId?: string | null) => ['social-posts', projectId] as const,
-  mentions: (projectId?: string | null) => ['social-mentions', projectId] as const,
-  mentionsOverview: (projectId: string) => ['social-mentions-ov', projectId] as const,
-  inboxStats: (projectId?: string | null) => ['social-inbox-stats', projectId] as const,
+  mentions: (projectId?: string | null) =>
+    ['social-mentions', projectId] as const,
+  mentionsOverview: (projectId: string) =>
+    ['social-mentions-ov', projectId] as const,
+  inboxStats: (projectId?: string | null) =>
+    ['social-inbox-stats', projectId] as const,
 };
 
 // ── Network ─────────────────────────────────────────────────────────────────
@@ -440,7 +484,8 @@ export const networkKeys = {
 
 export const orgCloudKeys = {
   all: (orgId: string) => ['org-cloud', orgId] as const,
-  browse: (orgId: string, params?: Record<string, unknown>) => ['org-cloud', orgId, params] as const,
+  browse: (orgId: string, params?: Record<string, unknown>) =>
+    ['org-cloud', orgId, params] as const,
   stats: (orgId: string) => ['org-cloud-stats', orgId] as const,
   settings: (orgId: string) => ['org-cloud-settings', orgId] as const,
   contributions: (orgId: string) => ['org-cloud-contributions', orgId] as const,
@@ -451,12 +496,14 @@ export const orgCloudKeys = {
 export const agentFlowKeys = {
   all: ['agentFlows'] as const,
   detailAll: ['agentFlow'] as const,
-  list: (taskId?: string, status?: string) => ['agentFlows', taskId, status] as const,
+  list: (taskId?: string, status?: string) =>
+    ['agentFlows', taskId, status] as const,
   detail: (flowId?: string) => ['agentFlow', flowId] as const,
   awaitingApproval: () => ['agentFlows', 'awaiting-approval'] as const,
   events: (flowId?: string, since?: string, eventType?: string) =>
     ['agentFlowEvents', flowId, since, eventType] as const,
-  byTasks: (taskIds: string[]) => ['agentFlows', 'byTasks', [...taskIds].sort().join(',')] as const,
+  byTasks: (taskIds: string[]) =>
+    ['agentFlows', 'byTasks', [...taskIds].sort().join(',')] as const,
 };
 
 // ── Task Card Data ────────────────────────────────────────────────────────
@@ -464,8 +511,10 @@ export const agentFlowKeys = {
 export const taskCardKeys = {
   artifacts: (taskId?: string) => ['taskArtifacts', taskId] as const,
   workflowEvents: (taskId?: string) => ['taskWorkflowEvents', taskId] as const,
-  batchArtifacts: (taskIds: string[]) => ['tasksArtifacts', [...taskIds].sort().join(',')] as const,
-  batchWorkflowEvents: (taskIds: string[]) => ['tasksWorkflowEvents', [...taskIds].sort().join(',')] as const,
+  batchArtifacts: (taskIds: string[]) =>
+    ['tasksArtifacts', [...taskIds].sort().join(',')] as const,
+  batchWorkflowEvents: (taskIds: string[]) =>
+    ['tasksWorkflowEvents', [...taskIds].sort().join(',')] as const,
 };
 
 // ── Project Capacity ──────────────────────────────────────────────────────
@@ -494,15 +543,18 @@ export const executionProcessKeys = {
 export const branchKeys = {
   status: (attemptId?: string) => ['branchStatus', attemptId] as const,
   attemptBranch: (attemptId?: string) => ['attemptBranch', attemptId] as const,
-  projectBranches: (projectId?: string) => ['projectBranches', projectId] as const,
+  projectBranches: (projectId?: string) =>
+    ['projectBranches', projectId] as const,
 };
 
 // ── Mission Control ───────────────────────────────────────────────────────
 
 export const missionControlKeys = {
   dashboard: () => ['missionControl', 'dashboard'] as const,
-  artifacts: (executionId?: string) => ['missionControl', 'artifacts', executionId] as const,
-  plan: (executionId?: string) => ['missionControl', 'plan', executionId] as const,
+  artifacts: (executionId?: string) =>
+    ['missionControl', 'artifacts', executionId] as const,
+  plan: (executionId?: string) =>
+    ['missionControl', 'plan', executionId] as const,
   activePlans: () => ['missionControl', 'activePlans'] as const,
 };
 
@@ -520,10 +572,10 @@ export const projectBoardKeys = {
   tasks: (projectId?: string) => ['projectTasks', projectId] as const,
 };
 
-// ── Org Persons ───────────────────────────────────────────────────────────
+// ── Org Contacts (legacy: orgPersonKeys) ──────────────────────────────────
 
 export const orgPersonKeys = {
-  list: (orgId?: string) => ['org-persons', orgId] as const,
+  list: (orgId?: string) => ['org-contacts', orgId] as const,
 };
 
 // ── Workflow Templates ────────────────────────────────────────────────────
@@ -554,12 +606,18 @@ export const commandCenterKeys = {
 // ── Costs ─────────────────────────────────────────────────────────────────
 
 export const costKeys = {
-  orgSummary: (orgId: string, days?: number) => ['costs', 'summary', orgId, days] as const,
-  orgDaily: (orgId: string, days?: number) => ['costs', 'daily', orgId, days] as const,
-  orgByModel: (orgId: string, days?: number) => ['costs', 'by-model', orgId, days] as const,
-  orgByProject: (orgId: string, days?: number) => ['costs', 'by-project', orgId, days] as const,
-  orgByProvider: (orgId: string, days?: number) => ['costs', 'by-provider', orgId, days] as const,
-  orgByAgent: (orgId: string, days?: number) => ['costs', 'by-agent', orgId, days] as const,
+  orgSummary: (orgId: string, days?: number) =>
+    ['costs', 'summary', orgId, days] as const,
+  orgDaily: (orgId: string, days?: number) =>
+    ['costs', 'daily', orgId, days] as const,
+  orgByModel: (orgId: string, days?: number) =>
+    ['costs', 'by-model', orgId, days] as const,
+  orgByProject: (orgId: string, days?: number) =>
+    ['costs', 'by-project', orgId, days] as const,
+  orgByProvider: (orgId: string, days?: number) =>
+    ['costs', 'by-provider', orgId, days] as const,
+  orgByAgent: (orgId: string, days?: number) =>
+    ['costs', 'by-agent', orgId, days] as const,
 };
 
 // ── Unified export ─────────────────────────────────────────────────────────

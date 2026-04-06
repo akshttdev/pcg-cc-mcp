@@ -145,6 +145,22 @@ pub struct CrmContact {
     pub meeting_count: i32,
     pub deal_count: i32,
     pub total_revenue: f64,
+    // Intelligence fields (Phase 1 contacts unification)
+    pub intelligence_summary: Option<String>,
+    pub intelligence_status: String,
+    pub intelligence_raw: Option<String>,
+    pub intelligence_confidence: f64,
+    pub intelligence_last_run_at: Option<String>,
+    pub intelligence_agent: Option<String>,
+    pub research_pass_count: i32,
+    pub research_depth: String,
+    pub company_id: Option<String>,
+    pub person_id: Option<String>,
+    // Fields migrated from persons table (PC-6)
+    pub onboarding_channel: Option<String>,
+    pub preferred_contact: Option<String>,
+    pub person_type: Option<String>,
+    pub financial_role: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

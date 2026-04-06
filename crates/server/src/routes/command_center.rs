@@ -169,7 +169,7 @@ async fn get_command_center(
         "SELECT pr.id, pr.title, pe.full_name AS lead_name, \
                 pr.quote_amount_vibe, pr.created_at \
          FROM proposals pr \
-         LEFT JOIN persons pe ON pe.id = pr.lead_id \
+         LEFT JOIN crm_contacts pe ON pe.id = pr.lead_id \
          WHERE pr.status = 'pending_approval' \
          ORDER BY pr.created_at ASC LIMIT 30",
     )

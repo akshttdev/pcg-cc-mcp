@@ -1,5 +1,9 @@
-import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { Calendar, Clock, X } from 'lucide-react';
+import { useState } from 'react';
+import { toast } from 'sonner';
+
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -7,10 +11,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -18,13 +20,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { X, Calendar, Clock } from 'lucide-react';
-import { toast } from 'sonner';
-import { proposalsApi, type PersonRecord } from '@/lib/api';
+import { Textarea } from '@/components/ui/textarea';
+import { type CrmContactRecord, proposalsApi } from '@/lib/api';
 import { businessKeys } from '@/lib/query-keys';
 
 interface InviteeEntry {
-  person: PersonRecord;
+  person: CrmContactRecord;
   channel: string;
   address: string;
 }
@@ -34,39 +35,44 @@ interface Props {
   onClose: () => void;
   proposalId: string;
   /** Pre-populated invitees (e.g. lead contact + org contacts) */
-  defaultInvitees?: PersonRecord[];
+  defaultInvitees?: CrmContactRecord[];
 }
 
 const CHANNEL_OPTIONS = [
-  { value: 'email',     label: 'Email' },
-  { value: 'sms',       label: 'SMS' },
-  { value: 'whatsapp',  label: 'WhatsApp' },
+  { value: 'email', label: 'Email' },
+  { value: 'sms', label: 'SMS' },
+  { value: 'whatsapp', label: 'WhatsApp' },
   { value: 'instagram', label: 'Instagram' },
-  { value: 'linkedin',  label: 'LinkedIn' },
-  { value: 'twitter',   label: 'Twitter / X' },
-  { value: 'phone',     label: 'Phone call' },
+  { value: 'linkedin', label: 'LinkedIn' },
+  { value: 'twitter', label: 'Twitter / X' },
+  { value: 'phone', label: 'Phone call' },
   { value: 'in_person', label: 'In person' },
 ];
 
-function defaultChannelFor(person: PersonRecord): string {
-  return person.preferred_contact ?? person.onboarding_channel ?? 'email';
+function defaultChannelFor(person: CrmContactRecord): string {
+  return person.source ?? 'email';
 }
 
-function defaultAddressFor(person: PersonRecord, channel: string): string {
+function defaultAddressFor(person: CrmContactRecord, channel: string): string {
   if (channel === 'email') return person.email ?? '';
   if (channel === 'sms' || channel === 'phone') return person.phone ?? '';
   return '';
 }
 
-export function ScheduleMeetingDialog({ open, onClose, proposalId, defaultInvitees = [] }: Props) {
+export function ScheduleMeetingDialog({
+  open,
+  onClose,
+  proposalId,
+  defaultInvitees = [],
+}: Props) {
   const queryClient = useQueryClient();
   const [saving, setSaving] = useState(false);
 
   const [scheduledAt, setScheduledAt] = useState('');
-  const [duration,    setDuration]    = useState('60');
-  const [location,    setLocation]    = useState('');
-  const [agenda,      setAgenda]      = useState('');
-  const [channel,     setChannel]     = useState('email');
+  const [duration, setDuration] = useState('60');
+  const [location, setLocation] = useState('');
+  const [agenda, setAgenda] = useState('');
+  const [channel, setChannel] = useState('email');
 
   const [invitees, setInvitees] = useState<InviteeEntry[]>(() =>
     defaultInvitees.map((p) => {
@@ -99,7 +105,10 @@ export function ScheduleMeetingDialog({ open, onClose, proposalId, defaultInvite
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!scheduledAt) { toast.error('Meeting date/time is required'); return; }
+    if (!scheduledAt) {
+      toast.error('Meeting date/time is required');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -117,16 +126,24 @@ export function ScheduleMeetingDialog({ open, onClose, proposalId, defaultInvite
       });
 
       const sent = result.dispatched.filter((d) => d.status === 'sent').length;
-      const failed = result.dispatched.filter((d) => d.status === 'failed').length;
+      const failed = result.dispatched.filter(
+        (d) => d.status === 'failed'
+      ).length;
 
       if (failed > 0) {
-        toast.warning(`Meeting scheduled — ${sent} invite${sent !== 1 ? 's' : ''} sent, ${failed} failed`);
+        toast.warning(
+          `Meeting scheduled — ${sent} invite${sent !== 1 ? 's' : ''} sent, ${failed} failed`
+        );
       } else {
-        toast.success(`Meeting scheduled — ${sent} invite${sent !== 1 ? 's' : ''} sent`);
+        toast.success(
+          `Meeting scheduled — ${sent} invite${sent !== 1 ? 's' : ''} sent`
+        );
       }
 
       queryClient.invalidateQueries({ queryKey: businessKeys.proposals() });
-      queryClient.invalidateQueries({ queryKey: businessKeys.meetings(proposalId) });
+      queryClient.invalidateQueries({
+        queryKey: businessKeys.meetings(proposalId),
+      });
       handleClose();
     } catch {
       toast.error('Failed to schedule meeting');
@@ -197,7 +214,9 @@ export function ScheduleMeetingDialog({ open, onClose, proposalId, defaultInvite
               </SelectTrigger>
               <SelectContent>
                 {CHANNEL_OPTIONS.map((c) => (
-                  <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                  <SelectItem key={c.value} value={c.value}>
+                    {c.label}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -232,20 +251,31 @@ export function ScheduleMeetingDialog({ open, onClose, proposalId, defaultInvite
               <Label>Invitees</Label>
               <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                 {invitees.map((inv) => (
-                  <div key={inv.person.id} className="flex items-center gap-2 p-2 border rounded-md bg-muted/30">
+                  <div
+                    key={inv.person.id}
+                    className="flex items-center gap-2 p-2 border rounded-md bg-muted/30"
+                  >
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{inv.person.full_name}</p>
+                      <p className="text-sm font-medium truncate">
+                        {inv.person.full_name}
+                      </p>
                       <div className="flex items-center gap-2 mt-1">
                         <Select
                           value={inv.channel}
-                          onValueChange={(ch) => updateInviteeChannel(inv.person.id, ch)}
+                          onValueChange={(ch) =>
+                            updateInviteeChannel(inv.person.id, ch)
+                          }
                         >
                           <SelectTrigger className="h-6 text-xs w-28">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
                             {CHANNEL_OPTIONS.map((c) => (
-                              <SelectItem key={c.value} value={c.value} className="text-xs">
+                              <SelectItem
+                                key={c.value}
+                                value={c.value}
+                                className="text-xs"
+                              >
                                 {c.label}
                               </SelectItem>
                             ))}
@@ -255,7 +285,9 @@ export function ScheduleMeetingDialog({ open, onClose, proposalId, defaultInvite
                           className="h-6 text-xs flex-1"
                           placeholder="address / handle"
                           value={inv.address}
-                          onChange={(e) => updateInviteeAddress(inv.person.id, e.target.value)}
+                          onChange={(e) =>
+                            updateInviteeAddress(inv.person.id, e.target.value)
+                          }
                         />
                       </div>
                     </div>
@@ -277,12 +309,18 @@ export function ScheduleMeetingDialog({ open, onClose, proposalId, defaultInvite
 
           {invitees.length === 0 && (
             <div className="py-2 px-3 rounded-md border border-dashed text-xs text-muted-foreground">
-              No invitees — add contacts to the proposal first, then open this dialog from their profile.
+              No invitees — add contacts to the proposal first, then open this
+              dialog from their profile.
             </div>
           )}
 
           <DialogFooter className="pt-1">
-            <Button type="button" variant="ghost" onClick={handleClose} disabled={saving}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={handleClose}
+              disabled={saving}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={saving}>

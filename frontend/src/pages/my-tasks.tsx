@@ -1,27 +1,42 @@
-import { useMemo, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import NiceModal from '@ebay/nice-modal-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent } from '@/components/ui/card';
+import {
+  AlertCircle,
+  ArrowRight,
+  ArrowUpDown,
+  Bot,
+  CheckCircle2,
+  CheckSquare,
+  Clock,
+  Eye,
+  ListTodo,
+  PenLine,
+  Trash2,
+  User,
+  X,
+} from 'lucide-react';
+import { useCallback, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import type { TaskStatus } from 'shared/types';
+import { toast } from 'sonner';
+
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ListTodo, Clock, AlertCircle, CheckCircle2, ArrowRight, Eye, Bot, User, PenLine, CheckSquare, X, Trash2, ArrowUpDown } from 'lucide-react';
 import { EmptyState } from '@/components/ui/empty-state';
-import { useAuth } from '@/contexts/AuthContext';
-import { cn } from '@/lib/utils';
-import { tasksApi, type AssignedTask } from '@/lib/api';
-import { taskKeys, sidebarKeys } from '@/lib/query-keys';
-import type { TaskStatus } from 'shared/types';
-import { toast } from 'sonner';
-import NiceModal from '@ebay/nice-modal-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { TagChips } from '@/components/ui/tag-chips';
+import { useAuth } from '@/contexts/AuthContext';
+import { type AssignedTask, tasksApi } from '@/lib/api';
+import { sidebarKeys, taskKeys } from '@/lib/query-keys';
+import { cn } from '@/lib/utils';
 
 const BATCH_STATUS_OPTIONS = [
   { value: 'todo', label: 'To Do' },
@@ -34,7 +49,13 @@ const BATCH_STATUS_OPTIONS = [
 type FilterTab = 'all' | 'assigned' | 'created' | 'watching';
 type SortBy = 'priority' | 'due_date' | 'updated';
 
-const priorityOrder: Record<string, number> = { critical: 0, urgent: 0, high: 1, medium: 2, low: 3 };
+const priorityOrder: Record<string, number> = {
+  critical: 0,
+  urgent: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+};
 
 export function MyTasksPage() {
   const { user } = useAuth();
@@ -44,13 +65,17 @@ export function MyTasksPage() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  const { data: assignedTasks = [], isLoading: loadingAssigned } = useQuery<AssignedTask[]>({
+  const { data: assignedTasks = [], isLoading: loadingAssigned } = useQuery<
+    AssignedTask[]
+  >({
     queryKey: [...taskKeys.my(), user?.id],
     queryFn: () => tasksApi.getAssignedToMe(),
     enabled: !!user,
   });
 
-  const { data: createdTasks = [], isLoading: loadingCreated } = useQuery<AssignedTask[]>({
+  const { data: createdTasks = [], isLoading: loadingCreated } = useQuery<
+    AssignedTask[]
+  >({
     queryKey: [...taskKeys.myCreated(), user?.id],
     queryFn: () => tasksApi.getCreatedByMe(),
     enabled: !!user,
@@ -80,15 +105,24 @@ export function MyTasksPage() {
   const filteredTasks = useMemo(() => {
     let tasks: AssignedTask[];
     switch (activeTab) {
-      case 'assigned': tasks = assignedTasks; break;
-      case 'created': tasks = createdTasks; break;
-      case 'watching': tasks = watchedTasks; break;
-      default: tasks = allTasks;
+      case 'assigned':
+        tasks = assignedTasks;
+        break;
+      case 'created':
+        tasks = createdTasks;
+        break;
+      case 'watching':
+        tasks = watchedTasks;
+        break;
+      default:
+        tasks = allTasks;
     }
 
     return [...tasks].sort((a, b) => {
       if (sortBy === 'priority') {
-        return (priorityOrder[a.priority] ?? 4) - (priorityOrder[b.priority] ?? 4);
+        return (
+          (priorityOrder[a.priority] ?? 4) - (priorityOrder[b.priority] ?? 4)
+        );
       }
       if (sortBy === 'due_date') {
         if (!a.due_date && !b.due_date) return 0;
@@ -121,54 +155,91 @@ export function MyTasksPage() {
     queryClient.invalidateQueries({ queryKey: sidebarKeys.tree() });
   }, [queryClient]);
 
-  const handleBatchStatusChange = useCallback(async (newStatus: string) => {
-    const ids = [...selectedIds];
-    const results = await Promise.allSettled(
-      ids.map((id) => tasksApi.update(id, { status: newStatus as TaskStatus }))
-    );
-    const successCount = results.filter((r) => r.status === 'fulfilled').length;
-    const failCount = results.filter((r) => r.status === 'rejected').length;
-    invalidateMyTasks();
-    if (failCount > 0) {
-      toast.warning(`Updated ${successCount} task${successCount !== 1 ? 's' : ''} to ${newStatus}, ${failCount} failed`);
-    } else {
-      toast.success(`Updated ${successCount} task${successCount !== 1 ? 's' : ''} to ${newStatus}`);
-    }
-    exitSelectionMode();
-  }, [selectedIds, invalidateMyTasks, exitSelectionMode]);
+  const handleBatchStatusChange = useCallback(
+    async (newStatus: string) => {
+      const ids = [...selectedIds];
+      const results = await Promise.allSettled(
+        ids.map((id) =>
+          tasksApi.update(id, { status: newStatus as TaskStatus })
+        )
+      );
+      const successCount = results.filter(
+        (r) => r.status === 'fulfilled'
+      ).length;
+      const failCount = results.filter((r) => r.status === 'rejected').length;
+      invalidateMyTasks();
+      if (failCount > 0) {
+        toast.warning(
+          `Updated ${successCount} task${successCount !== 1 ? 's' : ''} to ${newStatus}, ${failCount} failed`
+        );
+      } else {
+        toast.success(
+          `Updated ${successCount} task${successCount !== 1 ? 's' : ''} to ${newStatus}`
+        );
+      }
+      exitSelectionMode();
+    },
+    [selectedIds, invalidateMyTasks, exitSelectionMode]
+  );
 
   const handleBatchDelete = useCallback(async () => {
     let result: string;
     try {
-      result = await NiceModal.show('confirm', {
+      result = (await NiceModal.show('confirm', {
         title: 'Delete Tasks',
         message: `Are you sure you want to delete ${selectedIds.size} task${selectedIds.size !== 1 ? 's' : ''}? This cannot be undone.`,
         confirmText: 'Delete',
         variant: 'destructive',
-      }) as string;
+      })) as string;
     } catch {
       return; // Dialog dismissed
     }
     if (result !== 'confirmed') return;
 
     const ids = [...selectedIds];
-    const results = await Promise.allSettled(ids.map((id) => tasksApi.delete(id)));
+    const results = await Promise.allSettled(
+      ids.map((id) => tasksApi.delete(id))
+    );
     const successCount = results.filter((r) => r.status === 'fulfilled').length;
     const failCount = results.filter((r) => r.status === 'rejected').length;
     invalidateMyTasks();
     if (failCount > 0) {
-      toast.warning(`Deleted ${successCount} task${successCount !== 1 ? 's' : ''}, ${failCount} failed`);
+      toast.warning(
+        `Deleted ${successCount} task${successCount !== 1 ? 's' : ''}, ${failCount} failed`
+      );
     } else {
-      toast.success(`Deleted ${successCount} task${successCount !== 1 ? 's' : ''}`);
+      toast.success(
+        `Deleted ${successCount} task${successCount !== 1 ? 's' : ''}`
+      );
     }
     exitSelectionMode();
   }, [selectedIds, invalidateMyTasks, exitSelectionMode]);
 
-  const tabs: { key: FilterTab; label: string; count: number; icon: typeof ListTodo }[] = [
+  const tabs: {
+    key: FilterTab;
+    label: string;
+    count: number;
+    icon: typeof ListTodo;
+  }[] = [
     { key: 'all', label: 'All', count: allTasks.length, icon: ListTodo },
-    { key: 'assigned', label: 'Assigned to Me', count: assignedTasks.length, icon: User },
-    { key: 'created', label: 'Created by Me', count: createdTasks.length, icon: PenLine },
-    { key: 'watching', label: 'Watching', count: watchedTasks.length, icon: Eye },
+    {
+      key: 'assigned',
+      label: 'Assigned to Me',
+      count: assignedTasks.length,
+      icon: User,
+    },
+    {
+      key: 'created',
+      label: 'Created by Me',
+      count: createdTasks.length,
+      icon: PenLine,
+    },
+    {
+      key: 'watching',
+      label: 'Watching',
+      count: watchedTasks.length,
+      icon: Eye,
+    },
   ];
 
   if (isLoading) {
@@ -229,7 +300,8 @@ export function MyTasksPage() {
           <div>
             <h1 className="text-xl font-bold">My Tasks</h1>
             <p className="text-sm text-muted-foreground">
-              {assignedTasks.length} assigned, {createdTasks.length} created, {watchedTasks.length} watching
+              {assignedTasks.length} assigned, {createdTasks.length} created,{' '}
+              {watchedTasks.length} watching
             </p>
           </div>
         </div>
@@ -237,7 +309,9 @@ export function MyTasksPage() {
           <Button
             variant={selectionMode ? 'default' : 'outline'}
             size="sm"
-            onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}
+            onClick={() =>
+              selectionMode ? exitSelectionMode() : setSelectionMode(true)
+            }
           >
             <CheckSquare className="h-3.5 w-3.5 mr-1.5" />
             {selectionMode ? 'Cancel' : 'Select'}
@@ -284,15 +358,19 @@ export function MyTasksPage() {
             <CardContent className="py-0">
               <EmptyState
                 icon={CheckCircle2}
-                title={activeTab === 'all' ? 'All caught up!' : `No ${activeTab === 'watching' ? 'watched' : activeTab} tasks`}
+                title={
+                  activeTab === 'all'
+                    ? 'All caught up!'
+                    : `No ${activeTab === 'watching' ? 'watched' : activeTab} tasks`
+                }
                 description={
                   activeTab === 'all'
                     ? 'You have no tasks right now.'
                     : activeTab === 'assigned'
                       ? 'No tasks are assigned to you.'
                       : activeTab === 'created'
-                        ? 'You haven\'t created any tasks yet.'
-                        : 'You\'re not watching any tasks.'
+                        ? "You haven't created any tasks yet."
+                        : "You're not watching any tasks."
                 }
                 className="py-8"
               />
@@ -316,7 +394,9 @@ export function MyTasksPage() {
       {/* Floating batch action bar */}
       {selectionMode && selectedIds.size > 0 && (
         <div className="sticky bottom-0 border-t bg-background/95 backdrop-blur-sm px-6 py-3 flex items-center gap-3 shadow-lg">
-          <span className="text-sm font-medium">{selectedIds.size} selected</span>
+          <span className="text-sm font-medium">
+            {selectedIds.size} selected
+          </span>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">
@@ -326,7 +406,10 @@ export function MyTasksPage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent>
               {BATCH_STATUS_OPTIONS.map((opt) => (
-                <DropdownMenuItem key={opt.value} onClick={() => handleBatchStatusChange(opt.value)}>
+                <DropdownMenuItem
+                  key={opt.value}
+                  onClick={() => handleBatchStatusChange(opt.value)}
+                >
                   {opt.label}
                 </DropdownMenuItem>
               ))}
@@ -349,7 +432,8 @@ export function MyTasksPage() {
 const statusColors: Record<string, string> = {
   todo: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
   inprogress: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
-  inreview: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
+  inreview:
+    'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
   done: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
   cancelled: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
 };
@@ -369,12 +453,19 @@ interface MyTaskCardProps {
   onToggleSelection?: (id: string) => void;
 }
 
-function MyTaskCard({ task, selectionMode, isSelected, onToggleSelection }: MyTaskCardProps) {
+function MyTaskCard({
+  task,
+  selectionMode,
+  isSelected,
+  onToggleSelection,
+}: MyTaskCardProps) {
   const cardContent = (
-    <Card className={cn(
-      'hover:bg-accent/50 transition-colors cursor-pointer',
-      isSelected && 'ring-2 ring-primary bg-primary/5',
-    )}>
+    <Card
+      className={cn(
+        'hover:bg-accent/50 transition-colors cursor-pointer',
+        isSelected && 'ring-2 ring-primary bg-primary/5'
+      )}
+    >
       <CardContent className="py-3 px-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0 space-y-1">
@@ -401,7 +492,9 @@ function MyTaskCard({ task, selectionMode, isSelected, onToggleSelection }: MyTa
             )}
 
             <div className="flex items-center gap-2 pl-6 flex-wrap">
-              <span className="text-xs text-muted-foreground">{task.project_name}</span>
+              <span className="text-xs text-muted-foreground">
+                {task.project_name}
+              </span>
 
               {task.assigned_agent && (
                 <span className="flex items-center gap-0.5 text-xs text-blue-600 dark:text-blue-400">
@@ -420,10 +513,20 @@ function MyTaskCard({ task, selectionMode, isSelected, onToggleSelection }: MyTa
                 {new Date(task.due_date).toLocaleDateString()}
               </span>
             )}
-            <Badge className={cn('text-xs', statusColors[task.status] || statusColors.todo)}>
+            <Badge
+              className={cn(
+                'text-xs',
+                statusColors[task.status] || statusColors.todo
+              )}
+            >
               {task.status}
             </Badge>
-            <Badge className={cn('text-xs', priorityColors[task.priority] || priorityColors.low)}>
+            <Badge
+              className={cn(
+                'text-xs',
+                priorityColors[task.priority] || priorityColors.low
+              )}
+            >
               {task.priority || 'low'}
             </Badge>
             <ArrowRight className="h-4 w-4 text-muted-foreground" />
@@ -439,16 +542,22 @@ function MyTaskCard({ task, selectionMode, isSelected, onToggleSelection }: MyTa
         role="button"
         tabIndex={0}
         onClick={() => onToggleSelection?.(task.id)}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggleSelection?.(task.id); } }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onToggleSelection?.(task.id);
+          }
+        }}
       >
         {cardContent}
       </div>
     );
   }
 
-  return (
-    <Link to={`/projects/${task.project_id}/tasks/${task.id}`}>
-      {cardContent}
-    </Link>
-  );
+  const taskUrl =
+    task.project_id && task.project_id.length > 0
+      ? `/projects/${task.project_id}/tasks/${task.id}`
+      : '/my-tasks';
+
+  return <Link to={taskUrl}>{cardContent}</Link>;
 }

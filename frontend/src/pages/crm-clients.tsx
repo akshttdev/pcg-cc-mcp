@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate,useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 
 import { CrmPipelineBoard } from '@/components/crm/CrmPipelineBoard';
 import { CrmPipelineSettings } from '@/components/crm/CrmPipelineSettings';
@@ -9,7 +9,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { useOrgCrmPipelineByType } from '@/hooks/useCrmPipeline';
 
 export function CrmClientsPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -36,7 +35,9 @@ export function CrmClientsPage() {
 export function CrmAcquisitionPage() {
   const { orgId } = useParams<{ orgId: string }>();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const { data: salesPipeline } = useOrgCrmPipelineByType(orgId || '', 'sales');
+  const [settingsPipelineId, setSettingsPipelineId] = useState<
+    string | undefined
+  >();
 
   if (!orgId) {
     return (
@@ -52,14 +53,20 @@ export function CrmAcquisitionPage() {
         orgId={orgId}
         pipelineType="sales"
         title="Acquisition Pipeline"
-        onSettingsClick={() => setSettingsOpen(true)}
+        onSettingsClick={(pipelineId) => {
+          setSettingsPipelineId(pipelineId);
+          setSettingsOpen(true);
+        }}
       />
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Pipeline Settings</DialogTitle>
           </DialogHeader>
-          <CrmPipelineSettings organizationId={orgId} initialPipelineId={salesPipeline?.id} />
+          <CrmPipelineSettings
+            organizationId={orgId}
+            initialPipelineId={settingsPipelineId}
+          />
         </DialogContent>
       </Dialog>
     </>
@@ -69,7 +76,9 @@ export function CrmAcquisitionPage() {
 export function CrmLifecyclePage() {
   const { orgId } = useParams<{ orgId: string }>();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const { data: deliveryPipeline } = useOrgCrmPipelineByType(orgId || '', 'delivery');
+  const [settingsPipelineId, setSettingsPipelineId] = useState<
+    string | undefined
+  >();
 
   if (!orgId) {
     return (
@@ -85,14 +94,20 @@ export function CrmLifecyclePage() {
         orgId={orgId}
         pipelineType="delivery"
         title="Client Lifecycle"
-        onSettingsClick={() => setSettingsOpen(true)}
+        onSettingsClick={(pipelineId) => {
+          setSettingsPipelineId(pipelineId);
+          setSettingsOpen(true);
+        }}
       />
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Pipeline Settings</DialogTitle>
           </DialogHeader>
-          <CrmPipelineSettings organizationId={orgId} initialPipelineId={deliveryPipeline?.id} />
+          <CrmPipelineSettings
+            organizationId={orgId}
+            initialPipelineId={settingsPipelineId}
+          />
         </DialogContent>
       </Dialog>
     </>

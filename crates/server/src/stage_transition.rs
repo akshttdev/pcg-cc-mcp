@@ -250,19 +250,30 @@ pub async fn process_transition(
     if let Some(ref config) = to_config {
         let effective_actions = build_effective_entry_actions(config);
 
+        // Check if an agent will also be triggered (review task should start as "waiting")
+        let has_agent_trigger = effective_actions
+            .iter()
+            .any(|a| matches!(a, StageAction::TriggerAgent { .. }))
+            || config
+                .assigned_agent
+                .as_deref()
+                .is_some_and(|a| !a.is_empty() && config.auto_trigger);
+
         for action in &effective_actions {
             match action {
                 StageAction::CreateReviewTask { description } => {
                     let stage_name = to_stage.name.to_lowercase();
-                    manage_stage_review_tasks_with_config(
+                    let initial_status = if has_agent_trigger { "waiting" } else { "todo" };
+                    crate::routes::crm_deal_transitions::manage_stage_review_tasks_full(
                         pool,
                         deal,
                         description,
                         &stage_name,
                         to_config.as_ref(),
+                        initial_status,
                     )
                     .await;
-                    actions_taken.push("Created review task".to_string());
+                    actions_taken.push(format!("Created review task ({})", initial_status));
                 }
                 StageAction::CreateDeliveryDeal => {
                     if let Some(action) = handle_won_transition(pool, deal).await {
@@ -357,7 +368,7 @@ pub async fn process_transition(
     }
 
     // ── 4. Auto-skip: immediately advance to next stage if configured ───
-    if to_config.as_ref().map_or(false, |c| c.auto_skip) {
+    if to_config.as_ref().is_some_and(|c| c.auto_skip) {
         actions_taken.push(format!("Auto-skipping {} stage", to_stage.name));
         tracing::info!(
             "[StageTransition] Auto-skip enabled for stage '{}' — advancing deal {} to next stage",
@@ -837,18 +848,17 @@ async fn check_intel_status(
                 intelligence_status: Option<String>,
             }
             let status = sqlx::query_as::<_, IntelRow>(
-                "SELECT intelligence_status FROM persons WHERE crm_contact_id = ? OR CAST(crm_contact_id AS TEXT) = ? LIMIT 1",
+                "SELECT intelligence_status FROM crm_contacts WHERE CAST(id AS TEXT) = ? LIMIT 1",
             )
-            .bind(contact_id)
             .bind(contact_id.to_string())
             .fetch_optional(pool)
             .await
-            .map_err(|e| tracing::warn!("[StageTransition] Person intel query failed: {e}"))
+            .map_err(|e| tracing::warn!("[StageTransition] Contact intel query failed: {e}"))
             .ok()
             .flatten()
             .and_then(|r| r.intelligence_status);
 
-            matches!(status.as_deref(), Some(s) if s == expected_status || s == "complete")
+            matches!(status.as_deref(), Some(s) if s == expected_status || s == "completed")
         }
         "company" => {
             #[derive(sqlx::FromRow)]
@@ -856,9 +866,10 @@ async fn check_intel_status(
                 intelligence_status: Option<String>,
             }
             let status = sqlx::query_as::<_, IntelRow>(
-                "SELECT co.intelligence_status FROM companies co JOIN persons p ON lower(p.company_name) = lower(co.name) WHERE p.crm_contact_id = ? OR CAST(p.crm_contact_id AS TEXT) = ? LIMIT 1",
+                "SELECT co.intelligence_status FROM companies co \
+                 JOIN crm_contacts cc ON lower(cc.company_name) = lower(co.name) \
+                 WHERE CAST(cc.id AS TEXT) = ? LIMIT 1",
             )
-            .bind(contact_id)
             .bind(contact_id.to_string())
             .fetch_optional(pool)
             .await
@@ -867,7 +878,7 @@ async fn check_intel_status(
             .flatten()
             .and_then(|r| r.intelligence_status);
 
-            matches!(status.as_deref(), Some(s) if s == expected_status || s == "complete")
+            matches!(status.as_deref(), Some(s) if s == expected_status || s == "completed")
         }
         _ => false,
     }

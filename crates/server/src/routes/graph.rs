@@ -1,7 +1,7 @@
 //! Business Entity Graph — CRM topology visualization endpoints.
 //!
 //! Uses `entity_graph_nodes` and `entity_graph_edges` tables to represent
-//! relationships between companies, persons, proposals, orgs, and projects.
+//! relationships between companies, contacts, proposals, orgs, and projects.
 
 use axum::{
     extract::{Path, State},

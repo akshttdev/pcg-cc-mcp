@@ -246,22 +246,23 @@ pub async fn sync_company_graph(
         EntityGraphEdge::upsert(pool, company_node.id, org_node.id, "part_of_org", 1.0).await?;
     }
 
-    // Persons associated with this company
+    // Contacts associated with this company
     #[derive(sqlx::FromRow)]
-    struct PersonRow {
+    struct ContactRow {
         id: Uuid,
-        full_name: String,
+        full_name: Option<String>,
     }
-    let persons: Vec<PersonRow> =
-        sqlx::query_as("SELECT id, full_name FROM persons WHERE company_id = ?")
+    let contacts: Vec<ContactRow> =
+        sqlx::query_as("SELECT id, full_name FROM crm_contacts WHERE company_id = ?")
             .bind(company_id)
             .fetch_all(pool)
             .await?;
 
-    for p in persons {
+    for p in contacts {
         let person_ref = p.id.to_string();
+        let name = p.full_name.as_deref().unwrap_or("Unknown");
         let person_node =
-            EntityGraphNode::upsert(pool, "person", &person_ref, "persons", &p.full_name, None)
+            EntityGraphNode::upsert(pool, "person", &person_ref, "crm_contacts", name, None)
                 .await?;
         EntityGraphEdge::upsert(pool, company_node.id, person_node.id, "employs", 1.0).await?;
     }
