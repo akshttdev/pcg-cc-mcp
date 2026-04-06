@@ -12,8 +12,8 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 use super::{
-    ExtractedBusiness, ExtractedIndividual, ExtractedIntake, GeneratedReport,
-    pipeline::advance_deal_stage,
+    pipeline::advance_deal_stage, ExtractedBusiness, ExtractedIndividual, ExtractedIntake,
+    GeneratedReport,
 };
 
 // ── Stage 1: Extract structure ────────────────────────────────────────────────
@@ -72,7 +72,11 @@ Classification:"#,
             .json::<serde_json::Value>()
             .await
             .ok()
-            .and_then(|b| b["content"][0]["text"].as_str().map(|s| s.trim().to_uppercase()))
+            .and_then(|b| {
+                b["content"][0]["text"]
+                    .as_str()
+                    .map(|s| s.trim().to_uppercase())
+            })
             .unwrap_or_default(),
         Err(_) => return EmailClass::Other,
     };
@@ -590,13 +594,14 @@ pub async fn run_report_generation(
 
     // Create human-review task: "Review Business Report: [person]"
     {
-        let person_name = sqlx::query_scalar::<_, String>("SELECT full_name FROM persons WHERE id = ?")
-            .bind(person_id)
-            .fetch_optional(&pool)
-            .await
-            .ok()
-            .flatten()
-            .unwrap_or_else(|| "Unknown".into());
+        let person_name =
+            sqlx::query_scalar::<_, String>("SELECT full_name FROM persons WHERE id = ?")
+                .bind(person_id)
+                .fetch_optional(&pool)
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| "Unknown".into());
 
         let title = format!("Review Business Report: {}", person_name);
         let desc = format!(
@@ -606,16 +611,15 @@ pub async fn run_report_generation(
             report_id_str
         );
         let project_id = super::pipeline::SIRAK_CONFIG.project_id;
-        let exists: bool = sqlx::query_scalar(
-            "SELECT COUNT(*) > 0 FROM tasks WHERE project_id = ? AND title = ?",
-        )
-        .bind(project_id)
-        .bind(&title)
-        .fetch_optional(&pool)
-        .await
-        .ok()
-        .flatten()
-        .unwrap_or(false);
+        let exists: bool =
+            sqlx::query_scalar("SELECT COUNT(*) > 0 FROM tasks WHERE project_id = ? AND title = ?")
+                .bind(project_id)
+                .bind(&title)
+                .fetch_optional(&pool)
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or(false);
 
         if !exists {
             let _ = sqlx::query(
@@ -875,7 +879,10 @@ pub async fn run_phase2_from_company_intel(
         .unwrap_or_default();
 
     // Build research context from Phase I intel
-    let intel_summary = company.intelligence_summary.as_deref().unwrap_or("No prior research.");
+    let intel_summary = company
+        .intelligence_summary
+        .as_deref()
+        .unwrap_or("No prior research.");
 
     let company_research_ctx = format!(
         "Industry: {}\nWebsite: {}\n\nPhase I Scout Research:\n{}",
@@ -918,7 +925,7 @@ pub async fn run_phase2_from_company_intel(
         let rows: Vec<IntakeRow> = sqlx::query_as(
             "SELECT call_summary, raw_content FROM call_intake_items
              WHERE extracted_businesses LIKE ? OR extracted_businesses LIKE ?
-             ORDER BY created_at DESC LIMIT 3"
+             ORDER BY created_at DESC LIMIT 3",
         )
         .bind(format!("%\"{}%", company.name))
         .bind(format!("%{}%", company.name))
@@ -933,7 +940,10 @@ pub async fn run_phase2_from_company_intel(
             }
             if let Some(raw) = &row.raw_content {
                 // Include up to 4000 chars of the raw email/transcript content
-                ctx.push_str(&format!("Call/Email Content:\n{}\n\n", &raw[..raw.len().min(4000)]));
+                ctx.push_str(&format!(
+                    "Call/Email Content:\n{}\n\n",
+                    &raw[..raw.len().min(4000)]
+                ));
             }
         }
         if ctx.is_empty() {
@@ -943,7 +953,10 @@ pub async fn run_phase2_from_company_intel(
         }
     };
 
-    info!("[Phase II] Generating Astra deep research report for {}", company.name);
+    info!(
+        "[Phase II] Generating Astra deep research report for {}",
+        company.name
+    );
 
     let generated = generate_report_with_claude(
         &person_name,
@@ -965,18 +978,35 @@ pub async fn run_phase2_from_company_intel(
             report_type: Some("business_audit".into()),
             executive_summary: Some(generated.executive_summary),
             company_overview: Some(generated.company_overview),
-            pain_points: Some(serde_json::to_string(&generated.pain_points).unwrap_or_else(|_| "[]".into())),
-            opportunities: Some(serde_json::to_string(&generated.opportunities).unwrap_or_else(|_| "[]".into())),
-            recommended_services: Some(serde_json::to_string(&generated.recommended_services).unwrap_or_else(|_| "[]".into())),
-            next_steps: Some(serde_json::to_string(&generated.next_steps).unwrap_or_else(|_| "[]".into())),
+            pain_points: Some(
+                serde_json::to_string(&generated.pain_points).unwrap_or_else(|_| "[]".into()),
+            ),
+            opportunities: Some(
+                serde_json::to_string(&generated.opportunities).unwrap_or_else(|_| "[]".into()),
+            ),
+            recommended_services: Some(
+                serde_json::to_string(&generated.recommended_services)
+                    .unwrap_or_else(|_| "[]".into()),
+            ),
+            next_steps: Some(
+                serde_json::to_string(&generated.next_steps).unwrap_or_else(|_| "[]".into()),
+            ),
             full_report_md: Some(generated.full_report_md),
-            individual_profiles: Some(serde_json::to_string(&generated.individual_profiles).unwrap_or_else(|_| "[]".into())),
+            individual_profiles: Some(
+                serde_json::to_string(&generated.individual_profiles)
+                    .unwrap_or_else(|_| "[]".into()),
+            ),
             market_analysis: Some(generated.market_analysis),
-            competitor_analysis: Some(serde_json::to_string(&generated.competitor_analysis).unwrap_or_else(|_| "[]".into())),
+            competitor_analysis: Some(
+                serde_json::to_string(&generated.competitor_analysis)
+                    .unwrap_or_else(|_| "[]".into()),
+            ),
             target_clients: Some(generated.target_clients),
             brand_positioning: Some(generated.brand_positioning),
             digital_presence: Some(generated.digital_presence),
-            sources: Some(serde_json::to_string(&generated.sources).unwrap_or_else(|_| "[]".into())),
+            sources: Some(
+                serde_json::to_string(&generated.sources).unwrap_or_else(|_| "[]".into()),
+            ),
             intake_item_ids: Some("[]".into()),
             call_log_ids: Some("[]".into()),
             company_id: None,
@@ -1010,15 +1040,14 @@ pub async fn run_phase2_from_company_intel(
 
     // Create PDF deliverable on deal's project board if deal_id is set
     if let Some(did) = deal_id {
-        let project_id: Option<String> = sqlx::query_scalar(
-            "SELECT project_id FROM crm_deals WHERE id = ?"
-        )
-        .bind(did)
-        .fetch_optional(&pool)
-        .await
-        .ok()
-        .flatten()
-        .flatten();
+        let project_id: Option<String> =
+            sqlx::query_scalar("SELECT project_id FROM crm_deals WHERE id = ?")
+                .bind(did)
+                .fetch_optional(&pool)
+                .await
+                .ok()
+                .flatten()
+                .flatten();
 
         if let Some(pid) = project_id {
             let del_id = Uuid::new_v4().to_string();

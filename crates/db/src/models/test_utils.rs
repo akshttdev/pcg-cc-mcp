@@ -1,8 +1,8 @@
 use std::str::FromStr;
 
 use sqlx::{
-    SqlitePool,
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+    SqlitePool,
 };
 use uuid::Uuid;
 

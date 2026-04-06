@@ -77,15 +77,19 @@ impl VideoJob {
         avatar_id: Option<Uuid>,
     ) -> Result<Vec<Self>, sqlx::Error> {
         match avatar_id {
-            Some(aid) => sqlx::query_as(
-                "SELECT * FROM video_jobs WHERE avatar_profile_id = ? ORDER BY created_at DESC",
-            )
-            .bind(aid)
-            .fetch_all(pool)
-            .await,
-            None => sqlx::query_as("SELECT * FROM video_jobs ORDER BY created_at DESC")
+            Some(aid) => {
+                sqlx::query_as(
+                    "SELECT * FROM video_jobs WHERE avatar_profile_id = ? ORDER BY created_at DESC",
+                )
+                .bind(aid)
                 .fetch_all(pool)
-                .await,
+                .await
+            }
+            None => {
+                sqlx::query_as("SELECT * FROM video_jobs ORDER BY created_at DESC")
+                    .fetch_all(pool)
+                    .await
+            }
         }
     }
 

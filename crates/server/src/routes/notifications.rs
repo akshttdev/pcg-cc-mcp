@@ -1,8 +1,8 @@
 use axum::{
-    Router,
     extract::{Extension, Path, Query, State},
     response::Json as ResponseJson,
     routing::{delete, get, put},
+    Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -13,7 +13,7 @@ use serde::Deserialize;
 use sqlx::FromRow;
 use utils::response::ApiResponse;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 #[derive(Debug, Deserialize)]
 pub struct NotificationQuery {

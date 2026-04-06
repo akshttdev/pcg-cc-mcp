@@ -1,10 +1,10 @@
 use axum::{
-    Json, Router,
     body::Body,
     extract::{DefaultBodyLimit, Multipart, Path, Request, State},
-    http::{StatusCode, header},
+    http::{header, StatusCode},
     response::Response,
     routing::{get, post},
+    Json, Router,
 };
 use db::models::execution_artifact::ExecutionArtifact;
 use deployment::Deployment;
@@ -17,7 +17,7 @@ use tokio_util::io::ReaderStream;
 use utils::assets::asset_dir;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 /// Resolve a file_path from the database.
 /// If it's a relative path, resolve it against the asset directory (dev_assets/).
@@ -106,20 +106,17 @@ async fn upload_artifact_file(
         break; // only first file
     }
 
-    let filename = saved_filename
-        .ok_or_else(|| ApiError::BadRequest("No file received".into()))?;
+    let filename = saved_filename.ok_or_else(|| ApiError::BadRequest("No file received".into()))?;
 
     // Relative path for DB storage
     let relative_path = format!("artifacts/{}/{}", artifact_id, filename);
 
     // Update the artifact's file_path
-    sqlx::query(
-        "UPDATE execution_artifacts SET file_path = ? WHERE id = ?",
-    )
-    .bind(&relative_path)
-    .bind(artifact.id)
-    .execute(pool)
-    .await?;
+    sqlx::query("UPDATE execution_artifacts SET file_path = ? WHERE id = ?")
+        .bind(&relative_path)
+        .bind(artifact.id)
+        .execute(pool)
+        .await?;
 
     Ok(Json(json!({
         "success": true,

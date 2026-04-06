@@ -14,15 +14,17 @@
 //! The frontend polls GET /api/persons/:id/intelligence-status.
 
 use axum::{
-    Json, Router,
     extract::{Path, State},
     routing::{get, post},
+    Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
     models::{
         person::Person,
-        project_knowledge_source::{KnowledgeOwnerScope, KnowledgeSourceType, ProjectKnowledgeSource},
+        project_knowledge_source::{
+            KnowledgeOwnerScope, KnowledgeSourceType, ProjectKnowledgeSource,
+        },
     },
 };
 use deployment::Deployment;
@@ -31,7 +33,7 @@ use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, routes::nora::get_nora_instance};
+use crate::{error::ApiError, routes::nora::get_nora_instance, DeploymentImpl};
 
 // ── Request / Response types ──────────────────────────────────────────────────
 
@@ -288,9 +290,7 @@ async fn run_research_direct(
             .unwrap_or_default()
             .into_iter()
             .filter(|s| {
-                s.source_type == "entity"
-                    && s.source_id == person.id.as_ref()
-                    && !s.is_stale
+                s.source_type == "entity" && s.source_id == person.id.as_ref() && !s.is_stale
             })
             .filter_map(|s| s.source_summary)
             .collect::<Vec<_>>()
@@ -302,7 +302,10 @@ async fn run_research_direct(
     let prior_context_section = if prior_kg.is_empty() {
         String::new()
     } else {
-        format!("\n\nPrior intelligence already collected (do not repeat, build on this):\n{}", prior_kg)
+        format!(
+            "\n\nPrior intelligence already collected (do not repeat, build on this):\n{}",
+            prior_kg
+        )
     };
 
     let system = "You are Scout, Social Intelligence Analyst for Power Club Global. \
@@ -532,7 +535,10 @@ async fn register_person_in_kg(
     // Collect org IDs from two sources: person_organization_contacts + project.organization_id
     let mut org_ids: Vec<String> = Vec::new();
 
-    #[derive(sqlx::FromRow)] struct OrgRow { org_id: Uuid }
+    #[derive(sqlx::FromRow)]
+    struct OrgRow {
+        org_id: Uuid,
+    }
 
     if let Ok(rows) = sqlx::query_as::<_, OrgRow>(
         "SELECT organization_id AS org_id FROM person_organization_contacts WHERE person_id = ?",
@@ -541,12 +547,17 @@ async fn register_person_in_kg(
     .fetch_all(pool)
     .await
     {
-        for r in rows { org_ids.push(r.org_id.to_string()); }
+        for r in rows {
+            org_ids.push(r.org_id.to_string());
+        }
     }
 
     // Derive org from project context (the org that owns the project that triggered research)
     if let Some(pid) = project_id {
-        #[derive(sqlx::FromRow)] struct ProjOrgRow { org_id: Option<Uuid> }
+        #[derive(sqlx::FromRow)]
+        struct ProjOrgRow {
+            org_id: Option<Uuid>,
+        }
         if let Ok(Some(row)) = sqlx::query_as::<_, ProjOrgRow>(
             "SELECT organization_id AS org_id FROM projects WHERE id = ?",
         )
@@ -556,7 +567,9 @@ async fn register_person_in_kg(
         {
             if let Some(oid) = row.org_id {
                 let s = oid.to_string();
-                if !org_ids.contains(&s) { org_ids.push(s); }
+                if !org_ids.contains(&s) {
+                    org_ids.push(s);
+                }
             }
         }
     }
@@ -578,7 +591,11 @@ async fn register_person_in_kg(
     }
 
     // ── 3. Company scope ─────────────────────────────────────────────────────
-    #[derive(sqlx::FromRow)] struct CompanyRow { company_id: Uuid, company_name: String }
+    #[derive(sqlx::FromRow)]
+    struct CompanyRow {
+        company_id: Uuid,
+        company_name: String,
+    }
 
     if let Ok(companies) = sqlx::query_as::<_, CompanyRow>(
         "SELECT c.id AS company_id, c.name AS company_name \
@@ -591,7 +608,11 @@ async fn register_person_in_kg(
     .await
     {
         for co in &companies {
-            let co_title = format!("{} at {}", &full_name[..full_name.len().min(40)], co.company_name);
+            let co_title = format!(
+                "{} at {}",
+                &full_name[..full_name.len().min(40)],
+                co.company_name
+            );
             let _ = ProjectKnowledgeSource::upsert_scoped(
                 pool,
                 &KnowledgeOwnerScope::Company,
@@ -897,15 +918,14 @@ pub async fn run_company_research_direct(
     let client = reqwest::Client::new();
 
     // Fetch the company's known website to anchor the search to the right entity
-    let known_website: Option<String> = sqlx::query_scalar(
-        "SELECT website FROM companies WHERE id = ?"
-    )
-    .bind(company_id.as_bytes().as_slice())
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten()
-    .flatten();
+    let known_website: Option<String> =
+        sqlx::query_scalar("SELECT website FROM companies WHERE id = ?")
+            .bind(company_id.as_bytes().as_slice())
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten()
+            .flatten();
 
     let website_ctx = match &known_website {
         Some(w) if !w.trim().is_empty() => format!(
@@ -1074,7 +1094,7 @@ pub async fn run_company_research_direct(
     .bind(website)
     .bind(description)
     .bind(industry)
-    .bind(company_id.to_string())  // TEXT-stored companies.id
+    .bind(company_id.to_string()) // TEXT-stored companies.id
     .bind(company_id.to_string())
     .execute(pool)
     .await;
@@ -1175,7 +1195,9 @@ async fn auto_create_intel_review_tasks(
     .unwrap_or_default();
 
     for deal in &deals {
-        let Some(project_id) = &deal.project_id else { continue };
+        let Some(project_id) = &deal.project_id else {
+            continue;
+        };
         let task_id = uuid::Uuid::new_v4().to_string();
         let title = format!("Review Intel: {}", company_name);
         let description = format!(
@@ -1322,7 +1344,11 @@ async fn after_phase1_complete(
             )
             .await
             {
-                tracing::error!("[Auto-pipeline] Phase II failed for {}: {}", company_id_str, e);
+                tracing::error!(
+                    "[Auto-pipeline] Phase II failed for {}: {}",
+                    company_id_str,
+                    e
+                );
             }
         });
     } else {
@@ -1350,7 +1376,7 @@ async fn write_company_intel_results(
     )
     .bind(summary)
     .bind(confidence)
-    .bind(company_id.to_string())  // companies.id is TEXT
+    .bind(company_id.to_string()) // companies.id is TEXT
     .execute(pool)
     .await;
 }
@@ -1410,12 +1436,21 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/persons/{id}/research", post(trigger_research))
         // Iterative Scout pass system
         .route("/persons/{id}/research-passes", get(list_research_passes))
-        .route("/persons/{id}/research-passes/next", post(trigger_next_research_pass))
+        .route(
+            "/persons/{id}/research-passes/next",
+            post(trigger_next_research_pass),
+        )
         // Business reports
         .route("/persons/{id}/reports", get(list_person_reports))
         // Status polling
-        .route("/persons/{id}/intelligence-status", get(get_intelligence_status))
-        .route("/companies/{id}/intelligence-status", get(get_company_intelligence_status))
+        .route(
+            "/persons/{id}/intelligence-status",
+            get(get_intelligence_status),
+        )
+        .route(
+            "/companies/{id}/intelligence-status",
+            get(get_company_intelligence_status),
+        )
         .with_state(deployment.clone())
 }
 
@@ -1859,8 +1894,12 @@ async fn run_research_pass(
         };
 
         // Extract photo_url and location from parsed JSON
-        let photo_url = parsed["photo_url"].as_str().filter(|s| !s.is_empty() && *s != "null");
-        let location = parsed["location"].as_str().filter(|s| !s.is_empty() && *s != "null");
+        let photo_url = parsed["photo_url"]
+            .as_str()
+            .filter(|s| !s.is_empty() && *s != "null");
+        let location = parsed["location"]
+            .as_str()
+            .filter(|s| !s.is_empty() && *s != "null");
 
         sqlx::query(
             "UPDATE persons SET
@@ -1900,11 +1939,19 @@ async fn run_research_pass(
                 let profile_url = sp["url"].as_str().unwrap_or("").to_string();
                 let follower_count = sp["follower_count"].as_i64();
                 let following_count = sp["following_count"].as_i64();
-                let bio = sp["bio"].as_str().filter(|s| !s.is_empty() && *s != "null").map(|s| s.to_string());
-                let verified: i32 = if sp["verified"].as_bool().unwrap_or(false) { 1 } else { 0 };
+                let bio = sp["bio"]
+                    .as_str()
+                    .filter(|s| !s.is_empty() && *s != "null")
+                    .map(|s| s.to_string());
+                let verified: i32 = if sp["verified"].as_bool().unwrap_or(false) {
+                    1
+                } else {
+                    0
+                };
                 let engagement_rate = sp["engagement_rate"].as_f64();
                 let post_count = sp["post_count"].as_i64();
-                let content_themes = serde_json::to_string(&sp["content_themes"]).ok()
+                let content_themes = serde_json::to_string(&sp["content_themes"])
+                    .ok()
                     .filter(|s| s != "null" && s != "[]");
 
                 let _ = sqlx::query(
@@ -1950,16 +1997,30 @@ async fn run_research_pass(
                     _ => continue,
                 };
                 let role = aff["role"].as_str().unwrap_or("contact");
-                let title = aff["title"].as_str().filter(|s| !s.is_empty() && *s != "null");
-                let start_date = aff["start_date"].as_str().filter(|s| !s.is_empty() && *s != "null");
-                let end_date = aff["end_date"].as_str().filter(|s| !s.is_empty() && *s != "null");
-                let description = aff["description"].as_str().filter(|s| !s.is_empty() && *s != "null");
-                let company_url = aff["company_url"].as_str().filter(|s| !s.is_empty() && *s != "null");
-                let company_type = aff["company_type"].as_str().filter(|s| !s.is_empty() && *s != "null");
+                let title = aff["title"]
+                    .as_str()
+                    .filter(|s| !s.is_empty() && *s != "null");
+                let start_date = aff["start_date"]
+                    .as_str()
+                    .filter(|s| !s.is_empty() && *s != "null");
+                let end_date = aff["end_date"]
+                    .as_str()
+                    .filter(|s| !s.is_empty() && *s != "null");
+                let description = aff["description"]
+                    .as_str()
+                    .filter(|s| !s.is_empty() && *s != "null");
+                let company_url = aff["company_url"]
+                    .as_str()
+                    .filter(|s| !s.is_empty() && *s != "null");
+                let company_type = aff["company_type"]
+                    .as_str()
+                    .filter(|s| !s.is_empty() && *s != "null");
 
                 // Try to find or create the company in the companies table
                 #[derive(sqlx::FromRow)]
-                struct CompanyRow { id: String }
+                struct CompanyRow {
+                    id: String,
+                }
                 let company_row = sqlx::query_as::<_, CompanyRow>(
                     "SELECT CAST(id AS TEXT) as id FROM companies WHERE LOWER(name) = LOWER(?) LIMIT 1"
                 )

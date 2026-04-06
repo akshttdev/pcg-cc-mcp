@@ -9,9 +9,9 @@
 //!   - Closed projects with no invoice (complete + no AR invoice)
 
 use axum::{
-    Json, Router,
     extract::{Query, State},
     routing::get,
+    Json, Router,
 };
 use chrono::{Duration, Utc};
 use deployment::Deployment;
@@ -20,7 +20,7 @@ use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 // ── Response types ────────────────────────────────────────────────────────────
 

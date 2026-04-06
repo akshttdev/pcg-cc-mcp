@@ -1,9 +1,9 @@
 // SQLite-based authentication endpoints
 use axum::{
-    Json as ResponseJson,
     extract::State,
-    http::{StatusCode, header},
+    http::{header, StatusCode},
     response::{IntoResponse, Response},
+    Json as ResponseJson,
 };
 use db::DbUuid;
 use deployment::Deployment;
@@ -12,7 +12,7 @@ use sqlx::FromRow;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 /// Returns true if the server is running in a context where Secure cookies are appropriate
 /// (i.e., not localhost HTTP development).

@@ -1,7 +1,7 @@
 use axum::{
-    Extension, Json, Router,
     extract::{Path, Query, State},
     routing::{delete, get, patch, post, put},
+    Extension, Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -20,7 +20,7 @@ use serde_json::Value;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 pub mod brand;
 pub mod intake;

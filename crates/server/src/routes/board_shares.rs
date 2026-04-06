@@ -1,7 +1,7 @@
 use axum::{
-    Extension, Json, Router,
     extract::{Path, State},
     routing::get,
+    Extension, Json, Router,
 };
 use db::models::{
     board_share::{BoardShare, CreateBoardShare, UpdateBoardShare},
@@ -12,7 +12,7 @@ use deployment::Deployment;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 /// Check if user has admin access to an org
 async fn require_org_admin(

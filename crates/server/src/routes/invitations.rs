@@ -5,10 +5,10 @@
 ///   - Guests spawn in their inviting host's virtual space
 ///   - Invite tokens expire after 7 days
 use axum::{
-    Extension, Router,
     extract::{Path, State},
     response::Json as ResponseJson,
     routing::{get, post},
+    Extension, Router,
 };
 use db::services::AuthService;
 use deployment::Deployment;
@@ -17,7 +17,7 @@ use utils::response::ApiResponse;
 // TODO(dbuuid): migrate Uuid → DbUuid — see planning/2026-03-17--plan--dbuuid-migration.md
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()

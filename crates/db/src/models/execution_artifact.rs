@@ -148,6 +148,12 @@ pub struct ExecutionArtifact {
     pub file_path: Option<String>,
     #[sqlx(default)]
     pub metadata: Option<String>, // JSON string
+    /// Direct link to the task that produced this artifact (added in 20260427)
+    #[sqlx(default)]
+    pub task_id: Option<String>,
+    /// Direct link to the task attempt that produced this artifact (added in 20260427)
+    #[sqlx(default)]
+    pub task_attempt_id: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -159,6 +165,12 @@ pub struct CreateExecutionArtifact {
     pub content: Option<String>,
     pub file_path: Option<String>,
     pub metadata: Option<Value>,
+    /// Optional: link directly to the task that owns this artifact
+    #[serde(default)]
+    pub task_id: Option<String>,
+    /// Optional: link directly to the task attempt that produced this artifact
+    #[serde(default)]
+    pub task_attempt_id: Option<String>,
 }
 
 impl ExecutionArtifact {
@@ -173,8 +185,10 @@ impl ExecutionArtifact {
 
         let artifact = sqlx::query_as::<_, ExecutionArtifact>(
             r#"
-            INSERT INTO execution_artifacts (id, execution_process_id, artifact_type, title, content, file_path, metadata)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            INSERT INTO execution_artifacts
+                (id, execution_process_id, artifact_type, title, content, file_path, metadata,
+                 task_id, task_attempt_id)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
             RETURNING *
             "#,
         )
@@ -185,6 +199,8 @@ impl ExecutionArtifact {
         .bind(&data.content)
         .bind(&data.file_path)
         .bind(metadata_str)
+        .bind(&data.task_id)
+        .bind(&data.task_attempt_id)
         .fetch_one(pool)
         .await?;
 

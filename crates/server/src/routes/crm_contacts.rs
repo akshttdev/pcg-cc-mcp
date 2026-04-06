@@ -3,9 +3,9 @@
 //! Handles contact creation, lead scoring, lifecycle management, and Zoho CRM sync.
 
 use axum::{
-    Extension, Json, Router,
     extract::{Path, Query, State},
     routing::{delete, get, patch, post},
+    Extension, Json, Router,
 };
 use db::{
     db_uuid::DbUuid,
@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 #[derive(Debug, Deserialize)]
 pub struct ListContactsQuery {

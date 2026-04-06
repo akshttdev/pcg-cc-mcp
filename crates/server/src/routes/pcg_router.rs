@@ -12,16 +12,16 @@
 //!   DELETE /pcg-router/models/:id      — remove a model
 
 use axum::{
-    Json, Router,
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, patch, post},
+    Json, Router,
 };
 use db::models::pcg_router_model::PcgRouterModel;
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use ts_rs::TS;
 use uuid::Uuid;
 

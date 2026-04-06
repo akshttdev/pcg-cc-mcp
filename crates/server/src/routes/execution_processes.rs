@@ -1,13 +1,13 @@
 use anyhow;
 use axum::{
-    Extension, Router,
     extract::{
-        Path, Query, State,
         ws::{WebSocket, WebSocketUpgrade},
+        Path, Query, State,
     },
     middleware::from_fn_with_state,
     response::{IntoResponse, Json as ResponseJson},
     routing::{get, post},
+    Extension, Router,
 };
 use db::models::{
     execution_process::{ExecutionProcess, ExecutionProcessError},
@@ -20,7 +20,7 @@ use services::services::container::ContainerService;
 use utils::{log_msg::LogMsg, response::ApiResponse};
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::load_execution_process_middleware};
+use crate::{error::ApiError, middleware::load_execution_process_middleware, DeploymentImpl};
 
 #[derive(Debug, Deserialize)]
 pub struct ExecutionProcessQuery {
@@ -91,8 +91,8 @@ async fn handle_raw_logs_ws(
     exec_id: Uuid,
 ) -> anyhow::Result<()> {
     use std::sync::{
-        Arc,
         atomic::{AtomicUsize, Ordering},
+        Arc,
     };
 
     use executors::logs::utils::patch::ConversationPatch;

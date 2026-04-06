@@ -1,6 +1,6 @@
 use axum::{
-    Json, Router,
     extract::{Path, State},
+    Json, Router,
 };
 use db::models::agent_wallet::{
     AgentWallet, AgentWalletTransaction, CreateWalletTransaction, UpsertAgentWallet,
@@ -9,7 +9,7 @@ use deployment::Deployment;
 use serde::Deserialize;
 use utils::response::ApiResponse;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{error::ApiError, DeploymentImpl};
 
 #[derive(Deserialize)]
 pub struct TransactionsQuery {

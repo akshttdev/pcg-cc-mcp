@@ -1,9 +1,9 @@
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post, put},
+    Json, Router,
 };
 use db::models::agent::{Agent, AgentStatus, AgentWithParsedFields, CreateAgent, UpdateAgent};
 use deployment::Deployment;
@@ -12,7 +12,7 @@ use services::services::agent_registry::AgentRegistryService;
 use ts_rs::TS;
 use utils::response::ApiResponse;
 
-use crate::{DeploymentImpl, middleware::access_control::AccessContext};
+use crate::{middleware::access_control::AccessContext, DeploymentImpl};
 
 /// Query params for agent search/filter
 #[derive(Debug, Deserialize, TS)]
@@ -145,7 +145,11 @@ async fn search_agents(
                     .short_name
                     .to_lowercase()
                     .cmp(&b.short_name.to_lowercase());
-                if sort_asc { cmp } else { cmp.reverse() }
+                if sort_asc {
+                    cmp
+                } else {
+                    cmp.reverse()
+                }
             });
         }
         "designation" => {
@@ -154,13 +158,21 @@ async fn search_agents(
                     .designation
                     .to_lowercase()
                     .cmp(&b.designation.to_lowercase());
-                if sort_asc { cmp } else { cmp.reverse() }
+                if sort_asc {
+                    cmp
+                } else {
+                    cmp.reverse()
+                }
             });
         }
         "status" => {
             parsed.sort_by(|a, b| {
                 let cmp = format!("{:?}", a.status).cmp(&format!("{:?}", b.status));
-                if sort_asc { cmp } else { cmp.reverse() }
+                if sort_asc {
+                    cmp
+                } else {
+                    cmp.reverse()
+                }
             });
         }
         "priority" | "priority_weight" => {
@@ -169,7 +181,11 @@ async fn search_agents(
                     .priority_weight
                     .unwrap_or(0)
                     .cmp(&b.priority_weight.unwrap_or(0));
-                if sort_asc { cmp } else { cmp.reverse() }
+                if sort_asc {
+                    cmp
+                } else {
+                    cmp.reverse()
+                }
             });
         }
         "tasks_completed" => {
@@ -178,7 +194,11 @@ async fn search_agents(
                     .tasks_completed
                     .unwrap_or(0)
                     .cmp(&b.tasks_completed.unwrap_or(0));
-                if sort_asc { cmp } else { cmp.reverse() }
+                if sort_asc {
+                    cmp
+                } else {
+                    cmp.reverse()
+                }
             });
         }
         _ => {}

@@ -21,8 +21,8 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 use super::{
-    ExtractedIndividual, ExtractedIntake, ExtractedParticipant,
     report::{run_company_research_pass, run_report_generation},
+    ExtractedIndividual, ExtractedIntake, ExtractedParticipant,
 };
 
 // ── Core pipeline ─────────────────────────────────────────────────────────────
@@ -946,16 +946,18 @@ async fn ensure_crm_deal_for_person(
 
     let person_id_str = person_id.hyphenated().to_string();
     // persons.id is stored as BLOB — bind Uuid directly (encodes as 16-byte BLOB)
-    let person = sqlx::query_as::<_, PersonRow>(
-        "SELECT full_name, company_name FROM persons WHERE id = ?",
-    )
-    .bind(person_id)
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten();
+    let person =
+        sqlx::query_as::<_, PersonRow>("SELECT full_name, company_name FROM persons WHERE id = ?")
+            .bind(person_id)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
 
-    let person_name = person.as_ref().map(|r| r.full_name.as_str()).unwrap_or("Unknown");
+    let person_name = person
+        .as_ref()
+        .map(|r| r.full_name.as_str())
+        .unwrap_or("Unknown");
     let company_name = person.as_ref().and_then(|r| r.company_name.as_deref());
 
     // Deal name: use company name if available (prevents one deal per person at same company)
@@ -1266,7 +1268,10 @@ pub(super) async fn create_workflow_tasks(
                 .bind(cid.to_string())
                 .execute(pool)
                 .await;
-                info!("Auto-pipeline: created Phase I Scout task '{}' for company '{}'", task_id, cname);
+                info!(
+                    "Auto-pipeline: created Phase I Scout task '{}' for company '{}'",
+                    task_id, cname
+                );
             }
         }
         return;
@@ -1329,8 +1334,19 @@ pub(super) async fn create_workflow_tasks(
              Scope: background, social presence, roles, network, personality, PCG opportunity.",
             person_name, pid
         );
-        insert_task(pool, project_id, &title, &desc, "high",
-            None, Some(nora_agent), "person_research", "person", &pid.to_string()).await;
+        insert_task(
+            pool,
+            project_id,
+            &title,
+            &desc,
+            "high",
+            None,
+            Some(nora_agent),
+            "person_research",
+            "person",
+            &pid.to_string(),
+        )
+        .await;
     }
 
     // 2. Company Intel task
@@ -1342,8 +1358,19 @@ pub(super) async fn create_workflow_tasks(
              Scope: brand position, market, competitors, content strategy, logo, key people.",
             cname, cid
         );
-        insert_task(pool, project_id, &title, &desc, "high",
-            None, Some(nora_agent), "company_research", "company", &cid.to_string()).await;
+        insert_task(
+            pool,
+            project_id,
+            &title,
+            &desc,
+            "high",
+            None,
+            Some(nora_agent),
+            "company_research",
+            "company",
+            &cid.to_string(),
+        )
+        .await;
     }
 
     // 3. Human review task
@@ -1388,7 +1415,7 @@ pub(super) async fn trigger_company_research_if_needed(pool: &sqlx::SqlitePool, 
 
     // companies.id is BLOB-declared but stored as TEXT — bind as string for compatibility
     let company = sqlx::query_as::<_, Row>(
-        "SELECT intelligence_status, name FROM companies WHERE CAST(id AS TEXT) = ? OR id = ?"
+        "SELECT intelligence_status, name FROM companies WHERE CAST(id AS TEXT) = ? OR id = ?",
     )
     .bind(company_id.to_string())
     .bind(company_id.to_string())
@@ -1411,15 +1438,15 @@ pub(super) async fn trigger_company_research_if_needed(pool: &sqlx::SqlitePool, 
         .execute(pool)
         .await;
 
-        info!("Spawning Scout research for company '{}' ({})", row.name, company_id);
+        info!(
+            "Spawning Scout research for company '{}' ({})",
+            row.name, company_id
+        );
         let pool2 = pool.clone();
         let name = row.name.clone();
         tokio::spawn(async move {
             crate::routes::intelligence::run_company_research_direct(
-                &pool2,
-                company_id,
-                &name,
-                None,
+                &pool2, company_id, &name, None,
             )
             .await;
         });
@@ -1464,7 +1491,9 @@ pub(super) async fn upsert_prospect_client(
     let client_id = Uuid::new_v4();
     // INSERT OR IGNORE: won't overwrite if a client with the same name+org already exists
     // slug = lowercased name with spaces replaced by hyphens
-    let slug = company_name.to_lowercase().replace(|c: char| !c.is_alphanumeric(), "-");
+    let slug = company_name
+        .to_lowercase()
+        .replace(|c: char| !c.is_alphanumeric(), "-");
     let _ = sqlx::query(
         "INSERT OR IGNORE INTO clients
          (id, organization_id, name, slug, company_id, primary_person_id, prospect_at,
@@ -1498,7 +1527,9 @@ pub(super) async fn upsert_prospect_client(
 
     // Get the resolved client id (either the one we just inserted or an existing one)
     #[derive(sqlx::FromRow)]
-    struct ClientIdRow { id: String }
+    struct ClientIdRow {
+        id: String,
+    }
     let resolved_client = sqlx::query_as::<_, ClientIdRow>(
         "SELECT id FROM clients WHERE organization_id = ? AND lower(name) = lower(?) AND deleted_at IS NULL LIMIT 1"
     )
@@ -1517,16 +1548,23 @@ pub(super) async fn upsert_prospect_client(
                AND (name LIKE ? OR crm_contact_id IN (
                    SELECT id FROM crm_contacts
                    WHERE organization_id = ? AND (full_name LIKE ? OR full_name LIKE ?)
-               ))"
+               ))",
         )
         .bind(&cl.id)
         .bind(format!("%{}%", company_name))
         .bind(organization_id)
         .bind(format!("%{}%", company_name))
-        .bind(primary_person_id.map(|p| format!("%{}%", p)).unwrap_or_default())
+        .bind(
+            primary_person_id
+                .map(|p| format!("%{}%", p))
+                .unwrap_or_default(),
+        )
         .execute(pool)
         .await;
     }
 
-    info!("Upserted prospect client '{}' (company_id: {})", company_name, company_id);
+    info!(
+        "Upserted prospect client '{}' (company_id: {})",
+        company_name, company_id
+    );
 }
