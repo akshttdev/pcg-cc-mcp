@@ -834,7 +834,7 @@ pub async fn run_phase2_from_company_intel(
     // Determine primary contact name from linked client/person if available
     let person_name = if let Some(cid) = client_id {
         sqlx::query_scalar::<_, Option<String>>(
-            "SELECT p.full_name FROM clients cl JOIN persons p ON p.id = cl.primary_person_id WHERE cl.id = ?"
+            "SELECT cc.full_name FROM clients cl JOIN crm_contacts cc ON cc.id = cl.crm_contact_id WHERE cl.id = ?"
         )
         .bind(cid)
         .fetch_optional(&pool)

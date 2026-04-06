@@ -513,7 +513,7 @@ async fn register_person_in_kg(
     }
 
     // ── 2. Org scope ─────────────────────────────────────────────────────────
-    // Collect org IDs from two sources: person_organization_contacts + project.organization_id
+    // Collect org IDs from two sources: contact_organization_links + project.organization_id
     let mut org_ids: Vec<String> = Vec::new();
 
     #[derive(sqlx::FromRow)]
@@ -522,7 +522,7 @@ async fn register_person_in_kg(
     }
 
     if let Ok(rows) = sqlx::query_as::<_, OrgRow>(
-        "SELECT organization_id AS org_id FROM person_organization_contacts WHERE person_id = ?",
+        "SELECT organization_id AS org_id FROM contact_organization_links WHERE crm_contact_id = ?",
     )
     .bind(person_id)
     .fetch_all(pool)
@@ -580,9 +580,9 @@ async fn register_person_in_kg(
 
     if let Ok(companies) = sqlx::query_as::<_, CompanyRow>(
         "SELECT c.id AS company_id, c.name AS company_name \
-         FROM person_company_roles pcr \
+         FROM contact_company_roles pcr \
          JOIN companies c ON c.id = pcr.company_id \
-         WHERE pcr.person_id = ?",
+         WHERE pcr.crm_contact_id = ?",
     )
     .bind(person_id)
     .fetch_all(pool)
@@ -1259,9 +1259,7 @@ async fn after_phase1_complete(
     // Check if this company originated from an auto-pipeline intake (trusted Sirak sender)
     let is_auto_pipeline: bool = sqlx::query_scalar(
         "SELECT COUNT(*) > 0 FROM call_intake_items ci
-         JOIN persons p ON p.id = ci.person_id
-         JOIN person_company_roles pcr ON pcr.person_id = p.id
-         WHERE pcr.company_id = ?
+         WHERE ci.company_id = ?
            AND (ci.from_email LIKE '%@sirakstudios.com'
                 OR ci.from_email = 'sirak@sirakstudios.com'
                 OR ci.from_email = 'aaren@sirakstudios.com')",

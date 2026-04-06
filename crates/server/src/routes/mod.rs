@@ -120,6 +120,7 @@ pub mod topsi;
 pub mod twilio;
 pub mod users;
 pub mod vibe_treasury;
+pub mod video_gen;
 pub mod wallet;
 pub mod webhooks;
 pub mod wide_research;
@@ -242,6 +243,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(events::router(&deployment))
         .nest("/images", images::routes())
         .merge(cinematics::router(&deployment))
+        .merge(video_gen::router(&deployment))
         .merge(twilio::twilio_routes())
         .merge(bot_bridge::router())
         .merge(activity::router())
@@ -277,6 +279,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(marketplace::public_router(&deployment))
         .merge(nora_classifier::public_router(&deployment))
         .merge(workflow_triggers::public_router(&deployment))
+        .merge(video_gen::public_router(&deployment))
         .merge(pythia::router(&deployment))
         .merge(pcg_router::router(&deployment))
         .route("/data-sync-test", get(apn_data::apn_ping))

@@ -119,6 +119,7 @@ pub mod pcg_router_model;
 // Deprecated — migrating to crm_contact / contact_association / contact_note / contact_research_pass
 // Still referenced by intelligence.rs until it is fully migrated.
 // person_note and person_research_pass already retired
+pub mod avatar_profile;
 pub mod proposal;
 pub mod quickbooks_account;
 pub mod repo;
