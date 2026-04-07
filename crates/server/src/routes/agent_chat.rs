@@ -694,7 +694,7 @@ pub async fn get_conversation(
         .ok_or_else(|| ApiError::NotFound("Conversation not found".to_string()))?;
 
     // Verify conversation belongs to this agent
-    if conversation.agent_id != agent_uuid {
+    if conversation.agent_id != agent_uuid.to_string() {
         return Err(ApiError::NotFound("Conversation not found".to_string()));
     }
 
@@ -756,7 +756,7 @@ pub async fn get_conversation_messages(
         .map_err(|e| ApiError::InternalError(format!("Failed to load conversation: {}", e)))?
         .ok_or_else(|| ApiError::NotFound("Conversation not found".to_string()))?;
 
-    if conversation.agent_id != agent_uuid {
+    if conversation.agent_id != agent_uuid.to_string() {
         return Err(ApiError::NotFound("Conversation not found".to_string()));
     }
 

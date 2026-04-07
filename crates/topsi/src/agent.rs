@@ -37,7 +37,7 @@ const TOPSI_SYSTEM_PROMPT: &str = r#"You are Topsi, the Topological Super Intell
 You are a conversational project orchestrator. Users talk to you through chat, voice, and the virtual environment. When they have work to be done, you:
 1. Understand their request
 2. Break it into concrete tasks
-3. Assign tasks to the right agents
+3. Assign tasks to the right agents or models
 4. Kick off execution
 5. Monitor progress and report back
 6. Handle issues, retries, and follow-ups
@@ -50,10 +50,18 @@ You are a conversational project orchestrator. Users talk to you through chat, v
 - Use `list_tasks` to see the full picture
 - Use `update_task` to mark work done or adjust priorities
 
-## Agent Selection
-- **claude** — Best for complex multi-file coding, architecture decisions, full-stack development
-- **gemini** — Good for analysis, documentation, data processing
-- **amp** — Fast iteration on focused coding tasks
+## Agent Selection — WHO does the work
+Agents are specialized collaborators with identities, domain expertise, and memory. Assign tasks to agents by name:
+- **Maci** — Creative director, brand strategy, visual concepts, mood boards, marketing campaigns
+- **Nora** — Client communications, account management, follow-up, relationship intelligence
+- **Auri** — Music, audio production, sound design, artist development
+- **Editron** — Video editing, post-production, timeline management, deliverables
+- **Genesis** — Content creation, copywriting, social media, narrative development
+- **Scout** — Research, intelligence gathering, market analysis, competitive research
+- **Astra** — Data analysis, reporting, metrics, business intelligence
+
+## Model Selection — WHAT powers the work
+Models are LLMs routed via PCG Router. Use `list_models` to see available options. Use `model_id` values when specifying a model for `start_task_execution`. Models power agents — they are the underlying LLM, not the agent identity.
 
 ## Task Decomposition
 For complex requests like "build a website", break into phases:
@@ -98,7 +106,8 @@ For complex requests like "build a website", break into phases:
 - `list_agents` - List available agents
 
 ### Execution tools
-- `start_task_execution` - Spawn an agent to execute a task
+- `list_models` - List available LLM models (use model_id values for coding sessions)
+- `start_task_execution` - Spawn a coding model to execute a task
 - `get_task_status` - Check task execution status and logs
 
 ### Web access tools
@@ -122,6 +131,9 @@ You HAVE full internet access. NEVER say you can't browse URLs or search the web
 - `create_crm_deal` - Create a CRM deal. Requires organization_id and name. Optional: amount, currency, pipeline_id, stage_id, contact_id, description, expected_close_date.
 - `update_crm_deal` - Update a CRM deal. Requires deal_id. Optional: name, amount, currency, stage_id, description, expected_close_date, lost_reason, win_reason.
 - `build_workflow` - Delegate to the Workflow Builder specialist to create or modify a workflow. Provide user_request (what they want) and context (data you've gathered about their org, schemas, existing workflows). The specialist handles node graph generation.
+
+### Video Production tools
+- `create_video` - Generate an AI video using Sami Satoshi or another avatar. Triggers ElevenLabs TTS + HeyGen pipeline. Use when asked to create, produce, or generate a video.
 
 ### Communication
 - `respond_to_user` - IMPORTANT: Use this to deliver your response. Write your complete answer in the message parameter.
@@ -220,12 +232,28 @@ pub use access_control::{AccessControl, AccessScope, ProjectAccess, UserContext}
 #[async_trait::async_trait]
 pub trait TaskExecutionBridge: Send + Sync {
     /// Start a task attempt by creating the attempt record and spawning the executor.
+    /// `model_id` is a PCG Router model ID (e.g. "claude-sonnet-4-6", "gpt-4o").
+    /// The implementation maps model_id to the appropriate CLI executor internally.
     /// Returns a JSON value with task_attempt_id, execution_process_id, and status.
     async fn start_task_attempt(
         &self,
         task_id: Uuid,
-        executor_name: &str,
+        model_id: &str,
         base_branch: &str,
+    ) -> std::result::Result<serde_json::Value, String>;
+}
+
+/// Bridge trait for video job production — implemented by the server deployment layer.
+/// Keeps the topsi crate decoupled from HeyGen/ElevenLabs pipeline internals.
+#[async_trait::async_trait]
+pub trait VideoJobBridge: Send + Sync {
+    /// Create a video job in the DB and kick off the production pipeline.
+    /// Returns a JSON value with job_id and status.
+    async fn create_video_job(
+        &self,
+        avatar_slug: &str,
+        script_text: &str,
+        background_url: Option<&str>,
     ) -> std::result::Result<serde_json::Value, String>;
 }
 
@@ -258,6 +286,8 @@ pub struct TopsiAgent {
     llm: Option<LLMClient>,
     /// Deployment bridge for triggering task execution
     execution_bridge: Option<Arc<dyn TaskExecutionBridge>>,
+    /// Bridge for video job production (ElevenLabs + HeyGen pipeline)
+    video_job_bridge: Option<Arc<dyn VideoJobBridge>>,
     /// Session-based conversation history for multi-turn context
     session_history: Arc<RwLock<HashMap<String, Vec<ConversationMessage>>>>,
     /// Meeting manager for active meeting sessions
@@ -392,6 +422,7 @@ impl TopsiAgent {
             active: Arc::new(RwLock::new(false)),
             llm,
             execution_bridge: None,
+            video_job_bridge: None,
             session_history: Arc::new(RwLock::new(HashMap::new())),
             meeting_manager: Arc::new(MeetingManager::new()),
             platform_data: None,
@@ -430,6 +461,12 @@ impl TopsiAgent {
             ));
         }
         self.execution_bridge = Some(bridge);
+        self
+    }
+
+    /// Attach a video job bridge for triggering ElevenLabs + HeyGen production
+    pub fn with_video_job_bridge(mut self, bridge: Arc<dyn VideoJobBridge>) -> Self {
+        self.video_job_bridge = Some(bridge);
         self
     }
 
@@ -1033,6 +1070,7 @@ impl TopsiAgent {
                 "respond_to_user" => self.tool_respond_to_user(&call.arguments).await,
                 "search_web" => self.tool_search_web(&call.arguments).await,
                 "fetch_web_page" => self.tool_fetch_web_page(&call.arguments).await,
+                "create_video" => self.tool_create_video(&call.arguments).await,
 
                 // ── Specialist delegation (stay in agent) ───────────────────
                 "build_workflow" => {
@@ -1041,7 +1079,8 @@ impl TopsiAgent {
                 }
 
                 // ── Platform data tools (delegated to PlatformDataService) ──
-                "list_projects"
+                "list_models"
+                | "list_projects"
                 | "create_project"
                 | "update_project"
                 | "list_organizations"
@@ -1070,6 +1109,10 @@ impl TopsiAgent {
                 | "search_entities" => {
                     if let Some(pds) = &self.platform_data {
                         match call.name.as_str() {
+                            "list_models" => pds
+                                .list_models()
+                                .await
+                                .map_err(|e| TopsiError::ToolError(e.to_string())),
                             "list_projects" => pds.list_projects(&call.arguments, scope).await,
                             "create_project" => {
                                 pds.create_project(&call.arguments, user_context).await
@@ -1665,6 +1708,32 @@ impl TopsiAgent {
         Ok(
             serde_json::json!({"success": true, "url": url, "content": text, "content_length": text.len()}),
         )
+    }
+
+    async fn tool_create_video(&self, args: &serde_json::Value) -> Result<serde_json::Value> {
+        let script = args
+            .get("script_text")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let avatar_slug = args
+            .get("avatar_slug")
+            .and_then(|v| v.as_str())
+            .unwrap_or("sami-satoshi");
+        let background_url = args.get("background_url").and_then(|v| v.as_str());
+
+        if script.is_empty() {
+            return Err(TopsiError::ToolError("script_text is required".to_string()));
+        }
+
+        let bridge = self
+            .video_job_bridge
+            .as_ref()
+            .ok_or_else(|| TopsiError::ToolError("Video job bridge not initialized".to_string()))?;
+
+        bridge
+            .create_video_job(avatar_slug, script, background_url)
+            .await
+            .map_err(|e| TopsiError::ToolError(e))
     }
 
     async fn tool_verify_access(

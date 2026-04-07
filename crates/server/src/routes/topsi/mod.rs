@@ -34,7 +34,7 @@ use tokio::sync::RwLock;
 use topsi::{
     initialize_topsi, AccessScope, DetectedIssue, ProjectAccess, RecommendationBatch,
     TaskExecutionBridge, TopologySummary, TopsiAgent, TopsiConfig, TopsiError, TopsiRequest,
-    TopsiRequestType, TopsiResponse, UserContext,
+    TopsiRequestType, TopsiResponse, UserContext, VideoJobBridge,
 };
 use ts_rs::TS;
 use uuid::Uuid;
@@ -46,21 +46,35 @@ struct DeploymentBridge {
     deployment: DeploymentImpl,
 }
 
+/// Map a PCG Router model_id to the appropriate BaseCodingAgent CLI wrapper
+fn model_id_to_executor(model_id: &str) -> BaseCodingAgent {
+    if model_id.starts_with("claude-") || model_id.starts_with("anthropic") {
+        BaseCodingAgent::ClaudeCode
+    } else if model_id.starts_with("gemini-") {
+        BaseCodingAgent::Gemini
+    } else if model_id.starts_with("gpt-")
+        || model_id.starts_with("o1")
+        || model_id.starts_with("o3")
+        || model_id.starts_with("o4")
+    {
+        BaseCodingAgent::ClaudeCode // fallback to Claude Code CLI for OpenAI models
+    } else if model_id.starts_with("qwen") {
+        BaseCodingAgent::QwenCode
+    } else {
+        BaseCodingAgent::ClaudeCode // safe default
+    }
+}
+
 #[async_trait::async_trait]
 impl TaskExecutionBridge for DeploymentBridge {
     async fn start_task_attempt(
         &self,
         task_id: Uuid,
-        executor_name: &str,
+        model_id: &str,
         base_branch: &str,
     ) -> std::result::Result<serde_json::Value, String> {
-        // Parse executor name to BaseCodingAgent enum
-        let base_agent: BaseCodingAgent = executor_name.parse().map_err(|_| {
-            format!(
-                "Unknown executor '{}'. Available: CLAUDE_CODE, AMP, GEMINI, CODEX",
-                executor_name
-            )
-        })?;
+        // Map model_id to the appropriate CLI executor
+        let base_agent: BaseCodingAgent = model_id_to_executor(model_id);
 
         let executor_profile_id = ExecutorProfileId::new(base_agent);
 
@@ -97,19 +111,102 @@ impl TaskExecutionBridge for DeploymentBridge {
             .await;
 
         tracing::info!(
-            "[TOPSI] Started execution process {} for task {} via {}",
+            "[TOPSI] Started execution process {} for task {} via model {}",
             execution_process.id,
             task_id,
-            executor_name
+            model_id
         );
 
         Ok(serde_json::json!({
             "success": true,
             "task_attempt_id": task_attempt.id.to_string(),
             "execution_process_id": execution_process.id.to_string(),
-            "executor": executor_name,
+            "model_id": model_id,
+            "executor": executor_profile_id.executor,
             "status": "started",
-            "message": format!("Task execution started with {} agent", executor_name)
+            "message": format!("Task execution started with model {}", model_id)
+        }))
+    }
+}
+
+/// Bridge between Topsi and the video production pipeline (ElevenLabs + HeyGen)
+struct VideoProductionBridge {
+    pool: sqlx::SqlitePool,
+}
+
+#[async_trait::async_trait]
+impl VideoJobBridge for VideoProductionBridge {
+    async fn create_video_job(
+        &self,
+        avatar_slug: &str,
+        script_text: &str,
+        background_url: Option<&str>,
+    ) -> std::result::Result<serde_json::Value, String> {
+        use db::models::{
+            avatar_profile::AvatarProfile,
+            video_job::{CreateVideoJob, VideoJob},
+        };
+
+        // Look up the avatar by slug
+        let avatar = AvatarProfile::find_by_slug(&self.pool, avatar_slug)
+            .await
+            .map_err(|e| format!("DB error: {}", e))?
+            .ok_or_else(|| format!("Avatar '{}' not found", avatar_slug))?;
+
+        if avatar.heygen_avatar_id.is_none() {
+            return Err(format!(
+                "Avatar '{}' has no HeyGen avatar ID configured. Please set heygen_avatar_id first.",
+                avatar_slug
+            ));
+        }
+
+        // Create the video job record
+        let job = VideoJob::create(
+            &self.pool,
+            CreateVideoJob {
+                avatar_profile_id: avatar.id,
+                script_text: script_text.to_string(),
+                background_url: background_url.map(|s| s.to_string()),
+            },
+            None,
+        )
+        .await
+        .map_err(|e| format!("Failed to create video job: {}", e))?;
+
+        let job_id = job.id;
+        let pool2 = self.pool.clone();
+        let script = job.script_text.clone();
+        let bg = job.background_url.clone();
+
+        // Spawn the async pipeline
+        tokio::spawn(async move {
+            if let Err(e) = crate::routes::video_gen::produce_job(
+                &pool2,
+                job_id,
+                &avatar,
+                &script,
+                bg.as_deref(),
+            )
+            .await
+            {
+                tracing::error!("Video pipeline failed for job {}: {}", job_id, e);
+                let _ =
+                    VideoJob::update_status(&pool2, job_id, "failed", Some(&e.to_string())).await;
+            }
+        });
+
+        tracing::info!(
+            "[TOPSI] Video job {} created for avatar '{}'",
+            job_id,
+            avatar_slug
+        );
+
+        Ok(serde_json::json!({
+            "success": true,
+            "job_id": job_id.to_string(),
+            "avatar": avatar_slug,
+            "status": "tts_generating",
+            "message": format!("Video production started. Job ID: {}. The video will be ready in ~5 minutes.", job_id)
         }))
     }
 }
@@ -124,6 +221,10 @@ pub(crate) static TOPSI_INIT_TIME: tokio::sync::OnceCell<DateTime<Utc>> =
 
 /// Global voice engine instance for Topsi
 pub(crate) static TOPSI_VOICE_ENGINE: tokio::sync::OnceCell<Arc<RwLock<Option<VoiceEngine>>>> =
+    tokio::sync::OnceCell::const_new();
+
+/// Topsi's agent UUID as stored in the agents table (used for conversation persistence)
+pub(crate) static TOPSI_DB_AGENT_ID: tokio::sync::OnceCell<Uuid> =
     tokio::sync::OnceCell::const_new();
 
 /// Topsi manager for coordinating the agent instance
@@ -409,6 +510,9 @@ pub async fn initialize_topsi_handler(
     let bridge = Arc::new(DeploymentBridge {
         deployment: state.clone(),
     });
+    let video_bridge = Arc::new(VideoProductionBridge {
+        pool: state.db().pool.clone(),
+    });
 
     let topsi_agent = initialize_topsi(config)
         .await
@@ -418,7 +522,8 @@ pub async fn initialize_topsi_handler(
         })?
         .with_database(state.db().pool.clone())
         .await
-        .with_execution_bridge(bridge);
+        .with_execution_bridge(bridge)
+        .with_video_job_bridge(video_bridge);
 
     let topsi_id = topsi_agent.id.to_string();
 
@@ -478,15 +583,38 @@ pub async fn initialize_topsi_on_startup(state: &DeploymentImpl) -> Result<Strin
     let bridge = Arc::new(DeploymentBridge {
         deployment: state.clone(),
     });
+    let video_bridge = Arc::new(VideoProductionBridge {
+        pool: state.db().pool.clone(),
+    });
 
     let topsi_agent = initialize_topsi(config)
         .await
         .map_err(|e| format!("Topsi initialization failed: {}", e))?
         .with_database(state.db().pool.clone())
         .await
-        .with_execution_bridge(bridge);
+        .with_execution_bridge(bridge)
+        .with_video_job_bridge(video_bridge);
 
     let topsi_id = topsi_agent.id.to_string();
+
+    // Resolve Topsi's DB agent ID (for FK-safe conversation persistence)
+    let db_agent_id: Option<Uuid> = sqlx::query_scalar::<_, String>(
+        "SELECT id FROM agents WHERE short_name = 'Topsi' AND status = 'active' LIMIT 1",
+    )
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
+    .and_then(|id_str| Uuid::parse_str(&id_str).ok());
+
+    if let Some(db_id) = db_agent_id {
+        let _ = TOPSI_DB_AGENT_ID.set(db_id);
+        tracing::info!("Topsi DB agent ID resolved: {}", db_id);
+    } else {
+        tracing::warn!(
+            "Topsi agent not found in agents table — conversation persistence will be skipped"
+        );
+    }
 
     // Activate by default
     topsi_agent

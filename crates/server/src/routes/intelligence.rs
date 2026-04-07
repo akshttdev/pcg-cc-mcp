@@ -318,7 +318,7 @@ async fn run_research_direct(
         String::new()
     };
 
-    let prior_context_section = if prior_kg.is_empty() {
+    let _prior_context_section = if prior_kg.is_empty() {
         String::new()
     } else {
         format!(
@@ -484,6 +484,7 @@ pub async fn write_intelligence_results(
 ///
 /// source_id_override: stable ID for the entry (person UUID for final pass, pass UUID per-pass).
 /// title_prefix: shown in KG source list (e.g. "Person", "Pass #2 (business_profile)").
+#[allow(dead_code)]
 async fn register_person_in_kg(
     pool: &sqlx::SqlitePool,
     person_id: &str,
@@ -519,6 +520,7 @@ async fn register_person_in_kg(
     let mut org_ids: Vec<String> = Vec::new();
 
     #[derive(sqlx::FromRow)]
+    #[allow(dead_code)]
     struct OrgRow {
         org_id: Uuid,
     }
@@ -538,6 +540,7 @@ async fn register_person_in_kg(
     // Derive org from project context (the org that owns the project that triggered research)
     if let Some(pid) = project_id {
         #[derive(sqlx::FromRow)]
+        #[allow(dead_code)]
         struct ProjOrgRow {
             org_id: Option<Uuid>,
         }
@@ -575,6 +578,7 @@ async fn register_person_in_kg(
 
     // ── 3. Company scope ─────────────────────────────────────────────────────
     #[derive(sqlx::FromRow)]
+    #[allow(dead_code)]
     struct CompanyRow {
         company_id: Uuid,
         company_name: String,
@@ -1880,7 +1884,7 @@ pub async fn trigger_next_research_pass(
     let contact_id_str = contact_id.to_string();
 
     tokio::spawn(async move {
-        let pass_id_err = pass_id.clone();
+        let _pass_id_err = pass_id.clone();
         if let Err(e) = run_research_pass(
             pool_clone,
             pass_id,
@@ -1965,7 +1969,7 @@ async fn run_research_pass(
     company: &str,
     existing_intel: &str,
     prior_context: &str,
-    project_id: Option<Uuid>,
+    _project_id: Option<Uuid>,
 ) -> anyhow::Result<()> {
     use serde_json::Value;
 
@@ -2248,7 +2252,7 @@ async fn run_research_pass(
         let photo_url = parsed["photo_url"]
             .as_str()
             .filter(|s| !s.is_empty() && *s != "null");
-        let location = parsed["location"]
+        let _location = parsed["location"]
             .as_str()
             .filter(|s| !s.is_empty() && *s != "null");
 

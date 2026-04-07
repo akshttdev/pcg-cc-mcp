@@ -5,7 +5,7 @@ use axum::{
     extract::{Path, Query, State},
     http::{header, StatusCode},
     response::Response,
-    routing::{delete, get, post},
+    routing::get,
     Extension, Json, Router,
 };
 use db::models::{
@@ -23,6 +23,7 @@ use crate::{error::ApiError, middleware::AccessContext, DeploymentImpl};
 // Helpers
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)]
 fn app_base_url() -> String {
     std::env::var("APP_BASE_URL")
         .unwrap_or_else(|_| "https://dashboard.powerclubglobal.com".to_string())
@@ -249,7 +250,7 @@ async fn serve_video(Path(job_id): Path<String>) -> Result<Response, ApiError> {
 // Async pipeline
 // ---------------------------------------------------------------------------
 
-async fn produce_job(
+pub(crate) async fn produce_job(
     pool: &sqlx::SqlitePool,
     job_id: Uuid,
     avatar: &AvatarProfile,
@@ -323,8 +324,15 @@ async fn produce_job(
         .ok_or_else(|| anyhow::anyhow!("avatar has no heygen_avatar_id set"))?;
 
     tracing::info!("video job {}: submitting to HeyGen", job_id);
-    let heygen_video_id =
-        heygen::generate_with_audio(&hg_key, heygen_avatar_id, &audio_url, background_url).await?;
+    let avatar_type = avatar.heygen_avatar_type.as_str();
+    let heygen_video_id = heygen::generate_with_audio(
+        &hg_key,
+        heygen_avatar_id,
+        avatar_type,
+        &audio_url,
+        background_url,
+    )
+    .await?;
 
     VideoJob::update_heygen_started(pool, job_id, &heygen_video_id).await?;
     tracing::info!(
@@ -397,6 +405,7 @@ mod tts {
     }
 
     #[derive(Debug, Deserialize)]
+    #[allow(dead_code)]
     pub struct WordAlignment {
         pub word: String,
         pub start_time: f64,
@@ -533,17 +542,16 @@ mod heygen {
     }
 
     /// Upload a WAV file to HeyGen's asset CDN and return the public URL.
+    /// HeyGen's /v1/asset endpoint expects a raw binary body with Content-Type header
+    /// (not multipart form-data).
     pub async fn upload_audio_wav(api_key: &str, wav_bytes: Vec<u8>) -> anyhow::Result<String> {
         let client = reqwest::Client::new();
-        let part = reqwest::multipart::Part::bytes(wav_bytes)
-            .file_name("audio.wav")
-            .mime_str("audio/wav")?;
-        let form = reqwest::multipart::Form::new().part("file", part);
 
         let resp = client
             .post("https://upload.heygen.com/v1/asset")
             .header("X-Api-Key", api_key)
-            .multipart(form)
+            .header("Content-Type", "audio/x-wav")
+            .body(wav_bytes)
             .send()
             .await?;
 
@@ -567,71 +575,50 @@ mod heygen {
     }
 
     /// Submit a video generation job to HeyGen and return the video_id.
+    /// `avatar_type` is either "avatar" or "talking_photo" (default: "avatar").
     pub async fn generate_with_audio(
         api_key: &str,
         avatar_id: &str,
+        avatar_type: &str,
         audio_url: &str,
         background_url: Option<&str>,
     ) -> anyhow::Result<String> {
         let client = reqwest::Client::new();
 
-        #[derive(Serialize)]
-        struct VideoInputs {
-            character: CharacterConfig,
-            voice: VoiceConfig,
-            background: Option<BackgroundConfig>,
-        }
-
-        #[derive(Serialize)]
-        struct CharacterConfig {
-            r#type: &'static str,
-            avatar_id: String,
-        }
-
-        #[derive(Serialize)]
-        struct VoiceConfig {
-            r#type: &'static str,
-            audio_url: String,
-        }
-
-        #[derive(Serialize)]
-        struct BackgroundConfig {
-            r#type: &'static str,
-            url: String,
-        }
-
-        #[derive(Serialize)]
-        struct GenerateReq {
-            video_inputs: Vec<VideoInputs>,
-            dimension: Dimension,
-        }
-
-        #[derive(Serialize)]
-        struct Dimension {
-            width: u32,
-            height: u32,
-        }
-
-        let body = GenerateReq {
-            video_inputs: vec![VideoInputs {
-                character: CharacterConfig {
-                    r#type: "avatar",
-                    avatar_id: avatar_id.to_string(),
-                },
-                voice: VoiceConfig {
-                    r#type: "audio",
-                    audio_url: audio_url.to_string(),
-                },
-                background: background_url.map(|url| BackgroundConfig {
-                    r#type: "image",
-                    url: url.to_string(),
-                }),
-            }],
-            dimension: Dimension {
-                width: 1280,
-                height: 720,
-            },
+        // Build character config dynamically: "avatar" uses avatar_id, "talking_photo" uses talking_photo_id
+        let character = if avatar_type == "talking_photo" {
+            serde_json::json!({
+                "type": "talking_photo",
+                "talking_photo_id": avatar_id
+            })
+        } else {
+            serde_json::json!({
+                "type": "avatar",
+                "avatar_id": avatar_id
+            })
         };
+
+        let voice = serde_json::json!({
+            "type": "audio",
+            "audio_url": audio_url
+        });
+
+        let mut video_input = serde_json::json!({
+            "character": character,
+            "voice": voice
+        });
+
+        if let Some(url) = background_url {
+            video_input["background"] = serde_json::json!({
+                "type": "image",
+                "url": url
+            });
+        }
+
+        let body = serde_json::json!({
+            "video_inputs": [video_input],
+            "dimension": {"width": 1280, "height": 720}
+        });
 
         let resp = client
             .post("https://api.heygen.com/v2/video/generate")

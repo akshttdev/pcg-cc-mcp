@@ -86,7 +86,7 @@ impl std::str::FromStr for MessageRole {
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 pub struct AgentConversation {
     pub id: Uuid,
-    pub agent_id: Uuid,
+    pub agent_id: String, // TEXT UUID string (not BLOB — agents.id is TEXT)
     pub session_id: String,
     pub project_id: Option<Uuid>,
     pub user_id: Option<String>,
@@ -123,7 +123,7 @@ pub struct AgentConversationMessage {
 /// Data for creating a new conversation
 #[derive(Debug, Clone)]
 pub struct CreateConversation {
-    pub agent_id: Uuid,
+    pub agent_id: String, // TEXT UUID string
     pub session_id: String,
     pub project_id: Option<Uuid>,
     pub user_id: Option<String>,
@@ -165,7 +165,7 @@ impl AgentConversation {
             "#,
         )
         .bind(id)
-        .bind(data.agent_id)
+        .bind(&data.agent_id) // TEXT UUID string — matches agents.id TEXT column
         .bind(&data.session_id)
         .bind(data.project_id)
         .bind(&data.user_id)
@@ -207,7 +207,7 @@ impl AgentConversation {
             LIMIT 1
             "#,
         )
-        .bind(agent_id)
+        .bind(agent_id.to_string())
         .bind(session_id)
         .fetch_optional(pool)
         .await
@@ -227,7 +227,7 @@ impl AgentConversation {
             LIMIT ?
             "#,
         )
-        .bind(agent_id)
+        .bind(agent_id.to_string())
         .bind(limit)
         .fetch_all(pool)
         .await
@@ -269,7 +269,7 @@ impl AgentConversation {
         Self::create(
             pool,
             CreateConversation {
-                agent_id,
+                agent_id: agent_id.to_string(),
                 session_id: session_id.to_string(),
                 project_id,
                 user_id: None,

@@ -612,6 +612,35 @@ impl PlatformDataService {
 
         let agent_name = args.get("agent_name").and_then(|v| v.as_str());
 
+        // Duplicate guard: prevent identical tasks created within 10 minutes
+        {
+            let existing_task_id: Option<String> = sqlx::query_scalar(
+                "SELECT id FROM tasks WHERE title = ? AND project_id = ? AND status = 'todo' \
+                 AND deleted_at IS NULL AND created_at > datetime('now', '-10 minutes')",
+            )
+            .bind(title)
+            .bind(project_id.to_string())
+            .fetch_optional(&self.pool)
+            .await
+            .ok()
+            .flatten();
+
+            if let Some(existing_id) = existing_task_id {
+                tracing::warn!(
+                    "[TOPSI] Duplicate task prevented: '{}' already exists as {}",
+                    title,
+                    existing_id
+                );
+                return Ok(json!({
+                    "success": true,
+                    "task_id": existing_id,
+                    "title": title,
+                    "duplicate_prevented": true,
+                    "message": format!("Task '{}' already exists — returning existing task to avoid duplicate", title)
+                }));
+            }
+        }
+
         // Verify access to project
         match scope {
             AccessScope::Admin => {}
@@ -734,27 +763,100 @@ impl PlatformDataService {
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
-        let execution_result = if let (Some(agent), true) = (agent_name, auto_execute) {
-            if let Some(bridge) = &self.execution_bridge {
-                let agent_lower = agent.to_lowercase();
-                let executor_name = match agent_lower.as_str() {
-                    "claude" | "claude_code" => "CLAUDE_CODE",
-                    "gemini" => "GEMINI",
-                    "amp" => "AMP",
-                    "codex" | "openai" => "CODEX",
-                    _ => agent,
-                };
-                let base_branch = "main".to_string();
+        let execution_result = if let (Some(agent_name_str), true) = (agent_name, auto_execute) {
+            // Look up agent by short_name to check if it's a PCG agent
+            #[derive(sqlx::FromRow)]
+            struct AgentRow {
+                id: String,
+                default_model: String,
+                personality: String,
+            }
+            let pcg_agent: Option<AgentRow> = sqlx::query_as::<_, AgentRow>(
+                "SELECT id, COALESCE(default_model, 'claude-sonnet-4-6') as default_model, COALESCE(personality, '') as personality FROM agents WHERE short_name = ? COLLATE NOCASE AND status = 'active'",
+            )
+            .bind(agent_name_str)
+            .fetch_optional(&self.pool)
+            .await
+            .ok()
+            .flatten();
 
+            if let Some(pcg) = pcg_agent {
+                // PCG AGENT PATH: create agent_flow for AgentFlowExecutor to pick up
+                // Check for duplicate flow on this task first
+                let existing_flow: Option<Vec<u8>> = sqlx::query_scalar(
+                    "SELECT id FROM agent_flows WHERE task_id = ? AND status IN ('planning', 'executing') LIMIT 1",
+                )
+                .bind(task_id.as_bytes().as_slice())
+                .fetch_optional(&self.pool)
+                .await
+                .ok()
+                .flatten();
+
+                if existing_flow.is_none() {
+                    if let Ok(agent_uuid) = Uuid::parse_str(&pcg.id) {
+                        let flow_config = json!({
+                            "agent_name": agent_name_str,
+                            "agent_model": pcg.default_model,
+                            "task_id": task.id.to_string(),
+                            "task_title": task.title,
+                            "task_description": task.description,
+                            "project_id": task.project_id.to_string(),
+                            "personality": pcg.personality,
+                        });
+
+                        match db::models::agent_flow::create_task_execution_flow(
+                            &self.pool,
+                            task_id,
+                            &task.project_id.to_string(),
+                            agent_uuid,
+                            flow_config,
+                        )
+                        .await
+                        {
+                            Ok(flow) => {
+                                tracing::info!(
+                                    "[TOPSI] Created agent_flow {} for task {} → agent {}",
+                                    flow.id,
+                                    task.id,
+                                    agent_name_str
+                                );
+                                Some(json!({
+                                    "routed_to": "agent_flow_executor",
+                                    "flow_id": flow.id.to_string(),
+                                    "agent": agent_name_str,
+                                    "model": pcg.default_model,
+                                    "status": "queued",
+                                    "message": format!("Task queued for {} via orchestration layer", agent_name_str)
+                                }))
+                            }
+                            Err(e) => {
+                                tracing::error!(
+                                    "[TOPSI] Failed to create agent_flow for task {}: {}",
+                                    task.id,
+                                    e
+                                );
+                                Some(json!({ "error": format!("Failed to queue task: {}", e) }))
+                            }
+                        }
+                    } else {
+                        Some(json!({ "note": "PCG agent found but UUID parse failed" }))
+                    }
+                } else {
+                    Some(json!({
+                        "note": "Flow already queued for this task",
+                        "existing_flow_id": existing_flow
+                    }))
+                }
+            } else if let Some(bridge) = &self.execution_bridge {
+                // TERMINAL / CODING PATH: pass model_id directly — bridge maps it to executor
                 tracing::info!(
-                    "[TOPSI] Auto-executing task {} with agent {} (executor: {})",
+                    "[TOPSI] Auto-executing task {} with model {}",
                     task.id,
-                    agent,
-                    executor_name
+                    agent_name_str
                 );
 
                 match bridge
-                    .start_task_attempt(task_id, executor_name, &base_branch)
+                    .start_task_attempt(task_id, agent_name_str, "main")
                     .await
                 {
                     Ok(result) => {
@@ -773,7 +875,7 @@ impl PlatformDataService {
                     }
                 }
             } else {
-                Some(json!({ "note": "Task created but execution bridge not available" }))
+                Some(json!({ "note": "No execution bridge configured for model execution" }))
             }
         } else {
             None
@@ -889,10 +991,11 @@ impl PlatformDataService {
             TopsiError::ToolError(format!("Invalid task_id '{}': {}", task_id_str, e))
         })?;
 
-        let agent_name = args
-            .get("agent_name")
+        let model_id = args
+            .get("model_id")
+            .or_else(|| args.get("agent_name")) // backwards compat
             .and_then(|v| v.as_str())
-            .unwrap_or("claude");
+            .unwrap_or("claude-sonnet-4-6");
 
         // Verify the task exists and user has access
         let task: Option<Task> = sqlx::query_as("SELECT * FROM tasks WHERE id = ?")
@@ -930,27 +1033,13 @@ impl PlatformDataService {
             }
         }
 
-        // Map agent names to executor names
-        let agent_lower = agent_name.to_lowercase();
-        let executor_name = match agent_lower.as_str() {
-            "claude" | "claude_code" => "CLAUDE_CODE",
-            "gemini" => "GEMINI",
-            "amp" => "AMP",
-            "codex" | "openai" => "CODEX",
-            _ => agent_name,
-        };
-
         tracing::info!(
-            "[TOPSI] Starting task execution: task={}, agent={}, executor={}",
+            "[TOPSI] Starting task execution: task={}, model={}",
             task_id,
-            agent_name,
-            executor_name
+            model_id
         );
 
-        match bridge
-            .start_task_attempt(task_id, executor_name, "main")
-            .await
-        {
+        match bridge.start_task_attempt(task_id, model_id, "main").await {
             Ok(result) => {
                 tracing::info!(
                     "[TOPSI] Task execution started successfully for task {}",
@@ -2337,6 +2426,34 @@ impl PlatformDataService {
             "rejected_duplicates": rejected,
             "remaining_pending": remaining,
             "message": format!("Approved {} records, rejected {} duplicates. {} records still pending review.", approved, rejected, remaining)
+        }))
+    }
+
+    /// List available LLM models from the PCG Router
+    pub async fn list_models(&self) -> Result<serde_json::Value> {
+        let models = db::models::pcg_router_model::PcgRouterModel::list_enabled(&self.pool)
+            .await
+            .map_err(TopsiError::DatabaseError)?;
+
+        let model_list: Vec<serde_json::Value> = models
+            .iter()
+            .map(|m| {
+                json!({
+                    "model_id": m.model_id,
+                    "name": m.name,
+                    "provider": m.provider,
+                    "supports_tools": m.supports_tools,
+                    "supports_vision": m.supports_vision,
+                    "context_window": m.context_window,
+                })
+            })
+            .collect();
+
+        let count = model_list.len();
+        Ok(json!({
+            "models": model_list,
+            "count": count,
+            "note": "Use model_id values when specifying models for task execution"
         }))
     }
 }

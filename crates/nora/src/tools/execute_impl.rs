@@ -3081,7 +3081,7 @@ impl ExecutiveTools {
                 input_path,
                 effect,
                 output_path,
-                effect_params,
+                effect_params: _effect_params,
                 task_id,
                 project_id,
             } => {

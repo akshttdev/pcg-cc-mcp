@@ -38,7 +38,7 @@ pub struct CommandCenterSnapshot {
 #[derive(Debug, Serialize, TS, sqlx::FromRow)]
 #[ts(export)]
 pub struct OverdueTask {
-    pub id: Uuid,
+    pub id: String,
     pub title: String,
     pub project_name: String,
     pub due_date: String,
@@ -48,7 +48,7 @@ pub struct OverdueTask {
 #[derive(Debug, Serialize, TS, sqlx::FromRow)]
 #[ts(export)]
 pub struct DueSoonDeliverable {
-    pub id: Uuid,
+    pub id: String,
     pub title: String,
     pub deliverable_type: String,
     pub project_name: String,
@@ -59,7 +59,7 @@ pub struct DueSoonDeliverable {
 #[derive(Debug, Serialize, TS, sqlx::FromRow)]
 #[ts(export)]
 pub struct WaitingProject {
-    pub id: Uuid,
+    pub id: String,
     pub name: String,
     pub client_name: Option<String>,
     pub updated_at: String,
@@ -68,7 +68,7 @@ pub struct WaitingProject {
 #[derive(Debug, Serialize, TS, sqlx::FromRow)]
 #[ts(export)]
 pub struct FollowUpLead {
-    pub id: Uuid,
+    pub id: String,
     pub full_name: String,
     pub email: Option<String>,
     pub follow_up_attempts: i64,
@@ -88,7 +88,7 @@ pub struct PendingProposal {
 #[derive(Debug, Serialize, TS, sqlx::FromRow)]
 #[ts(export)]
 pub struct ClosedUnpaidProject {
-    pub id: Uuid,
+    pub id: String,
     pub name: String,
     pub client_name: Option<String>,
     pub updated_at: String,

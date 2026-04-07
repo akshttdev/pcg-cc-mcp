@@ -2,12 +2,11 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
 use ts_rs::TS;
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, TS)]
 #[ts(export)]
 pub struct PcgRouterModel {
-    pub id: Uuid,
+    pub id: String,
     pub name: String,
     pub model_id: String,
     pub provider: String,

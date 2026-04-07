@@ -43,7 +43,8 @@ pub async fn chat_with_topsi(
         return Err(ApiError::BadRequest("Topsi is not active".to_string()));
     }
 
-    let topsi_agent_id = topsi.id;
+    // Use DB agent ID for FK-safe conversation persistence
+    let topsi_agent_id = super::TOPSI_DB_AGENT_ID.get().copied().unwrap_or(topsi.id);
 
     // Get REAL user context from authentication
     let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
@@ -69,7 +70,7 @@ pub async fn chat_with_topsi(
         let vibe_spent = crate::helpers::billing::record_llm_vibe_usage(
             &pool,
             project_id,
-            "claude-sonnet-4-20250514",
+            "claude-sonnet-4-6",
             response.input_tokens.unwrap_or(0),
             response.output_tokens.unwrap_or(0),
             None,
@@ -83,7 +84,7 @@ pub async fn chat_with_topsi(
             None,
             Some(&session_id),
             "Topsi",
-            "claude-sonnet-4-20250514",
+            "claude-sonnet-4-6",
             response.input_tokens.unwrap_or(0),
             response.output_tokens.unwrap_or(0),
             vibe_spent as f64,
@@ -107,7 +108,7 @@ pub async fn chat_with_topsi(
                 None,
                 &user_msg,
                 &assistant_msg,
-                Some("claude-sonnet-4-20250514"),
+                Some("claude-sonnet-4-6"),
                 Some("anthropic"),
                 resp_input,
                 resp_output,

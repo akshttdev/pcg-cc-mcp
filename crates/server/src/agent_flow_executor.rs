@@ -159,42 +159,72 @@ impl AgentFlowExecutor {
             .and_then(|v| v.as_str())
             .unwrap_or("");
 
-        // Build context from deal data (scoped to this agent + deal's current stage)
-        let deal_stage: Option<String> = sqlx::query_scalar(
-            "SELECT s.name FROM crm_deals d JOIN crm_pipeline_stages s ON d.crm_stage_id = s.id WHERE d.id = ?1",
-        )
-        .bind(deal_id)
-        .fetch_optional(&self.pool)
-        .await
-        .ok()
-        .flatten();
-        let stage_ref = deal_stage.as_deref();
-        let deal_context = self
-            .load_deal_context(deal_id, Some(agent_name), stage_ref)
-            .await;
+        // Detect task_execution flows (created by Topsi for PCG agents)
+        let is_task_flow = flow_config
+            .get("task_id")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .is_some();
+
+        // Build context: task-based or deal-based
+        let context = if is_task_flow {
+            self.load_task_context(&flow_config).await
+        } else {
+            // Build context from deal data (scoped to this agent + deal's current stage)
+            let deal_stage: Option<String> = sqlx::query_scalar(
+                "SELECT s.name FROM crm_deals d JOIN crm_pipeline_stages s ON d.crm_stage_id = s.id WHERE d.id = ?1",
+            )
+            .bind(deal_id)
+            .fetch_optional(&self.pool)
+            .await
+            .ok()
+            .flatten();
+            let stage_ref = deal_stage.as_deref();
+            self.load_deal_context(deal_id, Some(agent_name), stage_ref)
+                .await
+        };
 
         // Build system prompt based on agent name
-        let system_prompt = build_agent_prompt(agent_name, &deal_context);
+        let system_prompt = build_agent_prompt(agent_name, &context);
 
-        // Build tool definitions
-        let tools = build_agent_tools();
+        // Build tool definitions — task flows get task-aware tools
+        let tools = build_agent_tools(is_task_flow);
 
-        // Build messages
-        let messages = vec![
-            WorkflowLLMService::system_message(&system_prompt),
-            WorkflowLLMService::user_message(&format!(
+        // Build messages — task flow uses task-centric prompt
+        let user_prompt = if is_task_flow {
+            format!(
+                "Execute the following task assigned to you:\n\n{}\n\nTask context:\n{}",
+                flow_config
+                    .get("task_title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown Task"),
+                context
+            )
+        } else {
+            format!(
                 "Execute your role for the deal: {}.\n\nDeal context:\n{}",
                 flow_config
                     .get("deal_name")
                     .and_then(|v| v.as_str())
                     .unwrap_or("Unknown"),
-                deal_context
-            )),
+                context
+            )
+        };
+
+        let messages = vec![
+            WorkflowLLMService::system_message(&system_prompt),
+            WorkflowLLMService::user_message(&user_prompt),
         ];
+
+        // For task flows, use the agent's preferred model as hint
+        let agent_model = flow_config
+            .get("agent_model")
+            .and_then(|v| v.as_str())
+            .map(String::from);
 
         // Call LLM with retry logic (pass flow.id for artifact saving in simulation)
         let result = self
-            .call_llm_with_retry(flow, messages, &tools, &flow.id)
+            .call_llm_with_retry_model(flow, messages, &tools, &flow.id, agent_model.as_deref())
             .await;
 
         match result {
@@ -230,6 +260,44 @@ impl AgentFlowExecutor {
                     tracing::error!("[AgentFlowEngine] Failed to store output for flow {}: {}", flow.id, e);
                 }
 
+                // Persist the agent's work as a conversation message so it's
+                // visible in conversation history and carries forward as memory.
+                if is_task_flow {
+                    let task_id_str = flow_config
+                        .get("task_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let task_title = flow_config
+                        .get("task_title")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("task");
+                    let executor_agent_id = flow.executor_agent_id.clone();
+
+                    if !task_id_str.is_empty() {
+                        if let Some(agent_uuid) = executor_agent_id {
+                            // session keyed by task so future queries can find it
+                            let session_id = format!("task:{}", task_id_str);
+                            let _ = crate::helpers::conversations::persist_chat_exchange(
+                                &self.pool,
+                                agent_uuid.into(),
+                                &session_id,
+                                flow_config
+                                    .get("project_id")
+                                    .and_then(|v| v.as_str())
+                                    .and_then(|s| uuid::Uuid::parse_str(s).ok()),
+                                &format!("Execute task: {}", task_title),
+                                &output,
+                                agent_model.as_deref().or(Some("claude-sonnet-4-6")),
+                                Some("anthropic"),
+                                None,
+                                None,
+                                agent_name,
+                            )
+                            .await;
+                        }
+                    }
+                }
+
                 // Complete the flow (single-phase: skip verification)
                 self.complete_flow(flow).await;
 
@@ -239,8 +307,36 @@ impl AgentFlowExecutor {
                     agent_name
                 );
 
-                // Chain next agent if chain_actions exist, otherwise auto-advance
-                if !deal_id.is_empty() {
+                // Post-completion actions
+                if is_task_flow {
+                    // Mark the originating task as done
+                    let task_id_str = flow_config
+                        .get("task_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    if !task_id_str.is_empty() {
+                        if let Err(e) = sqlx::query(
+                            "UPDATE tasks SET status = 'done', updated_at = datetime('now','subsec') WHERE id = ?",
+                        )
+                        .bind(task_id_str)
+                        .execute(&self.pool)
+                        .await
+                        {
+                            tracing::error!(
+                                "[AgentFlowEngine] Failed to mark task {} done: {}",
+                                task_id_str,
+                                e
+                            );
+                        } else {
+                            tracing::info!(
+                                "[AgentFlowEngine] Task {} marked done via flow {}",
+                                task_id_str,
+                                flow.id
+                            );
+                        }
+                    }
+                } else if !deal_id.is_empty() {
+                    // Chain next agent if chain_actions exist, otherwise auto-advance
                     let flow_config = self.parse_flow_config(flow);
                     if self.try_chain_next_agent(deal_id, &flow_config).await {
                         tracing::info!(
@@ -256,8 +352,189 @@ impl AgentFlowExecutor {
             Err(e) => {
                 self.fail_flow(flow, &e.to_string()).await;
                 tracing::error!("[AgentFlowEngine] Flow {} failed: {}", flow.id, e);
+                // For task flows, leave task in 'todo' for retry (log only)
+                if is_task_flow {
+                    let task_id_str = flow_config
+                        .get("task_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    if !task_id_str.is_empty() {
+                        tracing::warn!(
+                            "[AgentFlowEngine] Flow {} failed — task {} remains in todo for retry",
+                            flow.id,
+                            task_id_str
+                        );
+                    }
+                }
             }
         }
+    }
+
+    /// Load task context from flow_config for task_execution flows
+    async fn load_task_context(&self, flow_config: &Value) -> String {
+        let task_title = flow_config
+            .get("task_title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Untitled Task");
+        let task_description = flow_config
+            .get("task_description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let project_id = flow_config
+            .get("project_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let personality = flow_config
+            .get("personality")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let task_id = flow_config
+            .get("task_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        // Load project name
+        let project_name: Option<String> =
+            sqlx::query_scalar("SELECT name FROM projects WHERE id = ?")
+                .bind(project_id)
+                .fetch_optional(&self.pool)
+                .await
+                .ok()
+                .flatten();
+
+        format!(
+            "Task: {}\nProject: {}\nTask ID: {}\nDescription: {}\n\nAgent Personality:\n{}",
+            task_title,
+            project_name.as_deref().unwrap_or("Unknown Project"),
+            task_id,
+            task_description,
+            personality
+        )
+    }
+
+    /// Load task context by task_id directly (for `get_task_context` tool calls)
+    async fn load_task_context_by_id(&self, task_id: &str) -> String {
+        #[derive(sqlx::FromRow)]
+        struct TaskRow {
+            title: String,
+            description: Option<String>,
+            status: Option<String>,
+            project_name: Option<String>,
+        }
+        let row = sqlx::query_as::<_, TaskRow>(
+            "SELECT t.title, t.description, t.status, p.name AS project_name \
+             FROM tasks t LEFT JOIN projects p ON p.id = t.project_id \
+             WHERE t.id = ? LIMIT 1",
+        )
+        .bind(task_id)
+        .fetch_optional(&self.pool)
+        .await
+        .ok()
+        .flatten();
+
+        match row {
+            Some(r) => format!(
+                "Task ID: {}\nTitle: {}\nStatus: {}\nProject: {}\nDescription: {}",
+                task_id,
+                r.title,
+                r.status.as_deref().unwrap_or("todo"),
+                r.project_name.as_deref().unwrap_or("Unknown Project"),
+                r.description.as_deref().unwrap_or("(no description)")
+            ),
+            None => format!("Task {} not found", task_id),
+        }
+    }
+
+    /// Update task description/notes field
+    async fn update_task_notes(&self, task_id: &str, notes: &str) -> String {
+        let result = sqlx::query(
+            "UPDATE tasks SET description = ?, updated_at = datetime('now','subsec') WHERE id = ?",
+        )
+        .bind(notes)
+        .bind(task_id)
+        .execute(&self.pool)
+        .await;
+
+        match result {
+            Ok(r) if r.rows_affected() > 0 => format!("Task {} notes updated", task_id),
+            Ok(_) => format!("Task {} not found", task_id),
+            Err(e) => format!("Failed to update task: {}", e),
+        }
+    }
+
+    /// Call LLM with retry using an optional preferred model for the first attempts.
+    /// Falls back to claude-sonnet-4-6 on the last attempt if preferred model fails.
+    async fn call_llm_with_retry_model(
+        &self,
+        flow: &AgentFlow,
+        messages: Vec<Value>,
+        tools: &[ToolDefinition],
+        flow_id: &DbUuid,
+        preferred_model: Option<&str>,
+    ) -> anyhow::Result<String> {
+        let max_retries = 3;
+        // Use preferred model for first two attempts, fallback on third
+        let m0 = preferred_model;
+        let m1 = preferred_model;
+        let m2 = Some("claude-sonnet-4-6");
+        let models: [Option<&str>; 3] = [m0, m1, m2];
+
+        let flow_deal_id = flow
+            .flow_config
+            .as_deref()
+            .and_then(|c| serde_json::from_str::<Value>(c).ok())
+            .and_then(|v| v.get("deal_id").and_then(|d| d.as_str().map(String::from)))
+            .unwrap_or_default();
+
+        for attempt in 0..max_retries {
+            let model_hint = models.get(attempt).copied().flatten();
+
+            if let Err(e) = sqlx::query(
+                "UPDATE agent_flows SET retry_count = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2",
+            )
+            .bind(attempt as i32)
+            .bind(&flow.id)
+            .execute(&self.pool)
+            .await
+            {
+                tracing::error!("[AgentFlowEngine] Failed to update retry count for flow {}: {}", flow.id, e);
+            }
+
+            match self
+                .call_llm_once(messages.clone(), tools, model_hint, &flow_deal_id, flow_id)
+                .await
+            {
+                Ok(output) => return Ok(output),
+                Err(e) => {
+                    tracing::warn!(
+                        "[AgentFlowEngine] Flow {} attempt {}/{} failed: {}",
+                        flow.id,
+                        attempt + 1,
+                        max_retries,
+                        e
+                    );
+
+                    if let Err(db_err) = sqlx::query(
+                        "UPDATE agent_flows SET last_error = ?1, updated_at = datetime('now', 'subsec') WHERE id = ?2",
+                    )
+                    .bind(e.to_string())
+                    .bind(&flow.id)
+                    .execute(&self.pool)
+                    .await
+                    {
+                        tracing::error!("[AgentFlowEngine] Failed to store error for flow {}: {}", flow.id, db_err);
+                    }
+
+                    if attempt == max_retries - 1 {
+                        return Err(e);
+                    }
+
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                }
+            }
+        }
+
+        anyhow::bail!("All retry attempts exhausted")
     }
 
     /// Call LLM with retry: attempt → same model → fallback model → fail
@@ -270,14 +547,6 @@ impl AgentFlowExecutor {
     ) -> anyhow::Result<String> {
         let max_retries = 3;
         let models = [None, None, Some("claude-sonnet-4-6")]; // last attempt uses cheaper model
-
-        // Extract deal_id from flow config for simulated mode
-        let flow_deal_id = flow
-            .flow_config
-            .as_deref()
-            .and_then(|c| serde_json::from_str::<Value>(c).ok())
-            .and_then(|v| v.get("deal_id").and_then(|d| d.as_str().map(String::from)))
-            .unwrap_or_default();
 
         // Extract deal_id from flow config for simulated mode
         let flow_deal_id = flow
@@ -425,13 +694,13 @@ impl AgentFlowExecutor {
         );
 
         match call.name.as_str() {
+            // ── Deal tools ────────────────────────────────────────────────────
             "get_deal_context" => {
                 let deal_id = call
                     .arguments
                     .get("deal_id")
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
-                // Tool call doesn't have agent/stage scope — load all sources
                 self.load_deal_context(deal_id, None, None).await
             }
             "update_deal_field" => {
@@ -452,6 +721,29 @@ impl AgentFlowExecutor {
                     .unwrap_or("");
                 self.update_deal_field(deal_id, field, value).await
             }
+            // ── Task tools ────────────────────────────────────────────────────
+            "get_task_context" => {
+                let task_id = call
+                    .arguments
+                    .get("task_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                self.load_task_context_by_id(task_id).await
+            }
+            "update_task_notes" => {
+                let task_id = call
+                    .arguments
+                    .get("task_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let notes = call
+                    .arguments
+                    .get("notes")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                self.update_task_notes(task_id, notes).await
+            }
+            // ── Shared tools ──────────────────────────────────────────────────
             "save_artifact" => {
                 let title = call
                     .arguments
@@ -1384,72 +1676,110 @@ fn build_agent_prompt(agent_name: &str, deal_context: &str) -> String {
 
 // ── Tool Definitions ─────────────────────────────────────────────────────────
 
-fn build_agent_tools() -> Vec<ToolDefinition> {
-    vec![
-        ToolDefinition {
-            name: "get_deal_context".to_string(),
-            description:
-                "Get full context about the current deal including contact and company info"
+fn build_agent_tools(is_task_flow: bool) -> Vec<ToolDefinition> {
+    let save_artifact = ToolDefinition {
+        name: "save_artifact".to_string(),
+        description: "Save a research artifact, output document, or deliverable".to_string(),
+        parameters: json!({
+            "type": "object",
+            "properties": {
+                "flow_id": {
+                    "type": "string",
+                    "description": "The agent flow ID"
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Title for the artifact"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "The artifact content"
+                }
+            },
+            "required": ["flow_id", "title", "content"]
+        }),
+    };
+
+    if is_task_flow {
+        vec![
+            ToolDefinition {
+                name: "get_task_context".to_string(),
+                description: "Get full details about the current task including project info"
                     .to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "deal_id": {
-                        "type": "string",
-                        "description": "The deal ID to retrieve context for"
-                    }
-                },
-                "required": ["deal_id"]
-            }),
-        },
-        ToolDefinition {
-            name: "update_deal_field".to_string(),
-            description:
-                "Update a field on the deal (description, proposal_text, deck_url, custom_fields)"
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "task_id": {
+                            "type": "string",
+                            "description": "The task ID to retrieve context for"
+                        }
+                    },
+                    "required": ["task_id"]
+                }),
+            },
+            ToolDefinition {
+                name: "update_task_notes".to_string(),
+                description: "Update the task description/notes with your findings or output"
                     .to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "deal_id": {
-                        "type": "string",
-                        "description": "The deal ID to update"
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "task_id": {
+                            "type": "string",
+                            "description": "The task ID to update"
+                        },
+                        "notes": {
+                            "type": "string",
+                            "description": "The notes or output to write to the task"
+                        }
                     },
-                    "field": {
-                        "type": "string",
-                        "enum": ["description", "proposal_text", "deck_url", "custom_fields"],
-                        "description": "The field to update"
+                    "required": ["task_id", "notes"]
+                }),
+            },
+            save_artifact,
+        ]
+    } else {
+        vec![
+            ToolDefinition {
+                name: "get_deal_context".to_string(),
+                description: "Get full context about the current deal including contact and company info".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "deal_id": {
+                            "type": "string",
+                            "description": "The deal ID to retrieve context for"
+                        }
                     },
-                    "value": {
-                        "type": "string",
-                        "description": "The new value for the field"
-                    }
-                },
-                "required": ["deal_id", "field", "value"]
-            }),
-        },
-        ToolDefinition {
-            name: "save_artifact".to_string(),
-            description: "Save a research artifact or output document".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "flow_id": {
-                        "type": "string",
-                        "description": "The agent flow ID"
+                    "required": ["deal_id"]
+                }),
+            },
+            ToolDefinition {
+                name: "update_deal_field".to_string(),
+                description: "Update a field on the deal (description, proposal_text, deck_url, custom_fields)".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "deal_id": {
+                            "type": "string",
+                            "description": "The deal ID to update"
+                        },
+                        "field": {
+                            "type": "string",
+                            "enum": ["description", "proposal_text", "deck_url", "custom_fields"],
+                            "description": "The field to update"
+                        },
+                        "value": {
+                            "type": "string",
+                            "description": "The new value for the field"
+                        }
                     },
-                    "title": {
-                        "type": "string",
-                        "description": "Title for the artifact"
-                    },
-                    "content": {
-                        "type": "string",
-                        "description": "The artifact content"
-                    }
-                },
-                "required": ["flow_id", "title", "content"]
-            }),
-        },
-    ]
+                    "required": ["deal_id", "field", "value"]
+                }),
+            },
+            save_artifact,
+        ]
+    }
 }
 
 // ── Background Worker ────────────────────────────────────────────────────────

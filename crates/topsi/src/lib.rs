@@ -25,7 +25,7 @@ pub mod workflow_builder;
 
 pub use agent::{
     access_control::{AccessControl, AccessScope, ProjectAccess, ProjectRole, UserContext},
-    TaskExecutionBridge, TopsiAgent, TopsiRequest, TopsiRequestType,
+    TaskExecutionBridge, TopsiAgent, TopsiRequest, TopsiRequestType, VideoJobBridge,
 };
 pub use config::TopsiConfig;
 pub use context::TopologyContext;

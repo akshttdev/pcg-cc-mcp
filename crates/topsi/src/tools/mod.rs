@@ -276,7 +276,7 @@ pub fn get_tool_schemas() -> Vec<Value> {
                         },
                         "agent_name": {
                             "type": "string",
-                            "description": "Agent to assign and auto-execute the task with (e.g., 'claude', 'Scout', 'Nora', 'Maci'). Execution starts immediately."
+                            "description": "PCG agent names (Nora, Maci, Auri, Scout, etc.) for orchestrated tasks, OR a model_id from list_models for terminal coding sessions (e.g. 'claude-sonnet-4-6', 'gpt-4o'). Execution starts immediately."
                         },
                         "auto_execute": {
                             "type": "boolean",
@@ -367,8 +367,20 @@ pub fn get_tool_schemas() -> Vec<Value> {
         json!({
             "type": "function",
             "function": {
+                "name": "list_models",
+                "description": "List available LLM models from the PCG Router. Use the model_id values when specifying models for task execution or coding sessions. Models are sourced from the organization's PCG Router configuration.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
                 "name": "start_task_execution",
-                "description": "Start executing a task by spawning a coding agent. Creates a task attempt and triggers the executor pipeline. The agent will work in an isolated git worktree and stream logs in real-time.",
+                "description": "Start executing a task using a coding model. Creates a task attempt and triggers the executor pipeline. The model will work in an isolated git worktree and stream logs in real-time. Use list_models to see available model_ids.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -376,13 +388,13 @@ pub fn get_tool_schemas() -> Vec<Value> {
                             "type": "string",
                             "description": "UUID of the task to execute"
                         },
-                        "agent_name": {
+                        "model_id": {
                             "type": "string",
-                            "description": "Agent to use: 'claude' (default), 'gemini', 'amp', 'codex'"
+                            "description": "The PCG Router model ID to use for this coding session (e.g. claude-sonnet-4-6, gpt-4o). Use list_models to see available models. Defaults to claude-sonnet-4-6."
                         },
                         "additional_prompt": {
                             "type": "string",
-                            "description": "Optional extra instructions for the agent beyond the task description"
+                            "description": "Optional extra instructions for the model beyond the task description"
                         }
                     },
                     "required": ["task_id"]
@@ -894,6 +906,32 @@ pub fn get_tool_schemas() -> Vec<Value> {
                         }
                     },
                     "required": ["action", "user_request"]
+                }
+            }
+        }),
+        // ==================== VIDEO PRODUCTION TOOLS ====================
+        json!({
+            "type": "function",
+            "function": {
+                "name": "create_video",
+                "description": "Generate a new AI video using the established avatar identity (default: Sami Satoshi). Triggers ElevenLabs TTS + HeyGen talking-head production pipeline. Returns a job ID for tracking. Use when asked to create, produce, or generate a video briefing, announcement, or content piece.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "script_text": {
+                            "type": "string",
+                            "description": "The script/narration text for the video. This will be spoken by the avatar."
+                        },
+                        "avatar_slug": {
+                            "type": "string",
+                            "description": "Avatar slug to use. Defaults to 'sami-satoshi'. Use 'sami-satoshi' for the PCG Tech Brief presenter."
+                        },
+                        "background_url": {
+                            "type": "string",
+                            "description": "Optional URL of a background image or video to use behind the avatar."
+                        }
+                    },
+                    "required": ["script_text"]
                 }
             }
         }),

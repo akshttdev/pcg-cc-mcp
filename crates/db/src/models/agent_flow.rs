@@ -31,6 +31,7 @@ pub enum FlowType {
     Analysis,
     Monitoring,
     Custom,
+    TaskExecution,
 }
 
 impl std::fmt::Display for FlowType {
@@ -44,6 +45,7 @@ impl std::fmt::Display for FlowType {
             FlowType::Analysis => write!(f, "analysis"),
             FlowType::Monitoring => write!(f, "monitoring"),
             FlowType::Custom => write!(f, "custom"),
+            FlowType::TaskExecution => write!(f, "task_execution"),
         }
     }
 }
@@ -181,6 +183,10 @@ pub struct AgentFlow {
     /// Link to CRM deal (for pipeline-triggered agent flows)
     #[sqlx(default)]
     pub crm_deal_id: Option<String>,
+
+    /// Link to project (for task-execution flows)
+    #[sqlx(default)]
+    pub project_id: Option<String>,
 
     /// Agent auto-start can be cancelled before this deadline
     #[sqlx(default)]
@@ -524,4 +530,40 @@ impl AgentFlow {
             .as_ref()
             .and_then(|s| serde_json::from_str(s).ok())
     }
+}
+
+/// Create an agent flow for a PCG agent to execute a Topsi-created task.
+/// The flow is inserted in 'planning' status; AgentFlowExecutor picks it up within 15 seconds.
+pub async fn create_task_execution_flow(
+    pool: &SqlitePool,
+    task_id: Uuid,
+    project_id: &str,
+    executor_agent_id: Uuid,
+    flow_config: serde_json::Value,
+) -> Result<AgentFlow, AgentFlowError> {
+    let id = DbUuid::new();
+    let task_id_db = DbUuid::from(task_id);
+    let executor_id_db = DbUuid::from(executor_agent_id);
+
+    sqlx::query_as::<_, AgentFlow>(
+        r#"
+        INSERT INTO agent_flows
+            (id, task_id, project_id, flow_type, status,
+             executor_agent_id, current_phase, flow_config,
+             human_approval_required, planning_started_at,
+             created_at, updated_at)
+        VALUES (?, ?, ?, 'task_execution', 'planning', ?, 'planning', ?,
+                0, datetime('now','subsec'),
+                datetime('now','subsec'), datetime('now','subsec'))
+        RETURNING *
+        "#,
+    )
+    .bind(&id)
+    .bind(&task_id_db)
+    .bind(project_id)
+    .bind(&executor_id_db)
+    .bind(flow_config.to_string())
+    .fetch_one(pool)
+    .await
+    .map_err(AgentFlowError::Database)
 }

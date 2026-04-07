@@ -109,6 +109,13 @@ impl AvatarProfile {
             .await
     }
 
+    pub async fn find_by_slug(pool: &SqlitePool, slug: &str) -> Result<Option<Self>, sqlx::Error> {
+        sqlx::query_as("SELECT * FROM avatar_profiles WHERE slug = ? LIMIT 1")
+            .bind(slug)
+            .fetch_optional(pool)
+            .await
+    }
+
     pub async fn list(pool: &SqlitePool, org_id: Option<Uuid>) -> Result<Vec<Self>, sqlx::Error> {
         match org_id {
             Some(oid) => sqlx::query_as(

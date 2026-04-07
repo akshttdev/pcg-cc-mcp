@@ -110,7 +110,7 @@ pub async fn get_client(
 }
 
 #[derive(serde::Deserialize)]
-struct LinkCompanyBody {
+pub struct LinkCompanyBody {
     company_id: String,
     person_id: Option<String>,
 }
