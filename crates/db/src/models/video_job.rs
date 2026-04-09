@@ -26,6 +26,10 @@ pub struct VideoJob {
     // Post-production (overlay + B-roll assembly)
     pub postprod_status: String,
     pub postprod_video_path: Option<String>,
+    // Intelligence metadata
+    pub segments_json: Option<String>,
+    pub word_timestamps_json: Option<String>,
+    pub cut_points_json: Option<String>,
     // Overall
     pub status: String,
     pub error_message: Option<String>,
@@ -39,6 +43,7 @@ pub struct CreateVideoJob {
     pub avatar_profile_id: Uuid,
     pub script_text: String,
     pub background_url: Option<String>,
+    pub segments_json: Option<String>,
 }
 
 impl VideoJob {
@@ -51,14 +56,15 @@ impl VideoJob {
 
         sqlx::query(
             r#"INSERT INTO video_jobs
-               (id, avatar_profile_id, created_by, script_text, background_url)
-               VALUES (?, ?, ?, ?, ?)"#,
+               (id, avatar_profile_id, created_by, script_text, background_url, segments_json)
+               VALUES (?, ?, ?, ?, ?, ?)"#,
         )
         .bind(id)
         .bind(input.avatar_profile_id)
         .bind(created_by)
         .bind(&input.script_text)
         .bind(&input.background_url)
+        .bind(&input.segments_json)
         .execute(pool)
         .await?;
 
@@ -179,6 +185,23 @@ impl VideoJob {
         Ok(())
     }
 
+    pub async fn update_tts_metadata(
+        pool: &SqlitePool,
+        id: Uuid,
+        word_timestamps_json: &str,
+        cut_points_json: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE video_jobs SET word_timestamps_json = ?, cut_points_json = ?, updated_at = datetime('now','subsec') WHERE id = ?",
+        )
+        .bind(word_timestamps_json)
+        .bind(cut_points_json)
+        .bind(id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
     pub async fn update_postprod_started(pool: &SqlitePool, id: Uuid) -> Result<(), sqlx::Error> {
         sqlx::query(
             "UPDATE video_jobs SET postprod_status = 'processing', updated_at = datetime('now','subsec') WHERE id = ?",
@@ -193,16 +216,19 @@ impl VideoJob {
         pool: &SqlitePool,
         id: Uuid,
         output_path: &str,
+        public_url: &str,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
             r#"UPDATE video_jobs SET
                postprod_status = 'done',
                postprod_video_path = ?,
+               final_video_url = ?,
                status = 'postprod_ready',
                updated_at = datetime('now','subsec')
                WHERE id = ?"#,
         )
         .bind(output_path)
+        .bind(public_url)
         .bind(id)
         .execute(pool)
         .await?;

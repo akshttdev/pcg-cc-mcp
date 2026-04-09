@@ -133,7 +133,24 @@ You HAVE full internet access. NEVER say you can't browse URLs or search the web
 - `build_workflow` - Delegate to the Workflow Builder specialist to create or modify a workflow. Provide user_request (what they want) and context (data you've gathered about their org, schemas, existing workflows). The specialist handles node graph generation.
 
 ### Video Production tools
-- `create_video` - Generate an AI video using Sami Satoshi or another avatar. Triggers ElevenLabs TTS + HeyGen pipeline. Use when asked to create, produce, or generate a video.
+- `create_video` - Generate a fully-produced Sami Satoshi Tech Briefing video. Triggers ElevenLabs TTS → HeyGen portrait → post-production with category-matched B-roll overlays. ALWAYS provide the `segments` array with topic metadata when generating a Tech Brief. Returns job_id.
+- `get_video_status` - Poll a video job. Returns `ready` (bool), `final_url` (public MP4 URL when done), `status`, `postprod_status`, `duration_seconds`. Poll every 30-60s after create_video until `ready=true`, then deliver `final_url` to user.
+
+**Tech Brief Script Writing Guide:**
+When asked to generate a Tech Brief or video, write a 60-90 second broadcast-style script (~140-210 words) structured into segments:
+1. **Intro** (pcg): "I'm Sami Satoshi and this is your [date] PCG Tech Brief." — 15-20 words
+2. **AI News** (ai): 1-2 AI/LLM/technology stories — 50-70 words
+3. **Crypto Update** (crypto): 1-2 crypto/DeFi/web3 stories — 50-70 words
+4. **PCG Update** (pcg): PCG-specific announcements or business news — 30-40 words
+5. **Closing** (pcg): "That's your brief. Stay sharp, stay ahead. I'm Sami Satoshi." — 10-15 words
+
+Always compute `approx_words` per segment (count actual words in each segment's text). Set `broll_duration` to 10 for most segments, 8 for short ones. Map topic to broll_category: AI topics → 'ai', crypto/blockchain → 'crypto', PCG/business → 'pcg'.
+
+**Video Production Workflow:**
+1. Write script + segments → call `create_video` with both `script_text` and `segments`
+2. Inform user: "Tech Brief is generating — this takes about 5 minutes for TTS + HeyGen + post-production."
+3. If user asks for progress → call `get_video_status(job_id)`
+4. When `ready=true` → deliver `final_url` to user: "Your Tech Brief is ready: {final_url}"
 
 ### Communication
 - `respond_to_user` - IMPORTANT: Use this to deliver your response. Write your complete answer in the message parameter.
@@ -254,6 +271,7 @@ pub trait VideoJobBridge: Send + Sync {
         avatar_slug: &str,
         script_text: &str,
         background_url: Option<&str>,
+        segments_json: Option<&str>,
     ) -> std::result::Result<serde_json::Value, String>;
 }
 
@@ -1722,6 +1740,12 @@ impl TopsiAgent {
             .unwrap_or("sami-satoshi");
         let background_url = args.get("background_url").and_then(|v| v.as_str());
 
+        // Serialize segments array to JSON string if provided
+        let segments_json_owned: Option<String> = args
+            .get("segments")
+            .filter(|v| v.is_array())
+            .map(|v| v.to_string());
+
         if script.is_empty() {
             return Err(TopsiError::ToolError("script_text is required".to_string()));
         }
@@ -1732,7 +1756,12 @@ impl TopsiAgent {
             .ok_or_else(|| TopsiError::ToolError("Video job bridge not initialized".to_string()))?;
 
         bridge
-            .create_video_job(avatar_slug, script, background_url)
+            .create_video_job(
+                avatar_slug,
+                script,
+                background_url,
+                segments_json_owned.as_deref(),
+            )
             .await
             .map_err(|e| TopsiError::ToolError(e))
     }
@@ -1757,12 +1786,13 @@ impl TopsiAgent {
             postprod_status: String,
             postprod_video_path: Option<String>,
             final_video_url: Option<String>,
+            duration_seconds: Option<f64>,
             error_message: Option<String>,
         }
 
         let row: Option<VideoJobStatus> = sqlx::query_as(
-            "SELECT status, postprod_status, postprod_video_path, final_video_url, error_message \
-             FROM video_jobs WHERE id = ?",
+            "SELECT status, postprod_status, postprod_video_path, final_video_url, \
+             duration_seconds, error_message FROM video_jobs WHERE id = ?",
         )
         .bind(job_id)
         .fetch_optional(pool)
@@ -1774,14 +1804,30 @@ impl TopsiAgent {
                 "video job {} not found",
                 job_id
             ))),
-            Some(r) => Ok(serde_json::json!({
-                "job_id": job_id_str,
-                "status": r.status,
-                "postprod_status": r.postprod_status,
-                "postprod_video_path": r.postprod_video_path,
-                "final_video_url": r.final_video_url,
-                "error_message": r.error_message,
-            })),
+            Some(r) => {
+                let ready = r.status == "postprod_ready";
+                let message = if ready {
+                    format!(
+                        "Tech Brief is ready. Final video: {}",
+                        r.final_video_url.as_deref().unwrap_or("(processing)")
+                    )
+                } else {
+                    format!(
+                        "Status: {} | Post-production: {}",
+                        r.status, r.postprod_status
+                    )
+                };
+                Ok(serde_json::json!({
+                    "job_id": job_id_str,
+                    "status": r.status,
+                    "postprod_status": r.postprod_status,
+                    "final_url": r.final_video_url,
+                    "duration_seconds": r.duration_seconds,
+                    "error_message": r.error_message,
+                    "ready": ready,
+                    "message": message,
+                }))
+            }
         }
     }
 

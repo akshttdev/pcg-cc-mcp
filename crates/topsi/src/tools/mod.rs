@@ -914,21 +914,51 @@ pub fn get_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "create_video",
-                "description": "Generate a fully-produced PCG Tech Briefing video with Sami Satoshi. Full pipeline: ElevenLabs TTS → HeyGen talking-head → post-production (B-roll placeholder backgrounds, show bug overlay, host ID strip, PiP circles, thumbnail, logo intro, outro, fade). Returns a job ID. The post-production step runs automatically after HeyGen completes — check status with get_video_status. Use when asked to create, produce, or generate a video briefing, announcement, or Tech Brief.",
+                "description": "Generate a fully-produced PCG Tech Briefing video with Sami Satoshi. Full pipeline: ElevenLabs TTS → HeyGen talking-head (portrait) → post-production (category-matched B-roll overlays, show bug, host ID strip, PiP circles, thumbnail, logo intro/outro, fade). Returns a job_id. Post-production runs automatically after HeyGen. Poll with get_video_status until ready=true, then deliver final_url.\n\nWhen writing the script, structure it into 3-4 segments with clear topic shifts. Each segment maps to a B-roll category:\n- 'ai' → AI/LLM/machine-learning news\n- 'crypto' → blockchain/DeFi/crypto/NFT/web3 news\n- 'pcg' → Power Club Global updates, PCG announcements, business ops\n\nAlways include an opening intro segment and a closing segment. Aim for 60-90 seconds total (approx 140-210 words).",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "script_text": {
                             "type": "string",
-                            "description": "The script/narration text for the video. This will be spoken by Sami Satoshi."
+                            "description": "The full narration script for the video. Will be spoken by Sami Satoshi. Write in a confident, broadcast news style."
                         },
                         "avatar_slug": {
                             "type": "string",
-                            "description": "Avatar slug to use. Defaults to 'sami-satoshi'."
+                            "description": "Avatar slug to use. Defaults to 'sami-satoshi'. Only change if a different avatar is requested."
                         },
                         "background_url": {
                             "type": "string",
                             "description": "Optional URL of a background image or video to use behind the avatar."
+                        },
+                        "segments": {
+                            "type": "array",
+                            "description": "Segment metadata array for smart post-production. Each segment maps to a B-roll category and drives intelligent cut placement. ALWAYS provide this when you have structured topic data.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "label": {
+                                        "type": "string",
+                                        "description": "Short display label for this segment, e.g. 'Intro', 'AI News', 'Crypto Update', 'PCG Announcements', 'Closing'"
+                                    },
+                                    "text": {
+                                        "type": "string",
+                                        "description": "The script text for this segment (verbatim from script_text, split by segment)"
+                                    },
+                                    "broll_category": {
+                                        "type": "string",
+                                        "description": "B-roll category: 'ai', 'crypto', or 'pcg'. Use 'pcg' for intro/outro/PCG-specific content."
+                                    },
+                                    "approx_words": {
+                                        "type": "integer",
+                                        "description": "Approximate word count for this segment. Used to compute smart cut points."
+                                    },
+                                    "broll_duration": {
+                                        "type": "number",
+                                        "description": "Target B-roll duration in seconds for this segment (typically 8-15s per insert)."
+                                    }
+                                },
+                                "required": ["label", "text", "broll_category", "approx_words", "broll_duration"]
+                            }
                         }
                     },
                     "required": ["script_text"]
@@ -939,7 +969,7 @@ pub fn get_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "get_video_status",
-                "description": "Check the status of a video production job. Returns the current stage (tts_generating, avatar_generating, ready, postprod_ready) and the path to the final composited video when post-production is complete. Use this after create_video to check progress or get the output file path.",
+                "description": "Check the status of a video production job. Returns: status (tts_generating→avatar_generating→ready→postprod_ready), postprod_status (pending→processing→done), ready (bool, true when fully done), final_url (public URL to the finished MP4, available when ready=true), duration_seconds, and a human-readable message. Poll every 30-60s after create_video. When ready=true, deliver the final_url to the user.",
                 "parameters": {
                     "type": "object",
                     "properties": {

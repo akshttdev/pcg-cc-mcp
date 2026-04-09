@@ -221,6 +221,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(feedback::router(&deployment))
         .merge(agent_flows::router(&deployment))
         .merge(agent_flow_events::router(&deployment))
+        .merge(video_gen::router(&deployment))
         .layer(middleware::from_fn_with_state(
             deployment.clone(),
             app_middleware::require_auth,
@@ -243,7 +244,6 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(events::router(&deployment))
         .nest("/images", images::routes())
         .merge(cinematics::router(&deployment))
-        .merge(video_gen::router(&deployment))
         .merge(twilio::twilio_routes())
         .merge(bot_bridge::router())
         .merge(activity::router())

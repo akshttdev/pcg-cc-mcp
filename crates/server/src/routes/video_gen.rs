@@ -61,6 +61,7 @@ pub fn public_router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/video-gen/audio/{job_id}", get(serve_audio))
         .route("/video-gen/video/{job_id}", get(serve_video))
+        .route("/video-gen/final/{job_id}", get(serve_final_video))
         .with_state(deployment.clone())
 }
 
@@ -178,10 +179,18 @@ async fn create_job(
     let pool2 = pool.clone();
     let script = job.script_text.clone();
     let background_url = job.background_url.clone();
+    let segments_json = job.segments_json.clone();
 
     tokio::spawn(async move {
-        if let Err(e) =
-            produce_job(&pool2, job_id, &avatar, &script, background_url.as_deref()).await
+        if let Err(e) = produce_job(
+            &pool2,
+            job_id,
+            &avatar,
+            &script,
+            background_url.as_deref(),
+            segments_json.as_deref(),
+        )
+        .await
         {
             tracing::error!("video pipeline failed for job {}: {}", job_id, e);
             let _ = VideoJob::update_status(&pool2, job_id, "failed", Some(&e.to_string())).await;
@@ -246,6 +255,22 @@ async fn serve_video(Path(job_id): Path<String>) -> Result<Response, ApiError> {
         .unwrap())
 }
 
+async fn serve_final_video(Path(job_id): Path<String>) -> Result<Response, ApiError> {
+    let path = video_dir().join(format!("{}_final.mp4", job_id));
+    let data = fs::read(&path)
+        .await
+        .map_err(|_| ApiError::NotFound(format!("final video {}", job_id)))?;
+
+    Ok(Response::builder()
+        .header(header::CONTENT_TYPE, "video/mp4")
+        .header(
+            header::CONTENT_DISPOSITION,
+            format!("inline; filename=\"{}_techbrief.mp4\"", &job_id[..8]),
+        )
+        .body(Body::from(data))
+        .unwrap())
+}
+
 // ---------------------------------------------------------------------------
 // Async pipeline
 // ---------------------------------------------------------------------------
@@ -256,6 +281,7 @@ pub(crate) async fn produce_job(
     avatar: &AvatarProfile,
     script: &str,
     background_url: Option<&str>,
+    segments_json: Option<&str>,
 ) -> anyhow::Result<()> {
     let el_key = std::env::var("ELEVENLABS_API_KEY")?;
     let hg_key = std::env::var("HEYGEN_API_KEY")?;
@@ -313,6 +339,20 @@ pub(crate) async fn produce_job(
 
     // Upload WAV to HeyGen CDN
     let audio_url = heygen::upload_audio_wav(&hg_key, wav_bytes).await?;
+
+    // Compute smart cut points from word alignment + segment metadata
+    let cut_points = find_cut_points(&tts.word_alignment, segments_json);
+    let cut_points_json = serde_json::to_string(&cut_points).unwrap_or_else(|_| "[]".to_string());
+    let word_timestamps_json = serde_json::to_string(
+        &tts.word_alignment
+            .iter()
+            .map(|w| serde_json::json!({"word": w.word, "start": w.start_time, "end": w.end_time}))
+            .collect::<Vec<_>>(),
+    )
+    .unwrap_or_else(|_| "[]".to_string());
+    let _ =
+        VideoJob::update_tts_metadata(pool, job_id, &word_timestamps_json, &cut_points_json).await;
+    tracing::info!("video job {}: cut points = {:?}", job_id, cut_points);
 
     VideoJob::update_tts_done(pool, job_id, &audio_url).await?;
     tracing::info!("video job {}: TTS done, audio at {}", job_id, audio_url);
@@ -380,8 +420,17 @@ pub(crate) async fn produce_job(
                 // Kick off post-production pipeline (non-blocking)
                 let pool_pp = pool.clone();
                 let vid_path_pp = vid_path.clone();
+                let cuts_pp = cut_points_json.clone();
+                let segs_pp = segments_json.map(|s| s.to_string());
                 tokio::spawn(async move {
-                    run_post_production(&pool_pp, job_id, &vid_path_pp).await;
+                    run_post_production(
+                        &pool_pp,
+                        job_id,
+                        &vid_path_pp,
+                        &cuts_pp,
+                        segs_pp.as_deref(),
+                    )
+                    .await;
                 });
 
                 return Ok(());
@@ -409,7 +458,13 @@ pub(crate) async fn produce_job(
 /// PiP circles, thumbnail, logo, and outro via FFmpeg.
 ///
 /// Non-blocking — spawned as a tokio task after `produce_job` completes.
-async fn run_post_production(pool: &sqlx::SqlitePool, job_id: Uuid, raw_path: &std::path::Path) {
+async fn run_post_production(
+    pool: &sqlx::SqlitePool,
+    job_id: Uuid,
+    raw_path: &std::path::Path,
+    cut_points_json: &str,
+    segments_json: Option<&str>,
+) {
     tracing::info!("video job {}: starting post-production", job_id);
 
     if let Err(e) = VideoJob::update_postprod_started(pool, job_id).await {
@@ -433,14 +488,20 @@ async fn run_post_production(pool: &sqlx::SqlitePool, job_id: Uuid, raw_path: &s
         return;
     }
 
-    let output = tokio::process::Command::new("python3")
-        .arg(script)
+    let mut cmd = tokio::process::Command::new("python3");
+    cmd.arg(script)
         .arg("--raw")
         .arg(raw_path)
         .arg("--job-id")
         .arg(job_id.to_string())
-        .output()
-        .await;
+        .arg("--cuts")
+        .arg(cut_points_json);
+
+    if let Some(segs) = segments_json {
+        cmd.arg("--segments").arg(segs);
+    }
+
+    let output = cmd.output().await;
 
     match output {
         Ok(out) if out.status.success() => {
@@ -448,12 +509,13 @@ async fn run_post_production(pool: &sqlx::SqlitePool, job_id: Uuid, raw_path: &s
                 .join(format!("{}_final.mp4", job_id))
                 .to_string_lossy()
                 .to_string();
+            let public_url = format!("{}/api/video-gen/final/{}", app_base_url(), job_id);
             tracing::info!(
                 "video job {}: post-production done → {}",
                 job_id,
                 final_path
             );
-            let _ = VideoJob::update_postprod_done(pool, job_id, &final_path).await;
+            let _ = VideoJob::update_postprod_done(pool, job_id, &final_path, &public_url).await;
         }
         Ok(out) => {
             let stderr = String::from_utf8_lossy(&out.stderr);
@@ -471,6 +533,82 @@ async fn run_post_production(pool: &sqlx::SqlitePool, job_id: Uuid, raw_path: &s
             let _ = VideoJob::update_postprod_failed(pool, job_id, &err).await;
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Smart cut detection
+// ---------------------------------------------------------------------------
+
+/// Given word-level TTS timestamps and optional segments JSON, returns a list
+/// of cut timecodes (seconds) corresponding to natural speech pauses near each
+/// segment boundary.
+///
+/// If no segments metadata is provided, falls back to proportional 40/40/20 split.
+fn find_cut_points(word_alignment: &[tts::WordAlignment], segments_json: Option<&str>) -> Vec<f64> {
+    if word_alignment.is_empty() {
+        return vec![];
+    }
+
+    let total_dur = word_alignment.last().map(|w| w.end_time).unwrap_or(0.0);
+
+    if total_dur < 1.0 {
+        return vec![];
+    }
+
+    // Determine target cut times from segments metadata or fall back to proportional split
+    let target_times: Vec<f64> = if let Some(json) = segments_json {
+        if let Ok(segs) = serde_json::from_str::<Vec<serde_json::Value>>(json) {
+            // Accumulate word counts per segment to estimate boundary timestamps
+            let total_words = word_alignment.len() as f64;
+            let mut word_cursor = 0usize;
+            let mut times = Vec::new();
+
+            for (i, seg) in segs.iter().enumerate() {
+                if i == segs.len() - 1 {
+                    break; // no cut after last segment
+                }
+                let approx_words = seg
+                    .get("approx_words")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(total_words / segs.len() as f64);
+                word_cursor += approx_words as usize;
+                let idx = word_cursor.min(word_alignment.len() - 1);
+                times.push(word_alignment[idx].start_time);
+            }
+            times
+        } else {
+            // Fallback: 3-cut proportional
+            vec![total_dur * 0.40, total_dur * 0.70]
+        }
+    } else {
+        // No segments: 2-cut 40/80 split
+        vec![total_dur * 0.40, total_dur * 0.80]
+    };
+
+    // Snap each target time to the nearest natural pause (largest inter-word gap within ±3s)
+    target_times
+        .into_iter()
+        .map(|target| snap_to_pause(word_alignment, target, 3.0))
+        .collect()
+}
+
+/// Find the midpoint of the largest inter-word gap within `window_secs` of `target`.
+fn snap_to_pause(words: &[tts::WordAlignment], target: f64, window_secs: f64) -> f64 {
+    let best = words
+        .windows(2)
+        .filter_map(|pair| {
+            let gap = pair[1].start_time - pair[0].end_time;
+            let mid = (pair[0].end_time + pair[1].start_time) / 2.0;
+            if (mid - target).abs() <= window_secs && gap > 0.0 {
+                Some((gap, mid))
+            } else {
+                None
+            }
+        })
+        .max_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+
+    best.map(|(_, mid)| (mid * 1000.0).round() / 1000.0)
+        .unwrap_or((target * 1000.0).round() / 1000.0)
 }
 
 // ---------------------------------------------------------------------------
@@ -698,7 +836,7 @@ mod heygen {
 
         let body = serde_json::json!({
             "video_inputs": [video_input],
-            "dimension": {"width": 1280, "height": 720}
+            "dimension": {"width": 720, "height": 1280}
         });
 
         let resp = client

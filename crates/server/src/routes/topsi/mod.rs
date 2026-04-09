@@ -141,6 +141,7 @@ impl VideoJobBridge for VideoProductionBridge {
         avatar_slug: &str,
         script_text: &str,
         background_url: Option<&str>,
+        segments_json: Option<&str>,
     ) -> std::result::Result<serde_json::Value, String> {
         use db::models::{
             avatar_profile::AvatarProfile,
@@ -167,6 +168,7 @@ impl VideoJobBridge for VideoProductionBridge {
                 avatar_profile_id: avatar.id,
                 script_text: script_text.to_string(),
                 background_url: background_url.map(|s| s.to_string()),
+                segments_json: segments_json.map(|s| s.to_string()),
             },
             None,
         )
@@ -177,6 +179,7 @@ impl VideoJobBridge for VideoProductionBridge {
         let pool2 = self.pool.clone();
         let script = job.script_text.clone();
         let bg = job.background_url.clone();
+        let segs = job.segments_json.clone();
 
         // Spawn the async pipeline
         tokio::spawn(async move {
@@ -186,6 +189,7 @@ impl VideoJobBridge for VideoProductionBridge {
                 &avatar,
                 &script,
                 bg.as_deref(),
+                segs.as_deref(),
             )
             .await
             {
